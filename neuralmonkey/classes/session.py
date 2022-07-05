@@ -5,7 +5,8 @@ import tdt
 import numpy as np
 import matplotlib.pyplot as plt
 from ..utils.timeseries import dat_to_time
-from ..utils.monkeylogic import getTrialsTaskAsStrokes, getTrialsStrokes
+# from ..utils.monkeylogic import getTrialsTaskAsStrokes
+from pythonlib.drawmodel.strokePlots import plotDatStrokes
 
 class Session(object):
     """
@@ -40,6 +41,7 @@ class Session(object):
         self.DatAll = None
 
         self.SitesGarbage = sites_garbage
+        self.SitesAll = range(1, 513)
 
         # Behavior stuff
         self.BehDate = datestr
@@ -63,9 +65,55 @@ class Session(object):
 
         # Find the times of all trial onsets (inneural data)
         # 1. get all onset and offset times
-        self.TrialsOnset = self.extract_behcode_times(9)
-        self.TrialsOffset = self.extract_behcode_times(18)
+        self.TrialsOnset = self.behcode_extract_times(9)
+        self.TrialsOffset = self.behcode_extract_times(18)
 
+        # behcodes
+        beh_codes = {
+                9:"start",
+                10:"fix cue",
+                11:"fix cue visible",
+                13:"frame skip",
+                14:"manual rew",
+                15:"guide",
+                16:'FixationOnsetWTH',
+                17:'FixationDoneSuccessWTH',
+                18:"end",
+                19:'FixationRaiseFailWTH',
+                20:"go (draw)",
+                21:"guide_on_GA",
+                30:'DelayWhatIsThis', 
+                40:'GoWhatIsThis',
+                41:"samp1 on",
+                42:"samp1 off",
+                45:"done",
+                46:"post",
+                50:"reward",
+                51:"free reward",
+                61:'DoneButtonVisible',
+                62:'DoneButtonTouched',
+                63:'DragAroundSuccess',
+                64:'DragAroundAbort',
+                65:'DragAroundFirstAbortNow',
+                70:'hotkey_x',
+                71:'DAstimevent_firstpres',
+                72:'DAstimoff_finibeforepause',
+                73:'DAstimoff_fini',
+                74:'DAsamp1_visible_change',
+                75:'DAnewpnutthisframe',
+                76:'DAsound_samp1touched',
+                78:'DAsound_gotallink',
+                80:'ttl_trialon',
+                81:'ttl_trialoff',
+                91:'GAstimevent_firstpres', 
+                92:'GAstimoff_fini', 
+                101:'fix_square_on',
+                102:'fix_square_off',
+                103:'fix_square_on_pd',
+                111:'photodiode_force_off',
+                200:'skipped_movie_frame'
+            }
+        self.BehCodes = beh_codes
 
 
     ####################### PREPROCESS THINGS
@@ -237,9 +285,9 @@ class Session(object):
                     ch = chans[i]
 
                     # generate the timebins (start from 0 sec)
-                    raw = None
+                    raw = np.empty(0)
                     fs = None
-                    t = None
+                    t = np.empty(0)
                     
                     DatRaw.append({
                         "rs":rs,
@@ -255,7 +303,6 @@ class Session(object):
         
         DatRaw = []
         for rs in rss:
-            print(rs)
             datraw = extract_raw_(rs, chans, trial0, pre_dur, post_dur)
             DatRaw.extend(datraw)
         return DatRaw
@@ -275,44 +322,6 @@ class Session(object):
 
 
     ########################## GET FROM PRE-EXTRACTED DATA
-    def extract_behcode_times(self, codenum, trial0=None, first_instance_only=False):
-        """ Extract the times that this codenum occured, in sec
-        PARAMS
-        - codenum, int
-        - trial0, int, if given, then will get times reltaive to this trial
-        - first_instance_only, bool, if True, then only returns the first time
-        it occurs.
-        """    
-        timesall, codes = self.extract_data_tank_epocs("behcode")
-        inds = codes==codenum
-        times = timesall[inds]
-        
-        if trial0 is not None:
-            times, _ = self.extract_windowed_data_bytrial(times, trial0)
-        
-        if first_instance_only:
-            if len(times)>1:
-                times = times[0:1] # stay as an array
-        return times
-        
-    def extract_behcode_times_sequence(self, codes, trial0):
-        """ Get the times of this sequence of codes, aligned to this trial,
-        taking only the first instance of each code.
-        If a code doesnt occur, gives it a np.nan
-        RETURNS:
-        - times, np array len of codes. elements are either seconds or np.nan
-        NOTE: order will not matter
-        """
-        
-        times = np.empty(len(codes))
-        for i, c in enumerate(codes):
-            t = self.extract_behcode_times(c, trial0, True)
-            if len(t)>0:
-                times[i] = t[0]
-            else:
-                times[i] = np.nan
-        return times    
-
     def extract_data_tank_streams(self, which, trial0=None):
         """ Extract tank data, epocs, in flexible manner.
         PARAMS:
@@ -404,12 +413,36 @@ class Session(object):
         
         return times, vals
 
+    def extract_raw_and_spikes_helper(self, trials, sites=None, get_raw=False):
+        """ to quickly get a subset of trials, all sites, etc.
+        """
+
+        if sites is None:
+            # get all sites
+            sites = self.SitesAll
+
+        # convert sites to rs and chan
+        rss, chans = [], []
+        for s in sites:
+            rs, ch = self.convert_site_to_rschan(s)
+            if rs not in rss:
+                rss.append(rs)
+            if ch not in chans:
+                chans.append(ch)
+
+        for t in trials:
+            print(f"Extrcting data for trial {t}")
+            self.extract_raw_and_spikes(rss, chans, t, get_raw=get_raw)
+
+
     def extract_raw_and_spikes(self, rss, chans, trialtdt, get_raw = False):
         """ [GET ALL DATA] Extract raw (unfiltered) and spikes for this trial
         PARAMS:
         - rss, list of ints for rs
         - chans, list of chans (within this rs)
         - trialtdt, tdt trials
+        TODO: 
+        - dont extract if already gottne.
         """
         
         # raw (get all chans) [from disk]
@@ -427,9 +460,23 @@ class Session(object):
             self.DatAll = DatRaw
         else:
             for d in DatRaw:
-                if not self.datall_this_exists(d["rs"], d["chan"], d["trial0"]):
-                    # then append
+                # Don't inlcude it if it is already extracted
+                # if getting raw, then will overwrite if it was gotten but without raw.
+                d_old = self.datall_slice_single(d["rs"], d["chan"], d["trial0"])
+                if d_old is None:
+                    # then doestn exist, append
                     self.DatAll.append(d)
+                elif len(d_old["raw"])==0 and get_raw:
+                    # Then previous didnt have raw, so overwrite it
+                    self.datall_replace_single(d["rs"], d["chan"], d["trial0"], Dnew=d)
+                else:
+                    # skip
+                    pass
+
+                # if not self.datall_this_exists(d["rs"], d["chan"], d["trial0"],
+                #     also_check_if_has_raw_data=get_raw):
+                #     # then append
+                #     self.DatAll.append(d)
         return self.DatAll
 
 
@@ -486,25 +533,62 @@ class Session(object):
 
 
     #################### DATALL
-    def datall_this_exists(self, rs, chan, trial0):
+    def datall_this_exists(self, rs, chan, trial0, also_check_if_has_raw_data=False):
         """ returns True if this combo exist sin self.DatAll,
         false otherwise
+        - also_check_if_has_raw_data, bool, if true, then to return True must also 
+        hvae raw data extracted
         """
-        for D in self.DatAll:
-            if D["rs"]==rs and D["chan"]==chan and D["trial0"]==trial0:
+        D = self.datall_slice_single(rs, chan, trial0)
+        if D is None:
+            return False
+        if also_check_if_has_raw_data:
+            if len(D["raw"])==0:
+                return False
+            else:
                 return True
-        return False
+        else:
+            return True
 
-    def datall_slice_single(self, rs, chan, trial0):
-        """ Slice a single chans data
+
+    def datall_replace_single(self, rs, chan, trial0, Dnew):
+        """ If this (rs, chan, trial0) exists, replace it with Dnew
+        MODIFIES:
+        - self.DatAll, at a single index
         """
-        for D in self.DatAll:
+
+        Dold, idx = self.datall_slice_single(rs, chan, trial0, return_index=True)
+        if Dold is None:
+            # then doesnt exist, do mnothing
+            pass
+        else:
+            self.DatAll[idx] = Dnew
+
+
+
+
+    def datall_slice_single(self, rs, chan, trial0, return_index=False):
+        """ Slice a single chans data.
+        PARAMS:
+        - rs, chan, trial0, ints
+        RETURNS:
+        - if exists:
+        --- siungle item from self.DatAll if it exists, 
+        --- [if return_index]:index (in self.DatAll)
+        - if doesnt exist:
+        --- None, 
+        --- [return_index] None
+        """
+        for i, D in enumerate(self.DatAll):
             if D["rs"]==rs and D["chan"]==chan and D["trial0"]==trial0:
-                return D
-        print(rs, chan, trial0)
-
-        assert False, 'this combo of rs and chan and trial0 doesnt exist in DatAll!'
-
+                if return_index:
+                    return D, i
+                else:
+                    return D
+        if return_index:
+            return None, None
+        else:
+            return None
 
 
     ###################### SPIKES
@@ -603,6 +687,71 @@ class Session(object):
         return ml2_get_trial_onset(fd, trialml)
 
     ######################## BRAIN STUFF
+    def sitegetter_summarytext(self, site):
+        """ Return a string that useful for labeling
+        """
+
+        info = self.sitegetter_thissite_info(site)
+        bregion = info["region"]
+        rs = info["rs"]
+        chan = info["chan"]
+        return f"{site}|{bregion}|{rs}-{chan}"
+
+    def sitegetter_brainregion_chan(self, region, chan):
+        """ Given a regin and chan (1-256) return its site (1-512)
+        """ 
+
+        # which rs?
+        sites = self.sitegetter_brainregion(region)
+        if all([s<257 for s in sites]):
+            rs = 2
+        elif all([s<513 for s in sites]):
+            rs = 3
+        else:
+            print(sites, region)
+            assert False
+
+        site = self.convert_rschan_to_site(rs, chan)
+        assert site in sites, "this site not in this brain region!!"
+        return site
+
+
+    def sitegetter_thissite_info(self, site):
+        """ returns info for this site in a dict
+        """
+
+        # Get the brain region
+        dict_sites = self.sitegetter_brainregion()
+        regionthis = None
+        for bregion, sites in dict_sites.items():
+            if site in sites:
+                regionthis = bregion
+                break
+        assert regionthis is not None
+
+        # Get the rs and chan
+        rs, chan = self.convert_site_to_rschan(site)
+
+        return {
+            "region":regionthis,
+            "rs":rs,
+            "chan":chan}
+
+    def sitegetter_all(self, list_regions=None, clean=True):
+        """ Get all sites, in order
+        MNOTE: will not be in order of list_regions, but will be in order in channels.
+        PARAMS:
+        - list_regions, get only these regions. leave None to get all
+        """
+        bregion_mapper = self.sitegetter_brainregion("mapper", clean=clean)
+        if list_regions is None:
+            bm = bregion_mapper
+        else:
+            bm = {br:sites for br, sites in bregion_mapper.items() if br in list_regions}
+
+        sites = [s for br, ss in bm.items() for s in ss]
+        return sites
+
     def sitegetter_brainregion(self, region=None, clean=False):
         regions_in_order = ["M1_m", "M1_l", "PMv_l", "PMv_m",
                             "PMd_p", "PMd_a", "dlPFC_p", "dlPFC_a", 
@@ -631,6 +780,18 @@ class Session(object):
         else:
             return dict_sites[region]
 
+    def convert_rschan_to_site(self, rs, chan):
+        """
+        PARAMS:
+        - rs, {2,3}
+        - chan, 1-256
+        """
+        assert chan<257
+        if rs==2:
+            return chan
+        elif rs==3:
+            return chan + 256
+
     def convert_site_to_rschan(self, sitenum):
         """ Cnvert sites (1-512) to rs and chan
         e.g., 512 --> (3, 256)
@@ -643,13 +804,147 @@ class Session(object):
             chan = sitenum
         return rs, chan
 
+
     ############################ BEH STUFF (ML)
     # def events_extract_stroke_onsoffs(self, trial0):
     #     """ Get the times of stroke onsets and offsets.
     #     """
     #     fd, trialml = self.beh_get_fd_trial(trial0)
     #     # trialml = convert_trialnum(trialtdt=trial0)
-    #     strokes = getTrialsStrokes(fd, trialml) # includes go and done
+    def behcode_extract_times(self, code, trial0=None, 
+            first_instance_only=False, shorthand=False):
+        """ Extract the times that this code occured, in sec, as recorded by TDT 
+        _NOT_ as recorded in ml2. these are almost identical. These are the "correct" values
+        wrt alignemnet with neural data.
+        PARAMS
+        - code, eitehr either string or int
+        - trial0, int, if given, then will get times reltaive to this trial
+        - first_instance_only, bool, if True, then only returns the first time
+        it occurs.
+        """    
+
+        if isinstance(code, str):
+            codenum = self.behcode_convert(codename=code, shorthand=shorthand)
+        else:
+            codenum = code
+
+        timesall, codes = self.extract_data_tank_epocs("behcode")
+        inds = codes==codenum
+        times = timesall[inds]
+        
+        if trial0 is not None:
+            times, _ = self.extract_windowed_data_bytrial(times, trial0)
+        
+        if first_instance_only:
+            if len(times)>1:
+                times = times[0:1] # stay as an array
+        return times
+        
+    def behcode_extract_times_sequence(self, codes, trial0):
+        """ Get the times of this sequence of codes, aligned to this trial,
+        taking only the first instance of each code.
+        If a code doesnt occur, gives it a np.nan
+        RETURNS:
+        - times, np array len of codes. elements are either seconds or np.nan
+        NOTE: order will not matter
+        """
+        
+        times = np.empty(len(codes))
+        for i, c in enumerate(codes):
+            t = self.behcode_extract_times(c, trial0, True)
+            if len(t)>0:
+                times[i] = t[0]
+            else:
+                times[i] = np.nan
+        return times    
+
+    def behcode_shorthand(self, full=None, short=None):
+        """ Convert between
+        """
+
+        dict_full2short = {
+            "start":"on",
+            "fix cue visible":"fixcue",
+            "FixationOnsetWTH":"fix",
+            "GAstimevent_firstpres":"samp", 
+            "GAstimoff_fini":"go",
+            "DoneButtonTouched":"done",
+            "DAstimoff_fini":"fb_vs", 
+            "reward":"rew"}
+
+        if full:
+            assert not short
+            return dict_full2short[full]
+        else:
+            assert not full
+            for k, v in dict_full2short.items():
+                if v==short:
+                    return k
+            assert False
+
+    def behcode_convert(self, codenum=None, codename=None, shorthand=False):
+        """ convert between num (int) and name (str)
+        Name can be the formal name in BehCodes, or shorthand
+        PARAMS:
+        - shorthand, bool, then 
+        --- if ask for name, returns codename that is shorthand. 
+        --- if ask for num, then assumes you passed in shortand
+        """
+
+        if codenum:
+            assert codename is None
+            name = self.BehCodes[codenum]
+            if shorthand:
+                return self.behcode_shorthand(full=name)
+            else:
+                return name
+        else:
+            assert codenum is None
+            if shorthand:
+                # convert to full
+                codename = self.behcode_shorthand(short=codename)
+            for k, v in self.BehCodes.items():
+                if v==codename:
+                    return k    
+            assert False
+        
+
+    ###################### GET TEMPORAL EVENTS
+    def events_get_time(self, event, trial):
+        """ Return the time in trial for this event
+        PARAMS:
+        - event, either string or tuple.
+        - eventkind, string, if None, then tries to find it automatically.
+        """
+
+        if isinstance(event, tuple):
+            eventkind = event[0]            
+            if eventkind=="strokes":
+                # event = (strokes, 1, "on")
+                strokenum = event[1] # 0, 1, .. -1
+                timepoint = event[2] # on, off
+                ons, offs = self.strokes_extract_ons_offs(trial)
+                if timepoint=="on":
+                    alignto_time = ons[strokenum]
+                elif timepoint=="off":
+                    alignto_time = offs[strokenum]
+                else:
+                    assert False
+            else:
+                print(eventkind)
+                assert False
+        elif isinstance(event, str):
+            # THis is behcode shorthand
+            code = self.behcode_convert(codename=event, shorthand=True)
+            alignto_time = self.behcode_extract_times(code, trial, first_instance_only=True)
+        elif isinstance(event, int):
+            # Then is behcode
+            alignto_time = self.behcode_extract_times(code, trial, first_instance_only=True)
+        else:
+            assert False
+
+        return alignto_time
+
 
     ####################### PLOTS (generic)
     
@@ -674,72 +969,193 @@ class Session(object):
         ax.plot(t, waveforms[:nplot, :].T, alpha=0.3)
         
     
-    def plot_raster_line(self, ax, times, yval, color='k'):
+    def plot_raster_line(self, ax, times, yval, color='k', alignto_time=None, 
+        linelengths = 0.85, alpha=0.4):
         """ plot a single raster line at times at row yval
+        PARAMS:
+        - alignto_time, in sec, this becomes new 0
         """
         
+        if alignto_time:
+            t = times-alignto_time
+        else:
+            t = times
     #     ax.plot(times, yval*np.ones(time.shape), '.', color=color, alpha=0.55)
-        y = yval*np.ones(times.shape)
-        ax.eventplot([times], lineoffsets=yval, color=color, alpha=0.55)
+        y = yval*np.ones(t.shape)
+        ax.eventplot([t], lineoffsets=yval, color=color, alpha=alpha, linelengths=linelengths)
         
         # plot as hashes
         
-    def plotmod_overlay_trial_events(self, ax, trial0):
+    def strokes_extract_ons_offs(self, trialtdt):
+        from ..utils.monkeylogic import getTrialsOnsOffsAllowFail
+        fd, trialml = self.beh_get_fd_trial(trialtdt)
+        ons, offs = getTrialsOnsOffsAllowFail(fd, trialml)
+        return ons, offs
+
+    def plotmod_overlay_brainregions(self, ax, list_sites):
+        """ 
+        PARAMS:
+        - list_sites, list of ints, must be lnegth of the num raster lines, and must
+        be ordered matchng the figure
+        """
+
+        XLIM = ax.get_xlim()
+        # 1) plot horizonatl line on figure demarcatring transtion ebtwenn areas
+        list_regions = [self.sitegetter_thissite_info(site)["region"] for site in list_sites]
+        region_previous = None
+        for i, region_this in enumerate(list_regions):
+            if region_this==region_previous:
+                # then have not transitioned between regions
+                continue
+            else:
+                ax.axhline(i-0.5)
+                ax.text(XLIM[0]-1.5, i, region_this, size=15, color="b")
+            region_previous = region_this
+
+
+
+
+
+
+    def plotmod_overlay_trial_events(self, ax, trial0, strokes_patches=True, 
+            alignto_time=None, only_on_edge=None, YLIM=None, alpha = 0.2,
+            which_events=["trial", "strokes"], include_text=True, text_yshift = 0.):
         """ Overlines trial events in vertical lines
         Time is rel trial onset (ml2 code 9)
         Run this after everything else, so get propoer YLIM.
+        PARAMS:
+        - strokes_patches, bool, then fills in patches for each stroke. otherwise places vert lines
+        at onset and ofset.
+        - only_on_edge, whethe and how to plot on edge, without blocking the figure, either:
+        --- None, skip
+        --- "top", or "bottom"
+        - YLIM, to explicitly define, useful if doing one per raster line.
+        - which_events, list of str, control whhic to plot
+        - text_yshift, shfit text by this amnt.
         """
-        from ..utils.monkeylogic import getTrialsOnsOffs
-        # Vertical lines for beh codes
-        list_codes = [9, 11, 16, 91, 92, 62, 73, 50]
-        times_codes = self.extract_behcode_times_sequence(list_codes, trial0)
-        # names_codes = [beh_codes[c] for c in list_codes] 
-        names_codes = ["on", "fixcue", "fix", "samp", "go", "done", "fb_vs", "rew"]
-        
+
+        if "trial" in which_events:
+            # Vertical lines for beh codes
+            list_codes = [9, 11, 16, 91, 92, 62, 73, 50]
+            times_codes = self.behcode_extract_times_sequence(list_codes, trial0)
+            # names_codes = [beh_codes[c] for c in list_codes]
+            names_codes = [self.behcode_convert(c, shorthand=True) for c in list_codes] 
+            # names_codes = ["on", "fixcue", "fix", "samp", "go", "done", "fb_vs", "rew"]
+            colors_codes = ["k",  "m",       "b",    "r",   "y",  "g",     "m",     "k"]
+        else:
+            list_codes = []
+            times_codes = []
+            names_codes = [] 
+            colors_codes = []
+
+
         # Also include times of strokes
-        fd, trialml = self.beh_get_fd_trial(trial0)
-        ons, offs = getTrialsOnsOffs(fd, trialml)
-        times_codes = np.append(times_codes, ons)
-        times_codes = np.append(times_codes, offs)
-        names_codes.extend(["Son" for _ in range(len(ons))])
-        names_codes.extend(["Soff" for _ in range(len(ons))])
+        if strokes_patches==False and "strokes" in which_events:
+            ons, offs = self.strokes_extract_ons_offs(trial0)
+            times_codes = np.append(times_codes, ons)
+            times_codes = np.append(times_codes, offs)
+            names_codes.extend(["Son" for _ in range(len(ons))])
+            colors_codes.extend(["b" for _ in range(len(ons))])
+            names_codes.extend(["Soff" for _ in range(len(offs))])
+            colors_codes.extend(["m" for _ in range(len(offs))])
         
-        
-        YLIM = ax.get_ylim()
-        for time, name in zip(times_codes, names_codes):
-            if name in ["Son"]:
-    #             ax.axvline(time, color="b", ls="--", alpha=0.5)
-                ax.axvline(time, color="b", ls="-", alpha=0.5)
-            elif name in ["Soff"]:
-    #             ax.axvline(time, color="m", ls="--", alpha=0.5)
-                ax.axvline(time, color="m", ls="-", alpha=0.5)
+        if alignto_time is not None:
+            times_codes = times_codes - alignto_time
+
+        if not YLIM:
+            YLIM = ax.get_ylim()
+
+        for time, name, col in zip(times_codes, names_codes, colors_codes):
+            if only_on_edge:
+                if only_on_edge=="top":
+                    ax.plot(time, YLIM[1], "v", color=col)
+                    y_text = YLIM[1]
+                elif only_on_edge=="bottom":
+                    ax.plot(time, YLIM[0], "^", color=col)
+                    y_text = YLIM[0]
+                else:
+                    assert False
             else:
-                ax.axvline(time, color="r", ls="-")
-            ax.text(time, YLIM[0], name, rotation="vertical")
+        #         if name in ["Son"]:
+        # #             ax.axvline(time, color="b", ls="--", alpha=0.5)
+        #             ax.axvline(time, color="b", ls="-", alpha=0.5)
+        #         elif name in ["Soff"]:
+        # #             ax.axvline(time, color="m", ls="--", alpha=0.5)
+        #             ax.axvline(time, color="m", ls="-", alpha=0.5)
+        #         else:
+                ax.axvline(time, color=col, ls="--", alpha=0.7)
+                y_text = YLIM[0]
+            if include_text:
+                y_text = y_text + text_yshift
+                ax.text(time, y_text, name, rotation="vertical", fontsize=14)
 
+        # color in stroke times
 
-        
+        if strokes_patches and "strokes" in which_events:
+            from matplotlib.patches import Rectangle
+            ons, offs = self.strokes_extract_ons_offs(trial0)
+            if alignto_time:
+                ons = [o - alignto_time for o in ons]
+                offs = [o - alignto_time for o in offs]
+
+            for on, of in zip(ons, offs):
+                if only_on_edge:
+                    if only_on_edge=="top":
+                        ax.hlines(YLIM[1], on, of, color="r")
+                    elif only_on_edge=="bottom":
+                        ax.hlines(YLIM[0], on, of, color="r")
+                    else:
+                        assert False
+                        # ax., YLIM[1], "v", color=col)
+                else:
+                    rect = Rectangle((on, YLIM[0]), of-on, YLIM[1]-YLIM[0], 
+                        linewidth=1, edgecolor='r',facecolor='r', alpha=alpha)
+                    ax.add_patch(rect)
+
 
     def plot_trial_timecourse_summary(self, ax, trial0, number_strokes=True):
         # trialml = convert_trialnum(trialtdt=trial0)
-        from ..utils.monkeylogic import getTrialsStrokes
-        fd, trialml = self.beh_get_fd_trial(trial0)
-        strokes = getTrialsStrokes(fd, trialml) # includes go and done
-        
+        strokes = self.strokes_extract(trial0)
+
         # Beh strokes (ml2)
         for i, s in enumerate(strokes):
             x = s[:,0]
             y = s[:,1]
             t = s[:,2]
-            ax.plot(t, x, label="x")
-            ax.plot(t, y, label="y")
+            ax.plot(t, x, label="x", color='b')
+            ax.plot(t, y, label="y", color='r')
             
             if number_strokes:
                 ax.text(np.mean(t), np.max(np.r_[x,y]), i)
             
         self.plotmod_overlay_trial_events(ax, trial0)
 
+    def plot_final_drawing(self, ax, trialtdt, strokes_only=False):
+        """ plot the drawing
+        PARAMS:
+        - strokes_only, then just pnuts
+        """
+        strokes = self.strokes_extract(trialtdt, peanuts_only=strokes_only)
+        plotDatStrokes(strokes, ax, clean_ordered_ordinal=True, number_from_zero=True)
 
+
+    def strokes_extract(self, trialtdt, peanuts_only=False):
+        from ..utils.monkeylogic import getTrialsStrokes, getTrialsStrokesByPeanuts
+        fd, trialml = self.beh_get_fd_trial(trialtdt)
+        if peanuts_only:
+            strokes = getTrialsStrokesByPeanuts(fd, trialml)
+        else:
+            strokes = getTrialsStrokes(fd, trialml)
+        return strokes
+
+
+    def plot_taskimage(self, ax, trialtdt):
+    #     plotTrialSimple(fd, trialml, ax=ax, plot_task_stimulus=True, nakedplot=True, plot_drawing_behavior=False)
+        from ..utils.monkeylogic import getTrialsTaskAsStrokes
+        fd, trialml = self.beh_get_fd_trial(trialtdt)
+        strokestask = getTrialsTaskAsStrokes(fd, trialml)
+        plotDatStrokes(strokestask, ax, clean_task=True)
+        
     ###################### PLOTS (specific)
     def plot_specific_trial_overview(self, trialtdt):
         """ Plots _everytnig_ about this trial, aligned
@@ -818,13 +1234,14 @@ class Session(object):
         rsrand = random.randint(2, 3)
         ax.set_title(f"ranbdom raw data: rs{rsrand}-ch{chanrand}")
         D = self.datall_slice_single(rsrand, chanrand, trialtdt)
-        t = D["tbins0"]
-        raw = D["raw"]
-        st = D["spike_times"]
-        ax.plot(t, raw)
-        # spikes
-        ax.plot(st, np.ones(st.shape), 'xr')
-        self.plotmod_overlay_trial_events(ax, trialtdt)
+        if D is not None:
+            t = D["tbins0"]
+            raw = D["raw"]
+            st = D["spike_times"]
+            ax.plot(t, raw)
+            # spikes
+            ax.plot(st, np.ones(st.shape), 'xr')
+            self.plotmod_overlay_trial_events(ax, trialtdt)
 
         # -- Rasters
         ax = axes.flatten()[6]
@@ -854,25 +1271,98 @@ class Session(object):
         ax.set_title(f"trialtdt: {trialtdt}")
         self.plotmod_overlay_trial_events(ax, trialtdt)    
 
+    def plot_raster_multrials_onesite(self, list_trials, site, alignto=None, SIZE=0.5):
+        """ Plot one site, mult trials, overlaying for each trial its major events
+        PARAMS:
+        - list_trials, list of int
+        - site, int (512)
+        - alignto, str or None, how to adjust times to realign.
+        """
 
-    def plot_raster_trial_sites(self, trialtdt, list_sites, site_to_highlight=None):
+        nrows = len(list_trials)
+        ncols = 2
+        alpha_raster = 0.4
+        fig, axes = plt.subplots(1, ncols, sharex=True, figsize=(25, SIZE*nrows), 
+                               gridspec_kw={'width_ratios': [9,1]})
+        ax = axes.flatten()[0]
+        for i, trial in enumerate(list_trials):
+            
+            # get time of this event (first instance)
+            if alignto:
+                alignto_time = self.events_get_time(alignto, trial)
+            else:
+                alignto_time = None
+
+            # Rasters
+            rs, chan = self.convert_site_to_rschan(site)
+            D = self.datall_slice_single(rs, chan, trial0=trial)
+            spikes = D['spike_times']
+            self.plot_raster_line(ax, spikes, i, alignto_time=alignto_time, linelengths=0.8, alpha=alpha_raster)
+            
+            # - overlay beh things
+        #     SN.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, only_on_edge="top")
+            if i==0:
+                include_text = True
+            else:
+                include_text = False
+            self.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, only_on_edge="bottom", 
+                                            YLIM=[i-0.3, i+0.5], which_events=["trial"], 
+                                            include_text=include_text, text_yshift = -0.5)
+        #     SN.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, 
+        #                                     YLIM=[i-0.3, i+0.3], which_events=["strokes"], only_on_edge="top")
+        #     SN.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, 
+        #                                     YLIM=[i-0.3, i+0.3], which_events=["strokes"], only_on_edge="top")
+        #     SN.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, 
+        #                                     YLIM=[i-0.4, i-0.2], which_events=["strokes"], alpha=0.3)
+        #     SN.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, 
+        #                                     YLIM=[i+0.2, i+0.4], which_events=["strokes"], alpha=0.3)
+            self.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, 
+                                            YLIM=[i-0.4, i-0.2], which_events=["strokes"], alpha=0.3)
+            
+        ax.set_yticks(range(len(list_trials)))
+        ax.set_yticklabels(list_trials);
+        ax.set_ylabel('trial');
+        ax.set_title(self.sitegetter_summarytext(site))
+
+            # Final drawing
+        #     ax = axes.flatten()[2*i + 1]
+        #     SN.plot_final_drawing(ax, trial)
+        # Plot each drawing
+        SIZE = 2
+        fig_draw, axes_draw = plt.subplots(nrows, 2, sharex=True, figsize=(5, SIZE*nrows))
+        for i, trial in enumerate(list_trials):
+            
+            # Final drawing
+            ax = axes_draw.flatten()[1+ i*2]
+            ax.set_title(f"trial_{trial}")
+            self.plot_final_drawing(ax, trial, strokes_only=True)
+            
+            # task image
+            ax = axes_draw.flatten()[i*2]
+            ax.set_title(f"trial_{trial}")
+            self.plot_taskimage(ax, trial)
+            
+
+        return fig, axes, fig_draw, axes_draw
+
+
+    def plot_raster_oneetrial_multsites(self, trialtdt, list_sites, site_to_highlight=None,
+            WIDTH=20, HEIGHT = 10):
         """ Plot a single raster for this trial, across these sites
         PARAMS:
         - site_to_highlight, bool, if True, colors it diff
         """
-        from pythonlib.drawmodel.strokePlots import plotDatStrokes
         
         list_rschan = [self.convert_site_to_rschan(s) for s in list_sites]
         # fig, axes = plt.subplots(2,2, figsize=(17, 15), sharex=False, 
         #                          gridspec_kw={'height_ratios': [1,8], 'width_ratios':[8,1]})
-        fig, axes = plt.subplots(2,2, figsize=(30, 10), sharex=False, 
+        fig, axes = plt.subplots(2,2, figsize=(WIDTH, HEIGHT), sharex=False, 
                                  gridspec_kw={'height_ratios': [1,8], 'width_ratios':[8,1]})
         
         # -- Rasters
         ax = axes.flatten()[2]
         list_ylabel = []
         cnt = 0
-        print(list_rschan)
         
         if site_to_highlight is not None:
             rsrand, chanrand = self.convert_site_to_rschan(site_to_highlight)
@@ -888,7 +1378,7 @@ class Session(object):
                     pcol = 'k'
             else:
                 pcol = "k"
-            self.plot_raster_line(ax, st, yval=i, color=pcol)
+            self.plot_raster_line(ax, st, yval=i, color=pcol, linelengths=1, alpha=0.5)
 
             # collect for ylabel
             list_ylabel.append(f"{rs}-{chan}")
@@ -896,9 +1386,11 @@ class Session(object):
         ax.set_yticklabels(list_ylabel);
         ax.set_xlabel('time rel. trial onset (sec)');
         ax.set_ylabel('site');
-        ax.set_title(f"trialtdt: {trialtdt}")
+        ax.set_title(f"trialtdt: {trialtdt}| nsites: {len(list_sites)}")
         self.plotmod_overlay_trial_events(ax, trialtdt)
         XLIM = ax.get_xlim()
+        # - Overlay brain regions
+        self.plotmod_overlay_brainregions(ax, list_sites)
         
         # Beh strokes (ml2)
         ax = axes.flatten()[0]
@@ -906,19 +1398,24 @@ class Session(object):
         ax.set_xlim(XLIM)
         
         # Final drawing
-        fd, trialml = self.beh_get_fd_trial(trialtdt)
-
         ax = axes.flatten()[3]
-        strokes = getTrialsStrokes(fd, trialml)
-        plotDatStrokes(strokes, ax, clean_ordered_ordinal=True, number_from_zero=True)
+        self.plot_final_drawing(ax, trialtdt, strokes_only=True)
         
         # Image
         ax = axes.flatten()[1]
-    #     plotTrialSimple(fd, trialml, ax=ax, plot_task_stimulus=True, nakedplot=True, plot_drawing_behavior=False)
-        strokestask = getTrialsTaskAsStrokes(fd, trialml)
-        plotDatStrokes(strokestask, ax, clean_task=True)
-        
+        self.plot_taskimage(ax, trialtdt)
+
     #     plotTrialSimple(fd, trialml, ax=ax, plot_task_stimulus=True, nakedplot=True, plot_drawing_behavior=False)
 
         return fig, axes
+
         
+
+    ##################### PRINT SUMMARIES
+    def print_summarize_datall(self):
+        """ Print out what data extracted 
+        """
+        for D in self.DatAll:
+            gotspikes = D["spike_times"] is not None
+            gotraw = len(D["raw"])>0
+            print(f"{D['rs']}-{D['chan']}-t{D['trial0']}-spikes={gotspikes} - raw={gotraw}")
