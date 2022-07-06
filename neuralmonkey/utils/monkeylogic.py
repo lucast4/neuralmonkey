@@ -6,7 +6,7 @@ PATH_TO_DRAWMONKEY = "/data1/code/python/drawmonkey"
 import sys
 sys.path.append(PATH_TO_DRAWMONKEY)
 
-from tools.preprocess import loadSingleDataQuick
+from tools.preprocess import loadSingleDataQuick, getSessionsList
 from tools.utils import *
 from tools.plots import plotDatStrokes
 

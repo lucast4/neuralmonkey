@@ -7,6 +7,10 @@ import matplotlib.pyplot as plt
 from ..utils.timeseries import dat_to_time
 # from ..utils.monkeylogic import getTrialsTaskAsStrokes
 from pythonlib.drawmodel.strokePlots import plotDatStrokes
+from ..utils import monkeylogic as mkl
+import pickle
+import os
+
 
 class Session(object):
     """
@@ -15,20 +19,31 @@ class Session(object):
     """
     
     def __init__(self, datestr, beh_expt_list, beh_sess_list, 
-            beh_trial_map_list,
+            beh_trial_map_list=None,
             sites_garbage = None,
-            expt="Lucas512-220520-115835", animal="Pancho"):
+            expt="Lucas512-220520-115835", animal="Pancho", 
+            path_base = "/mnt/hopfield_data01/ltian/recordings", 
+            path_local = "/data2/recordings",
+            rec_session=0, do_all_copy_to_local=False):
         """
         PARAMS:
         - datestr, string, YYMMDD, e.g, "220609"
         - beh_expt_list, lsit of string, for each beh session you wish to load.
         - beh_trial_map_list
         e.g., [(20,0), (1,200)] means that the first fd's trial 20 maps onto trial 0 neural and
-        the second fd starts (trial 1) from trial 200 neural
+        the second fd starts (trial 1) from trial 200 neural. Pass in None to try to autoamtically 
+        figure out. does so by assuming that neural and beh recording starting on the same trial.
         - expt, string, expt in Synapse (TDT)
         - animal, string
         - TrialBehAtNeuralZero, int, what trial was ml on the first (zero) trial for 
         neural? If started botrh nerual and beh at same time, then this will be 1.
+        - path_base, full path to the base, where recordings are in <path_base>/<animal>...
+        - path_local, local path with fast read/write, for saving tank data and spikes (first time loading).
+        subsequent times will try to load from here.
+        - rec_session, int, which session, from 0, 1, ... Currently Session only holds one rec
+        session.
+        - do_all_copy_to_local, bool, if True, then does various things (once) which can take a while, but will
+        speed up loading in future. even if this False, will do this for spikes and tdt tank
         """
 
         self.Animal = animal
@@ -43,6 +58,11 @@ class Session(object):
         self.SitesGarbage = sites_garbage
         self.SitesAll = range(1, 513)
 
+        # Neural stuff
+        self.RecPathBase = path_base
+        self.RecSession = rec_session
+        self.RecPathBaseLocal = path_local
+
         # Behavior stuff
         self.BehDate = datestr
         self.BehExptList = beh_expt_list
@@ -50,23 +70,36 @@ class Session(object):
         self.BehTrialMapList = beh_trial_map_list
         self.BehFdList = []
         self.BehTrialMapListGood = None
-        self.load_behavior()
 
         # self._initialize_params()
         self._initialize_paths()
 
-        # Load raw things
-        self.load_tdt_tank()
-        # Load raw data
-        self.load_spike_times() # Load all spike times
+        # for k, v in self.Paths.items():
+        #     print(k, ' -- ' , v)
+        # assert False
 
-        # Load beh 
-        self.load_behavior()
+        # Load raw things
+        print("== Loading TDT tank")
+        self.load_tdt_tank()
+        print("== Done")
+
+        # Save tank data and spikes locally for faster reload.
+
 
         # Find the times of all trial onsets (inneural data)
         # 1. get all onset and offset times
         self.TrialsOnset = self.behcode_extract_times(9)
         self.TrialsOffset = self.behcode_extract_times(18)
+
+        # Load beh 
+        print("== Loading ml2 behavior")
+        self.load_behavior()
+        print("== Done")
+
+        # Load raw data
+        print("== Loading spike times")
+        self.load_spike_times() # Load all spike times
+        print("== Done")
 
         # behcodes
         beh_codes = {
@@ -115,10 +148,16 @@ class Session(object):
             }
         self.BehCodes = beh_codes
 
+        if do_all_copy_to_local:
+            # Copy spike waveforms saved during tdt thresholding and extraction
+            self.load_and_save_spike_waveform_images()
+            # Load raw and dupl and compare them (sanity check)
+            self.plot_raw_dupl_sanity_check()
+
 
     ####################### PREPROCESS THINGS
     # def _initialize_params(self):
-    def _initialize_paths(self, PATHBASE = "/mnt/LT_neural_1"):
+    def _initialize_paths(self):
 
         # 1) find all recordings for this date
         from pythonlib.tools.expttools import findPath, deconstruct_filename
@@ -126,17 +165,30 @@ class Session(object):
             [self.Animal],
             [self.Date]
         ]
-        paths = findPath(PATHBASE, path_hierarchy)
-        assert len(paths)==1, 'not yhet coded for combining sessions'
+        paths = findPath(self.RecPathBase, path_hierarchy)
+        # assert len(paths)==1, 'not yhet coded for combining sessions'
+        paththis = paths[self.RecSession]
 
-        fnparts = deconstruct_filename(paths[0])
+        fnparts = deconstruct_filename(paththis)
         print(fnparts)
+        final_dir_name = fnparts["filename_final_noext"]
+
+        # Local cached
+        pathbase_local = f"{self.RecPathBaseLocal}/{self.Animal}/{self.Date}/{final_dir_name}"
+        import os
+        os.makedirs(pathbase_local, exist_ok=True)
+
         pathdict = {
-            # "raws":f"{PATHBASE}/{ANIMAL}/{DATE}/{ANIMAL}-{DATETIME}"
-            "raws":paths[0],
-            "tank":f"{paths[0]}/{fnparts['filename_final_noext']}",
-            "final_dir_name":fnparts["filename_final_noext"],
-            "time":fnparts["filename_components_hyphened"][2]
+            "raws":paththis,
+            "tank":f"{paththis}/{fnparts['filename_final_noext']}",
+            "spikes":f"{paththis}/spikes_tdt_quick",
+            "final_dir_name":final_dir_name,
+            "time":fnparts["filename_components_hyphened"][2],
+            "pathbase_local":pathbase_local,
+            "tank_local":f"{pathbase_local}/data_tank.pkl",
+            "spikes_local":f"{pathbase_local}/data_spikes.pkl",
+            "datall_local":f"{pathbase_local}/data_datall.pkl",
+            "figs_local":f"{pathbase_local}/figs"
             }
 
         self.Paths = pathdict
@@ -150,7 +202,7 @@ class Session(object):
         Could be either filedata, or dataset, not sure yet , but for now go with filedata
         """ 
         from ..utils.monkeylogic import loadSingleDataQuick
-        for e, s, trialmap in zip(self.BehExptList, self.BehSessList, self.BehTrialMapList):
+        for e, s in zip(self.BehExptList, self.BehSessList):
 
             # Load filedata
             # a = "Pancho"
@@ -161,12 +213,50 @@ class Session(object):
 
             self.BehFdList.append(fd)
 
+        # Try to automatically determine trial map list
+        if False:
+            # in progress. one issue is that neural can have more trial onsets than in beh, with some
+            # neural trials not even recorded in beh (e..g, the last trial before exit)
+            print(len(self.TrialsOnset))
+            for fd in self.BehFdList:
+                print(len(mkl.getIndsTrials(fd)))
+
+            # Todo from here: infer the mapping.
+            assert False
+
+
+
+
     def load_tdt_tank(self):
         """ Holds all non-nueral signals. is aligned to the neural
         """
-        print("** Loading data from tdt tank")
-        data_tank = tdt.read_block(self.PathTank, evtype = ["epocs", "streams"])
-        self.DatTank = data_tank
+
+        # First, try to load from local (much faster)
+        import os
+        if os.path.exists(self.Paths["tank_local"]):
+            print("** Loading tank data from local (previusly cached)")
+            with open(self.Paths["tank_local"], "rb") as f:
+                data_tank = pickle.load(f)
+            self.DatTank = data_tank
+        else:
+            print("** Loading data from tdt tank")
+            # data_tank = tdt.read_block(self.PathTank, evtype = ["epocs", "streams"])
+            data_tank = tdt.read_block(self.PathTank, evtype = ["epocs"])
+            self.DatTank = data_tank
+
+            # save this for later
+            self._savelocal_tdt_tank()
+            # with open(self.Paths["tank_local"], "wb") as f:
+            #     pickle.dump(data_tank, f)
+
+
+    def _savelocal_tdt_tank(self):
+        """ save this for later
+        """
+        print("Saving TDT Tank locally to: ", self.Paths["tank_local"])
+        with open(self.Paths["tank_local"], "wb") as f:
+            pickle.dump(self.DatTank, f)
+
 
     def load_spike_times(self):
         """ Load and strore all spike times (across all trials, and chans)
@@ -176,33 +266,80 @@ class Session(object):
         # chans = range(1,256+1)
         # rss = [2,3]
 
-        def load_spike_times_(rs, chan, ver="spikes_tdt_quick"):
-            """ Return spike times, pre-extracted elsewhere (matlab)
-            in secs
-            """
-            import scipy.io as sio
-            PATH_SPIKES = f"{self.PathRaw}/spikes_tdt_quick"
-            fn = f"{PATH_SPIKES}/RSn{rs}-{chan}"
-            mat_dict = sio.loadmat(fn)
-            return mat_dict["spiketimes"]
+        # First, try to load from local (much faster)
+        import os
+        if os.path.exists(self.Paths["spikes_local"]):
+            # Load quickly from local
+            print("** Loading spike data from local (previusly cached)")
+            with open(self.Paths["spikes_local"], "rb") as f:
+                DatSpikes = pickle.load(f)
+            self.DatSpikes = DatSpikes
+        else:
+            # Load from server
+            def load_spike_times_(rs, chan, ver="spikes_tdt_quick"):
+                """ Return spike times, pre-extracted elsewhere (matlab)
+                in secs
+                """
+                import scipy.io as sio
+                fn = f"{self.Paths['spikes']}/RSn{rs}-{chan}"
+                mat_dict = sio.loadmat(fn)
+                return mat_dict["spiketimes"]
 
-        def load_spike_times_mult(rss, chans, ver="spikes_tdt_quick"):
-            DatSpikes = []
-            for rs in rss:
-                for ch in chans:
-                    st = load_spike_times_(rs, ch, ver)
-                    DatSpikes.append({
-                        "rs":rs,
-                        "chan":ch,
-                        "spike_times":st})
+            def load_spike_times_mult(rss, chans, ver="spikes_tdt_quick"):
+                DatSpikes = []
+                for rs in rss:
+                    for ch in chans:
+                        print(rs, ch)
+                        st = load_spike_times_(rs, ch, ver)
+                        DatSpikes.append({
+                            "rs":rs,
+                            "chan":ch,
+                            "spike_times":st})
 
-            print("Got spikes for rss/chans")
-            print(rss)
-            print(chans)
-            return DatSpikes
+                print("Got spikes for rss/chans")
+                print(rss)
+                print(chans)
+                return DatSpikes
 
-        DatSpikes = load_spike_times_mult(self.Rss, self.Chans)
-        self.DatSpikes = DatSpikes
+            DatSpikes = load_spike_times_mult(self.Rss, self.Chans)
+            self.DatSpikes = DatSpikes
+
+            # Save for faster loading later
+            self._savelocal_spikes()
+
+    def load_and_save_spike_waveform_images(self, spikes_ver = "spikes_tdt_quick"):
+        """ Copies images from server to local, of extracted spikes
+        """
+        from pythonlib.tools.expttools import deconstruct_filename
+        import glob
+        import shutil
+        import os
+
+        # 1) target folder
+        sdir = f"{self.Paths['pathbase_local']}/{spikes_ver}"
+        os.makedirs(sdir, exist_ok=True)
+
+        # 2) copy over images
+        images = glob.glob(f"{self.Paths['spikes']}/*.png")
+        for im in images:
+            x = deconstruct_filename(im)
+            
+            targ = f"{sdir}/{x['filename_final_ext']}"
+            if os.path.exists(targ):
+                print(f"Skipping, since already copied: {targ}")
+            else:
+                shutil.copy2(im, targ)
+                print(f"Copied : {x['filename_final_ext']} to {targ}")
+        
+        print("DONE!")
+        
+
+    def _savelocal_spikes(self):
+        """  Save for faster loading later
+        """
+        print("Saving spikes locally to: ", self.Paths["spikes_local"])
+        with open(self.Paths["spikes_local"], "wb") as f:
+            pickle.dump(self.DatSpikes, f)
 
 
     def load_raw(self, rss, chans, trial0, pre_dur=1., post_dur = 1.,
@@ -225,7 +362,6 @@ class Session(object):
             
             DatRaw = []
             if get_raw:
-                # data = tdt.read_block(PATH, channel=channels, t1=T1, t2=T2)
                 ev = f"RSn{rs}"
                 data = tdt.read_sev(self.PathRaw, channel=chans, event_name=ev, t1=T1, t2=T2)
                 assert data.time_ranges[0]==T1
@@ -413,26 +549,46 @@ class Session(object):
         
         return times, vals
 
-    def extract_raw_and_spikes_helper(self, trials, sites=None, get_raw=False):
+    def extract_raw_and_spikes_helper(self, trials=None, sites=None, get_raw=False):
         """ to quickly get a subset of trials, all sites, etc.
+        PARAMS:
+        - trials, list of ints, if None, then gets all.
+        - sites, list of ints, if None, then gets all.
+        NOTE:
+        - if trials and sites are None, then automatically saves and loads locally.
         """
 
-        if sites is None:
-            # get all sites
-            sites = self.SitesAll
+        if sites is None and trials is None:
+            # Then try to load locally.
+            import os
+            if os.path.exists(self.Paths["datall_local"]):
+                # Load quickly from local
+                print("** Loading datall from local (previusly cached)")
+                with open(self.Paths["datall_local"], "rb") as f:
+                    self.DatAll = pickle.load(f)
+        else:
+            # Then extract from loaded spikes and tank data.
+            if sites is None:
+                # get all sites
+                sites = self.SitesAll
+            if trials is None:
+                trials = range(len(SN.TrialsOnset))
 
-        # convert sites to rs and chan
-        rss, chans = [], []
-        for s in sites:
-            rs, ch = self.convert_site_to_rschan(s)
-            if rs not in rss:
-                rss.append(rs)
-            if ch not in chans:
-                chans.append(ch)
+            # convert sites to rs and chan
+            rss, chans = [], []
+            for s in sites:
+                rs, ch = self.convert_site_to_rschan(s)
+                if rs not in rss:
+                    rss.append(rs)
+                if ch not in chans:
+                    chans.append(ch)
 
-        for t in trials:
-            print(f"Extrcting data for trial {t}")
-            self.extract_raw_and_spikes(rss, chans, t, get_raw=get_raw)
+            for t in trials:
+                print(f"Extrcting data for trial {t}")
+                self.extract_raw_and_spikes(rss, chans, t, get_raw=get_raw)
+
+            # Save
+            self._savelocal_datall()
 
 
     def extract_raw_and_spikes(self, rss, chans, trialtdt, get_raw = False):
@@ -487,7 +643,13 @@ class Session(object):
     #     # trial0 = 267
     #     DatAll = self.extract_raw_and_spikes(rss, chans, trial0)
 
-
+    def _savelocal_datall(self):
+        """ save this for later
+        This is what is extracted by extract_raw_and_spikes. it is all data aligned to each trial.
+        """
+        print("Saving DatAll (raw and spikes) locally to: ", self.Paths["tank_local"])
+        with open(self.Paths["datall_local"], "wb") as f:
+            pickle.dump(self.DatAll, f)
 
     ###################### WINDOW THE DATA based on trials, etc
     def extract_windowed_data(self, times, twind, vals=None, recompute_time_rel_onset=True, time_to_add=0.):
@@ -565,8 +727,6 @@ class Session(object):
             self.DatAll[idx] = Dnew
 
 
-
-
     def datall_slice_single(self, rs, chan, trial0, return_index=False):
         """ Slice a single chans data.
         PARAMS:
@@ -579,6 +739,9 @@ class Session(object):
         --- None, 
         --- [return_index] None
         """
+
+        if self.DatAll is None:
+            return None
         for i, D in enumerate(self.DatAll):
             if D["rs"]==rs and D["chan"]==chan and D["trial0"]==trial0:
                 if return_index:
@@ -646,10 +809,13 @@ class Session(object):
         return dat_to_time(vals, fs)
 
     ####################### CONVERSIONS BETWEEN BEH AND NEURAKL
-    def beh_get_fdnum_trial(self, trialtdt):
+    def _beh_get_fdnum_trial(self, trialtdt):
+        """ Get the filedata indices and trial indices (beh) for
+        this neural trial (trialtdt)
+        """
         from ..utils.conversions import get_map_trial_and_set
         ntrials = len(self.TrialsOnset)
-        assert trialtdt < ntrials
+        assert trialtdt < ntrials, "This tdt trial doesnt exist, too large..."
 
         dict_trial2_to_set_and_trial1 = get_map_trial_and_set(self.BehTrialMapList, ntrials)
         if False:
@@ -665,7 +831,7 @@ class Session(object):
     def beh_get_fd_trial(self, trialtdt):
         """ Return the fd and trial linked to this tdt trial
         """
-        fd_setnum, fd_trialnum = self.beh_get_fdnum_trial(trialtdt)
+        fd_setnum, fd_trialnum = self._beh_get_fdnum_trial(trialtdt)
         fd = self.BehFdList[fd_setnum]
         return fd, fd_trialnum
 
@@ -1409,13 +1575,95 @@ class Session(object):
 
         return fig, axes
 
-        
+    def plot_raw_dupl_sanity_check(self, trial = 0):
+        """ Plot dupl (saved in TDT tank) on top of raw (RS4)
+        to confirm they are identical, or maybe shifted by a sample or two.
+        Need to have extracted raw data first (for chan 1)
+        PARAMS:
+        - trial, int, Extract raw for an example trial
+        """
+
+        # For saving
+        sdir = f"{self.Paths['figs_local']}/sanity_checks"
+        os.makedirs(sdir, exist_ok=True)
+
+        # One plot for each rs
+        rss = [2,3]
+        chan = 1
+        for zoom in [True, False]:
+            fig, axes = plt.subplots(2,1,figsize=(10,8), sharex=True)
+            for rs, ax in zip(rss, axes.flatten()):
+
+                # Extract dupl
+                if rs==2:
+                    duplver = "duplicate1"
+                elif rs==3:
+                    duplver = "duplicate2"
+                else:
+                    assert False
+                tdup, valsdup = self.extract_data_tank_streams(duplver, trial0=trial)
+
+                # Extract raw if not already done
+                if not self.check_raw_extracted(rs, chan, trial):
+                    # Then extract
+                    sites = [self.convert_rschan_to_site(rs, chan) for rs in rss]
+                    self.extract_raw_and_spikes_helper(trials=[trial], sites=sites, get_raw=True)
+                raw = self.datall_slice_single(rs, chan, trial)
+                t = raw["tbins0"]
+                vals = raw["raw"]
+
+                if zoom:
+                    ind1 = 100
+                    tdup = tdup[ind1:ind1+10]
+                    valsdup = valsdup[ind1:ind1+10]
+                    t = t[ind1:ind1+10]
+                    vals = vals[ind1:ind1+10]
+
+                ax.plot(tdup, valsdup, color='r', label="dupl")
+                ax.plot(t, vals, color='k', label="rs4")
+                ax.set_title(f"{duplver}(r) and rs4 (k)")
+                ax.legend()
+
+            path = f"{sdir}/duplvsraw_trial_{trial}-chan_{chan}-zoom_{zoom}.pdf"
+            fig.savefig(path)
+            print(f"Saved at: {path}")
+
+
+    #################### CHECK THINGS
+    def check_what_extracted(self, rs, chan, trial):
+        """ Return a dict of what has been extracted for this rs, chan, trial
+        combo, in self.DatAll
+        """
+        dat = self.datall_slice_single(rs, chan, trial)
+
+        outdict = {}
+
+        if dat is None:
+            outdict["spikes"] = False
+            outdict["raw"] = False
+        else:
+            outdict["spikes"] = dat["spike_times"] is not None
+            outdict["raw"] = len(dat["raw"])>0
+
+        return outdict
+
+    def check_raw_extracted(self, rs, chan, trial):
+        """ Check whether this rs, chan, trial has extracted raw data yet
+        RETURNS:
+        - bool
+        """
+        dat = self.check_what_extracted(rs, chan, trial)
+        return dat["raw"]
 
     ##################### PRINT SUMMARIES
-    def print_summarize_datall(self):
+    def print_summarize_datall(self, only_print_if_has_raw=False):
         """ Print out what data extracted 
+        PARAMS;
+        - only_print_if_has_raw, bool, then only prints cases with raw neural data extracted
         """
         for D in self.DatAll:
             gotspikes = D["spike_times"] is not None
             gotraw = len(D["raw"])>0
+            if only_print_if_has_raw and gotraw==False:
+                continue
             print(f"{D['rs']}-{D['chan']}-t{D['trial0']}-spikes={gotspikes} - raw={gotraw}")
