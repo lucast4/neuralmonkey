@@ -17,7 +17,13 @@ def load_and_preprocess_single_session(date, rec_session, animal = "Pancho"):
     expt = "*"
     beh_session = rec_session+1 # 1-indexing.
     sessdict = mkl.getSessionsList(animal, datelist=[date])
+
+    if all([len(x)==0 for x in sessdict.values()]):
+        # skip, this animal and date doesnt exits.
+        return sessdict
+
     beh_sess_list = [sess_expt[0] for sess_expt in sessdict[date]]
+
 
     if beh_session not in beh_sess_list:
         print(f"session {beh_session} doesnt exist in {beh_sess_list}")
@@ -56,6 +62,7 @@ if __name__=="__main__":
     for rec_session in range(10):
         # go thru many, if doesnt exist will not do it.
         # rec_session = 1 # assumes one-to-one mapping between neural and beh sessions.
+        print("Running:", sys.argv, "session: ", rec_session)
         load_and_preprocess_single_session(date, rec_session)
 
     # # ============== PARAMS
