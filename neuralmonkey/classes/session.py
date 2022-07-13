@@ -23,8 +23,8 @@ class Session(object):
             sites_garbage = None,
             expt="Lucas512-220520-115835", animal="Pancho", 
             path_base = "/mnt/hopfield_data01/ltian/recordings", 
-            path_local = "/data2/recordings",
-            rec_session=0, do_all_copy_to_local=False):
+            path_local = "/data3/recordings",
+            rec_session=0, do_all_copy_to_local=False, do_sanity_checks=False):
         """
         PARAMS:
         - datestr, string, YYMMDD, e.g, "220609"
@@ -63,6 +63,9 @@ class Session(object):
         self.RecSession = rec_session
         self.RecPathBaseLocal = path_local
 
+        # PopAnal stuff
+        self.PopAnalDict = {}
+
         # Behavior stuff
         self.BehDate = datestr
         self.BehExptList = beh_expt_list
@@ -70,6 +73,9 @@ class Session(object):
         self.BehTrialMapList = beh_trial_map_list
         self.BehFdList = []
         self.BehTrialMapListGood = None
+
+        # For caching mapping from (site, trial) to index in self.DatAll
+        self._MapperSiteTrial2DatAllInd = {}
 
         # self._initialize_params()
         self._initialize_paths()
@@ -151,11 +157,30 @@ class Session(object):
         if do_all_copy_to_local:
             # Copy spike waveforms saved during tdt thresholding and extraction
             self.load_and_save_spike_waveform_images()
+        if do_sanity_checks:
             # Load raw and dupl and compare them (sanity check)
             self.plot_raw_dupl_sanity_check()
 
+        # Precompute mappers (quick)
+        self._generate_mappers_quickly()
+
 
     ####################### PREPROCESS THINGS
+    def _generate_mappers_quickly(self):
+        """ generate mappers, which are dicts for mapping, e.g.,
+        between indices"""
+
+        # 1) map from trialcode to trial
+        self._MapperTrialcode2TrialToTrial = {}
+
+        for trial in self.get_trials_list():
+            trialcode = self.dataset_get_trialcode(trial)
+            assert trialcode not in self._MapperTrialcode2TrialToTrial.keys(), "diff trials give same trialcode, not possible."
+            self._MapperTrialcode2TrialToTrial[trialcode] = trial
+        print("Generated self._MapperTrialcode2TrialToTrial!")
+
+
+
     # def _initialize_params(self):
     def _initialize_paths(self):
 
@@ -167,6 +192,7 @@ class Session(object):
         ]
         paths = findPath(self.RecPathBase, path_hierarchy)
         # assert len(paths)==1, 'not yhet coded for combining sessions'
+        assert len(paths)>0, "maybe you didn't mount server?"
         paththis = paths[self.RecSession]
 
         fnparts = deconstruct_filename(paththis)
@@ -188,6 +214,7 @@ class Session(object):
             "tank_local":f"{pathbase_local}/data_tank.pkl",
             "spikes_local":f"{pathbase_local}/data_spikes.pkl",
             "datall_local":f"{pathbase_local}/data_datall.pkl",
+            "mapper_st2dat_local":f"{pathbase_local}/mapper_st2dat.pkl",
             "figs_local":f"{pathbase_local}/figs"
             }
 
@@ -249,6 +276,66 @@ class Session(object):
             # with open(self.Paths["tank_local"], "wb") as f:
             #     pickle.dump(data_tank, f)
 
+    def load_tdt_tank_specific(self, store, t1, t2):
+        """
+        Load from raw tank data specific segment. Only take specific, or else
+        will take a while. 
+        Save in same format as datall
+        PARAMS:
+        - store, str, like "PhDi"
+        - t1, t2, time in sec
+        """
+        assert False, "finish adding key:val to out below"
+            # {'rs': 2,
+            #  'chan': 1,
+            #  'trial0': 0,
+            #  'pre_dur': 1.0,
+            #  'post_dur': 1.0,
+            #  'time_range': array([[38.48519424],
+            #         [50.01179392]]),
+            #  'raw': array([  0, 924, 927, ..., 487, 488, 495], dtype=int16),
+            #  'tbins0': array([-1.0105611 , -1.01052014, -1.01047918, ..., 10.51595154,
+            #         10.5159925 , 10.51603346]),
+            #  'fs': 24414.0625,
+            #  'spike_times': array([-0.91684206, -0.72330606, -0.46226798, -0.45358446, -0.25943406,
+            #         -0.21306734, -0.18754926, -0.0916619 ,  0.0635765 ,  0.06488722,
+            #          0.16388754,  0.1839989 ,  0.22037138,  0.36000402,  0.37913234,
+            #          0.58323602,  0.64627346,  0.69227154,  1.03060114,  1.03367314,
+            #          1.05271954,  1.15421842,  1.25465234,  1.30462354,  1.36573586,
+            #          1.42963346,  1.44798354,  1.44962194,  1.6143221 ,  1.71586194,
+            #          1.73511314,  1.78668178,  1.8148213 ,  1.87269778,  1.99819922,
+            #          2.05619858,  2.08605842,  2.14192786,  2.36188306,  2.36806802,
+            #          2.4705909 ,  2.64176274,  2.65544338,  2.76804242,  2.92827794,
+            #          3.15417234,  3.20410258,  3.24502162,  3.32862098,  3.34819986,
+            #          3.35135378,  3.36265874,  3.37019538,  3.37515154,  3.38170514,
+            #          3.42401682,  3.50597778,  3.54603666,  3.5824501 ,  3.82386834,
+            #          4.03514002,  4.0536949 ,  4.15462034,  4.22642322,  4.23137938,
+            #          4.23805586,  4.24911506,  4.30002834,  4.67284626,  5.03771794,
+            #          5.1166069 ,  5.18795922,  5.32456082,  5.59035026,  5.64687506,
+            #          5.7082741 ,  5.7191285 ,  5.8506101 ,  5.95620498,  6.0472181 ,
+            #          6.2413685 ,  6.38374546,  6.40815762,  6.45636754,  6.50252946,
+            #          6.53746834,  6.65531026,  6.70106258,  6.7996533 ,  7.11459474,
+            #          7.18193298,  7.22350738,  7.25107346,  7.29920146,  7.3159541 ,
+            #          7.34904978,  7.3644917 ,  7.38910866,  7.40917906,  7.45411218,
+            #          7.50215826,  7.53865362,  7.61799314,  7.6637045 ,  8.25131666,
+            #          8.44763794,  8.7057269 ,  8.79960722,  8.8097653 ,  8.90835602,
+            #          8.97315474,  9.05048722,  9.07551378,  9.14383506,  9.24643986,
+            #          9.44640658,  9.56101266,  9.61507986,  9.65440146,  9.76974482,
+            #          9.86903186,  9.93342098, 10.09042066, 10.22276242])}        
+        d = tdt.read_block(self.PathTank, store=[store], t1=t1, t2=t2)
+        # d["streams"]["PhDi"] = 
+        #     name:   'PhDi'
+        #     code:   1766090832
+        #     size:   138
+        #     type:   33025
+        #     type_str:   'streams'
+        #     ucf:    False
+        #     fs: 1017.2526245117188
+        #     dform:  2
+        #     start_time: 0.0
+        #     data:   array([ 6, 16, 16, ...,  7,  6, 10], dtype=int16)
+        #     channel:    [1]            
+        out = {"time_range":np.array([t1, t2]), "fs":d["streams"][store]}
 
     def _savelocal_tdt_tank(self):
         """ save this for later
@@ -261,11 +348,13 @@ class Session(object):
     def load_spike_times(self):
         """ Load and strore all spike times (across all trials, and chans)
         Not yet aligned to trials, etc.
+        NOTE:
+        - if loading error, then spiketimes are None. Otherwise is np array of
+        times in seconds.
         """
         # Extract database of spikes (not sliced by trials yet)
         # chans = range(1,256+1)
         # rss = [2,3]
-
         # First, try to load from local (much faster)
         import os
         if os.path.exists(self.Paths["spikes_local"]):
@@ -281,9 +370,15 @@ class Session(object):
                 in secs
                 """
                 import scipy.io as sio
+                import scipy
+                import zlib
                 fn = f"{self.Paths['spikes']}/RSn{rs}-{chan}"
-                mat_dict = sio.loadmat(fn)
-                return mat_dict["spiketimes"]
+                try:
+                    mat_dict = sio.loadmat(fn)
+                    return mat_dict["spiketimes"]
+                except zlib.error as err:
+                    print("[scipy error] Skipping spike times for (rs, chan): ", rs, chan)
+                    return None
 
             def load_spike_times_mult(rss, chans, ver="spikes_tdt_quick"):
                 DatSpikes = []
@@ -357,7 +452,7 @@ class Session(object):
             """
             # --
             assert isinstance(chans, list)
-            T1, T2 = self.extract_timerange_trial(trial0, pre_dur, post_dur)
+            T1, T2 = self.extract_timerange_trial(trial0, pre_dur, post_dur) # T1, T2 after after applying the time range.
             n = len(chans)
             
             DatRaw = []
@@ -400,7 +495,7 @@ class Session(object):
                     if True:
                         # more fool-proof version
                         t = t + T1 # - first convert time to real time (entire session)
-                        t, raw = self.extract_windowed_data_bytrial(t, trial0, raw) # - second, use the general windowing function
+                        t, raw = self.extract_windowed_data_bytrial(t, trial0, raw)[:2] # - second, use the general windowing function
                     else:
                         # This works
                         t = t - pre_dur - TIME_ML2_TRIALON # shifts time base
@@ -464,6 +559,9 @@ class Session(object):
         - which, string name, will be mapped to the specific key in data
         - crosstime, whether to use "onset", "offset", or "mean" times
         - trial0, int, optional trial to slice data (will recompute the 0 rel trial onset).
+        RETURNS
+        - times, vals
+        - OR: None, if this data doesnt eixst.
         """
         
         keynames = {
@@ -477,6 +575,10 @@ class Session(object):
             "eyediam":"Eyee",
         }
         key = keynames[which]
+        if key not in self.DatTank["streams"].keys():
+            print("Did not find in self.DatTank: ", key, ", so skipping...")
+            return None
+
         dat = self.DatTank["streams"][key]
         
         
@@ -497,7 +599,7 @@ class Session(object):
         
         # Slice a single tyrial?
         if trial0 is not None:
-            times, vals = self.extract_windowed_data_bytrial(times, trial0, vals)
+            times, vals = self.extract_windowed_data_bytrial(times, trial0, vals)[:2]
         
         return times, vals
 
@@ -517,7 +619,7 @@ class Session(object):
             "rew":"Rew_",
             "rewon":"Rew_",
             "rewoff":"Rew_",
-            "behcode":"SMa1",
+            "behcode":"SMa1" if "SMa1" in self.DatTank["epocs"] else "Bode",
             "strobe":"S_ML",
         }
         key = keynames[which]
@@ -545,8 +647,8 @@ class Session(object):
         
         # Slice a single tyrial?
         if trial0 is not None:
-            times, vals = self.extract_windowed_data_bytrial(times, trial0, vals)
-        
+            times, vals = self.extract_windowed_data_bytrial(times, trial0, vals)[:2]
+
         return times, vals
 
     def extract_raw_and_spikes_helper(self, trials=None, sites=None, get_raw=False):
@@ -558,21 +660,43 @@ class Session(object):
         - if trials and sites are None, then automatically saves and loads locally.
         """
 
+        LOADED = False
         if sites is None and trials is None:
             # Then try to load locally.
             import os
             if os.path.exists(self.Paths["datall_local"]):
+                
                 # Load quickly from local
                 print("** Loading datall from local (previusly cached)")
                 with open(self.Paths["datall_local"], "rb") as f:
                     self.DatAll = pickle.load(f)
-        else:
+
+                # Add timing info, since might not be done
+                self.datall_cleanup_add_things()
+
+                # == Load mapper
+                if os.path.exists(self.Paths["mapper_st2dat_local"]):
+                    print("** Loading _MapperSiteTrial2DatAllInd from local (previusly cached)")
+                    with open(self.Paths["mapper_st2dat_local"], "rb") as f:
+                        self._MapperSiteTrial2DatAllInd = pickle.load(f)
+                else:
+                    # generate mapper, slice each one and this will autoamtically extract
+                    self.mapper_extract("sitetrial_to_datallind")
+                
+                # save again
+                self._savelocal_datall()
+
+                # dont rerun
+                LOADED = True
+
+        if not LOADED:
             # Then extract from loaded spikes and tank data.
             if sites is None:
                 # get all sites
                 sites = self.SitesAll
             if trials is None:
-                trials = range(len(SN.TrialsOnset))
+                trials = self.get_trials_list()
+                # trials = range(len(self.TrialsOnset))
 
             # convert sites to rs and chan
             rss, chans = [], []
@@ -587,6 +711,9 @@ class Session(object):
                 print(f"Extrcting data for trial {t}")
                 self.extract_raw_and_spikes(rss, chans, t, get_raw=get_raw)
 
+            # generate mapper, slice each one and this will autoamtically extract
+            self.mapper_extract("sitetrial_to_datallind")
+            
             # Save
             self._savelocal_datall()
 
@@ -597,43 +724,150 @@ class Session(object):
         - rss, list of ints for rs
         - chans, list of chans (within this rs)
         - trialtdt, tdt trials
-        TODO: 
-        - dont extract if already gottne.
+        NOTE: This will extract even if already gotten. This is because simply checking
+        whether is gotten takes long time.
         """
         
         # raw (get all chans) [from disk]
         DatRaw = self.load_raw(rss, chans, trialtdt, get_raw=get_raw)
         
         # spikes (from pre-extracted spikes)
-        for d in DatRaw:
+        for i, d in enumerate(DatRaw):
     #         spike_times = datspikes_slice_single(d["rs"], d["chan"], d["time_range"])
-            spike_times = self.datspikes_slice_single(d["rs"], d["chan"], trial0=trialtdt)
+            spike_times, time_dur, time_on, time_off = self.datspikes_slice_single(d["rs"], d["chan"], trial0=trialtdt)
             d["spike_times"] = spike_times
-        
+            d["time_dur"] = time_dur
+            d["time_on"] = time_on
+            d["time_off"] = time_off
+
+
         # change name, since is both raw and spikes
-        # append to DatAll
         if self.DatAll is None:
             self.DatAll = DatRaw
         else:
-            for d in DatRaw:
-                # Don't inlcude it if it is already extracted
-                # if getting raw, then will overwrite if it was gotten but without raw.
-                d_old = self.datall_slice_single(d["rs"], d["chan"], d["trial0"])
-                if d_old is None:
-                    # then doestn exist, append
-                    self.DatAll.append(d)
-                elif len(d_old["raw"])==0 and get_raw:
-                    # Then previous didnt have raw, so overwrite it
-                    self.datall_replace_single(d["rs"], d["chan"], d["trial0"], Dnew=d)
-                else:
-                    # skip
-                    pass
+            # OLD VERSION - checkign if gotten before runing. this takes a whiel
+            # for d in DatRaw:
+            #     # Don't inlcude it if it is already extracted
+            #     # if getting raw, then will overwrite if it was gotten but without raw.
+            #     d_old = self.datall_slice_single(d["rs"], d["chan"], d["trial0"])
+            #     if d_old is None:
+            #         # then doestn exist, append
+            #         self.DatAll.append(d)
+                    
+            #         # save the index
+            #         index = len(self.DatAll)
+            #         site = self.convert_rschan_to_site(d["rs"], d["chan"])
+            #         trial = d["trial0"]
+            #         if (site, trial) not in self._MapperSiteTrial2DatAllInd[(site, trial)]:
+            #             self._MapperSiteTrial2DatAllInd[(site, trial)] = index
+            #         else:
+            #             assert self._MapperSiteTrial2DatAllInd[(site, trial)] == index
 
-                # if not self.datall_this_exists(d["rs"], d["chan"], d["trial0"],
-                #     also_check_if_has_raw_data=get_raw):
-                #     # then append
-                #     self.DatAll.append(d)
+            #     elif len(d_old["raw"])==0 and get_raw:
+            #         # Then previous didnt have raw, so overwrite it
+            #         self.datall_replace_single(d["rs"], d["chan"], d["trial0"], Dnew=d)
+            #     else:
+            #         # skip
+            #         pass
+
+            #     # if not self.datall_this_exists(d["rs"], d["chan"], d["trial0"],
+            #     #     also_check_if_has_raw_data=get_raw):
+            #     #     # then append
+            #     #     self.DatAll.append(d)
+
+            for d in DatRaw:
+                site = self.convert_rschan_to_site(d["rs"], d["chan"])
+                trial = d["trial0"]
+
+                if (site, trial) in self._MapperSiteTrial2DatAllInd.keys():
+                    # Then is already done
+                    d_old = self.datall_slice_single_bysite(site, trial)
+                    if len(d_old["raw"])==0 and get_raw:
+                        # Then previous didnt have raw, so overwrite it
+                        self.datall_replace_single(d["rs"], d["chan"], trial, Dnew=d)
+                    else:
+                        # skip, don't replace.
+                        pass
+                else:
+                    # Brand new. append it.
+                    self.DatAll.append(d)
+                    
+                    # save the index
+                    index = len(self.DatAll)-1
+                    if (site, trial) not in self._MapperSiteTrial2DatAllInd.keys():
+                        self._MapperSiteTrial2DatAllInd[(site, trial)] = index
+                    else:
+                        assert self._MapperSiteTrial2DatAllInd[(site, trial)] == index
+
+        # Add timing information
+        self.datall_cleanup_add_things()
+
         return self.DatAll
+
+    def datall_cleanup_add_things(self):
+        """ Quick processing, things to add to datall in case not already 
+        added 
+        """
+
+        # Time info
+        if "time_dur" not in self.DatAll[0].keys():
+            self._datall_compute_timing_info()
+
+        # sites
+        if "site" not in self.DatAll[0].keys():
+            for Dat in self.DatAll:
+                site = self.convert_rschan_to_site(Dat["rs"], Dat["chan"])
+                Dat["site"] = site
+
+        # no spikes outside of time window
+        for Dat in self.DatAll:
+            st = Dat["spike_times"]
+            t_on = Dat["time_on"]
+            t_off = Dat["time_off"]
+            if np.any(st<t_on) or np.any(st>t_off):
+                print(Dat)
+                assert False, "due to jitter in ml2 vs. tdt?"
+
+    def _datall_compute_timing_info(self):
+        """
+        Add info into self.DatAll reflecting the time on and off of data, and
+        the duration. i.e., for each trial. self.DatAll must already be extracted.
+        RETURNS:
+        - in self.DatAll, each element modified with new keys.
+        """
+
+        dicttrials = {}
+        def _get_this_trial(trial):
+            if trial not in dicttrials.keys():
+                _, _, time_dur, time_on, time_off = self.extract_windowed_data_bytrial([], trial)
+                dicttrials[trial] = (time_dur, time_on, time_off)
+            return dicttrials[trial]
+
+        for Dat in self.DatAll:
+            trial = Dat["trial0"]
+            time_dur, time_on, time_off = _get_this_trial(trial)
+            Dat["time_dur"] = time_dur
+            Dat["time_on"] = time_on
+            Dat["time_off"] = time_off
+
+            # OLD
+            t_dur = Dat["time_range"][1]- Dat["time_range"][0] # entire data, sec.
+            t_on = -Dat["pre_dur"] # e.g., -1
+            t_off = time_dur + t_on 
+            assert np.abs(t_dur - time_dur)<0.02
+            assert np.abs(t_on - time_on)<0.02
+            assert np.abs(t_off - time_off)<0.02
+
+
+        # assert False, "dont use this, it is off by the jitter between ML2 and TDT. instead, use time extracted from extract_windowed_data_bytrial "
+        # for Dat in self.DatAll:
+        #     time_dur = Dat["time_range"][1]- Dat["time_range"][0] # entire data, sec.
+        #     t_on = -Dat["pre_dur"] # e.g., -1
+        #     t_off = time_dur + t_on 
+        #     Dat["time_dur"] = time_dur
+        #     Dat["time_on"] = t_on
+        #     Dat["time_off"] = t_off
+        print("DONE! _datall_compute_timing_info")
 
 
     # def load_all_data_this_trial_(self, trial0, rss, chans):
@@ -647,15 +881,28 @@ class Session(object):
         """ save this for later
         This is what is extracted by extract_raw_and_spikes. it is all data aligned to each trial.
         """
-        print("Saving DatAll (raw and spikes) locally to: ", self.Paths["tank_local"])
+        print("Saving DatAll (raw and spikes) locally to: ", self.Paths["datall_local"])
         with open(self.Paths["datall_local"], "wb") as f:
             pickle.dump(self.DatAll, f)
+
+        print("Saving _MapperSiteTrial2DatAllInd locally to: ", self.Paths["mapper_st2dat_local"])
+        with open(self.Paths["mapper_st2dat_local"], "wb") as f:
+            pickle.dump(self._MapperSiteTrial2DatAllInd, f)
+
 
     ###################### WINDOW THE DATA based on trials, etc
     def extract_windowed_data(self, times, twind, vals=None, recompute_time_rel_onset=True, time_to_add=0.):
         """ Prune data (time, vals) to include only those with
         times within twind. Also changes times to be relative to twind[0]
+        RETURNS:
+        - times, eitehr:
+        --- in original time base (if recompute_time_rel_onset is False)
+        --- times so that 0 is aligned to twind[0], if recompute_time_rel_onset is True)
+        ---- times that arbitrary timepoint (time_to_add) is aligned to the twind[0]
+        - vals, aligned to times
+        - time_dur, time_on, time_off, scalars, the "ground-truth" for the window that contains the data.
         """
+        
         inds = (times>=twind[0]) & (times<=twind[1])
         if vals is not None:
             assert times.shape==vals.shape
@@ -664,12 +911,34 @@ class Session(object):
         
         # get times relative to windo wonset
         if recompute_time_rel_onset:
+            # zero is now defined to be aligned to twind[0]
             times = times - twind[0]
             
-        # shift the times
-        times = times + time_to_add
+            # shift the times
+            times = times + time_to_add
+        else:
+            assert time_to_add==0., "not sure what this wuld mean for downstream code.."
+
+        # save time window information
+        time_dur, time_on, time_off = self._extract_windowed_data_get_time_bounds(twind, recompute_time_rel_onset, time_to_add)
         
-        return times, vals
+        return times, vals, time_dur, time_on, time_off
+
+    def _extract_windowed_data_get_time_bounds(self, twind, recompute_time_rel_onset=True, time_to_add=0.):
+        if recompute_time_rel_onset:
+            # save time window information
+            time_dur = twind[1] - twind[0]
+            time_on = 0 + time_to_add
+            time_off = time_on + time_dur
+        else:
+            assert time_to_add==0., "not sure what this wuld mean for downstream code.."
+
+            # save time window information
+            time_dur = twind[1] - twind[0]
+            time_on = twind[0]
+            time_off = twind[1]     
+        return time_dur, time_on, time_off       
+
 
     def extract_windowed_data_bytrial(self, times, trial0, vals=None, recompute_time_rel_onset=True, pre_dur=1., post_dur=1.):
         """ Given generic data, window it by a given trial.
@@ -678,6 +947,8 @@ class Session(object):
         PARAMS:
         - pre_dur, post_dur, time extra to extract. NOTE: doesnt affect what is called 0, which is always trial onset
         """
+
+        assert recompute_time_rel_onset==True, "some code assumes this true. I dont see any reason to change this. if want to change, then make new function that does this"
         
         # Get window
         t1, t2 = self.extract_timerange_trial(trial0, pre_dur, post_dur)
@@ -686,7 +957,13 @@ class Session(object):
         
         # shift all tdt things so that by definition the time of beh code 9 are identical between tdt and ml2
         time_to_add = time_to_add - TIME_ML2_TRIALON
-        return self.extract_windowed_data(times, [t1, t2], vals, recompute_time_rel_onset, time_to_add = time_to_add)
+
+        if len(times)>0:
+            times, vals, time_dur, time_on, time_off = self.extract_windowed_data(times, [t1, t2], vals, recompute_time_rel_onset, time_to_add = time_to_add)
+        else:
+            time_dur, time_on, time_off = self._extract_windowed_data_get_time_bounds([t1, t2], recompute_time_rel_onset, time_to_add = time_to_add)
+
+        return times, vals, time_dur, time_on, time_off
 
     def extract_timerange_trial(self, trial0, pre_dur=1., post_dur=1.):
         T1 = self.TrialsOnset[trial0]-pre_dur
@@ -727,7 +1004,14 @@ class Session(object):
             self.DatAll[idx] = Dnew
 
 
-    def datall_slice_single(self, rs, chan, trial0, return_index=False):
+    def datall_slice_single_bysite(self, site, trial0, return_index=False):
+        """ Like datall_slice_single, but input site instead of (rs, chan)
+        """
+
+        rs, chan = self.convert_site_to_rschan(site)
+        return self.datall_slice_single(rs, chan, trial0, return_index)
+
+    def datall_slice_single(self, rs, chan, trial0, return_index=False, method="new"):
         """ Slice a single chans data.
         PARAMS:
         - rs, chan, trial0, ints
@@ -740,19 +1024,52 @@ class Session(object):
         --- [return_index] None
         """
 
-        if self.DatAll is None:
-            return None
-        for i, D in enumerate(self.DatAll):
-            if D["rs"]==rs and D["chan"]==chan and D["trial0"]==trial0:
-                if return_index:
-                    return D, i
-                else:
-                    return D
-        if return_index:
-            return None, None
-        else:
-            return None
 
+        if self.DatAll is None:
+            if return_index:
+                return None, None
+            else:
+                return None
+
+        site = self.convert_rschan_to_site(rs, chan)
+        index = None
+        if (site, trial0) not in self._MapperSiteTrial2DatAllInd.keys():
+            # Then extract
+            assert False, "first run extract_raw_and_spikes_helper to pre-save self.DatAll and self._MapperSiteTrial2DatAllInd"
+            
+            # self.mapper_extract("sitetrial_to_datallind", save=True)
+
+        index = self._MapperSiteTrial2DatAllInd[(site, trial0)]
+        dat = self.DatAll[index]    
+        assert dat["rs"] == rs
+        assert dat["chan"] == chan
+        assert dat["trial0"] == trial0
+
+        if return_index:
+            return dat, index
+        else:
+            return dat
+
+    def mapper_extract(self, version, save=True):
+        """ construct mapper (do this oine time)
+        """
+                    
+
+        if version=="sitetrial_to_datallind":
+            print("Extracting _MapperSiteTrial2DatAllInd")
+            trialprint = -1
+            for index, Dat in enumerate(self.DatAll):
+                site = self.convert_rschan_to_site(Dat["rs"], Dat["chan"])
+                trial = Dat["trial0"]
+                if trial!=trialprint:
+                    print("trial: ", trial)
+                    trialprint = trial
+                self._MapperSiteTrial2DatAllInd[(site, trial)] = index
+            if save:
+                self._savelocal_datall()
+        else:
+            print(version)
+            assert False, "code it"
 
     ###################### SPIKES
     # Extract spike times within a given time window
@@ -786,6 +1103,8 @@ class Session(object):
         - twind, (2,) array, time window to slice out.
         NOTE: use trial0 if want time base to match up so that behcode 9 is 0 sec.
         NOTE: can only pass in one of trial0 or twind
+        RETURNS:
+        spiketimes, time_dur, time_on, time_off
         """
         
         for D in self.DatSpikes:
@@ -794,13 +1113,14 @@ class Session(object):
                 # optionally window it
                 if twind is not None:
                     assert trial0 is None
-                    spiketimes = self.extract_windowed_data(spiketimes, twind)[0]
+                    spiketimes, _, time_dur, time_on, time_off = self.extract_windowed_data(spiketimes, twind)
                 elif trial0 is not None:
                     assert twind is None
-                    spiketimes = self.extract_windowed_data_bytrial(spiketimes, trial0)[0]    
-                return spiketimes
+                    spiketimes, _, time_dur, time_on, time_off = self.extract_windowed_data_bytrial(spiketimes, trial0)    
+                else:
+                    assert False, "must be one or the other"
+                return spiketimes, time_dur, time_on, time_off
                 
-
         print(rs, chan)
         assert False, 'this combo of rs and chan doesnt exist in DatSpikes!'
         
@@ -814,7 +1134,8 @@ class Session(object):
         this neural trial (trialtdt)
         """
         from ..utils.conversions import get_map_trial_and_set
-        ntrials = len(self.TrialsOnset)
+        ntrials = len(self.get_trials_list())
+        # ntrials = len(self.TrialsOnset)
         assert trialtdt < ntrials, "This tdt trial doesnt exist, too large..."
 
         dict_trial2_to_set_and_trial1 = get_map_trial_and_set(self.BehTrialMapList, ntrials)
@@ -853,6 +1174,7 @@ class Session(object):
         return ml2_get_trial_onset(fd, trialml)
 
     ######################## BRAIN STUFF
+
     def sitegetter_summarytext(self, site):
         """ Return a string that useful for labeling
         """
@@ -957,6 +1279,8 @@ class Session(object):
             return chan
         elif rs==3:
             return chan + 256
+        else:
+            assert False
 
     def convert_site_to_rschan(self, sitenum):
         """ Cnvert sites (1-512) to rs and chan
@@ -999,7 +1323,7 @@ class Session(object):
         times = timesall[inds]
         
         if trial0 is not None:
-            times, _ = self.extract_windowed_data_bytrial(times, trial0)
+            times = self.extract_windowed_data_bytrial(times, trial0)[0]
         
         if first_instance_only:
             if len(times)>1:
@@ -1110,6 +1434,144 @@ class Session(object):
             assert False
 
         return alignto_time
+
+
+    ######################## SPIKE TRAIN STUFF
+    def _spiketrain_as_elephant(self, site, trial, save = True):
+        """ Get this site and trial as elephant (Neo) SpikeTrain object
+        RETURNS:
+        - st, a SpikeTrain object
+        """
+        from neo.core import SpikeTrain
+        from quantities import s
+
+        # extract dat
+        rs, chan = self.convert_site_to_rschan(site)
+        dat = self.datall_slice_single(rs, chan, trial)
+        assert dat is not None, "doesnt exist..."
+
+        # Convert to spike train
+        st = SpikeTrain(dat["spike_times"]*s, t_stop=dat["time_off"], t_start=dat["time_on"])
+
+        if save:
+            dat = self.datall_slice_single_bysite(site, trial)
+            dat["spiketrain"] = st
+
+        return st
+
+    def spiketrain_as_elephant_batch(self):
+        """ Generate and save SpikeTrain for all site and trial
+        RETURNS:
+        - adds "spiketrain" as key in self.DatAll
+        """
+
+        print("TODO: save this")
+        # sites = self.sitegetter_all(clean=False)
+        if "spiketrain" not in self.DatAll[0].keys():
+            trialprint = 0
+            for Dat in self.DatAll:
+                if Dat["trial0"]!=trialprint:
+                    trialprint = Dat["trial0"]
+                    print(trialprint)
+                st = self._spiketrain_as_elephant(Dat["site"], Dat["trial0"])
+                Dat["spiketrain"] = st
+            print("DONE adding spiketrain to all data")
+        else:
+            print("SKIPPED - found already spiketrain in data")
+
+    ####################### GENERATE POPANAL for a trial
+    def popanal_generate_save_trial(self, trial, gaussian_sigma = 0.1, 
+            sampling_period=0.01, print_shape_confirmation=False):
+        """ Genreate a single PopAnal object for this trial.
+        Holds data across all sites
+        PARAMS:
+        - trial, int
+        - gaussian_sigma, in sec, sigma for guassian kernel for smoothibng to 
+        instant rate.
+        - sampling_period, how much to slide kernel. this becomes the new sampling rate for 
+        instant frate
+        RETURNS:
+        - PA
+        NOTE:
+        - saves in self.PopAnalDict[trial] = PA
+        """
+        # Given a trial, get a PopAnal object
+        # trial = 10
+        # gaussian_sigma = 0.1
+        from elephant.kernels import GaussianKernel
+        from elephant.statistics import time_histogram, instantaneous_rate,mean_firing_rate
+        from quantities import s
+        from pythonlib.neural.population import PopAnal
+
+        if trial not in self.PopAnalDict.keys():
+            # Get all spike trains for a trial
+            list_sites = self.sitegetter_all(clean=False)
+            list_spiketrain = []
+            for site in list_sites:
+                dat = self.datall_slice_single_bysite(site, trial)
+                list_spiketrain.append(dat["spiketrain"])
+                
+            # Convert spike train to smoothed FR
+            frate = instantaneous_rate(list_spiketrain, sampling_period=sampling_period*s, kernel=GaussianKernel(gaussian_sigma*s))
+
+            # Convert to popanal
+            PA = PopAnal(frate.T.magnitude, frate.times, chans = list_sites,
+                spike_trains = [list_spiketrain], print_shape_confirmation=print_shape_confirmation)
+
+            self.PopAnalDict[trial] = PA
+
+        # Return
+        return self.PopAnalDict[trial]
+
+
+    ######################## STUFF RELATED TO INDEXING
+    def get_all_existing_site_trial_in_datall(self, version="site_trial"):
+        """ Returns info for what exists in datall.
+        PARAMS:
+        - version, str, decide what is in each tuple in the output list (see RETURNS)
+        RETURNS:
+        - list_all, sorted list of tuples, where each tuple is defined by version
+        (all self explantory)
+        """
+
+        list_all = []
+
+        # list_all = []
+        # list_rschan = []
+        # list_site = []
+        # list_trial = []
+        for Dat in self.DatAll:
+            rs = Dat["rs"]
+            chan = Dat["chan"]
+            site = self.convert_rschan_to_site(rs, chan)
+            trial = Dat["trial0"]
+
+            # store different kinds of info
+            if version=="site_trial":
+                list_all.append((site, trial))
+            elif version=="trial":
+                list_all.append(trial)
+            else:
+                assert False, "code it"
+
+            # list_all.append((rs, chan, site, trial))
+            # list_rschan.append((rs, chan))
+            # list_site.append(site)
+            # list_trial.append(trial)
+
+        list_all = sorted(list(set(list_all)))
+
+        # list_all = sorted(list(set(list_all)))
+        # list_rschan = sorted(list(set(list_rschan)))
+        # list_site = sorted(list(set(list_site)))
+        # list_trial = sorted(list(set(list_trial)))
+
+        return list_all
+
+    def get_trials_list(self):
+        return range(len(self.TrialsOffset))
+        # return self.get_all_existing_site_trial_in_datall("trial")
+
 
 
     ####################### PLOTS (generic)
@@ -1327,6 +1789,7 @@ class Session(object):
         """ Plots _everytnig_ about this trial, aligned
         """
 
+        assert False, "clean up and combine with drawing"
         # 1) plot each on a separate line
         list_rs = [D["rs"] for D in self.DatAll]
         list_chans = [D["chan"] for D in self.DatAll]
@@ -1351,13 +1814,24 @@ class Session(object):
         # ax.plot(times, np.ones(times.shape)+i, 'x', label=pl)
         self.plotmod_overlay_trial_events(ax, trialtdt)
 
+        def plot_stream(streamname, ax):
+            out = self.extract_data_tank_streams(streamname, trial0=trialtdt)
+            if out is not None:
+                times, vals = out
+                # times, vals = self.extract_data_tank_streams(pl, trial0=trialtdt)
+                ax.plot(times, vals, '-', label=streamname)
+
         # - phdi
         ax = axes.flatten()[1]
         ax.set_title("photodiodes")
         list_plot = ["pd1", "pd2"]
         for i, pl in enumerate(list_plot):
-            times, vals = self.extract_data_tank_streams(pl, trial0=trialtdt)
-            ax.plot(times, vals, '-', label=pl)
+            plot_stream(pl, ax)
+            # out = self.extract_data_tank_streams(pl, trial0=trialtdt)
+            # if out is not None:
+            #     times, vals = out
+            #     # times, vals = self.extract_data_tank_streams(pl, trial0=trialtdt)
+            #     ax.plot(times, vals, '-', label=pl)
         ax.legend()
         self.plotmod_overlay_trial_events(ax, trialtdt)
 
@@ -1366,8 +1840,7 @@ class Session(object):
         ax.set_title("eyes")
         list_plot = ["eyex","eyey","eyediam"]
         for i, pl in enumerate(list_plot):
-            times, vals = self.extract_data_tank_streams(pl, trial0=trialtdt)
-            ax.plot(times, vals, '-', label=pl)
+            plot_stream(pl, ax)
         ax.legend()
         self.plotmod_overlay_trial_events(ax, trialtdt)
 
@@ -1376,8 +1849,7 @@ class Session(object):
         ax.set_title("audio")
         list_plot = ["mic"]
         for i, pl in enumerate(list_plot):
-            times, vals = self.extract_data_tank_streams(pl, trial0=trialtdt)
-            ax.plot(times, vals, '-', label=pl)
+            plot_stream(pl, ax)
         ax.legend()
         self.plotmod_overlay_trial_events(ax, trialtdt)
 
@@ -1425,7 +1897,10 @@ class Session(object):
             
             if i%32==0:
                 ax.axhline(i-0.5)
-                ax.text(-0.5, i-0.5, list_bregion[cnt], size=15, color="b")
+                try:
+                    ax.text(-0.5, i-0.5, list_bregion[cnt], size=15, color="b")
+                except Exception as err:
+                    pass
                 cnt+=1
             
             # collect for ylabel
@@ -1627,6 +2102,26 @@ class Session(object):
             path = f"{sdir}/duplvsraw_trial_{trial}-chan_{chan}-zoom_{zoom}.pdf"
             fig.savefig(path)
             print(f"Saved at: {path}")
+
+    #################### LINKING TO BEH DATASET
+    def dataset_get_trialcode(self, trial):
+        """ get trialcode for this trial(tdt)
+        RETURNS:
+        - trialcode, a string
+        """
+
+        date = self.Date
+        index_sess, trial_ml = self._beh_get_fdnum_trial(trial)
+        session_ml = self.BehSessList[index_sess]
+
+        trialcode = f"{date}-{session_ml}-{trial_ml}"
+        return trialcode
+        
+    def dataset_trialcode_to_trial(self, trialcode):
+        """ given trialcode (string) return trial in self.Dat
+        """
+        return self._MapperTrialcode2TrialToTrial[trialcode]
+
 
 
     #################### CHECK THINGS
