@@ -127,3 +127,7 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+
+############# OTHRE THIGNS
+preprocess_log.txt
