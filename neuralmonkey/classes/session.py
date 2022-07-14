@@ -24,7 +24,8 @@ class Session(object):
             expt="Lucas512-220520-115835", animal="Pancho", 
             path_base = "/mnt/hopfield_data01/ltian/recordings", 
             path_local = "/data3/recordings",
-            rec_session=0, do_all_copy_to_local=False, do_sanity_checks=False):
+            rec_session=0, do_all_copy_to_local=False, do_sanity_checks=False,
+            dataset_beh_expt= None):
         """
         PARAMS:
         - datestr, string, YYMMDD, e.g, "220609"
@@ -74,6 +75,9 @@ class Session(object):
         self.BehTrialMapList = beh_trial_map_list
         self.BehFdList = []
         self.BehTrialMapListGood = None
+
+        # Behavior (Dataset Class) stuff
+        self.DatasetbehExptname = dataset_beh_expt
 
         # For caching mapping from (site, trial) to index in self.DatAll
         self._MapperSiteTrial2DatAllInd = {}
@@ -1442,7 +1446,97 @@ class Session(object):
                 if v==codename:
                     return k    
             assert False
-        
+            
+    ############### Beh Dataset (extracted)
+    def datasetbeh_load(self, dataset_beh_expt=None, 
+            dataset_beh_rule="null", remove_online_abort=False,
+            remove_trials_not_in_dataset=False):
+        """ Load pre-extracted beahviuioral dataset and algined
+        trial by trial to this recording session. 
+        Tries to automtiaclly get the exptname, and rule, but you might
+        have to give it manualyl.
+        - Will prune self.Dat to only keep trials that are in Datset (which tehemselves
+        are trials where there was successfuly touhc)
+        - Will do sanity check that every clean 
+        RETURNS:
+        - self.DatasetBeh, and returns
+        """
+        from pythonlib.dataset.dataset import Dataset
+        from pythonlib.dataset.dataset_preprocess.general import preprocessDat
+
+        # 1) Load Dataset
+        if self.DatasetbehExptname is None:
+            # you must enter it
+            expt = dataset_beh_expt
+        else:
+            # load saved
+            expt = self.DatasetbehExptname
+        assert expt is not None
+        D = Dataset([], remove_online_abort=remove_online_abort)
+        D.load_dataset_helper(self.Animal, expt, rule=dataset_beh_rule)
+        D.load_tasks_helper()
+
+        D, GROUPING, GROUPING_LEVELS, FEATURE_NAMES, SCORE_COL_NAMES = preprocessDat(D, expt)
+
+        # 2) keep only the dataset trials that are included in recordings
+        trials = self.get_all_existing_site_trial_in_datall("trial")                                               
+        list_trialcodes = [self.dataset_get_trialcode(t) for t in trials]
+        print("- Keeping only dataset trials that exist in self.Dat")
+        print("Starting length: ", len(D.Dat))
+        D.filterPandas({"trialcode":list_trialcodes}, "modify")
+        print("Ending length: ", len(D.Dat))
+
+        # 3) Prune trials in self to remove trials that dont have succesfuly fix and touch.
+        trials_neural_to_remove = []
+        for trial_neural, trialcode in enumerate(list_trialcodes):
+            if trialcode not in D.Dat["trialcode"].tolist():
+                # then this is only acceptable if this trial is not succesful fix or touch
+                fd, t = self.beh_get_fd_trial(trial_neural)
+                suc = mkl.getTrialsFixationSuccess(fd, t)
+                touched = mkl.getTrialsTouched(fd, t)
+                # tem = mkl.getTrialsOutcomesWrapper(fd,t)["trial_end_method"]
+                if touched and suc:
+                    print(list_trialcodes)
+                    print(D.Dat["trialcode"].tolist())
+                    print(trialcode)
+                    assert False, "some neural data not found in beh Dataset..."
+                else:
+                    # remove this trial from self.Dat, since it has no parallele in dataset
+                    trials_neural_to_remove.append(trial_neural)
+        # - remove the trials.
+        if remove_trials_not_in_dataset:
+            assert False, "code it..."
+
+        # --
+        self.Datasetbeh = D
+        return self.Datasetbeh
+
+    def datasetbeh_plot_example_drawing(self, trial):
+        """ Plot drawing from both neural and dataset data
+        Mostly for sanity check, and for saving this method
+        PARAMS:
+        - trial, for neural
+        """
+        # PLOT EXAMPLE, SHOWING MATCH across neural and beh datasets
+
+        # 1) for each tdt trial, get its trialcode in beh
+        trialcode = self.dataset_get_trialcode(trial)
+        D = self.Datasetbeh
+
+        # 2) Find this trialcode in Dataset
+        dat = D.Dat[D.Dat["trialcode"]==trialcode]
+        trial_dat = dat.index.values[0]
+
+        # 3) Sanity check, plot using both dataset and neural
+        D.plotSingleTrial(trial_dat)
+
+        fig, ax = plt.subplots(1,1)
+        # SN.plot_trial_timecourse_summary(ax, trial)
+        self.plot_final_drawing(ax,trial)
+
+
+
+
 
     ###################### GET TEMPORAL EVENTS
     def events_get_time(self, event, trial):
