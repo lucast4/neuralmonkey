@@ -54,6 +54,7 @@ class Session(object):
         self.Chans = range(1, 257)
         self.Rss = [2, 3]
         self.DatAll = None
+        self.DatSpikeWaveforms = {}
 
         self.SitesGarbage = sites_garbage
         self.SitesAll = range(1, 513)
@@ -543,14 +544,35 @@ class Session(object):
     def load_spike_waveforms_(self, rs, chan, ver="spikes_tdt_quick"):
         """ Return spike waveforms, pre-extracted
         """
-        import scipy.io as sio
-        PATH_SPIKES = f"{self.PathRaw}/spikes_tdt_quick"
-        fn = f"{PATH_SPIKES}/RSn{rs}-{chan}-snips_subset"
-        mat_dict = sio.loadmat(fn)
-        return mat_dict["snips"]
+        site = self.convert_rschan_to_site(rs, chan)
+
+        # Decide if extract from saved
+        if site not in self.DatSpikeWaveforms.keys():
+            import scipy.io as sio
+            PATH_SPIKES = f"{self.PathRaw}/spikes_tdt_quick"
+            fn = f"{PATH_SPIKES}/RSn{rs}-{chan}-snips_subset"
+            mat_dict = sio.loadmat(fn)
+            waveforms = mat_dict["snips"]
+            self.DatSpikeWaveforms[site] = waveforms
+
+        return self.DatSpikeWaveforms[site]
 
 
+    def spikewave_compute_stats(self, waveforms):
+        """ 
+        PARAMS;
+        - waveforms, (n waveforms,timebins) array.
+        RETURNS:
+        - outdict, dict of stats
+        """
 
+        outdict = {}
+
+        # 2) min and max voltages
+        outdict["volt_max"] = np.max(waveforms, axis=1)
+        outdict["volt_min"] = np.min(waveforms, axis=1)
+
+        return outdict
 
     ########################## GET FROM PRE-EXTRACTED DATA
     def extract_data_tank_streams(self, which, trial0=None):
@@ -1110,16 +1132,19 @@ class Session(object):
         for D in self.DatSpikes:
             if D["rs"]==rs and D["chan"]==chan:
                 spiketimes = D["spike_times"]
-                # optionally window it
-                if twind is not None:
-                    assert trial0 is None
-                    spiketimes, _, time_dur, time_on, time_off = self.extract_windowed_data(spiketimes, twind)
-                elif trial0 is not None:
-                    assert twind is None
-                    spiketimes, _, time_dur, time_on, time_off = self.extract_windowed_data_bytrial(spiketimes, trial0)    
+                if spiketimes is not None:
+                    # optionally window it
+                    if twind is not None:
+                        assert trial0 is None
+                        spiketimes, _, time_dur, time_on, time_off = self.extract_windowed_data(spiketimes, twind)
+                    elif trial0 is not None:
+                        assert twind is None
+                        spiketimes, _, time_dur, time_on, time_off = self.extract_windowed_data_bytrial(spiketimes, trial0)    
+                    else:
+                        assert False, "must be one or the other"
+                    return spiketimes, time_dur, time_on, time_off
                 else:
-                    assert False, "must be one or the other"
-                return spiketimes, time_dur, time_on, time_off
+                    return None, None, None, None
                 
         print(rs, chan)
         assert False, 'this combo of rs and chan doesnt exist in DatSpikes!'
@@ -1229,7 +1254,10 @@ class Session(object):
         """ Get all sites, in order
         MNOTE: will not be in order of list_regions, but will be in order in channels.
         PARAMS:
-        - list_regions, get only these regions. leave None to get all
+        - list_regions, get only these regions. leave None to get all. if None,
+        then returns all sites.
+        RETURNS:
+        - list of sites
         """
         bregion_mapper = self.sitegetter_brainregion("mapper", clean=clean)
         if list_regions is None:
@@ -1241,6 +1269,14 @@ class Session(object):
         return sites
 
     def sitegetter_brainregion(self, region=None, clean=False):
+        """ Flexible getter of channels based on region
+        PARAMS:
+        - region, flexible input. see within code
+        - clean, whether to remove garbage chanels
+        RETURNS:
+        - out, depends on type of region
+        """
+        # Hard coded
         regions_in_order = ["M1_m", "M1_l", "PMv_l", "PMv_m",
                             "PMd_p", "PMd_a", "dlPFC_p", "dlPFC_a", 
                             "vlPFC_p", "vlPFC_a", "FP_p", "FP_a",
@@ -1265,8 +1301,17 @@ class Session(object):
             return dict_sites
         elif isinstance(region, int):
             return dict_sites[regions_in_order[region]]
-        else:
+        elif isinstance(region, list):
+            # then this is list of str
+            list_chans = []
+            for reg in region:
+                sites = self.sitegetter_brainregion(reg, clean=clean)
+                list_chans.extend(sites)
+            return list_chans
+        elif isinstance(region, str):
             return dict_sites[region]
+        else:
+            assert False
 
     def convert_rschan_to_site(self, rs, chan):
         """
@@ -1481,7 +1526,8 @@ class Session(object):
 
     ####################### GENERATE POPANAL for a trial
     def popanal_generate_save_trial(self, trial, gaussian_sigma = 0.1, 
-            sampling_period=0.01, print_shape_confirmation=False):
+            sampling_period=0.01, print_shape_confirmation=False,
+            clean_chans=True, overwrite=False):
         """ Genreate a single PopAnal object for this trial.
         Holds data across all sites
         PARAMS:
@@ -1503,9 +1549,9 @@ class Session(object):
         from quantities import s
         from pythonlib.neural.population import PopAnal
 
-        if trial not in self.PopAnalDict.keys():
+        if trial not in self.PopAnalDict.keys() or overwrite==True:
             # Get all spike trains for a trial
-            list_sites = self.sitegetter_all(clean=False)
+            list_sites = self.sitegetter_all(clean=clean_chans)
             list_spiketrain = []
             for site in list_sites:
                 dat = self.datall_slice_single_bysite(site, trial)
@@ -1551,6 +1597,8 @@ class Session(object):
                 list_all.append((site, trial))
             elif version=="trial":
                 list_all.append(trial)
+            elif version=="site":
+                list_all.append(site)
             else:
                 assert False, "code it"
 
@@ -1596,7 +1644,127 @@ class Session(object):
             
         ax.plot(t, waveforms[:nplot, :].T, alpha=0.3)
         
-    
+    def plot_spike_waveform_stats_multchans(self, XLIM=None, saveon=True):
+        """
+        Plot waveform stats for all channels in a grid, each will
+        be a histogram.
+        PARAMS:
+        - XLIM, limit for histograms
+        - sdir, string path. if None then doesnt save
+        """
+        from pythonlib.tools.plottools import subplot_helper
+
+        # list_sites = None # none, to get all
+        list_sites = self.sitegetter_all(clean=False)
+
+        if XLIM is None:
+            sharex = False
+        else:
+            sharex = True
+        ncols = 16
+        nrowsmax = 4
+        getax, figholder, nplots = subplot_helper(ncols, nrowsmax, len(list_sites), SIZE = 3,
+                                                 sharex=sharex, xlim=XLIM)
+
+        # fig, axes = plt.subplots(
+        for i, s in enumerate(list_sites):
+            rs, chan = self.convert_site_to_rschan(s)
+            print(rs, chan)
+            
+            # extarct spike
+            waveforms = self.load_spike_waveforms_(rs, chan)
+
+            #### PLOTS
+            # 2) stats
+            fig, ax = getax(i)
+            outdict = self.spikewave_compute_stats(waveforms)
+            ax.hist(outdict["volt_max"], bins=100);
+            ax.hist(outdict["volt_min"], bins=100);
+            ax.set_title('volt min/max')
+
+        plt.close("all")
+
+        # save all figs
+        if saveon:
+            sdir = f"{self.Paths['figs_local']}/waveforms_stats"
+            os.makedirs(sdir, exist_ok=True)
+            print("Saving spike waveform stats to: ", sdir)
+            for i in range(nplots):
+                fig, axes = figholder[i]
+                fig.savefig(f"{sdir}/stats-subset{i}.jpg")
+        return figholder
+
+    def _plot_spike_waveform_multchans(self, list_sites, YLIM, saveon, prefix):
+        """
+        Plot waveforms for all channels in a grid
+        PARAMS:
+        - sdir, string path. if None then doesnt save
+        - LIST_YLIM,
+        """
+        from pythonlib.tools.plottools import subplot_helper
+
+        ncols = 16
+        nrowsmax = 4
+        getax, figholder, nplots = subplot_helper(ncols, nrowsmax, len(list_sites), SIZE = 3,
+                                                 sharex=True, ylim = YLIM)
+
+        # fig, axes = plt.subplots(
+        for i, s in enumerate(list_sites):
+            rs, chan = self.convert_site_to_rschan(s)
+            print(rs, chan)
+            
+            # extarct spike
+            waveforms = self.load_spike_waveforms_(rs, chan)
+
+            #### PLOTS
+            # 1) wavefore
+            fig, ax = getax(i)
+            self.plot_spike_waveform(ax, waveforms)
+            ax.set_title(f"s{s}({rs}-{chan})")
+
+            plt.close("all")
+
+
+        # save all figs
+        if saveon:
+            sdir = f"{self.Paths['figs_local']}/waveforms_overlay"
+            os.makedirs(sdir, exist_ok=True)
+            print("Saving spike overlays to: ", sdir)
+            for i in range(nplots):
+                fig, axes = figholder[i]
+                if YLIM is not None:
+                    suff = f"{YLIM[0]}to{YLIM[1]}"
+                else:
+                    suff = None
+                fig.savefig(f"{sdir}/{prefix}-ylim{suff}-subset{i}.jpg")
+
+        return figholder
+
+
+    def plot_spike_waveform_multchans(self, saveon=True,
+            clean=False,
+            LIST_YLIM = [
+                [-300, 150],
+                [-200, 100],
+                [-400, 200],
+                None]):
+        """
+        Plot waveforms for all channels in a grid
+        PARAMS:
+        - sdir, string path. if None then doesnt save
+        - LIST_YLIM,
+        """
+        from pythonlib.tools.plottools import subplot_helper
+
+        # list_sites = None # none, to get all
+        list_sites = self.sitegetter_all(clean=clean)
+
+        ncols = 16
+        nrowsmax = 4
+        prefix = f"all-clean_{clean}"
+        for YLIM in LIST_YLIM:
+            figholder = self._plot_spike_waveform_multchans(list_sites, YLIM, saveon, prefix)
+
     def plot_raster_line(self, ax, times, yval, color='k', alignto_time=None, 
         linelengths = 0.85, alpha=0.4):
         """ plot a single raster line at times at row yval

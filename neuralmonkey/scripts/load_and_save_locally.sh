@@ -15,8 +15,10 @@
 # date=220703
 # python -m neuralmonkey.scripts.load_and_save_locally ${date}
 
+# d=220603 # first date to check.
+# date2=220707 # the final date to check
 d=220603 # first date to check.
-date2=220707 # the final date to check
+date2=220711 # the final date to check
 date1=$d
 until [[ ${date1} > ${date2} ]]; do
   echo ${date1}

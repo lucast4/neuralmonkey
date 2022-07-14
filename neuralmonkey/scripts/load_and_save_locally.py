@@ -51,6 +51,10 @@ def load_and_preprocess_single_session(date, rec_session, animal = "Pancho"):
     # Load and save data
     SN.extract_raw_and_spikes_helper()
 
+    # Save
+    SN.plot_spike_waveform_multchans(LIST_YLIM = [-250, 100])
+    SN.plot_spike_waveform_stats_multchans(None)
+
     print("** COMPLETED load_and_save_locally !!")
 
 if __name__=="__main__":
