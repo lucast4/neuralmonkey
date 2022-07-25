@@ -130,4 +130,4 @@ dmypy.json
 
 
 ############# OTHRE THIGNS
-preprocess_log.txt
+preprocess_log*.txt
