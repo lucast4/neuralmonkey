@@ -16,6 +16,10 @@ def ml2_get_trial_onset(fd, trialml):
     but not quite 
     """
     bc = getTrialsBehCodes(fd, trialml)
+    if bc["num"] is None:
+        print(trialml)
+        print(fd["params"])
+        assert False
     for num, time in zip(bc["num"], bc["time"]):
         if num==9:
             return time
@@ -24,4 +28,5 @@ def ml2_get_trial_onset(fd, trialml):
 def loadSingleDataQuick(a, d, e, s):
     from tools.preprocess import loadSingleDataQuick
     fd = loadSingleDataQuick(a,d,e,s)
+    assert fd is not None
     return fd
