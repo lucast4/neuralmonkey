@@ -11,6 +11,51 @@ from ..utils import monkeylogic as mkl
 import pickle
 import os
 
+PATH_NEURALMONKEY = "/data1/code/python/neuralmonkey/neuralmonkey"
+
+def load_session_helper(DATE, dataset_beh_expt, rec_session=0, animal="Pancho", expt="*"):
+    """ Load a single recording session.
+    PARAMS:
+    - DATE, str, "yymmdd"
+    - dataset_beh_expt, string, name of beh expt to link to this.
+    - rec_session, int, within-day session, 0,1,2, ... 
+    assumes one-to-one mapping between neural and beh sessions.
+    - animal, str
+    - expt, for finding raw beh data
+    RETURNS:
+    - SN, session
+    """
+
+    # 1) Find the raw beh data (filedata)
+    # Assume that the beh sessions increment in order, matching the neural sessions
+    sessdict = mkl.getSessionsList(animal, datelist=[DATE])
+    beh_session = sessdict[DATE][rec_session][0]
+    print("Beh Sessions that exist on this date: ", DATE, sessdict)
+    print("taking this one :", beh_session)
+    # beh_session = rec_session+1 # 1-indexing.
+    if False:
+        # get all sessions
+        beh_expt_list = [sess_expt[1] for sess_expt in sessdict[DATE]]
+        beh_sess_list = [sess_expt[0] for sess_expt in sessdict[DATE]]
+    else:
+        # Get the single session assued to map onto this neural.
+        beh_expt_list = [sess_expt[1] for sess_expt in sessdict[DATE] if sess_expt[0]==beh_session]
+        print("Found these beh expt names: ", beh_expt_list)
+        assert(len(beh_expt_list))==1, "must be error, multiple sessions with same session num"
+        beh_sess_list = [beh_session]
+        beh_trial_map_list = [(1, 0)]
+
+    print("Loading these beh expts:", beh_expt_list)
+    print("Loading these beh sessions:",beh_sess_list)
+    print("Loading this neural session:", rec_session)
+
+    SN = Session(DATE, beh_expt_list, beh_sess_list, beh_trial_map_list, 
+        rec_session = rec_session, dataset_beh_expt=dataset_beh_expt)
+
+    # Extract spikes
+    SN.extract_raw_and_spikes_helper()
+
+    return SN
 
 class Session(object):
     """
@@ -24,7 +69,8 @@ class Session(object):
             expt="Lucas512-220520-115835", animal="Pancho", 
             path_base = "/mnt/hopfield_data01/ltian/recordings", 
             path_local = "/data3/recordings",
-            rec_session=0, do_all_copy_to_local=False, do_sanity_checks=False,
+            rec_session=0, do_all_copy_to_local=False, 
+            do_sanity_checks=False, do_sanity_checks_rawdupl=False,
             dataset_beh_expt= None):
         """
         PARAMS:
@@ -57,8 +103,8 @@ class Session(object):
         self.DatAll = None
         self.DatSpikeWaveforms = {}
 
-        self.SitesGarbage = sites_garbage
         self.SitesAll = range(1, 513)
+        self.SitesMetadata = {}
 
         # Neural stuff
         self.RecPathBase = path_base
@@ -84,14 +130,22 @@ class Session(object):
 
         # self._initialize_params()
         self._initialize_paths()
+        print("== PATHS for this expt: ")
+        for k, v in self.Paths.items():
+            print(k, ' -- ' , v)
 
-        # for k, v in self.Paths.items():
-        #     print(k, ' -- ' , v)
-        # assert False
+        # Metadat about good sites, etc. Run this first before other things.
+        assert sites_garbage is None, "use metadata instead"
+        # then look for metadata
+        self.load_metadata_sites()
+        # else:
+        #     self.SitesGarbage = sites_garbage
+        # if self.SitesGarbage is not None:
+        #     assert np.all(np.diff(self.SitesGarbage)>0.), "you made mistake entering chanels (assuming going in order)?"
 
         # Load raw things
         print("== Loading TDT tank")
-        self.load_tdt_tank()
+        self.load_tdt_tank(include_streams = do_all_copy_to_local)
         print("== Done")
 
         # Save tank data and spikes locally for faster reload.
@@ -162,15 +216,71 @@ class Session(object):
         if do_all_copy_to_local:
             # Copy spike waveforms saved during tdt thresholding and extraction
             self.load_and_save_spike_waveform_images()
+
         if do_sanity_checks:
+            self.plot_behcode_photodiode_sanity_check()
+
+        if do_sanity_checks_rawdupl:
             # Load raw and dupl and compare them (sanity check)
             self.plot_raw_dupl_sanity_check()
 
         # Precompute mappers (quick)
         self._generate_mappers_quickly()
 
+        # Various cleanups
+        self._cleanup()
+
 
     ####################### PREPROCESS THINGS
+    def _cleanup(self):
+        """ Various things to run at end of each initialization
+        - Sanity checks, etc. SHould be quick.
+        """
+
+        # If any spike chans are None, that means there was error in loading it. Mark this as
+        # a bad site.
+        sites_bad = []
+        for dat in self.DatSpikes:
+            if dat["spike_times"] is None:
+                rs = dat["rs"]
+                chan = dat["chan"]
+                site = self.convert_rschan_to_site(rs, chan)
+                print("[cleanup] Found a bad site (rs, chan, site): ", rs, chan, site)
+                sites_bad.append(site)
+
+        print("Saved all bad site to self.SitesErrorSpikeDat")
+        self.SitesMetadata["sites_error_spikes"] = sites_bad
+
+    def load_metadata_sites(self, dirty_kinds = ["sites_garbage", "sites_low_fr", "sites_error_spikes"]):
+        """ Load info about which sites are garbage, hand coded
+        PARAMS:
+        - dirty_kinds, list str, sites marked as any of these kinds will be designated "dirty"
+        """
+        from pythonlib.tools.expttools import load_yaml_config
+        import os
+
+        path = f"{self.Paths['metadata_units']}/{self.Date}.yaml"
+        if os.path.exists(path):
+            print("Found! metada path : ", path)
+            out = load_yaml_config(path)
+            for k, v in out.items():
+                self.SitesMetadata[k] = v
+        else:
+            print("Sites metada path doesnt exist: ", path)
+
+        self._sitesdirty_update()
+
+
+    def _sitesdirty_update(self, dirty_kinds = ["sites_garbage", "sites_low_fr", "sites_error_spikes"]):
+        sites_dirty = []
+        print("updating self.SitesDirty with: ", dirty_kinds)
+        for kind in dirty_kinds:
+            if kind in self.SitesMetadata.keys():
+                sites = self.SitesMetadata[kind]
+                sites_dirty.extend(sites)
+        self.SitesDirty = sorted(set(sites_dirty))
+
+
     def _generate_mappers_quickly(self):
         """ generate mappers, which are dicts for mapping, e.g.,
         between indices"""
@@ -179,7 +289,7 @@ class Session(object):
         self._MapperTrialcode2TrialToTrial = {}
 
         for trial in self.get_trials_list():
-            trialcode = self.dataset_get_trialcode(trial)
+            trialcode = self.datasetbeh_get_trialcode(trial)
             assert trialcode not in self._MapperTrialcode2TrialToTrial.keys(), "diff trials give same trialcode, not possible."
             self._MapperTrialcode2TrialToTrial[trialcode] = trial
         print("Generated self._MapperTrialcode2TrialToTrial!")
@@ -220,7 +330,8 @@ class Session(object):
             "spikes_local":f"{pathbase_local}/data_spikes.pkl",
             "datall_local":f"{pathbase_local}/data_datall.pkl",
             "mapper_st2dat_local":f"{pathbase_local}/mapper_st2dat.pkl",
-            "figs_local":f"{pathbase_local}/figs"
+            "figs_local":f"{pathbase_local}/figs",
+            "metadata_units":f"{PATH_NEURALMONKEY}/metadat/units"
             }
 
         self.Paths = pathdict
@@ -258,28 +369,59 @@ class Session(object):
 
 
 
-
-    def load_tdt_tank(self):
+    def load_tdt_tank(self, include_streams=False):
         """ Holds all non-nueral signals. is aligned to the neural
+        BY default only loads epocs (not streams) as streams is large and takes a while
+        PARAMS:
+        - include_streams, bool, if True, then checks the pre-extracted includes stremas. if 
+        not then tries to load fand save from server.
+        RETURNS:
+        - modifies self.DatTank
         """
+        import os
+
+        # Excluding dupl, which dont need, other than for sanity check.
+        streams_to_extract = ["Mic1", "PhDi", "PhD2", "Eyee"]
+
+        def tank_includes_streams(data_tank):
+            """ returns True if Tank includes all desired streams
+            """
+            for stream in streams_to_extract:
+                if stream not in data_tank["streams"].keys():
+                    return False
+            return True
 
         # First, try to load from local (much faster)
-        import os
         if os.path.exists(self.Paths["tank_local"]):
-            print("** Loading tank data from local (previusly cached)")
             with open(self.Paths["tank_local"], "rb") as f:
                 data_tank = pickle.load(f)
-            self.DatTank = data_tank
+            if include_streams and not tank_includes_streams(data_tank):
+                # Then discard this and load from server.
+                LOAD_FROM_SERVER=True
+            else:
+                print("** Loading tank data from local (previusly cached)")
+                LOAD_FROM_SERVER=False
+                self.DatTank = data_tank
         else:
+            LOAD_FROM_SERVER = True
+
+        if LOAD_FROM_SERVER:
             print("** Loading data from tdt tank")
             # data_tank = tdt.read_block(self.PathTank, evtype = ["epocs", "streams"])
-            data_tank = tdt.read_block(self.PathTank, evtype = ["epocs"])
+            if include_streams:
+                print(" - Loading streams...", self.Date, self.ExptSynapse)
+                data_tank_streams = tdt.read_block(self.PathTank, evtype = ["streams"], store=streams_to_extract)
+                print(" - Loading epocs...")
+                data_tank_epocs = tdt.read_block(self.PathTank, evtype = ["epocs"])
+                data_tank = data_tank_epocs
+                data_tank["streams"] = data_tank_streams["streams"]
+            else:
+                print(" - Loading epocs...")
+                data_tank = tdt.read_block(self.PathTank, evtype = ["epocs"])
             self.DatTank = data_tank
 
             # save this for later
             self._savelocal_tdt_tank()
-            # with open(self.Paths["tank_local"], "wb") as f:
-            #     pickle.dump(data_tank, f)
 
     def load_tdt_tank_specific(self, store, t1, t2):
         """
@@ -290,7 +432,6 @@ class Session(object):
         - store, str, like "PhDi"
         - t1, t2, time in sec
         """
-        assert False, "finish adding key:val to out below"
             # {'rs': 2,
             #  'chan': 1,
             #  'trial0': 0,
@@ -326,7 +467,7 @@ class Session(object):
             #          8.44763794,  8.7057269 ,  8.79960722,  8.8097653 ,  8.90835602,
             #          8.97315474,  9.05048722,  9.07551378,  9.14383506,  9.24643986,
             #          9.44640658,  9.56101266,  9.61507986,  9.65440146,  9.76974482,
-            #          9.86903186,  9.93342098, 10.09042066, 10.22276242])}        
+            #          9.86903186,  9.93342098, 10.09042066, 10.22276242])}   
         d = tdt.read_block(self.PathTank, store=[store], t1=t1, t2=t2)
         # d["streams"]["PhDi"] = 
         #     name:   'PhDi'
@@ -340,7 +481,16 @@ class Session(object):
         #     start_time: 0.0
         #     data:   array([ 6, 16, 16, ...,  7,  6, 10], dtype=int16)
         #     channel:    [1]            
-        out = {"time_range":np.array([t1, t2]), "fs":d["streams"][store]}
+
+        out = {
+            "store":store,
+            "datatype":"stream",
+            "time_range":np.array([t1, t2]), 
+            "fs":d["streams"][store]["fs"],
+            "data":d["streams"][store]["data"]
+            }
+
+        return out
 
     def _savelocal_tdt_tank(self):
         """ save this for later
@@ -348,6 +498,33 @@ class Session(object):
         print("Saving TDT Tank locally to: ", self.Paths["tank_local"])
         with open(self.Paths["tank_local"], "wb") as f:
             pickle.dump(self.DatTank, f)
+
+
+    def _load_spike_times(self, rs, chan, ver="spikes_tdt_quick", 
+            return_none_if_fail=True):
+        """ Load specific site inforamtion
+        """
+        """ Return spike times, pre-extracted elsewhere (matlab)
+        in secs
+        """
+        import scipy.io as sio
+        import scipy
+        import zlib
+        fn = f"{self.Paths['spikes']}/RSn{rs}-{chan}"
+        print(f"Loading this spikes file: {fn}.mat")
+        if return_none_if_fail:
+            try:
+                mat_dict = sio.loadmat(fn)
+                return mat_dict["spiketimes"]
+            except zlib.error as err:
+                print("[scipy error] Skipping spike times for (rs, chan): ", rs, chan)
+                return None
+            except Exception as err:
+                print(err)
+                print("Failed for this rs, chan: ",  rs, chan)
+        else:
+            mat_dict = sio.loadmat(fn)
+            return mat_dict["spiketimes"]
 
 
     def load_spike_times(self):
@@ -370,27 +547,12 @@ class Session(object):
             self.DatSpikes = DatSpikes
         else:
             # Load from server
-            def load_spike_times_(rs, chan, ver="spikes_tdt_quick"):
-                """ Return spike times, pre-extracted elsewhere (matlab)
-                in secs
-                """
-                import scipy.io as sio
-                import scipy
-                import zlib
-                fn = f"{self.Paths['spikes']}/RSn{rs}-{chan}"
-                try:
-                    mat_dict = sio.loadmat(fn)
-                    return mat_dict["spiketimes"]
-                except zlib.error as err:
-                    print("[scipy error] Skipping spike times for (rs, chan): ", rs, chan)
-                    return None
-
             def load_spike_times_mult(rss, chans, ver="spikes_tdt_quick"):
                 DatSpikes = []
                 for rs in rss:
                     for ch in chans:
-                        print(rs, ch)
-                        st = load_spike_times_(rs, ch, ver)
+                        print("load_spike_times", rs, ch)
+                        st = self._load_spike_times(rs, ch, ver)
                         DatSpikes.append({
                             "rs":rs,
                             "chan":ch,
@@ -552,11 +714,21 @@ class Session(object):
 
         # Decide if extract from saved
         if site not in self.DatSpikeWaveforms.keys():
+            import zlib
             import scipy.io as sio
+
             PATH_SPIKES = f"{self.PathRaw}/spikes_tdt_quick"
             fn = f"{PATH_SPIKES}/RSn{rs}-{chan}-snips_subset"
-            mat_dict = sio.loadmat(fn)
-            waveforms = mat_dict["snips"]
+            try:
+                mat_dict = sio.loadmat(fn)
+                waveforms = mat_dict["snips"]
+            except zlib.error as err:
+                print("[scipy error] Skipping load_spike_waveforms_ for (rs, chan): ", rs, chan)
+                waveforms = None
+            except Exception as err:
+                print(err)
+                print("Failed for this rs, chan: ",  rs, chan)
+
             self.DatSpikeWaveforms[site] = waveforms
 
         return self.DatSpikeWaveforms[site]
@@ -594,8 +766,8 @@ class Session(object):
             "mic":"Mic1",
             "duplicate1":"dup1",
             "duplicate2":"dup2",
-            "pd1":"PhDi",
-            "pd2":"PhD2",
+            "pd1":"PhDi", # Lucas
+            "pd2":"PhD2", # G and Y
             "eyex":"Eyee",
             "eyey":"Eyee",
             "eyediam":"Eyee",
@@ -606,7 +778,6 @@ class Session(object):
             return None
 
         dat = self.DatTank["streams"][key]
-        
         
         # Times, Values
         fs = dat["fs"]
@@ -627,7 +798,7 @@ class Session(object):
         if trial0 is not None:
             times, vals = self.extract_windowed_data_bytrial(times, trial0, vals)[:2]
         
-        return times, vals
+        return times, vals, fs
 
 
     def extract_data_tank_epocs(self, which, crosstime="onset", trial0=None):
@@ -645,10 +816,17 @@ class Session(object):
             "rew":"Rew_",
             "rewon":"Rew_",
             "rewoff":"Rew_",
-            "behcode":"SMa1" if "SMa1" in self.DatTank["epocs"] else "Bode",
+            "behcode":"SMa1" if "SMa1" in self.DatTank["epocs"].keys() else "Bode",
             "strobe":"S_ML",
         }
         key = keynames[which]
+        if key not in self.DatTank["epocs"].keys():
+            print("********* failing extract_data_tank_epocs")
+            print(self.DatTank["epocs"].keys())
+            print(key)
+            print(which)
+            print(trial0)
+            assert False
         dat = self.DatTank["epocs"][key]
         
         # Force using onset or offset
@@ -687,6 +865,7 @@ class Session(object):
         """
 
         LOADED = False
+        #DO_SAVE = False
         if sites is None and trials is None:
             # Then try to load locally.
             import os
@@ -709,9 +888,6 @@ class Session(object):
                     # generate mapper, slice each one and this will autoamtically extract
                     self.mapper_extract("sitetrial_to_datallind")
                 
-                # save again
-                self._savelocal_datall()
-
                 # dont rerun
                 LOADED = True
 
@@ -721,7 +897,7 @@ class Session(object):
                 # get all sites
                 sites = self.SitesAll
             if trials is None:
-                trials = self.get_trials_list()
+                trials = self.get_trials_list(only_if_ml2_fixation_success=True)
                 # trials = range(len(self.TrialsOnset))
 
             # convert sites to rs and chan
@@ -761,7 +937,7 @@ class Session(object):
         for i, d in enumerate(DatRaw):
     #         spike_times = datspikes_slice_single(d["rs"], d["chan"], d["time_range"])
             spike_times, time_dur, time_on, time_off = self.datspikes_slice_single(d["rs"], d["chan"], trial0=trialtdt)
-            d["spike_times"] = spike_times
+            d["spike_times"] = spike_times 
             d["time_dur"] = time_dur
             d["time_on"] = time_on
             d["time_off"] = time_off
@@ -834,6 +1010,7 @@ class Session(object):
         """ Quick processing, things to add to datall in case not already 
         added 
         """
+        print("DOING: datall_cleanup_add_things")
 
         # Time info
         if "time_dur" not in self.DatAll[0].keys():
@@ -850,9 +1027,10 @@ class Session(object):
             st = Dat["spike_times"]
             t_on = Dat["time_on"]
             t_off = Dat["time_off"]
-            if np.any(st<t_on) or np.any(st>t_off):
-                print(Dat)
-                assert False, "due to jitter in ml2 vs. tdt?"
+            if st is not None and t_on is not None and t_off is not None:
+                if np.any(st<t_on) or np.any(st>t_off):
+                    print(Dat)
+                    assert False, "due to jitter in ml2 vs. tdt?"
 
     def _datall_compute_timing_info(self):
         """
@@ -1136,6 +1314,7 @@ class Session(object):
         for D in self.DatSpikes:
             if D["rs"]==rs and D["chan"]==chan:
                 spiketimes = D["spike_times"]
+
                 if spiketimes is not None:
                     # optionally window it
                     if twind is not None:
@@ -1163,7 +1342,7 @@ class Session(object):
         this neural trial (trialtdt)
         """
         from ..utils.conversions import get_map_trial_and_set
-        ntrials = len(self.get_trials_list())
+        ntrials = len(self.get_trials_list(only_if_ml2_fixation_success=False))
         # ntrials = len(self.TrialsOnset)
         assert trialtdt < ntrials, "This tdt trial doesnt exist, too large..."
 
@@ -1183,6 +1362,9 @@ class Session(object):
         """
         fd_setnum, fd_trialnum = self._beh_get_fdnum_trial(trialtdt)
         fd = self.BehFdList[fd_setnum]
+        if fd is None or fd_trialnum is None:
+            print("ERrory in beh_get_fd_trial: ", self.Date, self.ExptSynapse, trialtdt)
+            assert False
         return fd, fd_trialnum
 
     # def convert_trialnum(self, trialtdt=None, trialml=None):
@@ -1202,7 +1384,21 @@ class Session(object):
         fd, trialml = self.beh_get_fd_trial(trialtdt)
         return ml2_get_trial_onset(fd, trialml)
 
+
     ######################## BRAIN STUFF
+    def sitegetter_print_summary_nunits_by_region(self):
+        """ Prints num units (clean) per region
+        and total units etc
+        """
+        sites_all =[]
+        for area, sites in self.sitegetter_brainregion(clean=True).items():
+            print(area, " : ", len(sites))
+            sites_all.append(len(sites))
+        print(" ------- ")
+        print("TOTAL: ", sum(sites_all))
+        print("MIN: ", min(sites_all))
+        print("MAX: ", max(sites_all))
+        print("MEAN: ", np.mean(sites_all))
 
     def sitegetter_summarytext(self, site):
         """ Return a string that useful for labeling
@@ -1294,10 +1490,10 @@ class Session(object):
             
         # do clean
         if clean:
-            assert self.SitesGarbage is not None, "you need to enter which are bad sites"
+            assert self.SitesDirty is not None, "you need to enter which are bad sites in SitesDirty"
             for k, v in dict_sites.items():
                 # remove any sites that are bad
-                dict_sites[k] = [vv for vv in v if vv not in self.SitesGarbage]
+                dict_sites[k] = [vv for vv in v if vv not in self.SitesDirty]
 
         if region=="list_regions":
             return regions_in_order
@@ -1343,6 +1539,87 @@ class Session(object):
             chan = sitenum
         return rs, chan
 
+    ########################### Stats for each site
+    def sitestats_fr_single(self, sitenum, trial):
+        """ get fr (sp/s)
+        """
+        dat = self.datall_slice_single_bysite(sitenum, trial)
+        nspikes = len(dat["spike_times"])
+        dur = dat["time_dur"]
+        return nspikes/dur
+
+    def sitestats_fr(self, sitenum):
+        """ gets fr across all trials
+        """
+        list_fr = []
+        for trial in self.get_trials_list(True):
+            fr = self.sitestats_fr_single(sitenum, trial)
+            list_fr.append(fr)
+        stats = {}
+        stats["list_fr"] = list_fr
+        stats["fr_mean"] = np.mean(list_fr)
+        return stats
+
+    def sitestats_get_low_fr_sites(self):
+        """ FInds sites with mean fr less than threshold; 
+        useful for pruning neurons, etc.
+        """
+        frmeans = []
+        sites =[]
+        for site in self.sitegetter_all(clean=False):
+            frmeans.append(self.sitestats_fr(site)["fr_mean"])
+            sites.append(site)
+
+        plt.figure(figsize=(10,5))
+        plt.hist(frmeans, 100)
+
+        frmeans = np.asarray(frmeans)
+        sites = np.asarray(sites)
+
+        sites_lowfr = sites[frmeans<2]
+        print("Low FR sites: ", sites_lowfr)
+        print(sum(frmeans<2))
+
+        sites_lowfr_str = [str(s) for s in sites_lowfr]
+        sites_lowfr_str = ', '.join(sites_lowfr_str)        
+        print("low fr sites, as strings: ")
+        print(sites_lowfr_str)
+
+        # Combining across sessions:
+        # lowfr1 = [17, 18, 19, 28, 33, 34, 35, 38, 48, 50, 56, 58, 64, 
+        # 65, 69, 70, 71, 76, 79, 80, 81, 82, 83, 85, 86, 88, 89, 90, 
+        # 91, 92, 93, 95, 96, 100, 104, 110, 111, 113, 118, 120, 125, 
+        # 127, 128, 129, 131, 132, 133, 134, 137, 139, 147, 148, 149, 
+        # 151, 152, 153, 154, 155, 156, 157, 158, 159, 166, 168, 172, 
+        # 174, 176, 178, 182, 185, 190, 196, 199, 201, 202, 204, 207, 
+        # 211, 214, 216, 218, 225, 226, 228, 229, 230, 233, 234, 235, 
+        # 236, 238, 241, 245, 246, 251, 254, 261, 266, 268, 283, 284, 
+        # 287, 288, 289, 290, 291, 293, 295, 297, 298, 305, 306, 307, 
+        # 309, 311, 313, 315, 316, 317, 318, 319, 321, 322, 324, 325, 
+        # 326, 328, 330, 335, 336, 337, 339, 340, 341, 342, 343, 347, 
+        # 350, 355, 356, 357, 358, 359, 360, 361, 362, 363, 364, 365, 
+        # 366, 367, 370, 373, 375, 376, 377, 378, 379, 380, 381, 382, 
+        # 383, 384, 398, 399, 411, 412, 424, 426, 427, 428, 432, 440, 
+        # 444, 446, 448, 466, 482, 489, 507]
+        # lowfr2 = [17, 18, 19, 28, 33, 34, 35, 38, 48, 50, 54, 56, 58, 60, 64, 69, 70, 71, 75, 76, 79, 81, 82, 83, 85, 86, 88, 89, 90, 91, 92, 93, 95, 96, 100, 104, 105, 108, 110, 111, 112, 113, 118, 120, 122, 125, 127, 128, 129, 131, 132, 133, 134, 135, 137, 139, 141, 145, 147, 148, 149, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 166, 167, 168, 170, 172, 174, 176, 178, 182, 185, 190, 196, 199, 202, 204, 207, 208, 210, 211, 213, 214, 216, 218, 225, 226, 229, 230, 233, 234, 235, 236, 238, 241, 245, 246, 251, 254, 261, 262, 266, 268, 283, 284, 289, 290, 291, 293, 295, 297, 298, 299, 305, 306, 307, 309, 311, 313, 315, 316, 317, 318, 319, 321, 322, 323, 324, 325, 326, 328, 329, 330, 335, 336, 337, 339, 340, 341, 342, 343, 347, 350, 355, 356, 357, 358, 359, 360, 361, 362, 363, 364, 365, 366, 367, 370, 373, 375, 376, 377, 378, 379, 380, 381, 382, 383, 384, 398, 399, 411, 412, 424, 426, 427, 428, 432, 440, 441, 444, 446, 448, 459, 462, 466, 482, 488, 489, 499, 507]
+
+        # print("lengths (fr1, fr2): ", len(lowfr1), len(lowfr2))
+        # print("---- (in fr1, not in fr2)")
+
+        # for x in lowfr1:
+        #     if x not in lowfr2:
+        #         print(x)
+
+        # print("---- (in fr2, not in fr1)")
+        # for x in lowfr2:
+        #     if x not in lowfr1:
+        #         print(x)
+                
+        # print("---- union: ")
+        # listfr = sorted(set(lowfr1 + lowfr2))
+        # print(listfr)
+
+
 
     ############################ BEH STUFF (ML)
     # def events_extract_stroke_onsoffs(self, trial0):
@@ -1379,7 +1656,13 @@ class Session(object):
                 times = times[0:1] # stay as an array
         return times
         
-    def behcode_extract_times_sequence(self, codes, trial0):
+    def behcode_canonical_sequence(self):
+        """ Gets the standard sequence for a full trial.
+        """
+        list_codes = [9, 11, 16, 91, 92, 62, 73, 50, 18]
+        return list_codes
+
+    def behcode_extract_times_sequence(self, trial0, codes=None):
         """ Get the times of this sequence of codes, aligned to this trial,
         taking only the first instance of each code.
         If a code doesnt occur, gives it a np.nan
@@ -1388,6 +1671,10 @@ class Session(object):
         NOTE: order will not matter
         """
         
+        if codes is None:
+            # The default "important" events within a trial
+            list_codes = self.behcode_canonical_sequence()
+
         times = np.empty(len(codes))
         for i, c in enumerate(codes):
             t = self.behcode_extract_times(c, trial0, True)
@@ -1396,6 +1683,131 @@ class Session(object):
             else:
                 times[i] = np.nan
         return times    
+
+    def behcode_get_stream_crossings_in_window(self, trial, behcode,
+        t_pre=0.01, t_post=0.2, whichstream="pd1", do_smooth=True, smooth_win=0.01,
+        ploton=False, cross_dir="both", force_single_output=False):
+        """ Given this behcode, and time window around this code,
+        finds all cases where this stream has trheshold crossings, where
+        threshold are determined automatically (based on prctiles of 
+        vals in this trial.)
+        PARAMS:
+        - behcode, int, will by default find the first instance of this code
+        - t_pre, t_post, time in sec relative to behcode time, for windowing 
+        the stream
+        - whichstream, str, name of the stream
+        - do_smooth, bool, whether to smooth data before computing things.
+        - smooth_win, smoothing window in sec.
+        - cross_dir, str, which direction crossing to take. either {"both", "up", "down"}
+        - false_single_output, bool, if True, then aserts that only one, and returns the number
+        RETURNS:
+        - TCROSS, VCROSS, array of times and values at crossings
+        - time_behcode, time of behc ode
+        - valminmax, (2,) array of vals min and max
+        - threshold, value used for crossing
+        TODO: use histogram to determine local threshold in each time window. problem is that the globally-defined threshold is not super accurate")
+        NOTE: times are all relative to beh code 9 (i.e., trial onset)
+        """
+
+        
+        # For each pd expected event, find its beh code, then look for the pd signal
+
+        # 1) Extract the stream siganl
+        times, vals, fs = self.extract_data_tank_streams(whichstream, trial)
+
+        # 2) Smooth if desired
+        n = int(smooth_win * fs)
+        vals_sm = np.convolve(vals, np.ones(n)/n, mode="same")
+        if False:
+            fig, ax = plt.subplots(1,1, figsize=(15,10))
+            ax.plot(times, vals, '-k');
+            ax.plot(times, vals_sm, '-r');
+
+        # 3) Tresholding: Get min and max values. Threshold is in betweem them.
+        valminmax = np.percentile(vals, [1, 99])
+        threshold = np.mean(valminmax)
+
+        # 4) Find temporal window for this beh code.
+        if False:
+            # For a given window, find threshold crossings
+            codes_nums = self.behcode_canonical_sequence()
+            codes_times = self.behcode_extract_times_sequence(trial, codes_nums)   
+            for num, time in zip(codes_nums, codes_times):
+                print(num, time)
+
+        # - Specific code
+        time_behcode = self.behcode_extract_times(behcode, trial, True)
+
+        # - window around the code
+        if len(time_behcode)>0:   
+            inds = (times>=time_behcode-t_pre) & (times<=time_behcode+t_post)
+            timesthis = times[inds]
+            valsthis = vals_sm[inds]
+
+            # Get all threshold crossings
+            indscross = np.where(np.diff(valsthis>threshold))[0]
+            
+            # - take mean of the immediately preceding and following time bins for each
+            # crossing.
+            timecross = (timesthis[indscross] + timesthis[indscross+1])/2
+            valscross = (valsthis[indscross] + valsthis[indscross+1])/2
+
+            # What directions are crossings?
+            if valsthis[0]<threshold:
+                # this will be [positive-going, neg-going, etc...]
+                timecross_up = timecross[0::2]
+                timecross_dn = timecross[1::2]
+                valscross_up = valscross[0::2]
+                valscross_dn = valscross[1::2]
+            else:
+                # other direction
+                timecross_up = timecross[1::2]
+                timecross_dn = timecross[0::2]
+                valscross_up = valscross[1::2]
+                valscross_dn = valscross[0::2]
+
+            ncross = len(timecross)
+
+            if ploton:
+                fig, axes = plt.subplots(1,2, figsize=(15,5))
+
+                ax = axes.flatten()[0]
+                ax.plot(timesthis, valsthis)
+                ax.plot(timecross, valscross, 'xk')
+                ax.plot(timecross_up, valscross_up, 'ob')
+                ax.plot(timecross_dn, valscross_dn, 'or')
+                ax.axhline(threshold)
+                ax.set_title('b=upcross, r=dncross')
+
+                ax = axes.flatten()[1]
+                edges = np.linspace(np.min(vals_sm), np.max(vals_sm), 50)
+                ax.hist(vals_sm, bins=edges, density=True, histtype="step")
+                ax.hist(valsthis, bins=edges, density=True, histtype="step")
+                ax.set_title("values in window and entire trial")
+
+            # Time of first cross relative to behcode
+            # TODO
+
+            if cross_dir=="both":
+                TCROSS = timecross
+                VCROSS = valscross
+            elif cross_dir=="up":
+                TCROSS = timecross_up
+                VCROSS = valscross_up
+            elif cross_dir in ["dn", "down"]:
+                TCROSS = timecross_dn
+                VCROSS = valscross_dn
+            else:
+                assert False
+
+            if force_single_output:
+                assert len(TCROSS)==1
+                assert len(VCROSS)==1
+                TCROSS = TCROSS[0]
+                VCROSS = VCROSS[0]
+            return TCROSS, VCROSS, time_behcode, valminmax, threshold
+        else:
+            return np.array([]), np.array([]), time_behcode, valminmax, threshold
 
     def behcode_shorthand(self, full=None, short=None):
         """ Convert between
@@ -1480,7 +1892,7 @@ class Session(object):
 
         # 2) keep only the dataset trials that are included in recordings
         trials = self.get_all_existing_site_trial_in_datall("trial")                                               
-        list_trialcodes = [self.dataset_get_trialcode(t) for t in trials]
+        list_trialcodes = [self.datasetbeh_get_trialcode(t) for t in trials]
         print("- Keeping only dataset trials that exist in self.Dat")
         print("Starting length: ", len(D.Dat))
         D.filterPandas({"trialcode":list_trialcodes}, "modify")
@@ -1520,7 +1932,7 @@ class Session(object):
         # PLOT EXAMPLE, SHOWING MATCH across neural and beh datasets
 
         # 1) for each tdt trial, get its trialcode in beh
-        trialcode = self.dataset_get_trialcode(trial)
+        trialcode = self.datasetbeh_get_trialcode(trial)
         D = self.Datasetbeh
 
         # 2) Find this trialcode in Dataset
@@ -1539,6 +1951,70 @@ class Session(object):
 
 
     ###################### GET TEMPORAL EVENTS
+    def events_get_time_all(self, trial, list_events = ["stim_onset", "go_cue", "first_raise", "on_stroke_1"]):
+        """
+        Get dict of times of important events. Uses variety of methods, including
+        (i) photodiode (ii) motor behavior, (iii) beh codes, wherever appropriate.
+        - All times relative to behcode 9 (trial onset) by convention.
+        PARAMS:
+        - list_events, list of str, each a label for an event. only gets those in this list.
+        """
+
+        
+        list_events_skip_if_no_fixation = ["go_cue", "first_raise", "on_stroke_1"]
+        dict_events = {}
+
+        for event in list_events:
+            # 1) Skip this, if no fixation success
+            if not self.beh_fixation_success(trial) and event in list_events_skip_if_no_fixation:
+                time = None
+            else:
+                if event=="stim_onset":
+                    # Use photodiode
+                    behcode = 91
+                    stream = 'pd1'
+                    cross_dir = 'up'
+                    t_pre = 0
+                    t_post = 0.2
+                    time, _,_,_,_ = self.behcode_get_stream_crossings_in_window(trial, behcode, whichstream=stream, 
+                                                              cross_dir=cross_dir, t_pre=t_pre,
+                                                              t_post=t_post,
+                                                              ploton=False, force_single_output=True)
+                elif event=="go_cue":
+                    # Use photodiode
+                    behcode = self.behcode_convert(codename="go", shorthand=True)
+                    stream = 'pd2'
+                    cross_dir = 'down'
+                    t_pre = 0
+                    t_post = 0.2
+                    time, _,_,_,_ = self.behcode_get_stream_crossings_in_window(trial, behcode, whichstream=stream, 
+                                                              cross_dir=cross_dir, t_pre=t_pre,
+                                                              t_post=t_post,
+                                                              ploton=False, force_single_output=True)
+                elif event=="first_raise":
+                    # Offset of the stroke that is overalpping in time with the go cue.
+                    fd, t = self.beh_get_fd_trial(trial)
+                    time = mkl.getTrialsTimesOfMotorEvents(fd, t)["raise"]
+                # elif event=="raise_last_stroke":
+                elif event=="on_stroke_1":
+                    # onset of first stroke (touch)
+                    ons, offs = self.strokes_extract_ons_offs(trial)
+                    if len(ons)==0:
+                        time = None
+                    else:
+                        time = ons[0]
+                else:
+                    assert False
+                assert time is not None
+
+            # store time.
+            dict_events[event] = time
+        return dict_events
+
+
+
+
+
     def events_get_time(self, event, trial):
         """ Return the time in trial for this event
         PARAMS:
@@ -1580,6 +2056,7 @@ class Session(object):
         """ Get this site and trial as elephant (Neo) SpikeTrain object
         RETURNS:
         - st, a SpikeTrain object
+        (Can be None, if the spiketimes is None)
         """
         from neo.core import SpikeTrain
         from quantities import s
@@ -1589,8 +2066,12 @@ class Session(object):
         dat = self.datall_slice_single(rs, chan, trial)
         assert dat is not None, "doesnt exist..."
 
-        # Convert to spike train
-        st = SpikeTrain(dat["spike_times"]*s, t_stop=dat["time_off"], t_start=dat["time_on"])
+        stimes = dat["spike_times"]
+        if stimes is None:
+            st = None
+        else:
+            # Convert to spike train
+            st = SpikeTrain(dat["spike_times"]*s, t_stop=dat["time_off"], t_start=dat["time_on"])
 
         if save:
             dat = self.datall_slice_single_bysite(site, trial)
@@ -1604,19 +2085,24 @@ class Session(object):
         - adds "spiketrain" as key in self.DatAll
         """
 
-        print("TODO: save this")
-        # sites = self.sitegetter_all(clean=False)
-        if "spiketrain" not in self.DatAll[0].keys():
-            trialprint = 0
-            for Dat in self.DatAll:
-                if Dat["trial0"]!=trialprint:
-                    trialprint = Dat["trial0"]
-                    print(trialprint)
-                st = self._spiketrain_as_elephant(Dat["site"], Dat["trial0"])
+        ADDED = False # track whether datall is updated.
+        for i, Dat in enumerate(self.DatAll):
+            if i%500==0:
+                print("spiketrain_as_elephant_batch, datall index: ", i)
+            if "spiketrain" not in Dat.keys():
+                # if Dat["trial0"]%50==0:
+                #     print(Dat["trial0"])
+                if "site" in Dat.keys():
+                    site = Dat["site"]
+                else:
+                    site = self.convert_rschan_to_site(Dat["rs"], Dat["chan"])
+                st = self._spiketrain_as_elephant(site, Dat["trial0"])
                 Dat["spiketrain"] = st
-            print("DONE adding spiketrain to all data")
-        else:
-            print("SKIPPED - found already spiketrain in data")
+                ADDED = True
+
+        print("FINISHED - extracting spiketrain for all trials in self.DatAll")
+        if ADDED:
+            self._savelocal_datall()
 
     ####################### GENERATE POPANAL for a trial
     def popanal_generate_save_trial(self, trial, gaussian_sigma = 0.1, 
@@ -1710,9 +2196,28 @@ class Session(object):
 
         return list_all
 
-    def get_trials_list(self):
-        return range(len(self.TrialsOffset))
-        # return self.get_all_existing_site_trial_in_datall("trial")
+    def beh_fixation_success(self, trial):
+        """Returns True if fixation succes (mkl data) for this trial.
+        """
+        from ..utils.monkeylogic import getTrialsFixationSuccess
+        fd, trialml2 = self.beh_get_fd_trial(trial)
+        if trialml2 not in fd["trials"].keys():
+            return False
+        suc = getTrialsFixationSuccess(fd, trialml2)
+        return suc
+
+    def get_trials_list(self, only_if_ml2_fixation_success=False):
+        """
+        Get list of ints, trials,
+        PARAMS:
+        - only_if_ml2_fixation_success, then keeps onl trials where the corresponding
+        ml2 beh trial had fixation success. Also skips trials that dont exist in filedata at all.
+        """
+        trials = range(len(self.TrialsOffset))
+        if only_if_ml2_fixation_success:
+            trials = [t for t in trials if self.beh_fixation_success(t)]
+
+        return trials
 
 
 
@@ -1763,14 +2268,14 @@ class Session(object):
         # fig, axes = plt.subplots(
         for i, s in enumerate(list_sites):
             rs, chan = self.convert_site_to_rschan(s)
-            print(rs, chan)
+            print("plot_spike_waveform_stats_multchans", rs, chan)
             
             # extarct spike
             waveforms = self.load_spike_waveforms_(rs, chan)
 
             #### PLOTS
             # 2) stats
-            fig, ax = getax(i)
+            ax = getax(i)
             outdict = self.spikewave_compute_stats(waveforms)
             ax.hist(outdict["volt_max"], bins=100);
             ax.hist(outdict["volt_min"], bins=100);
@@ -1805,14 +2310,14 @@ class Session(object):
         # fig, axes = plt.subplots(
         for i, s in enumerate(list_sites):
             rs, chan = self.convert_site_to_rschan(s)
-            print(rs, chan)
+            print("_plot_spike_waveform_multchans", rs, chan)
             
             # extarct spike
             waveforms = self.load_spike_waveforms_(rs, chan)
 
             #### PLOTS
             # 1) wavefore
-            fig, ax = getax(i)
+            ax = getax(i)
             self.plot_spike_waveform(ax, waveforms)
             ax.set_title(f"s{s}({rs}-{chan})")
 
@@ -1857,6 +2362,7 @@ class Session(object):
         nrowsmax = 4
         prefix = f"all-clean_{clean}"
         for YLIM in LIST_YLIM:
+            assert isinstance(YLIM, list), "mistake..."
             figholder = self._plot_spike_waveform_multchans(list_sites, YLIM, saveon, prefix)
 
     def plot_raster_line(self, ax, times, yval, color='k', alignto_time=None, 
@@ -1871,6 +2377,7 @@ class Session(object):
         else:
             t = times
     #     ax.plot(times, yval*np.ones(time.shape), '.', color=color, alpha=0.55)
+
         y = yval*np.ones(t.shape)
         ax.eventplot([t], lineoffsets=yval, color=color, alpha=alpha, linelengths=linelengths)
         
@@ -1927,7 +2434,7 @@ class Session(object):
         if "trial" in which_events:
             # Vertical lines for beh codes
             list_codes = [9, 11, 16, 91, 92, 62, 73, 50]
-            times_codes = self.behcode_extract_times_sequence(list_codes, trial0)
+            times_codes = self.behcode_extract_times_sequence(trial0, list_codes)
             # names_codes = [beh_codes[c] for c in list_codes]
             names_codes = [self.behcode_convert(c, shorthand=True) for c in list_codes] 
             # names_codes = ["on", "fixcue", "fix", "samp", "go", "done", "fb_vs", "rew"]
@@ -2004,6 +2511,8 @@ class Session(object):
 
 
     def plot_trial_timecourse_summary(self, ax, trial0, number_strokes=True):
+        """ Overlays events onto an axis
+        """
         # trialml = convert_trialnum(trialtdt=trial0)
         strokes = self.strokes_extract(trial0)
 
@@ -2047,134 +2556,187 @@ class Session(object):
         plotDatStrokes(strokestask, ax, clean_task=True)
         
     ###################### PLOTS (specific)
-    def plot_specific_trial_overview(self, trialtdt):
-        """ Plots _everytnig_ about this trial, aligned
+    def plot_rasters_all(self, ax, trial, list_sites=None, site_to_highlight=None):
+        """ Plot all sites onto a single axes, for this trial, aligned rasters
+        PARAMS;
+        - site_to_highlight, int, then will be diff color - if what want to link to
+        other example figures.
         """
 
-        assert False, "clean up and combine with drawing"
-        # 1) plot each on a separate line
-        list_rs = [D["rs"] for D in self.DatAll]
-        list_chans = [D["chan"] for D in self.DatAll]
-        list_bregion = self.sitegetter_brainregion("list_regions")
+        list_ylabel = []
+        cnt = 0
+        
+        if site_to_highlight is not None:
+            rsrand, chanrand = self.convert_site_to_rschan(site_to_highlight)
+        if list_sites is None:
+            list_sites = self.sitegetter_all()
 
-        fig, axes = plt.subplots(7,1, figsize=(15, 28), sharex=True, gridspec_kw={'height_ratios': [1, 1, 1, 1,1,1,12]})
+        for i, site in enumerate(list_sites):
+            d = self.datall_slice_single_bysite(site, trial)
+            st = d["spike_times"]
+            assert st is not None, "corrupted file..., make this sitegarbage temporarily?"
+            pcol = "k"
+            if site_to_highlight is not None:
+                if site==site_to_highlight:
+                    # the random one plotted, color diff 
+                    pcol = 'r';
+            self.plot_raster_line(ax, st, yval=i, color=pcol, linelengths=1, alpha=0.5)
 
+            # collect for ylabel
+            rs, chan = self.convert_site_to_rschan(site)
+            list_ylabel.append(f"{site}|{rs}-{chan}")
+        ax.set_yticks(range(len(list_ylabel)))
+        ax.set_yticklabels(list_ylabel);
+        ax.set_xlabel('time rel. trial onset (sec)');
+        ax.set_ylabel('site');
+        ax.set_title(f"trial: {trial}| nsites: {len(list_sites)}")
+        self.plotmod_overlay_trial_events(ax, trial)
+        XLIM = ax.get_xlim()
+        # - Overlay brain regions
+        self.plotmod_overlay_brainregions(ax, list_sites)
+        
+    def plot_epocs(self, ax, trial, list_epocs=["camframe", "camtrialon", "camtrialoff", 
+        "rewon", "rewoff", "behcode"]):
+        """ Plot discrete events onto axes, for this trial
+        """
+        
         # -- Epochs
-        ax = axes.flatten()[0]
         ax.set_title("epocs")
-        list_plot = ["camframe", "camtrialon", "camtrialoff", "rewon", "rewoff", "behcode"]
-        for i, pl in enumerate(list_plot):
-            times, vals = self.extract_data_tank_epocs(pl, trial0=trialtdt)
+        for i, pl in enumerate(list_epocs):
+            times, vals = self.extract_data_tank_epocs(pl, trial0=trial)
             ax.plot(times, np.ones(times.shape)+i, 'x', label=pl)
             if pl=="behcode":
                 for t, b in zip(times, vals):
                     ax.text(t, 1+i+np.random.rand(), int(b))
         ax.legend()
-        # ax.set_ylim(-1, i+2)
-        # Behcode
-        # times, vals = extract_data_tank_epocs("behcode", trial0=trialtdt)
-        # ax.plot(times, np.ones(times.shape)+i, 'x', label=pl)
-        self.plotmod_overlay_trial_events(ax, trialtdt)
+        self.plotmod_overlay_trial_events(ax, trial)
 
-        def plot_stream(streamname, ax):
-            out = self.extract_data_tank_streams(streamname, trial0=trialtdt)
-            if out is not None:
-                times, vals = out
-                # times, vals = self.extract_data_tank_streams(pl, trial0=trialtdt)
-                ax.plot(times, vals, '-', label=streamname)
 
-        # - phdi
-        ax = axes.flatten()[1]
-        ax.set_title("photodiodes")
-        list_plot = ["pd1", "pd2"]
-        for i, pl in enumerate(list_plot):
-            plot_stream(pl, ax)
-            # out = self.extract_data_tank_streams(pl, trial0=trialtdt)
-            # if out is not None:
-            #     times, vals = out
-            #     # times, vals = self.extract_data_tank_streams(pl, trial0=trialtdt)
-            #     ax.plot(times, vals, '-', label=pl)
-        ax.legend()
-        self.plotmod_overlay_trial_events(ax, trialtdt)
+    def plot_stream(self, ax=None, trial=0, which="pd1"):
+        """ Plot this trial and stream on ax.
+        """
+        if ax is None:
+            fig, ax = plt.subplots(1,1)
+        out = self.extract_data_tank_streams(which, trial0=trial)
+        if out is not None:
+            times, vals, fs = out
+            ax.plot(times, vals, '-', label=which)
 
-        # -- Eye
-        ax = axes.flatten()[2]
-        ax.set_title("eyes")
-        list_plot = ["eyex","eyey","eyediam"]
-        for i, pl in enumerate(list_plot):
-            plot_stream(pl, ax)
-        ax.legend()
-        self.plotmod_overlay_trial_events(ax, trialtdt)
+    # def plotwrapper_specific_trial_overview(self, trialtdt):
+    #     """ Plots _everytnig_ about this trial, aligned
+    #     """
 
-        # -- audio
-        ax = axes.flatten()[3]
-        ax.set_title("audio")
-        list_plot = ["mic"]
-        for i, pl in enumerate(list_plot):
-            plot_stream(pl, ax)
-        ax.legend()
-        self.plotmod_overlay_trial_events(ax, trialtdt)
+    #     # assert False, "clean up and combine with drawing"
+    #     fig, axes = plt.subplots(7,1, figsize=(15, 28), sharex=True, gridspec_kw={'height_ratios': [1, 1, 1, 1,1,1,12]})
 
-        # Beh strokes (ml2)
-        ax = axes.flatten()[4]
-        self.plot_trial_timecourse_summary(ax, trialtdt)
+    #     # -- Epochs
+    #     ax = axes.flatten()[0]
+    #     ax.set_title("epocs")
+    #     list_plot = ["camframe", "camtrialon", "camtrialoff", "rewon", "rewoff", "behcode"]
+    #     for i, pl in enumerate(list_plot):
+    #         times, vals = self.extract_data_tank_epocs(pl, trial0=trialtdt)
+    #         ax.plot(times, np.ones(times.shape)+i, 'x', label=pl)
+    #         if pl=="behcode":
+    #             for t, b in zip(times, vals):
+    #                 ax.text(t, 1+i+np.random.rand(), int(b))
+    #     ax.legend()
+    #     # ax.set_ylim(-1, i+2)
+    #     # Behcode
+    #     # times, vals = extract_data_tank_epocs("behcode", trial0=trialtdt)
+    #     # ax.plot(times, np.ones(times.shape)+i, 'x', label=pl)
+    #     self.plotmod_overlay_trial_events(ax, trialtdt)
 
-        # ax.set_title("touch data")
-        # for s in strokes:
-        #     x = s[:,0]
-        #     y = s[:,1]
-        #     t = s[:,2]
-        #     ax.plot(t, x, label="x")
-        #     ax.plot(t, y, label="y")
+    #     def plot_stream(streamname, ax):
+    #         out = self.extract_data_tank_streams(streamname, trial0=trialtdt)
+    #         if out is not None:
+    #             times, vals = out
+    #             # times, vals = self.extract_data_tank_streams(pl, trial0=trialtdt)
+    #             ax.plot(times, vals, '-', label=streamname)
+
+    #     # - phdi
+    #     ax = axes.flatten()[1]
+    #     ax.set_title("photodiodes")
+    #     list_plot = ["pd1", "pd2"]
+    #     for i, pl in enumerate(list_plot):
+    #         plot_stream(pl, ax)
+    #         # out = self.extract_data_tank_streams(pl, trial0=trialtdt)
+    #         # if out is not None:
+    #         #     times, vals = out
+    #         #     # times, vals = self.extract_data_tank_streams(pl, trial0=trialtdt)
+    #         #     ax.plot(times, vals, '-', label=pl)
+    #     ax.legend()
+    #     self.plotmod_overlay_trial_events(ax, trialtdt)
+
+    #     # -- Eye
+    #     ax = axes.flatten()[2]
+    #     ax.set_title("eyes")
+    #     list_plot = ["eyex","eyey","eyediam"]
+    #     for i, pl in enumerate(list_plot):
+    #         plot_stream(pl, ax)
+    #     ax.legend()
+    #     self.plotmod_overlay_trial_events(ax, trialtdt)
+
+    #     # -- audio
+    #     ax = axes.flatten()[3]
+    #     ax.set_title("audio")
+    #     list_plot = ["mic"]
+    #     for i, pl in enumerate(list_plot):
+    #         plot_stream(pl, ax)
+    #     ax.legend()
+    #     self.plotmod_overlay_trial_events(ax, trialtdt)
+
+    #     # Beh strokes (ml2)
+    #     ax = axes.flatten()[4]
+    #     self.plot_trial_timecourse_summary(ax, trialtdt)
+
+    #     # A single raw channel 
+    #     import random
+    #     ax = axes.flatten()[5]
+    #     site = random.choice(self.sitegetter_all())
+    #     ax.set_title(f"ranbdom raw data: site{site}")
+    #     D = self.datall_slice_single_bysite(site, trialtdt)
+    #     if D is not None:
+    #         t = D["tbins0"]
+    #         raw = D["raw"]
+    #         st = D["spike_times"]
+    #         if raw is not None:
+    #             ax.plot(t, raw)
+    #             # spikes
+    #             ax.plot(st, np.ones(st.shape), 'xr')
+    #             self.plotmod_overlay_trial_events(ax, trialtdt)
+
+    #     # -- Rasters
+    #     ax = axes.flatten()[6]
+    #     list_ylabel = []
+    #     cnt = 0
+    #     for i, (rs, chan) in enumerate(zip(list_rs, list_chans)):
+    #         d = self.datall_slice_single(rs, chan, trialtdt)
+    #         st = d["spike_times"]
+    #         if rsrand==rs and chanrand==chan:
+    #             # the random one plotted, color diff 
+    #             pcol = 'r';
+    #         else:
+    #             pcol = 'k'
+    #         self.plot_raster_line(ax, st, yval=i, color=pcol)
             
-        # A single raw channel 
-        ax = axes.flatten()[5]
-        import random
-        chanrand = random.randint(1, 256)
-        rsrand = random.randint(2, 3)
-        ax.set_title(f"ranbdom raw data: rs{rsrand}-ch{chanrand}")
-        D = self.datall_slice_single(rsrand, chanrand, trialtdt)
-        if D is not None:
-            t = D["tbins0"]
-            raw = D["raw"]
-            st = D["spike_times"]
-            ax.plot(t, raw)
-            # spikes
-            ax.plot(st, np.ones(st.shape), 'xr')
-            self.plotmod_overlay_trial_events(ax, trialtdt)
-
-        # -- Rasters
-        ax = axes.flatten()[6]
-        list_ylabel = []
-        cnt = 0
-        for i, (rs, chan) in enumerate(zip(list_rs, list_chans)):
-            d = self.datall_slice_single(rs, chan, trialtdt)
-            st = d["spike_times"]
-            if rsrand==rs and chanrand==chan:
-                # the random one plotted, color diff 
-                pcol = 'r';
-            else:
-                pcol = 'k'
-            self.plot_raster_line(ax, st, yval=i, color=pcol)
+    #         if i%32==0:
+    #             ax.axhline(i-0.5)
+    #             try:
+    #                 ax.text(-0.5, i-0.5, list_bregion[cnt], size=15, color="b")
+    #             except Exception as err:
+    #                 pass
+    #             cnt+=1
             
-            if i%32==0:
-                ax.axhline(i-0.5)
-                try:
-                    ax.text(-0.5, i-0.5, list_bregion[cnt], size=15, color="b")
-                except Exception as err:
-                    pass
-                cnt+=1
-            
-            # collect for ylabel
-            list_ylabel.append(f"{rs}-{chan}")
-        ax.set_yticks(range(len(list_ylabel)))
-        ax.set_yticklabels(list_ylabel);
-        ax.set_xlabel('time rel. trial onset (sec)');
-        ax.set_ylabel('site');
-        ax.set_title(f"trialtdt: {trialtdt}")
-        self.plotmod_overlay_trial_events(ax, trialtdt)    
+    #         # collect for ylabel
+    #         list_ylabel.append(f"{rs}-{chan}")
+    #     ax.set_yticks(range(len(list_ylabel)))
+    #     ax.set_yticklabels(list_ylabel);
+    #     ax.set_xlabel('time rel. trial onset (sec)');
+    #     ax.set_ylabel('site');
+    #     ax.set_title(f"trialtdt: {trialtdt}")
+    #     self.plotmod_overlay_trial_events(ax, trialtdt)    
 
-    def plot_raster_multrials_onesite(self, list_trials, site, alignto=None, SIZE=0.5):
+    def plotwrapper_raster_multrials_onesite(self, list_trials, site, alignto=None, SIZE=0.5):
         """ Plot one site, mult trials, overlaying for each trial its major events
         PARAMS:
         - list_trials, list of int
@@ -2249,68 +2811,191 @@ class Session(object):
         return fig, axes, fig_draw, axes_draw
 
 
-    def plot_raster_oneetrial_multsites(self, trialtdt, list_sites, site_to_highlight=None,
+    def plotwrapper_raster_oneetrial_multsites(self, trialtdt, 
+            list_sites=None, site_to_highlight=None,
             WIDTH=20, HEIGHT = 10):
         """ Plot a single raster for this trial, across these sites
         PARAMS:
         - site_to_highlight, bool, if True, colors it diff
         """
         
-        list_rschan = [self.convert_site_to_rschan(s) for s in list_sites]
-        # fig, axes = plt.subplots(2,2, figsize=(17, 15), sharex=False, 
+        # fig, axes = plt.subplots(2,2, figsize=(WIDTH, HEIGHT), sharex=False, 
         #                          gridspec_kw={'height_ratios': [1,8], 'width_ratios':[8,1]})
-        fig, axes = plt.subplots(2,2, figsize=(WIDTH, HEIGHT), sharex=False, 
-                                 gridspec_kw={'height_ratios': [1,8], 'width_ratios':[8,1]})
-        
-        # -- Rasters
-        ax = axes.flatten()[2]
-        list_ylabel = []
-        cnt = 0
-        
-        if site_to_highlight is not None:
-            rsrand, chanrand = self.convert_site_to_rschan(site_to_highlight)
+        fig1, axes = plt.subplots(10, 1, figsize=(15, 28), sharex=True, 
+            gridspec_kw={'height_ratios': [1, 1, 1, 1,1,1,1,12,1, 1]})
 
-        for i, (rs, chan) in enumerate(list_rschan):
-            d = self.datall_slice_single(rs, chan, trialtdt)
-            st = d["spike_times"]
-            if site_to_highlight is not None:
-                if rsrand==rs and chanrand==chan:
-                    # the random one plotted, color diff 
-                    pcol = 'r';
-                else:
-                    pcol = 'k'
-            else:
-                pcol = "k"
-            self.plot_raster_line(ax, st, yval=i, color=pcol, linelengths=1, alpha=0.5)
+        # -- Epochs (events)
+        ax = axes.flatten()[0]
+        self.plot_epocs(ax, trialtdt)
+        # XLIM = ax.get_xlim()
 
-            # collect for ylabel
-            list_ylabel.append(f"{rs}-{chan}")
-        ax.set_yticks(range(len(list_ylabel)))
-        ax.set_yticklabels(list_ylabel);
-        ax.set_xlabel('time rel. trial onset (sec)');
-        ax.set_ylabel('site');
-        ax.set_title(f"trialtdt: {trialtdt}| nsites: {len(list_sites)}")
+        # Streams
+        ax = axes.flatten()[1]
+        for stream in ["pd1", "pd2"]:
+            self.plot_stream(ax, trialtdt, stream)
+        ax.set_title("photodiodes")
+        ax.legend()
         self.plotmod_overlay_trial_events(ax, trialtdt)
-        XLIM = ax.get_xlim()
-        # - Overlay brain regions
-        self.plotmod_overlay_brainregions(ax, list_sites)
+        # ax.set_xlim(XLIM)
+
+        ax = axes.flatten()[2]
+        for stream in ["eyex","eyey","eyediam"]:
+            self.plot_stream(ax, trialtdt, stream)
+        ax.set_title("eyes")
+        # ax.set_xlim(XLIM)
+
+        ax = axes.flatten()[3]
+        for stream in ["mic"]:
+            self.plot_stream(ax, trialtdt, stream)
+        ax.set_title("mic")
+        # ax.set_xlim(XLIM)
+
+        # A single raw channel 
+        import random
+        ax = axes.flatten()[5]
+        site = random.choice(self.sitegetter_all())
+        ax.set_title(f"ranbdom raw data: site{site}")
+        D = self.datall_slice_single_bysite(site, trialtdt)
+        if D is not None:
+            t = D["tbins0"]
+            raw = D["raw"]
+            st = D["spike_times"]
+            if raw is not None:
+                ax.plot(t, raw)
+                # spikes
+                ax.plot(st, np.ones(st.shape), 'xr')
+                self.plotmod_overlay_trial_events(ax, trialtdt)
         
         # Beh strokes (ml2)
-        ax = axes.flatten()[0]
+        ax = axes.flatten()[6]
         self.plot_trial_timecourse_summary(ax, trialtdt)
-        ax.set_xlim(XLIM)
-        
-        # Final drawing
-        ax = axes.flatten()[3]
+        # ax.set_xlim(XLIM)
+
+        # -- Rasters
+        ax = axes.flatten()[7]
+        self.plot_rasters_all(ax, trialtdt, list_sites)
+        # ax.set_xlim(XLIM)
+
+        # Another plot for the beh and image
+        fig2, axes = plt.subplots(1,2, sharex=True, sharey=True, figsize=(8,4))
+
+        # -- Final drawing
+        ax = axes.flatten()[0]
         self.plot_final_drawing(ax, trialtdt, strokes_only=True)
         
-        # Image
+        # -- Image
         ax = axes.flatten()[1]
         self.plot_taskimage(ax, trialtdt)
 
-    #     plotTrialSimple(fd, trialml, ax=ax, plot_task_stimulus=True, nakedplot=True, plot_drawing_behavior=False)
+        return fig1, fig2
 
-        return fig, axes
+    ####################################################
+    def plot_behcode_photodiode_sanity_check(self):
+        """ Checks that each instance of a beh code is matched to a close
+        by photodiode crossing of the correct direction and timing
+        RETURNS:
+        - makes and saves plots
+        """
+        import pandas as pd
+        import seaborn as sns
+        from pythonlib.tools.pandastools import applyFunctionToAllRows
+        import os
+
+        # Check whether aleady done
+        sdir = f"{self.Paths['figs_local']}/sanity_checks/phdi_check"
+        print(sdir)
+        if False:
+            if os.path.exists(sdir):
+                print("Skipping plot_behcode_photodiode_sanity_check, becuase already done")
+                return
+        
+        print("Running plot_behcode_photodiode_sanity_check")    
+        os.makedirs(sdir, exist_ok=True)
+
+        # For each trial, get the time of pd crossing
+        list_behcode = [11, 91, 92, 73]
+        list_whichstream = ["pd2", "pd1", "pd1", "pd1"]
+        t_post = 0.4 # time from beh code to search
+        t_pre = 0
+
+        for behcode, stream in zip(list_behcode, list_whichstream):
+            # behcode = 91
+            # stream = 'pd1'
+            # crosdir = "up"
+
+            outdict = []
+            
+            if stream=="pd1":
+                crosdir = "up"
+            elif stream=="pd2":
+                crosdir = "down"
+            else:
+                assert False
+                
+            for trial in self.get_trials_list(True):
+                timecross, valscross, time_behcode, valminmax, threshold = \
+                    self.behcode_get_stream_crossings_in_window(trial, behcode, 
+                        whichstream=stream, cross_dir=crosdir, t_pre=t_pre, 
+                        t_post=t_post)
+
+                if trial%20==0:
+                    print(trial)
+
+                outdict.append({
+                    "behcode":behcode,
+                    "stream":stream,
+                    "trial":trial,
+                    "timescross":timecross,
+                    "valscross":  valscross,
+                    "time_behcode":time_behcode,
+                    "valminmax":valminmax,
+                    "threshold":threshold,
+                    "crossdir":crosdir
+                })
+
+            ################# Plot distribution of times and magnitudes across trials.
+            dfthis = pd.DataFrame(outdict)
+            
+            # ======= 1) plot all, n crosses
+            def F(x):
+                return len(x["timescross"])
+            dfthis = applyFunctionToAllRows(dfthis, F, "n_crosses")
+            
+            fig = sns.pairplot(data=dfthis, vars=["n_crosses"])
+            fig.savefig(f"{sdir}/ncrosses-code_{behcode}-codename_{self.behcode_convert(codenum=behcode, shorthand=True)}-stream_{stream}.pdf")
+            
+            # ===== 2) Prune to only those with crosses, and plot those
+            dfthis_pruned = dfthis[dfthis["n_crosses"]>0]
+            
+            def F(x):
+                return x["timescross"][0]
+            dfthis_pruned = applyFunctionToAllRows(dfthis_pruned, F, "time_first_cross")
+
+            def F(x):
+                return x["valscross"][0]
+            dfthis_pruned = applyFunctionToAllRows(dfthis_pruned, F, "val_first_cross")
+
+            def F(x):
+                return x["timescross"][0] - x["time_behcode"][0]
+            dfthis_pruned = applyFunctionToAllRows(dfthis_pruned, F, "time_behcode_to_firstcross")
+
+            def F(x):
+                if x["crossdir"]=="up":
+                    FLOOR = x["valminmax"][0]
+                elif x["crossdir"]=="down":
+                    FLOOR = x["valminmax"][1]
+                else:
+                    assert False
+                return x["val_first_cross"] - FLOOR
+            dfthis_pruned = applyFunctionToAllRows(dfthis_pruned, F, "val_first_cross_rel_floor")
+
+            fig = sns.pairplot(data=dfthis_pruned, vars=["time_first_cross", "val_first_cross", "val_first_cross_rel_floor", "n_crosses", "time_behcode_to_firstcross"])
+            fig.savefig(f"{sdir}/stats_crossings-code_{behcode}-codename_{self.behcode_convert(codenum=behcode, shorthand=True)}-stream_{stream}.pdf")
+            
+            # === 3) save the dataframe
+            path= f"{sdir}/dataframe-code_{behcode}-codename_{self.behcode_convert(codenum=behcode, shorthand=True)}-stream_{stream}.pkl"
+            dfthis.to_pickle(path)
+
 
     def plot_raw_dupl_sanity_check(self, trial = 0):
         """ Plot dupl (saved in TDT tank) on top of raw (RS4)
@@ -2366,7 +3051,7 @@ class Session(object):
             print(f"Saved at: {path}")
 
     #################### LINKING TO BEH DATASET
-    def dataset_get_trialcode(self, trial):
+    def datasetbeh_get_trialcode(self, trial):
         """ get trialcode for this trial(tdt)
         RETURNS:
         - trialcode, a string
@@ -2379,7 +3064,7 @@ class Session(object):
         trialcode = f"{date}-{session_ml}-{trial_ml}"
         return trialcode
         
-    def dataset_trialcode_to_trial(self, trialcode):
+    def datasetbeh_trialcode_to_trial(self, trialcode):
         """ given trialcode (string) return trial in self.Dat
         """
         return self._MapperTrialcode2TrialToTrial[trialcode]
@@ -2424,3 +3109,11 @@ class Session(object):
             if only_print_if_has_raw and gotraw==False:
                 continue
             print(f"{D['rs']}-{D['chan']}-t{D['trial0']}-spikes={gotspikes} - raw={gotraw}")
+
+    def print_summarize_expt_params(self):
+        """ summarize things like expt name, aniaml, date, etc."""
+        print("Animal: ", self.Animal)
+        print("ExptSynapse: ", self.ExptSynapse)
+        print("Date: ", self.Date)
+        print("RecPathBase: ", self.RecPathBase)
+        print("final_dir_name: ", self.Paths["final_dir_name"])

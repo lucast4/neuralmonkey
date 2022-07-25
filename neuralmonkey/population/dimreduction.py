@@ -114,7 +114,7 @@ def runclassify(Mod, ModBase, modver, pop, yvar, use_actual_neurons=False):
 
 
 def plotStateSpace(X, dim1=None, dim2=None, plotndim=2, ax=None, 
-    color=None, is_traj=False, text_plot_pt1=None):
+    color=None, is_traj=False, text_plot_pt1=None, color_dict=None):
     """ general, for plotting state space, will work
     with trajectories or pts (with variance plotted)
     PARAMS:
@@ -151,22 +151,26 @@ def plotStateSpace(X, dim1=None, dim2=None, plotndim=2, ax=None,
     # how many time bins?
     if dim2 is None:
         dim2 = np.arange(X.shape[1])
-            
+    
+    if color_dict is not None:
+        assert color is not None, "give the categorcal variable for each edatprt in color"
+        # check that each category has a color
+        for cat in color:
+            assert cat in color_dict.keys()
+
     # PLOT
     if plotndim==2:
         x1 = X[dim1[0], dim2]
         x2 = X[dim1[1], dim2]
         # ax.scatter(x1, x2, c=color)    
         dfthis = pd.DataFrame({"x":x1, "y":x2, "color":color})
-        sns.scatterplot(data=dfthis, x="x", y="y", hue="color", ax=ax)
+        sns.scatterplot(data=dfthis, x="x", y="y", hue="color", ax=ax, palette=color_dict)
         if is_traj:
             ax.plot(x1, x2, '-', color=color)
             ax.plot(x1[0], x2[0], "ok") # mark onset
 
         if text_plot_pt1 is not None:
             ax.text(x1[0], x2[0], text_plot_pt1)
-
-        
 
     elif plotndim==3:
         assert False, "not coded"
