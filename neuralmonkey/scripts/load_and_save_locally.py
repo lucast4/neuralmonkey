@@ -4,26 +4,36 @@ Load dataset (from server) and save it locally.
 """
 from ..utils import monkeylogic as mkl
 from ..classes.session import Session
+import os
 
+DATES_IGNORE = ["220708"]
 
 def load_and_preprocess_single_session(date, rec_session, animal = "Pancho"):
     """ Load this single rec session, coping things to local from server and making
     some sanity check plots
     NOTE: returns None rec_session doesnt exist.
+    PARAMS:
+    - date, str.
     """
 
+    print(" in load_and_preprocess_single_session")
+
+    if date in DATES_IGNORE:
+        print("*** SKIPPING DATE (becasue it is in DATES_IGNORE): ", date)
 
     # ============= RUN
     expt = "*"
     beh_session = rec_session+1 # 1-indexing.
     sessdict = mkl.getSessionsList(animal, datelist=[date])
 
+    print("ALL SESSIONS: ")
+    print(sessdict)
+
     if all([len(x)==0 for x in sessdict.values()]):
         # skip, this animal and date doesnt exits.
         return sessdict
 
     beh_sess_list = [sess_expt[0] for sess_expt in sessdict[date]]
-
 
     if beh_session not in beh_sess_list:
         print(f"session {beh_session} doesnt exist in {beh_sess_list}")
@@ -51,9 +61,20 @@ def load_and_preprocess_single_session(date, rec_session, animal = "Pancho"):
     # Load and save data
     SN.extract_raw_and_spikes_helper()
 
+    # Spike trains:
+    SN.spiketrain_as_elephant_batch()
+
+    # Check beh code and photodiode match
+    SN.plot_behcode_photodiode_sanity_check()
+
     # Save
-    SN.plot_spike_waveform_multchans(LIST_YLIM = [-250, 100])
-    SN.plot_spike_waveform_stats_multchans(None)
+    path = f"{SN.Paths['figs_local']}/waveforms_overlay"
+    if not os.path.exists(path):
+        SN.plot_spike_waveform_multchans(LIST_YLIM = [[-250, 100]])
+
+    path = f"{SN.Paths['figs_local']}/waveforms_stats"
+    if not os.path.exists(path):
+        SN.plot_spike_waveform_stats_multchans(None)
 
     print("** COMPLETED load_and_save_locally !!")
 
