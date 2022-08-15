@@ -29,6 +29,8 @@ def load_session_helper(DATE, dataset_beh_expt, rec_session=0, animal="Pancho", 
     # 1) Find the raw beh data (filedata)
     # Assume that the beh sessions increment in order, matching the neural sessions
     sessdict = mkl.getSessionsList(animal, datelist=[DATE])
+    # assume that beh sessions are indexed by neural rec sessions
+    # beh_session = rec_session+1    
     beh_session = sessdict[DATE][rec_session][0]
     print("Beh Sessions that exist on this date: ", DATE, sessdict)
     print("taking this one :", beh_session)
@@ -319,10 +321,40 @@ class Session(object):
         import os
         os.makedirs(pathbase_local, exist_ok=True)
 
+        def _get_spikes_raw_path():
+            """ checks to find path to folder holding spikes data, in order of most to 
+            least desired version. Returns None if doesnt find. 
+            """
+            from pythonlib.tools.expttools import load_yaml_config
+
+            # First is saved path, the one where already got spikes from?
+            if os.path.exists(f"{pathbase_local}/data_spikes.pkl"):
+                # Then load old paths to raw spikes
+                path_paths = f"{pathbase_local}/paths.yaml"
+
+                if os.path.exists(path_paths):
+                    paths_old = load_yaml_config(f"{pathbase_local}/paths.yaml")
+                    print(paths_old)
+                    return paths_old["spikes"]
+                else:
+                    print("then is old version, before saved paths every time save spikes") 
+                    # Return the old version, which was 5.5 (blank)
+                    return f"{paththis}/spikes_tdt_quick"
+
+            # Second, if have not yet extracted spikes.
+            for suffix in ["-4.5", "", "-3.5"]: 
+                path_maybe = f"{paththis}/spikes_tdt_quick{suffix}"
+                if os.path.exists(path_maybe):
+                    return path_maybe
+
+            # Didn't find spikes, return None
+            return None
+
         pathdict = {
             "raws":paththis,
             "tank":f"{paththis}/{fnparts['filename_final_noext']}",
-            "spikes":f"{paththis}/spikes_tdt_quick",
+            # "spikes":f"{paththis}/spikes_tdt_quick",
+            "spikes":_get_spikes_raw_path(),
             "final_dir_name":final_dir_name,
             "time":fnparts["filename_components_hyphened"][2],
             "pathbase_local":pathbase_local,
@@ -337,7 +369,6 @@ class Session(object):
         self.Paths = pathdict
         self.PathRaw = pathdict["raws"]
         self.PathTank = pathdict["tank"]
-
 
     ####################### EXTRACT RAW DATA (AND STORE)
     def load_behavior(self):
@@ -522,6 +553,7 @@ class Session(object):
             except Exception as err:
                 print(err)
                 print("Failed for this rs, chan: ",  rs, chan)
+                assert False
         else:
             mat_dict = sio.loadmat(fn)
             return mat_dict["spiketimes"]
@@ -602,6 +634,10 @@ class Session(object):
         print("Saving spikes locally to: ", self.Paths["spikes_local"])
         with open(self.Paths["spikes_local"], "wb") as f:
             pickle.dump(self.DatSpikes, f)
+
+        # also save note of where the path
+        from pythonlib.tools.expttools import writeDictToYaml
+        writeDictToYaml(self.Paths, f"{self.Paths['pathbase_local']}/paths.yaml")
 
 
     def load_raw(self, rss, chans, trial0, pre_dur=1., post_dur = 1.,
@@ -717,7 +753,8 @@ class Session(object):
             import zlib
             import scipy.io as sio
 
-            PATH_SPIKES = f"{self.PathRaw}/spikes_tdt_quick"
+            PATH_SPIKES = self.Paths["spikes"]
+            # PATH_SPIKES = f"{self.PathRaw}/spikes_tdt_quick"
             fn = f"{PATH_SPIKES}/RSn{rs}-{chan}-snips_subset"
             try:
                 mat_dict = sio.loadmat(fn)
@@ -727,7 +764,9 @@ class Session(object):
                 waveforms = None
             except Exception as err:
                 print(err)
-                print("Failed for this rs, chan: ",  rs, chan)
+                print("[load_spike_waveforms] Failed for this rs, chan: ",  rs, chan)
+                print(fn)
+                assert False
 
             self.DatSpikeWaveforms[site] = waveforms
 
@@ -1009,16 +1048,18 @@ class Session(object):
     def datall_cleanup_add_things(self):
         """ Quick processing, things to add to datall in case not already 
         added 
+        - Also makes self.DatAllDf (dataframe version).
         """
         print("DOING: datall_cleanup_add_things")
+        import pandas as pd
 
         # Time info
         if "time_dur" not in self.DatAll[0].keys():
             self._datall_compute_timing_info()
 
         # sites
-        if "site" not in self.DatAll[0].keys():
-            for Dat in self.DatAll:
+        for Dat in self.DatAll:
+            if "site" not in Dat.keys():
                 site = self.convert_rschan_to_site(Dat["rs"], Dat["chan"])
                 Dat["site"] = site
 
@@ -1031,6 +1072,9 @@ class Session(object):
                 if np.any(st<t_on) or np.any(st>t_off):
                     print(Dat)
                     assert False, "due to jitter in ml2 vs. tdt?"
+
+        self.DatAllDf = pd.DataFrame(self.DatAll)
+        print("Generated self.DatAllDf")
 
     def _datall_compute_timing_info(self):
         """
@@ -1085,6 +1129,8 @@ class Session(object):
         """ save this for later
         This is what is extracted by extract_raw_and_spikes. it is all data aligned to each trial.
         """
+        self.datall_cleanup_add_things()
+
         print("Saving DatAll (raw and spikes) locally to: ", self.Paths["datall_local"])
         with open(self.Paths["datall_local"], "wb") as f:
             pickle.dump(self.DatAll, f)
@@ -1542,82 +1588,125 @@ class Session(object):
     ########################### Stats for each site
     def sitestats_fr_single(self, sitenum, trial):
         """ get fr (sp/s)
+        - if fr doesnt exist in self.DatAll, then will add it to the dict.
         """
         dat = self.datall_slice_single_bysite(sitenum, trial)
-        nspikes = len(dat["spike_times"])
-        dur = dat["time_dur"]
-        return nspikes/dur
+        if "fr" not in dat.keys():
+            nspikes = len(dat["spike_times"])
+            dur = dat["time_dur"]
+            dat["fr"] = nspikes/dur
+        return dat["fr"]
 
     def sitestats_fr(self, sitenum):
-        """ gets fr across all trials
+        """ gets fr across all trials. Only works if you have already extracted fr 
+        into DatAll (and its dataframe)
         """
         list_fr = []
-        for trial in self.get_trials_list(True):
-            fr = self.sitestats_fr_single(sitenum, trial)
-            list_fr.append(fr)
+        
+
+        # if first_extraction:
+        #     # then dont use dataframe, this both extracts and returns.
+        #     # This both easfasdfxtracts and returns
+        #     for trial in self.get_trials_list(True):
+        #         fr = self.sitestats_fr_single(sitenum, trial)
+        #         list_fr.append(fr)
+        # else:
+        # Use Dataframe, is much faster than iterating over trials
+
+        trials = self.get_trials_list()
+        dfthis = self.DatAllDf[(self.DatAllDf["site"]==sitenum) & (self.DatAllDf["trial0"].isin(trials))]
+
+        # Confirm that has already been extracted and saved
+        ERROR = False        
+        if "fr" not in dfthis.columns:
+            ERROR = True
+        elif dfthis["fr"].isna().any():
+            ERROR = True
+        if ERROR:
+            # Now raise error, first extract
+            print("First extract all fr using sitestats_fr_get_and_save(True)")
+            assert False
+
+        # Get fr
+        list_fr = dfthis["fr"].tolist()
+
         stats = {}
         stats["list_fr"] = list_fr
         stats["fr_mean"] = np.mean(list_fr)
         return stats
 
-    def sitestats_get_low_fr_sites(self):
+    def sitestats_fr_get_and_save(self):
+        """ Gets fr for all sites and saves in self.DatAll, and saves
+        to disk. This is more for computation than for returning anything useufl. 
+        Run this once."""
+        for site in self.sitegetter_all(clean=False):
+            
+            if site%50==0:
+                print(site)
+            
+            for trial in self.get_trials_list(True):
+                self.sitestats_fr_single(site, trial)
+                # list_fr.append(fr)
+            # self.sitestats_fr(site) # run this to iterate over all trials, and save to datall
+        
+        self._savelocal_datall()
+
+    def sitestats_get_low_fr_sites(self, low_fr_thresh=2):
         """ FInds sites with mean fr less than threshold; 
         useful for pruning neurons, etc.
         """
         frmeans = []
         sites =[]
         for site in self.sitegetter_all(clean=False):
+            # if site%50==0:
+            #     print(site)
             frmeans.append(self.sitestats_fr(site)["fr_mean"])
             sites.append(site)
-
-        plt.figure(figsize=(10,5))
-        plt.hist(frmeans, 100)
-
         frmeans = np.asarray(frmeans)
         sites = np.asarray(sites)
 
-        sites_lowfr = sites[frmeans<2]
+        # Save
+        fig, axes = plt.subplots(2,2, figsize=(15,8))
+
+        # 1) Histogram of fr
+        ax = axes.flatten()[0]
+        ax.hist(frmeans, 100)
+        ax.set_title('mean fr across sites')
+
+        # 1) Histogram of fr (zzoming in)
+        ax = axes.flatten()[2]
+        ax.hist(frmeans, np.linspace(0, 10, 10))
+        ax.set_title('mean fr across sites')
+
+        # 2) Each site, plot fr
+        ax = axes.flatten()[1]
+        ax.plot(sites, frmeans, 'ok')
+        ax.set_xlabel('site num');
+        ax.set_ylabel('fr mean')
+
+        ####### sort sites by fr and print in order
+        indsort = np.argsort(frmeans)
+        frmeans_sorted = frmeans[indsort]
+        sites_sorted = sites[indsort]
+
+        # print("-- SITES, sorted (increasing fr): ")
+        # print(sites_sorted)
+        # print("-- FR, sorted (increasing fr): ")
+        # print(frmeans_sorted)
+        site_fr = [f"{s}[{fr:.0f}]" for s, fr in zip(sites_sorted, frmeans_sorted)]
+        print("-- SITE(FR), sorted (increasing fr): ")
+        print(site_fr)
+        
+
+        ####### Get low Fr sites
+        sites_lowfr = sites[frmeans<low_fr_thresh]
         print("Low FR sites: ", sites_lowfr)
-        print(sum(frmeans<2))
+        print("Num sites failing threshold: ", sum(frmeans<low_fr_thresh))
 
         sites_lowfr_str = [str(s) for s in sites_lowfr]
         sites_lowfr_str = ', '.join(sites_lowfr_str)        
         print("low fr sites, as strings: ")
         print(sites_lowfr_str)
-
-        # Combining across sessions:
-        # lowfr1 = [17, 18, 19, 28, 33, 34, 35, 38, 48, 50, 56, 58, 64, 
-        # 65, 69, 70, 71, 76, 79, 80, 81, 82, 83, 85, 86, 88, 89, 90, 
-        # 91, 92, 93, 95, 96, 100, 104, 110, 111, 113, 118, 120, 125, 
-        # 127, 128, 129, 131, 132, 133, 134, 137, 139, 147, 148, 149, 
-        # 151, 152, 153, 154, 155, 156, 157, 158, 159, 166, 168, 172, 
-        # 174, 176, 178, 182, 185, 190, 196, 199, 201, 202, 204, 207, 
-        # 211, 214, 216, 218, 225, 226, 228, 229, 230, 233, 234, 235, 
-        # 236, 238, 241, 245, 246, 251, 254, 261, 266, 268, 283, 284, 
-        # 287, 288, 289, 290, 291, 293, 295, 297, 298, 305, 306, 307, 
-        # 309, 311, 313, 315, 316, 317, 318, 319, 321, 322, 324, 325, 
-        # 326, 328, 330, 335, 336, 337, 339, 340, 341, 342, 343, 347, 
-        # 350, 355, 356, 357, 358, 359, 360, 361, 362, 363, 364, 365, 
-        # 366, 367, 370, 373, 375, 376, 377, 378, 379, 380, 381, 382, 
-        # 383, 384, 398, 399, 411, 412, 424, 426, 427, 428, 432, 440, 
-        # 444, 446, 448, 466, 482, 489, 507]
-        # lowfr2 = [17, 18, 19, 28, 33, 34, 35, 38, 48, 50, 54, 56, 58, 60, 64, 69, 70, 71, 75, 76, 79, 81, 82, 83, 85, 86, 88, 89, 90, 91, 92, 93, 95, 96, 100, 104, 105, 108, 110, 111, 112, 113, 118, 120, 122, 125, 127, 128, 129, 131, 132, 133, 134, 135, 137, 139, 141, 145, 147, 148, 149, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 166, 167, 168, 170, 172, 174, 176, 178, 182, 185, 190, 196, 199, 202, 204, 207, 208, 210, 211, 213, 214, 216, 218, 225, 226, 229, 230, 233, 234, 235, 236, 238, 241, 245, 246, 251, 254, 261, 262, 266, 268, 283, 284, 289, 290, 291, 293, 295, 297, 298, 299, 305, 306, 307, 309, 311, 313, 315, 316, 317, 318, 319, 321, 322, 323, 324, 325, 326, 328, 329, 330, 335, 336, 337, 339, 340, 341, 342, 343, 347, 350, 355, 356, 357, 358, 359, 360, 361, 362, 363, 364, 365, 366, 367, 370, 373, 375, 376, 377, 378, 379, 380, 381, 382, 383, 384, 398, 399, 411, 412, 424, 426, 427, 428, 432, 440, 441, 444, 446, 448, 459, 462, 466, 482, 488, 489, 499, 507]
-
-        # print("lengths (fr1, fr2): ", len(lowfr1), len(lowfr2))
-        # print("---- (in fr1, not in fr2)")
-
-        # for x in lowfr1:
-        #     if x not in lowfr2:
-        #         print(x)
-
-        # print("---- (in fr2, not in fr1)")
-        # for x in lowfr2:
-        #     if x not in lowfr1:
-        #         print(x)
-                
-        # print("---- union: ")
-        # listfr = sorted(set(lowfr1 + lowfr2))
-        # print(listfr)
 
 
 
@@ -2736,14 +2825,19 @@ class Session(object):
     #     ax.set_title(f"trialtdt: {trialtdt}")
     #     self.plotmod_overlay_trial_events(ax, trialtdt)    
 
-    def plotwrapper_raster_multrials_onesite(self, list_trials, site, alignto=None, SIZE=0.5):
+    def plotwrapper_raster_multrials_onesite(self, list_trials, site, alignto=None, 
+            SIZE=0.5):
         """ Plot one site, mult trials, overlaying for each trial its major events
         PARAMS:
-        - list_trials, list of int
+        - list_trials, list of int. if None, then plots 20 random
         - site, int (512)
         - alignto, str or None, how to adjust times to realign.
         """
 
+        if list_trials is None:
+            import random
+            nrand = 20
+            list_trials = sorted(random.sample(self.get_trials_list(True), nrand))
         nrows = len(list_trials)
         ncols = 2
         alpha_raster = 0.4
