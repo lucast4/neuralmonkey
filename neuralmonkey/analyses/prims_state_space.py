@@ -195,7 +195,9 @@ def plotall_state_space(PA, DF, MS, REGIONS, VARNAME_SUBPLOT_LEVELS,
     else:
         assert False
     
-    fig, axes = plt.subplots(3,3, sharex=True, sharey=True, figsize=(15, 15))
+    ncols = 3
+    nrows = int(np.ceil(len(LIST_LEVELS)/ncols))
+    fig, axes = plt.subplots(nrows, ncols, sharex=True, sharey=True, figsize=(15, 15))
 
     # for sh, ax in zip(LIST_SHAPES, axes.flatten()):
     for level, ax in zip(LIST_LEVELS, axes.flatten()):
