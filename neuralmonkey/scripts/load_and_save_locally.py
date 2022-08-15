@@ -76,6 +76,9 @@ def load_and_preprocess_single_session(date, rec_session, animal = "Pancho"):
     if not os.path.exists(path):
         SN.plot_spike_waveform_stats_multchans(None)
 
+    # Get stats about fr
+    SN.sitestats_fr_get_and_save()
+    
     print("** COMPLETED load_and_save_locally !!")
 
 if __name__=="__main__":
