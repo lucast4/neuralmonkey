@@ -3,7 +3,7 @@ Load dataset (from server) and save it locally.
 
 """
 from ..utils import monkeylogic as mkl
-from ..classes.session import Session
+from ..classes.session import Session, load_session_helper
 import os
 
 DATES_IGNORE = ["220708"]
@@ -16,14 +16,16 @@ def load_and_preprocess_single_session(date, rec_session, animal = "Pancho"):
     - date, str.
     """
 
+    dataset_beh_expt = None
+    expt = "*"
+
     print(" in load_and_preprocess_single_session")
 
     if date in DATES_IGNORE:
         print("*** SKIPPING DATE (becasue it is in DATES_IGNORE): ", date)
 
     # ============= RUN
-    expt = "*"
-    beh_session = rec_session+1 # 1-indexing.
+    # beh_session = rec_session+1 # 1-indexing.
     sessdict = mkl.getSessionsList(animal, datelist=[date])
 
     print("ALL SESSIONS: ")
@@ -33,31 +35,42 @@ def load_and_preprocess_single_session(date, rec_session, animal = "Pancho"):
         # skip, this animal and date doesnt exits.
         return sessdict
 
-    beh_sess_list = [sess_expt[0] for sess_expt in sessdict[date]]
+    # beh_sess_list = [sess_expt[0] for sess_expt in sessdict[date]]
 
-    if beh_session not in beh_sess_list:
-        print(f"session {beh_session} doesnt exist in {beh_sess_list}")
+    # Not enough beh sessions?
+    if len(sessdict[date])<rec_session+1:
+        # Then skip this rec_session, there is not a matching beh sessinon
+        print(f"rec session {rec_session} doesnt exist (no matching beh session found)")
         return
 
-    if False:
-        # get all sessions
-        beh_expt_list = [sess_expt[1] for sess_expt in sessdict[date]]
-    else:
-        # Get the single session assued to map onto this neural.
-        beh_expt_list = [sess_expt[1] for sess_expt in sessdict[date] if sess_expt[0]==beh_session]
-        assert(len(beh_expt_list))==1, "must be error, multiple sessions with same session num"
-        beh_sess_list = [beh_session]
+    try:
+        SN = load_session_helper(date, dataset_beh_expt, rec_session, animal, expt, 
+            do_all_copy_to_local=True)
+    except Exception as err:
+        print(date, dataset_beh_expt, rec_session, animal, expt, rec_session)
+        raise
 
-    beh_trial_map_list = [(1, 0)]
-    sites_garbage = None
+    # if beh_session not in beh_sess_list:
+    #     print(f"session {beh_session} doesnt exist in {beh_sess_list}")
+    #     return
 
-    print("Loading these beh expts:", beh_expt_list)
-    print("Loading these beh sessions:",beh_sess_list)
-    print("Loading this neural session:", rec_session)
+    # # Get the single session assued to map onto this neural.
+    # beh_expt_list = [sess_expt[1] for sess_expt in sessdict[date] if sess_expt[0]==beh_session]
+    # assert(len(beh_expt_list))==1, "must be error, multiple sessions with same session num"
+    # beh_sess_list = [beh_session]
 
-    SN = Session(date, beh_expt_list, beh_sess_list, beh_trial_map_list, sites_garbage=sites_garbage,
-                rec_session = rec_session, do_all_copy_to_local=True)
+    # beh_trial_map_list = [(1, 0)]
+    # sites_garbage = None
 
+    # print("Loading these beh expts:", beh_expt_list)
+    # print("Loading these beh sessions:",beh_sess_list)
+    # print("Loading this neural session:", rec_session)
+
+    # SN = Session(date, beh_expt_list, beh_sess_list, beh_trial_map_list, sites_garbage=sites_garbage,
+    #             rec_session = rec_session, do_all_copy_to_local=True)
+
+
+    ########## EXTRACT THINGS TO SAVE LOCALLY.
     # Load and save data
     SN.extract_raw_and_spikes_helper()
 

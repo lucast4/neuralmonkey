@@ -13,11 +13,12 @@ import os
 
 PATH_NEURALMONKEY = "/data1/code/python/neuralmonkey/neuralmonkey"
 
-def load_session_helper(DATE, dataset_beh_expt, rec_session=0, animal="Pancho", expt="*"):
+def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Pancho", 
+    expt="*", do_all_copy_to_local=False):
     """ Load a single recording session.
     PARAMS:
     - DATE, str, "yymmdd"
-    - dataset_beh_expt, string, name of beh expt to link to this.
+    - dataset_beh_expt, string, name of beh expt to link to this. If None, then skips this.
     - rec_session, int, within-day session, 0,1,2, ... 
     assumes one-to-one mapping between neural and beh sessions.
     - animal, str
@@ -52,7 +53,12 @@ def load_session_helper(DATE, dataset_beh_expt, rec_session=0, animal="Pancho", 
     print("Loading this neural session:", rec_session)
 
     SN = Session(DATE, beh_expt_list, beh_sess_list, beh_trial_map_list, 
-        rec_session = rec_session, dataset_beh_expt=dataset_beh_expt)
+        rec_session = rec_session, dataset_beh_expt=dataset_beh_expt, 
+        do_all_copy_to_local=do_all_copy_to_local)
+
+    # Load dataset beh
+    if dataset_beh_expt is not None:
+        SN.datasetbeh_load()
 
     # Extract spikes
     SN.extract_raw_and_spikes_helper()
@@ -310,6 +316,14 @@ class Session(object):
         paths = findPath(self.RecPathBase, path_hierarchy)
         # assert len(paths)==1, 'not yhet coded for combining sessions'
         assert len(paths)>0, "maybe you didn't mount server?"
+        if len(paths)<self.RecSession+1:
+            print("******")
+            print(paths)
+            print(self.RecSession)
+            print(self.RecPathBase, path_hierarchy)
+            print(self.Animal, self.Date)
+            print(self.print_summarize_expt_params())
+            assert False, "why mismatch?"
         paththis = paths[self.RecSession]
 
         fnparts = deconstruct_filename(paththis)
@@ -549,11 +563,13 @@ class Session(object):
                 return mat_dict["spiketimes"]
             except zlib.error as err:
                 print("[scipy error] Skipping spike times for (rs, chan): ", rs, chan)
-                return None
+                raise
+                # return None
             except Exception as err:
                 print(err)
                 print("Failed for this rs, chan: ",  rs, chan)
-                assert False
+                raise
+                # assert False
         else:
             mat_dict = sio.loadmat(fn)
             return mat_dict["spiketimes"]
@@ -761,12 +777,14 @@ class Session(object):
                 waveforms = mat_dict["snips"]
             except zlib.error as err:
                 print("[scipy error] Skipping load_spike_waveforms_ for (rs, chan): ", rs, chan)
-                waveforms = None
+                # waveforms = None
+                raise
             except Exception as err:
                 print(err)
                 print("[load_spike_waveforms] Failed for this rs, chan: ",  rs, chan)
                 print(fn)
-                assert False
+                raise
+                # assert False
 
             self.DatSpikeWaveforms[site] = waveforms
 
@@ -1592,7 +1610,12 @@ class Session(object):
         """
         dat = self.datall_slice_single_bysite(sitenum, trial)
         if "fr" not in dat.keys():
-            nspikes = len(dat["spike_times"])
+            if dat["spike_times"] is None:
+                print("****")
+                print(sitenum, trial)
+                print(self.print_summarize_expt_params())
+                assert False, "figure out why this is None. probably in loading (scipy error) and I used to replace errors with None. I should re-extract the spikes."
+            nspikes = len(dat["spike_times"]) 
             dur = dat["time_dur"]
             dat["fr"] = nspikes/dur
         return dat["fr"]
@@ -2319,7 +2342,7 @@ class Session(object):
         - nplot, how many
         - fs, Optional, if want to plot with correct time base
         """
-            
+
         if nplot>waveforms.shape[0]:
             nplot = waveforms.shape[0]
         
@@ -2403,6 +2426,12 @@ class Session(object):
             
             # extarct spike
             waveforms = self.load_spike_waveforms_(rs, chan)
+
+            if waveforms is None:
+                print("*****")
+                print(rs, chan)
+                print(self.print_summarize_expt_params())
+                assert False, "need to re-extract waveforms?"
 
             #### PLOTS
             # 1) wavefore
