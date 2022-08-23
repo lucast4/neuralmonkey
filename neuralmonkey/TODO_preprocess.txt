@@ -1,0 +1,13 @@
+
+220526
+- 2 beh sessions, 1 neural session.
+- add the mapper
+Beh Sessions that exist on this date:  220526 {'220526': [(1, 'charneuraltrain1'), (2, 'charneuraltrain1')]}
+
+220609
+- same as 220526
+{'220609': [(1, 'priminvar2b'), (2, 'priminvar2b')]}
+
+220719 
+- same issue
+Beh Sessions that exist on this date:  220719 {'220719': [(1, 'priminvar3e'), (2, 'priminvar3e')]}
