@@ -28,5 +28,7 @@ def ml2_get_trial_onset(fd, trialml):
 def loadSingleDataQuick(a, d, e, s):
     from tools.preprocess import loadSingleDataQuick
     fd = loadSingleDataQuick(a,d,e,s)
-    assert fd is not None
+    if fd is None:
+        print("++++", a, d, e, s)
+        assert False
     return fd
