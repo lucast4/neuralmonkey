@@ -56,12 +56,12 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
         rec_session = rec_session, dataset_beh_expt=dataset_beh_expt, 
         do_all_copy_to_local=do_all_copy_to_local)
 
+    # Extract spikes
+    SN.extract_raw_and_spikes_helper()
+
     # Load dataset beh
     if dataset_beh_expt is not None:
         SN.datasetbeh_load()
-
-    # Extract spikes
-    SN.extract_raw_and_spikes_helper()
 
     return SN
 
@@ -342,18 +342,20 @@ class Session(object):
             from pythonlib.tools.expttools import load_yaml_config
 
             # First is saved path, the one where already got spikes from?
+            oldpath = None
             if os.path.exists(f"{pathbase_local}/data_spikes.pkl"):
                 # Then load old paths to raw spikes
                 path_paths = f"{pathbase_local}/paths.yaml"
 
                 if os.path.exists(path_paths):
                     paths_old = load_yaml_config(f"{pathbase_local}/paths.yaml")
-                    print(paths_old)
-                    return paths_old["spikes"]
+                    oldpath = paths_old["spikes"]
                 else:
                     print("then is old version, before saved paths every time save spikes") 
                     # Return the old version, which was 5.5 (blank)
-                    return f"{paththis}/spikes_tdt_quick"
+                    oldpath = f"{paththis}/spikes_tdt_quick"
+            if oldpath is not None:
+                return oldpath
 
             # Second, if have not yet extracted spikes.
             for suffix in ["-4.5", "", "-3.5"]: 
@@ -563,11 +565,13 @@ class Session(object):
                 return mat_dict["spiketimes"]
             except zlib.error as err:
                 print("[scipy error] Skipping spike times for (rs, chan): ", rs, chan)
+                self.print_summarize_expt_params()
                 raise
                 # return None
             except Exception as err:
                 print(err)
                 print("Failed for this rs, chan: ",  rs, chan)
+                self.print_summarize_expt_params()
                 raise
                 # assert False
         else:
@@ -770,19 +774,27 @@ class Session(object):
             import scipy.io as sio
 
             PATH_SPIKES = self.Paths["spikes"]
+
+            if PATH_SPIKES is None:
+                # Then have not extracted spikes yet...
+                self.print_summarize_expt_params()
+                assert False, "need to first extract spikes ...."
+                
             # PATH_SPIKES = f"{self.PathRaw}/spikes_tdt_quick"
             fn = f"{PATH_SPIKES}/RSn{rs}-{chan}-snips_subset"
             try:
                 mat_dict = sio.loadmat(fn)
                 waveforms = mat_dict["snips"]
             except zlib.error as err:
-                print("[scipy error] Skipping load_spike_waveforms_ for (rs, chan): ", rs, chan)
+                print("[scipy error] failed load_spike_waveforms_ for (rs, chan): ", rs, chan)
+                self.print_summarize_expt_params()
                 # waveforms = None
                 raise
             except Exception as err:
                 print(err)
                 print("[load_spike_waveforms] Failed for this rs, chan: ",  rs, chan)
                 print(fn)
+                self.print_summarize_expt_params()
                 raise
                 # assert False
 
@@ -1464,6 +1476,18 @@ class Session(object):
         print("MAX: ", max(sites_all))
         print("MEAN: ", np.mean(sites_all))
 
+        print("--------")
+        print("BAD SITES (n sites)")
+        ntot = 0
+        for k, v in self.SitesMetadata.items():
+            if k!="done_garbage":
+                print(k, len(v))
+                ntot+=len(v)
+        print("Total (accounting for overlap): ", len(self.SitesDirty))
+        # print("Total: ", ntot)
+
+
+
     def sitegetter_summarytext(self, site):
         """ Return a string that useful for labeling
         """
@@ -1475,7 +1499,7 @@ class Session(object):
         return f"{site}|{bregion}|{rs}-{chan}"
 
     def sitegetter_brainregion_chan(self, region, chan):
-        """ Given a regin and chan (1-256) return its site (1-512)
+        """ Given a regin (e.g., M1_m) and chan (1-256) return its site (1-512)
         """ 
 
         # which rs?
@@ -1982,11 +2006,14 @@ class Session(object):
         - Will prune self.Dat to only keep trials that are in Datset (which tehemselves
         are trials where there was successfuly touhc)
         - Will do sanity check that every clean 
+        - Will do preprocess too.
         RETURNS:
         - self.DatasetBeh, and returns
         """
         from pythonlib.dataset.dataset import Dataset
         from pythonlib.dataset.dataset_preprocess.general import preprocessDat
+
+        assert self.DatAll is not None, "need to load first, run SN.extract_raw_and_spikes_helper()"
 
         # 1) Load Dataset
         if self.DatasetbehExptname is None:
@@ -2000,7 +2027,8 @@ class Session(object):
         D.load_dataset_helper(self.Animal, expt, rule=dataset_beh_rule)
         D.load_tasks_helper()
 
-        D, GROUPING, GROUPING_LEVELS, FEATURE_NAMES, SCORE_COL_NAMES = preprocessDat(D, expt)
+        if not D._analy_preprocess_done:
+            D, GROUPING, GROUPING_LEVELS, FEATURE_NAMES, SCORE_COL_NAMES = preprocessDat(D, expt)
 
         # 2) keep only the dataset trials that are included in recordings
         trials = self.get_all_existing_site_trial_in_datall("trial")                                               
@@ -2065,7 +2093,7 @@ class Session(object):
     ###################### GET TEMPORAL EVENTS
     def events_get_time_all(self, trial, list_events = ["stim_onset", "go_cue", "first_raise", "on_stroke_1"]):
         """
-        Get dict of times of important events. Uses variety of methods, including
+        [GOOD] Get dict of times of important events. Uses variety of methods, including
         (i) photodiode (ii) motor behavior, (iii) beh codes, wherever appropriate.
         - All times relative to behcode 9 (trial onset) by convention.
         PARAMS:
@@ -2260,6 +2288,99 @@ class Session(object):
 
         # Return
         return self.PopAnalDict[trial]
+
+
+    ###################### SMOOTHED FR
+    def smoothedfr_extract_timewindow(self, trials, sites, alignto, pre_dur=-0.1, post_dur=0.1):
+        """ [GOOD] Extract snippet of neural data temporally windows to have same time bins, 
+        works even across trials. Time window defined relative to an event marker (alginto)
+        PARAMS:
+        - trials, list of ints
+        - sites, list of ints, gets all combos of trials and sites
+        - alignto, str, event marker.
+        - pre_dur, post_dur, time in sec relative to alignto. make pre_dur negative if want to
+        get time before
+        RETURNS:
+        - PopAnal object, with PA.X shape (sites, trials, timebins)
+        """
+        from quantities import s
+        from .population import PopAnal
+        
+        list_xslices = []
+        # 1) extract each trials' PA. Use the slicing tool in PA to extract snippet
+        for tr in trials:
+            # extract popanal
+            pa = self.popanal_generate_save_trial(tr)
+
+            # slice to desired channels
+            pa = pa.slice_by_chan(sites)
+
+            # slice to time window
+            time_align = self.events_get_time_all(tr, list_events=[alignto])[alignto]
+            t1 = time_align + pre_dur
+            t2 = time_align + post_dur
+            pa = pa.slice_by_time_window(t1, t2, return_as_popanal=True)
+            
+            # save this slice
+            list_xslices.append(pa)
+
+        # 2) Concatenate all PA into a single PA
+        TIMES = (list_xslices[0].Times - list_xslices[0].Times[0]) + pre_dur*s # times all as [-predur, ..., postdur]
+
+        # get list of np arrays
+        Xall = np.concatenate([pa.X for pa in list_xslices], axis=1) # concat along trials axis. each one is (nchans, 1, times)
+        PAall = PopAnal(Xall, TIMES, sites, trials=trials)
+
+        return PAall
+
+
+    def smoothedfr_extract(self, trials, sites):
+        """ Extract smoothed fr, ignoreing trying to clip all trials to same length,
+        in a dataframe. First gets the PopAnal represntation, if not already gotten, so
+        might take a while first time its run
+        PARAMS:
+        - trials, list of ints,
+        - sites, list of ints
+        RETURNS:
+        - df, pandas dataframe with site, trial, fr, times, as columns
+        """
+        import pandas as pd
+
+        out = []
+        for t in trials:
+            pa = self.popanal_generate_save_trial(t) # pa.X --> (chans, 1, time)
+            pathis = pa.slice_by_chan(sites) # slice to these sites
+            times = pathis.Times
+            assert len(pathis.X.shape)==3
+            nchans = pathis.X.shape[0]
+            for i in range(nchans):
+                x = pathis.X[i,:,:].squeeze()
+                assert pathis.Chans[i]==sites[i]
+                out.append({
+                    "trial":t,
+                    "site":pathis.Chans[i],
+                    "fr":x,
+                    "times":times
+                    })
+
+            # if len(pathis.X.squeeze())!=len(pathis.Chans):
+            #     print(pathis.X.shape)
+            #     print(pathis.X.squeeze().shape)
+            #     print(len(pathis.Chans))
+            #     assert False, "i am confused"
+            # # extract fr
+            # for i, (x, chan) in enumerate(zip(pathis.X.squeeze(), pathis.Chans)):
+            #     # x.shape, (ntime, )
+            #     assert chan==sites[i], "confised"
+            #     out.append({
+            #         "trial":t,
+            #         "site":chan,
+            #         "fr":x,
+            #         "times":times
+            #         })
+
+        return pd.DataFrame(out)
+
 
 
     ######################## STUFF RELATED TO INDEXING
@@ -2526,6 +2647,22 @@ class Session(object):
                 ax.axhline(i-0.5)
                 ax.text(XLIM[0]-1.5, i, region_this, size=15, color="b")
             region_previous = region_this
+
+    def plotmod_overlay_y_events(self, ax, yvals, span_xlim=True, color="k"):
+        """ Horizontal Marks on Y axis, flexible, to demarkate thnings like important trials, etc.
+        PARAMS;
+        - yvals, list of values, will place marker at each one
+        - span_xlim, if True, then line across plot. if False, then a marker onb the y axis.
+        """
+
+        XLIM = ax.get_xlim()
+
+        for val in yvals:
+            if span_xlim:
+                ax.axhline(val, color="k")
+            else:
+                ax.plot(XLIM[0]. val, ">", color=color)
+
 
 
 
@@ -2855,7 +2992,7 @@ class Session(object):
     #     self.plotmod_overlay_trial_events(ax, trialtdt)    
 
     def plotwrapper_raster_multrials_onesite(self, list_trials, site, alignto=None, 
-            SIZE=0.5):
+            SIZE=0.5, plot_beh=True):
         """ Plot one site, mult trials, overlaying for each trial its major events
         PARAMS:
         - list_trials, list of int. if None, then plots 20 random
@@ -2912,24 +3049,28 @@ class Session(object):
         ax.set_ylabel('trial');
         ax.set_title(self.sitegetter_summarytext(site))
 
-            # Final drawing
-        #     ax = axes.flatten()[2*i + 1]
-        #     SN.plot_final_drawing(ax, trial)
-        # Plot each drawing
-        SIZE = 2
-        fig_draw, axes_draw = plt.subplots(nrows, 2, sharex=True, figsize=(5, SIZE*nrows))
-        for i, trial in enumerate(list_trials):
-            
-            # Final drawing
-            ax = axes_draw.flatten()[1+ i*2]
-            ax.set_title(f"trial_{trial}")
-            self.plot_final_drawing(ax, trial, strokes_only=True)
-            
-            # task image
-            ax = axes_draw.flatten()[i*2]
-            ax.set_title(f"trial_{trial}")
-            self.plot_taskimage(ax, trial)
-            
+        # Final drawing
+            #     ax = axes.flatten()[2*i + 1]
+            #     SN.plot_final_drawing(ax, trial)
+            # Plot each drawing
+        if plot_beh:
+            SIZE = 2
+            fig_draw, axes_draw = plt.subplots(nrows, 2, sharex=True, figsize=(5, SIZE*nrows))
+            for i, trial in enumerate(list_trials):
+                
+                # Final drawing
+                ax = axes_draw.flatten()[1+ i*2]
+                ax.set_title(f"trial_{trial}")
+                self.plot_final_drawing(ax, trial, strokes_only=True)
+                
+                # task image
+                ax = axes_draw.flatten()[i*2]
+                ax.set_title(f"trial_{trial}")
+                self.plot_taskimage(ax, trial)
+        else:
+            fig_draw = None
+            axes_draw = None
+                
 
         return fig, axes, fig_draw, axes_draw
 
@@ -3012,6 +3153,63 @@ class Session(object):
 
         return fig1, fig2
 
+    def plotwrapper_smoothed_multtrials_multsites_timewindow(self, sites, trials, 
+            alignto="go_cue", pre_dur=-0.5, post_dur=2, ax=None,
+            plot_indiv=True, plot_summary=False, error_ver="sem",
+            pcol_both = None, pcol_indiv = "k", pcol_summary="r"
+            ):
+        """ Plot smoothed FR, across sites and trials, aligned to event 
+        First extracts this data, then plots
+        """
+
+        # 1) Extract the data 
+        pa = self.smoothedfr_extract_timewindow(trials, sites, alignto, pre_dur, post_dur)
+
+        # 2) plot
+        if pcol_both is not None:
+            pcol_indiv = pcol_both
+            pcol_summary = pcol_both
+        pa.plotwrapper_smoothed_fr(ax=ax, plot_indiv=plot_indiv, plot_summary=plot_summary, 
+            error_ver=error_ver, pcol_indiv=pcol_indiv, pcol_summary=pcol_summary)
+
+
+
+
+
+
+    def plotwrapper_smoothed_multtrials_multsites(self, sites, trials, ax, YLIM=None):
+        """ Helper for various ways of plotting smoothed fr, a single plot. 
+        Could call this multiple times with different YLIMS to stack multiple traces on single
+        plot
+        PARAMS;
+        - sites, list of ints
+        - trials, list of ints
+        - YLIM, [lower, higher] or None, if former, then rescales so that all fr are fit within
+        these y coordinates. all fr traces will retain their relative scales to each other. Useful
+        if want to stack traces on same plot.
+        """
+
+        assert isinstance(sites, list)
+        assert isinstance(trials, list)
+
+        # Get the fr for ths site across trials
+        df = self.smoothedfr_extract(trials, sites)
+
+        # if YLIM is not None:
+        #     frmax = 
+
+        # OPTION 1: each fr trace different length
+        # plot each fr trace on the axis
+        for i in range(len(df)):
+            times = df.iloc[i]["times"]
+            fr = df.iloc[i]["fr"]
+
+            ax.plot(times, fr)
+
+        # OPTION 2: each fr trace is same length, they are in PopAnal object
+
+
+
     ####################################################
     def plot_behcode_photodiode_sanity_check(self):
         """ Checks that each instance of a beh code is matched to a close
@@ -3089,32 +3287,33 @@ class Session(object):
             
             # ===== 2) Prune to only those with crosses, and plot those
             dfthis_pruned = dfthis[dfthis["n_crosses"]>0]
+            if len(dfthis_pruned)>0:
             
-            def F(x):
-                return x["timescross"][0]
-            dfthis_pruned = applyFunctionToAllRows(dfthis_pruned, F, "time_first_cross")
+                def F(x):
+                    return x["timescross"][0]
+                dfthis_pruned = applyFunctionToAllRows(dfthis_pruned, F, "time_first_cross")
 
-            def F(x):
-                return x["valscross"][0]
-            dfthis_pruned = applyFunctionToAllRows(dfthis_pruned, F, "val_first_cross")
+                def F(x):
+                    return x["valscross"][0]
+                dfthis_pruned = applyFunctionToAllRows(dfthis_pruned, F, "val_first_cross")
 
-            def F(x):
-                return x["timescross"][0] - x["time_behcode"][0]
-            dfthis_pruned = applyFunctionToAllRows(dfthis_pruned, F, "time_behcode_to_firstcross")
+                def F(x):
+                    return x["timescross"][0] - x["time_behcode"][0]
+                dfthis_pruned = applyFunctionToAllRows(dfthis_pruned, F, "time_behcode_to_firstcross")
 
-            def F(x):
-                if x["crossdir"]=="up":
-                    FLOOR = x["valminmax"][0]
-                elif x["crossdir"]=="down":
-                    FLOOR = x["valminmax"][1]
-                else:
-                    assert False
-                return x["val_first_cross"] - FLOOR
-            dfthis_pruned = applyFunctionToAllRows(dfthis_pruned, F, "val_first_cross_rel_floor")
+                def F(x):
+                    if x["crossdir"]=="up":
+                        FLOOR = x["valminmax"][0]
+                    elif x["crossdir"]=="down":
+                        FLOOR = x["valminmax"][1]
+                    else:
+                        assert False
+                    return x["val_first_cross"] - FLOOR
+                dfthis_pruned = applyFunctionToAllRows(dfthis_pruned, F, "val_first_cross_rel_floor")
 
-            fig = sns.pairplot(data=dfthis_pruned, vars=["time_first_cross", "val_first_cross", "val_first_cross_rel_floor", "n_crosses", "time_behcode_to_firstcross"])
-            fig.savefig(f"{sdir}/stats_crossings-code_{behcode}-codename_{self.behcode_convert(codenum=behcode, shorthand=True)}-stream_{stream}.pdf")
-            
+                fig = sns.pairplot(data=dfthis_pruned, vars=["time_first_cross", "val_first_cross", "val_first_cross_rel_floor", "n_crosses", "time_behcode_to_firstcross"])
+                fig.savefig(f"{sdir}/stats_crossings-code_{behcode}-codename_{self.behcode_convert(codenum=behcode, shorthand=True)}-stream_{stream}.pdf")
+                
             # === 3) save the dataframe
             path= f"{sdir}/dataframe-code_{behcode}-codename_{self.behcode_convert(codenum=behcode, shorthand=True)}-stream_{stream}.pkl"
             dfthis.to_pickle(path)
@@ -3192,6 +3391,10 @@ class Session(object):
         """
         return self._MapperTrialcode2TrialToTrial[trialcode]
 
+    def datasetbeh_trialcode_to_trial_batch(self, list_trialcodes):
+        """ Given list of trialcodes, get list of idnices into self.Dat
+        """
+        return [self.datasetbeh_trialcode_to_trial(tc) for tc in list_trialcodes]
 
 
     #################### CHECK THINGS
@@ -3235,8 +3438,10 @@ class Session(object):
 
     def print_summarize_expt_params(self):
         """ summarize things like expt name, aniaml, date, etc."""
+        print("**")
         print("Animal: ", self.Animal)
         print("ExptSynapse: ", self.ExptSynapse)
         print("Date: ", self.Date)
         print("RecPathBase: ", self.RecPathBase)
-        print("final_dir_name: ", self.Paths["final_dir_name"])
+        if self.Paths is not None:
+            print("final_dir_name: ", self.Paths["final_dir_name"])
