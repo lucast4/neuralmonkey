@@ -47,6 +47,7 @@ def load_and_preprocess_single_session(date, rec_session, animal = "Pancho"):
         SN = load_session_helper(date, dataset_beh_expt, rec_session, animal, expt, 
             do_all_copy_to_local=True)
     except Exception as err:
+        print("&&&&&&&&&&&&")
         print(date, dataset_beh_expt, rec_session, animal, expt, rec_session)
         raise
 

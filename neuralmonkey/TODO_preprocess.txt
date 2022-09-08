@@ -11,3 +11,17 @@ Beh Sessions that exist on this date:  220526 {'220526': [(1, 'charneuraltrain1'
 220719 
 - same issue
 Beh Sessions that exist on this date:  220719 {'220719': [(1, 'priminvar3e'), (2, 'priminvar3e')]}
+
+220601
+[scipy error] Skipping spike times for (rs, chan):  3 198
+**
+Animal:  Pancho
+ExptSynapse:  Lucas512-220520-115835
+Date:  220601
+RecPathBase:  /mnt/hopfield_data01/ltian/recordings
+final_dir_name:  Pancho-220601-172951
+220601 None 1 Pancho * 1
+220602
+Running: ['/data1/code/python/neuralmonkey/neuralmonkey/scripts/load_and_save_locally.py', '220602'] session:  0
+ in load_and_preprocess_single_session
+1
