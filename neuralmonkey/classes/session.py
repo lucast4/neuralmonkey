@@ -571,7 +571,7 @@ class Session(object):
                 # return None
             except Exception as err:
                 print(err)
-                print("Failed for this rs, chan: ",  rs, chan)
+                print("[_load_spike_times] Failed for this rs, chan: ",  rs, chan)
                 self.print_summarize_expt_params()
                 raise
                 # assert False
@@ -945,6 +945,9 @@ class Session(object):
                 print("** Loading datall from local (previusly cached)")
                 with open(self.Paths["datall_local"], "rb") as f:
                     self.DatAll = pickle.load(f)
+                    if self.DatAll is None:
+                        self.print_summarize_expt_params()
+                        assert False, "reextract DatAll..."
 
                 # Add timing info, since might not be done
                 self.datall_cleanup_add_things()
@@ -1392,19 +1395,21 @@ class Session(object):
             if D["rs"]==rs and D["chan"]==chan:
                 spiketimes = D["spike_times"]
 
-                if spiketimes is not None:
-                    # optionally window it
-                    if twind is not None:
-                        assert trial0 is None
-                        spiketimes, _, time_dur, time_on, time_off = self.extract_windowed_data(spiketimes, twind)
-                    elif trial0 is not None:
-                        assert twind is None
-                        spiketimes, _, time_dur, time_on, time_off = self.extract_windowed_data_bytrial(spiketimes, trial0)    
-                    else:
-                        assert False, "must be one or the other"
-                    return spiketimes, time_dur, time_on, time_off
+                if spiketimes is None:
+                    print("****")
+                    print(self.convert_site_to_rschan(sitenum), trial)
+                    print(self.print_summarize_expt_params())
+                    assert False, "figure out why this is None. probably in loading (scipy error) and I used to replace errors with None. I should re-extract the spikes."
+                # optionally window it
+                if twind is not None:
+                    assert trial0 is None
+                    spiketimes, _, time_dur, time_on, time_off = self.extract_windowed_data(spiketimes, twind)
+                elif trial0 is not None:
+                    assert twind is None
+                    spiketimes, _, time_dur, time_on, time_off = self.extract_windowed_data_bytrial(spiketimes, trial0)    
                 else:
-                    return None, None, None, None
+                    assert False, "must be one or the other"
+                return spiketimes, time_dur, time_on, time_off
                 
         print(rs, chan)
         assert False, 'this combo of rs and chan doesnt exist in DatSpikes!'
