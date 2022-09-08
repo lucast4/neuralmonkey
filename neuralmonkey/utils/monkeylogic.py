@@ -1,10 +1,10 @@
 """ for things for monkeylogic. uses the code there but here are wrappers
 """
 
-
-PATH_TO_DRAWMONKEY = "/data1/code/python/drawmonkey"
+from pythonlib.globals import PATH_DRAWMONKEY_DIR
+# PATH_DRAWMONKEY_DIR = "/data1/code/python/drawmonkey"
 import sys
-sys.path.append(PATH_TO_DRAWMONKEY)
+sys.path.append(PATH_DRAWMONKEY_DIR)
 
 from tools.preprocess import loadSingleDataQuick, getSessionsList
 from tools.utils import *

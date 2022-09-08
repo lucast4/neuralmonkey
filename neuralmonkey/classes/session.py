@@ -11,7 +11,8 @@ from ..utils import monkeylogic as mkl
 import pickle
 import os
 
-PATH_NEURALMONKEY = "/data1/code/python/neuralmonkey/neuralmonkey"
+from pythonlib.globals import PATH_NEURALMONKEY, PATH_DATA_NEURAL_RAW, PATH_DATA_NEURAL_PREPROCESSED
+# PATH_NEURALMONKEY = "/data1/code/python/neuralmonkey/neuralmonkey"
 
 def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Pancho", 
     expt="*", do_all_copy_to_local=False):
@@ -75,8 +76,8 @@ class Session(object):
             beh_trial_map_list=None,
             sites_garbage = None,
             expt="Lucas512-220520-115835", animal="Pancho", 
-            path_base = "/mnt/hopfield_data01/ltian/recordings", 
-            path_local = "/data3/recordings",
+            path_base = PATH_DATA_NEURAL_RAW, 
+            path_local = PATH_DATA_NEURAL_PREPROCESSED,
             rec_session=0, do_all_copy_to_local=False, 
             do_sanity_checks=False, do_sanity_checks_rawdupl=False,
             dataset_beh_expt= None):
