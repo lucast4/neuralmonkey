@@ -76,22 +76,31 @@ def load_and_preprocess_single_session(date, rec_session, animal = "Pancho"):
     SN.extract_raw_and_spikes_helper()
 
     # Spike trains:
+    print("** [load_and_preprocess_single_session] Step 1: spiketrain_as_elephant_batch")
     SN.spiketrain_as_elephant_batch()
 
     # Check beh code and photodiode match
+    print("** [load_and_preprocess_single_session] Step 2: plot_behcode_photodiode_sanity_check")
     SN.plot_behcode_photodiode_sanity_check()
 
     # Save
+    print("** [load_and_preprocess_single_session] Step 3: plot_spike_waveform_multchans")
     path = f"{SN.Paths['figs_local']}/waveforms_overlay"
     if not os.path.exists(path):
         SN.plot_spike_waveform_multchans(LIST_YLIM = [[-250, 100]])
 
+    print("** [load_and_preprocess_single_session] Step 4: plot_spike_waveform_stats_multchans")
     path = f"{SN.Paths['figs_local']}/waveforms_stats"
     if not os.path.exists(path):
         SN.plot_spike_waveform_stats_multchans(None)
 
     # Get stats about fr
+    print("** [load_and_preprocess_single_session] Step 5: sitestats_fr_get_and_save")
     SN.sitestats_fr_get_and_save()
+
+    # Save stats about fr (usefeul for pruning low fr sitse and nosy sites)
+    print("** [load_and_preprocess_single_session] Step 6: plotbatch_sitestats_fr_overview")
+    SN.plotbatch_sitestats_fr_overview()
     
     print("** COMPLETED load_and_save_locally !!")
 
