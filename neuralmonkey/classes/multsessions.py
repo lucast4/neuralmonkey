@@ -11,6 +11,8 @@ class MultSessions(object):
         - list_sessions, list of Session objects.
         """
 
+        assert len(list_sessions)>0
+        
         self.SessionsList = list_sessions
 
         self._generate_index() 
@@ -67,6 +69,22 @@ class MultSessions(object):
         return SN, trial_in_sess, sessnum
 
 
+    ########### DATASET beh
+    def datasetbeh_extract(self):
+        """ Get concatenated dataset
+        RETURNS:
+        - D, concatted dataset
+        """
+        from pythonlib.dataset.analy_dlist import concatDatasets
+
+        Dlist = []
+        for sn in self.SessionsList:
+            Dlist.append(sn.Datasetbeh)
+
+        # Merge datasets
+        D = concatDatasets(Dlist)
+
+        return D
 
 
     ################### SITES
