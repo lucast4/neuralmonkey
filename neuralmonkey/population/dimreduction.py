@@ -114,7 +114,8 @@ def runclassify(Mod, ModBase, modver, pop, yvar, use_actual_neurons=False):
 
 
 def plotStateSpace(X, dim1=None, dim2=None, plotndim=2, ax=None, 
-    color=None, is_traj=False, text_plot_pt1=None, color_dict=None):
+    color=None, is_traj=False, text_plot_pt1=None, color_dict=None,
+    hack_remove_outliers=False):
     """ general, for plotting state space, will work
     with trajectories or pts (with variance plotted)
     PARAMS:
@@ -158,10 +159,29 @@ def plotStateSpace(X, dim1=None, dim2=None, plotndim=2, ax=None,
         for cat in color:
             assert cat in color_dict.keys()
 
+    # color = np.asarray(color)
+
     # PLOT
     if plotndim==2:
         x1 = X[dim1[0], dim2]
         x2 = X[dim1[1], dim2]
+
+        if hack_remove_outliers:
+            # quick and dirty
+            NSTD = 3.5
+            indsout = (x1 > np.mean(x1)+NSTD*np.std(x1)) | (x1 < np.mean(x1)-NSTD*np.std(x1)) | (x2 > np.mean(x2)+NSTD*np.std(x2)) | (x2 < np.mean(x2)-NSTD*np.std(x2))        
+            x1 = x1[~indsout]
+            x2 = x2[~indsout]
+            # assert sum(indsout)<4, "weird...?"
+            # color = color[~indsout]
+            # # print("Here")
+            # # # print(indsout.shape)
+            # # # print(~indsout)
+            # print(np.argwhere(indsout))
+
+            inds_bad = np.argwhere(indsout)
+            color = [color[i] for i in range(len(color)) if i not in inds_bad]
+
         # ax.scatter(x1, x2, c=color)    
         dfthis = pd.DataFrame({"x":x1, "y":x2, "color":color})
         sns.scatterplot(data=dfthis, x="x", y="y", hue="color", ax=ax, palette=color_dict)

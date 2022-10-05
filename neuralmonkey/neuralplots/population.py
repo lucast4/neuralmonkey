@@ -56,6 +56,8 @@ def plotNeurTimecourse(X, times=None, ax=None, n_rand=None, marker="-", color="k
 
     if ax is None:
         fig, ax = plt.subplots(figsize=(10,5))
+    else:
+        fig = None
     
     # X = self.activations[pop][tasknum]
     X_nonan = X[:]
@@ -74,6 +76,7 @@ def plotNeurTimecourse(X, times=None, ax=None, n_rand=None, marker="-", color="k
     #     from pythonlib.tools.plottools import shadedErrorBar
     #     assert Xmean is not None
     #     shadedErrorBar(t, Xmean, yerr=Xerror, ax=ax)
+    return fig, ax
     
 def plotNeurTimecourseErrorbar(Xmean, Xerror, times=None, ax=None, color="k"):
     """ Plot timecourse + shaded error bar
@@ -87,12 +90,16 @@ def plotNeurTimecourseErrorbar(Xmean, Xerror, times=None, ax=None, color="k"):
 
     if ax is None:
         fig, ax = plt.subplots(figsize=(10,5))
+    else:
+        fig = None
     
     if times is None:
         t = np.arange(len(X))
     else:
         t = times
     shadedErrorBar(t, Xmean, yerr=Xerror, ax=ax, color=color)
+
+    return fig, ax
 
 
 def plotStateSpace(X, dim1=None, dim2=None, plotndim=2, ax=None, color=None):
@@ -105,6 +112,7 @@ def plotStateSpace(X, dim1=None, dim2=None, plotndim=2, ax=None, color=None):
     match the plotndim.
     - plotndim, [2, 3] whether 2d or 3d
     """
+    assert False, "use the one in dimreduction"
     assert False, "copied over from drawnn.notebooks_analy.analy_everythinguptonow_021021 Not sure if works here."
     import seaborn as sns
     
@@ -122,8 +130,7 @@ def plotStateSpace(X, dim1=None, dim2=None, plotndim=2, ax=None, color=None):
     
     # how many time bins?
     if dim2 is None:
-        dim2 = np.arange(X.shape[1])
-            
+        dim2 = np.arange(X.shape[1])    
     # PLOT
     if plotndim==2:
         x1 = X[dim1[0], dim2]

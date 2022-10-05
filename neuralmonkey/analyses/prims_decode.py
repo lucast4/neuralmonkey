@@ -55,6 +55,7 @@ def dftrials_slice_for_model(DfTrials, inds, yfeat, map_var_to_cat,
         assert False
     X = np.stack(DfTrials.iloc[inds][xname].tolist(), axis=1).T
     if ndims:
+
         X = X[:, :ndims]
     assert X.shape[0] == len(inds)
 
@@ -103,10 +104,12 @@ def get_test_data_and_models(DfTrials, dfmodels, yfeat, VER):
             dfmodels_this = dfmodels[dfmodels["shape_test"]=="all"].reset_index(drop=True)
         elif yfeat=="gridloc":
             dfmodels_this = dfmodels[dfmodels["loc_test"]==(99,99)].reset_index(drop=True)
+        elif yfeat=="gridsize":
+            dfmodels_this = dfmodels[dfmodels["size_test"]=="all"].reset_index(drop=True)
         else:
             print(yfeat)
             print(dfmodels)
-            assert False
+            assert False, "code it for this yfeat?"
         
         def test_data_getter(dfthis, ind):
             """ Returns Xtest, ytest"""
@@ -237,7 +240,6 @@ def decode_and_plot_iter_hyperparams(MS, DS, LIST_REGIONS, LIST_ALIGN_TO, LIST_Y
 
                 for ndims in LIST_NDIMS:
 
-
                     #### PARAMS
                     map_var_to_cat = MapVarToCat[yfeat]
 
@@ -245,17 +247,25 @@ def decode_and_plot_iter_hyperparams(MS, DS, LIST_REGIONS, LIST_ALIGN_TO, LIST_Y
                     list_varnames = DATAPLOT_GROUPING_VARS
                     LIST_SHAPES = DfTrials["shape_oriented"].unique().tolist()
                     LIST_LOCS = DfTrials["gridloc"].unique().tolist()
+                    LIST_SIZES = DfTrials["gridsize"].unique().tolist()
 
                     if yfeat=="shape_oriented":
                         LIST_SHAPES_THIS = LIST_SHAPES + [None]
                         LIST_LOCS_THIS = LIST_LOCS
+                        LIST_SIZES_THIS = LIST_SIZES    
                     elif yfeat=="gridloc":
                         LIST_SHAPES_THIS = LIST_SHAPES
                         LIST_LOCS_THIS = LIST_LOCS + [None]
+                        LIST_SIZES_THIS = LIST_SIZES    
+                    elif yfeat=="gridsize":
+                        LIST_SHAPES_THIS = LIST_SHAPES
+                        LIST_LOCS_THIS = LIST_LOCS
+                        LIST_SIZES_THIS = LIST_SIZES + [None]
                     else:
                         assert False
 
                     for do_recenter in LIST_RECENTER_BY_GROUP_MEAN:
+
                         if do_recenter:
                             which_x = "x_centered"
                         else:
@@ -265,116 +275,132 @@ def decode_and_plot_iter_hyperparams(MS, DS, LIST_REGIONS, LIST_ALIGN_TO, LIST_Y
                         for shape_test in LIST_SHAPES_THIS:
                         #     shape_test = "Lcentered-4-0"
                             for loc_test in LIST_LOCS_THIS:
+                                
+                                for size_test in LIST_SIZES_THIS:
 
-                                ############### RUN
-                        #     for loc_test in [(-1,-1), (-1,1), (1,-1), (1,1), None]:
-                            #     loc_test = (1,-1)
-                                inds_train, inds_test = get_traintest_split_conjunction(DfTrials, list_varnames, [shape_test, loc_test])
+                                    ############### RUN
+                            #     for loc_test in [(-1,-1), (-1,1), (1,-1), (1,1), None]:
+                                #     loc_test = (1,-1)
+                                    inds_train, inds_test = get_traintest_split_conjunction(DfTrials, list_varnames, 
+                                                                                            [shape_test, loc_test, size_test])
+                                    
+                                    
+                                    print("Train N: ", len(inds_train))
+                                    print("Test N: ", len(inds_test))
+                                    if len(inds_test)==0:
+                                        # Skip this
+                                        print("Skipping (because n test=0): [shape_test, loc_test, size_test]", shape_test, loc_test, size_test)
+                                        continue
 
-                                print("Train N: ", len(inds_train))
-                                print("Test N: ", len(inds_test))
-                                if len(inds_test)==0:
-                                    # Skip this
-                                    print("Skipping (because n test=0): [shape_test, loc_test]", shape_test, loc_test)
-                                    continue
+                                    # Sanity check
+                                    for i in inds_train:
+                                        assert i not in inds_test
 
-                                # Sanity check
-                                for i in inds_train:
-                                    assert i not in inds_test
+                                    # Convert to X, y
+                                    Xtrain, ytrain, ndims = dftrials_slice_for_model(DfTrials, inds_train, yfeat, 
+                                        map_var_to_cat, ndims, which_x=which_x)
+                                    Xtest, ytest, ndims = dftrials_slice_for_model(DfTrials, inds_test, yfeat, 
+                                        map_var_to_cat, ndims, which_x=which_x)
 
-                                # Convert to X, y
-                                Xtrain, ytrain, ndims = dftrials_slice_for_model(DfTrials, inds_train, yfeat, 
-                                    map_var_to_cat, ndims, which_x=which_x)
-                                Xtest, ytest, ndims = dftrials_slice_for_model(DfTrials, inds_test, yfeat, 
-                                    map_var_to_cat, ndims, which_x=which_x)
+                                    # Fit /test model
+                                    model_params_optimal = {"C":0.01} # optimized regularization params
+                                    pipe, score = _model_fit(Xtrain, ytrain, model_params=model_params_optimal)
 
-                                # Fit /test model
-                                model_params_optimal = {"C":0.01} # optimized regularization params
-                                pipe, score = _model_fit(Xtrain, ytrain, model_params=model_params_optimal)
+                                    print("*** Held out test data score: ", pipe.score(Xtest, ytest), " - ", loc_test)
+                                    pipe.get_params()
+                                    mod = pipe.get_params()["lin_svm"]
 
-                                print("*** Held out test data score: ", pipe.score(Xtest, ytest), " - ", loc_test)
-                                pipe.get_params()
-                                mod = pipe.get_params()["lin_svm"]
+                                    # SAVE THINGS
+                                    out.append({
+                                        "shape_test":shape_test,
+                                        "loc_test":loc_test,
+                                        "size_test":size_test,
+                                        "Xtrain":Xtrain,
+                                        "ytrain":ytrain,
+                                        "Xtest":Xtest,
+                                        "ytest":ytest,
+                                        "inds_train":inds_train,
+                                        "inds_test":inds_test,
+                                        "ntrain":len(inds_train),
+                                        "ntest":len(inds_test),
+                                        "ndims":ndims,
+                                        "yfeat":yfeat,
+                                        "pipe":pipe,
+                                        "score_train":score,
+                                        "score_test":pipe.score(Xtest, ytest),
+                                        "do_recenter_to_grp":do_recenter
+                                    })
 
-                                # SAVE THINGS
-                                out.append({
-                                    "shape_test":shape_test,
-                                    "loc_test":loc_test,
-                                    "Xtrain":Xtrain,
-                                    "ytrain":ytrain,
-                                    "Xtest":Xtest,
-                                    "ytest":ytest,
-                                    "inds_train":inds_train,
-                                    "inds_test":inds_test,
-                                    "ntrain":len(inds_train),
-                                    "ntest":len(inds_test),
-                                    "ndims":ndims,
-                                    "yfeat":yfeat,
-                                    "pipe":pipe,
-                                    "score_train":score,
-                                    "score_test":pipe.score(Xtest, ytest),
-                                    "do_recenter_to_grp":do_recenter
-                                })
+                            dfmodels = pd.DataFrame(out)
 
-                        dfmodels = pd.DataFrame(out)
+                            # Names of variables, make them intepretable for plotting. Convert Nones to something else.
+                            dfmodels = replaceNone(dfmodels, "size_test", "all")
+                            dfmodels = replaceNone(dfmodels, "shape_test", "all")
+                            dfmodels = replaceNone(dfmodels, "loc_test", (99,99))
 
-                        # Names of variables, make them intepretable for plotting. Convert Nones to something else.
-                        dfmodels = replaceNone(dfmodels, "shape_test", "all")
-                        dfmodels = replaceNone(dfmodels, "loc_test", (99,99))
+                            ##### Model plots
+                            if REGIONS is None:
+                                regions = ["ALL"]
+                            else:
+                                regions = REGIONS
+                            sdir = f"{SAVEDIR_DECODE}/alignto_{align_to}-yfeat_{yfeat}-region_{'__'.join(regions)}-ndims_{ndims}-do_recenter_to_grp_{do_recenter}"
+                            print("Saving model/figs at: ", sdir)
+                            import os
+                            os.makedirs(sdir, exist_ok=True)
 
+                            # save model results and params
+                            dfmodels.to_pickle(f"{sdir}/dfmodels.pkl")
 
-                        ##### Model plots
-                        if REGIONS is None:
-                            regions = ["ALL"]
-                        else:
-                            regions = REGIONS
-                        sdir = f"{SAVEDIR_DECODE}/alignto_{align_to}-yfeat_{yfeat}-region_{'__'.join(regions)}-ndims_{ndims}-do_recenter_to_grp_{do_recenter}"
-                        print("Saving model/figs at: ", sdir)
-                        import os
-                        os.makedirs(sdir, exist_ok=True)
-
-                        # save model results and params
-                        dfmodels.to_pickle(f"{sdir}/dfmodels.pkl")
-
-                        # prediction accuracy
-                        if yfeat=="shape_oriented":
-                            x = "shape_test"
-                            hue = "loc_test"
-                        elif yfeat=="gridloc":
-                            x = "loc_test"
-                            hue = "shape_test"
-                        else:
-                            assert False
-
-                        fig = sns.catplot(data=dfmodels, x = x, y="score_test", hue=hue, kind="bar", height=7, aspect=1.5)
-                        fig.savefig(f"{sdir}/score_test_summarybars-x_vartopredict-hue_heldoutlevel.pdf")
-
-
-                        ##### Generate confusion matrix for any given model
-
-                        # ALSO: Given a specific model, return its prediction for any pt
-
-
-                        ### Test dataset. Two options:
-
-                        VER = "held_out_model_specific"
-                        dfmodels_this, test_data_getter = get_test_data_and_models(DfTrials, dfmodels, yfeat, VER)
+                            # prediction accuracy
+                            if yfeat=="shape_oriented":
+                                x = "shape_test"
+                    #             hue = "loc_test"
+                                hue = ("loc_test", "size_test")
+                            elif yfeat=="gridloc":
+                                x = "loc_test"
+                    #             hue = "shape_test"
+                                hue = ("shape_test", "size_test")
+                            elif yfeat=="gridsize":
+                                x = "size_test"
+                    #             hue = "shape_test"
+                                hue = ("shape_test", "loc_test")
+                            else:
+                                assert False
+                            
+                            if isinstance(hue, tuple):
+                                from pythonlib.tools.pandastools import append_col_with_grp_index
+                                dfmodels = append_col_with_grp_index(dfmodels, hue, "-".join(hue))
+                                hue = "-".join(hue)
+                                
+                            fig = sns.catplot(data=dfmodels, x = x, y="score_test", hue=hue, kind="bar", height=7, aspect=1.5)
+                            fig.savefig(f"{sdir}/score_test_summarybars-x_vartopredict-hue_heldoutlevel.pdf")
 
 
-                        ##### Plot - confusion matrix
+                            ##### Generate confusion matrix for any given model
 
-                        # Make mapper: code --> name
-                        mapper_label_code_to_name = {}
-                        for name, num in MapVarToCat[yfeat].items():
-                            assert num not in mapper_label_code_to_name.keys()
-                            mapper_label_code_to_name[num] = name
-                        print(mapper_label_code_to_name)
+                            # ALSO: Given a specific model, return its prediction for any pt
 
-                        def get_model_string_name(dfmodels, indrow):
-                            name = f"shapetest_{dfmodels.iloc[indrow]['shape_test']}-loctest_{dfmodels.iloc[indrow]['loc_test']}-yfeat_{dfmodels.iloc[indrow]['yfeat']}-testsc_{dfmodels.iloc[indrow]['score_test']:.2f}"
-                            return name
 
-                        for indmod in range(len(dfmodels_this)):
-                            modelstr = get_model_string_name(dfmodels_this, indmod)
-                            fig = plotsummary_confusion_matrix(dfmodels_this, test_data_getter, indmod, mapper_label_code_to_name);
-                            fig.savefig(f"{sdir}/confusionmat_{modelstr}.pdf")
+                            ### Test dataset. Two options:
+
+                            VER = "held_out_model_specific"
+                            dfmodels_this, test_data_getter = get_test_data_and_models(DfTrials, dfmodels, yfeat, VER)
+
+
+                            ##### Plot - confusion matrix
+
+                            # Make mapper: code --> name
+                            mapper_label_code_to_name = {}
+                            for name, num in MapVarToCat[yfeat].items():
+                                assert num not in mapper_label_code_to_name.keys()
+                                mapper_label_code_to_name[num] = name
+                            print(mapper_label_code_to_name)
+
+                            def get_model_string_name(dfmodels, indrow):
+                                name = f"shapetest_{dfmodels.iloc[indrow]['shape_test']}-loctest_{dfmodels.iloc[indrow]['loc_test']}-yfeat_{dfmodels.iloc[indrow]['yfeat']}-testsc_{dfmodels.iloc[indrow]['score_test']:.2f}"
+                                return name
+
+                            for indmod in range(len(dfmodels_this)):
+                                modelstr = get_model_string_name(dfmodels_this, indmod)
+                                fig = plotsummary_confusion_matrix(dfmodels_this, test_data_getter, indmod, mapper_label_code_to_name);
+                                fig.savefig(f"{sdir}/confusionmat_{modelstr}.pdf")

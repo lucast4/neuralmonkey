@@ -850,7 +850,9 @@ class PopAnal():
 
         # 1) Plot indiividual traces?
         if plot_indiv:
-            plotNeurTimecourse(X, times,ax=ax, color = pcol_indiv)
+            fig1, ax1 = plotNeurTimecourse(X, times,ax=ax, color = pcol_indiv)
+        else:
+            fig1, ax1 = None, None
             
         # 2) Plot summary too?
         if plot_summary:
@@ -862,7 +864,11 @@ class PopAnal():
                 print(error_ver)
                 assert False, "not coded"
             
-            plotNeurTimecourseErrorbar(Xmean, Xerror=Xsem, times=times,ax=ax, color=pcol_summary)
+            fig2, ax2 = plotNeurTimecourseErrorbar(Xmean, Xerror=Xsem, times=times,ax=ax, color=pcol_summary)
+        else:
+            fig2, ax2 = None, None
+
+        return fig1, ax1, fig2, ax2
 
 
 
@@ -1019,8 +1025,8 @@ def compute_data_projections(PA, DF, MS, VERSION, REGIONS, DATAPLOT_GROUPING_VAR
     - VERSION, str, how to represent data. does all transfomrations required.
     --- if "PCA", then will need the params starting with pca_*:
     - REGIONS, list of str, brain regions, prunes data to just this
-    - DATAPLOT_GROUPING_VARS, lsit of strings, each a variable, takes conjunction to make gorups. this 
-    controls data represtations, but doesnt not affect the pca space.
+    - DATAPLOT_GROUPING_VARS, lsit of strings, each a variable, takes conjunction to make gorups, with each
+    group a row in the resulting dataframe. this controls data represtations, but doesnt not affect the pca space.
     - pca_trial_agg_grouping, list of str each a category, takes conjunction to defines the groups that are then
     used for PCA.
     - pca_trial_agg_method, pca_time_agg_method str, both strings, how to aggregate (mean) data
@@ -1087,6 +1093,7 @@ def compute_data_projections(PA, DF, MS, VERSION, REGIONS, DATAPLOT_GROUPING_VAR
             x = PApca.reprojectInput(x, len(PAallThis.Chans))
         dat["X_timemean"] = x
         dat["X_timetrialmean"] = np.mean(x, 1)
+        dat["X_timetrialmedian"] = np.median(x, 1)
         dat["X_timemean_trialsem"] = stats.sem(x, 1)
         
     # Convert to dataframe and append columns indicate labels
