@@ -14,8 +14,46 @@ import os
 from pythonlib.globals import PATH_NEURALMONKEY, PATH_DATA_NEURAL_RAW, PATH_DATA_NEURAL_PREPROCESSED
 # PATH_NEURALMONKEY = "/data1/code/python/neuralmonkey/neuralmonkey"
 
+
+assert os.path.exists(PATH_DATA_NEURAL_RAW)
+
+def load_mult_session_helper(DATE, animal, dataset_beh_expt=None, expt = "*"):
+    """ Hacky, iterates over range(10) sessions, concatenations into a single MultSessions
+    for this date.
+    """
+
+    from neuralmonkey.classes.multsessions import MultSessions
+
+    SNlist = []
+    for rec_session in range(10):
+        # go thru many, if doesnt exist will not do it.
+        # rec_session = 1 # assumes one-to-one mapping between neural and beh sessions.
+        print("session: ", rec_session)
+
+        # ============= RUN
+        # beh_session = rec_session+1 # 1-indexing.
+        # sessdict = mkl.getSessionsList(animal, datelist=[date])
+
+        # print("ALL SESSIONS: ")
+        # print(sessdict)
+
+        try:
+            SN = load_session_helper(DATE, dataset_beh_expt, rec_session, animal, expt)
+            SNlist.append(SN)
+        except Exception as err:
+            pass
+
+    assert len(SNlist)>0, "did not find any neural sessions..."
+
+    # Combine into all sessions
+    MS = MultSessions(SNlist)
+    return MS
+
+
 def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Pancho", 
-    expt="*", do_all_copy_to_local=False):
+    expt="*", do_all_copy_to_local=False,
+    extract_spiketrain_elephant=False,
+    ):
     """ Load a single recording session.
     PARAMS:
     - DATE, str, "yymmdd"
@@ -24,9 +62,13 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
     assumes one-to-one mapping between neural and beh sessions.
     - animal, str
     - expt, for finding raw beh data
+    - extract_<stuff>, data you want to extract
     RETURNS:
     - SN, session
     """
+
+    if dataset_beh_expt is not None:
+        assert len(dataset_beh_expt)>1, "if skip, then make this None"
 
     # 1) Find the raw beh data (filedata)
     # Assume that the beh sessions increment in order, matching the neural sessions
@@ -57,8 +99,13 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
         rec_session = rec_session, dataset_beh_expt=dataset_beh_expt, 
         do_all_copy_to_local=do_all_copy_to_local)
 
+    ############ EXTRACT STUFF
     # Extract spikes
     SN.extract_raw_and_spikes_helper()
+    
+    # Get spike trains for all trials.
+    if extract_spiketrain_elephant:
+        SN.spiketrain_as_elephant_batch()
 
     # Load dataset beh
     if dataset_beh_expt is not None:
@@ -77,7 +124,7 @@ class Session(object):
             sites_garbage = None,
             expt="Lucas512-220520-115835", animal="Pancho", 
             path_base = PATH_DATA_NEURAL_RAW, 
-            path_local = PATH_DATA_NEURAL_PREPROCESSED,
+            path_local = f"{PATH_DATA_NEURAL_PREPROCESSED}/recordings",
             rec_session=0, do_all_copy_to_local=False, 
             do_sanity_checks=False, do_sanity_checks_rawdupl=False,
             dataset_beh_expt= None):
@@ -558,6 +605,11 @@ class Session(object):
         import scipy.io as sio
         import scipy
         import zlib
+
+        if self.Paths['spikes'] is None:
+            print(self.Paths)
+            self.print_summarize_expt_params()
+            assert False
         fn = f"{self.Paths['spikes']}/RSn{rs}-{chan}"
         print(f"Loading this spikes file: {fn}.mat")
         if return_none_if_fail:
@@ -633,6 +685,11 @@ class Session(object):
         # 1) target folder
         sdir = f"{self.Paths['pathbase_local']}/{spikes_ver}"
         os.makedirs(sdir, exist_ok=True)
+
+        if self.Paths['spikes'] is None:
+            print(self.Paths)
+            self.print_summarize_expt_params()
+            assert False
 
         # 2) copy over images
         images = glob.glob(f"{self.Paths['spikes']}/*.png")
@@ -773,6 +830,11 @@ class Session(object):
         if site not in self.DatSpikeWaveforms.keys():
             import zlib
             import scipy.io as sio
+
+            if self.Paths['spikes'] is None:
+                print(self.Paths)
+                self.print_summarize_expt_params()
+                assert False
 
             PATH_SPIKES = self.Paths["spikes"]
 
@@ -1492,6 +1554,18 @@ class Session(object):
         print("Total (accounting for overlap): ", len(self.SitesDirty))
         # print("Total: ", ntot)
 
+        # sn.sitegetter_all(["dlPFC_p", "dlPFC_a"])
+        print("------")
+        print("Summary for each overall region")
+        regions_summary = ["M1", "PMv", "PMd", "dlPFC", "vlPFC", "FP", "SMA", "preSMA"]
+        max_prev = 0
+        print("region, nunits, --, min(sitenum), max(sitenum)")
+        for regsum in regions_summary:
+            sites = self.sitegetter_brainregion(regsum)
+            print(regsum, len(sites), "----", min(sites), max(sites))
+            min_this = min(sites)
+            assert min_this > max_prev
+            max_prev = min_this
 
 
     def sitegetter_summarytext(self, site):
@@ -1546,23 +1620,27 @@ class Session(object):
 
     def sitegetter_all(self, list_regions=None, clean=True):
         """ Get all sites, in order
-        MNOTE: will not be in order of list_regions, but will be in order in channels.
+        MNOTE: will be in order of list_regions
         PARAMS:
         - list_regions, get only these regions. leave None to get all. if None,
         then returns all sites.
         RETURNS:
         - list of sites
         """
-        bregion_mapper = self.sitegetter_brainregion("mapper", clean=clean)
-        if list_regions is None:
-            bm = bregion_mapper
-        else:
-            bm = {br:sites for br, sites in bregion_mapper.items() if br in list_regions}
 
-        sites = [s for br, ss in bm.items() for s in ss]
+        if list_regions is None:
+            bm = self.sitegetter_brainregion("mapper", clean=clean)
+            sites = [s for br, ss in bm.items() for s in ss]
+        else:
+            assert isinstance(list_regions, list)           
+            tmp = [self.sitegetter_brainregion(reg, clean=clean) for reg in list_regions]
+            sites = [site for list_sites in tmp for site in list_sites]
+
+            # bm = {br:sites for br, sites in bregion_mapper.items() if br in list_regions}
+
         return sites
 
-    def sitegetter_brainregion(self, region=None, clean=False):
+    def sitegetter_brainregion(self, region=None, clean=True):
         """ Flexible getter of channels based on region
         PARAMS:
         - region, flexible input. see within code
@@ -1603,7 +1681,16 @@ class Session(object):
                 list_chans.extend(sites)
             return list_chans
         elif isinstance(region, str):
-            return dict_sites[region]
+            if region in dict_sites.keys():
+                # Then is one of the main regions
+                return dict_sites[region]
+            else:
+                # Then could be a summary region
+                def _regions_in(summary_region):
+                    """ get list of regions (e.g, ["dlPFC_a", 'dlPFC_p']) that are in this summary region (e.g., dlPFC)
+                    """
+                    return [reg for reg in regions_in_order if reg.find(summary_region)==0]
+                return self.sitegetter_all(list_regions=_regions_in(region), clean=clean)
         else:
             assert False
 
@@ -1704,7 +1791,7 @@ class Session(object):
         
         self._savelocal_datall()
 
-    def sitestats_get_low_fr_sites(self, low_fr_thresh=2):
+    def sitestats_get_low_fr_sites(self, low_fr_thresh=2, savedir=None):
         """ FInds sites with mean fr less than threshold; 
         useful for pruning neurons, etc.
         """
@@ -1746,21 +1833,85 @@ class Session(object):
         # print(sites_sorted)
         # print("-- FR, sorted (increasing fr): ")
         # print(frmeans_sorted)
-        site_fr = [f"{s}[{fr:.0f}]" for s, fr in zip(sites_sorted, frmeans_sorted)]
+        site_fr = [f"{s}[{fr:.1f}]" for s, fr in zip(sites_sorted, frmeans_sorted)]
         print("-- SITE(FR), sorted (increasing fr): ")
         print(site_fr)
-        
 
+        
         ####### Get low Fr sites
         sites_lowfr = sites[frmeans<low_fr_thresh]
+        print(frmeans)
+        print(low_fr_thresh)
+        print(sites_lowfr)
+        assert False
+        nsites_fail = sum(frmeans<low_fr_thresh)
         print("Low FR sites: ", sites_lowfr)
-        print("Num sites failing threshold: ", sum(frmeans<low_fr_thresh))
+        print("Num sites failing threshold: ", nsites_fail)
+
+        sites_lowfr_sorted = sites_sorted[frmeans_sorted<low_fr_thresh]
+
+        sites_lowfr_sorted_str = [str(s) for s in sites_lowfr_sorted]
+        sites_lowfr_sorted_str = ', '.join(sites_lowfr_sorted_str)
+
 
         sites_lowfr_str = [str(s) for s in sites_lowfr]
         sites_lowfr_str = ', '.join(sites_lowfr_str)        
         print("low fr sites, as strings: ")
         print(sites_lowfr_str)
 
+        # summarize
+        summary = {
+            "string_site_fr_sorted_increasing":site_fr,
+            'nsites_fail':nsites_fail,
+            "nums_site_lowfr":sites_lowfr,
+            "nums_site_lowfr_sorted":sites_lowfr_sorted,
+            "string_site_lowfr_sorted":sites_lowfr_sorted_str,
+            "string_site_lowfr":sites_lowfr_str,
+            "sites_sorted":sites_sorted,
+            "frmeans_sorted":frmeans_sorted
+        }
+
+        frdict = {s:fr for s, fr in zip(sites_sorted, frmeans_sorted)}
+
+        if savedir is not None:
+            from pythonlib.tools.expttools import writeDictToYaml
+            writeDictToYaml(summary, f"{savedir}/summary-frthresh_{low_fr_thresh}.yaml")
+
+            fig.savefig(f"{savedir}/frhist-frthresh_{low_fr_thresh}.pdf")
+        return fig, summary, frdict
+
+    def plotbatch_sitestats_fr_overview(self, LIST_FR_THRESH = [2, 4.5, 40]):
+        """ [preprocessing] Plots and saves fr across sites
+        , including (1) printing the sites (2) histograms, 
+        (3) example rasters (sites, across triasl).
+        Useful for deciding what sites to throw out due to
+        low fr.
+        PARAMS:
+        - LIST_FR_THRESH, list of nums, will make plots and save text for each of
+        these possible threshold. [2, 4.5, 40], good for 5.5, 4.5, 3.5 x STD (by eye)
+        NOTE: skips if finds that directory already exists (DONE)
+        """
+        # Plot 
+        import os
+        import random
+
+        savedir = f"{self.Paths['figs_local']}/fr_distributions"
+
+        if os.path.exists(savedir):
+            return
+
+        for fr_thresh in LIST_FR_THRESH:
+            os.makedirs(savedir, exist_ok=True)
+            fig, summary, frdict = self.sitestats_get_low_fr_sites(fr_thresh, savedir=savedir)
+            
+        # Plot example rasters, sampled uniformly across fr values.
+        sites_plot = summary["sites_sorted"][::20]
+        n = 20
+        trials_plot = random.sample(self.get_trials_list(True), n)
+        for s in sites_plot:
+            fig, axes, fig_draw, axes_draw = self.plotwrapper_raster_multrials_onesite(trials_plot, s);
+            fr = frdict[s]
+            fig.savefig(f"{savedir}/exampleraster-fr_{fr}-site_{s}.pdf")
 
 
     ############################ BEH STUFF (ML)
@@ -2115,7 +2266,7 @@ class Session(object):
             if not self.beh_fixation_success(trial) and event in list_events_skip_if_no_fixation:
                 time = None
             else:
-                if event=="stim_onset":
+                if event in ["samp", "stim_onset"]:
                     # Use photodiode
                     behcode = 91
                     stream = 'pd1'
@@ -2168,33 +2319,38 @@ class Session(object):
         - eventkind, string, if None, then tries to find it automatically.
         """
 
-        if isinstance(event, tuple):
-            eventkind = event[0]            
-            if eventkind=="strokes":
-                # event = (strokes, 1, "on")
-                strokenum = event[1] # 0, 1, .. -1
-                timepoint = event[2] # on, off
-                ons, offs = self.strokes_extract_ons_offs(trial)
-                if timepoint=="on":
-                    alignto_time = ons[strokenum]
-                elif timepoint=="off":
-                    alignto_time = offs[strokenum]
+        try:
+            # Better version using photodiode or motor
+            return self.events_get_time_all(trial, [event])[event]
+        except:
+            asdasdasd
+            if isinstance(event, tuple):
+                eventkind = event[0]            
+                if eventkind=="strokes":
+                    # event = (strokes, 1, "on")
+                    strokenum = event[1] # 0, 1, .. -1
+                    timepoint = event[2] # on, off
+                    ons, offs = self.strokes_extract_ons_offs(trial)
+                    if timepoint=="on":
+                        alignto_time = ons[strokenum]
+                    elif timepoint=="off":
+                        alignto_time = offs[strokenum]
+                    else:
+                        assert False
                 else:
+                    print(eventkind)
                     assert False
+            elif isinstance(event, str):
+                # THis is behcode shorthand
+                code = self.behcode_convert(codename=event, shorthand=True)
+                alignto_time = self.behcode_extract_times(code, trial, first_instance_only=True)
+            elif isinstance(event, int):
+                # Then is behcode
+                alignto_time = self.behcode_extract_times(event, trial, first_instance_only=True)
             else:
-                print(eventkind)
                 assert False
-        elif isinstance(event, str):
-            # THis is behcode shorthand
-            code = self.behcode_convert(codename=event, shorthand=True)
-            alignto_time = self.behcode_extract_times(code, trial, first_instance_only=True)
-        elif isinstance(event, int):
-            # Then is behcode
-            alignto_time = self.behcode_extract_times(code, trial, first_instance_only=True)
-        else:
-            assert False
 
-        return alignto_time
+            return alignto_time
 
 
     ######################## SPIKE TRAIN STUFF
@@ -2312,6 +2468,9 @@ class Session(object):
         from quantities import s
         from .population import PopAnal
         
+        assert isinstance(pre_dur, (float, int))
+        assert isinstance(pre_dur, (float, int))
+
         list_xslices = []
         # 1) extract each trials' PA. Use the slicing tool in PA to extract snippet
         for tr in trials:
@@ -2331,6 +2490,7 @@ class Session(object):
             list_xslices.append(pa)
 
         # 2) Concatenate all PA into a single PA
+        assert False, "fix this!! if pre_dur extends before first time, then this is incorrect. Should do what?"
         TIMES = (list_xslices[0].Times - list_xslices[0].Times[0]) + pre_dur*s # times all as [-predur, ..., postdur]
 
         # get list of np arrays
@@ -2610,7 +2770,7 @@ class Session(object):
             assert isinstance(YLIM, list), "mistake..."
             figholder = self._plot_spike_waveform_multchans(list_sites, YLIM, saveon, prefix)
 
-    def plot_raster_line(self, ax, times, yval, color='k', alignto_time=None, 
+    def plot_raster_line(self, ax, times, yval, color='k', alignto_time=None,
         linelengths = 0.85, alpha=0.4):
         """ plot a single raster line at times at row yval
         PARAMS:
@@ -2726,10 +2886,10 @@ class Session(object):
         for time, name, col in zip(times_codes, names_codes, colors_codes):
             if only_on_edge:
                 if only_on_edge=="top":
-                    ax.plot(time, YLIM[1], "v", color=col)
+                    ax.plot(time, YLIM[1], "v", color=col, alpha=alpha)
                     y_text = YLIM[1]
                 elif only_on_edge=="bottom":
-                    ax.plot(time, YLIM[0], "^", color=col)
+                    ax.plot(time, YLIM[0], "^", color=col, alpha=alpha)
                     y_text = YLIM[0]
                 else:
                     assert False
@@ -2998,13 +3158,18 @@ class Session(object):
     #     self.plotmod_overlay_trial_events(ax, trialtdt)    
 
     def plotwrapper_raster_multrials_onesite(self, list_trials, site, alignto=None, 
-            SIZE=0.5, plot_beh=True):
+            SIZE=0.5, SIZE_HEIGHT_TOTAL = None, SIZE_WIDTH_TOTAL = 25., plot_beh=True, alpha_raster = 0.9,
+            xmin = None, xmax = None):
         """ Plot one site, mult trials, overlaying for each trial its major events
         PARAMS:
         - list_trials, list of int. if None, then plots 20 random
         - site, int (512)
         - alignto, str or None, how to adjust times to realign.
+        - SIZE, height of each row. 
+        - SIZE_HEIGHT_TOTAL, totla of all rows. if not None, then overwrites SIZE.
+        - xmax, will limit the plot to this max value.
         """
+
 
         if list_trials is None:
             import random
@@ -3012,7 +3177,10 @@ class Session(object):
             list_trials = sorted(random.sample(self.get_trials_list(True), nrand))
         nrows = len(list_trials)
         ncols = 2
-        alpha_raster = 0.4
+
+        if SIZE_HEIGHT_TOTAL is not None:
+            SIZE = SIZE_HEIGHT_TOTAL/nrows
+
         fig, axes = plt.subplots(1, ncols, sharex=True, figsize=(25, SIZE*nrows), 
                                gridspec_kw={'width_ratios': [9,1]})
         ax = axes.flatten()[0]
@@ -3028,7 +3196,7 @@ class Session(object):
             rs, chan = self.convert_site_to_rschan(site)
             D = self.datall_slice_single(rs, chan, trial0=trial)
             spikes = D['spike_times']
-            self.plot_raster_line(ax, spikes, i, alignto_time=alignto_time, linelengths=0.8, alpha=alpha_raster)
+            self.plot_raster_line(ax, spikes, i, alignto_time=alignto_time, linelengths=0.9, alpha=alpha_raster)
             
             # - overlay beh things
         #     SN.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, only_on_edge="top")
@@ -3038,7 +3206,7 @@ class Session(object):
                 include_text = False
             self.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, only_on_edge="bottom", 
                                             YLIM=[i-0.3, i+0.5], which_events=["trial"], 
-                                            include_text=include_text, text_yshift = -0.5)
+                                            include_text=include_text, text_yshift = -0.5, alpha=0.25)
         #     SN.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, 
         #                                     YLIM=[i-0.3, i+0.3], which_events=["strokes"], only_on_edge="top")
         #     SN.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, 
@@ -3048,12 +3216,17 @@ class Session(object):
         #     SN.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, 
         #                                     YLIM=[i+0.2, i+0.4], which_events=["strokes"], alpha=0.3)
             self.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, 
-                                            YLIM=[i-0.4, i-0.2], which_events=["strokes"], alpha=0.3)
+                                            YLIM=[i-0.4, i-0.2], which_events=["strokes"], alpha=0.25)
             
         ax.set_yticks(range(len(list_trials)))
         ax.set_yticklabels(list_trials);
         ax.set_ylabel('trial');
         ax.set_title(self.sitegetter_summarytext(site))
+        if xmin is not None:
+            ax.set_xlim(left=xmin)
+        if xmax is not None:
+            ax.set_xlim(right=xmax)
+
 
         # Final drawing
             #     ax = axes.flatten()[2*i + 1]
@@ -3162,7 +3335,8 @@ class Session(object):
     def plotwrapper_smoothed_multtrials_multsites_timewindow(self, sites, trials, 
             alignto="go_cue", pre_dur=-0.5, post_dur=2, ax=None,
             plot_indiv=True, plot_summary=False, error_ver="sem",
-            pcol_both = None, pcol_indiv = "k", pcol_summary="r"
+            pcol_both = None, pcol_indiv = "k", pcol_summary="r",
+            xmin=None, xmax=None
             ):
         """ Plot smoothed FR, across sites and trials, aligned to event 
         First extracts this data, then plots
@@ -3175,11 +3349,19 @@ class Session(object):
         if pcol_both is not None:
             pcol_indiv = pcol_both
             pcol_summary = pcol_both
-        pa.plotwrapper_smoothed_fr(ax=ax, plot_indiv=plot_indiv, plot_summary=plot_summary, 
+        fig1, ax1, fig2, ax2 = pa.plotwrapper_smoothed_fr(ax=ax, plot_indiv=plot_indiv, plot_summary=plot_summary, 
             error_ver=error_ver, pcol_indiv=pcol_indiv, pcol_summary=pcol_summary)
 
+        if xmin is not None:
+            for axthis in [ax1, ax2]:
+                if axthis is not None:
+                    axthis.set_xlim(left=xmin)
+        if xmax is not None:
+            for axthis in [ax1, ax2]:
+                if axthis is not None:
+                    axthis.set_xlim(right=xmax)
 
-
+        return fig1, ax1, fig2, ax2
 
 
 
@@ -3215,9 +3397,35 @@ class Session(object):
         # OPTION 2: each fr trace is same length, they are in PopAnal object
 
 
+    ################################################### SUMMARY PLOTS
+    def plotbatch_alltrails_for_each_site(self, sdir):
+        """ one plot for each site, raster across all trials
+        """
+        SIZE_HEIGHT_TOTAL = 15.
+        SIZE_WIDTH_TOTAL = 20.
+        XMIN = -3.5
+        XMAX = 6.5
+        
+        trials = self.get_trials_list(True)
+        print("This many good trials: ", len(trials))
+        print("Ending on trial: ", max(trials))
+        sites = self.sitegetter_all()
 
-    ####################################################
-    def plot_behcode_photodiode_sanity_check(self):
+        # LIST_ALIGN_TO = ["go_cue", "samp"]
+        LIST_ALIGN_TO = ["go_cue"]
+        for s in sites:
+            bregion = self.sitegetter_thissite_info(s)["region"]
+            for ALIGNTO in LIST_ALIGN_TO:
+                print("generating fig", s, ALIGNTO)
+                fig = self.plotwrapper_raster_multrials_onesite(trials, s, alignto =ALIGNTO,
+                                                              SIZE_HEIGHT_TOTAL=SIZE_HEIGHT_TOTAL, 
+                                                              SIZE_WIDTH_TOTAL=SIZE_WIDTH_TOTAL, 
+                                                              plot_beh=False, xmin = XMIN, xmax = XMAX)[0]
+                print("saving fig", s, ALIGNTO)
+                fig.savefig(f"{sdir}/eachsite_alltrials-{s}_{bregion}-alignedto_{ALIGNTO}.pdf")
+            plt.close("all")
+
+    def plot_behcode_photodiode_sanity_check(self, skip_if_done=True):
         """ Checks that each instance of a beh code is matched to a close
         by photodiode crossing of the correct direction and timing
         RETURNS:
@@ -3231,7 +3439,7 @@ class Session(object):
         # Check whether aleady done
         sdir = f"{self.Paths['figs_local']}/sanity_checks/phdi_check"
         print(sdir)
-        if False:
+        if skip_if_done:
             if os.path.exists(sdir):
                 print("Skipping plot_behcode_photodiode_sanity_check, becuase already done")
                 return
@@ -3428,6 +3636,20 @@ class Session(object):
         """
         dat = self.check_what_extracted(rs, chan, trial)
         return dat["raw"]
+
+    def check_preprocess_all(self):
+        """ SUmmarize whether each preprocess step has been done
+        """
+
+        CheckPreprocess = {}
+
+        # bad sites
+        CheckPreprocess["sites_garbage"] = len(self.SitesMetadata["sites_garbage"])>0
+        CheckPreprocess["sites_low_fr"] = len(self.SitesMetadata["sites_low_fr"])>0
+
+        self.CheckPreprocess = CheckPreprocess
+
+
 
     ##################### PRINT SUMMARIES
     def print_summarize_datall(self, only_print_if_has_raw=False):
