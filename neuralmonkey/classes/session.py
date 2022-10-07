@@ -883,6 +883,8 @@ class Session(object):
         return outdict
 
     ########################## GET FROM PRE-EXTRACTED DATA
+    # def convert_epoc_to_stream(self, ):
+
     def extract_data_tank_streams(self, which, trial0=None):
         """ Extract tank data, epocs, in flexible manner.
         PARAMS:
@@ -931,6 +933,31 @@ class Session(object):
             times, vals = self.extract_windowed_data_bytrial(times, trial0, vals)[:2]
         
         return times, vals, fs
+
+
+    def extract_reward_stream(self, trial, fs = 1000.):
+        """ 
+        - return reward triggers as_timeseries, 
+        RETURNSL:
+         times, vals, periodic like streams,
+        where vals are 0,1 for on/off
+        """
+        from ..utils.timeseries import convert_discrete_events_to_time_series
+
+        # event trimes
+        ontimes = self.extract_data_tank_epocs("rewon", trial0=trial)[0]
+        offtimes = self.extract_data_tank_epocs("rewoff", trial0=trial)[0]
+
+        # time range of entire trial
+        t0, tend = self.extract_timerange_trial_final(trial)
+
+        # convert
+        # event_onsets = [0.123, 0.450]
+        # event_offsets = [0.300, 0.490]
+        times, vals = convert_discrete_events_to_time_series(t0, tend, 
+            ontimes, offtimes, fs)
+
+        return times, vals
 
 
     def extract_data_tank_epocs(self, which, crosstime="onset", trial0=None):
@@ -1315,7 +1342,15 @@ class Session(object):
         T1 = self.TrialsOnset[trial0]-pre_dur
         T2 = self.TrialsOffset[trial0]+post_dur
         return T1, T2
-
+        
+    def extract_timerange_trial_final(self, trial):
+        """ Return the "final" times, which is aligned to trial onset (ml2), and
+        used across all data
+        RETURNS:
+        - time_on, time_off, times in seconds, relative to trial onset.
+        """
+        _, _, _, time_on, time_off = self.extract_windowed_data_bytrial([], trial)
+        return time_on, time_off
 
     #################### DATALL
     def datall_this_exists(self, rs, chan, trial0, also_check_if_has_raw_data=False):
@@ -1977,9 +2012,13 @@ class Session(object):
                 times[i] = np.nan
         return times    
 
+
+
     def behcode_get_stream_crossings_in_window(self, trial, behcode,
-        t_pre=0.01, t_post=0.2, whichstream="pd1", do_smooth=True, smooth_win=0.01,
-        ploton=False, cross_dir="both", force_single_output=False):
+        t_pre=0.01, t_post=0.2, whichstream="pd1", do_smooth=True, smooth_win=0.015,
+        ploton=False, cross_dir="both", force_single_output_per_behcode=True,
+        force_single_behcode_this_trial = True, 
+        expected_direction=None, force_must_find_crossings=True):
         """ Given this behcode, and time window around this code,
         finds all cases where this stream has trheshold crossings, where
         threshold are determined automatically (based on prctiles of 
@@ -1991,34 +2030,61 @@ class Session(object):
         - whichstream, str, name of the stream
         - do_smooth, bool, whether to smooth data before computing things.
         - smooth_win, smoothing window in sec.
-        - cross_dir, str, which direction crossing to take. either {"both", "up", "down"}
-        - false_single_output, bool, if True, then aserts that only one, and returns the number
+        - cross_dir, str, which direction crossing to take. either {"both", "up", "down", "mean"}
+        where "both" means take whichever ones comes first, and where "mean" takes the mean of up and down.
+        - force_single_output_per_behcode, bool, if True, then aserts that only one, within each window
+        of each behcode. 
+        - force_single_behcode_this_trial, if True, then returns results onluy for the first 
+        detected behcode.
+        - expected_direction, bool expected direction of first crossing, either {up, down}. does
+        sanity check (assertION0) ignore if NOne.
+        force_must_find_crossings, bool, then must get.
         RETURNS:
-        - TCROSS, VCROSS, array of times and values at crossings
-        - time_behcode, time of behc ode
-        - valminmax, (2,) array of vals min and max
-        - threshold, value used for crossing
+        - Depends on value of force_single_behcode_this_trial.
+        - if True:
+            - TCROSS, VCROSS, array of times and values at crossings
+            - time_behcode, time of behc ode
+            - valminmax, (2,) array of vals min and max
+            - threshold, value used for crossing
+        - if False:
+            - list of dicts, each hoding the above things for a bhecode instnace.
         TODO: use histogram to determine local threshold in each time window. problem is that the globally-defined threshold is not super accurate")
         NOTE: times are all relative to beh code 9 (i.e., trial onset)
+        NOTE: By default,then fails if behcode exists, yet 
+        doesnt find crossing (e..gk of pd)
         """
-
+        from pythonlib.tools.timeseriestools import get_threshold_crossings
         
-        # For each pd expected event, find its beh code, then look for the pd signal
+        # # For each pd expected event, find its beh code, then look for the pd signal
+        # if force_must_find_crossing_if_behcode_exists:
+        #     # This is asserted within the code that detects crossings.
+        #     force_single_output_per_behcode = True
 
         # 1) Extract the stream siganl
-        times, vals, fs = self.extract_data_tank_streams(whichstream, trial)
-
-        # 2) Smooth if desired
-        n = int(smooth_win * fs)
-        vals_sm = np.convolve(vals, np.ones(n)/n, mode="same")
-        if False:
-            fig, ax = plt.subplots(1,1, figsize=(15,10))
-            ax.plot(times, vals, '-k');
-            ax.plot(times, vals_sm, '-r');
+        if whichstream=="touch_binary":
+            times, vals = self.beh_extract_touching_binary(trial)
+            vals_sm = vals
+        elif whichstream=="touch_in_fixsquare_binary":
+            times, vals = self.beh_extract_touch_in_fixation_square(trial)
+            vals_sm = vals
+        elif whichstream=="touch_done_button":
+            times, vals = self.beh_extract_touch_in_done_button(trial)
+            vals_sm = vals
+        elif whichstream=="reward":
+            times, vals = self.extract_reward_stream(trial)
+            vals_sm = vals
+        else:
+            times, vals, fs = self.extract_data_tank_streams(whichstream, trial)
+            # 2) Smooth if desired
+            n = int(smooth_win * fs)
+            vals_sm = np.convolve(vals, np.ones(n)/n, mode="same")
+            if False:
+                fig, ax = plt.subplots(1,1, figsize=(15,10))
+                ax.plot(times, vals, '-k');
+                ax.plot(times, vals_sm, '-r');
 
         # 3) Tresholding: Get min and max values. Threshold is in betweem them.
-        valminmax = np.percentile(vals, [1, 99])
-        threshold = np.mean(valminmax)
+        valminmax_global = np.percentile(vals, [0.01, 99.99])
 
         # 4) Find temporal window for this beh code.
         if False:
@@ -2028,79 +2094,85 @@ class Session(object):
             for num, time in zip(codes_nums, codes_times):
                 print(num, time)
 
-        # - Specific code
-        time_behcode = self.behcode_extract_times(behcode, trial, True)
+        # # - Specific code
+        time_behcode = self.behcode_extract_times(behcode, trial, 
+            first_instance_only = force_single_behcode_this_trial)
 
-        # - window around the code
-        if len(time_behcode)>0:   
-            inds = (times>=time_behcode-t_pre) & (times<=time_behcode+t_post)
-            timesthis = times[inds]
-            valsthis = vals_sm[inds]
+        if len(time_behcode)==0:
+            print(f"Did not find behcode {behcode} for trial {trial}")
 
-            # Get all threshold crossings
-            indscross = np.where(np.diff(valsthis>threshold))[0]
-            
-            # - take mean of the immediately preceding and following time bins for each
-            # crossing.
-            timecross = (timesthis[indscross] + timesthis[indscross+1])/2
-            valscross = (valsthis[indscross] + valsthis[indscross+1])/2
+        if force_single_behcode_this_trial:
+            # - window around the code
+            if len(time_behcode)>0:   
+                inds = (times>=time_behcode-t_pre) & (times<=time_behcode+t_post)
+                timesthis = times[inds]
+                valsthis = vals_sm[inds]
 
-            # What directions are crossings?
-            if valsthis[0]<threshold:
-                # this will be [positive-going, neg-going, etc...]
-                timecross_up = timecross[0::2]
-                timecross_dn = timecross[1::2]
-                valscross_up = valscross[0::2]
-                valscross_dn = valscross[1::2]
+                # compute local threshold
+                valminmax = np.percentile(valsthis, [1, 99])
+                ratio_minmax = (valminmax[1] - valminmax[0])/(valminmax_global[1] - valminmax_global[0]) 
+                threshold = np.mean(valminmax)
+                if ratio_minmax<0.2:
+                    # then the local area is not good
+                    TCROSS = np.array([])
+                    VCROSS = np.array([])
+                else:
+                    TCROSS, VCROSS = get_threshold_crossings(
+                        timesthis, valsthis, threshold, cross_dir_to_take=cross_dir, 
+                        expected_direction_of_first_crossing=expected_direction, 
+                        force_single_output=force_single_output_per_behcode, 
+                        ploton=ploton, 
+                        force_must_find_crossings=force_must_find_crossings)
+                return TCROSS, VCROSS, time_behcode, valminmax, threshold
             else:
-                # other direction
-                timecross_up = timecross[1::2]
-                timecross_dn = timecross[0::2]
-                valscross_up = valscross[1::2]
-                valscross_dn = valscross[0::2]
-
-            ncross = len(timecross)
-
-            if ploton:
-                fig, axes = plt.subplots(1,2, figsize=(15,5))
-
-                ax = axes.flatten()[0]
-                ax.plot(timesthis, valsthis)
-                ax.plot(timecross, valscross, 'xk')
-                ax.plot(timecross_up, valscross_up, 'ob')
-                ax.plot(timecross_dn, valscross_dn, 'or')
-                ax.axhline(threshold)
-                ax.set_title('b=upcross, r=dncross')
-
-                ax = axes.flatten()[1]
-                edges = np.linspace(np.min(vals_sm), np.max(vals_sm), 50)
-                ax.hist(vals_sm, bins=edges, density=True, histtype="step")
-                ax.hist(valsthis, bins=edges, density=True, histtype="step")
-                ax.set_title("values in window and entire trial")
-
-            # Time of first cross relative to behcode
-            # TODO
-
-            if cross_dir=="both":
-                TCROSS = timecross
-                VCROSS = valscross
-            elif cross_dir=="up":
-                TCROSS = timecross_up
-                VCROSS = valscross_up
-            elif cross_dir in ["dn", "down"]:
-                TCROSS = timecross_dn
-                VCROSS = valscross_dn
-            else:
-                assert False
-
-            if force_single_output:
-                assert len(TCROSS)==1
-                assert len(VCROSS)==1
-                TCROSS = TCROSS[0]
-                VCROSS = VCROSS[0]
-            return TCROSS, VCROSS, time_behcode, valminmax, threshold
+                return np.array([]), np.array([]), time_behcode, np.array([]), np.array([])
         else:
-            return np.array([]), np.array([]), time_behcode, valminmax, threshold
+            # Collect into list of dicts
+            out = []
+            for tcode in time_behcode:
+                inds = (times>=tcode-t_pre) & (times<=tcode+t_post)
+                timesthis = times[inds]
+                valsthis = vals_sm[inds]
+
+                # compute local threshold
+                valminmax = np.percentile(valsthis, [1, 99])
+                ratio_minmax = (valminmax[1] - valminmax[0])/(valminmax_global[1] - valminmax_global[0]) 
+                threshold = np.mean(valminmax)
+                if ratio_minmax<0.2:
+                    # then the local area is not good
+                    TCROSS = np.array([])
+                    VCROSS = np.array([])
+                else:
+                    TCROSS, VCROSS = get_threshold_crossings(
+                        timesthis, valsthis, threshold, cross_dir_to_take=cross_dir, 
+                        expected_direction_of_first_crossing=expected_direction, 
+                        force_single_output=force_single_output_per_behcode, 
+                        ploton=ploton,
+                        force_must_find_crossings=force_must_find_crossings)
+
+                out.append({
+                    "timecross":TCROSS,
+                    "valcross":VCROSS,
+                    "time_behcode":tcode,
+                    "valminmax":valminmax,
+                    "threshold":threshold
+                    })
+            return out
+
+
+
+        # return _get_crossings_this_behcode_event(times_behcode)
+
+        # if len(times_behcode)>0:
+        #     for tcode in times_behcode:
+        #         print(tcode)
+        #         print(_get_crossings_this_behcode_event(tcode))
+        # else:
+        #     return np.array([]), np.array([]), time_behcode, valminmax, threshold            
+
+        # print(times_behcode)
+        # assert False
+
 
     def behcode_shorthand(self, full=None, short=None):
         """ Convert between
@@ -2112,6 +2184,7 @@ class Session(object):
             "FixationOnsetWTH":"fix",
             "GAstimevent_firstpres":"samp", 
             "GAstimoff_fini":"go",
+            "DAsamp1_visible_change":"sampseq",
             "DoneButtonTouched":"done",
             "DAstimoff_fini":"fb_vs", 
             "reward":"rew"}
@@ -2245,6 +2318,11 @@ class Session(object):
 
 
 
+    # def events_get_time_all_once_per_trial(self, trial, list_events = ["stim_onset", "go_cue", "first_raise", "on_stroke_1"]):
+    #     """ Force to get just one time per trial. see
+    #     events_get_time_all for details.
+    #     """
+    #     return self.events_get_time_all(trial, list_events, force_single_output=True)
 
 
     ###################### GET TEMPORAL EVENTS
@@ -2255,28 +2333,65 @@ class Session(object):
         - All times relative to behcode 9 (trial onset) by convention.
         PARAMS:
         - list_events, list of str, each a label for an event. only gets those in this list.
+        - force_single_output, if True, then asserts that ther eis one and only one crossing.
+        RETURNS:
+        - then returns a single dict, keys, are the list_events, each a list of times. THis is empty
+        if this event doesnt make sense (e..g, no fixation) or  not detected for any reason.
         """
 
         
-        list_events_skip_if_no_fixation = ["go_cue", "first_raise", "on_stroke_1"]
+        list_events_skip_if_no_fixation = ["samp", "stim_onset", "go_cue", "samp_sequence_onset", "first_raise", "on_stroke_1", "done_button", "reward_ons"]
         dict_events = {}
 
         for event in list_events:
             # 1) Skip this, if no fixation success
             if not self.beh_fixation_success(trial) and event in list_events_skip_if_no_fixation:
-                time = None
+                times = []
             else:
-                if event in ["samp", "stim_onset"]:
+                if event=="on":
+                    # start of the trial. use the pd crossing, whihc reflect screen color chanigng.
+                    # but not that crucuail to get a precise value for trail onset.
+                    t = self.behcode_get_stream_crossings_in_window(trial, 9, t_pre=0, t_post = 0.15, whichstream="pd2", 
+                                           ploton=False, cross_dir="up", force_single_output_per_behcode=True,
+                                            force_single_behcode_this_trial = True,
+                                             expected_direction = "up")[0]
+                    times = [t]
+                elif event=="fixcue":
+                    # fixation cue visible.
+                    t = self.behcode_get_stream_crossings_in_window(trial, 103, t_pre=0.05, t_post = 0.25, whichstream="pd2", 
+                                            ploton=False, cross_dir="down", force_single_output_per_behcode=True,
+                                            force_single_behcode_this_trial = True,
+                                             expected_direction = None)[0]
+                    times = [t]
+
+                elif event=="fix_touch":
+                    # onset of touch of fixation cue, based on detection of finger on screen.
+                    t = self.behcode_get_stream_crossings_in_window(trial, 16, t_pre=0.05, t_post = 0.2, whichstream="touch_in_fixsquare_binary", 
+                                                              ploton=False, cross_dir="up", force_single_output_per_behcode=True,
+                                                                force_single_behcode_this_trial = True,
+                                                                 expected_direction = "up")[0]                    
+                    times = [t]
+
+
+                elif event in ["samp", "stim_onset"]:
                     # Use photodiode
                     behcode = 91
                     stream = 'pd1'
                     cross_dir = 'up'
                     t_pre = 0
                     t_post = 0.2
-                    time, _,_,_,_ = self.behcode_get_stream_crossings_in_window(trial, behcode, whichstream=stream, 
+                    # time, _,_,_,_ = self.behcode_get_stream_crossings_in_window(trial, behcode, whichstream=stream, 
+                    #                                           cross_dir=cross_dir, t_pre=t_pre,
+                    #                                           t_post=t_post,
+                    #                                           ploton=False, force_single_output_per_behcode=True, 
+                    #                                           force_single_behcode_this_trial = False)
+                    t = self.behcode_get_stream_crossings_in_window(trial, behcode, whichstream=stream, 
                                                               cross_dir=cross_dir, t_pre=t_pre,
                                                               t_post=t_post,
-                                                              ploton=False, force_single_output=True)
+                                                              ploton=False, force_single_output_per_behcode=True, 
+                                                              force_single_behcode_this_trial = True)[0]
+                    times = [t]
+
                 elif event=="go_cue":
                     # Use photodiode
                     behcode = self.behcode_convert(codename="go", shorthand=True)
@@ -2284,28 +2399,95 @@ class Session(object):
                     cross_dir = 'down'
                     t_pre = 0
                     t_post = 0.2
-                    time, _,_,_,_ = self.behcode_get_stream_crossings_in_window(trial, behcode, whichstream=stream, 
+                    t = self.behcode_get_stream_crossings_in_window(trial, behcode, whichstream=stream, 
                                                               cross_dir=cross_dir, t_pre=t_pre,
                                                               t_post=t_post,
-                                                              ploton=False, force_single_output=True)
+                                                              ploton=False, force_single_output_per_behcode=True, 
+                                                              force_single_behcode_this_trial = True)[0]
+                    times = [t]
+
                 elif event=="first_raise":
                     # Offset of the stroke that is overalpping in time with the go cue.
                     fd, t = self.beh_get_fd_trial(trial)
-                    time = mkl.getTrialsTimesOfMotorEvents(fd, t)["raise"]
-                # elif event=="raise_last_stroke":
+                    times = [mkl.getTrialsTimesOfMotorEvents(fd, t)["raise"]]
+
+                elif event=="samp_sequence_onset":
+                    # for sequence traiing, when samp1 is shown (e..g a stroke turning on)
+                    out = self.behcode_get_stream_crossings_in_window(trial, 74, t_pre=0, t_post = 0.6, whichstream="pd1", 
+                                          ploton=False, cross_dir="up", force_single_output_per_behcode=True, 
+                                                              force_single_behcode_this_trial = False,
+                                                                expected_direction = "up")
+                    # collect all the times.
+                    times = [o["timecross"] for o in out]
                 elif event=="on_stroke_1":
                     # onset of first stroke (touch)
                     ons, offs = self.strokes_extract_ons_offs(trial)
                     if len(ons)==0:
-                        time = None
+                        times = []
                     else:
-                        time = ons[0]
+                        times = [ons[0]]
+                elif event=="done_button":
+                    # Onset of touch of done button, based on touchgin within square
+                    # The t_pre is long becuase seomtimes he succesfuly touches, but not registered. Should coutn those.
+                    force_must_find_crossings = False # because rarely will touch, but finger not in there (w.g. water)
+                    out = self.behcode_get_stream_crossings_in_window(trial, 62, t_pre=1, t_post = 0.25, whichstream="touch_done_button", 
+                                          ploton=False, cross_dir="up", force_single_output_per_behcode=False,
+                                            force_single_behcode_this_trial = False,
+                                             expected_direction = "up", force_must_find_crossings=force_must_find_crossings) 
+                    times = [o["timecross"] for o in out]
+                    if len(times)>1:
+                        # Take the first one
+                        times = [times[0]]
+
+                elif event=="post_screen_onset":
+                    # onset of the post-screen, which is offset of the "pause" after you report done
+                    t = self.behcode_get_stream_crossings_in_window(trial, 46, t_pre=0.2, t_post = 0.25, whichstream="pd1", 
+                          ploton=False, cross_dir="up", force_single_output_per_behcode=True,
+                            force_single_behcode_this_trial = True,
+                             expected_direction = "up")[0]
+                    times = [t]
+
+
+                elif event=="reward_ons":
+                    # Onsets of reward pulses
+                    out = self.behcode_get_stream_crossings_in_window(trial, 50, t_pre=0.1, t_post = 0.1, whichstream="reward", 
+                                          ploton=False, cross_dir="up", force_single_output_per_behcode=True,
+                                            force_single_behcode_this_trial = False,
+                                             expected_direction = "up")
+                    times = [o["timecross"] for o in out]
                 else:
                     assert False
-                assert time is not None
+                    
+                assert times is not None
 
             # store time.
-            dict_events[event] = time
+            if not isinstance(times, list):
+                print(event)
+                print(times)
+                assert False
+            # def isgood_(t):
+            #     # remove cases that are np.array([])
+            #     if t is None:
+            #         return False
+            #     elif isinstance(t, np.ndarray) and len(t)==0:
+            #         return False
+            #     else:
+            #         return True
+            # times = [t for t in times if isgood_(t)] # remove empty arrays sometimes.
+            
+            # convert from np array to int
+            times_good = []
+            for t in times:
+                if t is None:
+                    continue
+                elif isinstance(t, np.ndarray) and len(t)==0:
+                    continue
+                elif isinstance(t, np.ndarray):
+                    assert len(t)==1
+                    times_good.append(t[0])
+                else:
+                    times_good.append(t)
+            dict_events[event] = times_good
         return dict_events
 
 
@@ -2831,13 +3013,26 @@ class Session(object):
 
 
 
+    def plotmod_overlay_beh_codes(self, ax, trial0, list_codes):
+        """ Overlay all times of the given beh codes. This is a bare function, just 
+        for behcodes. Plots all instances, not just the first.
+        PARAMS:
+        - list_codes, list of ints
+        """
 
+        times_codes = self.behcode_extract_times(trial0, list_codes)
+        names_codes = [self.behcode_convert(c, shorthand=True) for c in list_codes] 
 
+        for time, name in zip(times_codes, names_codes):
+            ax.axvline(time, color="k", ls="--", alpha=0.7)
+            YLIM = ax.get_ylim()
+            y_text = YLIM[0]
+            ax.text(time, y_text, name, rotation="vertical", fontsize=14)
 
 
     def plotmod_overlay_trial_events(self, ax, trial0, strokes_patches=True, 
             alignto_time=None, only_on_edge=None, YLIM=None, alpha = 0.2,
-            which_events=["trial", "strokes"], include_text=True, text_yshift = 0.):
+            which_events=["behcodes", "strokes"], include_text=True, text_yshift = 0.):
         """ Overlines trial events in vertical lines
         Time is rel trial onset (ml2 code 9)
         Run this after everything else, so get propoer YLIM.
@@ -2852,7 +3047,7 @@ class Session(object):
         - text_yshift, shfit text by this amnt.
         """
 
-        if "trial" in which_events:
+        if "behcodes" in which_events:
             # Vertical lines for beh codes
             list_codes = [9, 11, 16, 91, 92, 62, 73, 50]
             times_codes = self.behcode_extract_times_sequence(trial0, list_codes)
@@ -2865,6 +3060,12 @@ class Session(object):
             times_codes = []
             names_codes = [] 
             colors_codes = []
+
+        # if "events_good" in which_events:
+        #     # Events accurate, using photodiode, continuous measure, etc.
+        #     list_events = ["stim_onset", "go_cue", "first_raise", "on_stroke_1"]
+        #         def events_get_time_all(self, trial, ):
+
 
 
         # Also include times of strokes
@@ -2883,6 +3084,7 @@ class Session(object):
         if not YLIM:
             YLIM = ax.get_ylim()
 
+        ############## 1) Plot marker for each event
         for time, name, col in zip(times_codes, names_codes, colors_codes):
             if only_on_edge:
                 if only_on_edge=="top":
@@ -2894,13 +3096,6 @@ class Session(object):
                 else:
                     assert False
             else:
-        #         if name in ["Son"]:
-        # #             ax.axvline(time, color="b", ls="--", alpha=0.5)
-        #             ax.axvline(time, color="b", ls="-", alpha=0.5)
-        #         elif name in ["Soff"]:
-        # #             ax.axvline(time, color="m", ls="--", alpha=0.5)
-        #             ax.axvline(time, color="m", ls="-", alpha=0.5)
-        #         else:
                 ax.axvline(time, color=col, ls="--", alpha=0.7)
                 y_text = YLIM[0]
             if include_text:
@@ -2908,7 +3103,6 @@ class Session(object):
                 ax.text(time, y_text, name, rotation="vertical", fontsize=14)
 
         # color in stroke times
-
         if strokes_patches and "strokes" in which_events:
             from matplotlib.patches import Rectangle
             ons, offs = self.strokes_extract_ons_offs(trial0)
@@ -2947,6 +3141,10 @@ class Session(object):
             
             if number_strokes:
                 ax.text(np.mean(t), np.max(np.r_[x,y]), i)
+
+        # Also plot binary whether is touching
+        times, touching = self.beh_extract_touching_binary(trial0)
+        ax.plot(times, 100*touching, 'x-k', label="touching")
             
         self.plotmod_overlay_trial_events(ax, trial0)
 
@@ -2957,6 +3155,121 @@ class Session(object):
         """
         strokes = self.strokes_extract(trialtdt, peanuts_only=strokes_only)
         plotDatStrokes(strokes, ax, clean_ordered_ordinal=True, number_from_zero=True)
+
+    def beh_extract_touch_in_fixation_square(self, trial, window_delta_pixels = 30.,
+        ploton=False):
+        """ Return binary wherther is touching fixation
+        Evaluates if is touching within fixation square
+        PARAMS:
+        - window_delta_pixels, scalar, the box is sides 2*window_delta_pixels, 
+        if finger in this then is touching fix. 30. is emprically good.
+        RETURNS:
+        - times,
+        - touch, 1 where is touchign in square, 0 outside.
+        """
+
+        # 1) is touching within fix params?
+        fd, t = self.beh_get_fd_trial(trial)
+        fixcue_params = mkl.getTrialsFix(fd, t)
+        x = fixcue_params["fixpos_pixels"][0]
+        y = fixcue_params["fixpos_pixels"][1]
+        window_x = [x-window_delta_pixels, x+window_delta_pixels]
+        window_y = [y-window_delta_pixels, y+window_delta_pixels]
+
+        # get times that touch is close to fixation button
+        times, x, y = self.beh_extract_touch_data(trial)
+        touchingfix = (x>=window_x[0]) & (x<=window_x[1]) & (y>=window_y[0]) & (y<=window_y[1])
+
+        if ploton:
+            # overlay with times of touch (any location)
+            times2, touching2 = self.beh_extract_touching_binary(trial)
+            plt.figure()
+            plt.plot(times, touchingfix*200, "-k", label="in fixation square")
+            plt.plot(times2, touching2*200, ":m", label="touching screen")
+            plt.plot(times, x, '--b', label="x")
+            plt.plot(times, y, '--r', label="y")
+            plt.axhline(window_x[0], color="b", label="xmin")
+            plt.axhline(window_x[1], color="b", label="xmax")
+            plt.axhline(window_y[0], color="r", label="ymin")
+            plt.axhline(window_y[1], color="r", label="ymax")
+            plt.legend()
+
+        return times, touchingfix.astype(int)
+
+    def beh_extract_touch_in_done_button(self, trial, window_delta_pixels = 40.,
+        ploton=False):
+        """ Return binary wherther finger is in done button, based solely on 
+        location of touch
+        PARAMS:
+        - window_delta_pixels, scalar, the box is sides 2*window_delta_pixels, 
+        if finger in this then is touching fix. 30. is emprically good.
+        RETURNS:
+        - times,
+        - touch, 1 where is touchign in square, 0 outside.
+        """
+
+        fd, t = self.beh_get_fd_trial(trial)
+
+        if mkl.getTrialsDoneButtonMethod(fd, t)=="skip":
+            # Then no done button, return empty
+            return None
+
+
+        # 1) is touching within fix params?
+        donebutton_pos = mkl.getTrialsDoneButtonPos(fd, t)
+        # print("here", donebutton_pos, type(donebutton_pos))
+
+        x = donebutton_pos[0]
+        y = donebutton_pos[1]
+        window_x = [x-window_delta_pixels, x+window_delta_pixels]
+        window_y = [y-window_delta_pixels, y+window_delta_pixels]
+
+        # get times that touch is close to fixation button
+        times, x, y = self.beh_extract_touch_data(trial)
+        touchingdone = (x>=window_x[0]) & (x<=window_x[1]) & (y>=window_y[0]) & (y<=window_y[1])
+
+        if ploton:
+            # overlay with times of touch (any location)
+            times2, touching2 = self.beh_extract_touching_binary(trial)
+            plt.figure()
+            plt.plot(times, touchingdone*200, "-k", label="in fixation square")
+            plt.plot(times2, touching2*200, ":m", label="touching screen")
+            plt.plot(times, x, '--b', label="x")
+            plt.plot(times, y, '--r', label="y")
+            plt.axhline(window_x[0], color="b", label="xmin")
+            plt.axhline(window_x[1], color="b", label="xmax")
+            plt.axhline(window_y[0], color="r", label="ymin")
+            plt.axhline(window_y[1], color="r", label="ymax")
+            plt.legend()
+
+        return times, touchingdone.astype(int)
+
+
+
+    def beh_extract_touch_data(self, trial):
+        """ Extract touch data, raw.
+        RETURNS:
+        - times, array of times
+        - x, array of x coords (nan if not touchgin)
+        - y, array of y coorrds
+        """
+        fd, trialml = self.beh_get_fd_trial(trial)
+        xyt = mkl.getTrialsTouchData(fd, trialml)
+        # times, touching = mkl.getTrialsTouchingBinary(fd, trialml)
+        return xyt[:,2], xyt[:,0], xyt[:,1]
+
+
+    def beh_extract_touching_binary(self, trialtdt):
+        """ Return time series of whether is touching or not.
+        RETURNS:
+        times, array of time bins
+        touching, array binary, whether is touching.
+        """
+        import numpy as np
+        fd, trialml = self.beh_get_fd_trial(trialtdt)
+        # xyt = mkl.getTrialsTouchData(fd, trialml)
+        times, touching = mkl.getTrialsTouchingBinary(fd, trialml)
+        return times, touching
 
 
     def strokes_extract(self, trialtdt, peanuts_only=False):
