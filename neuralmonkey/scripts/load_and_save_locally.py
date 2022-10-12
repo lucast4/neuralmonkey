@@ -48,7 +48,7 @@ def load_and_preprocess_single_session(date, rec_session, animal = "Pancho"):
             do_all_copy_to_local=True)
     except Exception as err:
         print("&&&&&&&&&&&&")
-        print(date, dataset_beh_expt, rec_session, animal, expt, rec_session)
+        print(date, dataset_beh_expt, rec_session, animal, expt)
         raise
 
     # if beh_session not in beh_sess_list:
@@ -80,8 +80,11 @@ def load_and_preprocess_single_session(date, rec_session, animal = "Pancho"):
     SN.spiketrain_as_elephant_batch()
 
     # Check beh code and photodiode match
-    print("** [load_and_preprocess_single_session] Step 2: plot_behcode_photodiode_sanity_check")
-    SN.plot_behcode_photodiode_sanity_check()
+    if False:
+        # Skip for now, need to fix:
+        # at this line, gets error that list index out of range: FLOOR = x["valminmax"][0]
+        print("** [load_and_preprocess_single_session] Step 2: plot_behcode_photodiode_sanity_check")
+        SN.plot_behcode_photodiode_sanity_check()
 
     # Save
     print("** [load_and_preprocess_single_session] Step 3: plot_spike_waveform_multchans")

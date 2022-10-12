@@ -26,8 +26,8 @@ d=220526 # first date to check.
 # d=220603 # first date to check.
 # date2=220707 # the final date to check
 # date2=220720 # the final date to check
-d=220815 # first date to check.
-date2=220920 # the final date to check
+# d=220815 # first date to check.
+date2=221004 # the final date to check
 date1=$d
 until [[ ${date1} > ${date2} ]]; do
   echo ${date1}

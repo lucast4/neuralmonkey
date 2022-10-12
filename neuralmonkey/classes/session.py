@@ -10,6 +10,7 @@ from pythonlib.drawmodel.strokePlots import plotDatStrokes
 from ..utils import monkeylogic as mkl
 import pickle
 import os
+from pythonlib.tools.expttools import checkIfDirExistsAndHasFiles
 
 from pythonlib.globals import PATH_NEURALMONKEY, PATH_DATA_NEURAL_RAW, PATH_DATA_NEURAL_PREPROCESSED
 # PATH_NEURALMONKEY = "/data1/code/python/neuralmonkey/neuralmonkey"
@@ -66,18 +67,28 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
     RETURNS:
     - SN, session
     """
+    from ..utils.monkeylogic import session_map_from_rec_to_ml2
 
     if dataset_beh_expt is not None:
         assert len(dataset_beh_expt)>1, "if skip, then make this None"
 
     # 1) Find the raw beh data (filedata)
-    # Assume that the beh sessions increment in order, matching the neural sessions
-    sessdict = mkl.getSessionsList(animal, datelist=[DATE])
-    # assume that beh sessions are indexed by neural rec sessions
-    # beh_session = rec_session+1    
-    beh_session = sessdict[DATE][rec_session][0]
-    print("Beh Sessions that exist on this date: ", DATE, sessdict)
-    print("taking this one :", beh_session)
+    beh_session, exptname, sessdict = session_map_from_rec_to_ml2(animal, DATE, rec_session)
+
+    # # Assume that the beh sessions increment in order, matching the neural sessions
+    # sessdict = mkl.getSessionsList(animal, datelist=[DATE])
+    # # assume that beh sessions are indexed by neural rec sessions
+    # # beh_session = rec_session+1    
+
+    # # Which beh session maps to this neural session?
+    # session_map = load_session_mapper(animal, int(DATE))
+    # if session_map is not None:
+    #     beh_session = session_map[rec_session]
+    # else:
+    #     beh_session = sessdict[DATE][rec_session][0]
+    # print("Beh Sessions that exist on this date: ", DATE, sessdict)
+    # print("taking this one :", beh_session)
+
     # beh_session = rec_session+1 # 1-indexing.
     if False:
         # get all sessions
@@ -85,9 +96,10 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
         beh_sess_list = [sess_expt[0] for sess_expt in sessdict[DATE]]
     else:
         # Get the single session assued to map onto this neural.
-        beh_expt_list = [sess_expt[1] for sess_expt in sessdict[DATE] if sess_expt[0]==beh_session]
-        print("Found these beh expt names: ", beh_expt_list)
-        assert(len(beh_expt_list))==1, "must be error, multiple sessions with same session num"
+        # beh_expt_list = [sess_expt[1] for sess_expt in sessdict[DATE] if sess_expt[0]==beh_session]
+        # print("Found these beh expt names: ", beh_expt_list)
+        # assert(len(beh_expt_list))==1, "must be error, multiple sessions with same session num"
+        beh_expt_list = [exptname]
         beh_sess_list = [beh_session]
         beh_trial_map_list = [(1, 0)]
 
@@ -116,7 +128,6 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
 class Session(object):
     """
     Operates over all trials for this entire session (day), even if multiple rec files for today
-
     """
     
     def __init__(self, datestr, beh_expt_list, beh_sess_list, 
@@ -273,8 +284,11 @@ class Session(object):
             # Copy spike waveforms saved during tdt thresholding and extraction
             self.load_and_save_spike_waveform_images()
 
-        if do_sanity_checks:
-            self.plot_behcode_photodiode_sanity_check()
+        if False:
+            # Skip for now, need to fix:
+            # at this line, gets error that list index out of range: FLOOR = x["valminmax"][0]
+            if do_sanity_checks:
+                self.plot_behcode_photodiode_sanity_check()
 
         if do_sanity_checks_rawdupl:
             # Load raw and dupl and compare them (sanity check)
@@ -362,6 +376,9 @@ class Session(object):
             [self.Date]
         ]
         paths = findPath(self.RecPathBase, path_hierarchy)
+
+        # REmove paths that say "IGNORE"
+        paths = [p for p in paths if "IGNORE" not in p]
         # assert len(paths)==1, 'not yhet coded for combining sessions'
         assert len(paths)>0, "maybe you didn't mount server?"
         if len(paths)<self.RecSession+1:
@@ -372,7 +389,10 @@ class Session(object):
             print(self.Animal, self.Date)
             print(self.print_summarize_expt_params())
             assert False, "why mismatch?"
+
         paththis = paths[self.RecSession]
+        # print(paths, self.RecSession)
+        # assert False
 
         fnparts = deconstruct_filename(paththis)
         print(fnparts)
@@ -396,7 +416,7 @@ class Session(object):
                 path_paths = f"{pathbase_local}/paths.yaml"
 
                 if os.path.exists(path_paths):
-                    paths_old = load_yaml_config(f"{pathbase_local}/paths.yaml")
+                    paths_old = load_yaml_config(path_paths)
                     oldpath = paths_old["spikes"]
                 else:
                     print("then is old version, before saved paths every time save spikes") 
@@ -408,7 +428,8 @@ class Session(object):
             # Second, if have not yet extracted spikes.
             for suffix in ["-4.5", "", "-3.5"]: 
                 path_maybe = f"{paththis}/spikes_tdt_quick{suffix}"
-                if os.path.exists(path_maybe):
+                # if os.path.exists(path_maybe):
+                if checkIfDirExistsAndHasFiles(path_maybe):
                     return path_maybe
 
             # Didn't find spikes, return None
@@ -1073,7 +1094,7 @@ class Session(object):
 
             for t in trials:
                 print(f"Extrcting data for trial {t}")
-                self.extract_raw_and_spikes(rss, chans, t, get_raw=get_raw)
+                self._extract_raw_and_spikes(rss, chans, t, get_raw=get_raw) 
 
             # generate mapper, slice each one and this will autoamtically extract
             self.mapper_extract("sitetrial_to_datallind")
@@ -1082,7 +1103,7 @@ class Session(object):
             self._savelocal_datall()
 
 
-    def extract_raw_and_spikes(self, rss, chans, trialtdt, get_raw = False):
+    def _extract_raw_and_spikes(self, rss, chans, trialtdt, get_raw = False):
         """ [GET ALL DATA] Extract raw (unfiltered) and spikes for this trial
         PARAMS:
         - rss, list of ints for rs
@@ -1162,9 +1183,6 @@ class Session(object):
                         self._MapperSiteTrial2DatAllInd[(site, trial)] = index
                     else:
                         assert self._MapperSiteTrial2DatAllInd[(site, trial)] == index
-
-        # Add timing information
-        self.datall_cleanup_add_things()
 
         return self.DatAll
 
@@ -1252,7 +1270,9 @@ class Session(object):
         """ save this for later
         This is what is extracted by extract_raw_and_spikes. it is all data aligned to each trial.
         """
-        self.datall_cleanup_add_things()
+
+        # clean up, add timing information, etc
+        self.datall_cleanup_add_things()  
 
         print("Saving DatAll (raw and spikes) locally to: ", self.Paths["datall_local"])
         with open(self.Paths["datall_local"], "wb") as f:
@@ -1875,10 +1895,6 @@ class Session(object):
         
         ####### Get low Fr sites
         sites_lowfr = sites[frmeans<low_fr_thresh]
-        print(frmeans)
-        print(low_fr_thresh)
-        print(sites_lowfr)
-        assert False
         nsites_fail = sum(frmeans<low_fr_thresh)
         print("Low FR sites: ", sites_lowfr)
         print("Num sites failing threshold: ", nsites_fail)
@@ -1932,7 +1948,8 @@ class Session(object):
 
         savedir = f"{self.Paths['figs_local']}/fr_distributions"
 
-        if os.path.exists(savedir):
+        if checkIfDirExistsAndHasFiles(savedir)[1]:
+        # if os.path.exists(savedir):
             return
 
         for fr_thresh in LIST_FR_THRESH:
@@ -3753,7 +3770,8 @@ class Session(object):
         sdir = f"{self.Paths['figs_local']}/sanity_checks/phdi_check"
         print(sdir)
         if skip_if_done:
-            if os.path.exists(sdir):
+            # if os.path.exists(sdir):
+            if checkIfDirExistsAndHasFiles(sdir)[1]:
                 print("Skipping plot_behcode_photodiode_sanity_check, becuase already done")
                 return
         
@@ -3781,10 +3799,21 @@ class Session(object):
                 assert False
                 
             for trial in self.get_trials_list(True):
-                timecross, valscross, time_behcode, valminmax, threshold = \
+                # timecross, valscross, time_behcode, valminmax, threshold = \
+                #     self.behcode_get_stream_crossings_in_window(trial, behcode, 
+                #         whichstream=stream, cross_dir=crosdir, t_pre=t_pre, 
+                #         t_post=t_post)
+
+                out = \
                     self.behcode_get_stream_crossings_in_window(trial, behcode, 
                         whichstream=stream, cross_dir=crosdir, t_pre=t_pre, 
-                        t_post=t_post)
+                        t_post=t_post,
+                        force_single_behcode_this_trial=False)
+                timecross = [o["timecross"] for o in out]
+                valscross = [o["valcross"] for o in out]
+                time_behcode = [o["time_behcode"] for o in out]
+                valminmax = [o["valminmax"] for o in out]
+                threshold = [o["threshold"] for o in out]
 
                 if trial%20==0:
                     print(trial)
