@@ -87,10 +87,14 @@ def session_map_from_rec_to_ml2(animal, date, rec_session):
     sessdict = getSessionsList(animal, datelist=[date])
     if session_map is not None:
         # then use hand-entered session
+        if rec_session+1 > len(session_map):
+            return None
         beh_session = session_map[rec_session]
         print("Beh Sessions hand netered (mapping: rec sess --> beh sess): ", session_map)
     else:
         # Then use rec_session+1 (indexing into the beh sessions that exist.)
+        if rec_session+1 > len(sessdict[date]):
+            return None
         beh_session = sessdict[date][rec_session][0]
         print("Beh Sessions that exist on this date: ", sessdict)
 
@@ -98,6 +102,7 @@ def session_map_from_rec_to_ml2(animal, date, rec_session):
     beh_expt_list = [sess_expt[1] for sess_expt in sessdict[date] if sess_expt[0]==beh_session]
     assert len(beh_expt_list)==1, "multiple expts in this folder?"
     exptname = beh_expt_list[0]
+
     return beh_session, exptname, sessdict
 
 

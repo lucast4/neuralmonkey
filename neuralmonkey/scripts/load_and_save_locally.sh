@@ -2,6 +2,8 @@
 
 # Run this in base dir: /neuralmonkey
 # bash scripts/load_and_save_locally.sh 2>&1 | tee preprocess_log.txt
+# ./load_and_save_locally.sh 2>&1 | tee preprocess_log.txt
+
 
 # Mount server
 server_mount
@@ -22,11 +24,11 @@ touch preprocess_log.txt
 
 
 # ######## version 1 - iterate thru dates in order.
-d=220526 # first date to check.
+# d=220526 # first date to check.
 # d=220603 # first date to check.
 # date2=220707 # the final date to check
 # date2=220720 # the final date to check
-# d=220815 # first date to check.
+d=220815 # first date to check.
 date2=221004 # the final date to check
 date1=$d
 until [[ ${date1} > ${date2} ]]; do
