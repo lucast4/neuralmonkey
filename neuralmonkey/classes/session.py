@@ -2115,8 +2115,8 @@ class Session(object):
         time_behcode = self.behcode_extract_times(behcode, trial, 
             first_instance_only = force_single_behcode_this_trial)
 
-        if len(time_behcode)==0:
-            print(f"Did not find behcode {behcode} for trial {trial}")
+        # if len(time_behcode)==0:
+        #     print(f"Did not find behcode {behcode} for trial {trial}")
 
         if force_single_behcode_this_trial:
             # - window around the code
@@ -2208,7 +2208,10 @@ class Session(object):
 
         if full:
             assert not short
-            return dict_full2short[full]
+            if full in dict_full2short.keys():
+                return dict_full2short[full]
+            else:
+                return full
         else:
             assert not full
             for k, v in dict_full2short.items():
@@ -2335,15 +2338,8 @@ class Session(object):
 
 
 
-    # def events_get_time_all_once_per_trial(self, trial, list_events = ["stim_onset", "go_cue", "first_raise", "on_stroke_1"]):
-    #     """ Force to get just one time per trial. see
-    #     events_get_time_all for details.
-    #     """
-    #     return self.events_get_time_all(trial, list_events, force_single_output=True)
-
-
     ###################### GET TEMPORAL EVENTS
-    def events_get_time_all(self, trial, list_events = ["stim_onset", "go_cue", "first_raise", "on_stroke_1"]):
+    def events_get_time_using_photodiode(self, trial, list_events = ["stim_onset", "go_cue", "first_raise", "on_stroke_1"]):
         """
         [GOOD] Get dict of times of important events. Uses variety of methods, including
         (i) photodiode (ii) motor behavior, (iii) beh codes, wherever appropriate.
@@ -2511,18 +2507,19 @@ class Session(object):
 
 
 
-    def events_get_time(self, event, trial):
+    def events_get_time_helper(self, event, trial):
         """ Return the time in trial for this event
         PARAMS:
         - event, either string or tuple.
         - eventkind, string, if None, then tries to find it automatically.
+        RETURNS:
+        - list of numbers, one for each detection of this even in this trial, sorted.
         """
 
         try:
             # Better version using photodiode or motor
-            return self.events_get_time_all(trial, [event])[event]
+            times = self.events_get_time_using_photodiode(trial, [event])[event] 
         except:
-            asdasdasd
             if isinstance(event, tuple):
                 eventkind = event[0]            
                 if eventkind=="strokes":
@@ -2548,8 +2545,9 @@ class Session(object):
                 alignto_time = self.behcode_extract_times(event, trial, first_instance_only=True)
             else:
                 assert False
+            times = [alignto_time]
 
-            return alignto_time
+        return times
 
 
     ######################## SPIKE TRAIN STUFF
@@ -2680,7 +2678,7 @@ class Session(object):
             pa = pa.slice_by_chan(sites)
 
             # slice to time window
-            time_align = self.events_get_time_all(tr, list_events=[alignto])[alignto]
+            time_align = self.events_get_time_using_photodiode(tr, list_events=[alignto])[alignto]
             t1 = time_align + pre_dur
             t2 = time_align + post_dur
             pa = pa.slice_by_time_window(t1, t2, return_as_popanal=True)
@@ -3037,19 +3035,22 @@ class Session(object):
         - list_codes, list of ints
         """
 
-        times_codes = self.behcode_extract_times(trial0, list_codes)
-        names_codes = [self.behcode_convert(c, shorthand=True) for c in list_codes] 
 
-        for time, name in zip(times_codes, names_codes):
-            ax.axvline(time, color="k", ls="--", alpha=0.7)
-            YLIM = ax.get_ylim()
-            y_text = YLIM[0]
-            ax.text(time, y_text, name, rotation="vertical", fontsize=14)
+        for code in list_codes:
+            times_codes = self.behcode_extract_times(code, trial0)
+            name = self.behcode_convert(code, shorthand=True)
+            # names_codes = [self.behcode_convert(code, shorthand=True) for _ in range(len(times_codes))] 
+
+            for time in times_codes:
+                ax.axvline(time, color="k", ls="--", alpha=0.7)
+                YLIM = ax.get_ylim()
+                y_text = YLIM[0]
+                ax.text(time, y_text, name, rotation="vertical", fontsize=14)
 
 
     def plotmod_overlay_trial_events(self, ax, trial0, strokes_patches=True, 
             alignto_time=None, only_on_edge=None, YLIM=None, alpha = 0.2,
-            which_events=["behcodes", "strokes"], include_text=True, text_yshift = 0.):
+            which_events=["key_events_correct", "strokes"], include_text=True, text_yshift = 0.):
         """ Overlines trial events in vertical lines
         Time is rel trial onset (ml2 code 9)
         Run this after everything else, so get propoer YLIM.
@@ -3064,28 +3065,42 @@ class Session(object):
         - text_yshift, shfit text by this amnt.
         """
 
+
+        for ev in which_events:
+            assert ev in ["behcodes", "key_events_correct", "strokes"], "doesnt exist..."
+        ###### 1) behcodes, old version whcih used specific sequenc eof codes. this is not perfectly accurate.
+        # so is replaced by key_events_correct
         if "behcodes" in which_events:
-            # Vertical lines for beh codes
+            # Vertical lines for beh codes (only the first instance)
             list_codes = [9, 11, 16, 91, 92, 62, 73, 50]
-            times_codes = self.behcode_extract_times_sequence(trial0, list_codes)
+            times_codes = self.behcode_extract_times_sequence(trial0, list_codes) # np array
             # names_codes = [beh_codes[c] for c in list_codes]
             names_codes = [self.behcode_convert(c, shorthand=True) for c in list_codes] 
             # names_codes = ["on", "fixcue", "fix", "samp", "go", "done", "fb_vs", "rew"]
             colors_codes = ["k",  "m",       "b",    "r",   "y",  "g",     "m",     "k"]
         else:
-            list_codes = []
-            times_codes = []
+            # list_codes = []
+            times_codes = np.array([])
             names_codes = [] 
             colors_codes = []
 
-        # if "events_good" in which_events:
-        #     # Events accurate, using photodiode, continuous measure, etc.
-        #     list_events = ["stim_onset", "go_cue", "first_raise", "on_stroke_1"]
-        #         def events_get_time_all(self, trial, ):
+        ###### 2) key events, determeined using actual voltage clock signals or touch, etc.
+        if "key_events_correct" in which_events:
+            # key events in trial, with correct timing based on timing signals (e..g, photodiode)
+            events = ["fixcue", "fix_touch", "samp", "go_cue", "samp_sequence_onset", "done_button", "post_screen_onset", "reward_ons"]
+            colors_codes = ["k",  "m",       "r",    "b",   "y",  "g",     "m",     "k"]
+            dict_events = self.events_get_time_using_photodiode(trial0, events)
+            
+            # collect all event times into single arrays
+            for ev in dict_events:
+                for t in dict_events[ev]:
+                    times_codes = np.append(times_codes, t)
+                    names_codes.append(ev)
+                    colors_codes.append("k")
+            
 
 
-
-        # Also include times of strokes
+        ###### 3) Also include times of strokes
         if strokes_patches==False and "strokes" in which_events:
             ons, offs = self.strokes_extract_ons_offs(trial0)
             times_codes = np.append(times_codes, ons)
@@ -3101,8 +3116,10 @@ class Session(object):
         if not YLIM:
             YLIM = ax.get_ylim()
 
-        ############## 1) Plot marker for each event
+        ############## Plot marker for each event
         for time, name, col in zip(times_codes, names_codes, colors_codes):
+            if np.isnan(time):
+                continue
             if only_on_edge:
                 if only_on_edge=="top":
                     ax.plot(time, YLIM[1], "v", color=col, alpha=alpha)
@@ -3487,19 +3504,26 @@ class Session(object):
     #     ax.set_title(f"trialtdt: {trialtdt}")
     #     self.plotmod_overlay_trial_events(ax, trialtdt)    
 
-    def plotwrapper_raster_multrials_onesite(self, list_trials, site, alignto=None, 
-            SIZE=0.5, SIZE_HEIGHT_TOTAL = None, SIZE_WIDTH_TOTAL = 25., plot_beh=True, alpha_raster = 0.9,
+    def plotwrapper_raster_multrials_onesite(self, list_trials, site=None, alignto=None, 
+            SIZE=0.5, SIZE_HEIGHT_TOTAL = None, SIZE_WIDTH_TOTAL = 25., 
+            plot_beh=True, plot_rasters=True, 
+            alpha_raster = 0.9,
             xmin = None, xmax = None):
         """ Plot one site, mult trials, overlaying for each trial its major events
         PARAMS:
         - list_trials, list of int. if None, then plots 20 random
-        - site, int (512)
+        - site, int (512). only allowed to be None if plot_rasters is None
         - alignto, str or None, how to adjust times to realign.
         - SIZE, height of each row. 
         - SIZE_HEIGHT_TOTAL, totla of all rows. if not None, then overwrites SIZE.
         - xmax, will limit the plot to this max value.
-        """
+        """ 
 
+        if site is None:
+            assert plot_rasters==False
+
+        # Auto determine alpha for markers, based on num trials
+        ALPHA_MARKERS = 1-np.clip(len(list_trials)/ 200, 0.25, 0.75)
 
         if list_trials is None:
             import random
@@ -3518,15 +3542,19 @@ class Session(object):
             
             # get time of this event (first instance)
             if alignto:
-                alignto_time = self.events_get_time(alignto, trial)
+                timesthis = self.events_get_time_helper(alignto, trial)
+                # if long, then take the first one
+                assert len(timesthis)>0
+                alignto_time = timesthis[0]
             else:
                 alignto_time = None
 
             # Rasters
-            rs, chan = self.convert_site_to_rschan(site)
-            D = self.datall_slice_single(rs, chan, trial0=trial)
-            spikes = D['spike_times']
-            self.plot_raster_line(ax, spikes, i, alignto_time=alignto_time, linelengths=0.9, alpha=alpha_raster)
+            if plot_rasters:
+                rs, chan = self.convert_site_to_rschan(site)
+                D = self.datall_slice_single(rs, chan, trial0=trial)
+                spikes = D['spike_times']
+                self.plot_raster_line(ax, spikes, i, alignto_time=alignto_time, linelengths=0.9, alpha=alpha_raster)
             
             # - overlay beh things
         #     SN.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, only_on_edge="top")
@@ -3535,8 +3563,8 @@ class Session(object):
             else:
                 include_text = False
             self.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, only_on_edge="bottom", 
-                                            YLIM=[i-0.3, i+0.5], which_events=["trial"], 
-                                            include_text=include_text, text_yshift = -0.5, alpha=0.25)
+                                            YLIM=[i-0.3, i+0.5], which_events=["key_events_correct"], 
+                                            include_text=include_text, text_yshift = -0.5, alpha=ALPHA_MARKERS)
         #     SN.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, 
         #                                     YLIM=[i-0.3, i+0.3], which_events=["strokes"], only_on_edge="top")
         #     SN.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, 
@@ -3546,12 +3574,13 @@ class Session(object):
         #     SN.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, 
         #                                     YLIM=[i+0.2, i+0.4], which_events=["strokes"], alpha=0.3)
             self.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, 
-                                            YLIM=[i-0.4, i-0.2], which_events=["strokes"], alpha=0.25)
+                                            YLIM=[i-0.4, i-0.2], which_events=["strokes"], alpha=ALPHA_MARKERS)
             
         ax.set_yticks(range(len(list_trials)))
         ax.set_yticklabels(list_trials);
         ax.set_ylabel('trial');
-        ax.set_title(self.sitegetter_summarytext(site))
+        if site is not None:
+            ax.set_title(self.sitegetter_summarytext(site))
         if xmin is not None:
             ax.set_xlim(left=xmin)
         if xmax is not None:
