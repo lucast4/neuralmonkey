@@ -15,6 +15,7 @@ def load_and_preprocess_single_session(date, rec_session, animal = "Pancho"):
     PARAMS:
     - date, str.
     """
+    from ..utils.monkeylogic import session_map_from_rec_to_ml2
 
     dataset_beh_expt = None
     expt = "*"
@@ -26,22 +27,31 @@ def load_and_preprocess_single_session(date, rec_session, animal = "Pancho"):
 
     # ============= RUN
     # beh_session = rec_session+1 # 1-indexing.
-    sessdict = mkl.getSessionsList(animal, datelist=[date])
-
-    print("ALL SESSIONS: ")
-    print(sessdict)
-
-    if all([len(x)==0 for x in sessdict.values()]):
-        # skip, this animal and date doesnt exits.
-        return sessdict
-
-    # beh_sess_list = [sess_expt[0] for sess_expt in sessdict[date]]
-
-    # Not enough beh sessions?
-    if len(sessdict[date])<rec_session+1:
-        # Then skip this rec_session, there is not a matching beh sessinon
-        print(f"rec session {rec_session} doesnt exist (no matching beh session found)")
+    out = session_map_from_rec_to_ml2(animal, date, rec_session)
+    if out is None:
+        # Then this rec/beh session doesnt exist
+        # (Otherwise, continue)
         return
+
+    # else:
+
+
+    # sessdict = mkl.getSessionsList(animal, datelist=[date])
+
+    # print("ALL SESSIONS: ")
+    # print(sessdict)
+
+    # if all([len(x)==0 for x in sessdict.values()]):
+    #     # skip, this animal and date doesnt exits.
+    #     return sessdict
+
+    # # beh_sess_list = [sess_expt[0] for sess_expt in sessdict[date]]
+
+    # # Not enough beh sessions?
+    # if len(sessdict[date])<rec_session+1:
+    #     # Then skip this rec_session, there is not a matching beh sessinon
+    #     print(f"rec session {rec_session} doesnt exist (no matching beh session found)")
+    #     return
 
     try:
         SN = load_session_helper(date, dataset_beh_expt, rec_session, animal, expt, 

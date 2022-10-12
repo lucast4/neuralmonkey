@@ -70,9 +70,12 @@ def session_map_from_rec_to_ml2(animal, date, rec_session):
     - date, int or str, YYMMDD.
     - rec_session, int, (0-indexed)
     RETURNS:
-    - beh_session, int index
-    - exptname, name of expt for this session
-    - sessdict, dict for this day holding all sessions (beh).
+    - if rec/beh session both exist:
+    --- beh_session, int index
+    --- exptname, name of expt for this session
+    --- sessdict, dict for this day holding all sessions (beh).
+    - if doesnt exist:
+    --- None
     """
 
 
