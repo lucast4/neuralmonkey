@@ -26,6 +26,14 @@ def convert_discrete_events_to_time_series(t0, tend, event_onsets, event_offsets
     - vals
     """
 
+    # allow for diff in length of 1, will pad either onsets or offsets if thats the case
+    if len(event_onsets)<len(event_offsets):
+        # assume onset is at time 0
+        event_onsets = np.insert(event_onsets, 0, t0)
+    elif len(event_onsets)>len(event_offsets):
+        # then append to end of offsets
+        event_offsets = np.append(event_offsets, tend)
+
     assert len(event_onsets)==len(event_offsets)
 
     # generate time bins and vals
