@@ -5,6 +5,7 @@ Load dataset (from server) and save it locally.
 from ..utils import monkeylogic as mkl
 from ..classes.session import Session, load_session_helper
 import os
+import matplotlib.pyplot as plt
 
 DATES_IGNORE = ["220708"]
 
@@ -16,6 +17,7 @@ def load_and_preprocess_single_session(date, rec_session, animal = "Pancho"):
     - date, str.
     """
     from ..utils.monkeylogic import session_map_from_rec_to_ml2
+    from pythonlib.tools.expttools import checkIfDirExistsAndHasFiles
 
     dataset_beh_expt = None
     expt = "*"
@@ -99,12 +101,14 @@ def load_and_preprocess_single_session(date, rec_session, animal = "Pancho"):
     # Save
     print("** [load_and_preprocess_single_session] Step 3: plot_spike_waveform_multchans")
     path = f"{SN.Paths['figs_local']}/waveforms_overlay"
-    if not os.path.exists(path):
+    if not checkIfDirExistsAndHasFiles(path)[1]:
+    # if not os.path.exists(path):
         SN.plot_spike_waveform_multchans(LIST_YLIM = [[-250, 100]])
 
     print("** [load_and_preprocess_single_session] Step 4: plot_spike_waveform_stats_multchans")
     path = f"{SN.Paths['figs_local']}/waveforms_stats"
-    if not os.path.exists(path):
+    if not checkIfDirExistsAndHasFiles(path)[1]:
+    # if not os.path.exists(path):
         SN.plot_spike_waveform_stats_multchans(None)
 
     # Get stats about fr
@@ -114,6 +118,13 @@ def load_and_preprocess_single_session(date, rec_session, animal = "Pancho"):
     # Save stats about fr (usefeul for pruning low fr sitse and nosy sites)
     print("** [load_and_preprocess_single_session] Step 6: plotbatch_sitestats_fr_overview")
     SN.plotbatch_sitestats_fr_overview()
+
+    # Save (1) sanity check and (2) cached extraction of photodiode crossings, for
+    # timing of events
+    SN.events_get_time_using_photodiode_and_save()
+    path = f"{SN.Paths['figs_local']}/eventcodes_trial_structure"
+    if not checkIfDirExistsAndHasFiles(path)[1]:
+        SN.eventsdataframe_sanity_check()
     
     print("** COMPLETED load_and_save_locally !!")
 
@@ -128,6 +139,7 @@ if __name__=="__main__":
         # rec_session = 1 # assumes one-to-one mapping between neural and beh sessions.
         print("Running:", sys.argv, "session: ", rec_session)
         load_and_preprocess_single_session(date, rec_session)
+        plt.close("all")
 
     # # ============== PARAMS
     # list_date = [220702, 220703, 220630, 220628, 220624, 220616, 220603, 220609]
