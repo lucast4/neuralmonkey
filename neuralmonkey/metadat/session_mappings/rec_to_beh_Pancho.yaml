@@ -1,4 +1,6 @@
 # mapping from rec session (int) to beh session (int).
 # e.g, if [2,3], mean rec session 0 maps to beh session 2 (1-indexed)
 
+220526: [2]
+220719: [2]
 221001: [2, 3] 
