@@ -928,7 +928,7 @@ class Session(object):
     ########################## GET FROM PRE-EXTRACTED DATA
     # def convert_epoc_to_stream(self, ):
 
-    def extract_data_tank_streams(self, which, trial0=None):
+    def extract_data_tank_streams(self, which, trial0=None, ploton=False):
         """ Extract tank data, epocs, in flexible manner.
         PARAMS:
         - which, string name, will be mapped to the specific key in data
@@ -974,6 +974,11 @@ class Session(object):
         # Slice a single tyrial?
         if trial0 is not None:
             times, vals = self.extract_windowed_data_bytrial(times, trial0, vals)[:2]
+
+        if ploton:
+            fig, ax = plt.subplots(1,1)
+            ax.plot(times, vals)
+            ax.set_title(f"{which}-trial_{trial0}")
         
         return times, vals, fs
 

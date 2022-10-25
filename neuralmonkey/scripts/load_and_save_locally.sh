@@ -24,14 +24,24 @@ touch preprocess_log.txt
 
 
 # ######## version 1 - iterate thru dates in order.
-# d=220526 # first date to check.
 # date2=220815 # the final date to check
 
 # d=220603 # first date to check.
 # d=220707 # the final date to check
 
-d=220815 # first date to check.
-date2=221004 # the final date to check
+# d=220815 # first date to check.
+
+# d=220526 # first date to check.
+# date2=221004 # the final date to check
+
+# # 221019 (#4)
+# d=221004 # first date to check.
+# date2=221018 # the final date to check
+
+# 221019 (#5)
+d=221014 # first date to check.
+date2=221022 # the final date to check
+
 date1=$d
 until [[ ${date1} > ${date2} ]]; do
   echo ${date1}

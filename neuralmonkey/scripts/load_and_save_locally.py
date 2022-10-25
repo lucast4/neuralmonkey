@@ -61,7 +61,7 @@ def load_and_preprocess_single_session(date, rec_session, animal = "Pancho"):
     except Exception as err:
         print("&&&&&&&&&&&&")
         print(date, dataset_beh_expt, rec_session, animal, expt)
-        raise
+        raise err
 
     # if beh_session not in beh_sess_list:
     #     print(f"session {beh_session} doesnt exist in {beh_sess_list}")
