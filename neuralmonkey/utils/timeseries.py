@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt
 
 def dat_to_time(vals, fs):
     """ Given sample data, get time bins for vals

@@ -29,7 +29,7 @@ def loadSingleDataQuick(a, d, e, s):
     from tools.preprocess import loadSingleDataQuick
     fd = loadSingleDataQuick(a,d,e,s)
     if fd is None:
-        print("++++", a, d, e, s)
+        print("++++ (params attempted for loading beh eval. [beh-specific parmas]", a, d, e, s)
         assert False
     return fd
 
