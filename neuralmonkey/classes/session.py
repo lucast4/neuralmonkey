@@ -73,8 +73,13 @@ def load_mult_session_helper(DATE, animal, dataset_beh_expt=None, expt = "*"):
 
     from neuralmonkey.classes.multsessions import MultSessions
 
+    # get list of existing sessions
+    from neuralmonkey.utils.directory import find_rec_session_paths
+
+    sessionslist = find_rec_session_paths(animal, DATE)
+
     SNlist = []
-    for rec_session in range(10):
+    for rec_session in range(len(sessionslist)):
         # go thru many, if doesnt exist will not do it.
         # rec_session = 1 # assumes one-to-one mapping between neural and beh sessions.
         print("session: ", rec_session)
@@ -86,11 +91,9 @@ def load_mult_session_helper(DATE, animal, dataset_beh_expt=None, expt = "*"):
         # print("ALL SESSIONS: ")
         # print(sessdict)
 
-        try:
-            SN = load_session_helper(DATE, dataset_beh_expt, rec_session, animal, expt)
-            SNlist.append(SN)
-        except Exception as err:
-            pass
+        SN = load_session_helper(DATE, dataset_beh_expt, rec_session, animal, expt)
+        SNlist.append(SN)
+        print("Extracted successfully for session: ", rec_session)
 
     assert len(SNlist)>0, "did not find any neural sessions..."
 
@@ -168,7 +171,20 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
     
     # Load dataset beh
     if dataset_beh_expt is not None:
-        SN.datasetbeh_load()
+        try:
+            try:
+                # Try loading using "null" rule, which is common
+                SN.datasetbeh_load(dataset_beh_expt=dataset_beh_expt, 
+                    dataset_beh_rule="null")
+                print("**Loaded dataset! using rule: null")
+            except:
+                # If that doesnt work, then use the daily dataset, which 
+                # is generated autmatoiocalyl (after like sep 2022)
+                SN.datasetbeh_load(dataset_beh_rule = DATE) # daily 
+                print("**Loaded dataset! using rule: ", DATE)
+        except:
+
+            assert False, "pass in correct rule to load dataset."
 
     return SN
 
@@ -315,6 +331,10 @@ class Session(object):
         if extract_spiketrain_elephant:
             self.spiketrain_as_elephant_batch()
 
+        # Initialize mappers
+        self.MapSiteToRegionCombined = {}
+        self.MapSiteToRegion = {}
+
 
     ####################### PREPROCESS THINGS
     def _cleanup(self):
@@ -348,6 +368,22 @@ class Session(object):
         if os.path.exists(path):
             print("Found! metada path : ", path)
             out = load_yaml_config(path)
+
+            # if anything is list of lists, then each inner list is a diff session.
+            # so take the union.
+            list_sites_keys = ["sites_garbage", "sites_low_fr"]
+            for key in list_sites_keys:
+                if isinstance(out[key][0], list):
+                    print("Starting lengths:")
+                    for list_vals in out[key]:
+                        print(len(list_vals))
+                    values_union = [val for list_vals in out[key] for val in list_vals]
+                    # take 
+                    out[key] = sorted(set(values_union))
+                    print("Union length")
+                    print(len(out[key]))
+
+            # Save it
             for k, v in out.items():
                 self.SitesMetadata[k] = v
         else:
@@ -374,7 +410,7 @@ class Session(object):
         self._MapperTrialcode2TrialToTrial = {}
 
         for trial in self.get_trials_list():
-            trialcode = self.datasetbeh_get_trialcode(trial)
+            trialcode = self.datasetbeh_trial_to_trialcode(trial)
             assert trialcode not in self._MapperTrialcode2TrialToTrial.keys(), "diff trials give same trialcode, not possible."
             self._MapperTrialcode2TrialToTrial[trialcode] = trial
         print("Generated self._MapperTrialcode2TrialToTrial!")
@@ -441,7 +477,7 @@ class Session(object):
                 return oldpath
 
             # Second, if have not yet extracted spikes.
-            for suffix in ["-4.5", "", "-3.5"]: 
+            for suffix in ["-4", "-4.5", "", "-3.5"]: 
                 path_maybe = f"{paththis}/spikes_tdt_quick{suffix}"
                 # if os.path.exists(path_maybe):
                 if checkIfDirExistsAndHasFiles(path_maybe):
@@ -1784,7 +1820,7 @@ class Session(object):
         and total units etc
         """
         sites_all =[]
-        for area, sites in self.sitegetter_brainregion(clean=True).items():
+        for area, sites in self._sitegetter_generate_mapper_region_to_sites(clean=True).items():
             print(area, " : ", len(sites))
             sites_all.append(len(sites))
         print(" ------- ")
@@ -1806,11 +1842,11 @@ class Session(object):
         # sn.sitegetter_all(["dlPFC_p", "dlPFC_a"])
         print("------")
         print("Summary for each overall region")
-        regions_summary = ["M1", "PMv", "PMd", "dlPFC", "vlPFC", "FP", "SMA", "preSMA"]
+        regions_summary = self.sitegetter_get_brainregion_list()
         max_prev = 0
         print("region, nunits, --, min(sitenum), max(sitenum)")
         for regsum in regions_summary:
-            sites = self.sitegetter_brainregion(regsum)
+            sites = self.sitegetter_map_region_to_sites(regsum)
             print(regsum, len(sites), "----", min(sites), max(sites))
             min_this = min(sites)
             assert min_this > max_prev
@@ -1830,7 +1866,7 @@ class Session(object):
     def sitegetter_brainregion_chan(self, region, chan):
         """ Given a regin (e.g., M1_m) and chan (1-256) return its site (1-512)
         """ 
-
+        assert False, "rewrite using sitegetter_map_region_to_site"
         # which rs?
         sites = self.sitegetter_brainregion(region)
         if all([s<257 for s in sites]):
@@ -1846,12 +1882,105 @@ class Session(object):
         return site
 
 
+    def _sitegetter_get_map_brainregion_to_site(self):
+        """ Retgurn dict mapping from regions to sites.
+        Hard coded.
+        RETURNS:
+        - dict[region] = list of sites
+        """
+        regions_in_order = ["M1_m", "M1_l", "PMv_l", "PMv_m",
+                "PMd_p", "PMd_a", "SMA_p", "SMA_a", 
+                "dlPFC_p", "dlPFC_a", "vlPFC_p", "vlPFC_a", 
+                "preSMA_p", "preSMA_a", "FP_p", "FP_a"]
+        dict_sites ={}
+        for i, name in enumerate(regions_in_order):
+            dict_sites[name] = list(range(1+32*i, 1+32*(i+1)))
+        return dict_sites
+
+    def _sitegetter_generate_mapper_region_to_sites(self, clean=True,
+        combine_into_larger_areas=False):
+        """ Generate dict mapping from region to sites, with added flexiblity of paras
+        PARAMS:
+        - clean, bool, whether to remove bad sites
+        - combine_into_larger_areas, bool,
+        RETURNS:
+        - dict_sites[sitename] = list of ints.
+        """
+
+        # Get default sites
+        dict_sites = self._sitegetter_get_map_brainregion_to_site()
+
+        # Remove bad sites?
+        if clean:
+            assert self.SitesDirty is not None, "you need to enter which are bad sites in SitesDirty"
+            for k, v in dict_sites.items():
+                # remove any sites that are bad
+                dict_sites[k] = [vv for vv in v if vv not in self.SitesDirty]
+
+        if combine_into_larger_areas:
+            regions_specific = dict_sites.keys()
+            regions_in_order = ["M1", "PMv", "PMd", "SMA", "dlPFC", "vlPFC",  "preSMA", "FP"]
+            def _regions_in(summary_region):
+                """ get list of regions (e.g, ["dlPFC_a", 'dlPFC_p']) that are in this summary region (e.g., dlPFC)
+                """
+                return [reg for reg in regions_specific if reg.find(summary_region)==0]
+            
+            dict_sites_new = {}
+            for reg in regions_in_order:
+                regions_specific_this = _regions_in(reg)
+                sites_this = [s for reg in regions_specific_this for s in dict_sites[reg]]
+                dict_sites_new[reg] = sites_this
+            dict_sites = dict_sites_new
+
+        return dict_sites
+
+    def sitegetter_get_brainregion_list(self, combine_into_larger_areas=False):
+        """ Get list of str, names of all brain regions.
+        """
+        dict_sites = self._sitegetter_generate_mapper_region_to_sites(
+            combine_into_larger_areas=combine_into_larger_areas)
+        return list(dict_sites.keys())
+
+    def sitegetter_map_region_to_sites(self, region, clean=True):
+        """ Given a region (string) map to a list of ints (sites)
+        """
+        mapper = self._sitegetter_generate_mapper_region_to_sites(clean, False)
+        if region in mapper.keys():
+            return mapper[region]
+        else:
+            mapper = self._sitegetter_generate_mapper_region_to_sites(clean, True)
+            return mapper[region]
+
+
+    def sitegetter_map_site_to_region(self, site, region_combined=False):
+        """ REturn the regino (str) for this site (int, 1-512)
+        PARAMS:
+        - region_combined, bool, if true, then uses gross areas (e.g, M1) but
+        if False, then uses specific area for each array (e.g., M1_l)
+        """
+
+        if region_combined:
+            Mapper = self.MapSiteToRegionCombined
+        else:
+            Mapper = self.MapSiteToRegion
+
+        if len(Mapper)==0:
+            # Generate it
+            dict_sites = self._sitegetter_generate_mapper_region_to_sites(
+                clean=False, combine_into_larger_areas=region_combined) # clean=False, since maping from sites to reg.
+            for bregion, slist in dict_sites.items():
+                for s in slist:
+                    Mapper[s] = bregion
+
+        return Mapper[site]
+        
+
     def sitegetter_thissite_info(self, site):
         """ returns info for this site in a dict
         """
 
         # Get the brain region
-        dict_sites = self.sitegetter_brainregion()
+        dict_sites = self._sitegetter_generate_mapper_region_to_sites()
         regionthis = None
         for bregion, sites in dict_sites.items():
             if site in sites:
@@ -1878,37 +2007,48 @@ class Session(object):
         """
 
         if list_regions is None:
-            bm = self.sitegetter_brainregion("mapper", clean=clean)
-            sites = [s for br, ss in bm.items() for s in ss]
-        else:
-            assert isinstance(list_regions, list)           
-            tmp = [self.sitegetter_brainregion(reg, clean=clean) for reg in list_regions]
-            sites = [site for list_sites in tmp for site in list_sites]
+            list_regions = self.sitegetter_get_brainregion_list(combine_into_larger_areas=False)
+
+        sites = []
+        for region in list_regions:
+            sites_this = self.sitegetter_map_region_to_sites(region, clean=clean)
+            sites.extend(sites_this)
+
+        # if list_regions is None:
+        #     bm = self.sitegetter_brainregion("mapper", clean=clean)
+        #     sites = [s for br, ss in bm.items() for s in ss]
+        # else:
+        #     assert isinstance(list_regions, list)           
+        #     tmp = [self.sitegetter_brainregion(reg, clean=clean) for reg in list_regions]
+        #     sites = [site for list_sites in tmp for site in list_sites]
 
             # bm = {br:sites for br, sites in bregion_mapper.items() if br in list_regions}
 
         return sites
 
+
+
     def sitegetter_brainregion(self, region=None, clean=True):
-        """ Flexible getter of channels based on region
+        """ Flexible mapping from region to site
         PARAMS:
-        - region, flexible input. see within code
+        - region, Either string (specific region) or list of strings (concats the sites)
         - clean, whether to remove garbage chanels
         RETURNS:
+        - 
         - out, depends on type of region
         """
         # Hard coded
-        regions_in_order = ["M1_m", "M1_l", "PMv_l", "PMv_m",
-                            "PMd_p", "PMd_a", "dlPFC_p", "dlPFC_a", 
-                            "vlPFC_p", "vlPFC_a", "FP_p", "FP_a",
-                            "SMA_p", "SMA_a", "preSMA_p", "preSMA_a"]
-        dict_sites ={}
-        for i, name in enumerate(regions_in_order):
-            dict_sites[name] = list(range(1+32*i, 1+32*(i+1)))
-        if False:
-            for k, v in dict_sites.items():
-                print(k, v)
-            
+        # regions_in_order = ["M1_m", "M1_l", "PMv_l", "PMv_m",
+        #                     "PMd_p", "PMd_a", "dlPFC_p", "dlPFC_a", 
+        #                     "vlPFC_p", "vlPFC_a", "FP_p", "FP_a",
+        #                     "SMA_p", "SMA_a", "preSMA_p", "preSMA_a"]
+        # regions_in_order = ["M1_m", "M1_l", "PMv_l", "PMv_m",
+        #                     "PMd_p", "PMd_a", "SMA_p", "SMA_a", 
+        #                     "dlPFC_p", "dlPFC_a", "vlPFC_p", "vlPFC_a", 
+        #                     "preSMA_p", "preSMA_a", "FP_p", "FP_a"]
+
+        assert region is not None, "new version"
+
         # do clean
         if clean:
             assert self.SitesDirty is not None, "you need to enter which are bad sites in SitesDirty"
@@ -1916,30 +2056,35 @@ class Session(object):
                 # remove any sites that are bad
                 dict_sites[k] = [vv for vv in v if vv not in self.SitesDirty]
 
+        # Get sites
         if region=="list_regions":
+            assert False, "_sitegetter_generate_mapper_region_to_sites"
             return regions_in_order
         elif region=="mapper" or region is None:
+            assert False, "_sitegetter_generate_mapper_region_to_sites"
             return dict_sites
         elif isinstance(region, int):
+            assert False, "why do this"
             return dict_sites[regions_in_order[region]]
         elif isinstance(region, list):
             # then this is list of str
             list_chans = []
             for reg in region:
-                sites = self.sitegetter_brainregion(reg, clean=clean)
+                sites = self.sitegetter_map_region_to_sites(reg, clean=clean)
                 list_chans.extend(sites)
             return list_chans
         elif isinstance(region, str):
-            if region in dict_sites.keys():
-                # Then is one of the main regions
-                return dict_sites[region]
-            else:
-                # Then could be a summary region
-                def _regions_in(summary_region):
-                    """ get list of regions (e.g, ["dlPFC_a", 'dlPFC_p']) that are in this summary region (e.g., dlPFC)
-                    """
-                    return [reg for reg in regions_in_order if reg.find(summary_region)==0]
-                return self.sitegetter_all(list_regions=_regions_in(region), clean=clean)
+            return self.sitegetter_map_region_to_sites(region)
+            # if region in dict_sites.keys():
+            #     # Then is one of the main regions
+            #     return dict_sites[region]
+            # else:
+            #     # Then could be a summary region
+            #     def _regions_in(summary_region):
+            #         """ get list of regions (e.g, ["dlPFC_a", 'dlPFC_p']) that are in this summary region (e.g., dlPFC)
+            #         """
+            #         return [reg for reg in regions_in_order if reg.find(summary_region)==0]
+            #     return self.sitegetter_all(list_regions=_regions_in(region), clean=clean)
         else:
             assert False
 
@@ -2155,7 +2300,7 @@ class Session(object):
             
         # Plot example rasters, sampled uniformly across fr values.
         sites_plot = summary["sites_sorted"][::20]
-        n = 20
+        n = 40
         trials_plot = self.get_trials_list(True)
         if len(trials_plot)>n:
             trials_plot = random.sample(trials_plot, n)
@@ -2552,12 +2697,13 @@ class Session(object):
         D.load_dataset_helper(self.Animal, expt, rule=dataset_beh_rule)
         D.load_tasks_helper()
 
-        if not D._analy_preprocess_done:
-            D, GROUPING, GROUPING_LEVELS, FEATURE_NAMES, SCORE_COL_NAMES = preprocessDat(D, expt)
+        # 10/25/22 - done automaticlaly.
+        # if not D._analy_preprocess_done:
+        #     D, GROUPING, GROUPING_LEVELS, FEATURE_NAMES, SCORE_COL_NAMES = preprocessDat(D, expt)
 
         # 2) keep only the dataset trials that are included in recordings
         trials = self.get_all_existing_site_trial_in_datall("trial")                                               
-        list_trialcodes = [self.datasetbeh_get_trialcode(t) for t in trials]
+        list_trialcodes = [self.datasetbeh_trial_to_trialcode(t) for t in trials]
         print("- Keeping only dataset trials that exist in self.Dat")
         print("Starting length: ", len(D.Dat))
         D.filterPandas({"trialcode":list_trialcodes}, "modify")
@@ -2597,7 +2743,7 @@ class Session(object):
         # PLOT EXAMPLE, SHOWING MATCH across neural and beh datasets
 
         # 1) for each tdt trial, get its trialcode in beh
-        trialcode = self.datasetbeh_get_trialcode(trial)
+        trialcode = self.datasetbeh_trial_to_trialcode(trial)
         D = self.Datasetbeh
 
         # 2) Find this trialcode in Dataset
@@ -2612,8 +2758,40 @@ class Session(object):
         self.plot_final_drawing(ax,trial)
 
 
+    def datasetbeh_extract_dataframe(self, list_trials):
+        """
+        Returns D.Dat, with idnices exactly matching list_trials,
+        in order, etc.
+        """
+
+        trialcodes = [sn.dataset_beh_trial_to_trialcode(t) for t in trials]
+
+
 
     ###################### GET TEMPORAL EVENTS
+    def events_get_times_as_array(self, trial, list_events):
+        """ 
+        return as array, where take first crossing if exists., and
+        is nan if doesnt. in order inputed in list_events
+        """
+        eventsdict = self.events_get_time_using_photodiode(trial, list_events=list_events)
+        out = np.empty(len(list_events))
+        for i, ev in enumerate(list_events):
+            times = eventsdict[ev]
+            if len(times)==0:
+                out[i] = np.nan
+            else:
+                out[i] = times[0]
+        return out
+    def events_does_trial_include_all_events(self, trial, list_events):
+        """
+        REturns True if this trial includes each event at least one time
+        """
+        events_array = self.events_get_times_as_array(trial, list_events)
+        return ~np.any(np.isnan(events_array))
+
+
+
     def events_get_time_sorted(self, trial, 
         list_events = ["stim_onset", "go_cue", "first_raise", "on_stroke_1"]):
         """ Get times of these events, sorted both by (i) their first occurances within the trial
@@ -2948,7 +3126,8 @@ class Session(object):
                                                                 allow_no_crossing_per_behcode_instance_if=None)                
                     times = _extract_times(out)
                 else:
-                    assert False
+                    print(event)
+                    assert False, "This event doesnt exist!!"
                     
                 assert times is not None
             return times
@@ -2962,7 +3141,6 @@ class Session(object):
 
             key = (trial, event)
 
-            # FIrst, check cached
             if not overwrite and key in self.EventsTimeUsingPhd.keys():
                 times=  self.EventsTimeUsingPhd[(trial, event)]
             else:
@@ -3325,7 +3503,8 @@ class Session(object):
 
 
     ###################### SMOOTHED FR
-    def smoothedfr_extract_timewindow(self, trials, sites, alignto, pre_dur=-0.1, post_dur=0.1):
+    def smoothedfr_extract_timewindow(self, trials, sites, alignto, pre_dur=-0.1, post_dur=0.1,
+        fail_if_times_outside_existing=True):
         """ [GOOD] Extract snippet of neural data temporally windows to have same time bins, 
         works even across trials. Time window defined relative to an event marker (alginto)
         PARAMS:
@@ -3354,15 +3533,18 @@ class Session(object):
 
             # slice to time window
             time_align = self.events_get_time_using_photodiode(tr, list_events=[alignto])[alignto]
+            time_align = time_align[0] # take first time in list of times.
             t1 = time_align + pre_dur
             t2 = time_align + post_dur
-            pa = pa.slice_by_time_window(t1, t2, return_as_popanal=True)
+            pa = pa.slice_by_time_window(t1, t2, return_as_popanal=True,
+                fail_if_times_outside_existing=fail_if_times_outside_existing)
             
             # save this slice
             list_xslices.append(pa)
 
         # 2) Concatenate all PA into a single PA
-        assert False, "fix this!! if pre_dur extends before first time, then this is incorrect. Should do what?"
+        if not fail_if_times_outside_existing:
+            assert False, "fix this!! if pre_dur extends before first time, then this is incorrect. Should do what?"
         TIMES = (list_xslices[0].Times - list_xslices[0].Times[0]) + pre_dur*s # times all as [-predur, ..., postdur]
 
         # get list of np arrays
@@ -3478,7 +3660,8 @@ class Session(object):
         return suc
 
     def get_trials_list(self, only_if_ml2_fixation_success=False,
-        only_if_has_valid_ml2_trial=False):
+        only_if_has_valid_ml2_trial=False, 
+        events_that_must_include=[]):
         """
         Get list of ints, trials,
         PARAMS:
@@ -3486,6 +3669,8 @@ class Session(object):
         ml2 beh trial had fixation success. Also skips trials that dont exist in filedata at all.
         - only_if_has_valid_ml2_trial, then skips if the mapper refers to a session or trial outside domain
         (e.g.,negetive). can happen if mapper is incorrect, or missing some beh trials from start of day, etc.
+        - events_that_must_include, list of str names of events. only inclues trials that have at least 
+        one instance of eaech event. time in trial doesnt matter.
         """
 
         trials = range(len(self.TrialsOffset))
@@ -3511,7 +3696,20 @@ class Session(object):
                     trials_keep.append(t)
             trials = trials_keep
 
+        if len(events_that_must_include)>0:
+            trials = self.get_trials_list_if_include_these_events(trials, events_that_must_include)
+
         return trials
+
+    def get_trials_list_if_include_these_events(self, trials, events_that_must_include):
+        """ only inclues trials that have at least 
+        one instance of eaech event. time in trial doesnt matter.
+        """
+        trials_keep = []
+        for t in trials:
+            if self.events_does_trial_include_all_events(t, events_that_must_include):
+                trials_keep.append(t)
+        return trials_keep  
 
 
     ####################### PLOTS (generic)
@@ -4308,12 +4506,12 @@ class Session(object):
             alignto="go_cue", pre_dur=-0.5, post_dur=2, ax=None,
             plot_indiv=True, plot_summary=False, error_ver="sem",
             pcol_both = None, pcol_indiv = "k", pcol_summary="r",
-            xmin=None, xmax=None
-            ):
+            xmin=None, xmax=None, summary_method="median"):
         """ Plot smoothed FR, across sites and trials, aligned to event 
         First extracts this data, then plots
         """
 
+        assert pre_dur < post_dur
         # 1) Extract the data 
         pa = self.smoothedfr_extract_timewindow(trials, sites, alignto, pre_dur, post_dur)
 
@@ -4322,7 +4520,7 @@ class Session(object):
             pcol_indiv = pcol_both
             pcol_summary = pcol_both
         fig1, ax1, fig2, ax2 = pa.plotwrapper_smoothed_fr(ax=ax, plot_indiv=plot_indiv, plot_summary=plot_summary, 
-            error_ver=error_ver, pcol_indiv=pcol_indiv, pcol_summary=pcol_summary)
+            error_ver=error_ver, pcol_indiv=pcol_indiv, pcol_summary=pcol_summary, summary_method=summary_method)
 
         if xmin is not None:
             for axthis in [ax1, ax2]:
@@ -4570,7 +4768,20 @@ class Session(object):
             print(f"Saved at: {path}")
 
     #################### LINKING TO BEH DATASET
-    def datasetbeh_get_trialcode(self, trial):
+    # def datasetbeh_get_trialcode(self, trial):
+    #     """ get trialcode for this trial(tdt)
+    #     RETURNS:
+    #     - trialcode, a string
+    #     """
+
+    #     date = self.Date
+    #     index_sess, trial_ml = self._beh_get_fdnum_trial(trial)
+    #     session_ml = self.BehSessList[index_sess]
+
+    #     trialcode = f"{date}-{session_ml}-{trial_ml}"
+    #     return trialcode
+
+    def datasetbeh_trial_to_trialcode(self, trial):
         """ get trialcode for this trial(tdt)
         RETURNS:
         - trialcode, a string
@@ -4592,6 +4803,13 @@ class Session(object):
         """ Given list of trialcodes, get list of idnices into self.Dat
         """
         return [self.datasetbeh_trialcode_to_trial(tc) for tc in list_trialcodes]
+
+    def datasetbeh_trialcode_prune_within_session(self, list_trialcodes):
+        """ Returns subset of list_trialcodes, just those that exist in this session
+        """
+        assert len(self._MapperTrialcode2TrialToTrial)>0, "cannot check without this..."
+        return [trialcode for trialcode in list_trialcodes if trialcode in self._MapperTrialcode2TrialToTrial.keys()]
+        
 
 
     #################### CHECK THINGS

@@ -187,11 +187,17 @@ class PopAnal():
                 self.X = X
         
         self.Saved = {}
-        self.Times = times
+        if times is None:
+            # just use dummy indices
+            self.Times = np.arange(self.X.shape[2])
+        else:
+            # assert isinstance(times, list), "or something list-like? change code?"
+            self.Times = times
 
         if chans is None:
             self.Chans = range(self.X.shape[0])
         else:
+            assert isinstance(chans, list)
             self.Chans = chans
 
         # Spike trains
@@ -209,12 +215,32 @@ class PopAnal():
         if trials is None:
             self.Trials = list(range(self.X.shape[1]))
         else:
+            assert isinstance(trials, list)
             self.Trials = trials
 
+
+        # Initialize dataframe holding dimension labels
+        self.Xlabels = {}
+        self.Xlabels["trials"] = pd.DataFrame()
+        self.Xlabels["chans"] = pd.DataFrame()
+        self.Xlabels["times"] = pd.DataFrame()
+        
         # Final sanity check
         assert len(self.Chans)==self.X.shape[0]
         assert len(self.Trials)==self.X.shape[1]
         assert len(self.Times)==self.X.shape[2]
+
+        # # Helper, maps
+        # self.MapDimensionsStrToInt = {
+        #     "chans":0,
+        #     "trials":1,
+        #     "times":2
+        # }
+        # self.MapDimensionsIntToStr = {
+        #     0:"chans",
+        #     1:"trials",
+        #     2:"times"
+        # }
 
 
 
@@ -641,41 +667,93 @@ class PopAnal():
             return XdataframeAgg
 
     ####################### SLICING
-    def slice_by_time_window(self, t1, t2, return_as_popanal=False):
+    def slice_by_dim_indices_wrapper(self, dim, inds):
+        """ Helper that is standard across the three dims (trials, times, chans),
+        to use indices (i.e., not chans, but indices into chans)
+        PARAMS:
+        - dim, either int or str
+        - inds:
+        --- if dim in {chans, trials,}, then is indices into self.Chans or self.Trials.
+        --- if dim == "times", then is [t1 t2], inclusive start and end times.
+        RETURNS: 
+        - PopAnal object
+        """
+
+        # convert to int
+        dim, dim_str = self.help_get_dimensions(dim)
+
+        if dim_str=="times":
+            assert len(inds)==2
+            assert not isinstance(inds[0], int), "num, not int"
+            t1 = inds[0]
+            t2 = inds[1]
+            pa = self.slice_by_time_window(t1, t2, True, True)
+        elif dim_str=="chans":
+            pa = self.slice_by_chan(inds, return_as_popanal=True, 
+                chan_inputed_row_index=True)
+        elif dim_str=="trials":
+            pa = self.slice_by_trial(inds, return_as_popanal=True)
+        else:
+            print(dim_str)
+            assert False
+
+        # Retain the labels for the dimensions that are untouched
+        pa.Xlabels = self.Xlabels.copy()
+        pa.Xlabels[dim_str] = pd.DataFrame()
+
+        return pa
+
+
+    def slice_by_time_window(self, t1, t2, return_as_popanal=False,
+            fail_if_times_outside_existing=True, version="raw"):
         """ Slice population by time window, where
         time is based on self.Times
         PARAMS;
         - t1, t2, start and end time for slicing
+        - fail_if_times_outside_existing, bool, if True, then self.Times must have times
+        before t1 and after t2 (i.e., t1 and t2 are within range of data)
         RETURNS:
         - np array, (nchans, ntrials, timesliced)
         """
+        if fail_if_times_outside_existing:
+            assert sum(self.Times<=t1)>0, "you are asking for times outside range of data"
+            assert sum(self.Times>=t2)>0, "you are asking for times outside range of data"
+
+        X = self.extract_activity(version=version)
         inds = (self.Times>=t1) & (self.Times<=t2)
-        x_windowed = self.X[:, :, inds]
+        x_windowed = X[:, :, inds]
         times = self.Times[inds]
 
         if return_as_popanal:
-            PA = PopAnal(x_windowed, times, chans=self.Chans, print_shape_confirmation=False)
+            PA = PopAnal(x_windowed, times, chans=self.Chans, 
+                trials = self.Trials, print_shape_confirmation=False)
             return PA
         else:
             return x_windowed, times
 
-    def slice_by_trial(self, trials, version="raw", return_as_popanal=False):
+    def slice_by_trial(self, inds, version="raw", return_as_popanal=False):
         """ Slice activity to only get these trials, returned as popanal
         if return_as_popanal is True
         PARAMS:
-        - trials, list of ints, indices into dim 1 of self.X
+        - inds, list of ints, indices into dim 1 of self.X
+        NOTE: inds are not the trials themselves, rather indices into Trials.
         """
 
+        # Collect data
         X = self.extract_activity(version=version)
-        X = X[:, trials, :]
+        X = X[:, inds, :]
+        trials_actual = [self.Trials[i] for i in inds]
+
+        # Generate new popanal
         if return_as_popanal:
-            PA = PopAnal(X, self.Times, chans=self.Chans, print_shape_confirmation=False)
+            PA = PopAnal(X, times=self.Times, chans=self.Chans,
+                trials = trials_actual, print_shape_confirmation=False)
             return PA
         else:
             return X
 
     def slice_by_chan(self, chans, version="raw", return_as_popanal=True, 
-            chan_inputed_row_index=False,):
+            chan_inputed_row_index=False):
         """ Slice data to keep only subset of channels
         PARAMS;
         - chans, list of chan labels, These are NOT the row indices, but are instead
@@ -691,14 +769,18 @@ class PopAnal():
         # convert from channel labels to row indices
         if chan_inputed_row_index:
             inds = chans
+            del chans
         else:
             inds = [self.index_find_this_chan(ch) for ch in chans]
+            del chans
+        chans_actual = [self.Chans[i] for i in inds]
 
         # Slice
         X = self.extract_activity(version=version)
         X = X[inds, :, :]
+
         if return_as_popanal:
-            PA = PopAnal(X, self.Times, chans=chans)
+            PA = PopAnal(X, times=self.Times, trials=self.Trials, chans=chans_actual)
             return PA
         else:
             return X
@@ -730,6 +812,137 @@ class PopAnal():
         X = self.extract_activity(version=version)
         return np.mean(X, axis=1, keepdims=True)
 
+    def agg_wrapper(self, along_dim, agg_method="mean"):
+        """ aggregate ALL data along a given dimenisions. if you want to first slice,
+        do self.slice_and_agg_wrapper()
+        PARAMS:
+        - along_dim, int or str
+        - agg_method, str, how to agg, e.g, mean
+        RETURNS:
+        - PopAnal object
+        """
+
+        along_dim, along_dim_str = self.help_get_dimensions(along_dim)
+
+        X = self.extract_activity(version="raw")
+        if agg_method=="mean":
+            Xagg = np.mean(X, axis=along_dim, keepdims=True)
+        elif agg_method=="median":
+            Xagg = np.median(X, axis=along_dim, keepdims=True)
+        elif agg_method=="sem":
+            from scipy import stats
+            Xsem = stats.sem(X, axis=along_dim)
+            if along_dim==0:
+                Xagg = Xsem.reshape(1, Xsem.shape[0], Xsem.shape[1])
+            elif along_dim==1:
+                Xagg = Xsem.reshape(Xsem.shape[0], 1, Xsem.shape[1])
+            elif along_dim==2:
+                Xagg = Xsem.reshape(Xsem.shape[0], Xsem.shape[1], 1)
+            else:
+                assert False
+        else:
+            print(agg_method)
+            assert False, "not coded"
+
+        chans = self.Chans
+        trials = self.Trials
+        times = self.Times
+        # Create new popanal
+        if along_dim_str=="times":
+            val1 = self.Times[0]
+            val2 = self.Times[-1]
+            times = [f"{agg_method}-{val1}_{val2}"]
+        elif along_dim_str=="trials":
+            val1 = self.Trials[0]
+            val2 = self.Trials[-1]
+            trials = [f"{agg_method}-{val1}_{val2}"]
+        elif along_dim_str=="chans":
+            val1 = self.Chans[0]
+            val2 = self.Chans[-1]
+            chans = [f"{agg_method}-{val1}_{val2}"]
+
+        return PopAnal(Xagg, times=times, chans=chans, trials=trials)
+
+
+    def slice_by_label(self, dim_str, dim_variable, dim_value):
+        """
+        EG:
+        - dim_str = "trials"
+        - dim_variable = "epoch"
+        - dim_value = "L|0"
+        """
+        dfthis = self.Xlabels[dim_str]
+        inds = dfthis[dfthis[dim_variable]==dim_value].index.tolist()
+        pa = self.slice_by_dim_indices_wrapper(dim_str, inds)
+        return pa
+
+
+    def slice_and_agg_wrapper(self, along_dim, grouping_variables, grouping_values=None,
+            agg_method = "mean"):
+        """ Flexibly aggregate neural data along any of the three dimensions, using
+        any variable, etc.
+        PARAMS:
+        - along_dim, eitehr int {0,1,2} or str {'chans', 'trials', 'times'}, euivalent, and
+        ordered as such. which diemsions to agg (will collapse this dim)
+        - grouping_variables, list of str, cross-prod of thee variables will define the goruping
+        - grouping_values, list of str, levels of the given grouping. Leave None to use
+        all levels
+        """
+
+        from pythonlib.tools.pandastools import grouping_append_and_return_inner_items
+
+        along_dim, along_dim_str = self.help_get_dimensions(along_dim)
+
+        if isinstance(grouping_variables, str):
+            grouping_variables = [grouping_variables]
+        else:
+            assert isinstance(grouping_variables, list)
+
+        # Collect indices for each level of the grouping
+        df = self.Xlabels[along_dim_str]
+        # - sanity check
+        for var in grouping_variables:
+            assert var in df.columns
+
+        # Get indices for each grouping level
+        groupdict = grouping_append_and_return_inner_items(df, 
+            grouping_variables, groupinner='index', 
+            groupouter_levels=grouping_values)
+
+        # Get sliced pa for each grouping level
+        list_pa = []
+        list_grplevel = []
+        for grp in groupdict:
+            inds = groupdict[grp]
+
+            # slice
+            pathis = self.slice_by_dim_indices_wrapper(dim=along_dim, inds=inds)
+            
+            # agg
+            pathis = pathis.agg_wrapper(along_dim=along_dim, agg_method=agg_method)
+
+            # collect
+            list_pa.append(pathis)
+            list_grplevel.append(grp)
+
+        # Concatenate all pa into a larger pa
+        pa_all = concatenate_popanals(list_pa, dim=along_dim, values_for_concatted_dim=list_grplevel)
+
+        # Pass in the label dataframes
+        # (best to pass in here, and not agg, or slice, beucase this is the lowest level code
+        # where there is consistently meaningfull labels.
+        # - initialize with the current labels
+        pa_all.Xlabels = self.Xlabels.copy()
+        
+        # - then replace the slice-agged dimension
+        dat = {}
+        for i, var in enumerate(grouping_variables):
+            vals = [x[i] for x in list_grplevel]
+            dat[var] = vals
+        dflab = pd.DataFrame(dat)
+        pa_all.Xlabels[along_dim_str] = dflab
+
+        return pa_all
 
     def agg_by_trialgrouping(self, groupdict, version="raw", return_as_popanal=True):
         """ aggreagate so that trials dimension is reduced,
@@ -759,6 +972,34 @@ class PopAnal():
             return PopAnal(X, PAthis.Times, PAthis.Chans)
         else:
             return X
+
+    ############### LABELS, each value ina given dimension of X 
+    def labels_input(self, name, values, dim="trials"):
+        """ Append values, stored in self.Xlabels[dim]
+        PARAMS:
+        - name, str
+        - values, list-like values, must match the size of this dim exactly.
+        - dim, str, whether labels match {trials, times, chans}
+        NOTE: opverwrites name if it has been p[reviusly entered]
+        """
+
+        # Extract the desired dataframe
+        # and sanity check matching of sizes
+        if dim=="trials":
+            df = self.Xlabels["trials"]
+            assert len(values)==len(self.Trials)
+        elif dim=="chans":
+            df = self.Xlabels["chans"]
+            assert len(values)==len(self.Chans)
+        elif dim=="times":
+            df = self.Xlabels["times"]
+            assert len(values)==len(self.Times)
+        else:
+            print(dim)
+            assert False
+
+        df[name] = values
+
 
     ################ INDICES
     def index_find_this_chan(self, chan):
@@ -802,6 +1043,15 @@ class PopAnal():
             print(version)
             assert False
 
+    def help_get_dimensions(self, dim):
+        """ Hleper to convert between types for dim (int or str)
+        PARAMS;
+        - dim, eitehr int {0,1,2} or str {'chans', 'trials', 'times'}, euivalent
+        RETURNS:
+        - dim(int), dim_str(string)
+        """
+        return help_get_dimensions(dim)
+
 
     ### PLOTTING
     def plotNeurHeat(self, trial, version="raw", **kwargs):
@@ -814,7 +1064,7 @@ class PopAnal():
 
     def plotwrapper_smoothed_fr(self, inds=None, axis_for_inds="site", ax=None, 
                      plot_indiv=True, plot_summary=False, error_ver="sem",
-                     pcol_indiv = "k", pcol_summary="r"):
+                     pcol_indiv = "k", pcol_summary="r", summary_method="mean"):
         """ Wrapper for different ways of plotting multiple smoothed fr traces, where
         multiple could be trials or sites. Also to plot summaries (means, etc). 
         PARAMS:
@@ -858,11 +1108,16 @@ class PopAnal():
         if plot_summary:
             if error_ver=="sem":
                 from scipy import stats
-                Xmean = np.mean(X, axis=0)
+                if summary_method=="mean":
+                    Xmean = np.mean(X, axis=0)
+                elif summary_method=="median":
+                    Xmean = np.median(X, axis=0)
+                else:
+                    print(summary_method)
+                    assert False
                 Xsem = stats.sem(X, axis=0)
             else:
-                print(error_ver)
-                assert False, "not coded"
+                assert error_ver is None, "not coded"
             
             fig2, ax2 = plotNeurTimecourseErrorbar(Xmean, Xerror=Xsem, times=times,ax=ax, color=pcol_summary)
         else:
@@ -1189,3 +1444,75 @@ def dftrials_centerize_by_group_mean(DfTrials, grouping_for_mean):
     print("**********", dfnew.columns)
     dfnew = applyFunctionToAllRows(dfnew, F, "x_centered")
     return dfnew
+
+
+def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None):
+    """ Concatenate multiple popanals. They must have same shape except
+    for the one dim concatted along.
+    PARAMS:
+    - list_pa, list of PopAnal objects
+    - dim, int, which dimensiion to concat along
+    - values_for_concatted_dim, list of items which are labels for
+    each value in the new concatted dimension. Must be apporopriate length.
+    RETURNS:
+    - PopAnal object
+    NOTE:
+    - for the non-concatted dim, will use the values for the first pa. assumes
+    this is same across pa.
+    """
+
+    dim, dim_str = help_get_dimensions(dim)
+
+    # 1) Concat the data
+    list_x = [pa.X for pa in list_pa]
+    X = np.concatenate(list_x, axis=dim)
+
+    # 2) Create new PA
+    # values for the non-concatted dimensions.
+    pa1 = list_pa[0]
+    chans = pa1.Chans
+    trials = pa1.Trials
+    times = pa1.Times
+    if dim_str=="times":
+        PA = PopAnal(X, times = values_for_concatted_dim,
+            chans=chans, trials = trials)
+    elif dim_str=="chans":
+        PA = PopAnal(X, times=times, trials = trials,
+            chans = values_for_concatted_dim)
+    elif dim_str=="trials":
+        PA = PopAnal(X, times=times, trials = values_for_concatted_dim,
+            chans = chans)
+    else:
+        print(dim_str)
+        assert False
+
+    return PA
+
+def help_get_dimensions(dim):
+    """ Hleper to convert between types for dim (int or str)
+    PARAMS;
+    - dim, eitehr int {0,1,2} or str {'chans', 'trials', 'times'}, euivalent
+    RETURNS:
+    - dim(int), dim_str(string)
+    """
+    
+    MapDimensionsStrToInt = {
+        "chans":0,
+        "trials":1,
+        "times":2
+    }
+    MapDimensionsIntToStr = {
+        0:"chans",
+        1:"trials",
+        2:"times"
+    }
+
+
+    if isinstance(dim, str):
+        dim_str = dim
+        dim = MapDimensionsStrToInt[dim]
+    elif isinstance(dim, int):
+        dim_str = MapDimensionsIntToStr[dim]
+    else:
+        assert False
+    return dim, dim_str
