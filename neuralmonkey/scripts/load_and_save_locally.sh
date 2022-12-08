@@ -2,7 +2,9 @@
 
 # Run this in base dir: /neuralmonkey
 # bash scripts/load_and_save_locally.sh 2>&1 | tee preprocess_log.txt
-# ./load_and_save_locally.sh 2>&1 | tee preprocess_log.txt
+
+# cd /gorilla1/code/neuralmonkey/neuralmonkey/scripts
+# ./load_and_save_locally.sh 2>&1 | tee preprocess_log_221108.txt
 
 
 # Mount server
@@ -10,15 +12,19 @@ server_mount
 
 touch preprocess_log.txt
 
-####### Version 1- give a list of dates
-# datelist=( 220702 220703 220630 220628 220624 220616 220603 220609 )
-# datelist=( 220704 )
-# datelist=( 220606 220608 220609 220610 220715 220716 220717 )
-# for date in "${datelist[@]}"
+# ####### Version 1- give a list of dates
+# # datelist=( 220702 220703 220630 220628 220624 220616 220603 220609 )
+# # datelist=( 220704 )
+# # datelist=( 220606 220608 220609 220610 220715 220716 220717 )
+
+# # 11/15/22
+# datelist=( 221029 221031 221102 221112 221114 )
+# for date1 in "${datelist[@]}"
 # do
-# 	# echo ${date}
-# 	# python -m neuralmonkey.scripts.load_and_save_locally ${date} 2>&1 | tee load_and_save_locally_log_${date}.txt & 
-# 	python -m neuralmonkey.scripts.load_and_save_locally ${date}
+#     echo ${date1}
+#     # python -m neuralmonkey.scripts.load_and_save_locally ${date1} 2>>&1 | tee preprocess_log.txt
+#     python -m neuralmonkey.scripts.load_and_save_locally ${date1} |& tee -a preprocess_log.txt
+#     date1=$(date +%y%m%d -d "${date1} + 1 day")
 # done
 
 
@@ -43,8 +49,28 @@ touch preprocess_log.txt
 # date2=221022 # the final date to check
 
 # 221019 (#6)
-d=220526 # first date to check.
-date2=221024 # the final date to check
+# d=220526 # first date to check.
+# date2=221024 # the final date to check
+
+# # 221103
+# d=221020 # first date to check.
+# date2=221103 # the final date to check
+
+# 221108
+# d=221027 # first date to check.
+# date2=221108 # the final date to check
+
+# 221114
+# d=221027 # first date to check.
+# date2=221112 # the final date to check
+
+# 221114 - 2
+# d=221027 # first date to check.
+# date2=221027 # the final date to check
+
+# 221207
+d=221112 # first date to check.
+date2=221130 # the final date to check
 
 date1=$d
 until [[ ${date1} > ${date2} ]]; do

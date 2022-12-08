@@ -35,7 +35,7 @@ def loadSingleDataQuick(a, d, e, s):
 
 
 def _load_session_mapper(animal, date = None):
-    """ Load a dict (metadat) mapping from session (neural) to beh
+    """ Load a dict (metadat) mapping from session (neural) to beh.
     PARAMS:
     - date, if None, returns the dict. if date is int (YYMMDD), returns its
     map (if doesnt exist, then returns None)
@@ -44,8 +44,8 @@ def _load_session_mapper(animal, date = None):
     --- dict, all mappings, with date:list_of_ints (1-indexed beh sessions, in oprder)
     --- list of ints (see above)
     --- None, gave date, but didnt find
-    """
-
+    """    
+    from .directory import find_rec_session_paths
     from pythonlib.tools.expttools import load_yaml_config
     from pythonlib.globals import PATH_NEURALMONKEY
     path = f"{PATH_NEURALMONKEY}/metadat/session_mappings/rec_to_beh_{animal}.yaml"
@@ -55,6 +55,20 @@ def _load_session_mapper(animal, date = None):
         return pathdict
     elif isinstance(date, int):
         if date in pathdict.keys():
+            # SANITY CHECK
+            
+            # First, confirm that the mapping includes all and only all the sessions
+            sessionslist = find_rec_session_paths(animal, date)
+            # print(pathdict, date)
+            # print(pathdict[date])
+            # print(len(sessionslist))
+            # for x in sessionslist:
+            #     print(x["sessnum"])
+
+            # check that the beh sessions exist
+            # for beh_sess in pathdict[date]:
+            #     assert beh_sess in 
+            # assert len(pathdict[date]) == len(sessionslist)
             return pathdict[date]
         else:
             return None
@@ -78,13 +92,13 @@ def session_map_from_rec_to_ml2(animal, date, rec_session):
     --- None
     """
 
-
     # assume that beh sessions are indexed by neural rec sessions
     # beh_session = rec_session+1    
 
     # Which beh session maps to this neural session?
     session_map = _load_session_mapper(animal, int(date))
     sessdict = getSessionsList(animal, datelist=[date])
+
     if session_map is not None:
         # then use hand-entered session
         if rec_session+1 > len(session_map):
@@ -92,9 +106,12 @@ def session_map_from_rec_to_ml2(animal, date, rec_session):
         beh_session = session_map[rec_session]
         print("Beh Sessions hand netered (mapping: rec sess --> beh sess): ", session_map)
     else:
+
         # Then use rec_session+1 (indexing into the beh sessions that exist.)
         if rec_session+1 > len(sessdict[date]):
             return None
+
+        # Second, pull out this session.
         beh_session = sessdict[date][rec_session][0]
         print("Beh Sessions that exist on this date: ", sessdict)
 
