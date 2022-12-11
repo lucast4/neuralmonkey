@@ -1098,7 +1098,8 @@ class Session(object):
 
         return times, vals
 
-    def extract_raw_and_spikes_helper(self, trials=None, sites=None, get_raw=False):
+    def extract_raw_and_spikes_helper(self, trials=None, sites=None, 
+        get_raw=False, save=True):
         """ to quickly get a subset of trials, all sites, etc.
         PARAMS:
         - trials, list of ints, if None, then gets all.
@@ -1163,7 +1164,8 @@ class Session(object):
             self.mapper_extract("sitetrial_to_datallind")
             
             # Save
-            self._savelocal_datall()
+            if save:
+                self._savelocal_datall()
 
 
     def _extract_raw_and_spikes(self, rss, chans, trialtdt, get_raw = False):
@@ -1249,7 +1251,7 @@ class Session(object):
 
         return self.DatAll
 
-    def datall_cleanup_add_things(self):
+    def datall_cleanup_add_things(self, only_generate_dataframe=False):
         """ Quick processing, things to add to datall in case not already 
         added 
         - Also makes self.DatAllDf (dataframe version).
@@ -1257,25 +1259,26 @@ class Session(object):
         print("DOING: datall_cleanup_add_things")
         import pandas as pd
 
-        # Time info
-        if "time_dur" not in self.DatAll[0].keys():
-            self._datall_compute_timing_info()
+        if not only_generate_dataframe:
+            # Time info
+            if "time_dur" not in self.DatAll[0].keys():
+                self._datall_compute_timing_info()
 
-        # sites
-        for Dat in self.DatAll:
-            if "site" not in Dat.keys():
-                site = self.convert_rschan_to_site(Dat["rs"], Dat["chan"])
-                Dat["site"] = site
+            # sites
+            for Dat in self.DatAll:
+                if "site" not in Dat.keys():
+                    site = self.convert_rschan_to_site(Dat["rs"], Dat["chan"])
+                    Dat["site"] = site
 
-        # no spikes outside of time window
-        for Dat in self.DatAll:
-            st = Dat["spike_times"]
-            t_on = Dat["time_on"]
-            t_off = Dat["time_off"]
-            if st is not None and t_on is not None and t_off is not None:
-                if np.any(st<t_on) or np.any(st>t_off):
-                    print(Dat)
-                    assert False, "due to jitter in ml2 vs. tdt?"
+            # no spikes outside of time window
+            for Dat in self.DatAll:
+                st = Dat["spike_times"]
+                t_on = Dat["time_on"]
+                t_off = Dat["time_off"]
+                if st is not None and t_on is not None and t_off is not None:
+                    if np.any(st<t_on) or np.any(st>t_off):
+                        print(Dat)
+                        assert False, "due to jitter in ml2 vs. tdt?"
 
         self.DatAllDf = pd.DataFrame(self.DatAll)
         print("Generated self.DatAllDf")
@@ -1519,20 +1522,26 @@ class Session(object):
 
     def mapper_extract(self, version, save=True):
         """ construct mapper (do this oine time)
+        NOTE: only run this if modify the indices in self.DatAll...
+        NOTE: it will be smart about saving, only if there is any mod.
         """
                     
 
         if version=="sitetrial_to_datallind":
             print("Extracting _MapperSiteTrial2DatAllInd")
             trialprint = -1
+            ADDED_ITEM = False
             for index, Dat in enumerate(self.DatAll):
                 site = self.convert_rschan_to_site(Dat["rs"], Dat["chan"])
+                # site = Dat["site"]
                 trial = Dat["trial0"]
-                if trial!=trialprint:
-                    print("trial: ", trial)
-                    trialprint = trial
-                self._MapperSiteTrial2DatAllInd[(site, trial)] = index
-            if save:
+                if (site, trial) not in self._MapperSiteTrial2DatAllInd.keys():
+                    ADDED_ITEM = True
+                    if trial!=trialprint:
+                        print("trial: ", trial)
+                        trialprint = trial
+                    self._MapperSiteTrial2DatAllInd[(site, trial)] = index
+            if save and ADDED_ITEM:
                 self._savelocal_datall()
         else:
             print(version)
@@ -1996,6 +2005,35 @@ class Session(object):
             "rs":rs,
             "chan":chan}
 
+    def _sitegetter_sort_sites_by(self, sites, by, take_top_n=None):
+        """ Sort sites by some method and optionally return top n
+        PARAMS:
+        - sites, list of ints
+        - by, str, method for sorting sites
+        - take_top_n, eitehr None (ignore) or int, take top N after sorting.
+        RETURNS:
+        - sites_sorted, list of ints, sites sorted and (optiaolly) pruned to top n
+        """
+
+        if by=="fr":
+            # Get fr for all sites
+            frate_all = [self.sitestats_fr(s)["fr_mean"] for s in sites]
+
+            # Sort them, in decresaing order of fr
+            tmp = [(fr, s) for fr, s in zip(frate_all, sites)]
+            tmp = sorted(tmp, key = lambda x: -x[0])
+        else:
+            print(by)
+            assert False, "not coded"
+
+        if take_top_n is None:
+            take_top_n = len(sites)
+
+        # get this many of the top sites (by average fr)
+        sites_sorted = [tmp[i][1] for i in range(take_top_n)]
+
+        return sites_sorted
+
     def sitegetter_all(self, list_regions=None, clean=True):
         """ Get all sites, in order
         MNOTE: will be in order of list_regions
@@ -2148,14 +2186,41 @@ class Session(object):
         # Use Dataframe, is much faster than iterating over trials
 
         trials = self.get_trials_list()
-        dfthis = self.DatAllDf[(self.DatAllDf["site"]==sitenum) & (self.DatAllDf["trial0"].isin(trials))]
 
         # Confirm that has already been extracted and saved
-        ERROR = False        
-        if "fr" not in dfthis.columns:
-            ERROR = True
-        elif dfthis["fr"].isna().any():
-            ERROR = True
+        def _check_for_fr(dfthis):
+            ERROR = False        
+            if "fr" not in dfthis.columns:
+                print("fr not in dfthis.columns, ", sitenum)
+                ERROR = True
+            elif dfthis["fr"].isna().any():
+                inds_with_na = np.where(dfthis["fr"].isna())[0]
+                print("fr has na for theses indices in dfthis: ", inds_with_na, "this sitenum: ", sitenum)
+                print("Running extraction for these cases")
+                print(inds_with_na)
+
+                # This computes fr for each specific case, and stores in self.DatAll.
+                # still have to run datall_cleanup_add_things below to push this to dataframe
+                for ind in inds_with_na:
+                    sitethis = dfthis.iloc[ind]["site"]
+                    trialthis = dfthis.iloc[ind]["trial0"]
+                    self.sitestats_fr_single(sitethis, trialthis)
+
+                ERROR = True
+            return ERROR
+
+        # 1) check if you have fr in dataframe
+        dfthis = self.DatAllDf[(self.DatAllDf["site"]==sitenum) & (self.DatAllDf["trial0"].isin(trials))]
+        ERROR = _check_for_fr(dfthis)
+
+        # 2) try again, after cleaning up
+        if ERROR:
+            # Then try cleaning up, maybe havent updated the dataframe yet
+            self.datall_cleanup_add_things(only_generate_dataframe=True)
+        dfthis = self.DatAllDf[(self.DatAllDf["site"]==sitenum) & (self.DatAllDf["trial0"].isin(trials))]
+        ERROR = _check_for_fr(dfthis)
+
+        # 3) If still error, then haven't extract into self.DatAll...
         if ERROR:
             # Now raise error, first extract
             print("dddddddddddddddddddddddddddd")
@@ -2165,13 +2230,15 @@ class Session(object):
 
         # Get fr
         list_fr = dfthis["fr"].tolist()
+        list_trials = dfthis["trial0"].tolist()
 
         stats = {}
         stats["list_fr"] = list_fr
+        stats["list_trials"] = list_trials
         stats["fr_mean"] = np.mean(list_fr)
         return stats
 
-    def sitestats_fr_get_and_save(self):
+    def sitestats_fr_get_and_save(self, save=True):
         """ Gets fr for all sites and saves in self.DatAll, and saves
         to disk. This is more for computation than for returning anything useufl. 
         Run this once."""
@@ -2184,8 +2251,8 @@ class Session(object):
                 self.sitestats_fr_single(site, trial)
                 # list_fr.append(fr)
             # self.sitestats_fr(site) # run this to iterate over all trials, and save to datall
-        
-        self._savelocal_datall()
+        if save:
+            self._savelocal_datall()
 
     def sitestats_get_low_fr_sites(self, low_fr_thresh=2, savedir=None):
         """ FInds sites with mean fr less than threshold; 
@@ -2764,7 +2831,8 @@ class Session(object):
         in order, etc.
         """
 
-        trialcodes = [sn.dataset_beh_trial_to_trialcode(t) for t in trials]
+        assert False, 'in progress'
+        trialcodes = [sn.dataset_beh_trial_to_trialcode(t) for t in list_trials]
 
 
 
@@ -3023,6 +3091,22 @@ class Session(object):
                         times = []
                     else:
                         times = [ons[0]]
+
+                elif "on_strokeidx_" in event:
+                    # e.g., on_strokeidx_2 means onset of 3rd stroke
+                    # Returns empty, if this idx doesnt exist.
+                    assert event.find("on_strokeidx_")==0
+
+                    # - which stroke id
+                    idx = int(event[13:])
+
+                    # onset of idx stroke (touch)
+                    ons, _ = self.strokes_extract_ons_offs(trial)
+                    if len(ons)<idx+1:
+                        times = []
+                    else:
+                        times = [ons[idx]]
+
 
                 elif event=="off_stroke_last":
                     # offset of the last stroke (touch)
@@ -3431,7 +3515,7 @@ class Session(object):
 
         return st
 
-    def spiketrain_as_elephant_batch(self):
+    def spiketrain_as_elephant_batch(self, save=True):
         """ Generate and save SpikeTrain for all site and trial
         RETURNS:
         - adds "spiketrain" as key in self.DatAll
@@ -3453,10 +3537,174 @@ class Session(object):
                 ADDED = True
 
         print("FINISHED - extracting spiketrain for all trials in self.DatAll")
-        if ADDED:
+        if ADDED and save:
             self._savelocal_datall()
 
     ####################### GENERATE POPANAL for a trial
+    def _popanal_generate_alldata_bystroke(self, DS, sites, 
+        pre_dur, post_dur, fail_if_times_outside_existing,
+        use_combined_region):
+        """ Low level 
+        """
+        # 1) Get trials and stroke inds
+        trials = []
+        trialcodes = []
+        strokeids = []
+        for ind in range(len(DS.Dat)):
+        
+            if ind%200==0:
+                print("index strokes: ", ind)
+                
+            tc = DS.Dat.iloc[ind]["dataset_trialcode"]
+            si = DS.Dat.iloc[ind]["stroke_index"]
+            trial_neural = self.datasetbeh_trialcode_to_trial(tc)
+
+            trials.append(trial_neural)
+            trialcodes.append(tc)
+            strokeids.append(si)
+
+        # 2) generate PA (Align to each stroke)
+        pa = self.smoothedfr_extract_timewindow_bystroke(trials, strokeids, sites, 
+            pre_dur=pre_dur, post_dur=post_dur, 
+            fail_if_times_outside_existing=fail_if_times_outside_existing)
+
+        # 3) Assign stroke-level features
+        print("Extracting dataset features into pa.Xlabel [trials]")
+        list_cols = ['task_kind', 'gridsize', 'dataset_trialcode', 
+            'stroke_index', 'shape_oriented', 'ind_taskstroke_orig', 'gridloc',
+            'gridloc_x', 'gridloc_y', 'h_v_move_from_prev']
+        pa.labels_features_input_from_dataframe(DS.Dat, list_cols, dim="trials")
+        # Sanity check, input order matches output order
+        assert pa.Xlabels["trials"]["dataset_trialcode"].tolist() == trialcodes
+        # Rename it trialcode
+        pa.Xlabels["trials"]["trialcode"] = pa.Xlabels["trials"]["dataset_trialcode"]
+        pa.Xlabels["trials"] = pa.Xlabels["trials"].drop("dataset_trialcode", 1)
+        
+        print("Extracting dataset features into pa.Xlabel [chans]")
+        regions = [self.sitegetter_map_site_to_region(s, region_combined=use_combined_region) for s in sites]
+        pa.labels_input("regions_combined", regions, dim="chans")
+
+        return pa
+
+    def popanal_generate_alldata_bystroke(self, DS, sites, align_to_stroke=True,
+        align_to_alternative=[], pre_dur=-0.2, post_dur=0.2, 
+        fail_if_times_outside_existing=True,
+        use_combined_region=True):
+
+        # # 1) Get trials and stroke inds
+        # trials = []
+        # trialcodes = []
+        # strokeids = []
+        # for ind in range(len(DS.Dat)):
+        
+        #     if ind%200==0:
+        #         print("index strokes: ", ind)
+                
+        #     trial_neural = self.datasetbeh_trialcode_to_trial(trialcode)
+
+        #     # --- BEH
+        #     tc = DS.Dat.iloc[ind]["dataset_trialcode"]
+        #     si = DS.Dat.iloc[ind]["stroke_index"]
+
+        #     trials.append(trial_neural)
+        #     trialcodes.append(tc)
+        #     strokeids.append(si)
+
+        # 2) generate PA
+        if align_to_stroke:
+            # Return the single pa, aligned to each stroke in
+            pa = self._popanal_generate_alldata_bystroke(DS, sites, 
+                pre_dur, post_dur, fail_if_times_outside_existing,
+                use_combined_region)
+            ListPA = [pa]
+        else:
+            # just use trials, align to specific item in each trial
+            # (note: would use this over popanal_generate_alldata because here 
+            # saves the stroke-level features)
+            assert len(align_to_alternative)>0, "need to pass in list of str, events to align to"
+
+            # Which trials?
+            trials = []
+            trialcodes = []
+            for ind in range(len(DS.Dat)):
+                tc = DS.Dat.iloc[ind]["dataset_trialcode"]
+                trial_neural = self.datasetbeh_trialcode_to_trial(tc)
+                trials.append(trial_neural)
+                trialcodes.append(tc)
+
+            # Collect
+            ListPA = self.popanal_generate_alldata(trials, sites, align_to_alternative, 
+                pre_dur, post_dur)
+
+            # Assign stroke-level features
+            print("Extracting dataset features into pa.Xlabel [trials]")
+            list_cols = ['task_kind', 'gridsize', 'dataset_trialcode', 
+                'stroke_index', 'shape_oriented', 'ind_taskstroke_orig', 'gridloc',
+                'gridloc_x', 'gridloc_y', 'h_v_move_from_prev']
+            for pa in ListPA:
+                pa.labels_features_input_from_dataframe(DS.Dat, list_cols, dim="trials")
+                # Sanity check, input order matches output order
+                assert pa.Xlabels["trials"]["dataset_trialcode"].tolist() == trialcodes
+                assert pa.Xlabels["trials"]["trialcode"].tolist() == trialcodes
+
+        return ListPA
+
+
+    def popanal_generate_alldata(self, trials, sites,
+        events = ["fix_touch", "samp", "go_cue", "first_raise", "on_stroke_1"],
+        pre_dur=-0.5, post_dur=0.8, 
+        columns_to_input = ["trialcode", "epoch", "character", "supervision_stage_concise"],
+        use_combined_region = True):
+        """ GOOD wrapper to generate multiple PA objects holding smoothed FR
+        across chans and trials, aligned to specific events in trial. Also assigns
+        features/labels into the PA, allowing for slicing afterwards
+
+        """
+
+        # pre_dur = -0.8
+        # post_dur = 0.8
+        # events = ["fix_touch", "samp", "go_cue", "first_raise", "on_stroke_1"]
+        import pandas as pd
+        from pythonlib.tools.pandastools import slice_by_row_label
+
+
+        # Extract a PA for each event
+        print("Generating PA")
+        ListPA = []
+        for ev in events:
+            print("Extracting pa for: ", ev)
+            pa = self.smoothedfr_extract_timewindow(trials, sites, alignto=ev, pre_dur = pre_dur, post_dur = post_dur)
+            ListPA.append(pa)
+            
+        ##### Sanity checks
+        # 1) same trials and sites for all pa
+        for pa1, pa2 in zip(ListPA[:-1], ListPA[1:]):
+            assert pa1.Chans==pa2.Chans
+            assert pa1.Trials==pa2.Trials
+            
+        #### INPUT VARIABLES
+        print("Extracting dataset features into pa.Xlabel [trials]")
+        # 2) Input desired variables associated with each trial
+        trialcodes = [self.datasetbeh_trial_to_trialcode(t) for t in trials]
+        dfthis = slice_by_row_label(self.Datasetbeh.Dat, "trialcode", trialcodes)
+        assert dfthis["trialcode"].tolist() == trialcodes
+        # store each val
+        for pa in ListPA:
+            pa.labels_features_input_from_dataframe(dfthis, columns_to_input, "trials")
+            # for col in columns_to_input:
+            #     values = dfthis[col].tolist()
+            #     pa.labels_input(col, values, dim="trials")                
+
+        # 3) Input variables associated with each chan
+        # - for each chan, map to bregion
+        print("Extracting dataset features into pa.Xlabel [chans]")
+        regions = [self.sitegetter_map_site_to_region(s, region_combined=use_combined_region) for s in sites]
+        for pa in ListPA:
+            pa.labels_input("regions_combined", regions, dim="chans")
+
+        return ListPA
+
+
     def popanal_generate_save_trial(self, trial, gaussian_sigma = 0.1, 
             sampling_period=0.01, print_shape_confirmation=False,
             clean_chans=True, overwrite=False):
@@ -3487,6 +3735,9 @@ class Session(object):
             list_spiketrain = []
             for site in list_sites:
                 dat = self.datall_slice_single_bysite(site, trial)
+                if "spiketrain" not in dat.keys():
+                    print("Generating spike train! (site, trial): ", site, trial)
+                    self._spiketrain_as_elephant(site, trial, save=True)
                 list_spiketrain.append(dat["spiketrain"])
                 
             # Convert spike train to smoothed FR
@@ -3503,10 +3754,69 @@ class Session(object):
 
 
     ###################### SMOOTHED FR
-    def smoothedfr_extract_timewindow(self, trials, sites, alignto, pre_dur=-0.1, post_dur=0.1,
+    def smoothedfr_extract_timewindow_bystroke(self, trials, strokeids, 
+        sites, pre_dur=-0.1, post_dur=0.1,
+        fail_if_times_outside_existing=True):
+
+
+        from quantities import s
+        from .population import PopAnal
+        
+        assert isinstance(pre_dur, (float, int))
+        assert isinstance(pre_dur, (float, int))
+        assert len(trials)==len(strokeids)
+
+        list_xslices = []
+        # 1) extract each trials' PA. Use the slicing tool in PA to extract snippet
+        for tr, indstrok in zip(trials, strokeids):
+            # extract popanal
+            pa = self.popanal_generate_save_trial(tr)
+
+            # slice to desired channels
+            pa = pa._slice_by_chan(sites)
+ 
+            # slice to time window
+            if False:
+                # Then align to onset of stroke that is in DS
+                # Sanity check (confirm that timing for neural is same as timing saved in dataset)
+                ons, offs = SNthis.strokes_extract_ons_offs(trial_neural)
+                timeon_neural = ons[indstrok]
+                timeoff_neural = offs[indstrok]    
+                timeon = DS.Dat.iloc[ind]["time_onset"]
+                timeoff = DS.Dat.iloc[ind]["time_offset"]
+                assert np.isclose(timeon, timeon_neural)
+                assert np.isclose(timeoff, timeoff_neural)
+                time_align = timeon
+            else:                
+                alignto = f"on_strokeidx_{indstrok}"
+                time_align = self.events_get_time_using_photodiode(tr, 
+                    list_events=[alignto])[alignto]
+                time_align = time_align[0] # take first time in list of times.
+            t1 = time_align + pre_dur
+            t2 = time_align + post_dur
+            pa = pa._slice_by_time_window(t1, t2, return_as_popanal=True,
+                fail_if_times_outside_existing=fail_if_times_outside_existing)
+            
+            # save this slice
+            list_xslices.append(pa)
+
+        # 2) Concatenate all PA into a single PA
+        if not fail_if_times_outside_existing:
+            assert False, "fix this!! if pre_dur extends before first time, then this is incorrect. Should do what?"
+        TIMES = (list_xslices[0].Times - list_xslices[0].Times[0]) + pre_dur*s # times all as [-predur, ..., postdur]
+
+        # get list of np arrays
+        Xall = np.concatenate([pa.X for pa in list_xslices], axis=1) # concat along trials axis. each one is (nchans, 1, times)
+        PAall = PopAnal(Xall, TIMES, sites, trials=trials)
+ 
+        return PAall
+
+    def smoothedfr_extract_timewindow(self, trials, sites, alignto, 
+        pre_dur=-0.1, post_dur=0.1,
         fail_if_times_outside_existing=True):
         """ [GOOD] Extract snippet of neural data temporally windows to have same time bins, 
-        works even across trials. Time window defined relative to an event marker (alginto)
+        works even across trials. Time window defined relative to an event marker (alginto).
+        TAKES THE FIRST time for alignto, found in the trial.
         PARAMS:
         - trials, list of ints
         - sites, list of ints, gets all combos of trials and sites
@@ -3514,7 +3824,7 @@ class Session(object):
         - pre_dur, post_dur, time in sec relative to alignto. make pre_dur negative if want to
         get time before
         RETURNS:
-        - PopAnal object, with PA.X shape (sites, trials, timebins)
+        - PopAnal object, with PA.X shape (sites, trials, timebins), one per trial.
         """
         from quantities import s
         from .population import PopAnal
@@ -3529,14 +3839,14 @@ class Session(object):
             pa = self.popanal_generate_save_trial(tr)
 
             # slice to desired channels
-            pa = pa.slice_by_chan(sites)
-
+            pa = pa._slice_by_chan(sites)
+ 
             # slice to time window
             time_align = self.events_get_time_using_photodiode(tr, list_events=[alignto])[alignto]
             time_align = time_align[0] # take first time in list of times.
             t1 = time_align + pre_dur
             t2 = time_align + post_dur
-            pa = pa.slice_by_time_window(t1, t2, return_as_popanal=True,
+            pa = pa._slice_by_time_window(t1, t2, return_as_popanal=True,
                 fail_if_times_outside_existing=fail_if_times_outside_existing)
             
             # save this slice
@@ -3550,7 +3860,7 @@ class Session(object):
         # get list of np arrays
         Xall = np.concatenate([pa.X for pa in list_xslices], axis=1) # concat along trials axis. each one is (nchans, 1, times)
         PAall = PopAnal(Xall, TIMES, sites, trials=trials)
-
+ 
         return PAall
 
 
@@ -3569,7 +3879,7 @@ class Session(object):
         out = []
         for t in trials:
             pa = self.popanal_generate_save_trial(t) # pa.X --> (chans, 1, time)
-            pathis = pa.slice_by_chan(sites) # slice to these sites
+            pathis = pa._slice_by_chan(sites) # slice to these sites
             times = pathis.Times
             assert len(pathis.X.shape)==3
             nchans = pathis.X.shape[0]
@@ -4795,12 +5105,12 @@ class Session(object):
         return trialcode
         
     def datasetbeh_trialcode_to_trial(self, trialcode):
-        """ given trialcode (string) return trial in self.Dat
+        """ given trialcode (string) return trial in neural data
         """
         return self._MapperTrialcode2TrialToTrial[trialcode]
 
     def datasetbeh_trialcode_to_trial_batch(self, list_trialcodes):
-        """ Given list of trialcodes, get list of idnices into self.Dat
+        """ Given list of trialcodes, get list of trials in neural data
         """
         return [self.datasetbeh_trialcode_to_trial(tc) for tc in list_trialcodes]
 

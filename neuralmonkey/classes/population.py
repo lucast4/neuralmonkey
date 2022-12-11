@@ -687,24 +687,39 @@ class PopAnal():
             assert not isinstance(inds[0], int), "num, not int"
             t1 = inds[0]
             t2 = inds[1]
-            pa = self.slice_by_time_window(t1, t2, True, True)
+            pa = self._slice_by_time_window(t1, t2, True, True)
+            if len(self.Xlabels["times"])>0:
+                # then slice it
+                assert False, "code it"
+                # dfnew = self.Xlabels["trials"].iloc[inds].reset_index(True)
         elif dim_str=="chans":
-            pa = self.slice_by_chan(inds, return_as_popanal=True, 
+            pa = self._slice_by_chan(inds, return_as_popanal=True, 
                 chan_inputed_row_index=True)
+            if len(self.Xlabels["chans"])>0:
+                # then slice it
+                dfnew = self.Xlabels["chans"].iloc[inds].reset_index(drop=True)
+            else:
+                dfnew = pd.DataFrame()
         elif dim_str=="trials":
-            pa = self.slice_by_trial(inds, return_as_popanal=True)
+            pa = self._slice_by_trial(inds, return_as_popanal=True)
+            if len(self.Xlabels["trials"])>0:
+                # then slice it
+                dfnew = self.Xlabels["trials"].iloc[inds].reset_index(drop=True)
+            else:
+                dfnew = pd.DataFrame()
         else:
             print(dim_str)
             assert False
 
         # Retain the labels for the dimensions that are untouched
         pa.Xlabels = self.Xlabels.copy()
-        pa.Xlabels[dim_str] = pd.DataFrame()
+        # subsample the dimensions you have sliced
+        pa.Xlabels[dim_str] = dfnew
 
         return pa
 
 
-    def slice_by_time_window(self, t1, t2, return_as_popanal=False,
+    def _slice_by_time_window(self, t1, t2, return_as_popanal=False,
             fail_if_times_outside_existing=True, version="raw"):
         """ Slice population by time window, where
         time is based on self.Times
@@ -731,7 +746,7 @@ class PopAnal():
         else:
             return x_windowed, times
 
-    def slice_by_trial(self, inds, version="raw", return_as_popanal=False):
+    def _slice_by_trial(self, inds, version="raw", return_as_popanal=False):
         """ Slice activity to only get these trials, returned as popanal
         if return_as_popanal is True
         PARAMS:
@@ -752,7 +767,7 @@ class PopAnal():
         else:
             return X
 
-    def slice_by_chan(self, chans, version="raw", return_as_popanal=True, 
+    def _slice_by_chan(self, chans, version="raw", return_as_popanal=True, 
             chan_inputed_row_index=False):
         """ Slice data to keep only subset of channels
         PARAMS;
@@ -791,7 +806,7 @@ class PopAnal():
         So will not copy all attributes...
         """
         trials = range(self.X.shape[1])
-        return self.slice_by_trial(trials, return_as_popanal=True)
+        return self._slice_by_trial(trials, return_as_popanal=True)
 
     def mean_over_time(self, version="raw", return_as_popanal=False):
         """ Return X, but mean over time,
@@ -861,8 +876,27 @@ class PopAnal():
             val2 = self.Chans[-1]
             chans = [f"{agg_method}-{val1}_{val2}"]
 
-        return PopAnal(Xagg, times=times, chans=chans, trials=trials)
+        PA = PopAnal(Xagg, times=times, chans=chans, trials=trials)
+        
+        # Retain the lables
+        PA.Xlabels = {k:v for k, v in self.Xlabels.items()} # self.Xlabels.copy()
+        PA.Xlabels[along_dim] = pd.DataFrame()
 
+        return PA
+
+    def slice_by_labels(self, dim_str, dim_variable, list_values):
+        """
+        SLice, filtering to keep if value is in list_values (filtering)
+        PARAMS: 
+        - dim_str, string name in {trials, chans, ...}
+        - dim_variable, name of column in self.Xlabels[dim_str]
+        - list_values, list of vales, will keep indices only those with values in list_values
+        """
+        from pythonlib.tools.pandastools import filterPandas
+        dfthis = self.Xlabels[dim_str]
+        inds = filterPandas(dfthis, {dim_variable:list_values}, return_indices=True)
+        pa = self.slice_by_dim_indices_wrapper(dim_str, inds)
+        return pa
 
     def slice_by_label(self, dim_str, dim_variable, dim_value):
         """
@@ -871,10 +905,46 @@ class PopAnal():
         - dim_variable = "epoch"
         - dim_value = "L|0"
         """
-        dfthis = self.Xlabels[dim_str]
-        inds = dfthis[dfthis[dim_variable]==dim_value].index.tolist()
-        pa = self.slice_by_dim_indices_wrapper(dim_str, inds)
-        return pa
+        return self.slice_by_labels(dim_str, dim_variable, [dim_value])
+        # dfthis = self.Xlabels[dim_str]
+        # inds = dfthis[dfthis[dim_variable]==dim_value].index.tolist()
+        # pa = self.slice_by_dim_indices_wrapper(dim_str, inds)
+        # return pa
+
+    def split_by_label(self, dim_str, dim_variable):
+        """ Splits self into multiple smaller PA, each with a single level for
+        dim_variable. 
+        PARAMS:
+        - dim_str, e.g,., "trials"
+        - dim_variable, string, e.g., "gridsize"
+        RETURNS:
+        - ListPA, e.g., each PA has only trials with a single level of gridsize
+        - list_levels, list of str, maches ListPA
+        """
+
+        # 1) Get list of levels
+        list_levels = self.Xlabels[dim_str][dim_variable].unique().tolist()
+
+        # 2) For each level, return a single PA
+        ListPA = []
+        for lev in list_levels:
+            # slice
+            pathis = self.slice_by_labels(dim_str, dim_variable, [lev])
+            ListPA.append(pathis)
+        
+        return ListPA, list_levels
+
+    def slice_by_label_grouping(self, dim_str, grouping_variables, grouping_values):
+        """ 
+        Return sliced PA, where first constructs grouping varible (can be conjunctive)
+        then only keep desired subsets 
+        PARAMS;
+        - dim_str, e.g,., "trials"
+        - grouping_variables, list of str
+        - grouping_values, values to keep
+        """
+        assert False, "code it, see slice_and_agg_wrapper"
+
 
 
     def slice_and_agg_wrapper(self, along_dim, grouping_variables, grouping_values=None,
@@ -959,7 +1029,7 @@ class PopAnal():
         # 1) Collect X (trial-averaged) for each group
         list_x = []
         for grp, inds in groupdict.items():
-            PAthis = self.slice_by_trial(inds, version=version, return_as_popanal=True)
+            PAthis = self._slice_by_trial(inds, version=version, return_as_popanal=True)
             x = PAthis.mean_over_trials()
             list_x.append(x)
 
@@ -974,8 +1044,34 @@ class PopAnal():
             return X
 
     ############### LABELS, each value ina given dimension of X 
+    def labels_features_input(self, name, values, dim="trials"):
+        """ Just synonym for self.labels_input(), easier to search for.
+        Append values, stored in self.Xlabels[dim]
+        PARAMS:
+        - name, str
+        - values, list-like values, must match the size of this dim exactly.
+        - dim, str, whether labels match {trials, times, chans}
+        NOTE: opverwrites name if it has been p[reviusly entered]
+        """
+        return self.labels_input(name, values, dim)
+
+    def labels_features_input_from_dataframe(self, df, list_cols, dim):
+        """ Assign batchwise, labels to self.Xlabels
+        PARAMS:
+        - df, dataframe from which values will be extarcted
+        - list_cols, feature names, strings, columns in df.
+        - dim, which dimension in self to modify.
+        NOTE: assumes that df is ordereed idetncail to the data in dim.
+        """
+        # store each val
+        for col in list_cols:
+            values = df[col].tolist()
+            self.labels_input(col, values, dim=dim)                
+
+
     def labels_input(self, name, values, dim="trials"):
-        """ Append values, stored in self.Xlabels[dim]
+        """ Append values, stored in self.Xlabels[dim]. Does 
+        sanity check that lenghts are correct
         PARAMS:
         - name, str
         - values, list-like values, must match the size of this dim exactly.
@@ -1085,9 +1181,9 @@ class PopAnal():
         if inds is not None:
             if axis_for_inds=="site":
             #         idxs = [PA.Chans.index(site) for site in inds]
-                PAthis = self.slice_by_chan(inds, return_as_popanal=True)
+                PAthis = self._slice_by_chan(inds, return_as_popanal=True)
             elif axis_for_inds=="trial":
-                PAthis = self.slice_by_trial(inds, return_as_popanal=True)
+                PAthis = self._slice_by_trial(inds, return_as_popanal=True)
             else:
                 assert False
         else:
@@ -1152,6 +1248,7 @@ def extract_neural_snippets_aligned_to(MS, DS,
     # # t2_ver = "onset"
     # t2_rel = 0
 
+    assert False, "use popanal_generate_alldata_bystroke instead (it collects all features into PopAnal"
     list_xslices = []
 
     ParamsDict = {}
@@ -1199,7 +1296,7 @@ def extract_neural_snippets_aligned_to(MS, DS,
         t2 = time_align + t2_rel
         PA = SNthis.popanal_generate_save_trial(trial_neural, print_shape_confirmation=False, 
                                             clean_chans=True, overwrite=True)
-        PAslice = PA.slice_by_time_window(t1, t2, return_as_popanal=True)
+        PAslice = PA._slice_by_time_window(t1, t2, return_as_popanal=True)
         
         # save this slice
         list_xslices.append(PAslice)
@@ -1309,7 +1406,7 @@ def compute_data_projections(PA, DF, MS, VERSION, REGIONS, DATAPLOT_GROUPING_VAR
     # Slice to desired chans
     CHANS = MS.sitegetter_all(REGIONS)
     assert len(CHANS)>0
-    PAallThis = PA.slice_by_chan(CHANS, VERSION_DAT, True)
+    PAallThis = PA._slice_by_chan(CHANS, VERSION_DAT, True)
 
     # Construct PCA space
     if VERSION=="PCA":
@@ -1332,7 +1429,7 @@ def compute_data_projections(PA, DF, MS, VERSION, REGIONS, DATAPLOT_GROUPING_VAR
     # - for each group, get a slice of PAall
     DatGrp = []
     for grp, inds in groupdict.items():
-        pa = PAallThis.slice_by_trial(inds, version=VERSION_DAT, return_as_popanal=True)
+        pa = PAallThis._slice_by_trial(inds, version=VERSION_DAT, return_as_popanal=True)
         DatGrp.append({
             "group":grp,
             "PA":pa})
@@ -1446,7 +1543,8 @@ def dftrials_centerize_by_group_mean(DfTrials, grouping_for_mean):
     return dfnew
 
 
-def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None):
+def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None, 
+    map_idxpa_to_value=None, map_idxpa_to_value_colname = None):
     """ Concatenate multiple popanals. They must have same shape except
     for the one dim concatted along.
     PARAMS:
@@ -1454,6 +1552,9 @@ def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None):
     - dim, int, which dimensiion to concat along
     - values_for_concatted_dim, list of items which are labels for
     each value in the new concatted dimension. Must be apporopriate length.
+    - map_idxpa_to_value, dict or list, mapping from index in list_pa toa value, 
+    used to populate a new column named map_idxpa_to_value_colname
+    - map_idxpa_to_value_colname, str, name of new col, mapping (se ablve0)
     RETURNS:
     - PopAnal object
     NOTE:
@@ -1467,24 +1568,90 @@ def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None):
     list_x = [pa.X for pa in list_pa]
     X = np.concatenate(list_x, axis=dim)
 
+    # Get the common values for the new concatted pa. if all pa have same values, then
+    # keep. otherwise repalce with list of None
+    def _isin(vals, list_vals):
+        if isinstance(vals, list):
+            return vals in list_vals
+        elif isinstance(vals, np.ndarray):
+            vals_in = [np.all(vals == vals_check) for vals_check in list_vals]
+            return any(vals_in)
+        else:
+            print(type(vals))
+            assert False
+
+    def _get_common_values_this_dim(thisdim):
+        # collect the values, across all pa
+        vals_all = []
+        for pa in list_pa:
+            if thisdim=="chans":
+                vals_this = pa.Chans
+            elif thisdim=="trials":
+                vals_this = pa.Trials
+            elif thisdim=="times":
+                vals_this = pa.Times
+            else:
+                assert False
+            
+            if not _isin(vals_this, vals_all):
+                # This is new. collect it.
+                vals_all.append(vals_this)
+
+        # Decide whether they have the same vals.
+        if len(vals_all)==1:
+            # then good, all pa have same vals. keep iot
+            vals_good = vals_all[0]
+        elif len(vals_all)==0:
+            assert False, "how is this possible../."
+        else:
+            # then each pa has different vals.
+            # replace with list of None, so dont get confused.
+            n_all = list(set([len(vals) for vals in vals_all]))
+            assert len(n_all)==1, "not supposed to be able to try to concat pa that have diff sizes for this dim"
+            n = n_all[0]
+            vals_good = [None for _ in range(n)]
+
+        return vals_good
+
+
     # 2) Create new PA
-    # values for the non-concatted dimensions.
-    pa1 = list_pa[0]
-    chans = pa1.Chans
-    trials = pa1.Trials
-    times = pa1.Times
+    if False:
+        # [OLD METHOD] values for the non-concatted dimensions.
+        pa1 = list_pa[0]
+        chans = pa1.Chans
+        trials = pa1.Trials
+        times = pa1.Times
+
     if dim_str=="times":
-        PA = PopAnal(X, times = values_for_concatted_dim,
-            chans=chans, trials = trials)
+        times = values_for_concatted_dim
+        chans = _get_common_values_this_dim("chans")
+        trials = _get_common_values_this_dim("trials")
     elif dim_str=="chans":
-        PA = PopAnal(X, times=times, trials = trials,
-            chans = values_for_concatted_dim)
+        times = _get_common_values_this_dim("times")
+        chans = values_for_concatted_dim
+        trials = _get_common_values_this_dim("trials")        
     elif dim_str=="trials":
-        PA = PopAnal(X, times=times, trials = values_for_concatted_dim,
-            chans = chans)
+        times = _get_common_values_this_dim("times")
+        chans = _get_common_values_this_dim("chans")
+        trials = values_for_concatted_dim   
     else:
         print(dim_str)
         assert False
+    PA = PopAnal(X, times=times, trials = trials,
+        chans = chans)
+
+    # Concatenate Xlabels dataframe
+    # - concat the dimension chosen
+    from pythonlib.tools.pandastools import concat
+    list_df = [pa.Xlabels[dim_str] for pa in list_pa]
+    PA.Xlabels[dim_str] = concat(list_df)
+
+    # convert index_to_old_dataframe to meaningful value
+    if map_idxpa_to_value is not None:
+        assert map_idxpa_to_value_colname is not None
+        inds = PA.Xlabels[dim_str]["idx_df_orig"].tolist()
+        new_val = [map_idxpa_to_value[i] for i in inds]
+        PA.Xlabels[dim_str][map_idxpa_to_value_colname] = new_val
 
     return PA
 
