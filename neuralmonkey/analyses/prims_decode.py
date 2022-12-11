@@ -404,3 +404,45 @@ def decode_and_plot_iter_hyperparams(MS, DS, LIST_REGIONS, LIST_ALIGN_TO, LIST_Y
                                 modelstr = get_model_string_name(dfmodels_this, indmod)
                                 fig = plotsummary_confusion_matrix(dfmodels_this, test_data_getter, indmod, mapper_label_code_to_name);
                                 fig.savefig(f"{sdir}/confusionmat_{modelstr}.pdf")
+
+
+############################ [12/8/22] GOOD PLOTS using PA in sn
+# from pythonlib.tools.pandastools import append_col_with_grp_index
+
+
+# # 1) in df, first prepare by getting, for each var, the conjucntion of the other vars.
+# # (currently only works for n=2 vars)
+# map_var_to_othervars = {}
+# for i in range(len(list_var)):
+#     for j in range(i+1, len(list_var)):
+#         grp = [list_var[i], list_var[j]]
+        
+#         print(grp)
+#         df, new_col_name = append_col_with_grp_index(df, grp, "-".join(grp), 
+#                                                      strings_compact=True, return_col_name=True)
+        
+#         # Save mapper 
+#         assert len(list_var)==3, "assumes this is 3 when finding the left out (k)"
+#         k = [k for k in range(len(list_var)) if k not in [i, j]][0]
+#         map_var_to_othervars[list_var[k]] = new_col_name
+# print(map_var_to_othervars)
+
+# list_var = ["gridloc", "gridsize", "shape_oriented"]
+# nrows = len(list_events)+1
+# ncols = len(list_var)
+# fig, axes = plt.subplots(nrows, ncols,  sharey=True, figsize=(ncols*4, nrows*4))
+
+# for j, var in enumerate(list_var):
+#     for i, ev in enumerate(list_events):
+            
+#         ax = axes[i][j]
+#         dfthisthis = dfthis[dfthis["event_aligned"]==ev]
+#         other_vars = map_var_to_othervars[var] # conjucntion of other varss
+#         g = sns.pointplot(ax=ax, data=dfthisthis, x=var, y="fr_scalar", hue=other_vars)
+#         g.legend().remove()
+        
+#         if i==len(list_events)-1:
+#             # also plot all combined
+#             ax = axes[i+1][j]
+#             sns.pointplot(ax=ax, data=dfthis, x=var, y = "fr_scalar", hue="event_aligned")
+# # sns.catplot(data=dfthis, x=xvar, y = "fr_scalar", hue="event_aligned")
