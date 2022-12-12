@@ -480,7 +480,8 @@ class Session(object):
             for suffix in ["-4", "-4.5", "", "-3.5"]: 
                 path_maybe = f"{paththis}/spikes_tdt_quick{suffix}"
                 # if os.path.exists(path_maybe):
-                if checkIfDirExistsAndHasFiles(path_maybe):
+                if checkIfDirExistsAndHasFiles(path_maybe)[0]:
+                    print("FOund this path for spikes: ", path_maybe)
                     return path_maybe
 
             # Didn't find spikes, return None
@@ -2769,7 +2770,11 @@ class Session(object):
         #     D, GROUPING, GROUPING_LEVELS, FEATURE_NAMES, SCORE_COL_NAMES = preprocessDat(D, expt)
 
         # 2) keep only the dataset trials that are included in recordings
-        trials = self.get_all_existing_site_trial_in_datall("trial")                                               
+        if False:
+            # old
+            trials = self.get_all_existing_site_trial_in_datall("trial")                                               
+        else:
+            trials = self.get_trials_list(True, True)
         list_trialcodes = [self.datasetbeh_trial_to_trialcode(t) for t in trials]
         print("- Keeping only dataset trials that exist in self.Dat")
         print("Starting length: ", len(D.Dat))
@@ -2778,19 +2783,34 @@ class Session(object):
 
         # 3) Prune trials in self to remove trials that dont have succesfuly fix and touch.
         trials_neural_to_remove = []
-        for trial_neural, trialcode in enumerate(list_trialcodes):
+        # for trial_neural, trialcode in (list_trialcodes):
+        #     fd, t = self.beh_get_fd_trial(trial_neural)
+        #     outcome = mkl.getTrialsOutcomesWrapper(fd, t)
+        #     t2 = trials[trial_neural]
+        #     print(outcome.keys())
+        #     print(trial_neural, trialcode, t, t2)
+        # assert False
+        for trial_neural, trialcode in zip(trials, list_trialcodes):
             if trialcode not in D.Dat["trialcode"].tolist():
                 # then this is only acceptable if this trial is not succesful fix or touch
                 fd, t = self.beh_get_fd_trial(trial_neural)
                 suc = mkl.getTrialsFixationSuccess(fd, t)
+
+                # NOTE: this make some trials called "touched" even though no pnut touch
+                # error, since these are excluded from Dataset
                 touched = mkl.getTrialsTouched(fd, t)
                 # tem = mkl.getTrialsOutcomesWrapper(fd,t)["trial_end_method"]
                 if touched and suc:
+                    print(outcome)
+                    pnuts = mkl.getTrialsStrokesByPeanuts(fd, t)
+                    print(pnuts)
                     print(list_trialcodes)
                     print(D.Dat["trialcode"].tolist())
                     print(trialcode)
                     assert False, "some neural data not found in beh Dataset..."
                 else:
+                    outcome = mkl.getTrialsOutcomesWrapper(fd, t)
+                    print("Removing this trial because it is not in Dataset:", trial_neural, trialcode, t, outcome["beh_evaluation"]["trialnum"])
                     # remove this trial from self.Dat, since it has no parallele in dataset
                     trials_neural_to_remove.append(trial_neural)
         # - remove the trials.
@@ -2881,10 +2901,18 @@ class Session(object):
         """
         eventsdict = self.events_get_time_using_photodiode(trial, list_events=list_events)
         # x = self.events_get_time_using_photodiode(trial, list_events=list_events)
-
+    
         ####### flatten and sort
         time_events_flat = [(time, ev) for ev in list_events for time in eventsdict[ev]]
         time_events_flat = sorted(time_events_flat, key=lambda x:x[0])
+
+        def _this(x):
+            if len(x)>0:
+                return x[0]
+            else:
+                return np.nan
+        time_events_flat_first_unsorted = [_this(eventsdict[ev]) for ev in list_events]
+        time_events_flat_first_unsorted = np.asarray(time_events_flat_first_unsorted)
 
         times_ordered_flat = [x[0] for x in time_events_flat]
         events_ordered_flat = [x[1] for x in time_events_flat]
@@ -2909,7 +2937,7 @@ class Session(object):
 
         return eventsdict, firsttimes_ordered_by_firsttime, alltimes_ordered_by_firsttime, \
             events_ordered_by_firsttime, eventinds_ordered_by_firsttime, \
-            times_ordered_flat, events_ordered_flat, eventinds_ordered_flat
+            times_ordered_flat, events_ordered_flat, eventinds_ordered_flat, time_events_flat_first_unsorted
 
 
     def events_get_time_using_photodiode_and_save(self):
@@ -2992,7 +3020,7 @@ class Session(object):
                 if event=="on":
                     # start of the trial. use the pd crossing, whihc reflect screen color chanigng.
                     # but not that crucuail to get a precise value for trail onset.
-
+                    assert False, "this doesnt work that well for the first trial of the day... fix that before use"
                     # NOTE: this sometimes fails for trial 0 (photodiode is in diff state?)
                     out = self.behcode_get_stream_crossings_in_window(trial, 9, t_pre=0, t_post = 0.15, whichstream="pd2", 
                                             ploton=plot_beh_code_stream, cross_dir_to_take="up", assert_single_crossing_per_behcode_instance=True,
@@ -3069,6 +3097,18 @@ class Session(object):
                                         take_first_behcode_instance=True,
                                         take_first_crossing_for_each_behcode=True) 
                         times = _extract_times(out)
+
+                        if len(times)==0:
+                            # on rare occasions, he doesnt lift for a loing time. 
+                            out = self.behcode_get_stream_crossings_in_window(trial, behcode, 
+                                                    t_pre=0.35, t_post = 12., whichstream=whichstream, 
+                                              ploton=plot_beh_code_stream, cross_dir_to_take="down", assert_single_crossing_per_behcode_instance=False,
+                                            assert_single_crossing_this_trial = False,
+                                            assert_expected_direction_first_crossing = "down",
+                                            take_first_behcode_instance=True,
+                                            take_first_crossing_for_each_behcode=True) 
+                            times = _extract_times(out)
+
                         # take the first time, sometimes can go in and out of squiare..
                         times = times[0:1]
 
@@ -3224,10 +3264,17 @@ class Session(object):
         for event in list_events:
 
             key = (trial, event)
-
             if not overwrite and key in self.EventsTimeUsingPhd.keys():
                 times=  self.EventsTimeUsingPhd[(trial, event)]
+                if len(times)==0:
+                    # if its empty, try to recompute it.. (e.g., it is a saved version, and now code is updated..)
+                    RECOMPUTE = True
+                else:
+                    RECOMPUTE = False
             else:
+                RECOMPUTE = True
+
+            if RECOMPUTE:
                 try:
                     times = compute_times_from_scratch(event)
                 except Exception as err:
@@ -3454,7 +3501,7 @@ class Session(object):
             
             eventsdict, firsttimes_ordered_by_firsttime, alltimes_ordered_by_firsttime, \
                     events_ordered_by_firsttime, eventinds_ordered_by_firsttime, \
-                    times_ordered_flat, events_ordered_flat, eventinds_ordered_flat = \
+                    times_ordered_flat, events_ordered_flat, eventinds_ordered_flat, time_events_flat_first_unsorted = \
                     self.events_get_time_sorted(trialthis, list_events=list_events)
 
             # a code for n cases for each event
@@ -3480,6 +3527,7 @@ class Session(object):
             eventsdict["reward"] = outcome["beh_evaluation"]["rew_total"][0][0]
             eventsdict["trial"] = trialthis
             
+            eventsdict["time_events_flat_first_unsorted"] = time_events_flat_first_unsorted
             
             DatEvents.append(eventsdict)
         
@@ -3843,6 +3891,11 @@ class Session(object):
  
             # slice to time window
             time_align = self.events_get_time_using_photodiode(tr, list_events=[alignto])[alignto]
+            if len(time_align)==0:
+                print(sites)
+                print(tr)
+                print(alignto)
+                assert False, "didnt find this ewvent..."
             time_align = time_align[0] # take first time in list of times.
             t1 = time_align + pre_dur
             t2 = time_align + post_dur

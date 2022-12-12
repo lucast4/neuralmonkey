@@ -827,12 +827,15 @@ class PopAnal():
         X = self.extract_activity(version=version)
         return np.mean(X, axis=1, keepdims=True)
 
-    def agg_wrapper(self, along_dim, agg_method="mean"):
+    def agg_wrapper(self, along_dim, agg_method="mean", 
+            rename_values_agged_dim=True):
         """ aggregate ALL data along a given dimenisions. if you want to first slice,
         do self.slice_and_agg_wrapper()
         PARAMS:
         - along_dim, int or str
         - agg_method, str, how to agg, e.g, mean
+        - rename_values_agged_dim, if True, then renames it as a string: f"{agg_method}-{val1}_{val2}"
+        otherwise, give it [None]
         RETURNS:
         - PopAnal object
         """
@@ -866,15 +869,24 @@ class PopAnal():
         if along_dim_str=="times":
             val1 = self.Times[0]
             val2 = self.Times[-1]
-            times = [f"{agg_method}-{val1}_{val2}"]
+            if rename_values_agged_dim:
+                times = [f"{agg_method}-{val1}_{val2}"]
+            else:
+                times = [None]
         elif along_dim_str=="trials":
             val1 = self.Trials[0]
             val2 = self.Trials[-1]
-            trials = [f"{agg_method}-{val1}_{val2}"]
+            if rename_values_agged_dim:
+                trials = [f"{agg_method}-{val1}_{val2}"]
+            else:
+                trials = [None]
         elif along_dim_str=="chans":
             val1 = self.Chans[0]
             val2 = self.Chans[-1]
-            chans = [f"{agg_method}-{val1}_{val2}"]
+            if rename_values_agged_dim:
+                chans = [f"{agg_method}-{val1}_{val2}"]
+            else:
+                chans = [None]
 
         PA = PopAnal(Xagg, times=times, chans=chans, trials=trials)
         
@@ -1066,7 +1078,42 @@ class PopAnal():
         # store each val
         for col in list_cols:
             values = df[col].tolist()
-            self.labels_input(col, values, dim=dim)                
+            self.labels_input(col, values, dim=dim)          
+
+    def labels_features_input_conjunction_other_vars(self, dim, list_var):
+        """ Assingn new columns to self.Xlabels[dim], one for each conjunction
+        of vars in list_vars, where the number of conjunctions is len(list_vars),
+        i.e,., for each var, the conjunction of others. Useful for then computing the 
+        effect of a given var condiitioned on some value of the conjucntion of 
+        other vars.
+        PARAMS
+        - dim, str
+        - list_var, list of str, each a column in self.Xlabels[dim]
+        """        
+        from pythonlib.tools.pandastools import append_col_with_grp_index
+
+        df = self.Xlabels[dim]
+        for var in list_var:
+            assert var in df.columns
+
+        # Prepare columns indicating value of conjucntion of other faetures
+        # list_var = ["gridloc", "gridsize", "shape_oriented"]
+
+        # 1) in df, first prepare by getting, for each var, the conjucntion of the other vars.
+        map_var_to_othervars = {}
+        for var in list_var:
+            # get conjuction of the other vars
+            other_vars = [v for v in list_var if not v==var]
+            df, new_col_name = append_col_with_grp_index(df, other_vars, "-".join(other_vars), 
+                                                         strings_compact=True, return_col_name=True)            
+            # Save mapper 
+            map_var_to_othervars[var] = new_col_name
+            print("added column: ", new_col_name)
+
+        self.Xlabels[dim] = df
+
+        return map_var_to_othervars
+
 
 
     def labels_input(self, name, values, dim="trials"):
@@ -1544,7 +1591,8 @@ def dftrials_centerize_by_group_mean(DfTrials, grouping_for_mean):
 
 
 def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None, 
-    map_idxpa_to_value=None, map_idxpa_to_value_colname = None):
+    map_idxpa_to_value=None, map_idxpa_to_value_colname = None, 
+    assert_otherdims_have_same_values=True):
     """ Concatenate multiple popanals. They must have same shape except
     for the one dim concatted along.
     PARAMS:
@@ -1555,6 +1603,11 @@ def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None,
     - map_idxpa_to_value, dict or list, mapping from index in list_pa toa value, 
     used to populate a new column named map_idxpa_to_value_colname
     - map_idxpa_to_value_colname, str, name of new col, mapping (se ablve0)
+    - assert_otherdims_have_same_values, if True, then makes sure that the values in 
+    other dims are identical across pa in list_pa. e.g., pa.Chans is same, if you
+    are concatting across trials. Useful as a sanity cehck. Otherwise takes values if
+    they are the same across pa, otherwise lsit of Nones
+    the first pa.
     RETURNS:
     - PopAnal object
     NOTE:
@@ -1605,6 +1658,12 @@ def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None,
             assert False, "how is this possible../."
         else:
             # then each pa has different vals.
+            if assert_otherdims_have_same_values:
+                print("this dimensions has diff values across pa...")
+                print(thisdim)
+                for vals in vals_all:
+                    print(vals)
+                assert False
             # replace with list of None, so dont get confused.
             n_all = list(set([len(vals) for vals in vals_all]))
             assert len(n_all)==1, "not supposed to be able to try to concat pa that have diff sizes for this dim"
