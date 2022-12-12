@@ -1,2 +1,0 @@
-""" Works with popanal object
-"""
