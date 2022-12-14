@@ -3,6 +3,16 @@ import numpy as np
 import pandas as pd
 
 
+def load_snippets(sdir, fname="Snippets"):
+    import pickle as pkl
+
+    path = f"{sdir}/{fname}.pkl"
+    with open(path, "rb") as f:
+        SP = pkl.load(f)
+
+    return SP
+
+
 class Snippets(object):
     """
     Neural snippets, extraction of PopAnal objects in relation to different events, and 
@@ -12,7 +22,7 @@ class Snippets(object):
     """
 
     def __init__(self, SN, which_level, list_events, 
-        list_features, list_features_get_conjunction, 
+        list_features_extraction, list_features_get_conjunction, 
         list_pre_dur, list_post_dur,
         strokes_only_keep_single=False,
         tasks_only_keep_these=None,
@@ -22,11 +32,11 @@ class Snippets(object):
         - SN, Sessions object, holding neural data for a single session
         - which_level, str, what level is represented by each datapt {'trial', 'stroke'}
         - list_events, list of str, the events for each to extract PA for.
-        - list_features, list of str, features which will extract for each trial or stroke
+        - list_features_extraction, list of str, features which will extract for each trial or stroke
         (and assign to that datapt). NOTE: by default gets many features.. this is just
-        extra.
+        extra. This is just for exgtraciton, not for plotting.
         - list_features_get_conjunction, list of str, features for which will get conjuction
-        of other features.              
+        of other features. Thesea re also the features that wil be plot and anlyszes.              
 
         """
 
@@ -34,7 +44,7 @@ class Snippets(object):
         if which_level=="stroke":
             # Each datapt matches a single stroke
             DS = datasetstrokes_extract(SN.Datasetbeh, strokes_only_keep_single,
-                tasks_only_keep_these, prune_feature_levels_min_n_trials, list_features)
+                tasks_only_keep_these, prune_feature_levels_min_n_trials, list_features_extraction)
         elif which_level=="trial":
             # Each datapt is a single trial
             # no need to extract antyhing, use sn.Datasetbeh
@@ -90,7 +100,7 @@ class Snippets(object):
                 listpa = SN.popanal_generate_alldata(trials, sites_keep,
                     events = [event],
                     pre_dur=pre_dur, post_dur=post_dur, 
-                    columns_to_input = list_features,
+                    columns_to_input = list_features_extraction,
                     use_combined_region = False)
             assert len(listpa)==1
             pa = listpa[0]
@@ -112,7 +122,11 @@ class Snippets(object):
             else:
                 # Version 2, with indices
         #         event_unique_name = f"{i}_{event[:3]}_{event[-1]}"
-                event_unique_name = f"{i}_{event}"
+                if i<10:
+                    idx_str = f"0{i}"
+                else:
+                    idx_str = f"{i}"
+                event_unique_name = f"{idx_str}_{event}"
             list_events_uniqnames.append(event_unique_name)
 
         ax.set_title('Time windows extracted')
@@ -138,7 +152,7 @@ class Snippets(object):
             "which_level":which_level,
             "list_events":list_events, 
             "list_events_uniqnames":list_events_uniqnames,
-            "list_features":list_features,
+            "list_features_extraction":list_features_extraction,
             "list_features_get_conjunction":list_features_get_conjunction,
             "list_pre_dur":list_pre_dur,
             "list_post_dur":list_post_dur,
@@ -148,7 +162,27 @@ class Snippets(object):
             "prune_feature_levels_min_n_trials":prune_feature_levels_min_n_trials,
         }
 
+        # Genreate scalars
+        self.listpa_convert_to_scalars()
+        self.pascal_convert_to_dataframe(fr_which_version="sqrt")
 
+        # Get useful variables
+        self._preprocess_map_features_to_levels()
+
+    def _preprocess_map_features_to_levels(self):
+        """ Generate a single mapper from features to its levels, 
+        that can apply across all data in self. 
+        will be sorted.
+        """
+        list_var = self.Params["list_features_get_conjunction"]
+        data = self.DfScalar
+
+        MapVarToLevels = {} # to have consistent levels.
+        for var in list_var:
+            levels = sorted(data[var].unique().tolist())
+            MapVarToLevels[var] = levels
+
+        self.Params["map_var_to_levels"] = MapVarToLevels
 
 
     def listpa_convert_to_scalars(self):
@@ -199,6 +233,8 @@ class Snippets(object):
         - modifies self.DfScalar and returns it
         """
 
+        print("Running SP.pascal_convert_to_dataframe")
+
         # Convert from PA to a single dataframe that includes scalar FR
         df = self.PAscalar.Xlabels["trials"]
         df["fr_scalar_raw"] = self.PAscalar.X.squeeze()
@@ -212,12 +248,19 @@ class Snippets(object):
             assert False
 
         self.DfScalar = df
+        
+        print("len self.DfScalar:", len(df))
+        print("self.PAscalar.X.shape : ", self.PAscalar.X.shape)
         return self.DfScalar
 
 
     ################ MODULATION BY VARIABLES
-    def modulation_compute_each_chan(self, DEBUG=False):
+    def modulation_compute_each_chan(self, DEBUG=False, 
+        bregion_add_num_prefix=True, 
+        bregion_combine=False):
         """ Compute modulation by variables for each channel
+        RETURNS:
+        - RES_ALL_CHANS, list of dicts
         """
         from neuralmonkey.metrics.scalar import MetricsScalar
 
@@ -226,7 +269,18 @@ class Snippets(object):
 
         if DEBUG:
             # faster...
-            list_chans = list_chans[:5]
+            n = 10 # keep 10 chans
+            inter = int(len(list_chans)/n)
+            if inter==0:
+                inter=1
+            list_chans = list_chans[::inter]
+
+        if bregion_add_num_prefix:
+            # generate map from bregion to its number
+            regions_in_order = self.SN.sitegetter_get_brainregion_list(bregion_combine)
+            map_bregion_to_idx = {}
+            for i, reg in enumerate(regions_in_order):
+                map_bregion_to_idx[reg] = i
 
         for chan in list_chans:
             print(chan)
@@ -235,21 +289,53 @@ class Snippets(object):
             dfthis = self.DfScalar[self.DfScalar["chan"]==chan]
             
             # Input to Metrics
+            # (use this, instead of auto, to ensure common values across all chans)
             list_var = self.Params["list_features_get_conjunction"]
             list_events_uniqnames = self.Params["list_events_uniqnames"]
             map_var_to_othervars = self.Params["map_var_to_othervars"]
-
-            Mscal = MetricsScalar(dfthis, list_var, map_var_to_othervars, list_events_uniqnames)
+            map_var_to_levels = self.Params["map_var_to_levels"]
+            Mscal = MetricsScalar(dfthis, list_var, map_var_to_othervars, 
+                map_var_to_levels, 
+                list_events_uniqnames)
             
-            # Compute
+            # Compute, modulation across vars
             RES = Mscal.modulation_calc_summary()
+
+            # Compute, fr across levels, for each var
+            RES_FR = Mscal.calc_fr_across_levels()
+
+            if DEBUG:
+                print("======== RES")
+                for k, v in RES.items():
+                    print('---', k)
+                    print(v)
+                print("======== RES_FR")
+                for k, v in RES_FR.items():
+                    print('---', k)
+                    print(v)
             
-            # Other info
-            RES["chan"] = chan
-            RES["bregion"] = info["region"]
+            # Merge them
+            for k, v in RES_FR.items():
+                assert k not in RES.keys()
+                RES[k] = v
 
             # SAVE IT
-            RES_ALL_CHANS.append(RES)
+            bregion = info["region"]
+            if bregion_add_num_prefix:
+                # for ease of sortinga nd plotting
+                idx = map_bregion_to_idx[bregion]
+                if idx<10:
+                    idx_str = f"0{idx}"
+                else:
+                    idx_str = f"{idx}"
+                bregion = f"{idx_str}_{bregion}"
+
+            RES_ALL_CHANS.append({
+                "chan":chan,
+                "bregion":bregion,
+                "RES":RES,
+                "RES_FR": RES_FR
+                })
 
         return RES_ALL_CHANS
 
@@ -267,8 +353,8 @@ class Snippets(object):
         list_events_uniqnames = self.Params["list_events_uniqnames"]
         # Get the list of methods for computing average modulation(across var)
         out = []
-        for RES in RES_ALL_CHANS:
-            list_meth = RES["avgmodulation_across_methods_labels"]
+        for RES_ALL in RES_ALL_CHANS:
+            list_meth = RES_ALL["RES"]["avgmodulation_across_methods_labels"]
             if list_meth not in out:
                 out.append(list_meth)
         assert len(out)==1
@@ -279,10 +365,15 @@ class Snippets(object):
         dat_across_var_methods = []
         dat_across_events = []
         dat_summary_mod = []
-        for RES in RES_ALL_CHANS:
-            chan = RES["chan"]
-            bregion = RES["bregion"]
-            
+        dat_fr_across_events = []
+
+        for RES_ALL in RES_ALL_CHANS:
+
+            chan = RES_ALL["chan"]
+            bregion = RES_ALL["bregion"]
+            RES = RES_ALL["RES"]
+            RES_FR = RES_ALL["RES_FR"]
+
             for var in list_var:   
 
                 ########################################
@@ -324,6 +415,42 @@ class Snippets(object):
                     "chan":chan,
                     "bregion":bregion
                 })
+
+            ######################## MEAN FR ACROSS LEVELS
+            # mod across events
+            for ev_var, values in RES_FR["splitevents_alldata"].items():
+                ev = ev_var[0]
+                var = ev_var[1]
+                list_levels = self.Params["map_var_to_levels"][var]
+                assert len(values)==len(list_levels)    
+
+                for lev, yscal in zip(list_levels, values):
+                    dat_fr_across_events.append({
+                        "event":ev,
+                        "val":yscal,
+                        "val_kind":"raw",
+                        "var_level":lev,
+                        "var":var,
+                        "chan":chan,
+                        "bregion":bregion
+                    })
+
+                # subtract mean over values
+                # (allows for easier comparison across neurons)
+                values_delt = np.array(values) - np.mean(values)
+                for lev, yscal in zip(list_levels, values_delt):
+                    dat_fr_across_events.append({
+                        "event":ev,
+                        "val":yscal,
+                        "val_kind":"minus_mean",
+                        "var_level":lev,
+                        "var":var,
+                        "chan":chan,
+                        "bregion":bregion
+                    })
+
+
+
             
             ######################## DERIVED METRICS
             # A single "tuple" summarizing this neuron's mod
@@ -362,12 +489,14 @@ class Snippets(object):
         dfdat_var_methods = pd.DataFrame(dat_across_var_methods)            
         dfdat_events = pd.DataFrame(dat_across_events)            
         dfdat_summary_mod = pd.DataFrame(dat_summary_mod)
+        dfdat_fr_events = pd.DataFrame(dat_fr_across_events)
 
         OUT = {
             "dfdat_var_events":dfdat_var_events,
             "dfdat_var_methods":dfdat_var_methods,
             "dfdat_events":dfdat_events,
             "dfdat_summary_mod":dfdat_summary_mod,
+            "dfdat_fr_events":dfdat_fr_events,
         }            
 
         return OUT
@@ -395,8 +524,188 @@ class Snippets(object):
         print(list_pre_dur)
         print(list_post_dur)
         assert False, "did not find..."
+ 
+    def modulation_plot_heatmaps(self, OUT, savedir="/tmp"):
+        """ Plot heatmaps, bregion vs. event, and also
+        overlay onto schematic of brain, across time(events)
+        """
+        from pythonlib.tools.pandastools import convert_to_2d_dataframe, aggregGeneral
 
-    
+        df = OUT["dfdat_var_events"]
+        val_kind = "modulation_across_events_subgroups"
+        list_var = df["var"].unique().tolist()
+
+        # 1) Plot modulation for each var
+        DictDf = {}
+        DictDf_rgba_values = {}
+        norm_method = None
+        # norm_method = "row_sub_firstcol"
+        for var in list_var:
+            dfthis = df[(df["val_kind"]==val_kind) & (df["var"]==var)]
+            dfthis_agg = aggregGeneral(dfthis, group=["bregion", "event"], values=["val"])
+        #     ZLIMS = [dfthis_agg["val"].min(), dfthis_agg["val"].max()]
+            ZLIMS = [None, None]
+
+            for annotate_heatmap in [True, False]:
+                dfthis_agg_2d, fig, ax, rgba_values = convert_to_2d_dataframe(dfthis_agg, 
+                                                             "bregion", "event", True, agg_method="mean", 
+                                                             val_name="val", 
+                                                             norm_method=norm_method,
+                                                             annotate_heatmap=annotate_heatmap,
+                                                            zlims = ZLIMS
+                                                            )
+                ax.set_title(var)
+                DictDf[var] = dfthis_agg_2d
+                DictDf_rgba_values[var] = rgba_values
+
+                # save fig
+                fig.savefig(f"{savedir}/1-{val_kind}-{var}-annot_{annotate_heatmap}.pdf")
+
+        # 2) Plot heatmap of difference between two variables
+        from pythonlib.tools.snstools import heatmap
+        if len(list_var)>1:
+            var0 = list_var[0]
+            var1 = list_var[1]
+            dfthis_2d = DictDf[var1] - DictDf[var0]
+        #     ZLIM = [None, None]
+            zmax = dfthis_2d.abs().max().max()
+            ZLIMS = [-zmax, zmax]
+            for annotate_heatmap in [True, False]:
+                fig, ax, rgba_values = heatmap(dfthis_2d, annotate_heatmap=annotate_heatmap, 
+                    zlims=ZLIMS, diverge=True)
+                ax.set_title(f"{var1}-min-{var0}")
+                # Save
+                DictDf[f"{var1}-min-{var0}"] = dfthis_2d
+                DictDf_rgba_values[f"{var1}-min-{var0}"] = rgba_values     
+
+                # save fig
+                fig.savefig(f"{savedir}/2-{val_kind}-{var1}-min-{var0}-annot_{annotate_heatmap}.pdf")
+
+                    
+        # 3) Average fr
+        # norm_method = "row_sub_firstcol"
+        df = OUT["dfdat_events"]
+        dfthis = df[(df["val_kind"]=="avgfr_across_events")]
+        dfthis_agg = aggregGeneral(dfthis, group=["bregion", "event"], values=["val"])
+
+        # for norm_method, diverge in zip(["row_sub_firstcol", None], [True, False]):
+        for norm_method, diverge in zip([None], [False]):
+            for annotate_heatmap in [True, False]:
+                dfthis_agg_2d, fig, ax, rgba_values = convert_to_2d_dataframe(dfthis_agg, 
+                                                             "bregion", "event", True, agg_method="mean", 
+                                                             val_name="val", 
+                                                             norm_method=norm_method,
+                                                             annotate_heatmap=annotate_heatmap,
+                                                             diverge=diverge
+                                                            )
+
+                DictDf[f"avgfr_across_events-norm_{norm_method}"] = dfthis_agg_2d
+                DictDf_rgba_values[f"avgfr_across_events-norm_{norm_method}"] = rgba_values
+
+                # save fig
+                fig.savefig(f"{savedir}/3-avgfr_across_events-annot_{annotate_heatmap}.pdf")
+
+        return DictDf, DictDf_rgba_values
+
+
+    def modulation_plot_heatmaps_brain_schematic(self, DictDf, DictDf_rgba_values, 
+        savedir="/tmp", DEBUG=False):
+        """ Maps the outputs from heatmaps onto brain scheamtic.
+        Just plot, doesnt do any computation here
+        """
+        import matplotlib.pyplot as plt
+
+        # 1) DEFINE COORDS FOR EACH REGION
+        # (horiz from left, vert from top)
+        map_bregion_to_location = {}
+        map_bregion_to_location["00_M1_m"] = [0, 1.3]
+        map_bregion_to_location["01_M1_l"] = [1, 2]
+        map_bregion_to_location["02_PMv_l"] = [4, 5.3]
+        map_bregion_to_location["03_PMv_m"] = [3.5, 3.3]
+        map_bregion_to_location["04_PMd_p"] = [3.3, 1.6]
+        map_bregion_to_location["05_PMd_a"] = [5, 1.85]
+        map_bregion_to_location["06_SMA_p"] = [-.1, 0.2]
+        map_bregion_to_location["07_SMA_a"] = [1.4, 0.3]
+        map_bregion_to_location["08_dlPFC_p"] = [7.2, 2.8]
+        map_bregion_to_location["09_dlPFC_a"] = [9, 3]
+        map_bregion_to_location["10_vlPFC_p"] = [5.8, 5]
+        map_bregion_to_location["11_vlPFC_a"] = [8.5, 4]
+        map_bregion_to_location["12_preSMA_p"] = [3.2, 0.4]
+        map_bregion_to_location["13_preSMA_a"] = [4.5, 0.6]
+        map_bregion_to_location["14_FP_p"] = [11, 3.9]
+        map_bregion_to_location["15_FP_a"] = [12.5, 4.3]
+        xmult = 33
+        ymult = 50
+        # xoffset = 230 # if use entire image
+        xoffset = 100 # if clip
+        yoffset = 30
+        for k, v in map_bregion_to_location.items():
+            map_bregion_to_location[k] = [xoffset + xmult*v[0], yoffset + ymult*v[1]]
+        rad = (xmult + ymult)/4
+
+        # 2) Plot all heatmaps
+        list_var_heatmaps = DictDf_rgba_values.keys()
+
+        for var in list_var_heatmaps:
+
+            # Extract the data and rgba values
+            dfthis_agg_2d = DictDf[var]
+            rgba_values = DictDf_rgba_values[var]
+
+            map_bregion_to_rowindex = {}
+            list_regions = dfthis_agg_2d.index.tolist()
+            for i, region in enumerate(list_regions):
+                map_bregion_to_rowindex[region] = i
+                
+            if DEBUG:
+                print("\nindex -- region")
+                for k, v in map_bregion_to_rowindex.items():
+                    print(v, k)
+
+            map_event_to_colindex = {}
+            list_events = dfthis_agg_2d.columns.tolist()
+            for i, event in enumerate(list_events):
+                map_event_to_colindex[event] = i
+            if DEBUG:
+                print("\nindex -- event")
+                for event, i in map_event_to_colindex.items():
+                    print(i, ' -- ' , event)
+
+            # PLOT:
+            ncols = 4
+            nrows = int(np.ceil(len(list_events)/ncols))
+            fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(3*ncols, 3*nrows))
+
+            for i, (ax, event) in enumerate(zip(axes.flatten(), list_events)):
+
+                ax.set_title(event)
+                ax.set_ylabel(var)
+                
+                # 1) load a cartoon image of brain
+            #     image_name = "/home/lucast4/Downloads/thumbnail_image001.png"
+                image_name = "/gorilla3/Dropbox/SCIENCE/FREIWALD_LAB/DATA/brain_drawing_template.jpg"
+                im = plt.imread(image_name)
+                im = im[:330, 130:]
+                ax.imshow(im)
+
+            #     if i==1:
+            #         assert False
+                for bregion in list_regions:
+                    irow = map_bregion_to_rowindex[bregion]
+                    icol = map_event_to_colindex[event]
+
+                    col = rgba_values[irow, icol]
+                    cen = map_bregion_to_location[bregion]
+
+                    # 2) each area has a "blob", a circle on this image
+
+                    c = plt.Circle(cen, rad, color=col, clip_on=False)
+                    ax.add_patch(c)
+
+            # SAVE FIG
+            fig.savefig(f"{savedir}/brainschem-{var}.pdf")
+
+
     def modulation_plot_all(self, OUT, savedir="/tmp"):
         """ 
         Plot many variations, for output from modulation_compute_higher_stats
@@ -412,6 +721,7 @@ class Snippets(object):
         dfdat_var_methods = OUT["dfdat_var_methods"]
         dfdat_events = OUT["dfdat_events"]
         dfdat_summary_mod = OUT["dfdat_summary_mod"]
+        dfdat_fr_events = OUT["dfdat_fr_events"]
         list_var = self.Params["list_features_get_conjunction"]
         list_events_uniqnames = self.Params["list_events_uniqnames"]
 
@@ -540,6 +850,64 @@ class Snippets(object):
                          kind="bar");
         rotateLabel(fig)
         fig.savefig(f"{savedir}/8_bars_features_all.pdf")
+
+        ################## FR MODULATION BY LEVELS
+        list_val_kind = dfdat_fr_events["val_kind"].unique().tolist()
+        for var in list_var:
+            for val_kind in list_val_kind:
+                dfthis = dfdat_fr_events[(dfdat_fr_events["var"]==var) & (dfdat_fr_events["val_kind"]==val_kind)]
+
+                if len(dfthis)>0:
+                    fig = sns.catplot(data=dfthis, x="var_level", hue="event", y="val", col="bregion", col_wrap=4, kind="point")
+                    rotateLabel(fig)
+                    fig.savefig(f"{savedir}/9_{var}-{val_kind}-lines_fr_vs_level.pdf")
+
+                    try:
+                        fig = plotgood_lineplot(dfthis, xval="var_level", yval="val", line_grouping="chan",
+                                                include_mean=True, 
+                                                relplot_kw={"row":"event", "col":"bregion"});
+                        rotateLabel(fig)
+                        fig.savefig(f"{savedir}/9_{var}-{val_kind}-lineschans_fr_vs_level.pdf")
+                    except Exception as err:
+                        print(dfthis["var_level"].value_counts())
+                        print(dfthis["chan"].value_counts())
+                        print(dfthis["event"].value_counts())
+                        print(dfthis["bregion"].value_counts())
+                        raise err
+
+
+    ########### UTILS   a
+    def save(self, sdir, fname="Snippets", add_tstamp=True, exclude_sn=True):
+        """ Saves self in directory sdir
+        as pkl files
+        """
+        import pickle as pkl
+        if exclude_sn:
+            assert False, "not coded"
+        if add_tstamp:
+            from pythonlib.tools.expttools import makeTimeStamp
+            ts = makeTimeStamp()
+            fname = f"{sdir}/{fname}-{ts}.pkl"
+        else:
+            fname = f"{sdir}/{fname}.pkl"
+
+        with open(fname, "wb") as f:
+            pkl.dump(self, f)
+
+        print(f"Saved self to {fname}")
+
+    def copy(self, minimal=True):
+        """ make a copy, pruning variables that are not needed
+        PARAMS:
+        - minimal, bool, if True, then copies only the PA objects
+        the rest uses reference
+        """
+
+        assert False, "have to allow initializing without passing in var"
+        vars_to_copy = ["ListPA", "PAscalar"]
+        # Params
+        # Sites
+        # Trials
 
 
 

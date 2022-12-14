@@ -1123,6 +1123,7 @@ class Session(object):
                     if self.DatAll is None:
                         self.print_summarize_expt_params()
                         assert False, "reextract DatAll..."
+                print("Done loading!")
 
                 # Add timing info, since might not be done
                 self.datall_cleanup_add_things()
@@ -1263,7 +1264,9 @@ class Session(object):
         if not only_generate_dataframe:
             # Time info
             if "time_dur" not in self.DatAll[0].keys():
+                print("Running self._datall_compute_timing_info")
                 self._datall_compute_timing_info()
+                print("Done _datall_compute_timing_info ")
 
             # sites
             for Dat in self.DatAll:
@@ -3133,6 +3136,62 @@ class Session(object):
             pickle.dump(self.EventsTimeUsingPhd, f)
         print("DONE")
 
+    def events_read_time_from_cached(self, trial, event):
+        """ Helper to read pre-computed event times. This is better than reading
+        directly from self.EventsTimeUsingPhd, beucase here you can use either the old
+        or new eventmanes. (it translate between new and old eventnames)
+        PARAMS:
+        - trial, int
+        - event, string name.
+        RETURNS:
+        - times, list of times, deals with situation where event was saved
+        using old or new names.
+        - or None, if either of folliwing suations:
+        --- 1. events not previously cached
+        --- 2. cached, but this (trial, event) not gotten
+        """
+
+        if not hasattr(self, "EventsTimeUsingPhd"):
+            self.EventsTimeUsingPhd = {}
+
+        map_event_newname_to_oldname = {
+            "stim_onset":"samp",
+            "fix_touch":"fixtch", 
+            "go_cue":"go", 
+            "samp_sequence_onset":"seqon",
+            "done_button":"doneb",
+            "post_screen_onset":"post"
+        }
+
+        def _query(key):
+            """ Returns either the times or None (if key not in dict)
+            """
+            if key in self.EventsTimeUsingPhd.keys():
+                return self.EventsTimeUsingPhd[key]
+            else:
+                return None
+
+        # 1) try the input
+        key = (trial, event)
+        out = _query(key)
+        if out is None:
+            # 2) then try see if this is old/new name
+            if event in map_event_newname_to_oldname.keys():
+                # This is old name. try the new name
+                ev = map_event_newname_to_oldname[event]
+                key = (trial, ev)
+                out = _query(key)
+                return out
+            elif event in map_event_newname_to_oldname.values():
+                # Then this is new name, try old.
+                ev = [k for k, v in map_event_newname_to_oldname.items() if v==event][0]
+                key = (trial, ev)
+                out = _query(key)
+                return out
+            else:
+                return out
+        else:
+            return out
 
 
     def events_get_time_using_photodiode(self, trial, 
@@ -3213,8 +3272,8 @@ class Session(object):
                                             assert_expected_direction_first_crossing = None)
                     times = _extract_times(out)
 
-                elif event=="fixtch":
-
+                elif event in ["fixtch", "fix_touch"]:
+                    behcode = "fixtch"
                     try:
                         # onset of touch of fixation cue, based on detection of finger on screen.
                         # NOTE: if fails, likely t_pre should be even larger (since could touch but fail to trigger the eventcode for some time)
@@ -3222,16 +3281,16 @@ class Session(object):
                         #                                           ploton=plot_beh_code_stream, cross_dir_to_take="up", assert_single_crossing_per_behcode_instance=True,
                         #                                             assert_single_crossing_this_trial = True,
                         #                                              assert_expected_direction_first_crossing = "up")              
-                        out = self.behcode_get_stream_crossings_in_window(trial, event, t_pre=0.15, t_post = 0.25, whichstream="touch_in_fixsquare_binary", 
+                        out = self.behcode_get_stream_crossings_in_window(trial, behcode, t_pre=0.15, t_post = 0.25, whichstream="touch_in_fixsquare_binary", 
                                                                   ploton=plot_beh_code_stream, cross_dir_to_take="up", assert_single_crossing_per_behcode_instance=True,
                                                                     assert_single_crossing_this_trial = True,
                                                                       assert_expected_direction_first_crossing = "up",
                                                                       refrac_period_between_events=0.05)              
                     except AssertionError as err:
                         # Try with larger window
-                        assert len(self._behcode_extract_times(event, trial, shorthand=True))<2, "then doent want to expand window"
+                        assert len(self._behcode_extract_times(behcode, trial, shorthand=True))<2, "then doent want to expand window"
 
-                        out = self.behcode_get_stream_crossings_in_window(trial, event, t_pre=0.5, t_post = 1, whichstream="touch_in_fixsquare_binary", 
+                        out = self.behcode_get_stream_crossings_in_window(trial, behcode, t_pre=0.5, t_post = 1, whichstream="touch_in_fixsquare_binary", 
                                                                   ploton=plot_beh_code_stream, cross_dir_to_take="up", assert_single_crossing_per_behcode_instance=True,
                                                                     assert_single_crossing_this_trial = True,
                                                                      assert_expected_direction_first_crossing = "up",
@@ -3274,10 +3333,10 @@ class Session(object):
 
 
 
-                elif event=="go":
+                elif event in ["go", "go_cue"]:
                     # Use photodiode
                     # behcode = self.behcode_convert(codename="go", shorthand=True)
-                    behcode = event
+                    behcode = "go"
                     stream = 'pd2'
                     cross_dir = 'down'
                     t_pre = -0.01
@@ -3326,12 +3385,12 @@ class Session(object):
                         # take the first time, sometimes can go in and out of squiare..
                         times = times[0:1]
 
-                elif event=="seqon":
+                elif event in ["samp_sequence_onset", "seqon"]:
                     # for sequence traiing, when samp1 is shown (e..g a stroke turning on)
                     # use negative t_pre becuase sometimes previous peak bleeds into the current (when
                     # this signal is being used to signal dot changes)
                     # behcode = 74
-                    behcode = event
+                    behcode = "seqon"
                     out = self.behcode_get_stream_crossings_in_window(trial, behcode, t_pre=-0.017, t_post = 0.15, whichstream="pd1", 
                                           ploton=plot_beh_code_stream, cross_dir_to_take="up", assert_single_crossing_per_behcode_instance=False, 
                                                               assert_single_crossing_this_trial = False,
@@ -3373,7 +3432,7 @@ class Session(object):
                         times = [offs[-1]]
 
 
-                elif event=="doneb":
+                elif event in ["done_button", "doneb"]:
                     # Onset of touch of done button, based on touchgin within square
                     # NOTE: This can sometimes (rarely) be very diff (many sec) from the fb assocaited
                     # with done. this is when he holds finger by done button, but doesnt trigger...
@@ -3382,7 +3441,7 @@ class Session(object):
                     # force_must_find_crossings = False # because rarely will touch, but finger not in there (w.g. water)
 
                     # behcode = 62
-                    behcode = event
+                    behcode = "doneb"
                     try:
                         # NOte: tpre very large because seomtimes he touches but isnt correctly registered.
                         out = self.behcode_get_stream_crossings_in_window(trial, behcode, t_pre=2.5, t_post = 1, 
@@ -3411,7 +3470,7 @@ class Session(object):
 
                     times = times[0:1] # take the first time, sometimes can go in and out of squiare
 
-                elif event=="post":
+                elif event in ["post_screen_onset", "post"]:
                     # onset of the post-screen, which is offset of the "pause" after you report done
                     # Avoid, since sometimes pd1 fails.. 
                     # (e..g, if doesnt make any touches postfix...)
@@ -3419,7 +3478,7 @@ class Session(object):
 
                     # First, try very loose with both
                     # behcode = 73
-                    behcode = event
+                    behcode = "post"
                     out1 = self.behcode_get_stream_crossings_in_window(trial, behcode, t_pre=0.2, t_post = 0.4, whichstream="pd2", 
                       ploton=plot_beh_code_stream, cross_dir_to_take="down", assert_single_crossing_per_behcode_instance=False,
                         assert_single_crossing_this_trial = False,
@@ -3502,20 +3561,29 @@ class Session(object):
 
         ###############################
         dict_events = {}
-        if not hasattr(self, "EventsTimeUsingPhd"):
-            self.EventsTimeUsingPhd = {}
         for event in list_events:
 
-            key = (trial, event)
-            if not overwrite and key in self.EventsTimeUsingPhd.keys():
-                times=  self.EventsTimeUsingPhd[(trial, event)]
-                if len(times)==0:
-                    # if its empty, try to recompute it.. (e.g., it is a saved version, and now code is updated..)
+            if not overwrite:
+                # then try to load from cached
+                times = self.events_read_time_from_cached(trial, event)
+                if times is None:
+                    # did not find it...
                     RECOMPUTE = True
                 else:
                     RECOMPUTE = False
             else:
                 RECOMPUTE = True
+
+            # key = (trial, event)
+            # if not overwrite and key in self.EventsTimeUsingPhd.keys():
+            #     times=  self.EventsTimeUsingPhd[(trial, event)]
+            #     if len(times)==0:
+            #         # if its empty, try to recompute it.. (e.g., it is a saved version, and now code is updated..)
+            #         RECOMPUTE = True
+            #     else:
+            #         RECOMPUTE = False
+            # else:
+            #     RECOMPUTE = True
 
             if RECOMPUTE:
                 try:
@@ -5427,6 +5495,27 @@ class Session(object):
 
 
     #################### CHECK THINGS
+    def check_which_fix_cue_version(self, trial):
+        """ Determine for this trial which cue version it was, these
+        changed over the dates (improvements)
+        RETURNS:
+        - ver, string name of version
+        """
+
+        assert False, "IN PROGRESS, below is just placehoder.."
+
+        if np.any(self._behcode_extract_times(132, trial)):
+            # Then this has separation in time
+            # touch_fix -> (delay) -> fix cue changes color -> (delay) -> samp
+            return ""
+
+        else:
+            # old version, 
+            # touch fix -> (no delay) -> fix cue changes color -> (delay) -> samp
+
+            pass
+
+
     def check_what_extracted(self, rs, chan, trial):
         """ Return a dict of what has been extracted for this rs, chan, trial
         combo, in self.DatAll

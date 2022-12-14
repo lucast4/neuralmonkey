@@ -5,8 +5,8 @@ import pandas as pd
 
 class MetricsScalar(object):
     """docstring for ClassName"""
-    def __init__(self, data, list_var, map_var_to_othervars,
-            list_events_uniqnames):
+    def __init__(self, data, list_var=None, map_var_to_othervars=None,
+            map_var_to_levels=None, list_events_uniqnames=None):
         """
         Generates object to compute values for different ways in which scalar fr
         values are modulated by variables
@@ -20,17 +20,79 @@ class MetricsScalar(object):
         - list_events_uniqnames, lsit of str, these events are values in a data["event_aligned"],
         for each column it is scalar avalue for fr aligned to this event
         """
+
         self.Data = data
-        self.ListVar = list_var
-        self.MapVarToConjunctionOthers = map_var_to_othervars
+
+        if list_events_uniqnames is None:
+            assert False, "code it!"
         self.ListEventsUniqname = list_events_uniqnames
 
+        if list_var is None:
+            assert False, "code it"
         for var in list_var:
             assert var in data.columns
             assert var in map_var_to_othervars.keys()
+        self.ListVar = list_var
 
+        if map_var_to_othervars is None:
+            assert False, "code it!"
         for var, othervar in map_var_to_othervars.items():
             assert othervar in data.columns
+        self.MapVarToConjunctionOthers = map_var_to_othervars
+
+        if map_var_to_levels is None:
+            assert False, "code it!"
+        for var in list_var:
+            assert var in map_var_to_levels
+        self.MapVarToLevels = map_var_to_levels
+
+
+    def calc_fr_across_levels(self):
+        """ Wrapper to cmpute, for each channel:
+        for each var, calculate the mean fr across levels for that var. levels are in the 
+        same order, defined by self.MapVarToLevels
+        RETURNS:
+        - output, dict of results
+        """
+
+        output = {}
+        data = self.Data
+        list_events_uniqnames = self.ListEventsUniqname
+        map_var_to_othervars=self.MapVarToConjunctionOthers
+        map_var_to_levels = self.MapVarToLevels
+
+        # 1) All events combined
+        dict_modulation = {}
+        dict_modulation_othervar = {}
+        for var in self.ListVar:
+            list_levels = map_var_to_levels[var]
+            res = _calc_fr_across_levels(data, var, list_levels, map_var_to_othervars)
+            dict_modulation[var] = res["all_data"]
+
+            othervars_mat = stack_othervals_values(res["othervars_conjunction"]) # (nothervarlevels, nlevels)
+            dict_modulation_othervar[var] = othervars_mat
+        output["allevents_alldata"] = dict_modulation
+        output["allevents_othervar"] = dict_modulation_othervar
+
+        # 2) split by event
+        dict_modulation = {}
+        dict_modulation_othervar = {}
+        for ev in list_events_uniqnames:
+            datathis = data[data["event_aligned"]==ev]
+
+            for var in self.ListVar:
+                list_levels = map_var_to_levels[var]
+                res = _calc_fr_across_levels(datathis, var, list_levels, map_var_to_othervars)
+
+                # 1. for each event, one value for modulation by this var
+                dict_modulation[(ev, var)] = res["all_data"]
+
+                othervars_mat = stack_othervals_values(res["othervars_conjunction"]) # (nothervarlevels, nlevels)
+                dict_modulation_othervar[(ev, var)] = othervars_mat
+        output["splitevents_alldata"] = dict_modulation
+        output["splitevents_othervar"] = dict_modulation_othervar
+        
+        return output
 
     def calc_modulation_by(self):
         """ Wrapper to compute, for each channel, how it is mouldated by 
@@ -44,13 +106,15 @@ class MetricsScalar(object):
         list_events_uniqnames = self.ListEventsUniqname
         map_var_to_othervars=self.MapVarToConjunctionOthers
 
-        # 1) all data
+        # 1) All events combined
         dict_modulation = {}
         dict_modulation_meanofothervar = {}
         for var in self.ListVar:
             res = _calc_modulation_by(data, var, map_var_to_othervars=map_var_to_othervars)
             dict_modulation[var] = res["all_data"]
-            dict_modulation_meanofothervar[var] = np.mean(list(res["othervars_conjunction"].values()))
+
+            othervars_mat = stack_othervals_values(res["othervars_conjunction"]) # (nothervarlevels, nlevels)
+            dict_modulation_meanofothervar[var] = np.mean(othervars_mat, axis=0)
         output["allevents_alldata"] = dict_modulation
         output["allevents_eachothervar_mean"] = dict_modulation_meanofothervar
 
@@ -71,7 +135,8 @@ class MetricsScalar(object):
                 
                 # Modulation (#1) is combination of 3a and 3b:
                 # 3a. for each event, mean modulation across other vars
-                dict_modulation_meanofothervar[(ev, var)] = np.mean(list(res["othervars_conjunction"].values()))
+                othervars_mat = stack_othervals_values(res["othervars_conjunction"]) # (nothervarlevels, nlevels)
+                dict_modulation_meanofothervar[(ev, var)] = np.mean(othervars_mat, axis=0)
                 
                 # 3b. for each event, consistency across other vars
                 if False:
@@ -239,7 +304,7 @@ def _calc_modulation_by(data, by, response_var = 'fr_scalar',
     - response_var, string, name of variable response
     RETURNS:
     - output, dict holding modulation computed across different slices of
-    data.
+    data, each value being a scalar.
     """
     
     import pingouin as pg
@@ -256,7 +321,7 @@ def _calc_modulation_by(data, by, response_var = 'fr_scalar',
         levels = None
     else:
         colname_othervars = map_var_to_othervars[by]
-        levels = data[colname_othervars].unique().tolist()
+        levels = sorted(data[colname_othervars].unique().tolist())
         dict_mod_othervars = {}
         for lev in levels:
             datathis = data[data[colname_othervars]==lev]
@@ -267,3 +332,94 @@ def _calc_modulation_by(data, by, response_var = 'fr_scalar',
     output["othervars_conjunction_levels"] = levels
 
     return output
+
+def _calc_fr_across_levels(data, var, list_levels, map_var_to_othervars=None,
+    response_var = "fr_scalar"):
+    """ Calculatio mean fr across levels for this var. modulation of response_var ba <by>,
+    PARAMS:
+    - data, df, usually for a single channel and event.
+    - var, string, variable whose levels to compute fr for
+    - list_levels, list of str, levels in order desired. asks you to  pass it in, to ensure that
+    the resulting order is correct.
+    - map_var_to_othervars, to get result for each conjuiction of other vars.
+    RETURNS:
+    - output, dict holding results, each value being a list of mean frs.
+    """
+    
+    output = {}
+    
+    def _calc_means(datathis):
+        """ Returns list_means matching list_levels"""
+        if False:
+            # v1: faster with large dataset
+            # took 53ms vs 271ms (below) for agg version (entire dataset, n~1M)
+            from pythonlib.tools.pandastools import aggregGeneral
+            dfagg = aggregGeneral(datathis, [var], values=response_var)
+            for lev in list_levels:
+                print(dfagg[dfagg[var]==lev][response_var].item())
+            assert False, "get list_means"
+        else:
+            # faster with small dataset: took 4ms vs. 26 for smaller datsaet (n~2000)
+            list_means = []
+            for lev in list_levels:
+                assert np.sum(datathis[var]==lev)>0, f"doesnt exist... {var}, {lev}"
+                m = np.mean(datathis[datathis[var]==lev][response_var])
+                list_means.append(m)
+        return list_means
+    
+    
+    # 1) all data
+    output["all_data"] = _calc_means(data)
+    
+    # 2) Each subset, specific conjuiction of other data
+    if map_var_to_othervars is None:
+        list_means_others = None
+        levels_others = None
+    else:
+        colname_othervars = map_var_to_othervars[var]
+        levels_others = sorted(data[colname_othervars].unique().tolist())
+        list_means_others = {}
+        for lev in levels_others:
+            datathis = data[data[colname_othervars]==lev]
+            list_means = _calc_means(datathis)
+            list_means_others[lev] = list_means
+    output["othervars_conjunction"] = list_means_others
+    output["othervars_conjunction_levels"] = levels_others
+
+    return output
+
+def stack_othervals_values(othervals):
+    """ 
+    PARAMS;
+    - othervals, dict where keys are levels for othervals, and
+    values are list of int, or scalars
+    RETURNS:
+    - np array, stacking the values, with dimensions 
+    if inner items are lists : (n to stack, length of inner lists.)
+    if inner items are scalars: (n tostack, )
+    E.G.:
+    {'(0, 0)': [7.740192683973832,
+      7.661018549704632,
+      7.565683192350642,
+      7.942574397711931,
+      7.568079304750462,
+      7.76416359098134,
+      7.651544842664896],
+     '(0, 1)': [7.740192683973832,
+      7.661018549704632,
+      7.565683192350642,
+      7.942574397711931,
+      7.568079304750462,
+      7.76416359098134,
+      7.651544842664896]}
+    ---> array of shape (2, 7)
+
+    {'(0, 0)': 7.740192683973832,
+     '(0, 1)': 7.740192683973832}
+    ---> array of shape (2,)
+    """
+
+    tmp = list(othervals.values()) # list of lists
+    this = np.stack(tmp, axis=0)
+    assert this.shape[0]==len(tmp)
+    return this
