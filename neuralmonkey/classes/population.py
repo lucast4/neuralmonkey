@@ -549,6 +549,21 @@ class PopAnal():
             return XdataframeAgg
 
     ####################### SLICING
+    def slice_by_dim_values_wrapper(self, dim, values):
+        """ Slice based on values (not indices)
+        PARAMS:
+        - dim, str (see slice_by_dim_indices_wrapper)
+        - values, list of values into self.Trials or Chans (depending on dim).
+        Asserts that self.Trials or Chans doesnt contain any Nones
+        """
+        # 1) Map the values to indices
+        # dim, dim_str = self.help_get_dimensions(dim)
+        indices = self.index_find_these_values(dim, values)
+        # 2) Call indices version
+        return self.slice_by_dim_indices_wrapper(dim, indices)
+
+
+
     def slice_by_dim_indices_wrapper(self, dim, inds):
         """ Helper that is standard across the three dims (trials, times, chans),
         to use indices (i.e., not chans, but indices into chans)
@@ -556,6 +571,7 @@ class PopAnal():
         - dim, either int or str
         - inds:
         --- if dim in {chans, trials,}, then is indices into self.Chans or self.Trials.
+        (is index, NOT the value itself)
         --- if dim == "times", then is [t1 t2], inclusive start and end times.
         RETURNS: 
         - PopAnal object
@@ -670,13 +686,13 @@ class PopAnal():
         else:
             inds = [self.index_find_this_chan(ch) for ch in chans]
             del chans
-        chans_actual = [self.Chans[i] for i in inds]
 
         # Slice
         X = self.extract_activity(version=version)
         X = X[inds, :, :]
 
         if return_as_popanal:
+            chans_actual = [self.Chans[i] for i in inds]
             PA = PopAnal(X, times=self.Times, trials=self.Trials, chans=chans_actual)
             return PA
         else:
@@ -807,7 +823,7 @@ class PopAnal():
 
     def split_by_label(self, dim_str, dim_variable):
         """ Splits self into multiple smaller PA, each with a single level for
-        dim_variable. 
+        dim_variable. Uses dataframe self.Xlabels[dim_str].
         PARAMS:
         - dim_str, e.g,., "trials"
         - dim_variable, string, e.g., "gridsize"
@@ -827,6 +843,35 @@ class PopAnal():
             ListPA.append(pathis)
         
         return ListPA, list_levels
+
+    def reshape_by_splitting(self):
+        """
+        Reshape self into new PA with PA.X.shape = (1, m*k, t), instead of
+        orignal shape (m, k, t), i.e, all data are along the trials dimension.
+        Makes sure that PA.Xlabels["trials"] is correctly matchins the m*k rows.
+        Will add a new column to PA.Xlabels["trials"] called chan, which is the
+        original chan in self.Chans. Throws out PA.Chans and PA.Trials.
+        
+        RETURNS:
+        - PA, (without modifyin self)
+        """
+        
+        list_pa = []
+        list_labels = []
+        for i, chan in enumerate(self.Chans):
+            # get the sliced pa
+            pathis = self.slice_by_dim_indices_wrapper("chans", [i])
+            # collect info
+            list_pa.append(pathis)
+            list_labels.append(chan)
+        PA = concatenate_popanals(list_pa, dim="trials", 
+                                        map_idxpa_to_value=list_labels, 
+                                        map_idxpa_to_value_colname="chan",
+                                        assert_otherdims_have_same_values=False)
+        
+        assert PA.X.shape[0]==1 and PA.X.shape[1]==(self.X.shape[0]*self.X.shape[1])
+        return PA
+
 
     def slice_by_label_grouping(self, dim_str, grouping_variables, grouping_values):
         """ 
@@ -1028,7 +1073,7 @@ class PopAnal():
 
     ################ INDICES
     def index_find_this_chan(self, chan):
-        """ Returns the index (into self.X[:, index, :]) for this
+        """ Returns the index (into self.X[index, :, :]) for this
         chan, looking into self.Chans, tyhe lables.
         PARAMS:
         - chan, label, as in self.Chans
@@ -1042,6 +1087,33 @@ class PopAnal():
         #         return i
         # assert False, "this chan doesnt exist in self.Chans"
 
+    def index_find_this_trial(self, trial):
+        """ Returns the index (into self.X[:, index, :]) for this
+        trial, looking into self.Trials, tyhe lables.
+        PARAMS:
+        - trial, value to serach for in self.Trials
+        RETURNS;
+        - index, see above
+        """
+        return self.Trials.index(trial)
+
+    def index_find_these_values(self, dim, values):
+        """ return the indices into self.Trials or self.Chans for these values
+        PARAMS;
+        - dim, string in {'chans', 'trials'}
+        RETURNS:
+        - list of indices, matching order of values exaclty.
+        """
+
+        dim, dim_str = self.help_get_dimensions(dim)
+
+        if dim_str == "trials":
+            return [self.index_find_this_trial(x) for x in values]
+        elif dim_str == "chans":
+            return [self.index_find_this_chan(x) for x in values]
+        else:
+            print(dim)
+            assert False
 
     #### EXTRACT ACTIVITY
     def extract_activity(self, trial=None, version="raw"):
@@ -1089,7 +1161,8 @@ class PopAnal():
 
     def plotwrapper_smoothed_fr(self, inds=None, axis_for_inds="site", ax=None, 
                      plot_indiv=True, plot_summary=False, error_ver="sem",
-                     pcol_indiv = "k", pcol_summary="r", summary_method="mean"):
+                     pcol_indiv = "k", pcol_summary="r", summary_method="mean",
+                     event_bounds=[None, None, None], alpha=0.6):
         """ Wrapper for different ways of plotting multiple smoothed fr traces, where
         multiple could be trials or sites. Also to plot summaries (means, etc). 
         PARAMS:
@@ -1125,7 +1198,8 @@ class PopAnal():
 
         # 1) Plot indiividual traces?
         if plot_indiv:
-            fig1, ax1 = plotNeurTimecourse(X, times,ax=ax, color = pcol_indiv)
+            fig1, ax1 = plotNeurTimecourse(X, times,ax=ax, color = pcol_indiv,
+                alpha=alpha)
         else:
             fig1, ax1 = None, None
             
@@ -1148,9 +1222,44 @@ class PopAnal():
         else:
             fig2, ax2 = None, None
 
+        # 3) Overlay event boundaries?
+        colors = ['r', 'k', 'b']
+        for evtime, pcol in zip(event_bounds, colors):
+            if evtime is not None:
+                ax.axvline(evtime, color=pcol, linestyle="--", alpha=0.4)
+
         return fig1, ax1, fig2, ax2
 
+    def plotwrapper_smoothed_fr_split_by_label(self, dim_str, dim_variable, ax=None,
+                                              plot_indiv=False, plot_summary=True,
+                                              event_bounds=[None, None, None], 
+                                              add_legend=True):
+        """ Plot separate smoothed fr traces, overlaid on single plot, each a different
+        level of an inputted variable
+        PARAMS:
+        - dim_str, str, in {times, chans}
+        - dim_variable, column in dataframe in self.Xlabels, to look for levels of
+        - event_bounds, [num, num, num] to plot pre, alignemnt, and post times
+        """
+        from pythonlib.tools.plottools import makeColors
 
+        # Split into each pa for each level
+        list_pa, list_levels = self.split_by_label(dim_str, dim_variable)
+        
+        # Plot, one per pa
+        pcols = makeColors(len(list_levels))
+        for pa, pcol in zip(list_pa, pcols):
+            pa.plotwrapper_smoothed_fr(ax=ax, plot_indiv=plot_indiv, plot_summary=plot_summary,
+                                          pcol_indiv = pcol, pcol_summary=pcol, 
+                                          event_bounds=event_bounds)
+        
+        # add legend
+        if add_legend:
+            from pythonlib.tools.plottools import legend_add_manual
+            legend_add_manual(ax, list_levels, pcols, 0.2)
+
+        return pcols
+                    
 
 
 def extract_neural_snippets_aligned_to(MS, DS, 

@@ -13,10 +13,12 @@ from neuralmonkey.utils.monkeylogic import _load_session_mapper
 import numpy as np
 
 
-# LIST_DATE = ["220715", "220716", "220717"]
-LIST_DATE = ["220717"]
+LIST_DATE = ["220715", "220716", "220717"]
+# LIST_DATE = ["220717"]
 dataset_beh_expt = "priminvar3"
 animal = "Pancho"
+# LIST_PLOTS = ["summarystats", "heatmaps", "eachsite_allvars", "eachsite_smfr", "eachsite_rasters"]
+LIST_PLOTS = ["eachsite_allvars", "eachsite_smfr", "eachsite_rasters"]
 
 for DATE in LIST_DATE:
 
@@ -33,7 +35,6 @@ for DATE in LIST_DATE:
 
     from neuralmonkey.classes.snippets import datasetstrokes_extract
     import os
-
 
     ##### PARAMAS
     list_possible_features = ["gridsize", "shape_oriented", "gridloc"]
@@ -92,17 +93,5 @@ for DATE in LIST_DATE:
         OUT = SP.modulation_compute_higher_stats(RES_ALL_CHANS)
 
         # Plot and save
-        savedir = f"{SAVEDIR_SCALAR}/modulation_by_features"
-        os.makedirs(savedir, exist_ok=True)
-        SP.modulation_plot_all(OUT, savedir=savedir)
-        plt.close("all")
-        
-        # Plot heatmaps and brain schematics
-        savedir = f"{savedir}_heatmaps"
-        os.makedirs(savedir, exist_ok=True)
-        DictDf, DictDf_rgba_values = SP.modulation_plot_heatmaps(OUT, savedir=savedir)
-        SP.modulation_plot_heatmaps_brain_schematic(DictDf, DictDf_rgba_values, savedir)
-
-        # Save the Snippets
-        
+        SP.modulation_plot_all(RES_ALL_CHANS, OUT, SAVEDIR_SCALAR, list_plots=LIST_PLOTS)
         

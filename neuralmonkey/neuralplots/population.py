@@ -47,7 +47,8 @@ def plotNeurHeat(X, ax=None, barloc="right", robust=True, zlims = None):
 #     """
 
 
-def plotNeurTimecourse(X, times=None, ax=None, n_rand=None, marker="-", color="k"):
+def plotNeurTimecourse(X, times=None, ax=None, n_rand=None, marker="-", color="k",
+    alpha=None):
     """ Plot overlaid timecourses. 
     - X, (neuron/trials, time)
     - times, vector of timestmaps, len as X.shape[1]. if None, then uses indices 0,1,2, ..
@@ -59,10 +60,14 @@ def plotNeurTimecourse(X, times=None, ax=None, n_rand=None, marker="-", color="k
     else:
         fig = None
     
+
     # X = self.activations[pop][tasknum]
     X_nonan = X[:]
     X_nonan = X_nonan[~np.isnan(X_nonan)]
     minmax = (np.min(X_nonan), np.max(X_nonan))
+    
+    if alpha is None:
+        alpha=0.75
 
     if n_rand is not None:
         X, indsrand = subsample_rand(X, n_rand)
@@ -70,7 +75,7 @@ def plotNeurTimecourse(X, times=None, ax=None, n_rand=None, marker="-", color="k
         t = np.arange(X.shape[1])
     else:
         t = times
-    ax.plot(t, X.T, marker, color=color)
+    ax.plot(t, X.T, marker, color=color, alpha=alpha)
 
     # if Xerror is not None:
     #     from pythonlib.tools.plottools import shadedErrorBar

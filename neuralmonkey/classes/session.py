@@ -171,20 +171,7 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
     
     # Load dataset beh
     if dataset_beh_expt is not None:
-        try:
-            try:
-                # Try loading using "null" rule, which is common
-                SN.datasetbeh_load(dataset_beh_expt=dataset_beh_expt, 
-                    dataset_beh_rule="null")
-                print("**Loaded dataset! using rule: null")
-            except:
-                # If that doesnt work, then use the daily dataset, which 
-                # is generated autmatoiocalyl (after like sep 2022)
-                SN.datasetbeh_load(dataset_beh_rule = DATE) # daily 
-                print("**Loaded dataset! using rule: ", DATE)
-        except:
-
-            assert False, "pass in correct rule to load dataset."
+        SN.datasetbeh_load_helper(dataset_beh_expt)
 
     return SN
 
@@ -2090,7 +2077,7 @@ class Session(object):
         #                     "dlPFC_p", "dlPFC_a", "vlPFC_p", "vlPFC_a", 
         #                     "preSMA_p", "preSMA_a", "FP_p", "FP_a"]
 
-        assert region is not None, "new version"
+        assert False, "new version"
 
         # do clean
         if clean:
@@ -2891,6 +2878,28 @@ class Session(object):
             assert False
             
     ############### Beh Dataset (extracted)
+    def datasetbeh_load_helper(self, dataset_beh_expt):
+        """ Helps beucase can either be "main" dataset, in which case
+        use dataset_beh_expt, or daily datyaset, in which case use the 
+        date
+        If cannot load datset, then tghrows error.
+        """
+        self.DatasetbehExptname = dataset_beh_expt # need this, to work.
+        try:
+            try:
+                # Try loading using "null" rule, which is common
+                self.datasetbeh_load(dataset_beh_expt=dataset_beh_expt, 
+                    dataset_beh_rule="null")
+                print("**Loaded dataset! using rule: null")
+            except:
+                # If that doesnt work, then use the daily dataset, which 
+                # is generated autmatoiocalyl (after like sep 2022)
+                self.datasetbeh_load(dataset_beh_rule = self.Date) # daily 
+                print("**Loaded dataset! using rule: ", self.Date)
+        except:
+            assert False, "pass in correct rule to load dataset."
+
+
     def datasetbeh_load(self, dataset_beh_expt=None, 
             dataset_beh_rule="null", remove_online_abort=False,
             remove_trials_not_in_dataset=False):
@@ -4542,6 +4551,117 @@ class Session(object):
             assert isinstance(YLIM, list), "mistake..."
             figholder = self._plot_spike_waveform_multchans(list_sites, YLIM, saveon, prefix)
 
+    def plot_raster_trials_blocked(self, ax, list_list_trials, site, list_labels,
+                                   align_to=None, overlay_trial_events=True,                                
+                                   sort_trials_within_blocks=True,
+                                   xmin = None, xmax = None, DEBUG=False):
+        """
+        Plot raster across trials, where trials come in blocks, useful if the trials
+        correspond to distinct levelts of some feature (e.g., epoch, shape), and want to 
+        plot all on same axis
+        PARAMS:
+        - list_list_trials, inner lists of list of ints (trials). each list is a "block" that
+        will be plotted together (starting from bottom)
+        - site, int
+        - list_labels, list of str, same length as list_list_trials, for annotating.
+        - sort_trials_within_blocks, bool, then trials within blocks will beosrted so that
+        increase from bottom to top.
+        """
+
+        # 1. Concatenate trials from different inner lists (i.e, blocks), keeping track of 
+        # thier boundaires.
+        list_trials_plotting_order = []
+        list_index_first_trial_in_block = []
+        idx_first_tracker = 0
+        for trials in list_list_trials:
+            if sort_trials_within_blocks:
+                trials = sorted(trials) # sort the trials within each block
+            list_trials_plotting_order.extend(trials)
+
+            list_index_first_trial_in_block.append(idx_first_tracker)
+            idx_first_tracker = idx_first_tracker+len(trials) # update the tracker
+        
+        # Plot rasters
+        self.plot_raster_trials(ax, list_trials_plotting_order, site, 
+                                overlay_trial_events=overlay_trial_events,
+                                alignto=align_to, xmin=xmin, xmax=xmax)
+            
+        # Plot y markers splitting the blocks
+        ymarks = [y-0.5 for y in list_index_first_trial_in_block]
+        self.plotmod_overlay_y_events(ax, ymarks, list_labels, True, textcolor="m")
+        
+        if DEBUG:
+            print(len(list_trials_plotting_order))
+            print("index of first trials in each block: ", list_index_first_trial_in_block)
+
+
+    def plot_raster_trials(self, ax, list_trials, site, alignto=None,
+        raster_linelengths=0.9, alpha_raster = 0.9, overlay_trial_events=True,
+        ylabel_trials=True, plot_rasters=True, xmin = None, xmax = None):
+        """ Plot raster, for these trials, on this axis.
+        PARAMS:
+        - list_trials, list of indices into self. will plot them in order, from bottom to top
+
+
+        """
+
+        for i, trial in enumerate(list_trials):
+            
+            # get time of this event (first instance)
+            if alignto:
+                timesthis = self.events_get_time_helper(alignto, trial)
+                # if long, then take the first one
+                assert len(timesthis)>0
+                alignto_time = timesthis[0]
+            else:
+                alignto_time = None
+
+            # Rasters
+            if plot_rasters:
+                # rs, chan = self.convert_site_to_rschan(site)
+                D = self.datall_slice_single_bysite(site, trial)
+                # D = self.datall_slice_single(rs, chan, trial0=trial)
+                spikes = D['spike_times']
+                self.plot_raster_line(ax, spikes, i, alignto_time=alignto_time, 
+                    linelengths=raster_linelengths, alpha=alpha_raster)
+            
+            # - overlay beh things
+            if overlay_trial_events:
+                # Auto determine alpha for markers, based on num trials
+                ALPHA_MARKERS = 1-np.clip(len(list_trials)/ 200, 0.25, 0.75)
+
+            #     SN.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, only_on_edge="top")
+                if i==0:
+                    include_text = True
+                else:
+                    include_text = False
+                self.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, only_on_edge="bottom", 
+                                                YLIM=[i-0.3, i+0.5], which_events=["key_events_correct"], 
+                                                include_text=include_text, text_yshift = -0.5, alpha=ALPHA_MARKERS)
+                self.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, 
+                                                YLIM=[i-0.4, i-0.2], which_events=["strokes"], alpha=ALPHA_MARKERS)
+        
+        # subsample trials to label
+        if ylabel_trials:
+            if len(list_trials)>20:
+                n = len(list_trials)
+                step = int(np.ceil(n/15))
+                inds = range(0, n, step)
+                ax.set_yticks(inds)
+                ax.set_yticklabels([list_trials[i] for i in inds]);
+            else:
+                ax.set_yticks(range(len(list_trials)))
+                ax.set_yticklabels(list_trials);
+        ax.set_ylabel('trial');
+
+        if site is not None:
+            ax.set_title(self.sitegetter_summarytext(site)) 
+        if xmin is not None:
+            ax.set_xlim(left=xmin)
+        if xmax is not None:
+            ax.set_xlim(right=xmax)
+
+
     def plot_raster_line(self, ax, times, yval, color='k', alignto_time=None,
         linelengths = 0.85, alpha=0.4):
         """ plot a single raster line at times at row yval
@@ -4590,20 +4710,29 @@ class Session(object):
                 ax.text(XLIM[0]-1.5, i, region_this, size=15, color="b")
             region_previous = region_this
 
-    def plotmod_overlay_y_events(self, ax, yvals, span_xlim=True, color="k"):
+    def plotmod_overlay_y_events(self, ax, yvals, labels=None, span_xlim=True, 
+            color="m", textcolor="m"):
         """ Horizontal Marks on Y axis, flexible, to demarkate thnings like important trials, etc.
         PARAMS;
         - yvals, list of values, will place marker at each one
+        - labels, liist of string, to place next to each marker.
         - span_xlim, if True, then line across plot. if False, then a marker onb the y axis.
         """
 
         XLIM = ax.get_xlim()
 
-        for val in yvals:
+        if labels is not None:
+            assert len(yvals)==len(labels)
+        else:
+            labels = [None for _ in range(len(yvals))]
+
+        for val, lab in zip(yvals, labels):
             if span_xlim:
-                ax.axhline(val, color="k")
+                ax.axhline(val, color=color)
             else:
-                ax.plot(XLIM[0]. val, ">", color=color)
+                ax.plot(XLIM[0], val, ">", color=color)
+            if lab is not None:
+                ax.text(XLIM[0], val, f"{lab}", color=textcolor)
 
 
 
@@ -5001,7 +5130,10 @@ class Session(object):
             SIZE=0.5, SIZE_HEIGHT_TOTAL = None, SIZE_WIDTH_TOTAL = 25., 
             plot_beh=True, plot_rasters=True, 
             alpha_raster = 0.9,
-            xmin = None, xmax = None):
+            xmin = None, xmax = None,
+            raster_linelengths=0.9,
+            overlay_trial_events=True,
+            ylabel_trials=True):
         """ Plot one site, mult trials, overlaying for each trial its major events
         PARAMS:
         - list_trials, list of int. if None, then plots 20 random
@@ -5015,70 +5147,25 @@ class Session(object):
         if site is None:
             assert plot_rasters==False
 
-        # Auto determine alpha for markers, based on num trials
-        ALPHA_MARKERS = 1-np.clip(len(list_trials)/ 200, 0.25, 0.75)
-
         if list_trials is None:
             import random
             nrand = 20
             list_trials = sorted(random.sample(self.get_trials_list(True), nrand))
         nrows = len(list_trials)
-        ncols = 2
+        ncols = 1
 
         if SIZE_HEIGHT_TOTAL is not None:
             SIZE = SIZE_HEIGHT_TOTAL/nrows
 
-        fig, axes = plt.subplots(1, ncols, sharex=True, figsize=(25, SIZE*nrows), 
-                               gridspec_kw={'width_ratios': [9,1]})
+        # old, when including drawing.
+        # fig, axes = plt.subplots(1, ncols, sharex=True, figsize=(SIZE_WIDTH_TOTAL, SIZE*nrows), 
+        #                        gridspec_kw={'width_ratios': [9,1]})
+        fig, axes = plt.subplots(1, ncols, sharex=True, squeeze=False, figsize=(SIZE_WIDTH_TOTAL, SIZE*nrows))
         ax = axes.flatten()[0]
-        for i, trial in enumerate(list_trials):
-            
-            # get time of this event (first instance)
-            if alignto:
-                timesthis = self.events_get_time_helper(alignto, trial)
-                # if long, then take the first one
-                assert len(timesthis)>0
-                alignto_time = timesthis[0]
-            else:
-                alignto_time = None
 
-            # Rasters
-            if plot_rasters:
-                rs, chan = self.convert_site_to_rschan(site)
-                D = self.datall_slice_single(rs, chan, trial0=trial)
-                spikes = D['spike_times']
-                self.plot_raster_line(ax, spikes, i, alignto_time=alignto_time, linelengths=0.9, alpha=alpha_raster)
-            
-            # - overlay beh things
-        #     SN.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, only_on_edge="top")
-            if i==0:
-                include_text = True
-            else:
-                include_text = False
-            self.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, only_on_edge="bottom", 
-                                            YLIM=[i-0.3, i+0.5], which_events=["key_events_correct"], 
-                                            include_text=include_text, text_yshift = -0.5, alpha=ALPHA_MARKERS)
-        #     SN.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, 
-        #                                     YLIM=[i-0.3, i+0.3], which_events=["strokes"], only_on_edge="top")
-        #     SN.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, 
-        #                                     YLIM=[i-0.3, i+0.3], which_events=["strokes"], only_on_edge="top")
-        #     SN.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, 
-        #                                     YLIM=[i-0.4, i-0.2], which_events=["strokes"], alpha=0.3)
-        #     SN.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, 
-        #                                     YLIM=[i+0.2, i+0.4], which_events=["strokes"], alpha=0.3)
-            self.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, 
-                                            YLIM=[i-0.4, i-0.2], which_events=["strokes"], alpha=ALPHA_MARKERS)
-            
-        ax.set_yticks(range(len(list_trials)))
-        ax.set_yticklabels(list_trials);
-        ax.set_ylabel('trial');
-        if site is not None:
-            ax.set_title(self.sitegetter_summarytext(site)) 
-        if xmin is not None:
-            ax.set_xlim(left=xmin)
-        if xmax is not None:
-            ax.set_xlim(right=xmax)
-
+        self.plot_raster_trials(ax, list_trials, site, alignto,
+            raster_linelengths, alpha_raster, overlay_trial_events, 
+            ylabel_trials, plot_rasters, xmin, xmax)
 
         # Final drawing
             #     ax = axes.flatten()[2*i + 1]

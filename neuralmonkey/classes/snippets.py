@@ -185,6 +185,34 @@ class Snippets(object):
         self.Params["map_var_to_levels"] = MapVarToLevels
 
 
+    ############################################# WORKING WITH POPANALS
+    def popanal_extract_specific_slice(self, event_uniq, chan=None, var_level=None):
+        """ Extract a specific slice of popanal
+        PARAMS:
+        - event_uniq, unique name, usually number-prefixed.
+        - chan, channel (value) to keep
+        - var_level, list-like, 2 values, (var, level), to keep just this level for
+        this var in pa.Xlabels["trials"]
+        """
+
+        # Get for this event
+        list_events_uniqnames = self.Params["list_events_uniqnames"]
+        i_event = list_events_uniqnames.index(event_uniq)
+        pa = self.ListPA[i_event]
+
+        # Get this chan
+        if chan is not None:
+            pa = pa.slice_by_dim_values_wrapper("chans", [chan])
+
+        # Get for this level of var
+        if var_level is not None:
+            var = var_level[0] # str
+            lev = var_level[1] # value
+            pa = pa.slice_by_label("trials", var, lev)
+
+        return pa
+
+    ############################################ SCALARS
     def listpa_convert_to_scalars(self):
         """ For each trial, get a single scalar value by averaging across time
         """
@@ -207,17 +235,18 @@ class Snippets(object):
                                           map_idxpa_to_value_colname="event_aligned")
 
         # == Flatten --> split each chan to smaller pa, then concatenate 
-        list_pa_scal = []
-        list_labels = []
-        for i in range(len(PA_scal_all.Chans)):
-            pa_scal = PA_scal_all.slice_by_dim_indices_wrapper("chans", [i])
-            chan = PA_scal_all.Chans[i]
-            list_pa_scal.append(pa_scal)
-            list_labels.append(chan)
-        PA_scal_all= concatenate_popanals(list_pa_scal, dim="trials", 
-                                        map_idxpa_to_value=list_labels, 
-                                        map_idxpa_to_value_colname="chan",
-                                        assert_otherdims_have_same_values=False)
+        PA_scal_all = PA_scal_all.reshape_by_splitting()
+        # list_pa_scal = []
+        # list_labels = []
+        # for i in range(len(PA_scal_all.Chans)):
+        #     pa_scal = PA_scal_all.slice_by_dim_indices_wrapper("chans", [i])
+        #     chan = PA_scal_all.Chans[i]
+        #     list_pa_scal.append(pa_scal)
+        #     list_labels.append(chan)
+        # PA_scal_all= concatenate_popanals(list_pa_scal, dim="trials", 
+        #                                 map_idxpa_to_value=list_labels, 
+        #                                 map_idxpa_to_value_colname="chan",
+        #                                 assert_otherdims_have_same_values=False)
 
         # Print summary of the final scalar values
         print("Final data shape:", PA_scal_all.X.shape)
@@ -705,8 +734,196 @@ class Snippets(object):
             # SAVE FIG
             fig.savefig(f"{savedir}/brainschem-{var}.pdf")
 
+    def modulation_plot_each_chan(self, RES_ALL_CHANS, savedir="/tmp",
+        DEBUG = False, list_chans=None):
+        """ Plot for each chan, overview of modulation across all variables.
+        """
+        from pythonlib.tools.pandastools import append_col_with_grp_index
+        from pythonlib.tools.plottools import makeColors
+        import seaborn as sns
+        from pythonlib.tools.snstools import rotateLabel
 
-    def modulation_plot_all(self, OUT, savedir="/tmp"):
+        def _find_varhue_varcol(var_x, vars_exist, 
+                                variables_ordered_increasing_effect = ["gridsize", "gridloc", "shape_oriented", "epoch"]):
+            """ to return what variables to use as hue and column for 
+            seaborn catplot, based on principle that variables with largest
+            expected effect (differences across lewvels) should be col, while
+            those with smallest effect shoudl be hue (so that they are
+            easy to compare)
+            PARAMS:
+            - variables_ordered_increasing_effect, list of var to sample
+            from
+            RETURNS: 
+            - var_x, 
+            - var_hue, 
+            - var_col
+            """
+
+            def _find_hue():
+                # 1) Find the hue
+                for var_other in variables_ordered_increasing_effect:
+                    if not var_other==var_x and var_other in vars_exist:
+                        return var_other
+                print(var_x, variables_ordered_increasing_effect, vars_exist)
+                assert False, "didnt find"
+
+            def _find_col(var_hue):
+                # 2) Find the column
+                for var_other in variables_ordered_increasing_effect:
+                    if not var_other==var_x and not var_other==var_hue and var_other in vars_exist:
+                        return var_other
+                print(var_x, var_hue, variables_ordered_increasing_effect, vars_exist)
+                assert False, "didnt find"
+            
+            if [var_x] == vars_exist:
+                # Then no other vars exist
+                return var_x, None, None
+            var_hue = _find_hue()
+
+            if sorted([var_x, var_hue]) == vars_exist:
+                # Then no other vars exist
+                return var_x, var_hue, None
+            var_col = _find_col(var_hue)
+
+            return var_x, var_hue, var_col
+
+        # Prepare variables
+        list_events_uniqnames = self.Params["list_events_uniqnames"]
+        sites_keep = self.Sites
+        if DEBUG:
+            sites_keep = sites_keep[::5]
+        DF = self.DfScalar
+        sn = self.SN
+        list_var = self.Params["list_features_get_conjunction"]
+        map_var_to_othervars = self.Params["map_var_to_othervars"]
+        map_var_to_levels = self.Params["map_var_to_levels"]
+        for RES_ALL in RES_ALL_CHANS:
+            chan = RES_ALL["chan"]
+            if list_chans is not None:
+                if chan not in list_chans:
+                    continue
+            bregion = RES_ALL["bregion"]
+            RES = RES_ALL["RES"]
+            RES_FR = RES_ALL["RES_FR"]
+            print("Plotting for chan: ", chan)
+            dfthis = DF[DF["chan"] == chan]
+            ymax = dfthis["fr_scalar"].max()
+
+            print("PLotting for (chan, bregion): ", chan, bregion)
+            
+            ##################### Plot separately each var (showing its modulation)
+            for xvar in list_var:
+                _, var_hue, var_col = _find_varhue_varcol(xvar, list_var)
+                
+                fig = sns.catplot(data=dfthis, x=xvar, y="fr_scalar", hue=var_hue, 
+                    row="event_aligned", col=var_col, kind="point", height=3)
+                rotateLabel(fig)
+            
+                # fr, scale from 0
+                for ax in fig.axes.flatten():
+                    ax.set_ylim([0, ymax])
+
+                # Save
+                fig.savefig(f"{savedir}/{bregion}-{chan}-x_{xvar}.pdf")
+                      
+            #################### A SINGLE OVERVIEW PLOT
+            nrows = len(list_events_uniqnames)+1
+            ncols = len(list_var)+1
+            fig, axes = plt.subplots(nrows, ncols,  figsize=(ncols*4, nrows*4))
+            
+            # === 1) Overview, single plot, for each var, plot it over conjunction of other vars
+            for j, var in enumerate(list_var):
+                for i, ev in enumerate(list_events_uniqnames):
+
+                    ax = axes[i][j]
+                    ax.set_title(ev)
+                    dfthisthis = dfthis[dfthis["event_aligned"]==ev]
+                    other_vars = map_var_to_othervars[var] # conjucntion of other varss
+                    g = sns.pointplot(ax=ax, data=dfthisthis, x=var, y="fr_scalar", hue=other_vars)
+                    if i>0:
+                        # only keep legend for first row
+                        g.legend().remove()        
+                            
+                    # fr, scale from 0
+                    ax.set_ylim([0, ymax])
+                    ax.set_xticklabels(ax.get_xticklabels(), rotation = 45)
+
+                    if j==1:
+                        ax.set_ylabel(var)
+                    if i==0:
+                        ax.legend(framealpha=0.5)
+
+                # also plot all combined
+                ax = axes[len(list_events_uniqnames)][j]
+                sns.pointplot(ax=ax, data=dfthis, x=var, y = "fr_scalar", hue="event_aligned")
+                
+                # fr, scale from 0
+                ax.set_ylim([0, ymax])
+                ax.set_xticklabels(ax.get_xticklabels(), rotation = 45)
+                ax.legend(framealpha=0.5)
+
+            # === 2) Modulation, plot across events
+            ax = axes[len(list_events_uniqnames)][ncols-1]
+            pcols = makeColors(len(list_var))
+            for var, pcol in zip(list_var, pcols):
+                
+                vals = RES["modulation_across_events"][var]
+                ax.plot(list_events_uniqnames, vals, '-o', color=pcol, label=var)
+                
+                vals = RES["modulation_across_events_subgroups"][var]
+                ax.plot(list_events_uniqnames, vals, '--o', color=pcol, label=f"{var}_othervars_mean")
+                
+            ax.legend(framealpha=0.5)
+            ax.set_ylim([0, 0.5])
+            ax.set_title('Modulation, across events')
+            ax.set_xticklabels(ax.get_xticklabels(), rotation = 45)
+
+
+            # == 3) Inconsistency across subgroupings
+            ax = axes[len(list_events_uniqnames)-1][ncols-1]
+            pcols = makeColors(len(list_var))
+            for var, pcol in zip(list_var, pcols):
+
+                # v1) Difference
+                vals_diff = RES["inconsistency_across_events"][var]
+                ax.plot(list_events_uniqnames, vals_diff, '-o', color=pcol, label=var)
+                
+        #         # v2) quotient
+        #         inconsistency = 1 - vals_all/vals_sub
+        #         ax2.plot(list_events_uniqnames, inconsistency, '-o', color=pcol, label=var)
+            ax.legend(framealpha=0.5)
+            ax.set_ylim([0, 0.25])
+            ax.set_ylabel("modulation(sub) - modulation(all)")
+            ax.set_title('Inconsistency score')
+            ax.set_xticklabels(ax.get_xticklabels(), rotation = 45)
+
+            # == 4 Modulation, all events vs. modulation, each event
+            ax = axes[0][ncols-1]
+            for var in list_var:    
+                y_vals = RES["avgmodulation_across_methods"][var]
+                x_labels = RES["avgmodulation_across_methods_labels"]
+                ax.plot(x_labels, y_vals, '-o', label=var)
+            ax.set_title("avg_modulation_across_methods")
+            ax.legend(framealpha=0.5)
+            ax.set_xticklabels(x_labels, rotation = 45)
+            ax.set_ylim([0, 0.5])
+            ax.set_xticklabels(ax.get_xticklabels(), rotation = 45)
+
+            # b) mean fr across events (simple)
+            ax = axes[1][ncols-1]
+            sns.pointplot(ax=ax, data=dfthis, x="event_aligned", y = "fr_scalar")
+            # fr, scale from 0
+            ax.set_ylim([0, ymax])
+            ax.set_xticklabels(ax.get_xticklabels(), rotation = 45)
+            ax.set_title("firing rate")
+
+            # b) Consistency
+            # TODO!!! 
+            
+            fig.savefig(f"{savedir}/{bregion}-{chan}-overview.pdf")
+            plt.close("all")
+            
+    def modulation_plot_all_summarystats(self, OUT, savedir="/tmp"):
         """ 
         Plot many variations, for output from modulation_compute_higher_stats
         PARAMS:
@@ -875,8 +1092,300 @@ class Snippets(object):
                         print(dfthis["bregion"].value_counts())
                         raise err
 
+    def modulation_plot_all(self, RES_ALL_CHANS, OUT, SAVEDIR, 
+            list_plots = ["summarystats", "heatmaps", "eachsite_allvars", "eachsite_smfr", "eachsite_rasters"], 
+            suffix=None, list_sites=None):
+        """ Plot all summary plots for this dataset (self)
+        PARAMS;
+        - list_plots, list of str, to plot
+        - RES_ALL_CHANS, optional, output of self.modulation_compute_each_chan
+        - OUT, optional, output of self.modulation_compute_higher_stats
+        """
 
-    ########### UTILS   a
+        # # Get subset of sites
+        # sitesall = self.SN.sitegetter_all()
+        # list_sites = self.SN._sitegetter_sort_sites_by(sitesall, "fr", take_top_n=20)
+
+        import os
+        def _finalize_dir(savedir):
+            if suffix is not None:
+                savedir = f"{savedir}-{suffix}"
+            os.makedirs(savedir, exist_ok=True)
+            return savedir
+
+        for plotkind in list_plots:
+            if plotkind=="summarystats":
+                # Summary over all chans for each site
+                savedir = _finalize_dir(f"{SAVEDIR}/modulation_by_features")
+                print(f"Plotting {plotkind} at: {savedir}")
+                self.modulation_plot_all_summarystats(OUT, savedir=savedir)
+            elif plotkind=="heatmaps":
+                # Plot heatmaps and brain schematics
+                savedir = _finalize_dir(f"{savedir}_heatmaps")
+                print(f"Plotting {plotkind} at: {savedir}")
+                DictDf, DictDf_rgba_values = self.modulation_plot_heatmaps(OUT, 
+                    savedir=savedir)
+                self.modulation_plot_heatmaps_brain_schematic(DictDf, DictDf_rgba_values, savedir)
+            elif plotkind=="eachsite_allvars":
+                # Plot overview for each channel
+                savedir = f"{SAVEDIR}/each_chan_all_vars"
+                print(f"Plotting {plotkind} at: {savedir}")
+                os.makedirs(savedir, exist_ok=True)
+                self.modulation_plot_each_chan(RES_ALL_CHANS, savedir, list_chans=list_sites)
+            elif plotkind=="eachsite_smfr":
+                # Plot smoothed fr for each channel
+                savedir = f"{SAVEDIR}/each_chan_smoothedfr"
+                os.makedirs(savedir, exist_ok=True)
+                print(f"Plotting {plotkind} at: {savedir}")
+                if list_sites is None:
+                    list_sites_this = self.Sites
+                else:
+                    list_sites_this = list_sites
+                for site in list_sites_this:
+                    # Smoothed FR (average for each level)
+                    self.plot_smfr_average_each_level(site, savedir);
+                    
+                    # Plot smoothed fr (each trial)
+                    self.plot_smfr_trials_each_level(site, savedir, alpha=0.3);
+                    plt.close("all")
+            elif plotkind=="eachsite_rasters":
+                # Plot Rasters for each channel
+                savedir = f"{SAVEDIR}/each_chan_rasters"
+                os.makedirs(savedir, exist_ok=True)    
+                print(f"Plotting {plotkind} at: {savedir}")
+                self.plot_rasters_split_by_feature_levels(list_sites, savedir)
+            else:
+                print(plotkind)
+                assert False
+            plt.close("all")
+
+
+
+    ############### PLOTS
+    def plotmod_overlay_event_boundaries(self, ax, event):
+        """ Overlay the boundaries of this event (vertical lines)
+        """
+
+        pre_dur, post_dur = self.event_extract_pre_post_dur(event)
+        # Overlay event bounds
+        event_bounds = [pre_dur, 0., post_dur]
+        colors = ['r', 'k', 'b']
+        for evtime, pcol in zip(event_bounds, colors):
+            if evtime is not None:
+                ax.axvline(evtime, color=pcol, linestyle="--", alpha=0.4)
+
+    def plot_smfr_trials_each_level(self, chan, savedir=None, 
+        alpha=0.2):
+        """" Plot smoothed fr, one curve for each trial, split into supblots, one
+        for each combo of (event, var, level). Plots all of those combos.
+        """
+        
+        # smoothed fr, trials, each level
+        bregion = self.SN.sitegetter_thissite_info(chan)["region"]
+        list_events_uniqnames = self.Params["list_events_uniqnames"]
+        list_pre_dur = self.Params["list_pre_dur"]
+        list_post_dur = self.Params["list_post_dur"]
+        map_var_to_levels = self.Params["map_var_to_levels"]
+        list_var = self.Params["list_features_get_conjunction"]
+
+        for var in list_var:
+            list_levels = map_var_to_levels[var]
+            
+            nrows = len(list_events_uniqnames)
+            ncols = len(list_levels)
+            fig, axes = plt.subplots(nrows, ncols, 
+                sharex="row", sharey=True,
+                figsize=(ncols*1.75, nrows*1.3))
+
+            for i, event in enumerate(list_events_uniqnames):
+                for j, lev in enumerate(list_levels):
+
+                    ax = axes[i][j]
+
+                    if i==0:
+                        ax.set_title(lev)
+                    if j==0:
+                        ax.set_ylabel(event)
+
+                    # for each (chan, level, plot smoothed fr)
+
+                    # Get for this event
+                    pathis = self.popanal_extract_specific_slice(event, chan, (var, lev))
+
+                    # Plot it
+                    pathis.plotwrapper_smoothed_fr(ax=ax, plot_indiv=True, 
+                        plot_summary=True, alpha=alpha)
+            
+            if savedir is not None:
+                fig.savefig(f"{savedir}/{bregion}-{chan}-smfr_trials-{var}.pdf")
+
+        return fig, axes
+
+
+
+    def plot_smfr_average_each_level(self, chan, savedir=None):
+        """ For each var a subplot, overlaying smoothed fr for each level for that
+        var. Also splits by event.
+        """
+
+        # Info
+        bregion = self.SN.sitegetter_thissite_info(chan)["region"]
+        list_events_uniqnames = self.Params["list_events_uniqnames"]
+        list_pre_dur = self.Params["list_pre_dur"]
+        list_post_dur = self.Params["list_post_dur"]
+        map_var_to_levels = self.Params["map_var_to_levels"]
+        list_var = self.Params["list_features_get_conjunction"]
+
+        nrows = len(list_events_uniqnames)
+        ncols = len(list_var)
+        fig, axes = plt.subplots(nrows, ncols, sharex="row", sharey=True, 
+            figsize=(ncols*3, nrows*2), squeeze=False)
+
+        for i, (event, pre_dur, post_dur) in enumerate(zip(list_events_uniqnames, list_pre_dur, list_post_dur)):
+            for k, var in enumerate(list_var):
+                
+                ax = axes[i][k]
+
+                # Each level is a single smoothed fr, diff color
+                list_levels = map_var_to_levels[var]
+                                    
+                # Get for this event
+                pathis = self.popanal_extract_specific_slice(event, chan)
+
+                # Plot
+                add_legend=i==0
+                pathis.plotwrapper_smoothed_fr_split_by_label("trials", var, 
+                    ax=ax, event_bounds=[pre_dur, 0., post_dur], 
+                    add_legend=add_legend)
+
+                if i==0:
+                    ax.set_title(var)
+                    # ax.legend(list_levels, framealpha=0.4)
+                if k==0:
+                    ax.set_ylabel(event)
+
+        if savedir is not None:
+            fig.savefig(f"{savedir}/{bregion}-{chan}-smfr_avg_allvars.pdf")
+
+        return fig, axes
+                    
+
+    def plot_rasters_split_by_feature_levels(self, list_sites=None, savedir=None):
+        """ Plot each site, and also split into each feature and event.
+        BEtter to plot separately becuase crashes if try to have them all as
+        separeat subplots
+        """
+
+        if list_sites is None:
+            list_sites = self.Sites
+        list_var = self.Params["list_features_get_conjunction"]
+        list_events = self.Params["list_events_uniqnames"]
+
+        for site in list_sites:
+            bregion = self.SN.sitegetter_thissite_info(site)["region"]
+
+            for var in list_var:
+                for ev in list_events:
+                    fig, axes = self._plot_rasters_split_by_feature_levels(site, 
+                        [var], [ev])
+
+                    fig.savefig(f"{savedir}/{bregion}-{site}-{var}-{ev}.png")
+
+                plt.close("all")
+
+
+    def _plot_rasters_split_by_feature_levels(self, site, 
+        list_var = None, list_events_uniqnames = None):
+        """ Plot rasters, comparing all trials across levels for each var and event 
+        combo
+        """
+        
+        # 1) Extract the trials in SN which correspond to each of the levels 
+        # for this variable(feature).        
+        if list_var is None:
+            list_var = self.Params["list_features_get_conjunction"]
+        map_var_to_levels = self.Params["map_var_to_levels"]
+        # overlay event boundaires
+
+        # same length lists, len num events.
+        list_events_uniqnames_ALL = self.Params["list_events_uniqnames"]
+        list_events_orig_ALL = self.Params["list_events"]
+        list_pre_dur_ALL = self.Params["list_pre_dur"]
+        list_post_dur_ALL = self.Params["list_post_dur"]
+
+        if list_events_uniqnames is not None:
+            # Pull out these specific events, and assopcaited params
+            list_idx = [list_events_uniqnames_ALL.index(ev) for ev in list_events_uniqnames] 
+
+            list_events_uniqnames = [list_events_uniqnames_ALL[i] for i in list_idx]
+            list_events_orig = [list_events_orig_ALL[i] for i in list_idx]
+            list_pre_dur = [list_pre_dur_ALL[i] for i in list_idx]
+            list_post_dur = [list_post_dur_ALL[i] for i in list_idx]
+        else:
+            list_events_uniqnames = list_events_uniqnames_all
+
+        ncols = len(list_var)
+        nrows = len(list_events_uniqnames)
+
+        fig, axes = plt.subplots(nrows, ncols, squeeze=False, figsize=(ncols*4, nrows*3))
+
+        for i, var in enumerate(list_var):
+            for j, (event, event_orig, pre_dur, post_dur) in \
+                enumerate(zip(list_events_uniqnames, list_events_orig, list_pre_dur, list_post_dur)):
+
+                ax = axes[j][i]
+
+                list_levels = map_var_to_levels[var]
+                # collect trials in the order you want to plot them (bottom to top)
+
+                # get trialscodes from SP
+                list_trials_sn = []
+                for lev in list_levels:
+                    pathis = self.popanal_extract_specific_slice(event, site, (var, lev))
+                    
+                    # get the original trialcodes
+                    list_trialcode = pathis.Xlabels["trials"]["trialcode"]
+
+                    # map them to trials in sn
+                    trials_sn = self.SN.datasetbeh_trialcode_to_trial_batch(list_trialcode)
+                    list_trials_sn.append(trials_sn)
+
+
+                # method in sn, plitting rasters with blocked trials
+                self.SN.plot_raster_trials_blocked(ax, list_trials_sn, site, list_levels, 
+                                           align_to=event_orig,
+                                           overlay_trial_events=False, xmin=pre_dur-0.2, 
+                                           xmax=post_dur+0.2)
+
+                self.plotmod_overlay_event_boundaries(ax, event)
+
+                if j==0:
+                    ax.set_title(var)
+                if i==0:
+                    ax.set_ylabel(event_orig)
+        return fig, axes
+
+    ########### UTILS
+    def event_extract_pre_post_dur(self, event):
+        """
+        PARAMS:
+        - event, unique string name (prefix num)
+        RETURNS:
+        - pre_dur, num
+        - post_dur, num
+        """
+
+        list_events_uniqnames = self.Params["list_events_uniqnames"]
+        list_pre_dur = self.Params["list_pre_dur"]
+        list_post_dur = self.Params["list_post_dur"]
+
+        ind = list_events_uniqnames.index(event)
+
+        return list_pre_dur[ind], list_post_dur[ind]
+
+
+
+
     def save(self, sdir, fname="Snippets", add_tstamp=True, exclude_sn=True):
         """ Saves self in directory sdir
         as pkl files
