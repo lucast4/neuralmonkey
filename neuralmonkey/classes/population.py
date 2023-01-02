@@ -412,7 +412,7 @@ class PopAnal():
         return df
 
     # Data Transformations
-    def zscoreFr(self, groupby=[]):
+    def zscoreFr(self, groupby=None):
         """ z-score firing rates using across trial mean and std.
         - groupby, what mean and std to use. if [], then all trials
         combined (so all use same mean and std). if ["circ_binned"], 
@@ -423,7 +423,8 @@ class PopAnal():
         modifies self.Xdataframe, adds column "neur_z"
         """
         from pythonlib.tools.pandastools import applyFunctionToAllRows
-
+        if groupby is None:
+            groupby = []
         # 1. get mean and std.
         _, colname_std = self.aggregate(groupby, "trial", "std", "std", return_new_col_name=True)
         _, colname_mean = self.aggregate(groupby, "trial", "mean", "mean", return_new_col_name=True)
@@ -1162,7 +1163,7 @@ class PopAnal():
     def plotwrapper_smoothed_fr(self, inds=None, axis_for_inds="site", ax=None, 
                      plot_indiv=True, plot_summary=False, error_ver="sem",
                      pcol_indiv = "k", pcol_summary="r", summary_method="mean",
-                     event_bounds=[None, None, None], alpha=0.6):
+                     event_bounds=(None, None, None), alpha=0.6):
         """ Wrapper for different ways of plotting multiple smoothed fr traces, where
         multiple could be trials or sites. Also to plot summaries (means, etc). 
         PARAMS:
@@ -1396,7 +1397,7 @@ def pca_make_space(PA, DF, trial_agg_method, trial_agg_grouping, time_agg_method
     return PApca, fig
 
 def compute_data_projections(PA, DF, MS, VERSION, REGIONS, DATAPLOT_GROUPING_VARS, 
-                            pca_trial_agg_grouping = ["gridloc"], pca_trial_agg_method = "grouptrials", 
+                            pca_trial_agg_grouping = None, pca_trial_agg_method = "grouptrials", 
                             pca_time_agg_method = None, ploton=True):
     """
     Combines population nerual data (PA) and task/beh features (DF) and does (i) goruping of trials,
@@ -1425,6 +1426,8 @@ def compute_data_projections(PA, DF, MS, VERSION, REGIONS, DATAPLOT_GROUPING_VAR
     from pythonlib.tools.pandastools import applyFunctionToAllRows, grouping_append_and_return_inner_items
     import scipy.stats as stats
 
+    if pca_trial_agg_grouping is None:
+        pca_trial_agg_grouping = ["gridloc"]
     assert len(DF)==PA.X.shape[1], "num trials dont match"
 
 

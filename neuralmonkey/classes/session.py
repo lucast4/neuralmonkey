@@ -343,7 +343,7 @@ class Session(object):
         print("Saved all bad site to self.SitesErrorSpikeDat")
         self.SitesMetadata["sites_error_spikes"] = sites_bad
 
-    def load_metadata_sites(self, dirty_kinds = ["sites_garbage", "sites_low_fr", "sites_error_spikes"]):
+    def load_metadata_sites(self, dirty_kinds = ("sites_garbage", "sites_low_fr", "sites_error_spikes")):
         """ Load info about which sites are garbage, hand coded
         PARAMS:
         - dirty_kinds, list str, sites marked as any of these kinds will be designated "dirty"
@@ -379,7 +379,7 @@ class Session(object):
         self._sitesdirty_update()
 
 
-    def _sitesdirty_update(self, dirty_kinds = ["sites_garbage", "sites_low_fr", "sites_error_spikes"]):
+    def _sitesdirty_update(self, dirty_kinds = ("sites_garbage", "sites_low_fr", "sites_error_spikes")):
         sites_dirty = []
         print("updating self.SitesDirty with: ", dirty_kinds)
         for kind in dirty_kinds:
@@ -2331,7 +2331,7 @@ class Session(object):
 
         return fig, summary, frdict
 
-    def plotbatch_sitestats_fr_overview(self, LIST_FR_THRESH = [2, 4.5, 10, 15, 40]):
+    def plotbatch_sitestats_fr_overview(self, LIST_FR_THRESH = (2, 4.5, 10, 15, 40)):
         """ [preprocessing] Plots and saves fr across sites
         , including (1) printing the sites (2) histograms, 
         (3) example rasters (sites, across triasl).
@@ -3046,7 +3046,7 @@ class Session(object):
 
 
     def events_get_time_sorted(self, trial, 
-        list_events = ["stim_onset", "go", "first_raise", "on_stroke_1"]):
+        list_events = ("stim_onset", "go", "first_raise", "on_stroke_1")):
         """ Get times of these events, sorted both by (i) their first occurances within the trial
         and (ii) first flatten to array of times, and sort that.
         RETURNS:
@@ -3203,7 +3203,7 @@ class Session(object):
 
 
     def events_get_time_using_photodiode(self, trial, 
-        list_events = ["stim_onset", "go", "first_raise", "on_stroke_1"],
+        list_events = ("stim_onset", "go", "first_raise", "on_stroke_1"),
         overwrite=False, plot_beh_code_stream = False):
         """
         [GOOD] Get dict of times of important events. Uses variety of methods, including
@@ -4024,9 +4024,9 @@ class Session(object):
 
 
     def popanal_generate_alldata(self, trials, sites,
-        events = ["fixtch", "samp", "go", "first_raise", "on_stroke_1"],
+        events = ("fixtch", "samp", "go", "first_raise", "on_stroke_1"),
         pre_dur=-0.5, post_dur=0.8, 
-        columns_to_input = ["trialcode", "epoch", "character", "supervision_stage_concise"],
+        columns_to_input = ("trialcode", "epoch", "character", "supervision_stage_concise"),
         use_combined_region = True):
         """ GOOD wrapper to generate multiple PA objects holding smoothed FR
         across chans and trials, aligned to specific events in trial. Also assigns
@@ -4349,7 +4349,7 @@ class Session(object):
 
     def get_trials_list(self, only_if_ml2_fixation_success=False,
         only_if_has_valid_ml2_trial=False, only_if_in_dataset=False, 
-        events_that_must_include=[]):
+        events_that_must_include=None):
         """
         Get list of ints, trials,
         PARAMS:
@@ -4361,6 +4361,8 @@ class Session(object):
         - events_that_must_include, list of str names of events. only inclues trials that have at least 
         one instance of eaech event. time in trial doesnt matter.
         """
+        if events_that_must_include is None:
+            events_that_must_include = []
 
         assert not isinstance(only_if_in_dataset, list), "sanity check, becasue I moved order of args..."
 
@@ -4542,11 +4544,11 @@ class Session(object):
 
     def plot_spike_waveform_multchans(self, saveon=True,
             clean=False,
-            LIST_YLIM = [
+            LIST_YLIM = (
                 [-300, 150],
                 [-200, 100],
                 [-400, 200],
-                None]):
+                None)):
         """
         Plot waveforms for all channels in a grid
         PARAMS:
@@ -4772,7 +4774,7 @@ class Session(object):
 
     def plotmod_overlay_trial_events(self, ax, trial0, strokes_patches=True, 
             alignto_time=None, only_on_edge=None, YLIM=None, alpha = 0.2,
-            which_events=["key_events_correct", "strokes"], include_text=True, text_yshift = 0.):
+            which_events=("key_events_correct", "strokes"), include_text=True, text_yshift = 0.):
         """ Overlines trial events in vertical lines
         Time is rel trial onset (ml2 code 9)
         Run this after everything else, so get propoer YLIM.
@@ -5106,8 +5108,8 @@ class Session(object):
         # - Overlay brain regions
         self.plotmod_overlay_brainregions(ax, list_sites)
         
-    def plot_epocs(self, ax, trial, list_epocs=["camframe", "camtrialon", "camtrialoff", 
-        "rewon", "rewoff", "behcode"], overlay_trial_events=True, 
+    def plot_epocs(self, ax, trial, list_epocs=("camframe", "camtrialon", "camtrialoff", 
+        "rewon", "rewoff", "behcode"), overlay_trial_events=True, 
         overlay_trial_events_notpd=False):
         """ Plot discrete events onto axes, for this trial
         """

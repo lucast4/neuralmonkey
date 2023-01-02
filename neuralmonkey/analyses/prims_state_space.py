@@ -12,7 +12,7 @@ import random
 import os
 
 def plot_results_state_space_by_group_(DatDict, DATAPLOT_GROUPING_VARS, ResDict, 
-    plot_dims=[0,1], COLOR_BY = "shape", TEXT_LABEL_BY="group",
+    plot_dims=(0,1), COLOR_BY = "shape", TEXT_LABEL_BY="group",
     overlay_strokes="beh", plot_mean=False, ax=None, color_dict=None):
     """
     PARAMS;
@@ -117,7 +117,7 @@ def plot_results_state_space_by_group_(DatDict, DATAPLOT_GROUPING_VARS, ResDict,
 
 
 def plot_results_state_space_by_group(DatDict, DATAPLOT_GROUPING_VARS, ResDict, 
-    plot_dims=[0,1], COLOR_BY = "shape", TEXT_LABEL_BY="group",
+    plot_dims=(0,1), COLOR_BY = "shape", TEXT_LABEL_BY="group",
     overlay_strokes="beh", plot_mean=False):
     
     DatGrp = DatDict["DatGrp"]
@@ -145,9 +145,9 @@ def get_levels(df, category):
 
 def plotall_state_space(PA, DF, MS, REGIONS, VARNAME_SUBPLOT_LEVELS,
         dims_plot, overlay_strokes, plot_mean,
-        DATAPLOT_GROUPING_VARS = ["shape_oriented", "gridloc", "gridsize"], 
+        DATAPLOT_GROUPING_VARS = ("shape_oriented", "gridloc", "gridsize"), 
         VERSION="pca",
-        pca_trial_agg_grouping=["shape_oriented", "gridloc", "gridsize"], 
+        pca_trial_agg_grouping=("shape_oriented", "gridloc", "gridsize"), 
         pca_trial_agg_method = "grouptrials",
         pca_time_agg_method=None,
         DS=None):
