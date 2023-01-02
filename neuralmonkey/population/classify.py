@@ -29,10 +29,12 @@
 import numpy as np
 
 
-def _model_score(X, y, version="lin_svm", model_params={}, do_train_test_split=False, 
+def _model_score(X, y, version="lin_svm", model_params=None, do_train_test_split=False, 
     niter=10, mean_score=False):
     """ Quickly fit and score model
     """
+    if model_params is None:
+        model_params = {}
     list_scores = []
     for n in range(niter):
         mod, score = _model_fit(X, y, version, model_params, do_train_test_split)
@@ -43,7 +45,7 @@ def _model_score(X, y, version="lin_svm", model_params={}, do_train_test_split=F
         return list_scores
 
 
-def _model_fit(X, y, version="lin_svm", model_params={}, do_train_test_split=False):
+def _model_fit(X, y, version="lin_svm", model_params=None, do_train_test_split=False):
     """ 
     PARAMS:
     - X, (nsamp, nfeat), features
@@ -56,6 +58,9 @@ def _model_fit(X, y, version="lin_svm", model_params={}, do_train_test_split=Fal
     from sklearn.model_selection import train_test_split
     from sklearn.pipeline import Pipeline
     from sklearn.svm import LinearSVC
+
+    if model_params is None:
+        model_params = {}
 
     if version=="lin_svm":
         # Linear SVM

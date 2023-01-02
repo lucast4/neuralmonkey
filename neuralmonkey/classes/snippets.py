@@ -744,7 +744,7 @@ class Snippets(object):
         from pythonlib.tools.snstools import rotateLabel
 
         def _find_varhue_varcol(var_x, vars_exist, 
-                                variables_ordered_increasing_effect = ["gridsize", "gridloc", "shape_oriented", "epoch"]):
+                                variables_ordered_increasing_effect = ("gridsize", "gridloc", "shape_oriented", "epoch")):
             """ to return what variables to use as hue and column for 
             seaborn catplot, based on principle that variables with largest
             expected effect (differences across lewvels) should be col, while
@@ -1093,7 +1093,7 @@ class Snippets(object):
                         raise err
 
     def modulation_plot_all(self, RES_ALL_CHANS, OUT, SAVEDIR, 
-            list_plots = ["summarystats", "heatmaps", "eachsite_allvars", "eachsite_smfr", "eachsite_rasters"], 
+            list_plots = ("summarystats", "heatmaps", "eachsite_allvars", "eachsite_smfr", "eachsite_rasters"), 
             suffix=None, list_sites=None):
         """ Plot all summary plots for this dataset (self)
         PARAMS;
