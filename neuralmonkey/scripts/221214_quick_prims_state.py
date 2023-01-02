@@ -17,8 +17,8 @@ LIST_DATE = ["220715", "220716", "220717"]
 # LIST_DATE = ["220717"]
 dataset_beh_expt = "priminvar3"
 animal = "Pancho"
-# LIST_PLOTS = ["summarystats", "heatmaps", "eachsite_allvars", "eachsite_smfr", "eachsite_rasters"]
-LIST_PLOTS = ["eachsite_allvars", "eachsite_smfr", "eachsite_rasters"]
+LIST_PLOTS = ["summarystats", "heatmaps", "eachsite_allvars", "eachsite_smfr", "eachsite_rasters"]
+# LIST_PLOTS = ["eachsite_allvars", "eachsite_smfr", "eachsite_rasters"]
 
 for DATE in LIST_DATE:
 

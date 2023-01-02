@@ -98,20 +98,24 @@ for DATE, dataset_beh_expt in zip(LIST_DATE, LIST_EXPT):
         for task in list_task:
 
             list_inds_each_epoch = []
+            INCLUDE_THIS_TASK = True
             for epoch in list_epoch:
 
                 if (task, epoch) not in mapper_taskname_epoch_to_taskclass.keys():
-                    print((task, epoch))
-                    print(mapper_taskname_epoch_to_taskclass)
-                    assert False, "should first exclude tasks that are not present across all epochs"
-                Task = mapper_taskname_epoch_to_taskclass[(task, epoch)]
-                inds_ordered = Task.ml2_objectclass_extract_active_chunk(return_as_inds=True)
-                list_inds_each_epoch.append(tuple(inds_ordered))
+                    # Then this task has at least one epoch for which it doesnet havet rials.
+                    # print((task, epoch))
+                    # print(mapper_taskname_epoch_to_taskclass)
+                    INCLUDE_THIS_TASK = False
+                    # assert False, "should first exclude tasks that are not present across all epochs"
+                else:
+                    Task = mapper_taskname_epoch_to_taskclass[(task, epoch)]
+                    inds_ordered = Task.ml2_objectclass_extract_active_chunk(return_as_inds=True)
+                    list_inds_each_epoch.append(tuple(inds_ordered))
 
-            ax = Task.plotStrokes(ordinal=True)
-            ax.set_title(f"{task}")
-
-            dict_task_orders[task] = list_inds_each_epoch
+            # ax = Task.plotStrokes(ordinal=True)
+            # ax.set_title(f"{task}")
+            if INCLUDE_THIS_TASK:
+                dict_task_orders[task] = list_inds_each_epoch
 
 
         # pull out tasks which have same sequence

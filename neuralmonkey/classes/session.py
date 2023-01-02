@@ -1766,7 +1766,6 @@ class Session(object):
         RETURNS:
         - modifies: self.BehTrialMapListGood
         """
-        from ..utils.conversions import get_map_trial_and_set
         ntrials = len(self.get_trials_list(only_if_ml2_fixation_success=False))
         # ntrials = len(self.TrialsOnset)
         dict_trial2_to_set_and_trial1 = get_map_trial_and_set(self.BehTrialMapList, ntrials)
@@ -4349,7 +4348,7 @@ class Session(object):
         return suc
 
     def get_trials_list(self, only_if_ml2_fixation_success=False,
-        only_if_has_valid_ml2_trial=False, 
+        only_if_has_valid_ml2_trial=False, only_if_in_dataset=False, 
         events_that_must_include=[]):
         """
         Get list of ints, trials,
@@ -4358,9 +4357,13 @@ class Session(object):
         ml2 beh trial had fixation success. Also skips trials that dont exist in filedata at all.
         - only_if_has_valid_ml2_trial, then skips if the mapper refers to a session or trial outside domain
         (e.g.,negetive). can happen if mapper is incorrect, or missing some beh trials from start of day, etc.
+        - only_if_in_dataset, if True, then only keeps trials that are in self.DatasetBeh
         - events_that_must_include, list of str names of events. only inclues trials that have at least 
         one instance of eaech event. time in trial doesnt matter.
         """
+
+        assert not isinstance(only_if_in_dataset, list), "sanity check, becasue I moved order of args..."
+
 
         trials = range(len(self.TrialsOffset))
         
@@ -4382,6 +4385,17 @@ class Session(object):
                     continue
                 else:
                     # keep
+                    trials_keep.append(t)
+            trials = trials_keep
+
+        if only_if_in_dataset:
+            print("get_trials_list - only_if_in_dataset")
+            trials_keep = []
+            for t in trials:
+                if self.datasetbeh_trial_to_datidx(t) is None:
+                    # exclud
+                    pass
+                else:
                     trials_keep.append(t)
             trials = trials_keep
 
@@ -5555,14 +5569,30 @@ class Session(object):
         RETURNS:
         - trialcode, a string
         """
-
         date = self.Date
         index_sess, trial_ml = self._beh_get_fdnum_trial(trial)
         session_ml = self.BehSessList[index_sess]
 
         trialcode = f"{date}-{session_ml}-{trial_ml}"
         return trialcode
-        
+
+    def datasetbeh_trial_to_datidx(self, trial):
+        """ returns the index in self.Datasetbeh correspodning to
+        this trial. If doesnt exist, then returns None.
+        This is accurate even if self.Datasetbeh is changed.
+        """
+        tc = self.datasetbeh_trial_to_trialcode(trial)
+        # print("get_trials_list - datasetbeh_trial_to_datidx", trial, tc)
+        dfthis = self.Datasetbeh.Dat[self.Datasetbeh.Dat["trialcode"]==tc]
+        if len(dfthis)>1:
+            print(trial, tc, dfthis)
+            assert False, "bug, cant find > 1 row"
+        elif len(dfthis)==0:
+            # didnt find it, doesnt exits
+            return None
+        else:
+            return dfthis.index[0]
+
     def datasetbeh_trialcode_to_trial(self, trialcode):
         """ given trialcode (string) return trial in neural data
         """

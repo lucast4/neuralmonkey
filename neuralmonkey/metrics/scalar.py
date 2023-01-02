@@ -326,6 +326,14 @@ def _calc_modulation_by(data, by, response_var = 'fr_scalar',
         for lev in levels:
             datathis = data[data[colname_othervars]==lev]
             aov = pg.anova(data=datathis, dv=response_var, between=by, detailed=True)
+            if "np2" not in aov[aov["Source"]==by].keys():
+                print(aov[aov["Source"]==by])
+                print(aov)
+                print(by)
+                print(lev)
+                print(datathis)
+                print(colname_othervars)
+                assert False
             eta2 = aov[aov["Source"]==by]["np2"].item()
             dict_mod_othervars[lev] = eta2
     output["othervars_conjunction"] = dict_mod_othervars

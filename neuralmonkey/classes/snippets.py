@@ -48,7 +48,9 @@ class Snippets(object):
         elif which_level=="trial":
             # Each datapt is a single trial
             # no need to extract antyhing, use sn.Datasetbeh
-            trials = SN.get_trials_list(True, True)
+            # only those trials that exist in SN.Datasetbeh
+            trials = SN.get_trials_list(True, True, only_if_in_dataset=True)
+            print("\n == extracting these trials: ", trials)
             pass
         else:
             print(which_level)
@@ -68,6 +70,7 @@ class Snippets(object):
         else:
             # Keep all sites
             sites_keep = sites
+            print("\n == extarcating these sites: ", sites_keep)
 
         # 2) Extract snippets
         # [GOOD] Combine those options to extract each relevant window
@@ -84,6 +87,7 @@ class Snippets(object):
         for i, (event, pre_dur, post_dur) in enumerate(zip(list_events, list_pre_dur, list_post_dur)):
             
             # 1) Extract single pa
+            print("\n == generating popanal for: ", event)
             if which_level=="stroke":
                 if event == "STROKE":
                     align_to_stroke=True
@@ -107,6 +111,7 @@ class Snippets(object):
 
 
             # 2) Get conjuctions of features
+            print("\n == labels_features_input_conjunction_other_vars: ", event)
             map_var_to_othervars = pa.labels_features_input_conjunction_other_vars(dim="trials", 
                 list_var = list_features_get_conjunction)
 
@@ -163,10 +168,13 @@ class Snippets(object):
         }
 
         # Genreate scalars
+        print("\n == listpa_convert_to_scalars")        
         self.listpa_convert_to_scalars()
+        print("\n == pascal_convert_to_dataframe")        
         self.pascal_convert_to_dataframe(fr_which_version="sqrt")
 
         # Get useful variables
+        print("\n == _preprocess_map_features_to_levels")        
         self._preprocess_map_features_to_levels()
 
     def _preprocess_map_features_to_levels(self):
@@ -812,19 +820,21 @@ class Snippets(object):
             print("PLotting for (chan, bregion): ", chan, bregion)
             
             ##################### Plot separately each var (showing its modulation)
-            for xvar in list_var:
-                _, var_hue, var_col = _find_varhue_varcol(xvar, list_var)
+            if len(list_var)>2:
+                # otherwise doesnt make sense, this is all captured int he overview plot.
+                for xvar in list_var:
+                    _, var_hue, var_col = _find_varhue_varcol(xvar, list_var)
+                    
+                    fig = sns.catplot(data=dfthis, x=xvar, y="fr_scalar", hue=var_hue, 
+                        row="event_aligned", col=var_col, kind="point", height=3)
+                    rotateLabel(fig)
                 
-                fig = sns.catplot(data=dfthis, x=xvar, y="fr_scalar", hue=var_hue, 
-                    row="event_aligned", col=var_col, kind="point", height=3)
-                rotateLabel(fig)
-            
-                # fr, scale from 0
-                for ax in fig.axes.flatten():
-                    ax.set_ylim([0, ymax])
+                    # fr, scale from 0
+                    for ax in fig.axes.flatten():
+                        ax.set_ylim([0, ymax])
 
-                # Save
-                fig.savefig(f"{savedir}/{bregion}-{chan}-x_{xvar}.pdf")
+                    # Save
+                    fig.savefig(f"{savedir}/{bregion}-{chan}-x_{xvar}.pdf")
                       
             #################### A SINGLE OVERVIEW PLOT
             nrows = len(list_events_uniqnames)+1
@@ -864,23 +874,30 @@ class Snippets(object):
 
             # === 2) Modulation, plot across events
             ax = axes[len(list_events_uniqnames)][ncols-1]
+            ax2 = axes[len(list_events_uniqnames)-1][ncols-1]
             pcols = makeColors(len(list_var))
             for var, pcol in zip(list_var, pcols):
                 
                 vals = RES["modulation_across_events"][var]
                 ax.plot(list_events_uniqnames, vals, '-o', color=pcol, label=var)
+                ax2.plot(list_events_uniqnames, vals, '-o', color=pcol, label=var)
                 
                 vals = RES["modulation_across_events_subgroups"][var]
                 ax.plot(list_events_uniqnames, vals, '--o', color=pcol, label=f"{var}_othervars_mean")
-                
-            ax.legend(framealpha=0.5)
+                ax2.plot(list_events_uniqnames, vals, '-o', color=pcol, label=var)
+
             ax.set_ylim([0, 0.5])
+            
+            ax.legend(framealpha=0.5)
             ax.set_title('Modulation, across events')
             ax.set_xticklabels(ax.get_xticklabels(), rotation = 45)
+            ax2.legend(framealpha=0.5)
+            ax2.set_title('Modulation, across events')
+            ax2.set_xticklabels(ax.get_xticklabels(), rotation = 45)
 
 
             # == 3) Inconsistency across subgroupings
-            ax = axes[len(list_events_uniqnames)-1][ncols-1]
+            ax = axes[len(list_events_uniqnames)-2][ncols-1]
             pcols = makeColors(len(list_var))
             for var, pcol in zip(list_var, pcols):
 
@@ -892,7 +909,7 @@ class Snippets(object):
         #         inconsistency = 1 - vals_all/vals_sub
         #         ax2.plot(list_events_uniqnames, inconsistency, '-o', color=pcol, label=var)
             ax.legend(framealpha=0.5)
-            ax.set_ylim([0, 0.25])
+            # ax.set_ylim([0, 0.25])
             ax.set_ylabel("modulation(sub) - modulation(all)")
             ax.set_title('Inconsistency score')
             ax.set_xticklabels(ax.get_xticklabels(), rotation = 45)
@@ -923,7 +940,7 @@ class Snippets(object):
             fig.savefig(f"{savedir}/{bregion}-{chan}-overview.pdf")
             plt.close("all")
             
-    def modulation_plot_all_summarystats(self, OUT, savedir="/tmp"):
+    def modulation_plot_summarystats(self, OUT, savedir="/tmp"):
         """ 
         Plot many variations, for output from modulation_compute_higher_stats
         PARAMS:
@@ -1118,23 +1135,23 @@ class Snippets(object):
                 # Summary over all chans for each site
                 savedir = _finalize_dir(f"{SAVEDIR}/modulation_by_features")
                 print(f"Plotting {plotkind} at: {savedir}")
-                self.modulation_plot_all_summarystats(OUT, savedir=savedir)
+                self.modulation_plot_summarystats(OUT, savedir=savedir)
             elif plotkind=="heatmaps":
                 # Plot heatmaps and brain schematics
-                savedir = _finalize_dir(f"{savedir}_heatmaps")
+                savedir = _finalize_dir(f"{SAVEDIR}/modulation_heatmaps")
                 print(f"Plotting {plotkind} at: {savedir}")
                 DictDf, DictDf_rgba_values = self.modulation_plot_heatmaps(OUT, 
                     savedir=savedir)
                 self.modulation_plot_heatmaps_brain_schematic(DictDf, DictDf_rgba_values, savedir)
             elif plotkind=="eachsite_allvars":
                 # Plot overview for each channel
-                savedir = f"{SAVEDIR}/each_chan_all_vars"
+                savedir = _finalize_dir(f"{SAVEDIR}/each_chan_all_vars")
                 print(f"Plotting {plotkind} at: {savedir}")
                 os.makedirs(savedir, exist_ok=True)
                 self.modulation_plot_each_chan(RES_ALL_CHANS, savedir, list_chans=list_sites)
             elif plotkind=="eachsite_smfr":
                 # Plot smoothed fr for each channel
-                savedir = f"{SAVEDIR}/each_chan_smoothedfr"
+                savedir = _finalize_dir(f"{SAVEDIR}/each_chan_smoothedfr")
                 os.makedirs(savedir, exist_ok=True)
                 print(f"Plotting {plotkind} at: {savedir}")
                 if list_sites is None:
@@ -1150,7 +1167,7 @@ class Snippets(object):
                     plt.close("all")
             elif plotkind=="eachsite_rasters":
                 # Plot Rasters for each channel
-                savedir = f"{SAVEDIR}/each_chan_rasters"
+                savedir = _finalize_dir(f"{SAVEDIR}/each_chan_rasters")
                 os.makedirs(savedir, exist_ok=True)    
                 print(f"Plotting {plotkind} at: {savedir}")
                 self.plot_rasters_split_by_feature_levels(list_sites, savedir)
@@ -1285,11 +1302,16 @@ class Snippets(object):
             bregion = self.SN.sitegetter_thissite_info(site)["region"]
 
             for var in list_var:
-                for ev in list_events:
-                    fig, axes = self._plot_rasters_split_by_feature_levels(site, 
-                        [var], [ev])
+                fig, axes = self._plot_rasters_split_by_feature_levels(site, 
+                    [var])
+                fig.savefig(f"{savedir}/{bregion}-{site}-{var}.png")
 
-                    fig.savefig(f"{savedir}/{bregion}-{site}-{var}-{ev}.png")
+                # OLD: split by event.
+                # for ev in list_events:
+                #     fig, axes = self._plot_rasters_split_by_feature_levels(site, 
+                #         [var], [ev])
+
+                #     fig.savefig(f"{savedir}/{bregion}-{site}-{var}-{ev}.png")
 
                 plt.close("all")
 
@@ -1322,7 +1344,10 @@ class Snippets(object):
             list_pre_dur = [list_pre_dur_ALL[i] for i in list_idx]
             list_post_dur = [list_post_dur_ALL[i] for i in list_idx]
         else:
-            list_events_uniqnames = list_events_uniqnames_all
+            list_events_uniqnames = list_events_uniqnames_ALL
+            list_events_orig = list_events_orig_ALL
+            list_pre_dur = list_pre_dur_ALL
+            list_post_dur = list_post_dur_ALL
 
         ncols = len(list_var)
         nrows = len(list_events_uniqnames)
