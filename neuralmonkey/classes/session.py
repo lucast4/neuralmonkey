@@ -1766,10 +1766,11 @@ class Session(object):
         RETURNS:
         - modifies: self.BehTrialMapListGood
         """
+        from neuralmonkey.utils.conversions import get_map_trial_and_set
+
         ntrials = len(self.get_trials_list(only_if_ml2_fixation_success=False))
         # ntrials = len(self.TrialsOnset)
-        dict_trial2_to_set_and_trial1 = get_map_trial_and_set(self.BehTrialMapList, ntrials)
-        self.BehTrialMapListGood = dict_trial2_to_set_and_trial1
+        self.BehTrialMapListGood = get_map_trial_and_set(self.BehTrialMapList, ntrials)
 
     def _beh_get_fdnum_trial(self, trialtdt):
         """ Get the filedata indices and trial indices (beh) for

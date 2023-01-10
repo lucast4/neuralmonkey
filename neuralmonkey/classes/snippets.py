@@ -538,7 +538,7 @@ class Snippets(object):
 
         return OUT
 
-    def _modulation_find_first_postsamp_event(self):
+    def _modulation_find_first_postsamp_event(self, return_zero_if_fail=True):
         """ For computing slope of change in modulation over events, find 
         first event (chronolicaly) that is after presentaiton of the samp.
         ignore preceding events for computing slope
@@ -557,10 +557,14 @@ class Snippets(object):
                 print("Found first post-samp event: ", i, ev, "| times:", pre, post)
                 idx_event_firstpostsamp = i
                 return idx_event_firstpostsamp
-        print(list_events)
-        print(list_pre_dur)
-        print(list_post_dur)
-        assert False, "did not find..."
+
+        if return_zero_if_fail:
+            return 0
+        else:
+            print(list_events)
+            print(list_pre_dur)
+            print(list_post_dur)
+            assert False, "did not find..."
  
     def modulation_plot_heatmaps(self, OUT, savedir="/tmp"):
         """ Plot heatmaps, bregion vs. event, and also
