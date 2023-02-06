@@ -33,6 +33,7 @@ def load_and_preprocess_single_session(date, rec_session, animal = "Pancho"):
     if out is None:
         # Then this rec/beh session doesnt exist
         # (Otherwise, continue)
+        print("DIDNT FIND THIS SESSIONS", animal, date, rec_session)
         return
 
     # else:

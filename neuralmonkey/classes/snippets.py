@@ -26,7 +26,8 @@ class Snippets(object):
         list_pre_dur, list_post_dur,
         strokes_only_keep_single=False,
         tasks_only_keep_these=None,
-        prune_feature_levels_min_n_trials=None):
+        prune_feature_levels_min_n_trials=None, 
+        dataset_pruned_for_trial_analysis=None):
         """ Initialize a dataset
         PARAMS:
         - SN, Sessions object, holding neural data for a single session
@@ -49,7 +50,8 @@ class Snippets(object):
             # Each datapt is a single trial
             # no need to extract antyhing, use sn.Datasetbeh
             # only those trials that exist in SN.Datasetbeh
-            trials = SN.get_trials_list(True, True, only_if_in_dataset=True)
+            trials = SN.get_trials_list(True, True, only_if_in_dataset=True, 
+                dataset_input=dataset_pruned_for_trial_analysis)
             print("\n == extracting these trials: ", trials)
             pass
         else:
@@ -172,10 +174,12 @@ class Snippets(object):
         self.listpa_convert_to_scalars()
         print("\n == pascal_convert_to_dataframe")        
         self.pascal_convert_to_dataframe(fr_which_version="sqrt")
+        self.pascal_remove_outliers()
 
         # Get useful variables
         print("\n == _preprocess_map_features_to_levels")        
         self._preprocess_map_features_to_levels()
+        self._preprocess_map_features_to_levels_input("character")
 
     def _preprocess_map_features_to_levels(self):
         """ Generate a single mapper from features to its levels, 
@@ -191,6 +195,19 @@ class Snippets(object):
             MapVarToLevels[var] = levels
 
         self.Params["map_var_to_levels"] = MapVarToLevels
+
+    def _preprocess_map_features_to_levels_input(self, feature):
+        """ Get the levels for this feature and save it into self.Params["map_var_to_levels"]
+        PARAMS
+        - feature, string, will get all its levels.
+        RETURNS:
+        - self.Params["map_var_to_levels"] updated
+        """
+
+        if feature not in self.Params["map_var_to_levels"]:
+            data = self.DfScalar
+            levels = sorted(data[feature].unique().tolist())
+            self.Params["map_var_to_levels"][feature] = levels
 
 
     ############################################# WORKING WITH POPANALS
@@ -289,6 +306,51 @@ class Snippets(object):
         print("len self.DfScalar:", len(df))
         print("self.PAscalar.X.shape : ", self.PAscalar.X.shape)
         return self.DfScalar
+
+    def pascal_remove_outliers(self):
+        """ Remove outliers based on fr_scalar, only for high fr outliers,
+        defualt is 3.5x std + mean.
+        RETURNS:
+        - modifies self.DfScalar, removing outliers.
+        also saves the old in self.DfScalar_BeforeRemoveOutlier
+        NOTE: will do diff thing every time run.
+        """
+        from pythonlib.tools.pandastools import aggregThenReassignToNewColumn, applyFunctionToAllRows
+
+        if hasattr(self, "DfScalar_BeforeRemoveOutlier"):
+            assert False, "Looks like already ran.. comment this out if you want to "
+        
+        df = self.DfScalar
+
+        # 1) extract upper limit
+        # def F(x):
+        #     mu = np.mean(x["fr_scalar"])
+        #     sd = np.std(x["fr_scalar"])
+        #     lower = mu - 3.5*sd
+        #     return lower
+        # df = aggregThenReassignToNewColumn(df, F, "chan", "outlier_lims_lower")
+
+        def F(x):
+            mu = np.mean(x["fr_scalar"])
+            sd = np.std(x["fr_scalar"])
+            upper = mu + 3.5*sd
+            return upper
+        df = aggregThenReassignToNewColumn(df, F, "chan", "outlier_lims_upper")
+
+        # for each row, is it in bounds?
+        def F(x):
+            return (x["fr_scalar"]>x["outlier_lims_upper"])
+        
+        # 2) each row. outlier?
+        df = applyFunctionToAllRows(df, F, "outlier_remove")
+
+        # 3) remove the outliers
+        self.DfScalar_BeforeRemoveOutlier = df.copy()
+        df = df[df["outlier_remove"]==False].reset_index(drop=True)
+        self.DfScalar = df
+        print("Starting len: ", len(self.DfScalar_BeforeRemoveOutlier))
+        print("Removed outliers! new len: ", len(df))
+
 
 
     ################ MODULATION BY VARIABLES
@@ -1114,7 +1176,8 @@ class Snippets(object):
                         raise err
 
     def modulation_plot_all(self, RES_ALL_CHANS, OUT, SAVEDIR, 
-            list_plots = ("summarystats", "heatmaps", "eachsite_allvars", "eachsite_smfr", "eachsite_rasters"), 
+            list_plots = ("summarystats", "heatmaps", "eachsite_allvars", 
+                "eachsite_smfr", "eachsite_rasters"), 
             suffix=None, list_sites=None):
         """ Plot all summary plots for this dataset (self)
         PARAMS;
@@ -1165,9 +1228,35 @@ class Snippets(object):
                 for site in list_sites_this:
                     # Smoothed FR (average for each level)
                     self.plot_smfr_average_each_level(site, savedir);
-                    
+                    plt.close("all")
+            elif plotkind=="eachsite_smfr_eachtrial":
+                # Plot smoothed fr for each channel
+                savedir = _finalize_dir(f"{SAVEDIR}/each_chan_smoothedfr")
+                os.makedirs(savedir, exist_ok=True)
+                print(f"Plotting {plotkind} at: {savedir}")
+                if list_sites is None:
+                    list_sites_this = self.Sites
+                else:
+                    list_sites_this = list_sites
+                for site in list_sites_this:
                     # Plot smoothed fr (each trial)
                     self.plot_smfr_trials_each_level(site, savedir, alpha=0.3);
+                    plt.close("all")
+            elif plotkind=="eachsite_smfr_splitby_character":
+                # Plot smoothed fr for each channel
+                savedir = _finalize_dir(f"{SAVEDIR}/each_chan_smoothedfr_splitby_character")
+                os.makedirs(savedir, exist_ok=True)
+                print(f"Plotting {plotkind} at: {savedir}")
+                if list_sites is None:
+                    list_sites_this = self.Sites
+                else:
+                    list_sites_this = list_sites
+                for site in list_sites_this:
+                    # Smoothed FR (average for each level)
+                    self.plot_smfr_average_each_level(site, savedir, list_var=["character"]);
+                    
+                    # # Plot smoothed fr (each trial)
+                    # self.plot_smfr_trials_each_level(site, savedir, alpha=0.3);
                     plt.close("all")
             elif plotkind=="eachsite_rasters":
                 # Plot Rasters for each channel
@@ -1175,6 +1264,13 @@ class Snippets(object):
                 os.makedirs(savedir, exist_ok=True)    
                 print(f"Plotting {plotkind} at: {savedir}")
                 self.plot_rasters_split_by_feature_levels(list_sites, savedir)
+            elif plotkind=="eachsite_raster_splitby_character":
+                # each characters is a single group
+                savedir = _finalize_dir(f"{SAVEDIR}/each_chan_rasters_splitby_character")
+                os.makedirs(savedir, exist_ok=True)    
+                print(f"Plotting {plotkind} at: {savedir}")
+                self.plot_rasters_split_by_feature_levels(list_sites, savedir,
+                    list_var = ["character"])
             else:
                 print(plotkind)
                 assert False
@@ -1244,7 +1340,8 @@ class Snippets(object):
 
 
 
-    def plot_smfr_average_each_level(self, chan, savedir=None):
+    def plot_smfr_average_each_level(self, chan, savedir=None,
+        list_var = None):
         """ For each var a subplot, overlaying smoothed fr for each level for that
         var. Also splits by event.
         """
@@ -1255,7 +1352,8 @@ class Snippets(object):
         list_pre_dur = self.Params["list_pre_dur"]
         list_post_dur = self.Params["list_post_dur"]
         map_var_to_levels = self.Params["map_var_to_levels"]
-        list_var = self.Params["list_features_get_conjunction"]
+        if list_var is None:
+            list_var = self.Params["list_features_get_conjunction"]
 
         nrows = len(list_events_uniqnames)
         ncols = len(list_var)
@@ -1291,7 +1389,8 @@ class Snippets(object):
         return fig, axes
                     
 
-    def plot_rasters_split_by_feature_levels(self, list_sites=None, savedir=None):
+    def plot_rasters_split_by_feature_levels(self, list_sites=None, savedir=None,
+            list_var = None):
         """ Plot each site, and also split into each feature and event.
         BEtter to plot separately becuase crashes if try to have them all as
         separeat subplots
@@ -1299,8 +1398,9 @@ class Snippets(object):
 
         if list_sites is None:
             list_sites = self.Sites
-        list_var = self.Params["list_features_get_conjunction"]
         list_events = self.Params["list_events_uniqnames"]
+        if list_var is None:
+            list_var = self.Params["list_features_get_conjunction"]
 
         for site in list_sites:
             bregion = self.SN.sitegetter_thissite_info(site)["region"]
@@ -1308,7 +1408,8 @@ class Snippets(object):
             for var in list_var:
                 fig, axes = self._plot_rasters_split_by_feature_levels(site, 
                     [var])
-                fig.savefig(f"{savedir}/{bregion}-{site}-{var}.png")
+                if savedir is not None:
+                    fig.savefig(f"{savedir}/{bregion}-{site}-{var}.png")
 
                 # OLD: split by event.
                 # for ev in list_events:
@@ -1364,29 +1465,34 @@ class Snippets(object):
 
                 ax = axes[j][i]
 
+                if var not in map_var_to_levels.keys():
+                    self._preprocess_map_features_to_levels_input(var)
                 list_levels = map_var_to_levels[var]
+                
                 # collect trials in the order you want to plot them (bottom to top)
-
                 # get trialscodes from SP
                 list_trials_sn = []
+                list_labels = []
                 for lev in list_levels:
-                    pathis = self.popanal_extract_specific_slice(event, site, (var, lev))
+                    pathis = self.popanal_extract_specific_slice(event, site, (var, lev)) 
                     
                     # get the original trialcodes
                     list_trialcode = pathis.Xlabels["trials"]["trialcode"]
 
                     # map them to trials in sn
                     trials_sn = self.SN.datasetbeh_trialcode_to_trial_batch(list_trialcode)
-                    list_trials_sn.append(trials_sn)
-
+                    if len(trials_sn)>0:
+                        list_trials_sn.append(trials_sn)
+                        list_labels.append(lev)
 
                 # method in sn, plitting rasters with blocked trials
-                self.SN.plot_raster_trials_blocked(ax, list_trials_sn, site, list_levels, 
+                self.SN.plot_raster_trials_blocked(ax, list_trials_sn, site, list_labels, 
                                            align_to=event_orig,
                                            overlay_trial_events=False, xmin=pre_dur-0.2, 
                                            xmax=post_dur+0.2)
 
                 self.plotmod_overlay_event_boundaries(ax, event)
+
 
                 if j==0:
                     ax.set_title(var)

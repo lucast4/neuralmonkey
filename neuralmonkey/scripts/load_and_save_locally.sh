@@ -13,11 +13,14 @@ server_mount
 touch preprocess_log.txt
 
 # ####### Version 1- give a list of dates
-# # datelist=( 220702 220703 220630 220628 220624 220616 220603 220609 )
-# # datelist=( 220704 )
-# # datelist=( 220606 220608 220609 220610 220715 220716 220717 )
+# datelist=( 220702 220703 220630 220628 220624 220616 220603 220609 )
+# datelist=( 220704 )
+# datelist=( 220606 220608 220609 220610 220715 220716 220717 )
 
 # # 11/15/22
+# datelist=( 221029 221031 221102 221112 221114 )
+
+# 230205
 # datelist=( 221029 221031 221102 221112 221114 )
 # for date1 in "${datelist[@]}"
 # do
@@ -113,8 +116,36 @@ touch preprocess_log.txt
 # date2=221107 # the final date to check
 
 # # 221213_5
-d=221117 # first date to check.
-date2=221121 # the final date to check
+# d=221117 # first date to check.
+# date2=221121 # the final date to check
+
+# 230123_1
+# d=221121 # first date to check.
+# date2=230110 # the final date to check
+
+# 230205_1
+# d=220911 # first date to check.
+# date2=231014 # the final date to check
+
+# # 230205_2
+# d=220709 # first date to check.
+# date2=220724 # the final date to check
+
+# # 230205_3
+# d=220810 # first date to check.
+# date2=220909 # the final date to check
+
+# 230205_4
+# d=221110 # first date to check.
+# date2=221117 # the final date to check
+
+# # 230205_5
+# d=221122 # first date to check.
+# date2=221125 # the final date to check
+
+# 230205_6
+d=221217 # first date to check.
+date2=230108 # the final date to check
 
 date1=$d
 until [[ ${date1} > ${date2} ]]; do

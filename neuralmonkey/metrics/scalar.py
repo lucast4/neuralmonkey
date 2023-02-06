@@ -357,7 +357,8 @@ def _calc_fr_across_levels(data, var, list_levels, map_var_to_othervars=None,
     output = {}
     
     def _calc_means(datathis):
-        """ Returns list_means matching list_levels"""
+        """ Returns list_means matching list_levels. if a lev doesnt have data,
+        that mean is np.nan"""
         if False:
             # v1: faster with large dataset
             # took 53ms vs 271ms (below) for agg version (entire dataset, n~1M)
@@ -370,9 +371,13 @@ def _calc_fr_across_levels(data, var, list_levels, map_var_to_othervars=None,
             # faster with small dataset: took 4ms vs. 26 for smaller datsaet (n~2000)
             list_means = []
             for lev in list_levels:
-                assert np.sum(datathis[var]==lev)>0, f"doesnt exist... {var}, {lev}"
-                m = np.mean(datathis[datathis[var]==lev][response_var])
-                list_means.append(m)
+                if np.sum(datathis[var]==lev)==0:
+                    # Then doesnt exist
+                    list_means.append(np.nan)
+                else:
+                    # assert np.sum(datathis[var]==lev)>0, f"doesnt exist... {var}, {lev}"
+                    m = np.mean(datathis[datathis[var]==lev][response_var])
+                    list_means.append(m)
         return list_means
     
     

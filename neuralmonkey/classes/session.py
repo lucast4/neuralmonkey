@@ -16,7 +16,7 @@ from pythonlib.globals import PATH_NEURALMONKEY, PATH_DATA_NEURAL_RAW, PATH_DATA
 # PATH_NEURALMONKEY = "/data1/code/python/neuralmonkey/neuralmonkey"
 
 
-assert os.path.exists(PATH_DATA_NEURAL_RAW)
+assert os.path.exists(PATH_DATA_NEURAL_RAW), "might have to mount servr?"
 
 
 BEH_CODES = {
@@ -2896,8 +2896,9 @@ class Session(object):
                 # is generated autmatoiocalyl (after like sep 2022)
                 self.datasetbeh_load(dataset_beh_rule = self.Date) # daily 
                 print("**Loaded dataset! using rule: ", self.Date)
-        except:
-            assert False, "pass in correct rule to load dataset."
+        except Exception as err:
+            print("probably need to pass in correct rule to load dataset.")
+            raise err
 
 
     def datasetbeh_load(self, dataset_beh_expt=None, 
@@ -2927,6 +2928,7 @@ class Session(object):
             # load saved
             expt = self.DatasetbehExptname
         assert expt is not None
+        print("Loading this dataset: ", self.Animal, expt, dataset_beh_rule)
         D = Dataset([], remove_online_abort=remove_online_abort)
         D.load_dataset_helper(self.Animal, expt, rule=dataset_beh_rule)
         D.load_tasks_helper()
@@ -4208,6 +4210,7 @@ class Session(object):
 
         list_xslices = []
         # 1) extract each trials' PA. Use the slicing tool in PA to extract snippet
+        assert len(trials)>0
         for tr in trials:
             # extract popanal
             pa = self.popanal_generate_save_trial(tr)
@@ -4350,7 +4353,8 @@ class Session(object):
 
     def get_trials_list(self, only_if_ml2_fixation_success=False,
         only_if_has_valid_ml2_trial=False, only_if_in_dataset=False, 
-        events_that_must_include=None):
+        events_that_must_include=None,
+        dataset_input = None):
         """
         Get list of ints, trials,
         PARAMS:
@@ -4361,6 +4365,8 @@ class Session(object):
         - only_if_in_dataset, if True, then only keeps trials that are in self.DatasetBeh
         - events_that_must_include, list of str names of events. only inclues trials that have at least 
         one instance of eaech event. time in trial doesnt matter.
+        - dataset_input, dataset to use for pruning, if only_if_in_dataset==True.
+        if this None, then uses self.DatasetBeh
         """
         if events_that_must_include is None:
             events_that_must_include = []
@@ -4395,7 +4401,7 @@ class Session(object):
             print("get_trials_list - only_if_in_dataset")
             trials_keep = []
             for t in trials:
-                if self.datasetbeh_trial_to_datidx(t) is None:
+                if self.datasetbeh_trial_to_datidx(t, dataset_input=dataset_input) is None:
                     # exclud
                     pass
                 else:
@@ -4568,7 +4574,7 @@ class Session(object):
             assert isinstance(YLIM, list), "mistake..."
             figholder = self._plot_spike_waveform_multchans(list_sites, YLIM, saveon, prefix)
 
-    def plot_raster_trials_blocked(self, ax, list_list_trials, site, list_labels,
+    def plot_raster_trials_blocked(self, ax, list_list_trials, site, list_labels=None,
                                    align_to=None, overlay_trial_events=True,                                
                                    sort_trials_within_blocks=True,
                                    xmin = None, xmax = None, DEBUG=False):
@@ -4584,6 +4590,11 @@ class Session(object):
         - sort_trials_within_blocks, bool, then trials within blocks will beosrted so that
         increase from bottom to top.
         """
+
+        if list_labels is not None:
+            if not len(list_labels)==len(list_list_trials):
+                # to avoid confusion
+                list_labels = None
 
         # 1. Concatenate trials from different inner lists (i.e, blocks), keeping track of 
         # thier boundaires.
@@ -5579,14 +5590,23 @@ class Session(object):
         trialcode = f"{date}-{session_ml}-{trial_ml}"
         return trialcode
 
-    def datasetbeh_trial_to_datidx(self, trial):
+    def datasetbeh_trial_to_datidx(self, trial, dataset_input=None):
         """ returns the index in self.Datasetbeh correspodning to
         this trial. If doesnt exist, then returns None.
         This is accurate even if self.Datasetbeh is changed.
+        - dataset_input, which datsaet to query. useful to pass in a pruned
+        datsaet if you want to check whether this trial exists (i.e., returns None)
         """
         tc = self.datasetbeh_trial_to_trialcode(trial)
         # print("get_trials_list - datasetbeh_trial_to_datidx", trial, tc)
-        dfthis = self.Datasetbeh.Dat[self.Datasetbeh.Dat["trialcode"]==tc]
+
+        if dataset_input is None:
+            dfcheck = self.Datasetbeh
+        else:
+            dfcheck = dataset_input
+
+        dfthis = dfcheck.Dat[dfcheck.Dat["trialcode"]==tc]
+
         if len(dfthis)>1:
             print(trial, tc, dfthis)
             assert False, "bug, cant find > 1 row"

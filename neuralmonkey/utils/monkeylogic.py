@@ -117,7 +117,10 @@ def session_map_from_rec_to_ml2(animal, date, rec_session):
 
     print("taking this beh session:", beh_session)
     beh_expt_list = [sess_expt[1] for sess_expt in sessdict[date] if sess_expt[0]==beh_session]
-    assert len(beh_expt_list)==1, "multiple expts in this folder?"
+    if len(beh_expt_list)!=1:
+        print(beh_expt_list)
+        print(sessdict, date)
+        assert False, "multiple expts in this folder?"
     exptname = beh_expt_list[0]
 
     return beh_session, exptname, sessdict
