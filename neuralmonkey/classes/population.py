@@ -1017,12 +1017,19 @@ class PopAnal():
         PARAMS
         - dim, str
         - list_var, list of str, each a column in self.Xlabels[dim]
+        RETURNS:
+        - map_var_to_othervars, dict mapping from variable to column name of conjuction
+        of its other vartiables (or None, if none exist).
         """        
         from pythonlib.tools.pandastools import append_col_with_grp_index
+        from pythonlib.tools.checktools import check_is_categorical
 
         df = self.Xlabels[dim]
         for var in list_var:
             assert var in df.columns
+
+        # Only take ocnjucntions of categorical variables.
+        list_var_categorical = [var for var in list_var if check_is_categorical(df[var].tolist()[0])]
 
         # Prepare columns indicating value of conjucntion of other faetures
         # list_var = ["gridloc", "gridsize", "shape_oriented"]
@@ -1031,12 +1038,24 @@ class PopAnal():
         map_var_to_othervars = {}
         for var in list_var:
             # get conjuction of the other vars
-            other_vars = [v for v in list_var if not v==var]
-            df, new_col_name = append_col_with_grp_index(df, other_vars, "-".join(other_vars), 
-                                                         strings_compact=True, return_col_name=True)            
+            # other_vars = [v for v in list_var if not v==var]
+            other_vars = [v for v in list_var_categorical if not v==var]
+
+            if len(other_vars)>1:
+                # Then good, get conjunction
+                df, new_col_name = append_col_with_grp_index(df, other_vars, "-".join(other_vars), 
+                                                             strings_compact=True, return_col_name=True)            
+                print("added column: ", new_col_name)
+            elif len(other_vars)==1:
+                # if len 1, then this col already exists..
+                new_col_name = other_vars[0]
+            else:
+                # nothing, add a dummy variable, so downstream code works.
+                df["dummy"] = "dummy"
+                new_col_name = "dummy"
+
             # Save mapper 
             map_var_to_othervars[var] = new_col_name
-            print("added column: ", new_col_name)
 
         self.Xlabels[dim] = df
 

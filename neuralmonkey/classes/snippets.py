@@ -26,7 +26,7 @@ class Snippets(object):
         list_pre_dur, list_post_dur,
         strokes_only_keep_single=False,
         tasks_only_keep_these=None,
-        prune_feature_levels_min_n_trials=None, 
+        prune_feature_levels_min_n_trials=10, 
         dataset_pruned_for_trial_analysis=None):
         """ Initialize a dataset
         PARAMS:
@@ -37,15 +37,17 @@ class Snippets(object):
         (and assign to that datapt). NOTE: by default gets many features.. this is just
         extra. This is just for exgtraciton, not for plotting.
         - list_features_get_conjunction, list of str, features for which will get conjuction
-        of other features. Thesea re also the features that wil be plot and anlyszes.              
-
+        of other features. Thesea re also the features that wil be plot and anlyszes. 
+        - dataset_pruned_for_trial_analysis, Dataset object, which,if not None, will
+        be used to determine which trials (i.e. onluy tjhose in Dataset)             
         """
 
         # 1) Which behavioral data to use
         if which_level=="stroke":
             # Each datapt matches a single stroke
             DS = datasetstrokes_extract(SN.Datasetbeh, strokes_only_keep_single,
-                tasks_only_keep_these, prune_feature_levels_min_n_trials, list_features_extraction)
+                tasks_only_keep_these, prune_feature_levels_min_n_trials, 
+                list_features_extraction)
         elif which_level=="trial":
             # Each datapt is a single trial
             # no need to extract antyhing, use sn.Datasetbeh
@@ -101,7 +103,8 @@ class Snippets(object):
                 listpa = SN.popanal_generate_alldata_bystroke(DS, sites_keep, align_to_stroke=align_to_stroke, 
                                                               align_to_alternative=align_to_alternative, 
                                                               pre_dur=pre_dur, post_dur=post_dur,
-                                                              use_combined_region=False)
+                                                              use_combined_region=False,
+                                                              features_to_get_extra=list_features_get_conjunction)
             elif which_level=="trial":
                 listpa = SN.popanal_generate_alldata(trials, sites_keep,
                     events = [event],
@@ -356,7 +359,7 @@ class Snippets(object):
     ################ MODULATION BY VARIABLES
     def modulation_compute_each_chan(self, DEBUG=False, 
         bregion_add_num_prefix=True, 
-        bregion_combine=False):
+        bregion_combine=False, things_to_compute=("modulation", "fr")):
         """ Compute modulation by variables for each channel
         RETURNS:
         - RES_ALL_CHANS, list of dicts
@@ -382,7 +385,7 @@ class Snippets(object):
                 map_bregion_to_idx[reg] = i
 
         for chan in list_chans:
-            print(chan)
+            print("CHANNEL:", chan)
             info = self.SN.sitegetter_thissite_info(chan)
 
             dfthis = self.DfScalar[self.DfScalar["chan"]==chan]
@@ -398,10 +401,18 @@ class Snippets(object):
                 list_events_uniqnames)
             
             # Compute, modulation across vars
-            RES = Mscal.modulation_calc_summary()
+            if "modulation" in things_to_compute:
+                print("Mscal.modulation_calc_summary...")
+                RES = Mscal.modulation_calc_summary()
+            else: 
+                RES = {}
 
             # Compute, fr across levels, for each var
-            RES_FR = Mscal.calc_fr_across_levels()
+            if "fr" in things_to_compute:
+                print("Mscal.calc_fr_across_levels...")
+                RES_FR = Mscal.calc_fr_across_levels()
+            else:
+                RES_FR = {}
 
             if DEBUG:
                 print("======== RES")
@@ -517,36 +528,37 @@ class Snippets(object):
 
             ######################## MEAN FR ACROSS LEVELS
             # mod across events
-            for ev_var, values in RES_FR["splitevents_alldata"].items():
-                ev = ev_var[0]
-                var = ev_var[1]
-                list_levels = self.Params["map_var_to_levels"][var]
-                assert len(values)==len(list_levels)    
+            if len(RES_FR)>0:
+                for ev_var, values in RES_FR["splitevents_alldata"].items():
+                    ev = ev_var[0]
+                    var = ev_var[1]
+                    list_levels = self.Params["map_var_to_levels"][var]
+                    assert len(values)==len(list_levels)    
 
-                for lev, yscal in zip(list_levels, values):
-                    dat_fr_across_events.append({
-                        "event":ev,
-                        "val":yscal,
-                        "val_kind":"raw",
-                        "var_level":lev,
-                        "var":var,
-                        "chan":chan,
-                        "bregion":bregion
-                    })
+                    for lev, yscal in zip(list_levels, values):
+                        dat_fr_across_events.append({
+                            "event":ev,
+                            "val":yscal,
+                            "val_kind":"raw",
+                            "var_level":lev,
+                            "var":var,
+                            "chan":chan,
+                            "bregion":bregion
+                        })
 
-                # subtract mean over values
-                # (allows for easier comparison across neurons)
-                values_delt = np.array(values) - np.mean(values)
-                for lev, yscal in zip(list_levels, values_delt):
-                    dat_fr_across_events.append({
-                        "event":ev,
-                        "val":yscal,
-                        "val_kind":"minus_mean",
-                        "var_level":lev,
-                        "var":var,
-                        "chan":chan,
-                        "bregion":bregion
-                    })
+                    # subtract mean over values
+                    # (allows for easier comparison across neurons)
+                    values_delt = np.array(values) - np.mean(values)
+                    for lev, yscal in zip(list_levels, values_delt):
+                        dat_fr_across_events.append({
+                            "event":ev,
+                            "val":yscal,
+                            "val_kind":"minus_mean",
+                            "var_level":lev,
+                            "var":var,
+                            "chan":chan,
+                            "bregion":bregion
+                        })
 
 
 
@@ -818,7 +830,7 @@ class Snippets(object):
         from pythonlib.tools.snstools import rotateLabel
 
         def _find_varhue_varcol(var_x, vars_exist, 
-                                variables_ordered_increasing_effect = ("gridsize", "gridloc", "shape_oriented", "epoch")):
+                                variables_ordered_increasing_effect = None):
             """ to return what variables to use as hue and column for 
             seaborn catplot, based on principle that variables with largest
             expected effect (differences across lewvels) should be col, while
@@ -833,11 +845,16 @@ class Snippets(object):
             - var_col
             """
 
-            def _find_hue():
+
+            if variables_ordered_increasing_effect is None:
+                variables_ordered_increasing_effect = ("gridsize", "gridloc", "shape_oriented", "velmean_x", 
+                    "velmean_y", "velmean_thbin", "velmean_norm", "velmean_normbin", "epoch")
+            def _find_hue():    
                 # 1) Find the hue
                 for var_other in variables_ordered_increasing_effect:
                     if not var_other==var_x and var_other in vars_exist:
                         return var_other
+
                 print(var_x, variables_ordered_increasing_effect, vars_exist)
                 assert False, "didnt find"
 
@@ -1152,28 +1169,30 @@ class Snippets(object):
         fig.savefig(f"{savedir}/8_bars_features_all.pdf")
 
         ################## FR MODULATION BY LEVELS
-        list_val_kind = dfdat_fr_events["val_kind"].unique().tolist()
-        for var in list_var:
-            for val_kind in list_val_kind:
-                dfthis = dfdat_fr_events[(dfdat_fr_events["var"]==var) & (dfdat_fr_events["val_kind"]==val_kind)]
+        if len(dfdat_fr_events)>0:
+            list_val_kind = dfdat_fr_events["val_kind"].unique().tolist()
+            for var in list_var:
+                for val_kind in list_val_kind:
+                    dfthis = dfdat_fr_events[(dfdat_fr_events["var"]==var) & (dfdat_fr_events["val_kind"]==val_kind)]
 
-                if len(dfthis)>0:
-                    fig = sns.catplot(data=dfthis, x="var_level", hue="event", y="val", col="bregion", col_wrap=4, kind="point")
-                    rotateLabel(fig)
-                    fig.savefig(f"{savedir}/9_{var}-{val_kind}-lines_fr_vs_level.pdf")
-
-                    try:
-                        fig = plotgood_lineplot(dfthis, xval="var_level", yval="val", line_grouping="chan",
-                                                include_mean=True, 
-                                                relplot_kw={"row":"event", "col":"bregion"});
+                    if len(dfthis)>0:
+                        fig = sns.catplot(data=dfthis, x="var_level", hue="event", y="val", col="bregion", col_wrap=4, kind="point")
                         rotateLabel(fig)
-                        fig.savefig(f"{savedir}/9_{var}-{val_kind}-lineschans_fr_vs_level.pdf")
-                    except Exception as err:
-                        print(dfthis["var_level"].value_counts())
-                        print(dfthis["chan"].value_counts())
-                        print(dfthis["event"].value_counts())
-                        print(dfthis["bregion"].value_counts())
-                        raise err
+                        fig.savefig(f"{savedir}/9_{var}-{val_kind}-lines_fr_vs_level.pdf")
+
+                        try:
+                            fig = plotgood_lineplot(dfthis, xval="var_level", yval="val", line_grouping="chan",
+                                                    include_mean=True, 
+                                                    relplot_kw={"row":"event", "col":"bregion"});
+                            rotateLabel(fig)
+                            fig.savefig(f"{savedir}/9_{var}-{val_kind}-lineschans_fr_vs_level.pdf")
+                        except Exception as err:
+                            print(dfthis["var_level"].value_counts())
+                            print(dfthis["chan"].value_counts())
+                            print(dfthis["event"].value_counts())
+                            print(dfthis["bregion"].value_counts())
+                            # raise err
+                            fig = None
 
     def modulation_plot_all(self, RES_ALL_CHANS, OUT, SAVEDIR, 
             list_plots = ("summarystats", "heatmaps", "eachsite_allvars", 
@@ -1557,7 +1576,7 @@ class Snippets(object):
 
 
 def datasetstrokes_extract(D, strokes_only_keep_single=False, tasks_only_keep_these=None, 
-    prune_feature_levels_min_n_trials=None, list_features=None):
+    prune_feature_levels_min_n_trials=None, list_features=None, vel_onset_twindow = (0, 0.2)):
     """ Helper to extract dataset strokes
     """
 
@@ -1573,6 +1592,13 @@ def datasetstrokes_extract(D, strokes_only_keep_single=False, tasks_only_keep_th
         # DS.Dat = DS.Dat[DS.Dat["task_kind"].isin(["prims_single", "prims_on_grid"])].reset_index(drop=True)
         DS.Dat = DS.Dat[DS.Dat["task_kind"].isin(tasks_only_keep_these)].reset_index(drop=True)
 
+    # Extract motor features, if desired.
+    # list_vel_names = ["velmean_x", "velmean_y"]
+    for feat in list_features:
+        if "velmean_" in feat:
+            DS.features_compute_velocity_binned(twind=vel_onset_twindow)
+            break
+
     if prune_feature_levels_min_n_trials is not None:
         assert list_features is not None
         # 1) Only keep levels that have enough trials
@@ -1584,6 +1610,7 @@ def datasetstrokes_extract(D, strokes_only_keep_single=False, tasks_only_keep_th
 
     # Extract timing inforamtion (e.g., stroek onsets, offsets)
     DS.timing_extract_basic()
+
 
     # list_features = ["task_kind", "gridsize", "shape_oriented", "gridloc"]
     for key in list_features:

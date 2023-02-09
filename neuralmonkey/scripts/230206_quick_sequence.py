@@ -1,0 +1,151 @@
+from neuralmonkey.classes.session import Session
+import matplotlib.pyplot as plt
+from neuralmonkey.scripts.load_and_save_locally import load_and_preprocess_single_session
+import neuralmonkey.utils.monkeylogic as mkl
+from neuralmonkey.classes.session import load_session_helper, load_mult_session_helper
+
+
+PREFIX_SAVE = "sequence_0shape_0loc_1shape"
+DATE = "221020"
+dataset_beh_expt = "dirfullvar1b"
+animal = "Pancho"
+
+# MS = load_mult_session_helper(DATE, animal, dataset_beh_expt)
+animal = "Pancho"
+MS = load_mult_session_helper(DATE, animal)
+    
+# [OPTIONAL] import dataset
+# for sn in MS.SessionsList:
+#     sn.datasetbeh_load_helper(dataset_beh_expt)
+for sn in MS.SessionsList:
+    sn.datasetbeh_load_helper(None)
+
+
+# SAVEDIR = f"/data2/analyses/recordings/NOTEBOOKS/220713_prims_state_space/{animal}/{DATE}"
+if PREFIX_SAVE is None:
+    SAVEDIR = f"/gorilla1/analyses/recordings/NOTEBOOKS/220713_prims_state_space/{animal}/{DATE}"
+else:
+    SAVEDIR = f"/gorilla1/analyses/recordings/NOTEBOOKS/220713_prims_state_space/{animal}/{DATE}_{PREFIX_SAVE}"
+    
+
+import os
+print(SAVEDIR)
+
+from neuralmonkey.classes.snippets import datasetstrokes_extract
+from neuralmonkey.analyses.site_anova import _dataset_extract_prune_rulesw, _dataset_extract_prune_sequence, params_database_extract
+import os
+import numpy as np
+import seaborn as sns
+from neuralmonkey.classes.snippets import Snippets
+
+QUESTION = "sequence"
+DEBUG=False
+EVENTS_SIMPLE = False
+PARAMS = params_database_extract(MS, QUESTION, DEBUG, EVENTS_SIMPLE)
+
+SESSIONS = PARAMS["SESSIONS"]
+LIST_PLOTS = PARAMS["LIST_PLOTS"]
+THINGS_TO_COMPUTE = PARAMS["THINGS_TO_COMPUTE"]
+list_events = PARAMS["list_events"]
+list_pre_dur = PARAMS["list_pre_dur"]
+list_post_dur = PARAMS["list_post_dur"]
+list_features_get_conjunction = PARAMS["list_features_get_conjunction"]
+list_features_extraction = PARAMS["list_features_extraction"]
+list_possible_features_datstrokes = PARAMS["list_possible_features_datstrokes"]
+
+
+prune_feature_levels_min_n_trials=20
+for sess in SESSIONS:
+    sn = MS.SessionsList[sess]
+
+    # pass in already-pruned/preprocessed dataset?
+    if QUESTION=="rulesw":
+        dataset_pruned_for_trial_analysis = _dataset_extract_prune_rulesw(sn, same_beh_only=DATASET_PRUNE_SAME_BEH_ONLY)
+        if DATASET_PRUNE_SAME_BEH_ONLY:
+            PREFIX_SAVE = f"{PREFIX_SAVE}_samebeh"
+        else:
+            PREFIX_SAVE = f"{PREFIX_SAVE}_all"
+    elif QUESTION=="sequence":
+        dataset_pruned_for_trial_analysis = _dataset_extract_prune_sequence(sn, n_strok_max=2)
+    else:
+        dataset_pruned_for_trial_analysis = None
+    
+    if DEBUG and dataset_pruned_for_trial_analysis is None:
+        dataset_pruned_for_trial_analysis = sn.Datasetbeh.copy()
+        dataset_pruned_for_trial_analysis.Dat = dataset_pruned_for_trial_analysis.Dat[-25:]
+    elif DEBUG:
+        dataset_pruned_for_trial_analysis.Dat = dataset_pruned_for_trial_analysis.Dat[-25:]
+    
+    SAVEDIR_SCALAR = f'{SAVEDIR}/sess_{sess}/scalar_plots'
+    os.makedirs(SAVEDIR_SCALAR, exist_ok=True)
+
+    ##### 1) First automatically figure out what features to use
+    # - extract datstrokes, and check what fetures it has
+    if QUESTION in ["motor", "stroke"]:
+        strokes_only_keep_single=True
+        tasks_only_keep_these=["prims_single"]
+        DS = datasetstrokes_extract(sn.Datasetbeh, strokes_only_keep_single,
+                                    tasks_only_keep_these,
+                                    prune_feature_levels_min_n_trials, list_possible_features)
+        if len(DS.Dat)<50:
+            continue
+
+        # check which features exist
+        list_features_extraction = []
+        for feat in list_possible_features:
+            levels = DS.Dat[feat].unique().tolist()
+            if len(levels)>1:
+                # keep
+                list_features_extraction.append(feat)
+        print("=== USING THESE FEATURES:", list_features_extraction)
+        assert len(list_features_extraction)>0
+
+    elif QUESTION in ["sequence", "rulesw"]:
+        # DOesnt need DS
+        pass 
+    else:
+        print(QUESTION)
+        assert False
+    
+
+    ##### 2) Do everything
+    if QUESTION in ["motor", "stroke"]:
+        list_features_get_conjunction = list_features_extraction
+        strokes_only_keep_single = True
+        which_level = "stroke"
+    elif QUESTION in ["sequence", "rulesw"]:
+        strokes_only_keep_single = False
+        which_level = "trial"
+    else:
+        assert False
+        
+    print("Extracvting snips..")
+    SP = Snippets(SN=sn, which_level=which_level, list_events=list_events, 
+                list_features_extraction=list_features_extraction, list_features_get_conjunction=list_features_get_conjunction, 
+                list_pre_dur=list_pre_dur, list_post_dur=list_post_dur,
+                strokes_only_keep_single=strokes_only_keep_single,
+                  prune_feature_levels_min_n_trials=prune_feature_levels_min_n_trials,
+                  dataset_pruned_for_trial_analysis = dataset_pruned_for_trial_analysis
+                 )
+    
+
+    if dataset_pruned_for_trial_analysis is not None:
+        # Sanity check: correct subset of trials
+        tc1 = sorted(SP.DfScalar["trialcode"].unique().tolist())
+        tc2 = sorted(dataset_pruned_for_trial_analysis.Dat["trialcode"].unique().tolist())
+        assert tc1 == tc2, "Pruned dataset did not work correctly in Snippets"
+        
+    ########################################## PLOTS
+    # Compute summary stats
+    RES_ALL_CHANS = SP.modulation_compute_each_chan(things_to_compute=THINGS_TO_COMPUTE)
+    OUT = SP.modulation_compute_higher_stats(RES_ALL_CHANS)
+    
+    # Plot and save
+    if False:
+        # Dont need to do this, since rules have character as an explicit variable
+        if QUESTION=="rulesw":
+            # because interested in whether activity encodes the rule or the 
+            # action plan (character)
+            list_plots = list_plots + ["eachsite_smfr_splitby_character", "eachsite_raster_splitby_character"]
+    SP.modulation_plot_all(RES_ALL_CHANS, OUT, SAVEDIR_SCALAR, list_plots=LIST_PLOTS)
+    

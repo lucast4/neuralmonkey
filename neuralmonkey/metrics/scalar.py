@@ -37,7 +37,8 @@ class MetricsScalar(object):
         if map_var_to_othervars is None:
             assert False, "code it!"
         for var, othervar in map_var_to_othervars.items():
-            assert othervar in data.columns
+            if othervar is not None:
+                assert othervar in data.columns
         self.MapVarToConjunctionOthers = map_var_to_othervars
 
         if map_var_to_levels is None:
@@ -86,7 +87,6 @@ class MetricsScalar(object):
 
                 # 1. for each event, one value for modulation by this var
                 dict_modulation[(ev, var)] = res["all_data"]
-
                 othervars_mat = stack_othervals_values(res["othervars_conjunction"]) # (nothervarlevels, nlevels)
                 dict_modulation_othervar[(ev, var)] = othervars_mat
         output["splitevents_alldata"] = dict_modulation
@@ -113,8 +113,12 @@ class MetricsScalar(object):
             res = _calc_modulation_by(data, var, map_var_to_othervars=map_var_to_othervars)
             dict_modulation[var] = res["all_data"]
 
-            othervars_mat = stack_othervals_values(res["othervars_conjunction"]) # (nothervarlevels, nlevels)
-            dict_modulation_meanofothervar[var] = np.mean(othervars_mat, axis=0)
+            if res["othervars_conjunction"] is None:
+                # no other vars
+                dict_modulation_meanofothervar[var] = None
+            else:
+                othervars_mat = stack_othervals_values(res["othervars_conjunction"]) # (nothervarlevels, nlevels)
+                dict_modulation_meanofothervar[var] = np.mean(othervars_mat, axis=0)
         output["allevents_alldata"] = dict_modulation
         output["allevents_eachothervar_mean"] = dict_modulation_meanofothervar
 
@@ -135,8 +139,11 @@ class MetricsScalar(object):
                 
                 # Modulation (#1) is combination of 3a and 3b:
                 # 3a. for each event, mean modulation across other vars
-                othervars_mat = stack_othervals_values(res["othervars_conjunction"]) # (nothervarlevels, nlevels)
-                dict_modulation_meanofothervar[(ev, var)] = np.mean(othervars_mat, axis=0)
+                if res["othervars_conjunction"] is not None:
+                    othervars_mat = stack_othervals_values(res["othervars_conjunction"]) # (nothervarlevels, nlevels)
+                    dict_modulation_meanofothervar[(ev, var)] = np.mean(othervars_mat, axis=0)
+                else:
+                    dict_modulation_meanofothervar[(ev, var)] = None
                 
                 # 3b. for each event, consistency across other vars
                 if False:
@@ -255,7 +262,10 @@ class MetricsScalar(object):
             vals_sub = np.array(self.modulation_extract_vals_byevent(var, results, ver= "othervars_mean"))
         
             # v1) Difference
-            vals_diff = vals_sub - vals_all
+            if vals_sub is not None and vals_all is not None:
+                vals_diff = vals_sub - vals_all
+            else:
+                vals_diff = np.nan
             
             RES["inconsistency_across_events"][var] = vals_diff
             
@@ -297,45 +307,82 @@ class MetricsScalar(object):
 
 ####################### UTILS
 def _calc_modulation_by(data, by, response_var = 'fr_scalar', 
-    map_var_to_othervars=None):
+    map_var_to_othervars=None, n_min_dat = 10):
     """ Calculatio modulation of response_var ba <by>,
     PARAMS:
     - by, string name of variabel whose levels modulate the reposnse_var
     - response_var, string, name of variable response
+    - n_min_dat, if < this, then returns nan
     RETURNS:
     - output, dict holding modulation computed across different slices of
     data, each value being a scalar.
     """
-    
+    from pythonlib.tools.checktools import check_is_categorical
+
     import pingouin as pg
     output = {}
     
     # 1) all data
-    aov = pg.anova(data=data, dv=response_var, between=by, detailed=True)
-    eta2_all = aov[aov["Source"]==by]["np2"].item()
-    output["all_data"] = eta2_all
-    
+    def _calc(datathis):
+        if len(datathis)<n_min_dat:
+            return np.nan
+        else:
+            datcheck = datathis[by].tolist()[0]
+            if check_is_categorical(datcheck):
+                # Then do anova
+                # print("Categorical variable: ", by)
+                aov = pg.anova(data=datathis, dv=response_var, between=by, detailed=True)
+                eta2_all = aov[aov["Source"]==by]["np2"].item()
+                if "np2" not in aov[aov["Source"]==by].keys():
+                    print(aov[aov["Source"]==by])
+                    print(aov)
+                    print(by)
+                    print(datathis)
+                    assert False            
+                return eta2_all
+            else:
+                # print("Numerical variable: ", by)
+                res = pg.linear_regression(X=datathis[by], y=datathis[response_var])
+                if len(res["r2"])<2:
+                    print("--- N=", len(datathis[by]), "R2", res["r2"])
+                    assert False
+                r2 = res["r2"][1].item() # index 0 is intercept.
+                return r2
+
+    # Decide if use regression or anova depending on the type of the data
+    output["all_data"] = _calc(data)
+    # datcheck = data[by].tolist()[0]
+    # if check_is_categorical(datcheck):
+    #     # Then do anova
+    #     print("Categorical variable: ", by)
+    #     aov = pg.anova(data=data, dv=response_var, between=by, detailed=True)
+    #     eta2_all = aov[aov["Source"]==by]["np2"].item()
+    #     output["all_data"] = eta2_all
+    # else:
+    #     print("Numerical variable: ", by)
+    #     res = pg.linear_regression(X=data[by], y=data[response_var])
+    #     r2 = res["r2"][1].item() # index 0 is intercept.
+    #     output["all_data"] = r2
+            
     # 2) for each conjunction of other vars
     if map_var_to_othervars is None:
         dict_mod_othervars = None
         levels = None
     else:
         colname_othervars = map_var_to_othervars[by]
-        levels = sorted(data[colname_othervars].unique().tolist())
-        dict_mod_othervars = {}
-        for lev in levels:
-            datathis = data[data[colname_othervars]==lev]
-            aov = pg.anova(data=datathis, dv=response_var, between=by, detailed=True)
-            if "np2" not in aov[aov["Source"]==by].keys():
-                print(aov[aov["Source"]==by])
-                print(aov)
-                print(by)
-                print(lev)
-                print(datathis)
-                print(colname_othervars)
-                assert False
-            eta2 = aov[aov["Source"]==by]["np2"].item()
-            dict_mod_othervars[lev] = eta2
+        if colname_othervars is not None:
+            levels = sorted(data[colname_othervars].unique().tolist())
+            dict_mod_othervars = {}
+            for lev in levels:
+                # print("level: ", lev, "colname_othervars: ", colname_othervars)
+                datathis = data[data[colname_othervars]==lev]
+                dict_mod_othervars[lev] = _calc(datathis)
+                # aov = pg.anova(data=datathis, dv=response_var, between=by, detailed=True)
+                # eta2 = aov[aov["Source"]==by]["np2"].item()
+                # dict_mod_othervars[lev] = eta2
+        else:
+            dict_mod_othervars = None
+            levels = None
     output["othervars_conjunction"] = dict_mod_othervars
     output["othervars_conjunction_levels"] = levels
 

@@ -119,7 +119,7 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
     RETURNS:
     - SN, session
     """
-    from ..utils.monkeylogic import session_map_from_rec_to_ml2
+    from ..utils.monkeylogic import session_map_from_rec_to_ml2, session_map_from_rec_to_ml2_ntrials_mapping
 
     if dataset_beh_expt is not None:
         assert len(dataset_beh_expt)>1, "if skip, then make this None"
@@ -159,10 +159,24 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
     print("Loading these beh sessions:",beh_sess_list)
     print("Loading this neural session:", rec_session)
 
-    SN = Session(DATE, beh_expt_list, beh_sess_list, beh_trial_map_list, 
-        rec_session = rec_session, dataset_beh_expt=dataset_beh_expt, 
-        extract_spiketrain_elephant=extract_spiketrain_elephant,
-        do_all_copy_to_local=do_all_copy_to_local)
+    try:
+        SN = Session(DATE, beh_expt_list, beh_sess_list, beh_trial_map_list, 
+            rec_session = rec_session, dataset_beh_expt=dataset_beh_expt, 
+            extract_spiketrain_elephant=extract_spiketrain_elephant,
+            do_all_copy_to_local=do_all_copy_to_local)
+    except AssertionError as err:
+        print("FAILED loading session:", DATE, rec_session)
+        print("Possible that this one session maps to multiple beh sessions. try loading it automatically.")
+        beh_expt_list, beh_sess_list, beh_trial_map_list = session_map_from_rec_to_ml2_ntrials_mapping(
+            animal, DATE, rec_session)
+        print("ATTEMPTING RELOAD WITH THESE BEH SESSIONS:")
+        print("beh sessions: ", beh_expt_list, beh_sess_list)
+        print("beh_trial_map_list: ", beh_trial_map_list)
+        SN = Session(DATE, beh_expt_list, beh_sess_list, beh_trial_map_list, 
+            rec_session = rec_session, dataset_beh_expt=dataset_beh_expt, 
+            extract_spiketrain_elephant=extract_spiketrain_elephant,
+            do_all_copy_to_local=do_all_copy_to_local)
+
 
     ############ EXTRACT STUFF
     if extract_raw_and_spikes_helper:
@@ -2881,29 +2895,36 @@ class Session(object):
     def datasetbeh_load_helper(self, dataset_beh_expt):
         """ Helps beucase can either be "main" dataset, in which case
         use dataset_beh_expt, or daily datyaset, in which case use the 
-        date
+        date (gets it auto, doesnt use dataset_beh_expt)
         If cannot load datset, then tghrows error.
+        PARAMS:
+        - dataset_beh_expt, str, eitehr the name of expt, or None. Iether
+        way will first try to get daily dataset. if fails, then tries getting
+        main using this expt. 
         """
         self.DatasetbehExptname = dataset_beh_expt # need this, to work.
+
+        # First try daily, its faster.    
         try:
             try:
-                # Try loading using "null" rule, which is common
-                self.datasetbeh_load(dataset_beh_expt=dataset_beh_expt, 
-                    dataset_beh_rule="null")
-                print("**Loaded dataset! using rule: null")
-            except:
                 # If that doesnt work, then use the daily dataset, which 
                 # is generated autmatoiocalyl (after like sep 2022)
-                self.datasetbeh_load(dataset_beh_rule = self.Date) # daily 
-                print("**Loaded dataset! using rule: ", self.Date)
+                self.datasetbeh_load(version="daily") # daily 
+                print("**Loaded dataset! daily")
+            except:
+                # Try loading using "null" rule, which is common
+                self.datasetbeh_load(dataset_beh_expt=dataset_beh_expt, 
+                    version="main")
+                print("**Loaded dataset! using rule: null")
         except Exception as err:
             print("probably need to pass in correct rule to load dataset.")
             raise err
 
 
     def datasetbeh_load(self, dataset_beh_expt=None, 
-            dataset_beh_rule="null", remove_online_abort=False,
-            remove_trials_not_in_dataset=False):
+            remove_online_abort=False,
+            remove_trials_not_in_dataset=False,
+            version = "daily"):
         """ Load pre-extracted beahviuioral dataset and algined
         trial by trial to this recording session. 
         Tries to automtiaclly get the exptname, and rule, but you might
@@ -2912,26 +2933,38 @@ class Session(object):
         are trials where there was successfuly touhc)
         - Will do sanity check that every clean 
         - Will do preprocess too.
+        PARAMS:
+        - version, str, either "main" or "daily". if main, then uses dataset_beh_expt, if
+        daily, then uses self.Date
         RETURNS:
         - self.DatasetBeh, and returns
         """
         from pythonlib.dataset.dataset import Dataset
         from pythonlib.dataset.dataset_preprocess.general import preprocessDat
+        from pythonlib.dataset.dataset import load_dataset, load_dataset_daily_helper
 
         assert self.DatAll is not None, "need to load first, run SN.extract_raw_and_spikes_helper()"
 
         # 1) Load Dataset
-        if self.DatasetbehExptname is None:
-            # you must enter it
-            expt = dataset_beh_expt
+        if version=="daily":
+            assert dataset_beh_expt is None, "did you try to get main? then use version=main"
+            D = load_dataset_daily_helper(self.Animal, self.Date)
+        elif version=="main":
+            if self.DatasetbehExptname is None:
+                # you must enter it
+                expt = dataset_beh_expt
+            else:
+                # load saved
+                expt = self.DatasetbehExptname
+            D = load_dataset(self.Animal, expt)
         else:
-            # load saved
-            expt = self.DatasetbehExptname
-        assert expt is not None
-        print("Loading this dataset: ", self.Animal, expt, dataset_beh_rule)
-        D = Dataset([], remove_online_abort=remove_online_abort)
-        D.load_dataset_helper(self.Animal, expt, rule=dataset_beh_rule)
-        D.load_tasks_helper()
+            print(version)
+            assert False
+
+        # print("Loading this dataset: ", self.Animal, expt, dataset_beh_rule)
+        # D = Dataset([], remove_online_abort=remove_online_abort)
+        # D.load_dataset_helper(self.Animal, expt, rule=dataset_beh_rule)
+        # D.load_tasks_helper()
 
         # 10/25/22 - done automaticlaly.
         # if not D._analy_preprocess_done:
@@ -3965,7 +3998,7 @@ class Session(object):
     def popanal_generate_alldata_bystroke(self, DS, sites, align_to_stroke=True,
         align_to_alternative=[], pre_dur=-0.2, post_dur=0.2, 
         fail_if_times_outside_existing=True,
-        use_combined_region=True):
+        use_combined_region=True, features_to_get_extra=None):
 
         # # 1) Get trials and stroke inds
         # trials = []
@@ -4017,6 +4050,9 @@ class Session(object):
             list_cols = ['task_kind', 'gridsize', 'dataset_trialcode', 
                 'stroke_index', 'shape_oriented', 'ind_taskstroke_orig', 'gridloc',
                 'gridloc_x', 'gridloc_y', 'h_v_move_from_prev']
+            if features_to_get_extra is not None:
+                assert isinstance(features_to_get_extra, list)
+                list_cols = list_cols + features_to_get_extra
             for pa in ListPA:
                 pa.labels_features_input_from_dataframe(DS.Dat, list_cols, dim="trials")
                 # Sanity check, input order matches output order
