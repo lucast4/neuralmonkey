@@ -41,7 +41,8 @@ from neuralmonkey.classes.snippets import Snippets
 QUESTION = "sequence"
 DEBUG=False
 EVENTS_SIMPLE = False
-PARAMS = params_database_extract(MS, QUESTION, DEBUG, EVENTS_SIMPLE)
+PARAMS = params_database_extract(MS, QUESTION, EVENTS_SIMPLE, 
+    DATASET_PRUNE_SAME_BEH_ONLY, REMOVE_BASELINE_EPOCHS, DEBUG)
 
 SESSIONS = PARAMS["SESSIONS"]
 LIST_PLOTS = PARAMS["LIST_PLOTS"]

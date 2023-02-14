@@ -1259,7 +1259,8 @@ class PopAnal():
         PARAMS:
         - dim_str, str, in {times, chans}
         - dim_variable, column in dataframe in self.Xlabels, to look for levels of
-        - event_bounds, [num, num, num] to plot pre, alignemnt, and post times
+        - event_bounds, [num, num, num] to plot pre, alignemnt, and post times. any that
+        are None will be skipped.
         """
         from pythonlib.tools.plottools import makeColors
 

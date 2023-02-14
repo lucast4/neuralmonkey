@@ -2,3 +2,200 @@
 Tools for plotting data onto brain schematic
 See snippets.modulation_plot_heatmaps_brain_schematic (move stuff here)
 """
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+
+#
+map_bregion_to_location = {}
+map_bregion_to_location["00_M1_m"] = [0, 1.3]
+map_bregion_to_location["01_M1_l"] = [1, 2]
+map_bregion_to_location["02_PMv_l"] = [4, 5.3]
+map_bregion_to_location["03_PMv_m"] = [3.5, 3.3]
+map_bregion_to_location["04_PMd_p"] = [3.3, 1.6]
+map_bregion_to_location["05_PMd_a"] = [5, 1.85]
+map_bregion_to_location["06_SMA_p"] = [-.1, 0.2]
+map_bregion_to_location["07_SMA_a"] = [1.4, 0.3]
+map_bregion_to_location["08_dlPFC_p"] = [7.2, 2.8]
+map_bregion_to_location["09_dlPFC_a"] = [9, 3]
+map_bregion_to_location["10_vlPFC_p"] = [5.8, 5]
+map_bregion_to_location["11_vlPFC_a"] = [8.5, 4]
+map_bregion_to_location["12_preSMA_p"] = [3.2, 0.4]
+map_bregion_to_location["13_preSMA_a"] = [4.5, 0.6]
+map_bregion_to_location["14_FP_p"] = [11, 3.9]
+map_bregion_to_location["15_FP_a"] = [12.5, 4.3]
+
+
+def regions_get_ordered_by_x(ver="hand", prune_index=True):
+    """ Get list of regions (e.g, M1_m) orderd by x location, either
+    by hand (defyault) or by coords
+    - prune_index, if True, then M1_m, else 00_M1_m
+    """
+
+    if ver=="hand":
+        regions_ordered_by_x = [
+             '00_M1_m',
+             '01_M1_l',
+             '06_SMA_p',
+             '07_SMA_a',
+             '04_PMd_p',
+             '03_PMv_m',
+             '02_PMv_l',
+             '05_PMd_a',
+             '12_preSMA_p',
+             '13_preSMA_a',
+             '10_vlPFC_p',
+             '11_vlPFC_a',
+             '08_dlPFC_p',
+             '09_dlPFC_a',
+             '14_FP_p',
+             '15_FP_a']    
+    else:
+        # use actual coords
+        # Order regions based on xy location
+        from neuralmonkey.neuralplots.brainschematic import map_bregion_to_location
+
+        tmp = []
+        for reg, coords in map_bregion_to_location.items():
+            tmp.append([reg, coords[0], coords[1]])
+        tmpsorted = sorted(tmp, key=lambda x:x[1])
+        regions_ordered_by_x = [x[0] for x in tmpsorted]
+
+    # remove indices
+    if prune_index:
+        regions_ordered_by_x = [x[3:] for x in regions_ordered_by_x]
+
+    if False:
+        print("regions_ordered_by_x:", regions_ordered_by_x)     
+    
+    return regions_ordered_by_x
+
+def plot_df(df, valname, subplot_var=None, savedir = None, savesuffix="", DEBUG=False):
+    """
+    PARAMS:
+    - df, long-form dataframe with N rows per brain region, if N>1, then will
+    agg by taking mean.
+    - valname, str, column name in df to plot.
+    - subplot_var, which variables levels to have in each subplot. Leave None if doesnt
+    have.
+    """
+    from pythonlib.tools.pandastools import convert_to_2d_dataframe
+
+    if "region" in df.columns:
+        REGION = "region"
+    elif "bregion" in df.columns:
+        REGION = "bregion"
+    else:
+        print(df.columns)
+        assert False, "must be  a column called region or bregion"
+
+    # Convert to a 2d dataframe with histrogram and rgb values
+    norm_method = None
+    annotate_heatmap = False
+    ZLIMS = [None, None]
+
+    dfthis_agg_2d, fig_hist, ax_hist, rgba_values = convert_to_2d_dataframe(df, 
+                                                 REGION, subplot_var, True, agg_method="mean", 
+                                                 val_name=valname, 
+                                                 norm_method=norm_method,
+                                                 annotate_heatmap=annotate_heatmap,
+                                                zlims = ZLIMS
+                                                )
+
+    # 1) DEFINE COORDS FOR EACH REGION
+    # (horiz from left, vert from top)
+    xmult = 33
+    ymult = 50
+    # xoffset = 230 # if use entire image
+    xoffset = 100 # if clip
+    yoffset = 30
+    for k, v in map_bregion_to_location.items():
+        map_bregion_to_location[k] = [xoffset + xmult*v[0], yoffset + ymult*v[1]]
+    rad = (xmult + ymult)/4
+
+
+    def _find_region_location(region):
+        if region in map_bregion_to_location.keys():
+            return map_bregion_to_location[region]
+        else:
+            # assume region is like "M1_m" and keys are like "00_M1_m"
+            v = None
+            FOUND = False
+            for k, v in map_bregion_to_location.items():
+                if region == k[3:]:
+                    loc = v
+                    
+                    print(region, k)
+                    # print(map_bregion_to_location)
+                    assert FOUND==False
+                    FOUND = True        
+            assert FOUND==True
+            assert loc is not None, "didnt find!"
+            return loc
+
+    map_bregion_to_rowindex = {}
+    list_regions = dfthis_agg_2d.index.tolist()
+    for i, region in enumerate(list_regions):
+        map_bregion_to_rowindex[region] = i
+        
+    if DEBUG:
+        print("\nindex -- region")
+        for k, v in map_bregion_to_rowindex.items():
+            print(v, k)
+
+    map_event_to_colindex = {}
+    list_events = dfthis_agg_2d.columns.tolist()
+    for i, event in enumerate(list_events):
+        map_event_to_colindex[event] = i
+    if DEBUG:
+        print("\nindex -- event")
+        for event, i in map_event_to_colindex.items():
+            print(i, ' -- ' , event)
+
+
+    # PLOT:
+    ncols = 4
+    nrows = int(np.ceil(len(list_events)/ncols))
+    fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(3*ncols, 3*nrows))
+
+    for i, (ax, event) in enumerate(zip(axes.flatten(), list_events)):
+
+        ax.set_title(event)
+        
+        # 1) load a cartoon image of brain
+    #     image_name = "/home/lucast4/Downloads/thumbnail_image001.png"
+        image_name = "/gorilla3/Dropbox/SCIENCE/FREIWALD_LAB/DATA/brain_drawing_template.jpg"
+        im = plt.imread(image_name)
+        im = im[:330, 130:]
+        ax.imshow(im)
+
+    #     if i==1:
+    #         assert False
+        for bregion in list_regions:
+            irow = map_bregion_to_rowindex[bregion]
+            icol = map_event_to_colindex[event]
+
+            col = rgba_values[irow, icol]
+            cen = _find_region_location(bregion)
+
+            # 2) each area has a "blob", a circle on this image
+
+            print(bregion, irow, icol, col, cen)
+            c = plt.Circle(cen, rad, color=col, clip_on=False)
+            ax.add_patch(c)
+
+    # Remove axis ticks
+    for ax in axes.flatten():
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+
+    # SAVE FIG
+    if savedir:
+        path = f"{savedir}/brainschem-{subplot_var}-{valname}-{savesuffix}.pdf"
+        path_hist = f"{savedir}/brainschem-{subplot_var}-{valname}-{savesuffix}-HIST.pdf"
+        print("Saving to: ", path)
+        fig.savefig(path)
+        fig_hist.savefig(path_hist)
+    return fig, axes

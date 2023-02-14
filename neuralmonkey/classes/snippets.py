@@ -480,6 +480,11 @@ class Snippets(object):
         for RES_ALL in RES_ALL_CHANS:
 
             chan = RES_ALL["chan"]
+            if "load_suffix" in RES_ALL:
+                # Then this was loaded, note down which dataset it is
+                load_suffix = RES_ALL["load_suffix"]
+            else:
+                load_suffix = "IGNORE"
             bregion = RES_ALL["bregion"]
             RES = RES_ALL["RES"]
             RES_FR = RES_ALL["RES_FR"]
@@ -499,6 +504,7 @@ class Snippets(object):
                             "val_kind":val_kind,
                             "var":var,
                             "chan":chan,
+                            "load_suffix":load_suffix,
                             "bregion":bregion
                         })
                                         
@@ -512,6 +518,7 @@ class Snippets(object):
                         "val_kind":"avgmodulation_across_methods",
                         "var":var,
                         "chan":chan,
+                        "load_suffix":load_suffix,
                         "bregion":bregion
                     })
                 
@@ -523,6 +530,7 @@ class Snippets(object):
                     "val":yscal,
                     "val_kind":"avgfr_across_events",
                     "chan":chan,
+                    "load_suffix":load_suffix,
                     "bregion":bregion
                 })
 
@@ -543,6 +551,7 @@ class Snippets(object):
                             "var_level":lev,
                             "var":var,
                             "chan":chan,
+                            "load_suffix":load_suffix,
                             "bregion":bregion
                         })
 
@@ -557,6 +566,7 @@ class Snippets(object):
                             "var_level":lev,
                             "var":var,
                             "chan":chan,
+                            "load_suffix":load_suffix,
                             "bregion":bregion
                         })
 
@@ -574,6 +584,7 @@ class Snippets(object):
                 mod_mean = np.mean(RES[modver][var])
                 dat_summary_mod.append({
                     "chan":chan,
+                    "load_suffix":load_suffix,
                     "bregion":bregion,
                     "val":mod_mean,
                     "val_kind":f"{var}_mean",
@@ -590,6 +601,7 @@ class Snippets(object):
                     mod_delt = lr(x, y).slope
                 dat_summary_mod.append({
                     "chan":chan,
+                    "load_suffix":load_suffix,
                     "bregion":bregion,
                     "val":mod_delt,
                     "val_kind":f"{var}_delt",
@@ -1298,13 +1310,17 @@ class Snippets(object):
 
 
     ############### PLOTS
-    def plotmod_overlay_event_boundaries(self, ax, event):
+    def plotmod_overlay_event_boundaries(self, ax, event, overlay_pre_and_post_boundaries=True):
         """ Overlay the boundaries of this event (vertical lines)
         """
 
         pre_dur, post_dur = self.event_extract_pre_post_dur(event)
         # Overlay event bounds
-        event_bounds = [pre_dur, 0., post_dur]
+        if overlay_pre_and_post_boundaries:
+            event_bounds = [pre_dur, 0., post_dur]
+        else:
+            event_bounds = [None, 0., None]
+
         colors = ['r', 'k', 'b']
         for evtime, pcol in zip(event_bounds, colors):
             if evtime is not None:
@@ -1360,29 +1376,52 @@ class Snippets(object):
 
 
     def plot_smfr_average_each_level(self, chan, savedir=None,
-        list_var = None):
+        list_var = None, list_events_uniqnames=None, orient="vert",
+        width=3, height=2, overlay_pre_and_post_boundaries = True):
         """ For each var a subplot, overlaying smoothed fr for each level for that
         var. Also splits by event.
         """
 
+        list_events_uniqnames, _, list_pre_dur, list_post_dur = \
+            self.event_list_extract_linked_params(list_events_uniqnames)
+
         # Info
         bregion = self.SN.sitegetter_thissite_info(chan)["region"]
-        list_events_uniqnames = self.Params["list_events_uniqnames"]
-        list_pre_dur = self.Params["list_pre_dur"]
-        list_post_dur = self.Params["list_post_dur"]
+        # if list_events_uniqnames is None:
+        #     list_events_uniqnames = self.Params["list_events_uniqnames"]
+        # list_pre_dur = self.Params["list_pre_dur"]
+        # list_post_dur = self.Params["list_post_dur"]
         map_var_to_levels = self.Params["map_var_to_levels"]
         if list_var is None:
             list_var = self.Params["list_features_get_conjunction"]
 
-        nrows = len(list_events_uniqnames)
-        ncols = len(list_var)
-        fig, axes = plt.subplots(nrows, ncols, sharex="row", sharey=True, 
-            figsize=(ncols*3, nrows*2), squeeze=False)
+        if orient=="vert":
+            nrows = len(list_events_uniqnames)
+            ncols = len(list_var)
+            share = "row"
+        elif orient=="horiz":
+            nrows = len(list_var)
+            ncols = len(list_events_uniqnames)
+            share="col"
+        else:
+            assert False
+        fig, axes = plt.subplots(nrows, ncols, sharex=share, sharey=True, 
+            figsize=(ncols*width, nrows*height), squeeze=False)
 
         for i, (event, pre_dur, post_dur) in enumerate(zip(list_events_uniqnames, list_pre_dur, list_post_dur)):
             for k, var in enumerate(list_var):
                 
-                ax = axes[i][k]
+                if orient=="vert":
+                    ax = axes[i][k]
+                elif orient=="horiz":
+                    ax = axes[k][i]
+                else:
+                    assert False
+
+                if overlay_pre_and_post_boundaries:
+                    event_bounds=[pre_dur, 0., post_dur]
+                else:
+                    event_bounds=[None, 0., None]
 
                 # Each level is a single smoothed fr, diff color
                 list_levels = map_var_to_levels[var]
@@ -1393,7 +1432,7 @@ class Snippets(object):
                 # Plot
                 add_legend=i==0
                 pathis.plotwrapper_smoothed_fr_split_by_label("trials", var, 
-                    ax=ax, event_bounds=[pre_dur, 0., post_dur], 
+                    ax=ax, event_bounds=event_bounds,
                     add_legend=add_legend)
 
                 if i==0:
@@ -1409,7 +1448,7 @@ class Snippets(object):
                     
 
     def plot_rasters_split_by_feature_levels(self, list_sites=None, savedir=None,
-            list_var = None):
+            list_var = None, save_ext="png", list_events=None, orient="vert"):
         """ Plot each site, and also split into each feature and event.
         BEtter to plot separately becuase crashes if try to have them all as
         separeat subplots
@@ -1417,7 +1456,8 @@ class Snippets(object):
 
         if list_sites is None:
             list_sites = self.Sites
-        list_events = self.Params["list_events_uniqnames"]
+        if list_events is None:
+            list_events = self.Params["list_events_uniqnames"]
         if list_var is None:
             list_var = self.Params["list_features_get_conjunction"]
 
@@ -1426,9 +1466,10 @@ class Snippets(object):
 
             for var in list_var:
                 fig, axes = self._plot_rasters_split_by_feature_levels(site, 
-                    [var])
+                    [var], list_events_uniqnames=list_events, orient=orient)
                 if savedir is not None:
-                    fig.savefig(f"{savedir}/{bregion}-{site}-{var}.png")
+                    # fig.savefig(f"{savedir}/{bregion}-{site}-{var}.{save_ext}", dpi=300)
+                    fig.savefig(f"{savedir}/{bregion}-{site}-{var}.{save_ext}")
 
                 # OLD: split by event.
                 # for ev in list_events:
@@ -1440,8 +1481,10 @@ class Snippets(object):
                 plt.close("all")
 
 
+
     def _plot_rasters_split_by_feature_levels(self, site, 
-        list_var = None, list_events_uniqnames = None):
+        list_var = None, list_events_uniqnames = None, orient="vert",
+        width = 4, height = 3, overlay_pre_and_post_boundaries = True):
         """ Plot rasters, comparing all trials across levels for each var and event 
         combo
         """
@@ -1453,36 +1496,51 @@ class Snippets(object):
         map_var_to_levels = self.Params["map_var_to_levels"]
         # overlay event boundaires
 
-        # same length lists, len num events.
-        list_events_uniqnames_ALL = self.Params["list_events_uniqnames"]
-        list_events_orig_ALL = self.Params["list_events"]
-        list_pre_dur_ALL = self.Params["list_pre_dur"]
-        list_post_dur_ALL = self.Params["list_post_dur"]
+        # # same length lists, len num events.
+        # list_events_uniqnames_ALL = self.Params["list_events_uniqnames"]
+        # list_events_orig_ALL = self.Params["list_events"]
+        # list_pre_dur_ALL = self.Params["list_pre_dur"]
+        # list_post_dur_ALL = self.Params["list_post_dur"]
 
-        if list_events_uniqnames is not None:
-            # Pull out these specific events, and assopcaited params
-            list_idx = [list_events_uniqnames_ALL.index(ev) for ev in list_events_uniqnames] 
+        # if list_events_uniqnames is not None:
+        #     # Pull out these specific events, and assopcaited params
+        #     list_idx = [list_events_uniqnames_ALL.index(ev) for ev in list_events_uniqnames] 
 
-            list_events_uniqnames = [list_events_uniqnames_ALL[i] for i in list_idx]
-            list_events_orig = [list_events_orig_ALL[i] for i in list_idx]
-            list_pre_dur = [list_pre_dur_ALL[i] for i in list_idx]
-            list_post_dur = [list_post_dur_ALL[i] for i in list_idx]
+        #     list_events_uniqnames = [list_events_uniqnames_ALL[i] for i in list_idx]
+        #     list_events_orig = [list_events_orig_ALL[i] for i in list_idx]
+        #     list_pre_dur = [list_pre_dur_ALL[i] for i in list_idx]
+        #     list_post_dur = [list_post_dur_ALL[i] for i in list_idx]
+        # else:
+        #     list_events_uniqnames = list_events_uniqnames_ALL
+        #     list_events_orig = list_events_orig_ALL
+        #     list_pre_dur = list_pre_dur_ALL
+        #     list_post_dur = list_post_dur_ALL
+
+        list_events_uniqnames, list_events_orig, list_pre_dur, list_post_dur = self.event_list_extract_linked_params(list_events_uniqnames)
+
+        if orient=="vert":
+            ncols = len(list_var)
+            nrows = len(list_events_uniqnames)
+        elif orient=="horiz":
+            ncols = len(list_events_uniqnames)
+            nrows = len(list_var)
         else:
-            list_events_uniqnames = list_events_uniqnames_ALL
-            list_events_orig = list_events_orig_ALL
-            list_pre_dur = list_pre_dur_ALL
-            list_post_dur = list_post_dur_ALL
+            print(orient)
+            assert False
 
-        ncols = len(list_var)
-        nrows = len(list_events_uniqnames)
-
-        fig, axes = plt.subplots(nrows, ncols, squeeze=False, figsize=(ncols*4, nrows*3))
+        fig, axes = plt.subplots(nrows, ncols, squeeze=False, 
+            figsize=(ncols*width, nrows*height))
 
         for i, var in enumerate(list_var):
             for j, (event, event_orig, pre_dur, post_dur) in \
                 enumerate(zip(list_events_uniqnames, list_events_orig, list_pre_dur, list_post_dur)):
 
-                ax = axes[j][i]
+                if orient=="vert":
+                    ax = axes[j][i]
+                elif orient=="horiz":
+                    ax = axes[i][j]
+                else:
+                    assert False
 
                 if var not in map_var_to_levels.keys():
                     self._preprocess_map_features_to_levels_input(var)
@@ -1510,7 +1568,7 @@ class Snippets(object):
                                            overlay_trial_events=False, xmin=pre_dur-0.2, 
                                            xmax=post_dur+0.2)
 
-                self.plotmod_overlay_event_boundaries(ax, event)
+                self.plotmod_overlay_event_boundaries(ax, event, overlay_pre_and_post_boundaries=overlay_pre_and_post_boundaries)
 
 
                 if j==0:
@@ -1519,7 +1577,143 @@ class Snippets(object):
                     ax.set_ylabel(event_orig)
         return fig, axes
 
+
+    def plot_rasters_smfr_each_level_combined(self, site, var, 
+        list_events_uniqnames = None, orient="vert",
+        width = 4, height = 3, overlay_pre_and_post_boundaries = True):
+        """ [Good], plot in a single figure both rasters and sm fr, aligned.
+        e.g, if orient is "horiz", then each col is an event, each row
+        is rasters (top) and sm fr (bottom).
+        PARAMS;
+        - var, str, the variable, e.g, epoch"
+        - width, height, for each subplot.
+        - overlay_pre_and_post_boundaries, if false, then just overlays the zero-time
+        """
+        
+        # 1) Extract the trials in SN which correspond to each of the levels 
+        # for this variable(feature).        
+        map_var_to_levels = self.Params["map_var_to_levels"]
+        list_events_uniqnames, list_events, list_pre_dur, list_post_dur = self.event_list_extract_linked_params(list_events_uniqnames)
+
+        if orient=="vert":
+            ncols = 2
+            nrows = len(list_events_uniqnames)
+            sharex = "row"
+            sharey = "col"
+        elif orient=="horiz":
+            ncols = len(list_events_uniqnames)
+            nrows = 2
+            sharex = "col"
+            sharey = "row"
+        else:
+            print(orient)
+            assert False
+
+        fig, axes = plt.subplots(nrows, ncols, squeeze=False, sharex=sharex, sharey=sharey,
+            figsize=(ncols*width, nrows*height))
+
+        for j, (event, event_orig, pre_dur, post_dur) in \
+            enumerate(zip(list_events_uniqnames, list_events, list_pre_dur, list_post_dur)):
+
+            if orient=="vert":
+                ax1 = axes[j][0]
+                ax2 = axes[j][1]
+            elif orient=="horiz":
+                ax1 = axes[0][j]
+                ax2 = axes[1][j]
+            else:
+                assert False
+
+            if var not in map_var_to_levels.keys():
+                self._preprocess_map_features_to_levels_input(var)
+            list_levels = map_var_to_levels[var]
+            
+            ################# PLOT RASTER
+            # collect trials in the order you want to plot them (bottom to top)
+            # get trialscodes from SP
+            list_trials_sn = []
+            list_labels = []
+            for lev in list_levels:
+                pathis = self.popanal_extract_specific_slice(event, site, (var, lev)) 
+                
+                # get the original trialcodes
+                list_trialcode = pathis.Xlabels["trials"]["trialcode"]
+
+                # map them to trials in sn
+                trials_sn = self.SN.datasetbeh_trialcode_to_trial_batch(list_trialcode)
+                if len(trials_sn)>0:
+                    list_trials_sn.append(trials_sn)
+                    list_labels.append(lev)
+
+            # method in sn, plitting rasters with blocked trials
+            self.SN.plot_raster_trials_blocked(ax1, list_trials_sn, site, list_labels, 
+                                       align_to=event_orig,
+                                       overlay_trial_events=False, xmin=pre_dur-0.2, 
+                                       xmax=post_dur+0.2)
+            self.plotmod_overlay_event_boundaries(ax1, event, overlay_pre_and_post_boundaries=overlay_pre_and_post_boundaries)
+
+            ################### PLOT SM FR
+            # Each level is a single smoothed fr, diff color
+            list_levels = map_var_to_levels[var]
+            if overlay_pre_and_post_boundaries:
+                event_bounds=[pre_dur, 0., post_dur]
+            else:
+                event_bounds=[None, 0., None]
+         
+            # Get for this event
+            pathis = self.popanal_extract_specific_slice(event, site)
+
+            # Plot
+            # add_legend=i==0
+            add_legend=j==0
+            pathis.plotwrapper_smoothed_fr_split_by_label("trials", var, 
+                ax=ax2, event_bounds=event_bounds,
+                add_legend=add_legend)
+
+            # make sm fr have same xlim as rasters
+            ax2.set_xlim(ax1.get_xlim())
+
+            if orient=="vert":
+                ax1.set_ylabel(event)
+            elif orient=="horiz":
+                ax1.set_title(event)
+
+        return fig, axes
+
     ########### UTILS
+    ########### UTILS
+    def event_list_extract_linked_params(self, list_events_uniqnames=None):
+        """ Helper to get things like predur etc for each even in list_events_uniqnames
+        Useful for plotting, eg. when plot just subset
+        PARAMS:
+        - list_events_uniqnames, list of str. if None, then returns all events
+        RETURNS:
+        - list_events_uniqnames, list_events_orig, list_pre_dur, list_post_dur, each
+        a list, matching indicesa across the lists.
+        """
+
+        list_events_uniqnames_ALL = self.Params["list_events_uniqnames"]
+        list_events_orig_ALL = self.Params["list_events"]
+        list_pre_dur_ALL = self.Params["list_pre_dur"]
+        list_post_dur_ALL = self.Params["list_post_dur"]
+
+        if list_events_uniqnames is not None:
+            # Pull out these specific events, and assopcaited params
+            list_idx = [list_events_uniqnames_ALL.index(ev) for ev in list_events_uniqnames] 
+
+            list_events_uniqnames = [list_events_uniqnames_ALL[i] for i in list_idx]
+            list_events_orig = [list_events_orig_ALL[i] for i in list_idx]
+            list_pre_dur = [list_pre_dur_ALL[i] for i in list_idx]
+            list_post_dur = [list_post_dur_ALL[i] for i in list_idx]
+        else:
+            list_events_uniqnames = list_events_uniqnames_ALL
+            list_events_orig = list_events_orig_ALL
+            list_pre_dur = list_pre_dur_ALL
+            list_post_dur = list_post_dur_ALL
+
+        return list_events_uniqnames, list_events_orig, list_pre_dur, list_post_dur
+
+
     def event_extract_pre_post_dur(self, event):
         """
         PARAMS:
@@ -1540,27 +1734,77 @@ class Snippets(object):
 
 
 
-    def save(self, sdir, fname="Snippets", add_tstamp=True, exclude_sn=True):
-        """ Saves self in directory sdir
-        as pkl files
+    # def save(self, sdir, fname="Snippets", add_tstamp=True, exclude_sn=True):
+    #     """ Saves self in directory sdir
+    #     as pkl files
+    #     """
+    #     import pickle as pkl
+    #     if exclude_sn:
+    #         assert False, "not coded"
+    #     if add_tstamp:
+    #         from pythonlib.tools.expttools import makeTimeStamp
+    #         ts = makeTimeStamp()
+    #         fname = f"{sdir}/{fname}-{ts}.pkl"
+    #     else:
+    #         fname = f"{sdir}/{fname}.pkl"
+
+    #     with open(fname, "wb") as f:
+    #         pkl.dump(self, f)
+
+    #     print(f"Saved self to {fname}")
+
+    def save(self, savedir, name="SP.pkl"):
+        """ Helper to save, which if tried to save all , would
+        be >1GB, here saves ewverythign except data in SN, and 
+        itmes in list_attr, which are larger data.
+        SAVES to f"{savedir}/{name}"
         """
-        import pickle as pkl
-        if exclude_sn:
-            assert False, "not coded"
-        if add_tstamp:
-            from pythonlib.tools.expttools import makeTimeStamp
-            ts = makeTimeStamp()
-            fname = f"{sdir}/{fname}-{ts}.pkl"
-        else:
-            fname = f"{sdir}/{fname}.pkl"
+        import pickle
+        
+        # Temporarily store varible that will remove
+        store_attr = {}
+        list_attr = ["DatSpikeWaveforms", "Datasetbeh", "PopAnalDict", "DatAll", "DatAllDf",
+            "DatSpikes", "DatTank"] # large size, >few hundred MB,
+        for attr in list_attr:
+            store_attr[attr] = getattr(self.SN, attr)
+            setattr(self.SN, attr, None)
+        
+        # DatAll = self.SN.DatAll
+        # DatAllDf = self.SN.DatAllDf
+        # DatSpikes = self.SN.DatSpikes
+        # DatTank = self.SN.DatTank
+        # # ListPA = self.ListPA
 
-        with open(fname, "wb") as f:
-            pkl.dump(self, f)
+        path = f"{savedir}/{name}"
+        print("SAving: ", path)
+        try:
+            with open(path, "wb") as f:
+                pickle.dump(self, f)
+        except Exception as err:
+            # restroe this before throwing erro
+            for attr in list_attr:
+                setattr(self.SN, attr, store_attr[attr])
 
-        print(f"Saved self to {fname}")
+            # self.SN.DatAll = DatAll
+            # self.SN.DatAllDf = DatAllDf
+            # self.SN.DatSpikes = DatSpikes
+            # self.SN.DatTank = DatTank
+            # self.ListPA = ListPA
+            raise err
+
+        # self.SN.DatAll = DatAll
+        # self.SN.DatAllDf = DatAllDf
+        # self.SN.DatSpikes = DatSpikes
+        # self.SN.DatTank = DatTank
+        for attr in list_attr:
+            setattr(self.SN, attr, store_attr[attr])
+
+        # self.ListPA = ListPA
 
     def copy(self, minimal=True):
-        """ make a copy, pruning variables that are not needed
+        """ make a copy, pruning variables that are not needed.
+        This keeps eveyrthing except original SN'data, and listpa.
+        THis allows to save without being too large (>1GB)
         PARAMS:
         - minimal, bool, if True, then copies only the PA objects
         the rest uses reference
@@ -1571,7 +1815,6 @@ class Snippets(object):
         # Params
         # Sites
         # Trials
-
 
 
 

@@ -86,6 +86,22 @@ class MultSessions(object):
 
         return D
 
+    #################### UTILS
+    def prune_remove_sessions_too_few_trials(self, min_n_trials):
+        """ for each suessions removes if trials (clean) 
+        (doesnt care whetehr exists in beh dataset) 
+        not enough.
+        RETURNS:
+        - modifies self.SessionsList in place
+        """
+        def _good(sn):
+            return len(sn.get_trials_list(True, True, False))>=min_n_trials
+
+        print("[MS] prune_remove_sessions_too_few_trials...")
+        print("Starting  num sessions: ", len(self.SessionsList))
+        self.SessionsList = [sn for sn in self.SessionsList if _good(sn)]
+        print("Ending num sessions: ", len(self.SessionsList))
+
 
     ################### SITES
     # (Generally asserts that all sessions have same channels ...)

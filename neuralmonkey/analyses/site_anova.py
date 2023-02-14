@@ -4,7 +4,10 @@ Relates to notebook: 220713_prims_state_space.ipynb
 """
 import numpy as np
 
-def params_database_extract(MS, QUESTION = "sequence", DEBUG=False, EVENTS_SIMPLE = False):
+def params_database_extract(MS, QUESTION, EVENTS_SIMPLE, 
+    DATASET_PRUNE_SAME_BEH_ONLY, REMOVE_BASELINE_EPOCHS, 
+    n_min_trials_in_each_epoch, first_stroke_same_only,
+    DEBUG=False, MINIMAL_PLOTS=False):
     """ Hold hard-coded params for different kidns of experimemnts.
     """
     # Which version to use?
@@ -16,9 +19,21 @@ def params_database_extract(MS, QUESTION = "sequence", DEBUG=False, EVENTS_SIMPL
     # DEBUG = True
     # EVENTS_SIMPLE = True # simple (baseline, planning, exec)
     SESSIONS = range(len(MS.SessionsList))
-    LIST_PLOTS = ["summarystats", "heatmaps", "eachsite_allvars", 
-                "eachsite_smfr", "eachsite_rasters"]
-    THINGS_TO_COMPUTE = ("modulation", "fr")
+    # LIST_PLOTS = ["summarystats", "heatmaps", "eachsite_allvars", 
+    #             "eachsite_smfr", "eachsite_rasters"]
+    # THINGS_TO_COMPUTE = ("modulation", "fr")
+    THINGS_TO_COMPUTE = ("modulation")
+    if MINIMAL_PLOTS:
+        LIST_PLOTS = ["summarystats", "heatmaps"]
+    else:
+        # LIST_PLOTS = ["summarystats", "heatmaps", "eachsite_smfr", "eachsite_rasters"]
+        LIST_PLOTS = ["summarystats", "heatmaps", "eachsite_smfr", "eachsite_rasters"]
+    
+    HACK = False
+    if HACK:
+        LIST_PLOTS = ["summarystats", "heatmaps"]
+        # LIST_PLOTS = ["eachsite_rasters"] 
+        # LIST_PLOTS = [] # just save
 
     #######################################
     list_features_extraction = ["trialcode", "epoch", "character", "taskgroup", "supervision_stage_concise"]
@@ -74,9 +89,10 @@ def params_database_extract(MS, QUESTION = "sequence", DEBUG=False, EVENTS_SIMPL
             list_events = ["fixcue", "fixcue", "fix_touch", "samp", "samp", "first_raise", "on_strokeidx_0", "on_strokeidx_0"]
             list_pre_dur = [-0.8, 0.05, -0.45, -0.65, 0.1, -0.55, -0.55, 0.05]
             list_post_dur = [-0.1, 0.75, -0, -0.05, 0.95, -0.05, -0.05, 0.55]
-        list_features_get_conjunction = ["epoch", "character"]
+        
+        # list_features_get_conjunction = ["epoch", "character"]
+        list_features_get_conjunction = ["epoch"]
 
-        DATASET_PRUNE_SAME_BEH_ONLY = False
 
     elif QUESTION=="sequence":
         list_events = ["fix_touch", "samp", "samp", "first_raise", "on_strokeidx_0", "on_strokeidx_1"]
@@ -97,13 +113,17 @@ def params_database_extract(MS, QUESTION = "sequence", DEBUG=False, EVENTS_SIMPL
 
     # make sure do extraction of relevant features.
     list_features_extraction = list(set(list_features_extraction + list_features_get_conjunction))
-    print(list_features_extraction)
+    print("list_features_extraction: ", list_features_extraction)
 
     if QUESTION=="rulesw":
+        # Run this to simlate what the rueslting data would be.
         from pythonlib.tools.pandastools import grouping_print_n_samples
         sn = MS.SessionsList[0]
-        D = _dataset_extract_prune_rulesw(sn, same_beh_only=DATASET_PRUNE_SAME_BEH_ONLY)
-        grouping_print_n_samples(D.Dat, ["character", "epoch"]);
+        D = _dataset_extract_prune_rulesw(sn, same_beh_only=DATASET_PRUNE_SAME_BEH_ONLY,
+            n_min_trials_in_each_epoch=n_min_trials_in_each_epoch, 
+            remove_baseline_epochs=REMOVE_BASELINE_EPOCHS,
+            first_stroke_same_only=first_stroke_same_only)
+        # grouping_print_n_samples(D.Dat, ["character", "epoch"]);
 
     # SAVE PARAMS
     PARAMS = {
@@ -199,13 +219,18 @@ def _dataset_extract_prune_sequence(sn, n_strok_max = 2):
     return D
 
 
-def _dataset_extract_prune_rulesw(sn, plot_tasks=False, 
-                                  same_beh_only=True, n_min_trials_in_each_epoch=2):
+def _dataset_extract_prune_rulesw(sn, same_beh_only, 
+        n_min_trials_in_each_epoch, remove_baseline_epochs, 
+        first_stroke_same_only,
+        plot_tasks=False):
     """
     Prep beh dataset before extracting snippets.
     Return pruned dataset (copy), to do rule swtiching analy
     matching motor beh, etc.
     """
+
+    if first_stroke_same_only:
+        assert same_beh_only==False, "this will throw out cases with same first stroke, but nto all strokes same."
     D = sn.Datasetbeh.copy()
 
     ##### Clean up tasks
@@ -225,6 +250,7 @@ def _dataset_extract_prune_rulesw(sn, plot_tasks=False,
     print("############ TAKING ONLY CORRECT TRIALS")
     inds_correct = []
     inds_incorrect = []
+    list_correctness = []
     for ind in range(len(D.Dat)):
         dat = D.sequence_extract_beh_and_task(ind)
         taskstroke_inds_beh_order = dat["taskstroke_inds_beh_order"]
@@ -233,73 +259,151 @@ def _dataset_extract_prune_rulesw(sn, plot_tasks=False,
         if taskstroke_inds_beh_order==taskstroke_inds_correct_order:
             # correct
             inds_correct.append(ind)
+            list_correctness.append(True)
         else:
             inds_incorrect.append(ind)
+            list_correctness.append(False)
+
+    D.Dat["sequence_correct"] = list_correctness
+    print("-- Correctness:")
+    D.grouping_print_n_samples(["character", "epoch", "sequence_correct"])
 
     print("correct, incorrect:", len(inds_correct), len(inds_incorrect))
     D.subsetDataframe(inds_correct)
     print("Dataset len:", len(D.Dat))
 
     print("############ TAKING ONLY NO SUPERVISION TRIALS")
+    LIST_NO_SUPERV = ["off|0||0", "off|1|solid|0", "off|1|rank|0"]
     # Only during no-supervision blocks
-    D.filterPandas({"supervision_stage_concise":["off|1|solid|0"]}, "modify")
+    print(D.Dat["supervision_stage_concise"].value_counts())
+    D.filterPandas({"supervision_stage_concise":LIST_NO_SUPERV}, "modify")
     print("Dataset len:", len(D.Dat))
 
     # Only characters with same beh across rules.
     # 2) Extract takss done the same in mult epochs
+    if first_stroke_same_only:
+        # find lsit of tasks that have same first stroke across epochs.
+        from pythonlib.tools.pandastools import grouping_append_and_return_inner_items
+        list_tasks = D.Dat["character"].unique().tolist()
+        list_epoch = D.Dat["epoch"].unique().tolist()
+        info = grouping_append_and_return_inner_items(D.Dat, ["character", "epoch"])
+        list_tasks_keep = []
+        print("n unique first stroke identities for each task:")
+        for task in list_tasks:
+            list_orders = []
+            for ep in list_epoch:
+                if (task, ep) in info.keys():
+                    idx = info[(task, ep)][0] # take first task in epoch
+                    sdict = D.sequence_extract_beh_and_task(idx)
+                    order = sdict["taskstroke_inds_correct_order"]
+                    list_orders.append(order)
+            n_orders_first_sroke = len(list(set([o[0] for o in list_orders])))
+            n_epochs_with_data = len(list_orders)
+            print("task, n_orders_first_sroke, n_epochs_with_data ... ")
+            print(task, n_orders_first_sroke, n_epochs_with_data)
+            if n_orders_first_sroke==1 and n_epochs_with_data>1:
+                list_tasks_keep.append(task)
+        print("These tasks keep (same first stroke): ", list_tasks_keep)
+        D.filterPandas({"character":list_tasks_keep}, "modify")
+        print("New len of D:", len(D.Dat))
+
     if same_beh_only:
         print("############ TAKING ONLY CHAR WITH SAME BEH ACROSS TRIALS")
-        from pythonlib.dataset.dataset_preprocess.probes import _generate_map_taskclass
-        mapper_taskname_epoch_to_taskclass = _generate_map_taskclass(D)
+        if True:
+            # Already extracted in taskgroups (probes.py)
+            print("Using this filter on taskgroup: same_beh, same_beh-P]")
+            print("Starting task groups:")
+            print("N chars per group:")    
+            for grp, inds in D.grouping_get_inner_items("taskgroup", "character").items():
+                print(grp, ":", len(inds))    
+                
+            print("----")
+            print("N trials per group:")
+            for grp, inds in D.grouping_get_inner_items("taskgroup").items():
+                print(grp, ":", len(inds))
+            print("---------------------")    
+            D.grouping_print_n_samples(["taskgroup", "epoch", "character"])
 
-        list_task = D.Dat["character"].unique().tolist()
-        list_epoch = D.Dat["epoch"].unique().tolist()
-        if len(list_epoch)<2:
-            print("maybe failed to preprocess dataset to reextract epochs?")
-            assert False
-        print(list_task)
-        print(list_epoch)
-        dict_task_orders = {}
-        for task in list_task:
+            D.filterPandas({"taskgroup":["same_beh", "same_beh-P"]}, "modify")
+        else:
+            # Old method, obsolste, this is done to define taskgroup in probes.py
+            from pythonlib.dataset.dataset_preprocess.probes import _generate_map_taskclass
+            mapper_taskname_epoch_to_taskclass = _generate_map_taskclass(D)
 
-            list_inds_each_epoch = []
-            for epoch in list_epoch:
+            list_task = D.Dat["character"].unique().tolist()
+            list_epoch = D.Dat["epoch"].unique().tolist()
+            if len(list_epoch)<2:
+                print("maybe failed to preprocess dataset to reextract epochs?")
+                assert False
+            print(list_task)
+            print(list_epoch)
+            dict_task_orders = {}
+            for task in list_task:
 
-                if (task, epoch) not in mapper_taskname_epoch_to_taskclass.keys():
-                    # Then this task has at least one epoch for which it doesnet havet rials.
-                    # print((task, epoch))
-                    # print(mapper_taskname_epoch_to_taskclass)
-                    INCLUDE_THIS_TASK = False
-                    # assert False, "should first exclude tasks that are not present across all epochs"
-                else:
-                    Task = mapper_taskname_epoch_to_taskclass[(task, epoch)]
-                    inds_ordered = Task.ml2_objectclass_extract_active_chunk(return_as_inds=True)
-                    list_inds_each_epoch.append(tuple(inds_ordered))
+                list_inds_each_epoch = []
+                for epoch in list_epoch:
 
-            if plot_tasks:
-                ax = Task.plotStrokes(ordinal=True)
-                ax.set_title(f"{task}")
+                    if (task, epoch) not in mapper_taskname_epoch_to_taskclass.keys():
+                        # Then this task has at least one epoch for which it doesnet havet rials.
+                        # print((task, epoch))
+                        # print(mapper_taskname_epoch_to_taskclass)
+                        INCLUDE_THIS_TASK = False
+                        # assert False, "should first exclude tasks that are not present across all epochs"
+                    else:
+                        Task = mapper_taskname_epoch_to_taskclass[(task, epoch)]
+                        inds_ordered = Task.ml2_objectclass_extract_active_chunk(return_as_inds=True)
+                        list_inds_each_epoch.append(tuple(inds_ordered))
 
-            dict_task_orders[task] = list_inds_each_epoch
-        
-        print(dict_task_orders)
-        # pull out tasks which have same sequence
-        tasks_same_sequence = []
-        for taskname, list_seqs in dict_task_orders.items():
-            if len(list(set(list_seqs)))==1:
-                tasks_same_sequence.append(taskname)
-        print("\nTHese tasks foudn to have same seuqence across epochs: ")
-        print(tasks_same_sequence)
-        D.filterPandas({"character":tasks_same_sequence}, "modify")
+                if plot_tasks:
+                    ax = Task.plotStrokes(ordinal=True)
+                    ax.set_title(f"{task}")
+
+                dict_task_orders[task] = list_inds_each_epoch
+            
+            print(dict_task_orders)
+            # pull out tasks which have same sequence
+            tasks_same_sequence = []
+            for taskname, list_seqs in dict_task_orders.items():
+                if len(list(set(list_seqs)))==1:
+                    tasks_same_sequence.append(taskname)
+            print("\nTHese tasks foudn to have same seuqence across epochs: ")
+            print(tasks_same_sequence)
+            D.filterPandas({"character":tasks_same_sequence}, "modify")
         print("Dataset len:", len(D.Dat))
+
+    # Remove epoch = baseline
+    if remove_baseline_epochs:
+        # D.Dat[~(D.Dat["epoch"].isin(["base", "baseline"]))]
+        indskeep = D.Dat[~(D.Dat["epoch"].isin(["base", "baseline"]))].index.tolist()
+        D.subsetDataframe(indskeep)
 
     # Only if have at least N trials per epoch
     print("############ TAKING ONLY CHAR with min n trials in each epoch")
+    # print(D.Dat["character"].value_counts())
+    # print(D.Dat["epoch"].value_counts())
+    D.grouping_print_n_samples(["taskgroup", "epoch", "character"])
     df = D.prune_min_ntrials_across_higher_levels("epoch", "character", n_min=n_min_trials_in_each_epoch)
     D.Dat = df
 
     # Final length of D.Dat
     print("Final n trials", len(D.Dat))
+    print("Dataset conjunctions:")
+    D.grouping_print_n_samples(["taskgroup", "epoch", "character"])
+
     return D
 
 
+def save_all(SP, RES_ALL_CHANS, SAVEDIR_SCALAR):
+    """ Help save data
+    """
+    import pickle
+    # 1) SP
+    SP.save(SAVEDIR_SCALAR)
+
+    # 2) RES_ALL_CHANS
+    path = f"{SAVEDIR_SCALAR}/RES_ALL_CHANS.pkl"
+    print("SAving: ", path)
+    with open(path, "wb") as f:
+        pickle.dump(RES_ALL_CHANS, f)
+
+    print("Done...!")

@@ -147,9 +147,13 @@ touch preprocess_log.txt
 # d=221217 # first date to check.
 # date2=230108 # the final date to check
 
-# 230205_7
-d=220719 # first date to check.
-date2=220719 # the final date to check
+# # 230205_7
+# d=220719 # first date to check.
+# date2=220719 # the final date to check
+
+# 2300213
+d=221114 # first date to check.
+date2=221114 # the final date to check
 
 date1=$d
 until [[ ${date1} > ${date2} ]]; do

@@ -357,10 +357,9 @@ class Session(object):
         print("Saved all bad site to self.SitesErrorSpikeDat")
         self.SitesMetadata["sites_error_spikes"] = sites_bad
 
-    def load_metadata_sites(self, dirty_kinds = ("sites_garbage", "sites_low_fr", "sites_error_spikes")):
+    def load_metadata_sites(self):
         """ Load info about which sites are garbage, hand coded
         PARAMS:
-        - dirty_kinds, list str, sites marked as any of these kinds will be designated "dirty"
         """
         from pythonlib.tools.expttools import load_yaml_config
         import os
@@ -369,7 +368,6 @@ class Session(object):
         if os.path.exists(path):
             print("Found! metada path : ", path)
             out = load_yaml_config(path)
-
             # if anything is list of lists, then each inner list is a diff session.
             # so take the union.
             list_sites_keys = ["sites_garbage", "sites_low_fr"]
@@ -392,14 +390,105 @@ class Session(object):
 
         self._sitesdirty_update()
 
+    def sitesdirty_filter_by_spike_magnitude(self, 
+            # MIN_THRESH = 90, # before 2/12/23
+            MIN_THRESH = 70, # this seems better, dont throw out some decent units.
+            plot_results=False, plot_spike_waveform=False, 
+            update_metadata=True):
+        """ Prune channels with small spikes
+        Can do this dynamaically, is pretty quick.
+        PARAMS:
+        - MIN_THRESH, scalar, all sites with spk peak to trough (some sumary stats) 
+        less than this are retrns inot
+        RETURNS:
+        - dataframe, with columns "site     spk_peak_to_trough  keep",
+        - updates self.SitesMetadata["sites_low_spk_magn"] = sites_remove (if
+        update_metadata==True)
+        ===
+        """
+        import pandas as pd
+        import numpy as np
+        import seaborn as sns
 
-    def _sitesdirty_update(self, dirty_kinds = ("sites_garbage", "sites_low_fr", "sites_error_spikes")):
+
+        # get current sites
+        sites = self.sitegetter_all(clean=False)
+        res = []
+        for s in sites:
+            rs, chan = self.convert_site_to_rschan(s)
+            spk = self.load_spike_waveforms_(rs, chan) # (nspk, ntimebins), e.g., (1000,30)
+
+            if plot_spike_waveform:
+                fig, ax = plt.subplots(1,1)
+                self.plot_spike_waveform(ax, spk)
+                assert False, "or else too many plots."
+        
+            # for each spike, get peak to trough
+            minvals = np.min(spk, axis=1)
+            maxvals = np.max(spk, axis=1)
+            vals = maxvals - minvals
+            spk_peak_to_trough = np.percentile(vals, [90])[0] # useful in some cases where the singal spike is rleatively lower frequency.
+
+            res.append({
+                "site":s,
+        #         "spk_peak_to_trough":np.mean(spk_peak_to_trough)
+                "spk_peak_to_trough": spk_peak_to_trough,
+                "keep": spk_peak_to_trough>=MIN_THRESH
+            })
+        dfthis = pd.DataFrame(res)
+        # print for each site
+        # plot each site, coloring based on whether crossed threshold
+
+        # OUTPUT
+        sites_remove = dfthis[dfthis["keep"]==False]["site"].tolist()
+        # Update metadata
+        self.SitesMetadata["sites_low_spk_magn"] = sites_remove
+
+        # Print
+        print("Printing whether spikes gotten (o) or not (-) because of spike peak to trough")
+        for i in range(len(dfthis)):
+            s = dfthis.iloc[i]["site"]
+            pt = dfthis.iloc[i]["spk_peak_to_trough"]
+            keep = dfthis.iloc[i]["keep"]
+            
+            if keep:
+                print("o ", s, pt)
+            else:
+                print("- ", s, pt)
+
+        # histogram
+        if plot_results:
+            fig, axes = plt.subplots(2,2)
+            ax = axes.flatten()[0]
+            ax.hist(dfthis["spk_peak_to_trough"], bins=20)
+
+            sns.relplot(data=dfthis, x="site", y="spk_peak_to_trough", hue="keep", aspect=2)
+            plt.grid(True)
+
+
+        return dfthis
+
+    def _sitesdirty_update(self, dirty_kinds = None):
+
+        if dirty_kinds is None:
+            # dirty_kinds = ("sites_garbage", "sites_low_fr",  # before 2/13/23
+            #     "sites_error_spikes", "sites_low_spk_magn")
+            dirty_kinds = ("sites_garbage", 
+                "sites_error_spikes", "sites_low_spk_magn")
+
         sites_dirty = []
         print("updating self.SitesDirty with: ", dirty_kinds)
         for kind in dirty_kinds:
-            if kind in self.SitesMetadata.keys():
+            if kind=="sites_low_spk_magn" and "sites_low_spk_magn" not in self.SitesMetadata.keys():
+                # Then extract it
+                self.sitesdirty_filter_by_spike_magnitude()
                 sites = self.SitesMetadata[kind]
                 sites_dirty.extend(sites)
+            elif kind in self.SitesMetadata.keys():
+                sites = self.SitesMetadata[kind]
+                sites_dirty.extend(sites)
+            else:
+                print("[_sitesdirty_update] skipping! since did not find: ", kind)
         self.SitesDirty = sorted(set(sites_dirty))
 
 
@@ -1136,7 +1225,7 @@ class Session(object):
                         self._MapperSiteTrial2DatAllInd = pickle.load(f)
                 else:
                     # generate mapper, slice each one and this will autoamtically extract
-                    self.mapper_extract("sitetrial_to_datallind")
+                    self.mapper_extract("sitetrial_to_datallind", save=save)
                 
                 # dont rerun
                 LOADED = True
@@ -1164,7 +1253,7 @@ class Session(object):
                 self._extract_raw_and_spikes(rss, chans, t, get_raw=get_raw) 
 
             # generate mapper, slice each one and this will autoamtically extract
-            self.mapper_extract("sitetrial_to_datallind")
+            self.mapper_extract("sitetrial_to_datallind", save=save)
             
             # Save
             if save:
@@ -1951,7 +2040,7 @@ class Session(object):
     def sitegetter_get_brainregion_list(self, combine_into_larger_areas=False):
         """ Get list of str, names of all brain regions.
         """
-        dict_sites = self._sitegetter_generate_mapper_region_to_sites(
+        dict_sites = self._sitegetter_generate_mapper_region_to_sites(clean=False,
             combine_into_larger_areas=combine_into_larger_areas)
         return list(dict_sites.keys())
 
@@ -2913,6 +3002,7 @@ class Session(object):
                 print("**Loaded dataset! daily")
             except:
                 # Try loading using "null" rule, which is common
+                assert dataset_beh_expt is not None, "assuming you wanted to get daily, but somehow failed and got to here... check that daily dataset actually exists."
                 self.datasetbeh_load(dataset_beh_expt=dataset_beh_expt, 
                     version="main")
                 print("**Loaded dataset! using rule: null")
@@ -2947,7 +3037,6 @@ class Session(object):
 
         # 1) Load Dataset
         if version=="daily":
-            assert dataset_beh_expt is None, "did you try to get main? then use version=main"
             D = load_dataset_daily_helper(self.Animal, self.Date)
         elif version=="main":
             if self.DatasetbehExptname is None:
@@ -3044,6 +3133,8 @@ class Session(object):
         fig, ax = plt.subplots(1,1)
         # SN.plot_trial_timecourse_summary(ax, trial)
         self.plot_final_drawing(ax,trial)
+
+        return fig, ax
 
 
     def datasetbeh_extract_dataframe(self, list_trials):
@@ -3641,6 +3732,13 @@ class Session(object):
 
             # Store for output
             dict_events[event] = times
+
+        # if any events didnt get anythjing, try to reextract
+        for ev, times in dict_events.items():
+            if len(times)==0 and overwrite==False:
+                print("Trying to reextract (trial, event):", trial, ev)
+                dict_events[ev] = self.events_get_time_using_photodiode(trial, 
+                    list_events=[ev], overwrite=True)[ev]
 
         return dict_events
 
@@ -4256,7 +4354,15 @@ class Session(object):
  
             # slice to time window
             time_align = self.events_get_time_using_photodiode(tr, list_events=[alignto])[alignto]
+            # if len(time_align)==0:
+            #     # Try reextracting, could be updated code solved this.
+            #     self.events_get_time_using_photodiode(tr, list_events=[alignto], overwrite=True)
+            #     # try eagain                
+            #     time_align = self.events_get_time_using_photodiode(tr, list_events=[alignto])[alignto]
             if len(time_align)==0:
+                # now its relaly fucked.
+                # run this to make the stream plot
+                self.events_get_time_using_photodiode(tr, list_events=[alignto], overwrite=True, plot_beh_code_stream=True)
                 print(sites)
                 print(tr)
                 print(alignto)
@@ -4661,7 +4767,8 @@ class Session(object):
 
     def plot_raster_trials(self, ax, list_trials, site, alignto=None,
         raster_linelengths=0.9, alpha_raster = 0.9, overlay_trial_events=True,
-        ylabel_trials=True, plot_rasters=True, xmin = None, xmax = None):
+        ylabel_trials=True, plot_rasters=True, xmin = None, xmax = None,
+        overlay_strokes=True):
         """ Plot raster, for these trials, on this axis.
         PARAMS:
         - list_trials, list of indices into self. will plot them in order, from bottom to top
@@ -4685,14 +4792,14 @@ class Session(object):
                 # rs, chan = self.convert_site_to_rschan(site)
                 D = self.datall_slice_single_bysite(site, trial)
                 # D = self.datall_slice_single(rs, chan, trial0=trial)
-                spikes = D['spike_times']
+                spikes = D["spike_times"]
                 self.plot_raster_line(ax, spikes, i, alignto_time=alignto_time, 
                     linelengths=raster_linelengths, alpha=alpha_raster)
             
             # - overlay beh things
+            ALPHA_MARKERS = 1-np.clip(len(list_trials)/ 200, 0.25, 0.75)
             if overlay_trial_events:
                 # Auto determine alpha for markers, based on num trials
-                ALPHA_MARKERS = 1-np.clip(len(list_trials)/ 200, 0.25, 0.75)
 
             #     SN.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, only_on_edge="top")
                 if i==0:
@@ -4704,6 +4811,10 @@ class Session(object):
                                                 include_text=include_text, text_yshift = -0.5, alpha=ALPHA_MARKERS)
                 self.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, 
                                                 YLIM=[i-0.4, i-0.2], which_events=["strokes"], alpha=ALPHA_MARKERS)
+            elif overlay_strokes:
+                self.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, 
+                                                YLIM=[i-0.4, i-0.2], which_events=["strokes"], 
+                                                alpha=ALPHA_MARKERS, strokes_patches=True)
         
         # subsample trials to label
         if ylabel_trials:
@@ -4936,9 +5047,9 @@ class Session(object):
             for on, of in zip(ons, offs):
                 if only_on_edge:
                     if only_on_edge=="top":
-                        ax.hlines(YLIM[1], on, of, color="r")
+                        ax.hlines(YLIM[1], on, of, color="r", alpha=alpha)
                     elif only_on_edge=="bottom":
-                        ax.hlines(YLIM[0], on, of, color="r")
+                        ax.hlines(YLIM[0], on, of, color="r", alpha=alpha)
                     else:
                         assert False
                         # ax., YLIM[1], "v", color=col)
@@ -5651,6 +5762,13 @@ class Session(object):
             return None
         else:
             return dfthis.index[0]
+
+    def datasetbeh_datidx_to_trial(self, datidx):
+        """ returns, for this index in self.Datasetbeh, the
+        neural trial """
+
+        trialcode = self.Datasetbeh.Dat.iloc[datidx]["trialcode"]
+        return self.datasetbeh_trialcode_to_trial(trialcode)
 
     def datasetbeh_trialcode_to_trial(self, trialcode):
         """ given trialcode (string) return trial in neural data
