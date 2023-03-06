@@ -1343,6 +1343,16 @@ class Session(object):
 
         return self.DatAll
 
+    ##################### DEBUGGING
+    def debug_event_photodiode_detection():
+        assert False, "just notes here"
+        t = 348
+        alignto = "first_raise"
+        sn = MS.SessionsList[0]
+        # sn.smoothedfr_extract_timewindow([t], [1], alignto)
+        sn.events_get_time_using_photodiode(t, list_events=[alignto], overwrite=True, plot_beh_code_stream=True)
+
+    ####################### DATALL operations
     def datall_cleanup_add_things(self, only_generate_dataframe=False):
         """ Quick processing, things to add to datall in case not already 
         added 
@@ -1991,10 +2001,14 @@ class Session(object):
         RETURNS:
         - dict[region] = list of sites
         """
+        # regions_in_order = ["M1_m", "M1_l", "PMv_l", "PMv_m",
+        #         "PMd_p", "PMd_a", "SMA_p", "SMA_a", 
+        #         "dlPFC_p", "dlPFC_a", "vlPFC_p", "vlPFC_a", 
+        #         "preSMA_p", "preSMA_a", "FP_p", "FP_a"]
         regions_in_order = ["M1_m", "M1_l", "PMv_l", "PMv_m",
-                "PMd_p", "PMd_a", "SMA_p", "SMA_a", 
-                "dlPFC_p", "dlPFC_a", "vlPFC_p", "vlPFC_a", 
-                "preSMA_p", "preSMA_a", "FP_p", "FP_a"]
+                "PMd_p", "PMd_a", "dlPFC_p", "dlPFC_a", 
+                "vlPFC_p", "vlPFC_a", "FP_p", "FP_a", 
+                "SMA_p", "SMA_a", "preSMA_p", "preSMA_a"]
         dict_sites ={}
         for i, name in enumerate(regions_in_order):
             dict_sites[name] = list(range(1+32*i, 1+32*(i+1)))
@@ -2022,7 +2036,8 @@ class Session(object):
 
         if combine_into_larger_areas:
             regions_specific = dict_sites.keys()
-            regions_in_order = ["M1", "PMv", "PMd", "SMA", "dlPFC", "vlPFC",  "preSMA", "FP"]
+            # regions_in_order = ["M1", "PMv", "PMd", "SMA", "dlPFC", "vlPFC",  "preSMA", "FP"]
+            regions_in_order = ["M1", "PMv", "PMd", "dlPFC", "vlPFC", "FP",  "SMA", "preSMA"]
             def _regions_in(summary_region):
                 """ get list of regions (e.g, ["dlPFC_a", 'dlPFC_p']) that are in this summary region (e.g., dlPFC)
                 """
@@ -4237,7 +4252,7 @@ class Session(object):
         from elephant.kernels import GaussianKernel
         from elephant.statistics import time_histogram, instantaneous_rate,mean_firing_rate
         from quantities import s
-        from pythonlib.neural.population import PopAnal
+        from neuralmonkey.classes.population import PopAnal
 
         if trial not in self.PopAnalDict.keys() or overwrite==True:
             # Get all spike trains for a trial
