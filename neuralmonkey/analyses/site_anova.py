@@ -29,9 +29,11 @@ def params_database_extract(MS, QUESTION, EVENTS_SIMPLE,
         # LIST_PLOTS = ["summarystats", "heatmaps", "eachsite_smfr", "eachsite_rasters"]
         LIST_PLOTS = ["summarystats", "heatmaps", "eachsite_smfr", "eachsite_rasters"]
     
-    HACK = False
+    HACK = True
     if HACK:
-        LIST_PLOTS = ["summarystats", "heatmaps"]
+        # LIST_PLOTS = ["eachsite_allvars"]
+        # LIST_PLOTS = ["summarystats", "heatmaps"]
+        LIST_PLOTS = ["eachsite_smfr", "eachsite_rasters", "eachsite_allvars"]
         # LIST_PLOTS = ["eachsite_rasters"] 
         # LIST_PLOTS = [] # just save
 

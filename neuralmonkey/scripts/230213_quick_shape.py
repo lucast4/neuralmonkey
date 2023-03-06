@@ -20,7 +20,7 @@ LIST_DATE = [
     "220715"
     ]
 SESSIONS = [1]
-MINIMAL_PLOTS = False
+MINIMAL_PLOTS = True
 min_trials=20
 
 LIST_SAME_FIRST = [
@@ -223,3 +223,12 @@ for DATE in LIST_DATE:
                     # action plan (character)
                     list_plots = list_plots + ["eachsite_smfr_splitby_character", "eachsite_raster_splitby_character"]
             SP.modulation_plot_all(RES_ALL_CHANS, OUT, SAVEDIR_SCALAR, list_plots=LIST_PLOTS)
+            
+            # New plots, using smoothed fr for r2.
+            SP.modulation_plot_all(RES_ALL_CHANS, OUT, SAVEDIR_SCALAR, list_plots=["summarystats", "heatmaps"], 
+                                   which_modulation_variable = "modulation_across_events_usingsmfr_zscored",
+                                   which_var_heatmaps = "modulation_across_events_usingsmfr_zscored")
+            
+            SP.modulation_plot_all(RES_ALL_CHANS, OUT, SAVEDIR_SCALAR, list_plots=["summarystats", "heatmaps"], 
+                                   which_modulation_variable = "modulation_across_events_usingsmfr",
+                                   which_var_heatmaps = "modulation_across_events_usingsmfr")

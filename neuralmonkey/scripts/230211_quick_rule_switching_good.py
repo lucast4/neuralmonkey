@@ -19,14 +19,23 @@ LIST_DATE = [
     # "221102",
     "221020"
     ]
-SESSIONS = [1]
-MINIMAL_PLOTS = False
+SESSIONS = None
+MINIMAL_PLOTS = True
 min_trials=20
 
+QUESTION = "rulesw"
+EVENTS_SIMPLE = False
+REMOVE_BASELINE_EPOCHS=True
+n_min_trials_in_each_epoch = 1
+
+
+# LIST_SAME_FIRST = [
+#     [True, False],
+#     [False, True],
+#     [False, False],
+# ]
 LIST_SAME_FIRST = [
-    [True, False],
     [False, True],
-    [False, False],
 ]
 # LIST_DATASET_PRUNE_SAME_BEH_ONLY = [False]
 # LIST_FIRST_STROKE_SAME = [True]
@@ -71,10 +80,13 @@ for DATE in LIST_DATE:
             D.taskgroup_reassign_ignoring_whether_is_probe()
 
 
-        QUESTION = "rulesw"
-        EVENTS_SIMPLE = False
-        REMOVE_BASELINE_EPOCHS=True
-        n_min_trials_in_each_epoch = 1
+
+        ## from neuralmonkey.classes.snippets import datasetstrokes_extract
+        from neuralmonkey.analyses.site_anova import _dataset_extract_prune_rulesw, _dataset_extract_prune_sequence, params_database_extract
+        import os
+        import numpy as np
+        import seaborn as sns
+        from neuralmonkey.classes.snippets import Snippets
 
         PARAMS = params_database_extract(MS, QUESTION, EVENTS_SIMPLE, 
                 DATASET_PRUNE_SAME_BEH_ONLY, REMOVE_BASELINE_EPOCHS, n_min_trials_in_each_epoch,
@@ -90,8 +102,6 @@ for DATE in LIST_DATE:
         list_features_get_conjunction = PARAMS["list_features_get_conjunction"]
         list_features_extraction = PARAMS["list_features_extraction"]
         list_possible_features_datstrokes = PARAMS["list_possible_features_datstrokes"]
-        print("MAKING THESE PLOTS: ")
-        print(LIST_PLOTS)
 
 
         import os
@@ -111,7 +121,8 @@ for DATE in LIST_DATE:
         os.makedirs(SAVEDIR, exist_ok=True)
         print(SAVEDIR)
 
-        prune_feature_levels_min_n_trials=n_min_trials_in_each_epoch
+        from neuralmonkey.analyses.site_anova import save_all
+        prune_feature_levels_min_n_trials=1
         for sess in SESSIONS:
             sn = MS.SessionsList[sess]
 
@@ -119,7 +130,7 @@ for DATE in LIST_DATE:
             if QUESTION=="rulesw":
                 dataset_pruned_for_trial_analysis = _dataset_extract_prune_rulesw(sn, DATASET_PRUNE_SAME_BEH_ONLY, 
                     n_min_trials_in_each_epoch=n_min_trials_in_each_epoch, remove_baseline_epochs=REMOVE_BASELINE_EPOCHS,
-                    first_stroke_same_only=FIRST_STROKE_SAME)
+                                                                                 first_stroke_same_only=FIRST_STROKE_SAME)
             elif QUESTION=="sequence":
                 dataset_pruned_for_trial_analysis = _dataset_extract_prune_sequence(sn, n_strok_max=2)
             else:
@@ -142,7 +153,7 @@ for DATE in LIST_DATE:
                 DS = datasetstrokes_extract(sn.Datasetbeh, strokes_only_keep_single,
                                             tasks_only_keep_these,
                                             prune_feature_levels_min_n_trials, list_possible_features)
-                if len(DS.Dat)<50:
+                if len(DS.Dat)<20:
                     continue
 
                 # check which features exist
@@ -194,27 +205,14 @@ for DATE in LIST_DATE:
             # Compute summary stats
             RES_ALL_CHANS = SP.modulation_compute_each_chan(things_to_compute=THINGS_TO_COMPUTE)
             OUT = SP.modulation_compute_higher_stats(RES_ALL_CHANS)
+            
 
             # SAVE
-            save_all(SP, RES_ALL_CHANS, SAVEDIR_SCALAR)
+            save_all(SP, RES_ALL_CHANS, SAVEDIR)
+
+            # plot text on each dot
+
             
-            ### PLOT max mod each site.
-            list_max = []
-            list_site = []
-            fig, axes = plt.subplots(1, 2, figsize = (8,15))
-            ax_text = axes.flatten()[1]
-            for i in range(len(RES_ALL_CHANS)):
-                val = np.max(RES_ALL_CHANS[i]["RES"]["modulation_across_events"]["epoch"])
-                site = RES_ALL_CHANS[i]["chan"]
-                list_max.append(val)
-                list_site.append(site)
-                ax_text.text(val+0.01, site, f"{site}", color="r", fontsize=7)
-            for ax in axes.flatten():
-                ax.plot(list_max, list_site, 'ok')
-                ax.set_ylabel('site')
-                ax.set_xlabel('max modulation across events')
-                ax.grid(True, "major")
-            fig.savefig(f"{SAVEDIR_SCALAR}/sites_max_modulation.pdf")
 
             # Plot and save
             if False:
@@ -223,4 +221,36 @@ for DATE in LIST_DATE:
                     # because interested in whether activity encodes the rule or the 
                     # action plan (character)
                     list_plots = list_plots + ["eachsite_smfr_splitby_character", "eachsite_raster_splitby_character"]
+
             SP.modulation_plot_all(RES_ALL_CHANS, OUT, SAVEDIR_SCALAR, list_plots=LIST_PLOTS)
+            
+            # New plots, using smoothed fr for r2.
+            SP.modulation_plot_all(RES_ALL_CHANS, OUT, SAVEDIR_SCALAR, list_plots=["summarystats", "heatmaps"], 
+                                   which_modulation_variable = "modulation_across_events_usingsmfr_zscored",
+                                   which_var_heatmaps = "modulation_across_events_usingsmfr_zscored")
+            
+            SP.modulation_plot_all(RES_ALL_CHANS, OUT, SAVEDIR_SCALAR, list_plots=["summarystats", "heatmaps"], 
+                                   which_modulation_variable = "modulation_across_events_usingsmfr",
+                                   which_var_heatmaps = "modulation_across_events_usingsmfr")
+            
+            
+            
+
+            ### PLOT max mod each site.
+            for var in SP.Params["list_features_get_conjunction"]:
+                list_max = []
+                list_site = []
+                fig, axes = plt.subplots(1, 2, figsize = (8,15))
+                ax_text = axes.flatten()[1]
+                for i in range(len(RES_ALL_CHANS)):
+                    val = np.max(RES_ALL_CHANS[i]["RES"]["modulation_across_events"][var])
+                    site = RES_ALL_CHANS[i]["chan"]
+                    list_max.append(val)
+                    list_site.append(site)
+                    ax_text.text(val+0.01, site, f"{site}", color="r", fontsize=7)
+                for ax in axes.flatten():
+                    ax.plot(list_max, list_site, 'ok')
+                    ax.set_ylabel('site')
+                    ax.set_xlabel('max modulation across events')
+                    ax.grid(True, "major")
+                fig.savefig(f"{SAVEDIR_SCALAR}/sites_max_modulation-{var}.pdf")

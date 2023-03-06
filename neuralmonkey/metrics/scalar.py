@@ -2,6 +2,7 @@
 """
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 
 class MetricsScalar(object):
     """docstring for ClassName"""
@@ -93,6 +94,87 @@ class MetricsScalar(object):
         output["splitevents_othervar"] = dict_modulation_othervar
         
         return output
+
+    def _calc_r2_smoothed_fr(self, var, COL_FR = "fr_sm_sqrt", 
+            n_shuff = 25, plot_results_summary=False):
+        """
+        PARAMS:
+        - do_shuffle, bool, if True, makes copy of dataset, shuffles, then computes. does not
+        affect orig dataset
+        """   
+        
+
+        list_r2 = []
+        list_events = self.ListEventsUniqname
+        list_r2_shuff_mean = []
+        dict_r2_shuffles = {}
+        dict_event_var_r2 = {}
+        dict_event_var_r2_shuff = {}
+        dict_event_var_r2_z = {}
+
+        for event in list_events:
+            
+            dfthis = self.Data[(self.Data["event_aligned"]==event)]
+            
+            # Dataset
+            r2, SS, SST = _calc_modulation_by_frsm(dfthis, var, COL_FR, 
+                plot_fr=False)
+            list_r2.append(r2)
+            dict_event_var_r2[(event)] = r2
+            
+            # shuffle
+            tmp = []
+            dict_r2_shuffles[event] = []
+            for i in range(n_shuff):
+                r2, _, _ = _calc_modulation_by_frsm(dfthis, var, COL_FR, 
+                    do_shuffle=True, plot_fr=False)
+                tmp.append(r2)
+                dict_r2_shuffles[event].append(r2)
+            dict_event_var_r2_shuff[(event)] = tmp
+            list_r2_shuff_mean.append(np.mean(tmp))
+            
+        # 3) zscored
+        from pythonlib.tools.statstools import zscore
+        # convert to z-score relative shuffle.
+        list_r2_zscored = []
+        for i, ev in enumerate(list_events):
+            vals_shuff = dict_r2_shuffles[ev]
+            val = list_r2[i]
+            r2_z = zscore(val, vals_shuff)
+            list_r2_zscored.append(r2_z)
+            dict_event_var_r2_z[(ev)] = r2_z
+
+        if plot_results_summary:
+            fig, axes = plt.subplots(3, 1, figsize=(8, 8), sharey=False)
+
+            # 1) Old version
+            if False:
+                RES = [x for x in RES_ALL_CHANS if x["chan"]==site][0]
+                ax = axes.flatten()[0]
+                vals = RES["RES"]["modulation_across_events"]["epoch"]
+                ax.plot(list_events, vals, "-ok")
+                vals = RES["RES"]["modulation_across_events_subgroups"]["epoch"]
+                ax.plot(list_events, vals, "-or")
+
+            # 2) New version, using smoothed fr
+            ax = axes.flatten()[1]
+            ax.plot(list_events, list_r2, "-ok")
+            ax.plot(list_events, list_r2_shuff_mean, "--xr", label="shuffled")
+            ax.legend()
+            for i, ev in enumerate(list_events):
+                ax.plot(np.ones(len(dict_r2_shuffles[ev]))*i, dict_r2_shuffles[ev], 'xr', alpha=0.2)
+                
+            # 3) zscored
+            ax = axes.flatten()[2]
+            ax.plot(list_events, list_r2_zscored, "-ok")
+            ax.set_title('zscored')
+            ax.set_ylim(-5, 5)
+            # ax.axhline(0)
+            ax.axhline(-3)
+            ax.axhline(3)
+
+        return dict_event_var_r2, dict_event_var_r2_shuff, dict_event_var_r2_z
+
 
     def calc_modulation_by(self):
         """ Wrapper to compute, for each channel, how it is mouldated by 
@@ -229,7 +311,7 @@ class MetricsScalar(object):
         vals = [self.modulation_extract_vals_byvar(ev, results, [var], ver)[0] for ev in list_events_uniqnames]
         return vals
 
-    def modulation_calc_summary(self):
+    def modulation_calc_summary(self, WHICH_VER="sm_fr_zscored"):
         """ GOOD summary of modulation for this data
         """
             
@@ -238,6 +320,16 @@ class MetricsScalar(object):
 
         results = self.calc_modulation_by()
 
+        # Variance explained, using firing rates
+        list_events_uniqnames = self.ListEventsUniqname
+        RES["modulation_across_events_usingsmfr"] = {}
+        RES["modulation_across_events_usingsmfr_zscored"] = {}
+        for var in list_var:
+            dict_event_var_r2, dict_event_var_r2_shuff, dict_event_var_r2_z = self._calc_r2_smoothed_fr(var, COL_FR = "fr_sm_sqrt", 
+                n_shuff = 25, plot_results_summary=False)
+            RES["modulation_across_events_usingsmfr"][var] = [dict_event_var_r2[ev] for ev in list_events_uniqnames]
+            RES["modulation_across_events_usingsmfr_zscored"][var] = [dict_event_var_r2_z[ev] for ev in list_events_uniqnames]
+            
 
         # Modulation, plot across events
         # - for a given var, plot it across events
@@ -306,6 +398,124 @@ class MetricsScalar(object):
 
 
 ####################### UTILS
+def _shuffle_dataset(df, var):
+    """ returns a copy of df, with var labels shuffled
+    NOTE: confirmed that does not affect df
+    """
+    import random
+    levels_orig = df[var].tolist()
+
+    # shuffle a copy
+    levels_orig_shuff = [lev for lev in levels_orig]
+    random.shuffle(levels_orig_shuff)
+
+    dfthis_shuff = df.copy(deep=False)
+    dfthis_shuff[var] = levels_orig_shuff
+    
+    return dfthis_shuff
+    
+def _calc_modulation_by_frsm(dfthis, var, COL_FR = 'fr_sm_sqrt',
+                             do_shuffle=False,
+                             plot_fr=False, plot_results=False):   
+    """ Calculate modulation of smoothed fr by variable var, returning
+    single scalar value for each event/channel. Uses the smoothed fr,
+    instead for first converting to scalar
+    PARAMS:
+    - dfthis, a dataframe holding each row as chan x event
+    - var, column in dfthis
+    - do_shuffle, then shuffles the labels of var before computing. 
+    """
+
+    levels = sorted(dfthis[var].unique().tolist())
+
+    if do_shuffle:
+        dfthis = _shuffle_dataset(dfthis, var)
+
+    # quick plot to ensure is correct
+    if plot_fr:
+        fig, ax = plt.subplots(figsize=(3, 2))
+        for lev in levels:
+            list_fr = dfthis[dfthis[var]==lev][COL_FR]
+            frmean = np.mean(list_fr).squeeze()
+            t = np.arange(len(frmean))
+            ax.plot(t, frmean, label=lev)
+        #     for fr in list_fr:
+        #         ax.plot(fr, label=lev)
+        ax.set_ylim(0)
+        ax.legend()
+
+    def _calc_mean_fr(frmat):
+        """ get mean fr (vector) for frmat (ntrials x ntimes)
+        across trials """
+        xmean = np.mean(frmat, axis=0, keepdims=True) # (1, ntime)
+        assert len(xmean.shape)==2
+        return xmean
+    
+    def _calc_residuals(frmat, frmean):
+        """ REturn array of squared residules, one for each trial, each
+        a scalar, take squared differeence from mean fr (timecourse) then 
+        take sum over all times.
+        - frmat (ntrials, ntime)
+        - frmean (1, ntime)
+        RETURNS;
+        - resid_scalars, (ntrials, 1)
+        """
+        resid_scalars = np.mean((frmat - frmean)**2, axis=1) # take mean over time.
+        return resid_scalars # (ntrials, )
+    
+    def _calc_resid_helper(df):
+        """ 
+        helper to calc resid using df
+        """
+        frmat = np.concatenate(df[COL_FR].tolist(), axis=0)
+        frmean = _calc_mean_fr(frmat)
+        residuals = _calc_residuals(frmat, frmean)
+        return residuals
+        
+    
+    # 1. residuals realtive to global mean.
+    residuals_total = _calc_resid_helper(dfthis)
+
+    # 2. get residuals for each level
+    residuals_levels = []
+    for lev in levels:
+        dfthisthis = dfthis[dfthis[var]==lev]
+        res = _calc_resid_helper(dfthisthis)
+        residuals_levels.extend(res)
+    
+    # 3. get each level's mean relative to global mean
+    if False:
+        # WOrks, but not needed . see below for r2 using SS_LEVEL_MEANS
+        frmat = np.concatenate(dfthis[COL_FR].tolist(), axis=0)
+        xmean_tot = _calc_mean_fr(frmat)
+        list_mean_each = []
+        for lev in levels:
+            dfthisthis = dfthis[dfthis[var]==lev]
+            frmat = np.concatenate(dfthisthis[COL_FR].tolist(), axis=0)
+            list_mean_each.append(_calc_mean_fr(frmat))
+        frmat = np.concatenate(list_mean_each, axis=0)
+        resid_lev = _calc_residuals(frmat, xmean_tot)
+    
+    # Get summary stats
+    SS = np.mean(residuals_levels)
+    SST = np.mean(residuals_total)
+    r2 = 1 - SS/SST
+    if False:
+        SS_LEVEL_MEANS = np.mean(resid_lev)
+        # NOTE: These are equal!!
+        print("equal?:", r2, SS_LEVEL_MEANS/SST)
+        # r2 = SS_LEVEL_MEANS/SST # note this is same as r2 above
+
+    if plot_results:
+        fig, ax = plt.subplots()
+        ax.hist(residuals_total, bins=20, histtype="step")
+        ax.hist(residuals_levels, bins=20, histtype="step", label="levels")
+        ax.legend()
+        ax.set_title(f"r2={r2}, SS={SS}, SST={SST}")
+    
+    return r2, SS, SST
+    
+        
 def _calc_modulation_by(data, by, response_var = 'fr_scalar', 
     map_var_to_othervars=None, n_min_dat = 10):
     """ Calculatio modulation of response_var ba <by>,
@@ -447,6 +657,9 @@ def _calc_fr_across_levels(data, var, list_levels, map_var_to_othervars=None,
     output["othervars_conjunction_levels"] = levels_others
 
     return output
+
+
+
 
 def stack_othervals_values(othervals):
     """ 

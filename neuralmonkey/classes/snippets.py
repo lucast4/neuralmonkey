@@ -42,6 +42,8 @@ class Snippets(object):
         be used to determine which trials (i.e. onluy tjhose in Dataset)             
         """
 
+        self.DfScalar = None
+
         # 1) Which behavioral data to use
         if which_level=="stroke":
             # Each datapt matches a single stroke
@@ -173,10 +175,16 @@ class Snippets(object):
         }
 
         # Genreate scalars
-        print("\n == listpa_convert_to_scalars")        
-        self.listpa_convert_to_scalars()
-        print("\n == pascal_convert_to_dataframe")        
-        self.pascal_convert_to_dataframe(fr_which_version="sqrt")
+        if False:
+            # Old version
+            print("\n == listpa_convert_to_scalars")        
+            self.listpa_convert_to_scalars()
+            print("\n == pascal_convert_to_dataframe")        
+            self.pascal_convert_to_dataframe(fr_which_version="sqrt")
+        else:
+            self.listpa_convert_to_scalar_v2(fr_which_version="sqrt")
+            self.DfScalar = self.DfScalar # they are the same
+
         self.pascal_remove_outliers()
 
         # Get useful variables
@@ -241,6 +249,55 @@ class Snippets(object):
         return pa
 
     ############################################ SCALARS
+    def listpa_convert_to_smfr(self):
+        """ Get a single dataframe holding all smoothed fr traces.
+        RETURNS:
+        - stores in self.DfScalar
+        """
+        from neuralmonkey.classes.population import concatenate_popanals
+
+        list_events_uniqnames = self.Params["list_events_uniqnames"]
+        assert len(list_events_uniqnames)==len(self.ListPA)
+
+        # == 1) Concatenate across pa (events) (and scalarize)
+        list_df = []
+        for pa, event in zip(self.ListPA, list_events_uniqnames):
+            # extract df
+            dfthis = pa.convert_to_dataframe_long()
+            dfthis["event_aligned"] = event
+            list_df.append(dfthis)
+
+        self.DfScalar = pd.concat(list_df).reset_index(drop=True)
+
+    def listpa_convert_to_scalar_v2(self, fr_which_version="raw"):
+        """ For each trial, get a single scalar value by averaging across time
+        NEw version (2/23/23) first extract all fr, then does mean over time this 
+        good because keeps scalar and sm fr in same dataframe. 
+        """
+        from pythonlib.tools.pandastools import applyFunctionToAllRows
+
+        if self.DfScalar is None:
+            self.listpa_convert_to_smfr()
+
+        # take mean over time
+        def F(x):
+            # assert len(x["fr_sm"].shape)==2 
+            # return np.mean(x["fr_sm"], axis=1)
+            return np.mean(x["fr_sm"])
+
+        self.DfScalar = applyFunctionToAllRows(self.DfScalar, F, "fr_scalar_raw")
+
+        # tgransform the fr if desired
+        if fr_which_version=="raw":
+            self.DfScalar["fr_scalar"] = self.DfScalar["fr_scalar_raw"] 
+        elif fr_which_version=="sqrt":
+            self.DfScalar["fr_scalar"] = self.DfScalar["fr_scalar_raw"]**0.5
+        else:
+            print(fr_which_version)
+            assert False
+
+        self.DfScalar["fr_sm_sqrt"] = self.DfScalar["fr_sm"]**0.5
+
     def listpa_convert_to_scalars(self):
         """ For each trial, get a single scalar value by averaging across time
         """
@@ -257,6 +314,7 @@ class Snippets(object):
             # 1. given a pa, compute scalar for each row
             pascal = pa.agg_wrapper("times", "mean", rename_values_agged_dim=False)
             list_pa_scal.append(pascal)
+
         # concatenate
         PA_scal_all = concatenate_popanals(list_pa_scal, dim="trials", 
                                           map_idxpa_to_value=list_events_uniqnames, 
@@ -356,6 +414,31 @@ class Snippets(object):
 
 
 
+    ################ DATA EXTRACTIONS
+    def dataextract_as_popanal(self, chan=None, events_uniq=None):
+        """ Return a single popanal """
+        assert False, "in progress"
+
+    def dataextract_as_metrics_scalar(self, chan):
+        """ Return scalar data for this chan, as a MetricsScalar object, which 
+        has methods for computing modulation, etc
+        """
+        from neuralmonkey.metrics.scalar import MetricsScalar
+
+        dfthis = self.DfScalar[self.DfScalar["chan"]==chan]
+        
+        # Input to Metrics
+        # (use this, instead of auto, to ensure common values across all chans)
+        list_var = self.Params["list_features_get_conjunction"]
+        list_events_uniqnames = self.Params["list_events_uniqnames"]
+        map_var_to_othervars = self.Params["map_var_to_othervars"]
+        map_var_to_levels = self.Params["map_var_to_levels"]
+        Mscal = MetricsScalar(dfthis, list_var, map_var_to_othervars, 
+            map_var_to_levels, 
+            list_events_uniqnames)
+        return Mscal
+
+
     ################ MODULATION BY VARIABLES
     def modulation_compute_each_chan(self, DEBUG=False, 
         bregion_add_num_prefix=True, 
@@ -364,7 +447,6 @@ class Snippets(object):
         RETURNS:
         - RES_ALL_CHANS, list of dicts
         """
-        from neuralmonkey.metrics.scalar import MetricsScalar
 
         RES_ALL_CHANS = []
         list_chans = self.DfScalar["chan"].unique().tolist()
@@ -388,17 +470,18 @@ class Snippets(object):
             print("CHANNEL:", chan)
             info = self.SN.sitegetter_thissite_info(chan)
 
-            dfthis = self.DfScalar[self.DfScalar["chan"]==chan]
+            Mscal = self.dataextract_as_metrics_scalar(chan)
+            # dfthis = self.DfScalar[self.DfScalar["chan"]==chan]
             
-            # Input to Metrics
-            # (use this, instead of auto, to ensure common values across all chans)
-            list_var = self.Params["list_features_get_conjunction"]
-            list_events_uniqnames = self.Params["list_events_uniqnames"]
-            map_var_to_othervars = self.Params["map_var_to_othervars"]
-            map_var_to_levels = self.Params["map_var_to_levels"]
-            Mscal = MetricsScalar(dfthis, list_var, map_var_to_othervars, 
-                map_var_to_levels, 
-                list_events_uniqnames)
+            # # Input to Metrics
+            # # (use this, instead of auto, to ensure common values across all chans)
+            # list_var = self.Params["list_features_get_conjunction"]
+            # list_events_uniqnames = self.Params["list_events_uniqnames"]
+            # map_var_to_othervars = self.Params["map_var_to_othervars"]
+            # map_var_to_levels = self.Params["map_var_to_levels"]
+            # Mscal = MetricsScalar(dfthis, list_var, map_var_to_othervars, 
+            #     map_var_to_levels, 
+            #     list_events_uniqnames)
             
             # Compute, modulation across vars
             if "modulation" in things_to_compute:
@@ -459,6 +542,12 @@ class Snippets(object):
         import pandas as pd
         import seaborn as sns
 
+        MODULATION_FIELDS = ["modulation_across_events", 
+                    "modulation_across_events_subgroups", 
+                    "inconsistency_across_events",
+                    "modulation_across_events_usingsmfr",
+                    "modulation_across_events_usingsmfr_zscored"]
+
         list_var = self.Params["list_features_get_conjunction"]
         list_events_uniqnames = self.Params["list_events_uniqnames"]
         # Get the list of methods for computing average modulation(across var)
@@ -492,9 +581,7 @@ class Snippets(object):
             for var in list_var:   
 
                 ########################################
-                for val_kind in ["modulation_across_events", 
-                    "modulation_across_events_subgroups", 
-                    "inconsistency_across_events"]:
+                for val_kind in MODULATION_FIELDS:
 
                     y = RES[val_kind][var]
                     for ev, yscal in zip(list_events_uniqnames, y):
@@ -652,14 +739,14 @@ class Snippets(object):
             print(list_post_dur)
             assert False, "did not find..."
  
-    def modulation_plot_heatmaps(self, OUT, savedir="/tmp"):
+    def modulation_plot_heatmaps(self, OUT, savedir="/tmp",
+            val_kind = "modulation_across_events_subgroups"):
         """ Plot heatmaps, bregion vs. event, and also
         overlay onto schematic of brain, across time(events)
         """
         from pythonlib.tools.pandastools import convert_to_2d_dataframe, aggregGeneral
-
         df = OUT["dfdat_var_events"]
-        val_kind = "modulation_across_events_subgroups"
+        # val_kind = "modulation_across_events_subgroups"
         list_var = df["var"].unique().tolist()
 
         # 1) Plot modulation for each var
@@ -751,16 +838,16 @@ class Snippets(object):
         map_bregion_to_location["03_PMv_m"] = [3.5, 3.3]
         map_bregion_to_location["04_PMd_p"] = [3.3, 1.6]
         map_bregion_to_location["05_PMd_a"] = [5, 1.85]
-        map_bregion_to_location["06_SMA_p"] = [-.1, 0.2]
-        map_bregion_to_location["07_SMA_a"] = [1.4, 0.3]
-        map_bregion_to_location["08_dlPFC_p"] = [7.2, 2.8]
-        map_bregion_to_location["09_dlPFC_a"] = [9, 3]
-        map_bregion_to_location["10_vlPFC_p"] = [5.8, 5]
-        map_bregion_to_location["11_vlPFC_a"] = [8.5, 4]
-        map_bregion_to_location["12_preSMA_p"] = [3.2, 0.4]
-        map_bregion_to_location["13_preSMA_a"] = [4.5, 0.6]
-        map_bregion_to_location["14_FP_p"] = [11, 3.9]
-        map_bregion_to_location["15_FP_a"] = [12.5, 4.3]
+        map_bregion_to_location["06_dlPFC_p"] = [7.2, 2.8]
+        map_bregion_to_location["07_dlPFC_a"] = [9, 3]
+        map_bregion_to_location["08_vlPFC_p"] = [5.8, 5]
+        map_bregion_to_location["09_vlPFC_a"] = [8.5, 4]
+        map_bregion_to_location["10_FP_p"] = [11, 3.9]
+        map_bregion_to_location["11_FP_a"] = [12.5, 4.3]
+        map_bregion_to_location["12_SMA_p"] = [-.1, 0.2]
+        map_bregion_to_location["13_SMA_a"] = [1.4, 0.3]
+        map_bregion_to_location["14_preSMA_p"] = [3.2, 0.4]
+        map_bregion_to_location["15_preSMA_a"] = [4.5, 0.6]
         xmult = 33
         ymult = 50
         # xoffset = 230 # if use entire image
@@ -1035,7 +1122,7 @@ class Snippets(object):
             fig.savefig(f"{savedir}/{bregion}-{chan}-overview.pdf")
             plt.close("all")
             
-    def modulation_plot_summarystats(self, OUT, savedir="/tmp"):
+    def modulation_plot_summarystats(self, OUT, savedir="/tmp", which_modulation_variable="scalar"):
         """ 
         Plot many variations, for output from modulation_compute_higher_stats
         PARAMS:
@@ -1054,9 +1141,23 @@ class Snippets(object):
         list_var = self.Params["list_features_get_conjunction"]
         list_events_uniqnames = self.Params["list_events_uniqnames"]
 
+        # if which_modulation_variable in ["modulation_across_events_usingsmfr", "modulation_across_events_usingsmfr_zscored"]:
+        #     dfdat_var_events = dfdat_var_events.copy()
+        #     from pythonlib.tools.pandastools import applyFunctionToAllRows
+        #     def F(x):
+        #         if x["val_kind"] == 
+        #     dfdat_var_events["modulation_across_events"] = dfdat_var_events[which_modulation_variable]
+        #     dfdat_var_events["modulation_across_events_subgroups"] = dfdat_var_events[which_modulation_variable]
+
+        which_modulation_variable
+
+        if which_modulation_variable in ["modulation_across_events_usingsmfr", "modulation_across_events_usingsmfr_zscored"]:
+            MODULATION_COLS_TO_PLOT = [which_modulation_variable]
+        else:
+            MODULATION_COLS_TO_PLOT = ["modulation_across_events", "modulation_across_events_subgroups"]
 
         # Compare across events
-        dfthis = dfdat_var_events[dfdat_var_events["val_kind"].isin(["modulation_across_events", "modulation_across_events_subgroups"])]
+        dfthis = dfdat_var_events[dfdat_var_events["val_kind"].isin(MODULATION_COLS_TO_PLOT)]
         fig = sns.catplot(data=dfthis, x="event", y="val", hue="val_kind",
                           col="bregion", row="var", kind="point", aspect=1, height=3);
         rotateLabel(fig)
@@ -1064,7 +1165,7 @@ class Snippets(object):
 
 
         # Comparing brain regions
-        for val_kind in ["modulation_across_events", "modulation_across_events_subgroups"]:
+        for val_kind in MODULATION_COLS_TO_PLOT:
             dfthis = dfdat_var_events[dfdat_var_events["val_kind"]==val_kind]
             fig = sns.catplot(data=dfthis, x="bregion", y="val", col="event", 
                         row="var", kind="bar", aspect=2, height=4);
@@ -1072,17 +1173,11 @@ class Snippets(object):
             fig.savefig(f"{savedir}/2_bars_feature_vs_event-{val_kind}.pdf")      
 
         # Comparing brain regions
-        dfthis = dfdat_var_events[dfdat_var_events["val_kind"].isin(["modulation_across_events", "modulation_across_events_subgroups"])]
+        dfthis = dfdat_var_events[dfdat_var_events["val_kind"].isin(MODULATION_COLS_TO_PLOT)]
         fig = sns.catplot(data=dfthis, x="bregion", y="val", col="val_kind",
                     row="event", kind="bar", hue="var", aspect=2, height=4);
         rotateLabel(fig)
         fig.savefig(f"{savedir}/2_bars_feature_vs_valkind.pdf")
-
-        # dfthis = dfdat_var_events[dfdat_var_events["val_kind"].isin(["modulation_across_events", "modulation_across_events_subgroups"])]
-        # fig = sns.catplot(data=dfthis, x="bregion", y="val", col="event", 
-        #             row="var", kind="bar", hue="val_kind", aspect=2, height=4);
-        # rotateLabel(fig)
-        # fig.savefig(f"{savedir}/test2_lowfr.pdf")
 
 
         # Compare across events
@@ -1092,7 +1187,7 @@ class Snippets(object):
         rotateLabel(fig)
         fig.savefig(f"{savedir}/3_lines_valkinds.pdf")
 
-        for val_kind in ["modulation_across_events", "modulation_across_events_subgroups"]:
+        for val_kind in MODULATION_COLS_TO_PLOT:
             dfthis = dfdat_var_events[dfdat_var_events["val_kind"]==val_kind]
             fig = plotgood_lineplot(dfthis, xval="event", yval="val", line_grouping="chan",
                                     include_mean=True, 
@@ -1132,7 +1227,7 @@ class Snippets(object):
 
 
         # Comparing brain regions
-        dfthis = dfdat_var_events[dfdat_var_events["val_kind"].isin(["modulation_across_events", "modulation_across_events_subgroups"])]
+        dfthis = dfdat_var_events[dfdat_var_events["val_kind"].isin(MODULATION_COLS_TO_PLOT)]
         fig = sns.catplot(data=dfthis, x="bregion", y="val", col="val_kind",
                     row="var", kind="bar", hue="event", aspect=2.5, height=4);
         rotateLabel(fig)
@@ -1209,7 +1304,9 @@ class Snippets(object):
     def modulation_plot_all(self, RES_ALL_CHANS, OUT, SAVEDIR, 
             list_plots = ("summarystats", "heatmaps", "eachsite_allvars", 
                 "eachsite_smfr", "eachsite_rasters"), 
-            suffix=None, list_sites=None):
+            suffix=None, list_sites=None,
+            which_modulation_variable = "scalar",
+            which_var_heatmaps = "modulation_across_events_subgroups"):
         """ Plot all summary plots for this dataset (self)
         PARAMS;
         - list_plots, list of str, to plot
@@ -1231,15 +1328,16 @@ class Snippets(object):
         for plotkind in list_plots:
             if plotkind=="summarystats":
                 # Summary over all chans for each site
-                savedir = _finalize_dir(f"{SAVEDIR}/modulation_by_features")
+                savedir = _finalize_dir(f"{SAVEDIR}/modulation_by_features-{which_modulation_variable}")
                 print(f"Plotting {plotkind} at: {savedir}")
-                self.modulation_plot_summarystats(OUT, savedir=savedir)
+                self.modulation_plot_summarystats(OUT, savedir=savedir,
+                    which_modulation_variable=which_modulation_variable)
             elif plotkind=="heatmaps":
                 # Plot heatmaps and brain schematics
-                savedir = _finalize_dir(f"{SAVEDIR}/modulation_heatmaps")
+                savedir = _finalize_dir(f"{SAVEDIR}/modulation_heatmaps-{which_var_heatmaps}")
                 print(f"Plotting {plotkind} at: {savedir}")
                 DictDf, DictDf_rgba_values = self.modulation_plot_heatmaps(OUT, 
-                    savedir=savedir)
+                    savedir=savedir, val_kind=which_var_heatmaps)
                 self.modulation_plot_heatmaps_brain_schematic(DictDf, DictDf_rgba_values, savedir)
             elif plotkind=="eachsite_allvars":
                 # Plot overview for each channel

@@ -374,7 +374,7 @@ def plotall_state_space_iter_hyperparams(MS, DS, LIST_PCA_AGG, LIST_REGIONS, LIS
     """
 
     from pythonlib.tools.pandastools import filterPandas, applyFunctionToAllRows
-    from pythonlib.neural.population import extract_neural_snippets_aligned_to
+    from neuralmonkey.classes.population import extract_neural_snippets_aligned_to
     from neuralmonkey.analyses.prims_state_space import plot_results_state_space_by_group, plot_results_state_space_by_group_
     from neuralmonkey.analyses.prims_state_space import plotall_state_space
 

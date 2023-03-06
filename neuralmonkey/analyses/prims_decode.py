@@ -184,13 +184,13 @@ def decode_and_plot_iter_hyperparams(MS, DS, LIST_REGIONS, LIST_ALIGN_TO, LIST_Y
     - See notebook: 220713_prims_state_space
 
     """
-    from pythonlib.neural.population import datgrp_flatten_to_dattrials, extract_neural_snippets_aligned_to
     from neuralmonkey.analyses.prims_decode import get_traintest_split_conjunction, dftrials_slice_for_model, get_test_data_and_models, plotsummary_confusion_matrix
     from neuralmonkey.population.classify import _model_fit, _model_score
     import pandas as pd
     from pythonlib.tools.pandastools import replaceNone
     import seaborn as sns
-    from pythonlib.neural.population import compute_data_projections, dftrials_centerize_by_group_mean
+    from neuralmonkey.classes.population import datgrp_flatten_to_dattrials, extract_neural_snippets_aligned_to, compute_data_projections, dftrials_centerize_by_group_mean
+    
 
     ### PARAMS
     # # single

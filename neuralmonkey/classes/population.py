@@ -1280,6 +1280,24 @@ class PopAnal():
             legend_add_manual(ax, list_levels, pcols, 0.2)
 
         return pcols
+
+
+    ############################
+    def convert_to_dataframe_long(self):
+        """ Convert to dataframe, where each trial*chan is a row. each row
+        will have a column "sm_fr" holding the smoothed fr. Does not modify self.
+        RETURNS:
+        - dataframe (see above).
+        """
+
+        # 1) Reshape, so that X[:,i,:] holds a trial*chan combo
+        pathis = self.reshape_by_splitting()
+
+        # 2) extract fr for each row
+        frlist = [pathis.X[:, i, :] for i in range(pathis.X.shape[1])]
+        pathis.Xlabels["trials"]["fr_sm"] = frlist    
+
+        return pathis.Xlabels["trials"]    
                     
 
 
@@ -1366,7 +1384,7 @@ def extract_neural_snippets_aligned_to(MS, DS,
     ##### Combine all strokes into a single PA (consider them "trials")
 
     from quantities import s
-    from pythonlib.neural.population import PopAnal
+    from neuralmonkey.classes.population import PopAnal
 
     list_PAslice = DS.Dat["neural_pop_slice"].tolist()
     CHANS = list_PAslice[0].Chans
@@ -1377,7 +1395,6 @@ def extract_neural_snippets_aligned_to(MS, DS,
     PAall = PopAnal(Xall, TIMES, CHANS)
 
     return PAall
-
 
 
 # Which dataset to use to construct PCA?
