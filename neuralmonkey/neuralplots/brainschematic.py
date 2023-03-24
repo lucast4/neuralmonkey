@@ -7,54 +7,70 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-#
-map_bregion_to_location = {}
-map_bregion_to_location["00_M1_m"] = [0, 1.3]
-map_bregion_to_location["01_M1_l"] = [1, 2]
-map_bregion_to_location["02_PMv_l"] = [4, 5.3]
-map_bregion_to_location["03_PMv_m"] = [3.5, 3.3]
-map_bregion_to_location["04_PMd_p"] = [3.3, 1.6]
-map_bregion_to_location["05_PMd_a"] = [5, 1.85]
-map_bregion_to_location["06_SMA_p"] = [-.1, 0.2]
-map_bregion_to_location["07_SMA_a"] = [1.4, 0.3]
-map_bregion_to_location["08_dlPFC_p"] = [7.2, 2.8]
-map_bregion_to_location["09_dlPFC_a"] = [9, 3]
-map_bregion_to_location["10_vlPFC_p"] = [5.8, 5]
-map_bregion_to_location["11_vlPFC_a"] = [8.5, 4]
-map_bregion_to_location["12_preSMA_p"] = [3.2, 0.4]
-map_bregion_to_location["13_preSMA_a"] = [4.5, 0.6]
-map_bregion_to_location["14_FP_p"] = [11, 3.9]
-map_bregion_to_location["15_FP_a"] = [12.5, 4.3]
+def mapper_bregion_to_location():
+    map_bregion_to_location = {}
+    map_bregion_to_location["00_M1_m"] = [0, 1.3]
+    map_bregion_to_location["01_M1_l"] = [1, 2]
+    map_bregion_to_location["02_PMv_l"] = [4, 5.3]
+    map_bregion_to_location["03_PMv_m"] = [3.5, 3.3]
+    map_bregion_to_location["04_PMd_p"] = [3.3, 1.6]
+    map_bregion_to_location["05_PMd_a"] = [5, 1.85]
+    map_bregion_to_location["06_SMA_p"] = [-.1, 0.2]
+    map_bregion_to_location["07_SMA_a"] = [1.4, 0.3]
+    map_bregion_to_location["08_dlPFC_p"] = [7.2, 2.8]
+    map_bregion_to_location["09_dlPFC_a"] = [9, 3]
+    map_bregion_to_location["10_vlPFC_p"] = [5.8, 5]
+    map_bregion_to_location["11_vlPFC_a"] = [8.5, 4]
+    map_bregion_to_location["12_preSMA_p"] = [3.2, 0.4]
+    map_bregion_to_location["13_preSMA_a"] = [4.5, 0.6]
+    map_bregion_to_location["14_FP_p"] = [11, 3.9]
+    map_bregion_to_location["15_FP_a"] = [12.5, 4.3]
+    return map_bregion_to_location
 
-
-def regions_get_ordered_by_x(ver="hand", prune_index=True):
+def regions_get_ordered_by_x(ver="hand", prune_index=True, combined_regions=False):
     """ Get list of regions (e.g, M1_m) orderd by x location, either
     by hand (defyault) or by coords
     - prune_index, if True, then M1_m, else 00_M1_m
     """
 
     if ver=="hand":
-        regions_ordered_by_x = [
-             '00_M1_m',
-             '01_M1_l',
-             '06_SMA_p',
-             '07_SMA_a',
-             '04_PMd_p',
-             '03_PMv_m',
-             '02_PMv_l',
-             '05_PMd_a',
-             '12_preSMA_p',
-             '13_preSMA_a',
-             '10_vlPFC_p',
-             '11_vlPFC_a',
-             '08_dlPFC_p',
-             '09_dlPFC_a',
-             '14_FP_p',
-             '15_FP_a']    
+        if combined_regions:
+            regions_ordered_by_x = [
+                 'M1',
+                 'SMA',
+                 'PMd',
+                 'PMv',
+                 'preSMA',
+                 'vlPFC',
+                 'dlPFC',
+                 'FP']    
+            prune_index = False # "combined regions dont havew indices"
+        else:
+            regions_ordered_by_x = [
+                 '00_M1_m',
+                 '01_M1_l',
+                 '06_SMA_p',
+                 '07_SMA_a',
+                 '04_PMd_p',
+                 '03_PMv_m',
+                 '02_PMv_l',
+                 '05_PMd_a',
+                 '12_preSMA_p',
+                 '13_preSMA_a',
+                 '10_vlPFC_p',
+                 '11_vlPFC_a',
+                 '08_dlPFC_p',
+                 '09_dlPFC_a',
+                 '14_FP_p',
+                 '15_FP_a']    
+            assert prune_index==True, "indices are incorrect"
     else:
+        assert combined_regions==False, "not coded..."
+
         # use actual coords
         # Order regions based on xy location
-        from neuralmonkey.neuralplots.brainschematic import map_bregion_to_location
+        map_bregion_to_location = mapper_bregion_to_location()
+        # from neuralmonkey.neuralplots.brainschematic import map_bregion_to_location
 
         tmp = []
         for reg, coords in map_bregion_to_location.items():
@@ -71,7 +87,8 @@ def regions_get_ordered_by_x(ver="hand", prune_index=True):
     
     return regions_ordered_by_x
 
-def plot_df(df, valname, subplot_var=None, savedir = None, savesuffix="", DEBUG=False):
+def plot_df(df, valname, subplot_var=None, savedir = None, savesuffix="", 
+        DEBUG=False, diverge=False):
     """
     PARAMS:
     - df, long-form dataframe with N rows per brain region, if N>1, then will
@@ -81,6 +98,7 @@ def plot_df(df, valname, subplot_var=None, savedir = None, savesuffix="", DEBUG=
     have.
     """
     from pythonlib.tools.pandastools import convert_to_2d_dataframe
+    map_bregion_to_location = mapper_bregion_to_location()
 
     if "region" in df.columns:
         REGION = "region"
@@ -100,7 +118,7 @@ def plot_df(df, valname, subplot_var=None, savedir = None, savesuffix="", DEBUG=
                                                  val_name=valname, 
                                                  norm_method=norm_method,
                                                  annotate_heatmap=annotate_heatmap,
-                                                zlims = ZLIMS
+                                                zlims = ZLIMS, diverge=diverge
                                                 )
 
     # 1) DEFINE COORDS FOR EACH REGION
@@ -126,7 +144,7 @@ def plot_df(df, valname, subplot_var=None, savedir = None, savesuffix="", DEBUG=
                 if region == k[3:]:
                     loc = v
                     
-                    print(region, k)
+                    # print(region, k)
                     # print(map_bregion_to_location)
                     assert FOUND==False
                     FOUND = True        
@@ -155,9 +173,9 @@ def plot_df(df, valname, subplot_var=None, savedir = None, savesuffix="", DEBUG=
 
 
     # PLOT:
-    ncols = 4
+    ncols = len(list_events)
     nrows = int(np.ceil(len(list_events)/ncols))
-    fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(3*ncols, 3*nrows))
+    fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(3*ncols, 3*nrows), squeeze=False)
 
     for i, (ax, event) in enumerate(zip(axes.flatten(), list_events)):
 
@@ -181,7 +199,7 @@ def plot_df(df, valname, subplot_var=None, savedir = None, savesuffix="", DEBUG=
 
             # 2) each area has a "blob", a circle on this image
 
-            print(bregion, irow, icol, col, cen)
+            # print(bregion, irow, icol, col, cen)
             c = plt.Circle(cen, rad, color=col, clip_on=False)
             ax.add_patch(c)
 
@@ -199,3 +217,84 @@ def plot_df(df, valname, subplot_var=None, savedir = None, savesuffix="", DEBUG=
         fig.savefig(path)
         fig_hist.savefig(path_hist)
     return fig, axes
+
+
+def plot_scalar_values(regions, values, diverge=False):
+    """
+    Helper to take scalar values, each corresponding to a region, and plot those values on a brain
+    PARAMS;
+    - regions, list of str, each region can p[resem p]
+    - values, list of mean value for each region. 
+    """
+    import pandas as pd
+
+    # map_bregion_to_location = {}
+    # map_bregion_to_location["M1_m"] = [0, 1.3]
+    # map_bregion_to_location["M1_l"] = [1, 2]
+    # map_bregion_to_location["PMv_l"] = [4, 5.3]
+    # map_bregion_to_location["PMv_m"] = [3.5, 3.3]
+    # map_bregion_to_location["PMd_p"] = [3.3, 1.6]
+    # map_bregion_to_location["PMd_a"] = [5, 1.85]
+    # map_bregion_to_location["dlPFC_p"] = [7.2, 2.8]
+    # map_bregion_to_location["dlPFC_a"] = [9, 3]
+    # map_bregion_to_location["vlPFC_p"] = [5.8, 5]
+    # map_bregion_to_location["vlPFC_a"] = [8.5, 4]
+    # map_bregion_to_location["FP_p"] = [11, 3.9]
+    # map_bregion_to_location["FP_a"] = [12.5, 4.3]
+    # map_bregion_to_location["SMA_p"] = [-.1, 0.2]
+    # map_bregion_to_location["SMA_a"] = [1.4, 0.3]
+    # map_bregion_to_location["preSMA_p"] = [3.2, 0.4]
+    # map_bregion_to_location["preSMA_a"] = [4.5, 0.6]
+    # xmult = 33
+    # ymult = 50
+    # # xoffset = 230 # if use entire image
+    # xoffset = 100 # if clip
+    # yoffset = 30
+    # for k, v in map_bregion_to_location.items():
+    #     map_bregion_to_location[k] = [xoffset + xmult*v[0], yoffset + ymult*v[1]]
+    # rad = (xmult + ymult)/4
+
+    ###############################
+    # 1) values and regions, collect in a pandas dataframe
+    df = pd.DataFrame({"region":regions, "value":values})
+
+    return plot_df(df, "value", subplot_var=None, savedir = None, savesuffix="", 
+        DEBUG=False, diverge=diverge)
+
+    # map_bregion_to_value = {}
+    # for reg, val in zip(regions, rgba_values):
+    #     map_bregion_to_value[reg] = val
+
+
+    # cmap = sns.color_palette("rocket", as_cmap=True)
+    # # Return the colors
+    # from matplotlib.colors import Normalize
+    # # Normalize data
+    # norm = Normalize(vmin=-0.3, vmax=0.3)
+    # rgba_values = cmap(norm(scores))
+    # rgba_values
+
+    # # Overlay on brain
+    # fig, ax = plt.subplots()
+
+    # list_regions = regions
+
+    # # 1) get heatmap
+
+    # image_name = "/gorilla3/Dropbox/SCIENCE/FREIWALD_LAB/DATA/brain_drawing_template.jpg"
+    # im = plt.imread(image_name)
+    # im = im[:330, 130:]
+    # ax.imshow(im)
+
+    # #     if i==1:
+    # #         assert False
+    # for bregion in list_regions:
+    # #     irow = map_bregion_to_rowindex[bregion]
+    # #     icol = map_event_to_colindex[event]
+
+    #     col = map_bregion_to_value[bregion]
+    #     cen = map_bregion_to_location[bregion]
+
+    #     # 2) each area has a "blob", a circle on this image
+    #     c = plt.Circle(cen, rad, color=col, clip_on=False)
+    #     ax.add_patch(c)

@@ -564,6 +564,17 @@ class PopAnal():
         return self.slice_by_dim_indices_wrapper(dim, indices)
 
 
+    def slice_time_by_indices(self, ind1, ind2):
+        """ This is actually doing what slice_by_dim_indices_wrapper is supposed to do
+        for time, gets indices in time dimension, inclusive of ind1 and ind2. i.e 
+        is like ind1:ind2 (inclusive). Can use -1 for last index, etc.
+        RETURNS:
+        - PopAnal
+        """
+
+        # convert from indices to times
+        time_wind = [self.Times[ind1], self.Times[ind2]]
+        return self.slice_by_dim_indices_wrapper("times", time_wind)
 
     def slice_by_dim_indices_wrapper(self, dim, inds):
         """ Helper that is standard across the three dims (trials, times, chans),
@@ -591,6 +602,8 @@ class PopAnal():
                 # then slice it
                 assert False, "code it"
                 # dfnew = self.Xlabels["trials"].iloc[inds].reset_index(True)
+            else:
+                dfnew = self.Xlabels["times"].copy()
         elif dim_str=="chans":
             pa = self._slice_by_chan(inds, return_as_popanal=True, 
                 chan_inputed_row_index=True)
@@ -635,6 +648,8 @@ class PopAnal():
 
         X = self.extract_activity(version=version)
         inds = (self.Times>=t1) & (self.Times<=t2)
+        # print(sum(inds))
+        assert sum(inds)>0, "must give times that have data within them!!"
         x_windowed = X[:, :, inds]
         times = self.Times[inds]
 
@@ -857,12 +872,14 @@ class PopAnal():
         - PA, (without modifyin self)
         """
         
+        assert len(self.Xlabels["trials"])>0, "then will not retain information about trials and chans..."
+
         list_pa = []
         list_labels = []
         for i, chan in enumerate(self.Chans):
             # get the sliced pa
             pathis = self.slice_by_dim_indices_wrapper("chans", [i])
-            # collect info
+            # collect infoextract_snippets_trials
             list_pa.append(pathis)
             list_labels.append(chan)
         PA = concatenate_popanals(list_pa, dim="trials", 
@@ -1003,6 +1020,9 @@ class PopAnal():
         - dim, which dimension in self to modify.
         NOTE: assumes that df is ordereed idetncail to the data in dim.
         """
+
+        assert len(list_cols)>0, 'or else will not retrain self.Xlabels[trials]; ie will be empty...'
+
         # store each val
         for col in list_cols:
             values = df[col].tolist()
@@ -1623,7 +1643,9 @@ def dftrials_centerize_by_group_mean(DfTrials, grouping_for_mean):
 
 def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None, 
     map_idxpa_to_value=None, map_idxpa_to_value_colname = None, 
-    assert_otherdims_have_same_values=True):
+    assert_otherdims_have_same_values=True, 
+    assert_otherdims_restrict_to_these=("chans", "trials", "times"),
+    all_pa_inherit_times_of_pa_at_this_index=None):
     """ Concatenate multiple popanals. They must have same shape except
     for the one dim concatted along.
     PARAMS:
@@ -1639,6 +1661,8 @@ def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None,
     are concatting across trials. Useful as a sanity cehck. Otherwise takes values if
     they are the same across pa, otherwise lsit of Nones
     the first pa.
+    - all_pa_inherit_times_of_pa_at_this_index, either None (does nothign) or int, which
+    is index into list_pa. all pa will be forced to use pa.Times from this pa.
     RETURNS:
     - PopAnal object
     NOTE:
@@ -1647,6 +1671,28 @@ def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None,
     """
 
     dim, dim_str = help_get_dimensions(dim)
+
+    # Sometimes times are len 1 off from each other. Here is quick fix.
+    # If any trials are off from other by one time bin (possible, round error), then remove the last sample
+    if not dim_str=="times":
+        list_n = [pa.X.shape[2] for pa in list_pa]
+        # n_median = int(np.round(np.mean((list_n))))
+        n_min = int(min(list_n)) # use min since can only prune not append. 
+        for i, pa in enumerate(list_pa):
+            if pa.X.shape[2]==n_min+1:
+                # then too long by one. prune it.
+                list_pa[i] = pa.slice_time_by_indices(0, -2)
+            elif not pa.X.shape[2]==n_min:
+                print(list_n)
+                assert False, "time bins are not smae length acrfoss all pa..."
+            else:
+                pass
+
+    if all_pa_inherit_times_of_pa_at_this_index is not None:
+        pa_base = list_pa[all_pa_inherit_times_of_pa_at_this_index]
+        for pa in list_pa:
+            assert len(pa.Times)==len(pa_base.Times)
+            pa.Times = pa_base.Times
 
     # 1) Concat the data
     list_x = [pa.X for pa in list_pa]
@@ -1689,12 +1735,13 @@ def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None,
             assert False, "how is this possible../."
         else:
             # then each pa has different vals.
-            if assert_otherdims_have_same_values:
+            if assert_otherdims_have_same_values and thisdim in assert_otherdims_restrict_to_these:
                 print("this dimensions has diff values across pa...")
                 print(thisdim)
                 for vals in vals_all:
                     print(vals)
                 assert False
+
             # replace with list of None, so dont get confused.
             n_all = list(set([len(vals) for vals in vals_all]))
             assert len(n_all)==1, "not supposed to be able to try to concat pa that have diff sizes for this dim"

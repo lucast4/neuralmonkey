@@ -27,7 +27,8 @@ class Snippets(object):
         strokes_only_keep_single=False,
         tasks_only_keep_these=None,
         prune_feature_levels_min_n_trials=10, 
-        dataset_pruned_for_trial_analysis=None):
+        dataset_pruned_for_trial_analysis=None,
+        trials_prune_just_those_including_events=True):
         """ Initialize a dataset
         PARAMS:
         - SN, Sessions object, holding neural data for a single session
@@ -42,26 +43,10 @@ class Snippets(object):
         be used to determine which trials (i.e. onluy tjhose in Dataset)             
         """
 
+        assert trials_prune_just_those_including_events==True, "this on by defualt. if turn off, then change line below in SN.get_trials_list"
+
         self.DfScalar = None
-
-        # 1) Which behavioral data to use
-        if which_level=="stroke":
-            # Each datapt matches a single stroke
-            DS = datasetstrokes_extract(SN.Datasetbeh, strokes_only_keep_single,
-                tasks_only_keep_these, prune_feature_levels_min_n_trials, 
-                list_features_extraction)
-        elif which_level=="trial":
-            # Each datapt is a single trial
-            # no need to extract antyhing, use sn.Datasetbeh
-            # only those trials that exist in SN.Datasetbeh
-            trials = SN.get_trials_list(True, True, only_if_in_dataset=True, 
-                dataset_input=dataset_pruned_for_trial_analysis)
-            print("\n == extracting these trials: ", trials)
-            pass
-        else:
-            print(which_level)
-            assert False
-
+        self.SN = SN
 
         # 1b) Which sites to use?
         sites = SN.sitegetter_all()
@@ -78,88 +63,54 @@ class Snippets(object):
             sites_keep = sites
             print("\n == extarcating these sites: ", sites_keep)
 
-        # 2) Extract snippets
-        # [GOOD] Combine those options to extract each relevant window
-        # list_events = ["fixcue", "samp", "samp", "first_raise", "STROKE"]
-        # list_events = ["fixcue", "samp", "samp", "first_raise", "on_strokeidx_0", "on_strokeidx_0"]
-        # list_pre_dur = [-0.5, -0.3, 0.1, -0.55, -0.55, 0.05]
-        # list_post_dur = [0., 0., 0.65, -0.05, 0.05, 0.55]
 
-        ### Extract snippets.
-        ListPA = []
-        fig, ax = plt.subplots()
-        list_events_uniqnames = []
-        map_var_to_othervars_list = []
-        for i, (event, pre_dur, post_dur) in enumerate(zip(list_events, list_pre_dur, list_post_dur)):
-            
-            # 1) Extract single pa
-            print("\n == generating popanal for: ", event)
-            if which_level=="stroke":
-                if event == "STROKE":
-                    align_to_stroke=True
-                    align_to_alternative = []
-                else:
-                    align_to_stroke=False
-                    align_to_alternative = [event]
-                    
-                listpa = SN.popanal_generate_alldata_bystroke(DS, sites_keep, align_to_stroke=align_to_stroke, 
-                                                              align_to_alternative=align_to_alternative, 
-                                                              pre_dur=pre_dur, post_dur=post_dur,
-                                                              use_combined_region=False,
-                                                              features_to_get_extra=list_features_get_conjunction)
-            elif which_level=="trial":
-                listpa = SN.popanal_generate_alldata(trials, sites_keep,
-                    events = [event],
-                    pre_dur=pre_dur, post_dur=post_dur, 
-                    columns_to_input = list_features_extraction,
-                    use_combined_region = False)
-            assert len(listpa)==1
-            pa = listpa[0]
+        ### EXTRACT SNIPPETS
+        if which_level=="stroke":
+            # Sanity checks
+            assert len(list_pre_dur)==1
+            assert len(list_post_dur)==1
+            assert len(list_events)==0
 
+            pre_dur=list_pre_dur[0]
+            post_dur = list_post_dur[0]
 
-            # 2) Get conjuctions of features
-            print("\n == labels_features_input_conjunction_other_vars: ", event)
+            # Each datapt matches a single stroke
+            DS = datasetstrokes_extract(SN.Datasetbeh, strokes_only_keep_single,
+                tasks_only_keep_these, prune_feature_levels_min_n_trials, 
+                list_features_extraction)
+            trials = None
+
+            ListPA = self.extract_snippets_strokes(DS, sites_keep, pre_dur, post_dur)
+
+            # Fill in dummy variables
+            list_events = ["stroke"]
+            list_events_uniqnames = ["00_stroke"]
+
+        elif which_level=="trial":
+            # Each datapt is a single trial
+            # no need to extract antyhing, use sn.Datasetbeh
+            # only those trials that exist in SN.Datasetbeh
+            trials = SN.get_trials_list(True, True, only_if_in_dataset=True, 
+                dataset_input=dataset_pruned_for_trial_analysis,
+                events_that_must_include = list_events)
+            print("\n == extracting these trials: ", trials)
+            DS = None
+
+            ListPA, list_events_uniqnames = self.extract_snippets_trials(trials, sites_keep, list_events, list_pre_dur, list_post_dur,
+                list_features_extraction)
+        else:
+            assert False
+
+        # Map var conjunctions.
+        for pa in ListPA:
             map_var_to_othervars = pa.labels_features_input_conjunction_other_vars(dim="trials", 
                 list_var = list_features_get_conjunction)
 
-            ListPA.append(pa)
-            
-            # plot
-            ax.plot([pre_dur, post_dur], [i, i], "o-", label=event)
-            
-            # give event a unique name
-            if False:
-                # version 1, with time
-                event_unique_name = f"{event}|{pre_dur}|{post_dur}"
-            else:
-                # Version 2, with indices
-        #         event_unique_name = f"{i}_{event[:3]}_{event[-1]}"
-                if i<10:
-                    idx_str = f"0{i}"
-                else:
-                    idx_str = f"{i}"
-                event_unique_name = f"{idx_str}_{event}"
-            list_events_uniqnames.append(event_unique_name)
-
-        ax.set_title('Time windows extracted')
-        ax.legend()
-        ax.set_xlabel('time, rel event (sec)')
-        ax.axvline(0)
-        print("* List events:", list_events_uniqnames)        
-
-
         ### SAVE VARIABLES
         self.ListPA = ListPA
-        self.SN = SN
         self.Sites = sites_keep
-        if which_level=="stroke":
-            self.DS = DS
-            self.Trials = None
-        elif which_level=="trial":
-            self.DS = None
-            self.Trials = trials
-        else:
-            assert False
+        self.DS = DS
+        self.Trials = trials
         self.Params = {
             "which_level":which_level,
             "list_events":list_events, 
@@ -192,6 +143,80 @@ class Snippets(object):
         self._preprocess_map_features_to_levels()
         self._preprocess_map_features_to_levels_input("character")
 
+        print(f"** Generated Snippets, (ver {which_level}). Final length of SP.DfScalar: {len(self.DfScalar)}")
+
+
+    def extract_snippets_strokes(self, DS, sites_keep, pre_dur, post_dur):
+        """ Extract popanal, one data pt per stroke
+        """
+
+        # 2) Extract snippets
+        ListPA = self.SN.popanal_generate_alldata_bystroke(DS, sites_keep, align_to_stroke=True, 
+                                                      align_to_alternative=[], 
+                                                      pre_dur=pre_dur, post_dur=post_dur,
+                                                      use_combined_region=False)
+        assert len(ListPA)==1
+        return ListPA
+
+    def extract_snippets_trials(self, trials, sites_keep, list_events, list_pre_dur, list_post_dur,
+            list_features_extraction):
+        """
+        Each snippet is a single trial x event. 
+        This only keeps trials that have each event in the list of events
+
+        """
+
+        # Must do this, or else will bug below, since wont keep self.Xlabels["trial"]
+        for col in ("trialcode", "epoch", "character", "supervision_stage_concise"):
+            if col not in list_features_extraction:
+                list_features_extraction.append(col)
+
+        # assert len(list_features_extraction)>0, "or else downstream will fail by not extracting "
+        # 2) Extract snippets
+        ListPA = []
+        fig, ax = plt.subplots()
+        list_events_uniqnames = []
+        map_var_to_othervars_list = []
+        for i, (event, pre_dur, post_dur) in enumerate(zip(list_events, list_pre_dur, list_post_dur)):
+            
+            # 1) Extract single pa
+            print("\n == generating popanal for: ", event)
+            listpa = self.SN.popanal_generate_alldata(trials, sites_keep,
+                events = [event],
+                pre_dur=pre_dur, post_dur=post_dur, 
+                columns_to_input = list_features_extraction,
+                use_combined_region = False)
+            assert len(listpa)==1
+            pa = listpa[0]
+
+            # # 2) Get conjuctions of features
+            # print("\n == labels_features_input_conjunction_other_vars: ", event)
+            # map_var_to_othervars = pa.labels_features_input_conjunction_other_vars(dim="trials", 
+            #     list_var = list_features_get_conjunction)
+
+            ListPA.append(pa)
+            
+            # plot
+            ax.plot([pre_dur, post_dur], [i, i], "o-", label=event)
+            
+            # give event a unique name
+            # Version 2, with indices
+    #         event_unique_name = f"{i}_{event[:3]}_{event[-1]}"
+            if i<10:
+                idx_str = f"0{i}"
+            else:
+                idx_str = f"{i}"
+            event_unique_name = f"{idx_str}_{event}"
+            list_events_uniqnames.append(event_unique_name)
+
+        ax.set_title('Time windows extracted')
+        ax.legend()
+        ax.set_xlabel('time, rel event (sec)')
+        ax.axvline(0)
+        print("* List events:", list_events_uniqnames)      
+
+        return ListPA, list_events_uniqnames
+
     def _preprocess_map_features_to_levels(self):
         """ Generate a single mapper from features to its levels, 
         that can apply across all data in self. 
@@ -215,10 +240,10 @@ class Snippets(object):
         - self.Params["map_var_to_levels"] updated
         """
 
-        if feature not in self.Params["map_var_to_levels"]:
-            data = self.DfScalar
-            levels = sorted(data[feature].unique().tolist())
-            self.Params["map_var_to_levels"][feature] = levels
+        if feature in self.DfScalar.columns:
+            if feature not in self.Params["map_var_to_levels"]:
+                levels = sorted(self.DfScalar[feature].unique().tolist())
+                self.Params["map_var_to_levels"][feature] = levels
 
 
     ############################################# WORKING WITH POPANALS
@@ -396,7 +421,7 @@ class Snippets(object):
             sd = np.std(x["fr_scalar"])
             upper = mu + 3.5*sd
             return upper
-        df = aggregThenReassignToNewColumn(df, F, "chan", "outlier_lims_upper")
+        df = aggregThenReassignToNewColumn(df, F, ["chan"], "outlier_lims_upper")
 
         # for each row, is it in bounds?
         def F(x):
@@ -413,8 +438,74 @@ class Snippets(object):
         print("Removed outliers! new len: ", len(df))
 
 
+    ############# working with frmat
+    # sort sites by time of max fr
+    def frmat_sort_by_time_of_max_fr(self, frmat, sites):
+        """ Sorts sites (axis 0) so that top row
+        has the earliset time of max fr
+        RETURNS:
+        - frmat_sorted, sites_sorted (COPIES)
+        """
+        max_fr_times = np.argmax(frmat, axis=1)
+        inds_sort = np.argsort(max_fr_times)
+        
+        frmat_sorted = np.copy(frmat)
+        sites_sorted = [s for s in sites]
+        
+        frmat_sorted = frmat_sorted[inds_sort]
+        sites_sorted = [sites_sorted[i] for i in inds_sort]
+        
+        return frmat_sorted, sites_sorted
+
 
     ################ DATA EXTRACTIONS
+    def dataextract_as_df(self, grouping_variables, grouped_var_col_name):
+        from pythonlib.tools.pandastools import append_col_with_grp_index
+        dfthis = append_col_with_grp_index(self.DfScalar, grouping_variables, 
+            grouped_var_col_name, strings_compact=True)
+
+        columns_keep = ["chan", "trialcode", "fr_sm"]
+        return dfthis.loc[:, columns_keep + [grouped_var_col_name]]
+
+    def dataextract_as_frmat(self, chan, event=None, var=None, var_level=None, 
+        fr_ver="fr_sm", return_as_zscore=False):
+        """ 
+        Extract frmat from self.DfScalar, stacking all instances of this event, and
+        (optionally) only this level for this var.
+        PARAMS
+        - chan, int
+        - event, unique event (00_..) into event_aligned
+        - var, var_level, either both None (ignore var), or string and value.
+        RETURNS:
+        - frmat, (ntrials, ntime)
+        """
+        
+        assert (var_level==None) == (var==None)
+        
+        if event is None and var is None:
+            dfthis = self.DfScalar[(self.DfScalar["chan"]==chan)]
+        elif event is None:
+            dfthis = self.DfScalar[(self.DfScalar["chan"]==chan) & (self.DfScalar[var]==var_level)]   
+        elif var is None:
+            dfthis = self.DfScalar[(self.DfScalar["chan"]==chan) & (self.DfScalar["event_aligned"]==event)]    
+        else:
+            dfthis = self.DfScalar[(self.DfScalar["chan"]==chan) & (self.DfScalar["event_aligned"]==event) & (self.DfScalar[var]==var_level)]   
+            
+        frmat = np.concatenate(dfthis[fr_ver].tolist(), axis=0)    
+            
+        if return_as_zscore:
+            def _frmat_convert_zscore(frmat):
+                """ convert to a single zscore trace, using the grand mean and std.
+                Returns same shape as input
+                """
+                m = np.mean(frmat[:], keepdims=True)
+                s = np.std(frmat[:], keepdims=True)
+
+                return (frmat - m)/s
+            frmat = _frmat_convert_zscore(frmat)
+
+        return frmat 
+
     def dataextract_as_popanal(self, chan=None, events_uniq=None):
         """ Return a single popanal """
         assert False, "in progress"
@@ -437,6 +528,8 @@ class Snippets(object):
             map_var_to_levels, 
             list_events_uniqnames)
         return Mscal
+
+    # def dataextract_as_sm_fr_mat(self, chan)
 
 
     ################ MODULATION BY VARIABLES
@@ -1424,6 +1517,111 @@ class Snippets(object):
             if evtime is not None:
                 ax.axvline(evtime, color=pcol, linestyle="--", alpha=0.4)
 
+
+    ########################################
+    def plotwrapper_heatmap_smfr(self, which_var = "event_aligned", sdir=None):
+        """ Plot smoothed, average FR in heatmap, one figure for each region,
+        one subplot for each event, and each unit a row in this subplot
+        """
+
+        sn = self.SN
+        list_event_aligned = self.DfScalar[which_var].unique().tolist()
+
+        if which_var!="event_aligned":
+            event0 = self.Params["list_events_uniqnames"][0]
+            assert len(self.Params["list_events_uniqnames"])==1, "multipoel events ,not sure what to use for timing..."
+
+        # if which_var=="event_aligned":
+        #     list_event_aligned = self.Params["list_events_uniqnames"]
+        # else:
+        #     list_event_aligned = self.Params["map_var_to_levels"][which_var]
+        #     event0 = self.Params["list_events_uniqnames"][0]
+        #     assert len(self.Params["list_events_uniqnames"])==1, "multipoel events ,not sure what to use for timing..."
+
+
+        ZSCORE = True
+        list_regions = sn.sitegetter_get_brainregion_list()
+        zlims = [-2, 2]
+        # zlims = [None, None]
+
+        for region in list_regions:
+            print("Plotting...", region)
+            sites_this = [s for s in self.Sites if s in sn.sitegetter_map_region_to_sites(region)]
+
+            # 1) extract smoothed FR for each  unit, for each event
+            fig, axes = plt.subplots(1, len(list_event_aligned), sharex=False, sharey=True, figsize=(len(list_event_aligned)*4, 8))
+            
+            # 2) Collect all fr mat
+            List_fr_mat = []
+            for i, (event, ax) in enumerate(zip(list_event_aligned, axes.flatten())):
+                            
+                # extract matrix of mean fr (site x time)
+                list_frmean = []
+                for site in sites_this:
+                    frmat = self.dataextract_as_frmat(site, var=which_var, 
+                        var_level=event, return_as_zscore=ZSCORE) 
+                    frmean = np.mean(frmat, 0)
+                    list_frmean.append(frmean)
+
+                frmat_site_by_time = np.stack(list_frmean)
+
+                # sort (only for first index)
+                if i==0:
+                    frmat_site_by_time, sites_this = self.frmat_sort_by_time_of_max_fr(frmat_site_by_time, 
+                        sites_this)
+
+                # normalize firing rates (use percent change from first time bin)
+                if False:
+                    frmedian = np.median(frmat_site_by_time, axis=1, keepdims=True)
+                    frmat_site_by_time = (frmat_site_by_time - frmedian)/frmedian
+
+                List_fr_mat.append(frmat_site_by_time)
+
+            # Figure out zlim
+            zmax = np.max(np.abs([x.max() for x in List_fr_mat] + [x.min() for x in List_fr_mat]))
+            if zmax>1.8:
+                zmax = 1.8
+            
+            for event, frmat_site_by_time, ax in zip(list_event_aligned, List_fr_mat, axes.flatten()):
+                if which_var=="event_aligned":
+                    times, ind_0, xticks, xticklabels = self.event_extract_time_labels(event)
+                else:
+                    times, ind_0, xticks, xticklabels = self.event_extract_time_labels(event0)
+
+                # plot as 2d heat map
+                from pythonlib.tools.snstools import heatmap_mat
+            #         sns.heatmap(frmat_site_by_time, ax=ax, )
+                _, ax, _ = heatmap_mat(frmat_site_by_time, annotate_heatmap=False, ax=ax, diverge=True, zlims=[-zmax, zmax]);
+
+                # Set y and x ticks
+                ax.set_yticks([i+0.5 for i in range(len(sites_this))], labels=sites_this)
+                ax.set_xticks(xticks, labels=xticklabels)
+                ax.axvline(ind_0)
+                
+                ax.set_title(event)
+            
+            fig.savefig(f"{sdir}/zscored-{region}.pdf")
+            
+            # plot the means
+            fig, axes = plt.subplots(1, len(list_event_aligned), sharex=False, sharey=True, figsize=(len(list_event_aligned)*3, 3))
+            from neuralmonkey.neuralplots.population import plotNeurTimecourse, plot_smoothed_fr
+
+            for event, frmat_site_by_time, ax in zip(list_event_aligned, List_fr_mat, axes.flatten()):
+                if which_var=="event_aligned":
+                    times, ind_0, xticks, xticklabels = self.event_extract_time_labels(event)
+                else:
+                    times, ind_0, xticks, xticklabels = self.event_extract_time_labels(event0)
+
+                plot_smoothed_fr(frmat_site_by_time, times, ax=ax)
+                ax.axvline(times[ind_0])
+                ax.set_title(event)
+                    
+            if sdir:
+                fig.savefig(f"{sdir}/zscored-{region}-mean.pdf")
+            
+            plt.close("all")        
+
+
     def plot_smfr_trials_each_level(self, chan, savedir=None, 
         alpha=0.2):
         """" Plot smoothed fr, one curve for each trial, split into supblots, one
@@ -1490,6 +1688,10 @@ class Snippets(object):
         # list_pre_dur = self.Params["list_pre_dur"]
         # list_post_dur = self.Params["list_post_dur"]
         map_var_to_levels = self.Params["map_var_to_levels"]
+        for var in list_var:
+            if var not in map_var_to_levels.keys():
+                self._preprocess_map_features_to_levels_input(var)
+
         if list_var is None:
             list_var = self.Params["list_features_get_conjunction"]
 
@@ -1779,7 +1981,6 @@ class Snippets(object):
         return fig, axes
 
     ########### UTILS
-    ########### UTILS
     def event_list_extract_linked_params(self, list_events_uniqnames=None):
         """ Helper to get things like predur etc for each even in list_events_uniqnames
         Useful for plotting, eg. when plot just subset
@@ -1812,6 +2013,33 @@ class Snippets(object):
         return list_events_uniqnames, list_events_orig, list_pre_dur, list_post_dur
 
 
+    def event_extract_timebins_this_event(self, event):
+        """ Extract array of times for this event (sec, relative to alignement)
+        PARAMS:
+        - event, e.g. 00_fix_touch
+        RETURNS:
+        - np array, num time bins.
+        """
+        self.event_extract_pre_post_dur(event) # [predur, postdur]
+        pa = self.popanal_extract_specific_slice(event)
+        return np.array(pa.Times)
+
+    def event_extract_time_labels(self, event):
+        """
+        Return labels that you can use for plotting.
+        RETURNS:
+        - times, np array of bins
+        - ind_0, index in times that is the tiem clsoest to 0 (alignemnet)
+        - xticks, [xmin, alignemnet, xmax]
+        - xticklabels, strings of times, matching xticsk
+        """
+        times = self.event_extract_timebins_this_event(event)
+        ind_0 = np.argmin(np.abs(times - 0))
+        xticks = [0, ind_0, len(times)-1]
+        xticklabels = [f"{times[i]:.2f}" for i in xticks]
+        return times, ind_0, xticks, xticklabels
+
+
     def event_extract_pre_post_dur(self, event):
         """
         PARAMS:
@@ -1828,8 +2056,6 @@ class Snippets(object):
         ind = list_events_uniqnames.index(event)
 
         return list_pre_dur[ind], list_post_dur[ind]
-
-
 
 
     # def save(self, sdir, fname="Snippets", add_tstamp=True, exclude_sn=True):
@@ -1915,6 +2141,64 @@ class Snippets(object):
         # Trials
 
 
+def extraction_helper(SN, which_level="trial"):
+    """ Helper to extract Snippets for this session
+    """
+
+    PRE_DUR = -0.4
+    POST_DUR = 0.4
+
+    dataset_pruned_for_trial_analysis = _dataset_extract_prune_general(SN)
+    
+
+    if which_level=="trial":
+        # Events
+        do_prune_by_inter_event_times = False
+        dict_events_bounds, dict_int_bounds = SN.eventsanaly_helper_pre_postdur_for_analysis(
+            do_prune_by_inter_event_times=do_prune_by_inter_event_times)
+        # # sn = MS.SessionsList[0]
+        # which_level = "trial"
+        # list_events = ["samp", "go", "done_button", "off_stroke_last", "reward_all"]
+        list_events = list(dict_events_bounds.keys())
+        list_features_extraction = []
+        list_features_get_conjunction = []
+        if False:
+            # hard to do shuffling across events
+            list_pre_dur = [dict_events_bounds[ev][0] for ev in list_events]
+            list_post_dur = [dict_events_bounds[ev][1] for ev in list_events]
+        else:
+            list_pre_dur = [PRE_DUR for ev in list_events]
+            list_post_dur = [POST_DUR for ev in list_events]
+        # list_pre_dur = [-0.8 for _ in range(len(list_events))]
+        # list_post_dur = [0.8 for _ in range(len(list_events))]
+        strokes_only_keep_single = False
+        prune_feature_levels_min_n_trials = 1
+
+    elif which_level=="stroke":
+        # sn = MS.SessionsList[1]
+        which_level = "stroke"
+        list_events = []
+        list_features_extraction = []
+        list_features_get_conjunction = []
+        list_pre_dur = [PRE_DUR]
+        list_post_dur = [POST_DUR]
+        strokes_only_keep_single = False
+        prune_feature_levels_min_n_trials = 1
+    else:
+        print(which_level)
+        assert False
+
+
+    SP = Snippets(SN=SN, which_level=which_level, list_events=list_events, 
+                list_features_extraction=list_features_extraction, list_features_get_conjunction=list_features_get_conjunction, 
+                list_pre_dur=list_pre_dur, list_post_dur=list_post_dur,
+                strokes_only_keep_single=strokes_only_keep_single,
+                  prune_feature_levels_min_n_trials=prune_feature_levels_min_n_trials,
+                  dataset_pruned_for_trial_analysis = dataset_pruned_for_trial_analysis
+                 )
+
+    return SP
+
 
 def datasetstrokes_extract(D, strokes_only_keep_single=False, tasks_only_keep_these=None, 
     prune_feature_levels_min_n_trials=None, list_features=None, vel_onset_twindow = (0, 0.2)):
@@ -1960,3 +2244,275 @@ def datasetstrokes_extract(D, strokes_only_keep_single=False, tasks_only_keep_th
         print(DS.Dat[key].value_counts())
 
     return DS
+
+
+def _dataset_extract_prune_general(sn):
+    """
+    Generic, should add to this.
+    """
+    Dcopy = sn.Datasetbeh.copy()
+
+    # Remove if aborted
+    Dcopy.filterPandas({"aborted":[False]}, "modify")
+
+    print("############ TAKING ONLY NO SUPERVISION TRIALS")
+    LIST_NO_SUPERV = ["off|0||0", "off|1|solid|0", "off|1|rank|0"]
+    # Only during no-supervision blocks
+    print("BEFORE REMOVE:", Dcopy.Dat["supervision_stage_concise"].value_counts())
+    Dcopy.filterPandas({"supervision_stage_concise":LIST_NO_SUPERV}, "modify")
+    print("AFTER REMOVE:", Dcopy.Dat["supervision_stage_concise"].value_counts())
+    
+    print("Dataset final len:", len(Dcopy.Dat))
+
+    return Dcopy
+
+def _dataset_extract_prune_sequence(sn, n_strok_max = 2):
+    """ Prep beh dataset before extracting snippets.
+    Add columns that are necessary and
+    return pruned datsaet for sequence analysis.
+    """
+
+    import pandas as pd
+    D = sn.Datasetbeh
+
+#     # 1) Convert to dataset strokes (task variant)
+#     from pythonlib.dataset.dataset_strokes import DatStrokes
+#     # DSbeh = DatStrokes(D, version="beh")
+#     DStask = DatStrokes(D, version="task") 
+
+#     # 1) only prims in grid
+#     DStask.dataset_append_column("supervision_stage_concise")
+#     filtdict = {"task_kind":["prims_on_grid"], "supervision_stage_concise":["off|1|solid|0"]}
+#     DStask.filter_dataframe(filtdict, True)
+
+
+    # Method 1 - level of trial
+    # for each trial, extract 
+    datall = []
+    list_dat = []
+    for i in range(len(D.Dat)):
+
+        dat = {}
+        # trial-level info
+        # trialcode = D.Dat.iloc[i]["trialcode"]   
+        tokens_behft = D.taskclass_tokens_extract_wrapper(i)
+        if False:
+            dat["nstrokes_beh"] = len(D.Dat.iloc[i]["strokes_beh"])
+        else:
+            # Better, beucase there can be mismatch sometimes.
+            dat["nstrokes_beh"] = len(tokens_behft)
+
+        dat["nstrokes_task"] = len(D.Dat.iloc[i]["strokes_task"])
+
+        # shapes in order
+        for i in range(n_strok_max):
+            if i<len(tokens_behft):
+                tok = tokens_behft[i]
+                dat[f"{i}_shape"] = tok["shape"]
+                dat[f"{i}_loc"] = tok["gridloc"]
+            else:
+                dat[f"{i}_shape"] = None
+                dat[f"{i}_loc"] = None
+
+        list_dat.append(dat)
+
+    # Put back into D.Dat
+    dfdat = pd.DataFrame(list_dat)
+    D.Dat["nstrokes_beh"] = dfdat["nstrokes_beh"]
+    D.Dat["nstrokes_task"] = dfdat["nstrokes_task"]
+    for i in range(n_strok_max):
+        D.Dat[f"{i}_shape"] = dfdat[f"{i}_shape"]
+        D.Dat[f"{i}_loc"] = dfdat[f"{i}_loc"]
+        
+    Dcopy = sn.Datasetbeh.copy()
+
+    # Remove if aborted
+    Dcopy.filterPandas({"aborted":[False], "task_kind":["prims_on_grid"]}, "modify")
+    # Filter trials that dont have enough strokes
+    Dcopy.Dat = Dcopy.Dat[Dcopy.Dat["nstrokes_beh"]>=n_strok_max].reset_index(drop=True)
+
+    # Print final
+    print("Pruned dataset for _dataset_extract_prune_sequence")
+    print(D.Dat["nstrokes_beh"].value_counts())
+    print(D.Dat["nstrokes_task"].value_counts())
+    print(D.Dat["0_shape"].value_counts())
+    print(D.Dat["0_loc"].value_counts())
+    print(D.Dat["1_shape"].value_counts())
+    print(D.Dat["1_loc"].value_counts())
+
+    return D
+
+
+def _dataset_extract_prune_rulesw(sn, same_beh_only, 
+        n_min_trials_in_each_epoch, remove_baseline_epochs, 
+        first_stroke_same_only,
+        plot_tasks=False):
+    """
+    Prep beh dataset before extracting snippets.
+    Return pruned dataset (copy), to do rule swtiching analy
+    matching motor beh, etc.
+    """
+
+    if first_stroke_same_only:
+        assert same_beh_only==False, "this will throw out cases with same first stroke, but nto all strokes same."
+    D = sn.Datasetbeh.copy()
+
+    ##### Clean up tasks
+    # 1) only tasks that are done in all epochs (generally, that span all combo of variables).
+    # 2) only tasks with completed trials (not failures).
+    # 3) only tasks that are correct (especially for probes).
+
+    ##### Plot just tasks with common first stroke
+
+    ##### Plot just for the tasks with common stim, diff behavior
+    # Extract it
+#     df = SP.DfScalar
+#     # save it
+#     dfORIG = SP.DfScalar.copy()
+
+    # only "correct" trials (based on actual sequence executed)
+    print("############ TAKING ONLY CORRECT TRIALS")
+    inds_correct = []
+    inds_incorrect = []
+    list_correctness = []
+    for ind in range(len(D.Dat)):
+        dat = D.sequence_extract_beh_and_task(ind)
+        taskstroke_inds_beh_order = dat["taskstroke_inds_beh_order"]
+        taskstroke_inds_correct_order = dat["taskstroke_inds_correct_order"]
+
+        if taskstroke_inds_beh_order==taskstroke_inds_correct_order:
+            # correct
+            inds_correct.append(ind)
+            list_correctness.append(True)
+        else:
+            inds_incorrect.append(ind)
+            list_correctness.append(False)
+
+    D.Dat["sequence_correct"] = list_correctness
+    print("-- Correctness:")
+    D.grouping_print_n_samples(["character", "epoch", "sequence_correct"])
+
+    print("correct, incorrect:", len(inds_correct), len(inds_incorrect))
+    D.subsetDataframe(inds_correct)
+    print("Dataset len:", len(D.Dat))
+
+    print("############ TAKING ONLY NO SUPERVISION TRIALS")
+    LIST_NO_SUPERV = ["off|0||0", "off|1|solid|0", "off|1|rank|0"]
+    # Only during no-supervision blocks
+    print(D.Dat["supervision_stage_concise"].value_counts())
+    D.filterPandas({"supervision_stage_concise":LIST_NO_SUPERV}, "modify")
+    print("Dataset len:", len(D.Dat))
+
+    # Only characters with same beh across rules.
+    # 2) Extract takss done the same in mult epochs
+    if first_stroke_same_only:
+        # find lsit of tasks that have same first stroke across epochs.
+        from pythonlib.tools.pandastools import grouping_append_and_return_inner_items
+        list_tasks = D.Dat["character"].unique().tolist()
+        list_epoch = D.Dat["epoch"].unique().tolist()
+        info = grouping_append_and_return_inner_items(D.Dat, ["character", "epoch"])
+        list_tasks_keep = []
+        print("n unique first stroke identities for each task:")
+        for task in list_tasks:
+            list_orders = []
+            for ep in list_epoch:
+                if (task, ep) in info.keys():
+                    idx = info[(task, ep)][0] # take first task in epoch
+                    sdict = D.sequence_extract_beh_and_task(idx)
+                    order = sdict["taskstroke_inds_correct_order"]
+                    list_orders.append(order)
+            n_orders_first_sroke = len(list(set([o[0] for o in list_orders])))
+            n_epochs_with_data = len(list_orders)
+            print("task, n_orders_first_sroke, n_epochs_with_data ... ")
+            print(task, n_orders_first_sroke, n_epochs_with_data)
+            if n_orders_first_sroke==1 and n_epochs_with_data>1:
+                list_tasks_keep.append(task)
+        print("These tasks keep (same first stroke): ", list_tasks_keep)
+        D.filterPandas({"character":list_tasks_keep}, "modify")
+        print("New len of D:", len(D.Dat))
+
+    if same_beh_only:
+        print("############ TAKING ONLY CHAR WITH SAME BEH ACROSS TRIALS")
+        if True:
+            # Already extracted in taskgroups (probes.py)
+            print("Using this filter on taskgroup: same_beh, same_beh-P]")
+            print("Starting task groups:")
+            print("N chars per group:")    
+            for grp, inds in D.grouping_get_inner_items("taskgroup", "character").items():
+                print(grp, ":", len(inds))    
+                
+            print("----")
+            print("N trials per group:")
+            for grp, inds in D.grouping_get_inner_items("taskgroup").items():
+                print(grp, ":", len(inds))
+            print("---------------------")    
+            D.grouping_print_n_samples(["taskgroup", "epoch", "character"])
+
+            D.filterPandas({"taskgroup":["same_beh", "same_beh-P"]}, "modify")
+        else:
+            # Old method, obsolste, this is done to define taskgroup in probes.py
+            from pythonlib.dataset.dataset_preprocess.probes import _generate_map_taskclass
+            mapper_taskname_epoch_to_taskclass = _generate_map_taskclass(D)
+
+            list_task = D.Dat["character"].unique().tolist()
+            list_epoch = D.Dat["epoch"].unique().tolist()
+            if len(list_epoch)<2:
+                print("maybe failed to preprocess dataset to reextract epochs?")
+                assert False
+            print(list_task)
+            print(list_epoch)
+            dict_task_orders = {}
+            for task in list_task:
+
+                list_inds_each_epoch = []
+                for epoch in list_epoch:
+
+                    if (task, epoch) not in mapper_taskname_epoch_to_taskclass.keys():
+                        # Then this task has at least one epoch for which it doesnet havet rials.
+                        # print((task, epoch))
+                        # print(mapper_taskname_epoch_to_taskclass)
+                        INCLUDE_THIS_TASK = False
+                        # assert False, "should first exclude tasks that are not present across all epochs"
+                    else:
+                        Task = mapper_taskname_epoch_to_taskclass[(task, epoch)]
+                        inds_ordered = Task.ml2_objectclass_extract_active_chunk(return_as_inds=True)
+                        list_inds_each_epoch.append(tuple(inds_ordered))
+
+                if plot_tasks:
+                    ax = Task.plotStrokes(ordinal=True)
+                    ax.set_title(f"{task}")
+
+                dict_task_orders[task] = list_inds_each_epoch
+            
+            print(dict_task_orders)
+            # pull out tasks which have same sequence
+            tasks_same_sequence = []
+            for taskname, list_seqs in dict_task_orders.items():
+                if len(list(set(list_seqs)))==1:
+                    tasks_same_sequence.append(taskname)
+            print("\nTHese tasks foudn to have same seuqence across epochs: ")
+            print(tasks_same_sequence)
+            D.filterPandas({"character":tasks_same_sequence}, "modify")
+        print("Dataset len:", len(D.Dat))
+
+    # Remove epoch = baseline
+    if remove_baseline_epochs:
+        # D.Dat[~(D.Dat["epoch"].isin(["base", "baseline"]))]
+        indskeep = D.Dat[~(D.Dat["epoch"].isin(["base", "baseline"]))].index.tolist()
+        D.subsetDataframe(indskeep)
+
+    # Only if have at least N trials per epoch
+    print("############ TAKING ONLY CHAR with min n trials in each epoch")
+    # print(D.Dat["character"].value_counts())
+    # print(D.Dat["epoch"].value_counts())
+    D.grouping_print_n_samples(["taskgroup", "epoch", "character"])
+    df = D.prune_min_ntrials_across_higher_levels("epoch", "character", n_min=n_min_trials_in_each_epoch)
+    D.Dat = df
+
+    # Final length of D.Dat
+    print("Final n trials", len(D.Dat))
+    print("Dataset conjunctions:")
+    D.grouping_print_n_samples(["taskgroup", "epoch", "character"])
+
+    return D
+

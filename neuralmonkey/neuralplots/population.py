@@ -46,6 +46,33 @@ def plotNeurHeat(X, ax=None, barloc="right", robust=True, zlims = None):
 #     PARAMS
 #     """
 
+def plot_smoothed_fr(frmat, times=None, ax=None, summary_method="mean", error_ver="sem",
+    color="k"):
+    """
+    Low-level plot of smoothed fr, mean of frmat
+    PARAMS:
+    - frmat, (ntrials, time)
+    """
+    if error_ver=="sem":
+        from scipy import stats
+        if summary_method=="mean":
+            Xmean = np.mean(frmat, axis=0)
+        elif summary_method=="median":
+            Xmean = np.median(frmat, axis=0)
+        else:
+            print(summary_method)
+            assert False
+        Xsem = stats.sem(frmat, axis=0)
+    else:
+        assert error_ver is None, "not coded"
+        
+    if times is None:
+        times = np.arange(frmat.shape[1])
+
+    fig, ax = plotNeurTimecourseErrorbar(Xmean, Xerror=Xsem, times=times,ax=ax, color=color)
+    return fig, ax
+
+
 
 def plotNeurTimecourse(X, times=None, ax=None, n_rand=None, marker="-", color="k",
     alpha=None):

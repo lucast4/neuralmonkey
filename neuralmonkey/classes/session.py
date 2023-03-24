@@ -368,19 +368,21 @@ class Session(object):
         if os.path.exists(path):
             print("Found! metada path : ", path)
             out = load_yaml_config(path)
+
             # if anything is list of lists, then each inner list is a diff session.
             # so take the union.
             list_sites_keys = ["sites_garbage", "sites_low_fr"]
             for key in list_sites_keys:
-                if isinstance(out[key][0], list):
-                    print("Starting lengths:")
-                    for list_vals in out[key]:
-                        print(len(list_vals))
-                    values_union = [val for list_vals in out[key] for val in list_vals]
-                    # take 
-                    out[key] = sorted(set(values_union))
-                    print("Union length")
-                    print(len(out[key]))
+                if key in out.keys() and len(out[key])>0:
+                    if isinstance(out[key][0], list):
+                        print("Starting lengths:")
+                        for list_vals in out[key]:
+                            print(len(list_vals))
+                        values_union = [val for list_vals in out[key] for val in list_vals]
+                        # take 
+                        out[key] = sorted(set(values_union))
+                        print("Union length")
+                        print(len(out[key]))
 
             # Save it
             for k, v in out.items():
@@ -3164,6 +3166,164 @@ class Session(object):
 
 
     ###################### GET TEMPORAL EVENTS
+    def eventsanaly_helper_pre_postdur_for_analysis(self, do_prune_by_inter_event_times=False):
+        """ 
+        Help get pre and post-dur for this event, making sure the not impinge on adjacent
+        events. Also acts as repository of pre and post durations, as well as events in order.
+        PARAMS:
+        - do_prune_by_inter_event_times, if True, then shortens windows if they extend past the
+        empirical intervals.
+        RETURNS:
+        - dict_events_bounds, holding events in order (keys) and their [predur postdur] as lists
+        where predur is negative
+        --- e.g, {'fix_touch': [-0.6, 0.6],
+             'samp': [-0.6, 0.6],
+             'go_cue': [-0.6, 0.23034612376199384],
+             'first_raise': [-0.23034612376199384, 0.6],
+             'off_stroke_last': [-0.6, 0.6],
+             'doneb': [-0.6, 0.5601144949105435],
+             'post': [-0.5601144949105435, 0.20174269626695995],
+             'reward_all': [-0.20174269626695995, 0.6]}
+        - dict_int_bounds, dict, keys are events, vals are [bounds_pre, bounds_post], where each are
+        list of low and high percentile of duration from that event to pre and post event.
+        """
+        import numpy as np
+
+        # these are ideal, ignoring the actual intervals (will be pruned in a bit)
+        # Symmetrical, useful for analysis of alignemnet, events, segmentation in time, etc.
+        dict_events_bounds = {
+            "fix_touch":[-0.6, 0.6], # button-touch
+            "samp":[-0.6, 0.6], # image response
+            "go_cue":[-0.6, 0.6], # movement onset.
+            "first_raise":[-0.6, 0.6], # image response
+            "off_stroke_last":[-0.6, 0.6], # image response
+            "doneb":[-0.6, 0.6], # image response    
+            "post":[-0.6, 0.6], # image response    
+            "reward_all":[-0.6, 0.6], # image response    
+        }
+
+        # Get all events
+        # eventsthis = ["on", "fixcue", "fix_touch", "samp", "go_cue", "first_raise", "on_strokeidx_0"]
+        eventsthis = list(dict_events_bounds.keys())
+
+        # only include trials with all these events
+        trials = self.get_trials_list(True, True, True, events_that_must_include=eventsthis)
+        trials_ignore = self.get_trials_list(True, True, True)
+
+        print("--- Only keeping trials with all events...")
+        print("This many trials (all good):", len(trials_ignore))
+        print("This many trials (only if include all events):", len(trials))
+
+        dfevents, _ = self.eventsdataframe_extract_timings(eventsthis)
+
+        # keep only these trials
+        dfeventsthis = dfevents[dfevents["trial"].isin(trials)]
+
+        intervalnames = [f"{a}--{b}" for a, b in zip(eventsthis[:-1], eventsthis[1:])]
+
+        # keep only those with all events
+        list_vals = []
+        for x in dfeventsthis["times_ordered_flat"].tolist():
+            if len(x)==len(eventsthis):
+                list_vals.append(x)
+        # intervals = np.diff(np.stack(dfeventsthis["times_ordered_flat"]), axis=1)
+        intervals = np.diff(np.stack(list_vals), axis=1)
+
+        # Plot intervals
+        fig, axes = plt.subplots(2,1)
+
+        # 1) include all intervals kinds
+        ax = axes.flatten()[0]
+        for j in range(intervals.shape[1]):
+            vals = intervals[:,j]
+            label = intervalnames[j]
+            ax.hist(vals, label=label, bins=15, histtype="step", log=True)
+            minmax = np.percentile(vals, [1, 99])
+            print("minmax for", label, "   =   ", minmax)
+        ax.set_xlim(left=0)
+        ax.legend()
+
+        # 2) exlcude long intervals
+        ax = axes.flatten()[1]
+        for j in range(intervals.shape[1]):
+            vals = intervals[:,j]
+            label = intervalnames[j]
+            minmax = np.percentile(vals, [1, 99])
+            print("minmax for", label, "   =   ", minmax)
+            if minmax[1]>2:
+                print("SKIPPING, as too long")
+                continue
+            ax.hist(vals, label=label, bins=15, histtype="step", log=True)
+        # ax.set_xlim([0, np.max(intervals)+0.2])
+        ax.set_xlim(left=0)
+        ax.legend()
+
+        # Collect distributions for each interval between adjacent eventsz
+        dict_int_bounds = {}
+        prctiles = [50, 97.5] # really only the lower number matters. will cap intervals 
+        # to not exceed this durations
+        for i, event in enumerate(eventsthis):
+            
+            if i>0:
+                # get interval to previuos event
+                int_pre = np.percentile(intervals[:, i-1], prctiles)
+            else:
+                int_pre = None
+            
+            if i<len(eventsthis)-1:
+                # get interval to next event
+                int_post = np.percentile(intervals[:, i], prctiles)
+            else:
+                int_post = None
+                
+            # Save it
+            dict_int_bounds[event] = [int_pre, int_post]
+                        
+
+        if do_prune_by_inter_event_times:
+            # Update the pre and postdur for each event, using empirical values
+            for event, bounds_hand in dict_events_bounds.items():
+                
+                # predur
+                minmax_dur = dict_int_bounds[event][0]
+                dur = bounds_hand[0]
+                if minmax_dur is None:
+                    # then dont change anythin
+                    pass    
+                elif -dur > minmax_dur[0]:
+                    # prune it
+                    dur = -minmax_dur[0]
+                else:
+                    # duration ok
+                    pass
+                bounds_hand[0] = dur
+                
+                # postdur
+                minmax_dur = dict_int_bounds[event][1]
+                dur = bounds_hand[1]
+                if minmax_dur is None:
+                    # then dont change anythin
+                    pass    
+                elif dur > minmax_dur[0]:
+                    # prune it
+                    dur = minmax_dur[0]
+                else:
+                    # duration ok
+                    pass
+                bounds_hand[1] = dur
+
+
+        # plot durations
+        fig, ax = plt.subplots()
+        for i, (ev, bounds) in enumerate(dict_events_bounds.items()):
+            ax.plot(bounds, [i, i], 'o-')
+        ax.axvline(0)
+        list_ev = list(dict_events_bounds.keys())
+        ax.set_yticks(range(len(list_ev)), labels=list_ev);       
+        ax.set_ylabel('predur (left) and postdur (right)') 
+
+        return dict_events_bounds, dict_int_bounds
+
     def events_get_times_as_array(self, trial, list_events):
         """ 
         return as array, where take first crossing if exists., and
@@ -4091,9 +4251,9 @@ class Session(object):
             fail_if_times_outside_existing=fail_if_times_outside_existing)
 
         # 3) Assign stroke-level features
-        print("Extracting dataset features into pa.Xlabel [trials]")
+        print("Sanity check, extracting trialcode into pa.Xlabel [trials]")
         list_cols = ['task_kind', 'gridsize', 'dataset_trialcode', 
-            'stroke_index', 'shape_oriented', 'ind_taskstroke_orig', 'gridloc',
+            'stroke_index', 'stroke_index_fromlast', "stroke_index_semantic", 'shape_oriented', 'ind_taskstroke_orig', 'gridloc',
             'gridloc_x', 'gridloc_y', 'h_v_move_from_prev']
         pa.labels_features_input_from_dataframe(DS.Dat, list_cols, dim="trials")
         # Sanity check, input order matches output order
@@ -4112,25 +4272,17 @@ class Session(object):
         align_to_alternative=[], pre_dur=-0.2, post_dur=0.2, 
         fail_if_times_outside_existing=True,
         use_combined_region=True, features_to_get_extra=None):
+        """ Return list of PA, aligned to each thing in align_to_alternative, or aligned
+        to each stroke (a single PA)
+        PARAMS:
+        - DS, DatStrokes instance
+        - align_to_stroke, bool, if true, then ignore align_to_alternative
+        - align_to_alternative, list of str, dictates len of output
+        RETURNS:
+        - ListPA, list of PA objets
+        """
 
-        # # 1) Get trials and stroke inds
-        # trials = []
-        # trialcodes = []
-        # strokeids = []
-        # for ind in range(len(DS.Dat)):
-        
-        #     if ind%200==0:
-        #         print("index strokes: ", ind)
-                
-        #     trial_neural = self.datasetbeh_trialcode_to_trial(trialcode)
-
-        #     # --- BEH
-        #     tc = DS.Dat.iloc[ind]["dataset_trialcode"]
-        #     si = DS.Dat.iloc[ind]["stroke_index"]
-
-        #     trials.append(trial_neural)
-        #     trialcodes.append(tc)
-        #     strokeids.append(si)
+        assert post_dur - pre_dur > 0.001
 
         # 2) generate PA
         if align_to_stroke:
@@ -4140,6 +4292,8 @@ class Session(object):
                 use_combined_region)
             ListPA = [pa]
         else:
+            assert False, "this is HACKY. this only uses DS.Dat to collect one datapt for each stroke in DS.Dat. This should either be trial level or stroke level"
+
             # just use trials, align to specific item in each trial
             # (note: would use this over popanal_generate_alldata because here 
             # saves the stroke-level features)
@@ -4160,16 +4314,18 @@ class Session(object):
 
             # Assign stroke-level features
             print("Extracting dataset features into pa.Xlabel [trials]")
-            list_cols = ['task_kind', 'gridsize', 'dataset_trialcode', 
-                'stroke_index', 'shape_oriented', 'ind_taskstroke_orig', 'gridloc',
-                'gridloc_x', 'gridloc_y', 'h_v_move_from_prev']
+            # list_cols = ['task_kind', 'gridsize', 'dataset_trialcode', 
+            # list_cols = ['task_kind', 'gridsize', 'dataset_trialcode', 
+            #     'stroke_index', 'stroke_index_fromlast', 'shape_oriented', 'ind_taskstroke_orig', 'gridloc',
+            #     'gridloc_x', 'gridloc_y', 'h_v_move_from_prev']
+            list_cols = []
             if features_to_get_extra is not None:
                 assert isinstance(features_to_get_extra, list)
                 list_cols = list_cols + features_to_get_extra
             for pa in ListPA:
                 pa.labels_features_input_from_dataframe(DS.Dat, list_cols, dim="trials")
                 # Sanity check, input order matches output order
-                assert pa.Xlabels["trials"]["dataset_trialcode"].tolist() == trialcodes
+                # assert pa.Xlabels["trials"]["dataset_trialcode"].tolist() == trialcodes
                 assert pa.Xlabels["trials"]["trialcode"].tolist() == trialcodes
 
         return ListPA
@@ -4191,7 +4347,6 @@ class Session(object):
         # events = ["fixtch", "samp", "go", "first_raise", "on_stroke_1"]
         import pandas as pd
         from pythonlib.tools.pandastools import slice_by_row_label
-
 
         # Extract a PA for each event
         print("Generating PA")
@@ -4328,12 +4483,27 @@ class Session(object):
         # 2) Concatenate all PA into a single PA
         if not fail_if_times_outside_existing:
             assert False, "fix this!! if pre_dur extends before first time, then this is incorrect. Should do what?"
-        TIMES = (list_xslices[0].Times - list_xslices[0].Times[0]) + pre_dur*s # times all as [-predur, ..., postdur]
+        
+        # Replace all times with this time relative to alignement.
+        for pa in list_xslices:
+            TIMES = (pa.Times - pa.Times[0]) + pre_dur*s # times all as [-predur, ..., postdur]
+            pa.Times = TIMES
 
         # get list of np arrays
-        Xall = np.concatenate([pa.X for pa in list_xslices], axis=1) # concat along trials axis. each one is (nchans, 1, times)
-        PAall = PopAnal(Xall, TIMES, sites, trials=trials)
+        if False:
+            TIMES = (list_xslices[0].Times - list_xslices[0].Times[0]) + pre_dur*s # times all as [-predur, ..., postdur]
+            Xall = np.concatenate([pa.X for pa in list_xslices], axis=1) # concat along trials axis. each one is (nchans, 1, times)
+            PAall = PopAnal(Xall, TIMES, sites, trials=trials)
+        else:
+            from neuralmonkey.classes.population import concatenate_popanals
+
+            # then concat
+            PAall = concatenate_popanals(list_xslices, "trials", 
+            assert_otherdims_have_same_values=True, 
+            assert_otherdims_restrict_to_these=("chans", "times"),
+            all_pa_inherit_times_of_pa_at_this_index=0)
  
+
         return PAall
 
     def smoothedfr_extract_timewindow(self, trials, sites, alignto, 
@@ -4394,11 +4564,25 @@ class Session(object):
         # 2) Concatenate all PA into a single PA
         if not fail_if_times_outside_existing:
             assert False, "fix this!! if pre_dur extends before first time, then this is incorrect. Should do what?"
-        TIMES = (list_xslices[0].Times - list_xslices[0].Times[0]) + pre_dur*s # times all as [-predur, ..., postdur]
+
+        # Replace all times with this time relative to alignement.
+        for pa in list_xslices:
+            TIMES = (pa.Times - pa.Times[0]) + pre_dur*s # times all as [-predur, ..., postdur]
+            pa.Times = TIMES
 
         # get list of np arrays
-        Xall = np.concatenate([pa.X for pa in list_xslices], axis=1) # concat along trials axis. each one is (nchans, 1, times)
-        PAall = PopAnal(Xall, TIMES, sites, trials=trials)
+        if False:
+            TIMES = (list_xslices[0].Times - list_xslices[0].Times[0]) + pre_dur*s # times all as [-predur, ..., postdur]
+            Xall = np.concatenate([pa.X for pa in list_xslices], axis=1) # concat along trials axis. each one is (nchans, 1, times)
+            PAall = PopAnal(Xall, TIMES, sites, trials=trials)
+        else:
+            from neuralmonkey.classes.population import concatenate_popanals
+
+            # then concat
+            PAall = concatenate_popanals(list_xslices, "trials", 
+            assert_otherdims_have_same_values=True, 
+            assert_otherdims_restrict_to_these=("chans", "times"),
+            all_pa_inherit_times_of_pa_at_this_index=0)
  
         return PAall
 
@@ -4566,11 +4750,11 @@ class Session(object):
             trials = trials_keep
 
         if len(events_that_must_include)>0:
-            trials = self.get_trials_list_if_include_these_events(trials, events_that_must_include)
+            trials = self._get_trials_list_if_include_these_events(trials, events_that_must_include)
 
         return trials
 
-    def get_trials_list_if_include_these_events(self, trials, events_that_must_include):
+    def _get_trials_list_if_include_these_events(self, trials, events_that_must_include):
         """ only inclues trials that have at least 
         one instance of eaech event. time in trial doesnt matter.
         """

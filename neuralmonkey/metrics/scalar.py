@@ -25,25 +25,29 @@ class MetricsScalar(object):
         self.Data = data
 
         if list_events_uniqnames is None:
-            assert False, "code it!"
-        self.ListEventsUniqname = list_events_uniqnames
+            self.ListEventsUniqname = sorted(data["event_aligned"].unique().tolist())
+        else:
+            self.ListEventsUniqname = list_events_uniqnames 
 
         if list_var is None:
-            assert False, "code it"
+            list_var = []
+            # assert False, "code it"
         for var in list_var:
             assert var in data.columns
             assert var in map_var_to_othervars.keys()
         self.ListVar = list_var
 
         if map_var_to_othervars is None:
-            assert False, "code it!"
+            map_var_to_othervars = {}
         for var, othervar in map_var_to_othervars.items():
             if othervar is not None:
                 assert othervar in data.columns
         self.MapVarToConjunctionOthers = map_var_to_othervars
 
         if map_var_to_levels is None:
-            assert False, "code it!"
+            for var in self.ListVar:
+                levels = sorted(data[var].unique().tolist())
+                map_var_to_levels[var] = levels
         for var in list_var:
             assert var in map_var_to_levels
         self.MapVarToLevels = map_var_to_levels
@@ -397,6 +401,140 @@ class MetricsScalar(object):
         return RES
 
 
+    ########################### MODULATION BY TIME (e.g., event-aligned)
+    def modulationbytime_calc_this(self, site, list_event=None, n_min_trials=10,
+        do_zscore_shuffle=True, nshuff=25, nboot = 80):
+        """ For each event, comput the modulation for each site (by temporal structure)
+        Modulation by time (i.e., how strongly sm fr is consistenyl modulated in same way
+        across iterations of this speciifc event, and each level of this var).
+        Auto use same sample size across events, using bootstrap.
+        PARAMS:
+        - list_event, list of str (00_...), if empty, then gets all events in column "event_aligned"
+        - var, str, if not None, then gets each level for this var. 
+        (NOTE: gets each combo of event and var_level). if None, then ignores var.
+        - n_min_trials, if any slice of data has fewer than this, then throws out.
+        - do_zscore_shuffle, bool, if True, then gets zscore rel shuffled trials.
+        - nshuff, shuffs, to compute do_zscore_shuffle
+        - nboot, num bootstraps. Auto use same sample size across events, using bootstrap.
+        RETURNS:
+        - res, list of dicts, one for each event x var_level
+        """
+        
+        if list_event is None:
+            list_event = self.ListEventsUniqname
+        
+        res = []
+        dict_zscores_per_ndat = {}
+        frmat_all = self.dataextract_as_frmat(site, event=None)
+
+        # first, determine the sample size for each event.
+        # use the min sample size for all data (taking bootstraps if needed).
+        list_n = []
+        for event in list_event:
+            frmat = self.dataextract_as_frmat(site, event) 
+            n = frmat.shape[0]
+            if n<n_min_trials:
+                continue
+            list_n.append(n)
+        nmin = min(list_n)
+        for event in list_event:
+                
+            frmat = self.dataextract_as_frmat(site, event) 
+            
+            # minimum size data
+            if frmat.shape[0]<n_min_trials:
+                if False:
+                    print(f"Skipping {event}, because too few trials ({frmat.shape[0]})")
+                continue
+            
+            frac_diff = frmat.shape[0]/nmin
+            if (frac_diff>1.03) or (frac_diff<0.97):
+            # if False:
+                # Then do bootstrap
+                list_r2 = []
+                for i in range(nboot):
+                    # slice subset of frmat_all
+                    inds_rand = np.random.choice(frmat.shape[0], size=(nmin,))
+                    frmat_sub = frmat[inds_rand]
+
+                    r2_sub = _calc_modulation_by_frsm_event_aligned_time(frmat_sub)
+                    list_r2.append(r2_sub)
+                r2_actual = np.mean(list_r2)
+            else:
+                r2_actual = _calc_modulation_by_frsm_event_aligned_time(frmat)
+
+            ################## Compute shuffles
+            if do_zscore_shuffle:
+                # ndat = frmat.shape[0]
+                ndat = nmin
+                if ndat not in dict_zscores_per_ndat.keys():
+                    
+                    # Then compute mean and std for this many datapts.
+                    list_r2 = []
+                    for i in range(nshuff):
+
+                        # slice subset of frmat_all
+                        inds_rand = np.random.choice(frmat_all.shape[0], size=(ndat,))
+                        frmat_sub_shuff = frmat_all[inds_rand]
+
+                        r2_shuff = _calc_modulation_by_frsm_event_aligned_time(frmat_sub_shuff)
+                        list_r2.append(r2_shuff)
+                    
+                    meanthis = np.mean(list_r2)
+                    stdthis = np.std(list_r2)
+                    
+                    dict_zscores_per_ndat[ndat] = (meanthis, stdthis)
+
+                meanthis, stdthis = dict_zscores_per_ndat[ndat]
+
+                # - do zscore
+                r2_zscored = (r2_actual - meanthis)/stdthis
+                r2_minusmean = r2_actual - meanthis
+            else:
+                r2_zscored = np.nan
+                r2_minusmean = np.nan
+
+            ############# SAVE OUTPUT
+            res.append({
+                "site":site,
+                # "region":region,
+                "event":event,
+                "r2_time":r2_actual,
+                "r2_time_zscored":r2_zscored,
+                "r2_time_minusmean":r2_minusmean
+            })
+
+        return res
+
+    def dataextract_as_frmat(self, chan, event=None, fr_ver="fr_sm"):
+        """ 
+        Extract frmat from self.DfScalar, stacking all instances of this event, and
+        (optionally) only this level for this var.
+        PARAMS
+        - chan, int
+        - event, unique event (00_..) into event_aligned, or tuple, in which case combines events in tuple.
+        - var, var_level, either both None (ignore var), or string and value.
+        RETURNS:
+        - frmat, (ntrials, ntime)
+        """
+                
+        if event is None:
+            dfthis = self.Data[(self.Data["chan"]==chan)]
+        elif isinstance(event, (list, tuple)):
+            for ev in event:
+                assert ev in self.Data["event_aligned"].unique()
+            dfthis = self.Data[(self.Data["chan"]==chan) & (self.Data["event_aligned"].isin(event))]   
+        elif isinstance(event, str):
+            dfthis = self.Data[(self.Data["chan"]==chan) & (self.Data["event_aligned"]==event)]   
+        else:
+            print(event)
+            print(self.Data.columns)
+            assert False, "what type is this event?"
+            
+        frmat = np.concatenate(dfthis[fr_ver].tolist(), axis=0)    
+        
+        return frmat 
+
 ####################### UTILS
 def _shuffle_dataset(df, var):
     """ returns a copy of df, with var labels shuffled
@@ -414,6 +552,52 @@ def _shuffle_dataset(df, var):
     
     return dfthis_shuff
     
+def _calc_mean_fr(frmat):
+    """ get mean fr (vector) for frmat (ntrials x ntimes)
+    across trials 
+    PARMAS:
+    - frmat, (ntrials, ntime)
+    RETURNS:
+    - frmean, (1, ntime)
+    """
+    xmean = np.mean(frmat, axis=0, keepdims=True) # (1, ntime)
+    assert len(xmean.shape)==2
+    return xmean
+
+def _calc_residuals(frmat, frmean):
+    """ REturn array of squared residules, one for each trial, each
+    a scalar, take squared differeence from mean fr (timecourse) then 
+    take sum over all times.
+    - frmat (ntrials, ntime)
+    - frmean (1, ntime)
+    RETURNS;
+    - resid_scalars, (ntrials, 1)
+    """
+    resid_scalars = np.mean((frmat - frmean)**2, axis=1) # take mean over time.
+    return resid_scalars # (ntrials, )
+
+
+def _calc_modulation_by_frsm_event_aligned_time(frmat):
+    """ Variant of R2, asking ho much activity is consistently modulated (across time)
+    in same way across trials. Is same asthinking of time bins as the levels 
+    in an anova analysis. Is analagous to doing SNR, i.e,, (peak - trough)/variance_after_subtracg_mean,
+    but is more interpretable
+    PARAMS:
+    - frmat, (ntrials, ntime), smoothed frate
+    """
+
+    # mean residual after subtracting mean fr timecourse
+    frmean = _calc_mean_fr(frmat) # (1, time)
+    resid_sub = _calc_residuals(frmat, frmean).mean() # scalar
+
+    # mean resid without subtracting fr timecourse (i.e., no effect of the event)
+    frmean_total = np.mean(frmat, keepdims=True)
+    resid_total = _calc_residuals(frmat, frmean_total).mean()
+
+    r2 = 1-(resid_sub/resid_total)
+
+    return r2
+
 def _calc_modulation_by_frsm(dfthis, var, COL_FR = 'fr_sm_sqrt',
                              do_shuffle=False,
                              plot_fr=False, plot_results=False):   
@@ -444,24 +628,6 @@ def _calc_modulation_by_frsm(dfthis, var, COL_FR = 'fr_sm_sqrt',
         ax.set_ylim(0)
         ax.legend()
 
-    def _calc_mean_fr(frmat):
-        """ get mean fr (vector) for frmat (ntrials x ntimes)
-        across trials """
-        xmean = np.mean(frmat, axis=0, keepdims=True) # (1, ntime)
-        assert len(xmean.shape)==2
-        return xmean
-    
-    def _calc_residuals(frmat, frmean):
-        """ REturn array of squared residules, one for each trial, each
-        a scalar, take squared differeence from mean fr (timecourse) then 
-        take sum over all times.
-        - frmat (ntrials, ntime)
-        - frmean (1, ntime)
-        RETURNS;
-        - resid_scalars, (ntrials, 1)
-        """
-        resid_scalars = np.mean((frmat - frmean)**2, axis=1) # take mean over time.
-        return resid_scalars # (ntrials, )
     
     def _calc_resid_helper(df):
         """ 
