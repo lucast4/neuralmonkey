@@ -1,0 +1,7 @@
+# tracking sessions that correpted in ml2, therefore missing beh trials.
+# e..g, (230320, 0) means that sess 0 (neural) will not have all its trials mapped to a beh.
+
+Pancho: 
+  - !!python/tuple [230320, 0]
+
+    

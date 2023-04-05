@@ -33,6 +33,17 @@ def loadSingleDataQuick(a, d, e, s):
         assert False
     return fd
 
+def _load_sessions_corrupted():
+    """
+    Load metadat indicating which beh sessions were corrputed.
+    RETURNS:
+    - sessdict, keys are animals, values are (date, sess), e..g,m
+    {'Pancho': [(230320, 0)]}
+    """
+    from pythonlib.tools.expttools import load_yaml_config
+    from pythonlib.globals import PATH_NEURALMONKEY
+    path = f"{PATH_NEURALMONKEY}/metadat/misc/corrupted_ml2_sessions.yaml"
+    return load_yaml_config(path)
 
 def _load_session_mapper(animal, date = None):
     """ Load a dict (metadat) mapping from session (neural) to beh.

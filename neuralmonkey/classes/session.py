@@ -65,7 +65,6 @@ BEH_CODES = {
     }
 
 
-
 def load_mult_session_helper(DATE, animal, dataset_beh_expt=None, expt = "*"):
     """ Hacky, iterates over range(10) sessions, concatenations into a single MultSessions
     for this date.
@@ -104,9 +103,8 @@ def load_mult_session_helper(DATE, animal, dataset_beh_expt=None, expt = "*"):
 
 def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Pancho", 
     expt="*", do_all_copy_to_local=False,
-    extract_spiketrain_elephant=False,
-    extract_raw_and_spikes_helper=True
-    ):
+    extract_spiketrain_elephant=False, DEBUG_TIMING=False,
+    MINIMAL_LOADING = False, RESAVE_CACHE = False):
     """ Load a single recording session.
     PARAMS:
     - DATE, str, "yymmdd"
@@ -163,7 +161,8 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
         SN = Session(DATE, beh_expt_list, beh_sess_list, beh_trial_map_list, 
             rec_session = rec_session, dataset_beh_expt=dataset_beh_expt, 
             extract_spiketrain_elephant=extract_spiketrain_elephant,
-            do_all_copy_to_local=do_all_copy_to_local)
+            do_all_copy_to_local=do_all_copy_to_local, DEBUG_TIMING=DEBUG_TIMING,
+            MINIMAL_LOADING= MINIMAL_LOADING)
     except AssertionError as err:
         print("FAILED loading session:", DATE, rec_session)
         print("Possible that this one session maps to multiple beh sessions. try loading it automatically.")
@@ -175,17 +174,23 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
         SN = Session(DATE, beh_expt_list, beh_sess_list, beh_trial_map_list, 
             rec_session = rec_session, dataset_beh_expt=dataset_beh_expt, 
             extract_spiketrain_elephant=extract_spiketrain_elephant,
-            do_all_copy_to_local=do_all_copy_to_local)
+            do_all_copy_to_local=do_all_copy_to_local, DEBUG_TIMING=DEBUG_TIMING, 
+            MINIMAL_LOADING= MINIMAL_LOADING)
 
+    if not MINIMAL_LOADING and RESAVE_CACHE:
+        # Save cached
+        self._savelocalcached_extract()
+        self._savelocalcached_save()
+            
 
     ############ EXTRACT STUFF
-    if extract_raw_and_spikes_helper:
-        # Extract spikes
-        SN.extract_raw_and_spikes_helper()
+    # if not MINIMAL_LOADING and extract_raw_and_spikes_helper:
+    #     # Extract spikes
+    #     SN.extract_raw_and_spikes_helper()
     
     # Load dataset beh
-    if dataset_beh_expt is not None:
-        SN.datasetbeh_load_helper(dataset_beh_expt)
+    # if not MINIMAL_LOADING and dataset_beh_expt is not None:
+    #     SN.datasetbeh_load_helper(dataset_beh_expt)
 
     return SN
 
@@ -203,7 +208,8 @@ class Session(object):
             rec_session=0, do_all_copy_to_local=False, 
             extract_spiketrain_elephant=False, 
             do_sanity_checks=False, do_sanity_checks_rawdupl=False,
-            dataset_beh_expt= None):
+            dataset_beh_expt= None, DEBUG_TIMING=False,
+            MINIMAL_LOADING = False):
         """
         PARAMS:
         - datestr, string, YYMMDD, e.g, "220609"
@@ -224,7 +230,13 @@ class Session(object):
         - do_all_copy_to_local, bool, if True, then does various things (once) which can take a while, but will
         speed up loading in future. even if this False, will do this for spikes and tdt tank
         """
+        from pythonlib.tools.expttools import makeTimeStamp
 
+        if DEBUG_TIMING:
+            ts = makeTimeStamp()
+            print("@@@@ DEBUG TIMING, STARTING AT",  ts)
+    
+        self._MINIMAL_LOADING = MINIMAL_LOADING
         self.Animal = animal
         self.ExptSynapse = expt
         self.Date = datestr
@@ -260,78 +272,138 @@ class Session(object):
         # For caching mapping from (site, trial) to index in self.DatAll
         self._MapperSiteTrial2DatAllInd = {}
 
+        # behcodes
+        self.BehCodes = BEH_CODES
         # self._initialize_params()
+
+        # Caching things:
+        self._CachedTrialOnset = {}
+        self._CachedStrokesPeanutsOnly = {}
+        self._CachedStrokes = {}
+        self._CachedStrokesTask = {}
+        self._CachedDatSlice = {}
+        self._CachedTouchData = {}
+        self._CachedTrialsList = {}
+
         self._initialize_paths()
         print("== PATHS for this expt: ")
         for k, v in self.Paths.items():
             print(k, ' -- ' , v)
+        if DEBUG_TIMING:
+            ts = makeTimeStamp()
+            print("@@@@ DEBUG TIMING, COMPLETED", "self._initialize_paths()", ts)
 
         # Metadat about good sites, etc. Run this first before other things.
         assert sites_garbage is None, "use metadata instead"
         # then look for metadata
         self.load_metadata_sites()
+        if DEBUG_TIMING:
+            ts = makeTimeStamp()
+            print("@@@@ DEBUG TIMING, COMPLETED:", "self.load_metadata_sites()", ts)
         # else:
         #     self.SitesGarbage = sites_garbage
         # if self.SitesGarbage is not None:
         #     assert np.all(np.diff(self.SitesGarbage)>0.), "you made mistake entering chanels (assuming going in order)?"
 
+        # Load raw data
+        print("== Loading spike times")
+        self.load_spike_times() # Load all spike times
+        if DEBUG_TIMING:
+            ts = makeTimeStamp()
+            print("@@@@ DEBUG TIMING, COMPLETED", "self.load_spike_times()", ts)
+        print("== Done")
+
+        # Load event timing data
+        print("== Trying to load events data")
+        self._loadlocal_events() # Load all spike times
+        if DEBUG_TIMING:
+            ts = makeTimeStamp()
+            print("@@@@ DEBUG TIMING, COMPLETED", "self._loadlocal_events()", ts)
+        print("== Done")
+
         # Load raw things
         print("== Loading TDT tank")
         self.load_tdt_tank(include_streams = do_all_copy_to_local)
         print("== Done")
-
-        # behcodes
-        self.BehCodes = BEH_CODES
+        if DEBUG_TIMING:
+            ts = makeTimeStamp()
+            print("@@@@ DEBUG TIMING, COMPLETED", "self.load_tdt_tank()", ts)
 
         # Find the times of all trial onsets (inneural data)
         # 1. get all onset and offset times
         self.TrialsOnset = self._behcode_extract_times(9)
         self.TrialsOffset = self._behcode_extract_times(18)
 
-        # Load beh 
-        print("== Loading ml2 behavior")
-        self.load_behavior()
-        print("== Done")
+        if not MINIMAL_LOADING:
 
-        # Check trial mapping between tdt and ml2
-        self._beh_validate_trial_mapping(ploton=True, do_update_of_mapper=True, 
-            fail_if_not_aligned=False)
+            # Load beh 
+            print("== Loading ml2 behavior")
+            self.load_behavior()
+            if DEBUG_TIMING:
+                ts = makeTimeStamp()
+                print("@@@@ DEBUG TIMING, COMPLETED", "self.load_behavior()", ts)
+            print("== Done")
 
-        # Load raw data
-        print("== Loading spike times")
-        self.load_spike_times() # Load all spike times
-        print("== Done")
+            # Check trial mapping between tdt and ml2
+            self._beh_validate_trial_number()
+            self._beh_validate_trial_mapping(ploton=True, do_update_of_mapper=True, 
+                fail_if_not_aligned=False)
+            if DEBUG_TIMING:
+                ts = makeTimeStamp()
+                print("@@@@ DEBUG TIMING, COMPLETED", "self._beh_validate_trial_mapping()", ts)
+                print("@@@@ DEBUG TIMING, COMPLETED", "self._beh_validate_trial_number()", ts)
 
-        # Load event timing data
-        print("== Trying to load events data")
-        self._loadlocal_events() # Load all spike times
-        print("== Done")
+            if do_all_copy_to_local:
+                # Copy spike waveforms saved during tdt thresholding and extraction
+                self.load_and_save_spike_waveform_images()
+                if DEBUG_TIMING:
+                    ts = makeTimeStamp()
+                    print("@@@@ DEBUG TIMING, COMPLETED", "load_and_save_spike_waveform_images()", ts)
 
+            if False:
+                # Skip for now, need to fix:
+                # at this line, gets error that list index out of range: FLOOR = x["valminmax"][0]
+                if do_sanity_checks:
+                    self.plot_behcode_photodiode_sanity_check()
 
-        if do_all_copy_to_local:
-            # Copy spike waveforms saved during tdt thresholding and extraction
-            self.load_and_save_spike_waveform_images()
+            if do_sanity_checks_rawdupl:
+                # Load raw and dupl and compare them (sanity check)
+                self.plot_raw_dupl_sanity_check()
+                if DEBUG_TIMING:
+                    ts = makeTimeStamp()
+                    print("@@@@ DEBUG TIMING, COMPLETED", "self.plot_raw_dupl_sanity_check()", ts)
 
-        if False:
-            # Skip for now, need to fix:
-            # at this line, gets error that list index out of range: FLOOR = x["valminmax"][0]
-            if do_sanity_checks:
-                self.plot_behcode_photodiode_sanity_check()
+            # Precompute mappers (quick)
+            self._generate_mappers_quickly_datasetbeh()
+            if DEBUG_TIMING:
+                ts = makeTimeStamp()
+                print("@@@@ DEBUG TIMING, COMPLETED", "self._generate_mappers_quickly_datasetbeh()", ts)
 
-        if do_sanity_checks_rawdupl:
-            # Load raw and dupl and compare them (sanity check)
-            self.plot_raw_dupl_sanity_check()
+            # Extract raw and spikes
+            self.extract_raw_and_spikes_helper()
 
-        # Precompute mappers (quick)
-        self._generate_mappers_quickly()
+            # Extract 
+            # Get spike trains for all trials.
+            if extract_spiketrain_elephant:
+                self.spiketrain_as_elephant_batch()
+                if DEBUG_TIMING:
+                    ts = makeTimeStamp()
+                    print("@@@@ DEBUG TIMING, COMPLETED", "self.spiketrain_as_elephant_batch()", ts)
+
+            # Load beh dataset
+            self.datasetbeh_load_helper(dataset_beh_expt)
+        else:
+            assert do_all_copy_to_local == False
+            assert do_sanity_checks_rawdupl == False
+            assert extract_spiketrain_elephant == False
+
 
         # Various cleanups
         self._cleanup()
-
-        # Get spike trains for all trials.
-        if extract_spiketrain_elephant:
-            self.spiketrain_as_elephant_batch()
-
+        if DEBUG_TIMING:
+            ts = makeTimeStamp()
+            print("@@@@ DEBUG TIMING, COMPLETED", "self._cleanup()", ts)
+            
         # Initialize mappers
         self.MapSiteToRegionCombined = {}
         self.MapSiteToRegion = {}
@@ -494,7 +566,7 @@ class Session(object):
         self.SitesDirty = sorted(set(sites_dirty))
 
 
-    def _generate_mappers_quickly(self):
+    def _generate_mappers_quickly_datasetbeh(self):
         """ generate mappers, which are dicts for mapping, e.g.,
         between indices"""
 
@@ -523,7 +595,14 @@ class Session(object):
         # REmove paths that say "IGNORE"
         paths = [p for p in paths if "IGNORE" not in p]
         # assert len(paths)==1, 'not yhet coded for combining sessions'
-        assert len(paths)>0, "maybe you didn't mount server?"
+        if len(paths)==0:
+            print("***^^*")
+            print(paths)
+            print(self.RecSession)
+            print(self.RecPathBase, path_hierarchy)
+            print(self.Animal, self.Date)
+            print(self.print_summarize_expt_params())
+            assert False, "maybe you didn't mount server?"
         if len(paths)<self.RecSession+1:
             print("******")
             print(paths)
@@ -545,6 +624,10 @@ class Session(object):
         pathbase_local = f"{self.RecPathBaseLocal}/{self.Animal}/{self.Date}/{final_dir_name}"
         import os
         os.makedirs(pathbase_local, exist_ok=True)
+
+        # Local cached (processed), single-trial separated)
+        cached_dir = f"{pathbase_local}/cached"
+        os.makedirs(cached_dir, exist_ok=True)
 
         def _get_spikes_raw_path():
             """ checks to find path to folder holding spikes data, in order of most to 
@@ -593,7 +676,8 @@ class Session(object):
             "events_local":f"{pathbase_local}/events_photodiode.pkl",
             "mapper_st2dat_local":f"{pathbase_local}/mapper_st2dat.pkl",
             "figs_local":f"{pathbase_local}/figs",
-            "metadata_units":f"{PATH_NEURALMONKEY}/metadat/units"
+            "metadata_units":f"{PATH_NEURALMONKEY}/metadat/units",
+            "cached_dir":f"{pathbase_local}/cached",
             }
 
         self.Paths = pathdict
@@ -803,6 +887,127 @@ class Session(object):
             mat_dict = sio.loadmat(fn)
             return mat_dict["spiketimes"]
 
+
+    def _savelocalcached_extract(self):
+        """
+        Extract cached data from raw or loaded, i.e,, current session must be not MINIMAL_LOADING.
+        RETURNS;
+        - objects all starting with _Cached, e.g, self._CachedStrokesTask
+        """
+        assert self._MINIMAL_LOADING == False
+
+        # get trials
+        self.get_trials_list(False, False)
+        self.get_trials_list(False, True)
+        self.get_trials_list(True, False)
+        self.get_trials_list(True, True)
+
+        for trial in self.get_trials_list():
+            self._CachedTrialOnset[trial] = self.ml2_get_trial_onset(trial)
+
+        for trial in self.get_trials_list():
+            self._CachedStrokesTask[trial] = self.strokes_task_extract(trial)
+            self._CachedStrokes[trial] = self.strokes_extract(trial, peanuts_only=False)
+            self._CachedStrokesPeanutsOnly[trial] = self.strokes_extract(trial, peanuts_only=True)
+            self._CachedTouchData[trial] = self.beh_extract_touch_data(trial)
+
+
+    def _savelocalcached_save(self, save_dataset_beh=True, save_datslices=True):
+        """
+        Save to disk all cached data in self._Cached... This saves quickly.
+        """
+
+        # ONLY ALLOWED to do this if this was not using MINIMAL loading. Otherwise not sure
+        # if did correct sanity checks (which si only possible wihtout minimal locading)
+        assert self._MINIMAL_LOADING == False
+
+        pathdir = self.Paths["cached_dir"]
+
+        def _save_this(this, filename):
+            # _CachedTrialOnset
+            path = f"{pathdir}/{filename}.pkl"
+            with open(path, "wb") as f:
+                pickle.dump(this, f)
+
+        _save_this(self._CachedTrialOnset, "trial_onsets")
+        _save_this(self._CachedTouchData, "touch_data")
+        _save_this(self._CachedStrokes, "strokes")
+        _save_this(self._CachedStrokesPeanutsOnly, "strokes_peanutsonly")
+        _save_this(self._CachedStrokesTask, "strokes_task")
+        _save_this(self._CachedTrialsList, "trials_list")
+
+        if save_dataset_beh:
+            self.Datasetbeh.save(pathdir)
+
+        if save_datslices:
+            path = f"{pathdir}/datall_site_trial"
+            os.makedirs(path, exist_ok=True)
+            for trial in self.get_trials_list():
+                if trial%20==0:
+                    print("trial:", trial)
+                for site in self.sitegetter_all(clean=False):
+                    this = self.datall_slice_single_bysite(site, trial)
+                    paththis = f"{path}/datslice_trial{trial}_site{site}.pkl"
+                    with open(paththis, "wb") as f:
+                        pickle.dump(this, f)
+                       
+
+    def _savelocalcached_load(self):
+        """
+        Load from disk the cached data (quick).
+        """
+
+        pathdir = self.Paths["cached_dir"]
+
+        def _load_this(filename):
+            path = f"{pathdir}/{filename}.pkl"
+            with open(path, "rb") as f:
+                out = pickle.load(f)
+            return out
+
+
+        # _CachedTrialOnset
+        self._CachedTrialsList = _load_this("trials_list")
+        self._CachedTrialOnset = _load_this("trial_onsets")
+        self._CachedStrokes = _load_this("strokes")
+        self._CachedStrokesPeanutsOnly = _load_this("strokes_peanutsonly")
+        self._CachedStrokesTask = _load_this("strokes_task")
+        self._CachedTouchData = _load_this("touch_data")
+
+        paththis = f"{pathdir}/dataset_beh.pkl"
+        with open(paththis, "rb") as f:
+            self.Datasetbeh = pickle.load(f)
+        self._generate_mappers_quickly_datasetbeh()
+
+    def _savelocalcached_loadextract_datslice(self, trial, site):
+        """
+        Load a specific data slice (trial x site) from disk. 
+        RETURNS:
+        -- if saved/exits, then dict for this (trial,site), and adds to self._CachedDatSlice
+        -- if doesnt exist, then returns None
+        """
+
+        if (trial, site) in self._CachedDatSlice.keys():
+            # 1. Then return already extracted
+            return self._CachedDatSlice[(trial, site)]
+        else:
+            pathdir = self.Paths["cached_dir"]
+            # Try to load
+            path = f"{pathdir}/datall_site_trial"
+            paththis = f"{path}/datslice_trial{trial}_site{site}.pkl"
+            if os.path.isfile(paththis):
+                # 2. Then exists, load it.
+                try:
+                    with open(paththis, "rb") as f:
+                        dat = pickle.load(f)
+                except Exception as err:
+                    print(paththis)
+                    raise err
+                self._CachedDatSlice[(trial, site)] = dat
+                return dat
+            else:
+                # 3. Doesnt exist, return None.
+                return None
 
     def load_spike_times(self):
         """ Load and strore all spike times (across all trials, and chans)
@@ -1209,7 +1414,7 @@ class Session(object):
             if os.path.exists(self.Paths["datall_local"]):
                 
                 # Load quickly from local
-                print("** Loading datall from local (previusly cached)")
+                print("** Loading datall from local (previusly cached) (reading from disk ....")
                 with open(self.Paths["datall_local"], "rb") as f:
                     self.DatAll = pickle.load(f)
                     if self.DatAll is None:
@@ -1222,7 +1427,7 @@ class Session(object):
 
                 # == Load mapper
                 if os.path.exists(self.Paths["mapper_st2dat_local"]):
-                    print("** Loading _MapperSiteTrial2DatAllInd from local (previusly cached)")
+                    print("** Loading datall from local (previusly cached) (reading from disk ....")
                     with open(self.Paths["mapper_st2dat_local"], "rb") as f:
                         self._MapperSiteTrial2DatAllInd = pickle.load(f)
                 else:
@@ -1598,33 +1803,42 @@ class Session(object):
         --- [return_index] None
         """
 
-
-        if self.DatAll is None:
-            if return_index:
-                return None, None
-            else:
-                return None
-
         site = self.convert_rschan_to_site(rs, chan)
-        index = None
-        if (site, trial0) not in self._MapperSiteTrial2DatAllInd.keys():
-            # Then extract
-            print("/////////")
-            self.print_summarize_expt_params()
-            assert False, "first run extract_raw_and_spikes_helper to pre-save self.DatAll and self._MapperSiteTrial2DatAllInd"
-            
-            # self.mapper_extract("sitetrial_to_datallind", save=True)
 
-        index = self._MapperSiteTrial2DatAllInd[(site, trial0)]
-        dat = self.DatAll[index]    
-        assert dat["rs"] == rs
-        assert dat["chan"] == chan
-        assert dat["trial0"] == trial0
-
-        if return_index:
-            return dat, index
+        # First, try to load from cached.
+        dat = self._savelocalcached_loadextract_datslice(trial0, site)
+        if dat is not None:
+            # FOudn it in cache!
+            if return_index:
+                return dat, None    
+            else:
+                return dat
         else:
-            return dat
+            if self.DatAll is None:
+                if return_index:
+                    return None, None
+                else:
+                    return None
+
+            index = None
+            if (site, trial0) not in self._MapperSiteTrial2DatAllInd.keys():
+                # Then extract
+                print("/////////")
+                self.print_summarize_expt_params()
+                assert False, "first run extract_raw_and_spikes_helper to pre-save self.DatAll and self._MapperSiteTrial2DatAllInd"
+                
+                # self.mapper_extract("sitetrial_to_datallind", save=True)
+
+            index = self._MapperSiteTrial2DatAllInd[(site, trial0)]
+            dat = self.DatAll[index]    
+            assert dat["rs"] == rs
+            assert dat["chan"] == chan
+            assert dat["trial0"] == trial0
+
+            if return_index:
+                return dat, index
+            else:
+                return dat
 
     def mapper_extract(self, version, save=True):
         """ construct mapper (do this oine time)
@@ -1717,6 +1931,30 @@ class Session(object):
         return dat_to_time(vals, fs)
 
     ####################### CONVERSIONS BETWEEN BEH AND NEURAKL
+    def _beh_validate_trial_number(self):
+        """ Confirms that each neural trial has a corresponding mapping that exists in ml2 data.
+        In combination with self._beh_validate_trial_mapping(), this ensures that each nbeural trials
+        is mapped to _correct_ beh trial. Fails (assertion) if this check fails."""
+        trials_all = self.get_trials_list(False, False)
+        trials_exist_in_ml2 = self.get_trials_list(False, True)
+        if not trials_all==trials_exist_in_ml2:
+            # check whether this session is allowed to fail this.
+            from ..utils.monkeylogic import _load_sessions_corrupted
+            sessdict = _load_sessions_corrupted()
+            value = (int(self.Date), self.RecSession)
+            if value in sessdict[self.Animal]:
+                # then ok, expect to fail
+                print("_beh_validate_trial_number failed, but OK becuase is expected!!")
+            else:
+                print(trials_all)
+                print(trials_exist_in_ml2)
+                self.print_summarize_expt_params()
+                print("_beh_validate_trial_number failed!!")
+                assert False, "there exist neural trials which are not succesuflly matched to beh trial"
+        else:
+            print("_beh_validate_trial_number passed!!")
+
+
     def _beh_validate_trial_mapping(self, ploton=True, do_update_of_mapper=False,
         fail_if_not_aligned=False):
         """ Use cross correlations of trial durations to validate the 
@@ -1732,6 +1970,8 @@ class Session(object):
         RETURNS:
         - lagshift, int, if not 0, then lag to max crosscorr of trials durs. positive
         means should look at earleir ml2 beh.
+        NOTE: THis gets EVERY neural trial (that has a corresponding ml2 trial, ie.. if
+        ml2 is damaged, ingnores those trials).
         """
         from scipy.signal import correlate, correlation_lags
 
@@ -1739,19 +1979,24 @@ class Session(object):
 
         ##### Get array of trial durations vs trial num
         # 1) tdt. this is including appended pre and post durs.
-        trials = self.get_trials_list(True)
+        # trials = self.get_trials_list(True) 
+        trials = self.get_trials_list(False, True) 
         def get_trial_dur(t):
-            trange = self.extract_timerange_trial_final(t)
-            return trange[1] - trange[0]
+            T1, T2 = self.extract_timerange_trial(t)
+            return T2 - T1
+            # OLD: led to recursion.
+            # trange = self.extract_timerange_trial_final(t) 
+            # return trange[1] - trange[0]
 
+        # Get the durations in TDT.
         trials_exist = []
         durs_exist = []
         for t in trials:
-            try:
-                durs_exist.append(get_trial_dur(t))
-                trials_exist.append(t)
-            except:
-                pass
+            # try:
+            durs_exist.append(get_trial_dur(t))
+            trials_exist.append(t)
+            # except:
+            #     pass
 
         # 2) ml2. only for those trials that exist for tdt.
         durs_exist_ml2 = []
@@ -1780,6 +2025,8 @@ class Session(object):
             print(";;;;;;;;;;")
             print(1, durs_exist)
             print(2, durs_exist_ml2)
+            print("trials", trials)
+            print("trials_exist", trials_exist)
             self.print_summarize_expt_params()
             assert False, "probably refering to incorrent beh files?"
         corr = correlate(durs_exist, durs_exist_ml2)
@@ -1883,8 +2130,10 @@ class Session(object):
         """
         from neuralmonkey.utils.conversions import get_map_trial_and_set
 
-        ntrials = len(self.get_trials_list(only_if_ml2_fixation_success=False))
-        # ntrials = len(self.TrialsOnset)
+        # RECURSIVE. Stop
+        # ntrials = len(self.get_trials_list(only_if_ml2_fixation_success=False, only_if_has_valid_ml2_trial=True))
+        ntrials = len(self.get_trials_list(only_if_ml2_fixation_success=False, only_if_has_valid_ml2_trial=False))
+        # ntrials = len(self.TrialsOnset) 
         self.BehTrialMapListGood = get_map_trial_and_set(self.BehTrialMapList, ntrials)
 
     def _beh_get_fdnum_trial(self, trialtdt):
@@ -1923,10 +2172,17 @@ class Session(object):
     #         return trialtdt+self.TrialBehAtNeuralZero
 
     def ml2_get_trial_onset(self, trialtdt):
-        from ..utils.monkeylogic import ml2_get_trial_onset
-        # convert to trialml
-        fd, trialml = self.beh_get_fd_trial(trialtdt)
-        return ml2_get_trial_onset(fd, trialml)
+        """ return the onset of this trial in seconds, for the beh data,
+        reltiave toe onset of the neural data
+        """
+
+        if trialtdt in self._CachedTrialOnset.keys():
+            return self._CachedTrialOnset[trialtdt]
+        else:
+            from ..utils.monkeylogic import ml2_get_trial_onset as ml2gto
+            # convert to trialml
+            fd, trialml = self.beh_get_fd_trial(trialtdt)
+            return ml2gto(fd, trialml)
 
 
     ######################## BRAIN STUFF
@@ -3506,7 +3762,8 @@ class Session(object):
 
     def events_get_time_using_photodiode(self, trial, 
         list_events = ("stim_onset", "go", "first_raise", "on_stroke_1"),
-        overwrite=False, plot_beh_code_stream = False):
+        overwrite=False, plot_beh_code_stream = False,
+        do_reextract= False):
         """
         [GOOD] Get dict of times of important events. Uses variety of methods, including
         (i) photodiode (ii) motor behavior, (iii) beh codes, wherever appropriate.
@@ -3514,6 +3771,8 @@ class Session(object):
         PARAMS:
         - list_events, list of str, each a label for an event. only gets those in this list.
         - force_single_output, if True, then asserts that ther eis one and only one crossing.
+        - do_reextract, bool, if True, then tries to reextract if doesnt find this event..useful 
+        because some events data are pre-saved, and new code might be better at extracting it.
         RETURNS:
         - then returns a single dict, keys, are the list_events, each a list of times. THis is empty
         if this event doesnt make sense (e..g, no fixation) or  not detected for any reason.
@@ -3909,11 +4168,12 @@ class Session(object):
             dict_events[event] = times
 
         # if any events didnt get anythjing, try to reextract
-        for ev, times in dict_events.items():
-            if len(times)==0 and overwrite==False:
-                print("Trying to reextract (trial, event):", trial, ev)
-                dict_events[ev] = self.events_get_time_using_photodiode(trial, 
-                    list_events=[ev], overwrite=True)[ev]
+        if do_reextract:
+            for ev, times in dict_events.items():
+                if len(times)==0 and overwrite==False:
+                    print("Trying to reextract (trial, event):", trial, ev)
+                    dict_events[ev] = self.events_get_time_using_photodiode(trial, 
+                        list_events=[ev], overwrite=True)[ev]
 
         return dict_events
 
@@ -4102,7 +4362,22 @@ class Session(object):
         # return things
         return dfeventsn, list_events, savedir
 
-                    
+    def datasetbeh_trial_outcome(self, trial):
+        """ Return the outcomes for this trial, from self.DatasetBeh
+        """
+        ind = self.datasetbeh_trial_to_datidx(trial)
+        
+        out = {
+            "trial_end_method":self.Datasetbeh.Dat.iloc[ind]["trial_end_method"],
+            "rew_total":self.Datasetbeh.Dat.iloc[ind]["rew_total"],
+            "online_abort":self.Datasetbeh.Dat.iloc[ind]["online_abort"],
+            "abort_params":self.Datasetbeh.Dat.iloc[ind]["abort_params"],
+            "score_final":self.Datasetbeh.Dat.iloc[ind]["score_final"],
+        }
+
+        return out
+
+
 
     def eventsdataframe_extract_timings(self, list_events=None, DEBUG=False):
         """
@@ -4149,11 +4424,16 @@ class Session(object):
             eventsdict["eventinds_in_chron_order"] = eventinds_ordered_by_firsttime
             
             # trial info
-            fd, tml2 = self.beh_get_fd_trial(trialthis)
-            outcome = mkl.getTrialsOutcomesWrapper(fd, tml2)
-            
-            eventsdict["trial_end_method"] = outcome["trial_end_method"]
-            eventsdict["reward"] = outcome["beh_evaluation"]["rew_total"][0][0]
+            if False:
+                fd, tml2 = self.beh_get_fd_trial(trialthis)
+                outcome = mkl.getTrialsOutcomesWrapper(fd, tml2)
+                eventsdict["trial_end_method"] = outcome["trial_end_method"]
+                eventsdict["reward"] = outcome["beh_evaluation"]["rew_total"][0][0]
+            else:
+                outcome = self.datasetbeh_trial_outcome(trialthis)
+                eventsdict["trial_end_method"] = outcome["trial_end_method"]
+                eventsdict["reward"] = outcome["rew_total"]
+
             eventsdict["trial"] = trialthis
             
             eventsdict["time_events_flat_first_unsorted"] = time_events_flat_first_unsorted
@@ -4199,6 +4479,9 @@ class Session(object):
         """
 
         ADDED = False # track whether datall is updated.
+
+        if not hasattr(self, "DatAllDf"):
+            assert False, "need to first run extract_raw_and_spikes_helper to extract DatAllDf"
         
         if "spiketrain" in self.DatAllDf.columns and not np.any(self.DatAllDf["spiketrain"].isna()):
             # then already gotten. skip
@@ -4239,7 +4522,7 @@ class Session(object):
                 
             tc = DS.Dat.iloc[ind]["dataset_trialcode"]
             si = DS.Dat.iloc[ind]["stroke_index"]
-            trial_neural = self.datasetbeh_trialcode_to_trial(tc)
+            trial_neural = self.datasetbeh_trialcode_to_trial(tc) 
 
             trials.append(trial_neural)
             trialcodes.append(tc)
@@ -4385,7 +4668,9 @@ class Session(object):
         return ListPA
 
 
-    def popanal_generate_save_trial(self, trial, gaussian_sigma = 0.1, 
+    def popanal_generate_save_trial(self, trial, 
+            # gaussian_sigma = 0.1, 
+            gaussian_sigma = 0.025, # changed to 0.025 on 4/3/23. 
             sampling_period=0.01, print_shape_confirmation=False,
             clean_chans=True, overwrite=False):
         """ Genreate a single PopAnal object for this trial.
@@ -4682,18 +4967,25 @@ class Session(object):
 
         return list_all
 
-    def beh_fixation_success(self, trial):
+    def beh_fixation_success(self, trial, use_stroke_as_proxy=True):
         """Returns True if fixation succes (mkl data) for this trial.
+        PARAMS:
+        - use_stroke_as_proxy, then returns True if this trial has touch data
+        after go cue.
         """
-        from ..utils.monkeylogic import getTrialsFixationSuccess
-        fd, trialml2 = self.beh_get_fd_trial(trial)
-        if trialml2 not in fd["trials"].keys():
-            return False
-        suc = getTrialsFixationSuccess(fd, trialml2)
-        return suc
+        if use_stroke_as_proxy:
+            strokes = self.strokes_extract(trial, peanuts_only=True)
+            return len(strokes)>0
+        else:
+            from ..utils.monkeylogic import getTrialsFixationSuccess
+            fd, trialml2 = self.beh_get_fd_trial(trial)
+            if trialml2 not in fd["trials"].keys():
+                return False
+            suc = getTrialsFixationSuccess(fd, trialml2)
+            return suc
 
     def get_trials_list(self, only_if_ml2_fixation_success=False,
-        only_if_has_valid_ml2_trial=False, only_if_in_dataset=False, 
+        only_if_has_valid_ml2_trial=True, only_if_in_dataset=False, 
         events_that_must_include=None,
         dataset_input = None):
         """
@@ -4703,6 +4995,7 @@ class Session(object):
         ml2 beh trial had fixation success. Also skips trials that dont exist in filedata at all.
         - only_if_has_valid_ml2_trial, then skips if the mapper refers to a session or trial outside domain
         (e.g.,negetive). can happen if mapper is incorrect, or missing some beh trials from start of day, etc.
+        A legit reason is if ml2 is corrupted..
         - only_if_in_dataset, if True, then only keeps trials that are in self.DatasetBeh
         - events_that_must_include, list of str names of events. only inclues trials that have at least 
         one instance of eaech event. time in trial doesnt matter.
@@ -4714,29 +5007,41 @@ class Session(object):
 
         assert not isinstance(only_if_in_dataset, list), "sanity check, becasue I moved order of args..."
 
+        key = (only_if_ml2_fixation_success, only_if_has_valid_ml2_trial)
+        if key in self._CachedTrialsList:
+            trials = self._CachedTrialsList[key]
+        else:
+            trials = list(range(len(self.TrialsOffset)))
+            
+            # 1) only tirals with actual beahvior
+            if only_if_ml2_fixation_success:
+                trials = [t for t in trials if self.beh_fixation_success(t)]
 
-        trials = range(len(self.TrialsOffset))
-        
-        # 1) only tirals with actual beahvior
-        if only_if_ml2_fixation_success:
-            trials = [t for t in trials if self.beh_fixation_success(t)]
+            # 2) only if there is valid ml2 trial (e..g, excludes if it is a 
+            # negative trial, meaning that this neural needs to look at the previous beh data)
+            if only_if_has_valid_ml2_trial:
+                trials_keep = []
+                for t in trials:
+                    fdind, trialind = self._beh_get_fdnum_trial(t)
+                    if fdind<0:
+                        # refering to sess that doesnt exist
+                        continue
+                    elif trialind<1:
+                        # ml2 trials are 1-indexed
+                        continue
+                    else:
+                        # check that this trial exists in beh
+                        fd, fdtrial = self.beh_get_fd_trial(t)
+                        if fdtrial > fd["params"]["n_trialoutcomes"]:
+                            # Then this trial doesnt exist in beh. could be corrupted beh data...
+                            continue
+                        else:
+                            # keep
+                            trials_keep.append(t)
+                trials = trials_keep
 
-        # 2) only if there is valid ml2 trial (e..g, excludes if it is a 
-        # negative trial, meaning that this neural needs to look at the previous beh data)
-        if only_if_has_valid_ml2_trial:
-            trials_keep = []
-            for t in trials:
-                fdind, trialind = self._beh_get_fdnum_trial(t)
-                if fdind<0:
-                    # refering to sess that doesnt exist
-                    continue
-                elif trialind<1:
-                    # ml2 trials are 1-indexed
-                    continue
-                else:
-                    # keep
-                    trials_keep.append(t)
-            trials = trials_keep
+            # Store it.
+            self._CachedTrialsList[key] = trials
 
         if only_if_in_dataset:
             print("get_trials_list - only_if_in_dataset")
@@ -5054,14 +5359,22 @@ class Session(object):
         
         # plot as hashes
         
-    def strokes_extract_ons_offs(self, trialtdt):
+    def strokes_extract_ons_offs(self, trialtdt, ver="new"):
         """ Return strolkes during drawing period (peanuts)
         RETURNS:
         - ons, offs, lists holding scalar times. empty lists if nostrokes.
+        NOTE: confirmed for a single session that new == old.
         """
-        from ..utils.monkeylogic import getTrialsOnsOffsAllowFail
-        fd, trialml = self.beh_get_fd_trial(trialtdt)
-        ons, offs = getTrialsOnsOffsAllowFail(fd, trialml)
+        if ver=="new":
+            # new version, allows using cached strokes, without need for drawmonkey
+            strokes = self.strokes_extract(trialtdt, peanuts_only=True)
+            ons = [s[0,2] for s in strokes]
+            offs = [s[-1,2] for s in strokes]
+        elif ver=="old":
+            # old version.
+            from ..utils.monkeylogic import getTrialsOnsOffsAllowFail
+            fd, trialml = self.beh_get_fd_trial(trialtdt)
+            ons, offs = getTrialsOnsOffsAllowFail(fd, trialml)
         return ons, offs
 
     def plotmod_overlay_brainregions(self, ax, list_sites):
@@ -5312,7 +5625,10 @@ class Session(object):
         window_y = [y-window_delta_pixels, y+window_delta_pixels]
 
         # get times that touch is close to fixation button
-        times, x, y = self.beh_extract_touch_data(trial)
+        xyt = self.beh_extract_touch_data(trial)
+        times = xyt[:,2]
+        x = xyt[:,0]
+        y = xyt[:,1]
         touchingfix = (x>=window_x[0]) & (x<=window_x[1]) & (y>=window_y[0]) & (y<=window_y[1])
 
         if ploton:
@@ -5346,7 +5662,10 @@ class Session(object):
 
         fd, t = self.beh_get_fd_trial(trial)
         # get times that touch is close to fixation button
-        times, xtouch, ytouch = self.beh_extract_touch_data(trial)
+        xyt = self.beh_extract_touch_data(trial)
+        times = xyt[:,2]
+        xtouch = xyt[:,0]
+        ytouch = xyt[:,1]
 
         if mkl.getTrialsDoneButtonMethod(fd, t)=="skip":
             # Then no done button, return empty
@@ -5388,10 +5707,14 @@ class Session(object):
         - x, array of x coords (nan if not touchgin)
         - y, array of y coorrds
         """
-        fd, trialml = self.beh_get_fd_trial(trial)
-        xyt = mkl.getTrialsTouchData(fd, trialml)
-        # times, touching = mkl.getTrialsTouchingBinary(fd, trialml)
-        return xyt[:,2], xyt[:,0], xyt[:,1]
+        if trial in self._CachedTouchData.keys():
+            return self._CachedTouchData[trial]
+        else:   
+            fd, trialml = self.beh_get_fd_trial(trial)
+            xyt = mkl.getTrialsTouchData(fd, trialml)
+            # times, touching = mkl.getTrialsTouchingBinary(fd, trialml)
+            return xyt
+            # return xyt[:,2], xyt[:,0], xyt[:,1]
 
 
     def beh_extract_touching_binary(self, trialtdt):
@@ -5401,27 +5724,51 @@ class Session(object):
         touching, array binary, whether is touching.
         """
         import numpy as np
-        fd, trialml = self.beh_get_fd_trial(trialtdt)
-        # xyt = mkl.getTrialsTouchData(fd, trialml)
-        times, touching = mkl.getTrialsTouchingBinary(fd, trialml)
+        xyt = self.beh_extract_touch_data(trialtdt)
+        x = xyt[:,0]
+        touching = 1-np.isnan(x).astype(int)
+        times = xyt[:,2]
+        # fd, trialml = self.beh_get_fd_trial(trialtdt)
+        # # xyt = mkl.getTrialsTouchData(fd, trialml)
+        # times, touching = mkl.getTrialsTouchingBinary(fd, trialml)
         return times, touching
 
 
+    def strokes_task_extract(self, trial):
+        """ Extract the strokes for this task
+        """
+        if trial in self._CachedStrokesTask.keys():
+            return self._CachedStrokesTask[trial]
+        else:
+            from ..utils.monkeylogic import getTrialsTaskAsStrokes
+            fd, trialml = self.beh_get_fd_trial(trial)
+            strokestask = getTrialsTaskAsStrokes(fd, trialml)
+            return strokestask
+            # plotDatStrokes(strokestask, ax, clean_task=True)
+
     def strokes_extract(self, trialtdt, peanuts_only=False):
         from ..utils.monkeylogic import getTrialsStrokes, getTrialsStrokesByPeanuts
-        fd, trialml = self.beh_get_fd_trial(trialtdt)
         if peanuts_only:
-            strokes = getTrialsStrokesByPeanuts(fd, trialml)
+            if trialtdt in self._CachedStrokesPeanutsOnly.keys():
+                strokes = self._CachedStrokesPeanutsOnly[trialtdt]
+            else:
+                fd, trialml = self.beh_get_fd_trial(trialtdt)
+                strokes = getTrialsStrokesByPeanuts(fd, trialml)
         else:
-            strokes = getTrialsStrokes(fd, trialml)
+            if trialtdt in self._CachedStrokes.keys():
+                strokes = self._CachedStrokes[trialtdt]
+            else:
+                fd, trialml = self.beh_get_fd_trial(trialtdt)
+                strokes = getTrialsStrokes(fd, trialml)
         return strokes
 
 
     def plot_taskimage(self, ax, trialtdt):
     #     plotTrialSimple(fd, trialml, ax=ax, plot_task_stimulus=True, nakedplot=True, plot_drawing_behavior=False)
-        from ..utils.monkeylogic import getTrialsTaskAsStrokes
-        fd, trialml = self.beh_get_fd_trial(trialtdt)
-        strokestask = getTrialsTaskAsStrokes(fd, trialml)
+        strokestask = self.strokes_task_extract(trialtdt)
+        # from ..utils.monkeylogic import getTrialsTaskAsStrokes
+        # fd, trialml = self.beh_get_fd_trial(trialtdt)
+        # strokestask = getTrialsTaskAsStrokes(fd, trialml)
         plotDatStrokes(strokestask, ax, clean_task=True)
         
     ###################### PLOTS (specific)

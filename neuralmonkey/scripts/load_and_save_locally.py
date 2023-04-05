@@ -86,7 +86,9 @@ def load_and_preprocess_single_session(date, rec_session, animal = "Pancho"):
 
     ########## EXTRACT THINGS TO SAVE LOCALLY.
     # Load and save data
-    SN.extract_raw_and_spikes_helper()
+    if False:
+        # already does in load_session_helper
+        SN.extract_raw_and_spikes_helper()
 
     # Spike trains:
     print("** [load_and_preprocess_single_session] Step 1: spiketrain_as_elephant_batch")
@@ -114,7 +116,9 @@ def load_and_preprocess_single_session(date, rec_session, animal = "Pancho"):
 
     # Get stats about fr
     print("** [load_and_preprocess_single_session] Step 5: sitestats_fr_get_and_save")
-    SN.sitestats_fr_get_and_save()
+    path = f"{SN.Paths['figs_local']}/waveforms_stats"
+    if not checkIfDirExistsAndHasFiles(path)[1]:
+        SN.sitestats_fr_get_and_save()
 
     # Save stats about fr (usefeul for pruning low fr sitse and nosy sites)
     print("** [load_and_preprocess_single_session] Step 6: plotbatch_sitestats_fr_overview")
@@ -126,6 +130,10 @@ def load_and_preprocess_single_session(date, rec_session, animal = "Pancho"):
     path = f"{SN.Paths['figs_local']}/eventcodes_trial_structure"
     if not checkIfDirExistsAndHasFiles(path)[1]:
         SN.eventsdataframe_sanity_check()
+
+    ########## SAVE CACHED
+    SN._savelocalcached_extract()
+    SN._savelocalcached_save(save_datslices=True)
     
     print("** COMPLETED load_and_save_locally !!")
 
