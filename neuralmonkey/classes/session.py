@@ -64,8 +64,12 @@ BEH_CODES = {
         200:'skipped_movie_frame'
     }
 
+# whether must pass fixation success to call it a trial.
+# leave as true, since original datall extraction was also this.
+SAVELOCALCACHED_TRIALS_FIXATION_SUCCESS = True 
 
-def load_mult_session_helper(DATE, animal, dataset_beh_expt=None, expt = "*"):
+
+def load_mult_session_helper(DATE, animal, dataset_beh_expt=None, expt = "*", MINIMAL_LOADING=True):
     """ Hacky, iterates over range(10) sessions, concatenations into a single MultSessions
     for this date.
     """
@@ -90,7 +94,8 @@ def load_mult_session_helper(DATE, animal, dataset_beh_expt=None, expt = "*"):
         # print("ALL SESSIONS: ")
         # print(sessdict)
 
-        SN = load_session_helper(DATE, dataset_beh_expt, rec_session, animal, expt)
+        SN = load_session_helper(DATE, dataset_beh_expt, rec_session, animal, expt,
+            MINIMAL_LOADING=MINIMAL_LOADING)
         SNlist.append(SN)
         print("Extracted successfully for session: ", rec_session)
 
@@ -104,7 +109,7 @@ def load_mult_session_helper(DATE, animal, dataset_beh_expt=None, expt = "*"):
 def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Pancho", 
     expt="*", do_all_copy_to_local=False,
     extract_spiketrain_elephant=False, DEBUG_TIMING=False,
-    MINIMAL_LOADING = False, RESAVE_CACHE = False):
+    MINIMAL_LOADING = False, BAREBONES_LOADING=False):
     """ Load a single recording session.
     PARAMS:
     - DATE, str, "yymmdd"
@@ -157,12 +162,14 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
     print("Loading these beh sessions:",beh_sess_list)
     print("Loading this neural session:", rec_session)
 
+
+
     try:
         SN = Session(DATE, beh_expt_list, beh_sess_list, beh_trial_map_list, 
             rec_session = rec_session, dataset_beh_expt=dataset_beh_expt, 
             extract_spiketrain_elephant=extract_spiketrain_elephant,
             do_all_copy_to_local=do_all_copy_to_local, DEBUG_TIMING=DEBUG_TIMING,
-            MINIMAL_LOADING= MINIMAL_LOADING)
+            MINIMAL_LOADING= MINIMAL_LOADING, BAREBONES_LOADING=BAREBONES_LOADING)
     except AssertionError as err:
         print("FAILED loading session:", DATE, rec_session)
         print("Possible that this one session maps to multiple beh sessions. try loading it automatically.")
@@ -177,10 +184,10 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
             do_all_copy_to_local=do_all_copy_to_local, DEBUG_TIMING=DEBUG_TIMING, 
             MINIMAL_LOADING= MINIMAL_LOADING)
 
-    if not MINIMAL_LOADING and RESAVE_CACHE:
-        # Save cached
-        self._savelocalcached_extract()
-        self._savelocalcached_save()
+    # if not MINIMAL_LOADING and RESAVE_CACHE:
+    #     # Save cached
+    #     self._savelocalcached_extract()
+    #     self._savelocalcached_save()
             
 
     ############ EXTRACT STUFF
@@ -209,7 +216,7 @@ class Session(object):
             extract_spiketrain_elephant=False, 
             do_sanity_checks=False, do_sanity_checks_rawdupl=False,
             dataset_beh_expt= None, DEBUG_TIMING=False,
-            MINIMAL_LOADING = False):
+            MINIMAL_LOADING = False, BAREBONES_LOADING=False):
         """
         PARAMS:
         - datestr, string, YYMMDD, e.g, "220609"
@@ -229,14 +236,41 @@ class Session(object):
         session.
         - do_all_copy_to_local, bool, if True, then does various things (once) which can take a while, but will
         speed up loading in future. even if this False, will do this for spikes and tdt tank
+        Loading version:
+        - BAREBONES_LOADING, just the metadata, like paths, trials, and sites. This cant do 
+        analyses, use just for checking metadata. Doesn't require any preprocessing already don.
+        - MINIMAL_LOADING, the final state, after have completed all preprocessing. This requires
+        having already run load_and_preprocess_single_session(). Is quick to load, and can 
+        run all analyses.
+        - FULL_LOADING, intermediate state. loads all raw that is needed to save cached files
+        which will allow MINIMAL_LOADING. Takes a long time to load and large data. This won't be
+        allowed if you have already completed preproicessing.
         """
         from pythonlib.tools.expttools import makeTimeStamp
+
+        if BAREBONES_LOADING:
+            assert MINIMAL_LOADING == False, "must do one or the other"
+        if MINIMAL_LOADING:
+            assert BAREBONES_LOADING == False, "must do one or the other"
+        FULL_LOADING = (MINIMAL_LOADING==False) and (BAREBONES_LOADING==False)
+        assert sum([(BAREBONES_LOADING==True), (MINIMAL_LOADING==True), (FULL_LOADING==True)])==1
+
+        if BAREBONES_LOADING:
+            self._LOAD_VERSION = "BAREBONES_LOADING"
+        elif MINIMAL_LOADING:
+            self._LOAD_VERSION = "MINIMAL_LOADING"
+        elif FULL_LOADING:
+            self._LOAD_VERSION = "FULL_LOADING"
+        else:
+            assert False
+
 
         if DEBUG_TIMING:
             ts = makeTimeStamp()
             print("@@@@ DEBUG TIMING, STARTING AT",  ts)
     
-        self._MINIMAL_LOADING = MINIMAL_LOADING
+        # self._MINIMAL_LOADING = MINIMAL_LOADING
+        # self._BAREBONES_LOADING = BAREBONES_LOADING
         self.Animal = animal
         self.ExptSynapse = expt
         self.Date = datestr
@@ -293,6 +327,7 @@ class Session(object):
             ts = makeTimeStamp()
             print("@@@@ DEBUG TIMING, COMPLETED", "self._initialize_paths()", ts)
 
+
         # Metadat about good sites, etc. Run this first before other things.
         assert sites_garbage is None, "use metadata instead"
         # then look for metadata
@@ -304,22 +339,6 @@ class Session(object):
         #     self.SitesGarbage = sites_garbage
         # if self.SitesGarbage is not None:
         #     assert np.all(np.diff(self.SitesGarbage)>0.), "you made mistake entering chanels (assuming going in order)?"
-
-        # Load raw data
-        print("== Loading spike times")
-        self.load_spike_times() # Load all spike times
-        if DEBUG_TIMING:
-            ts = makeTimeStamp()
-            print("@@@@ DEBUG TIMING, COMPLETED", "self.load_spike_times()", ts)
-        print("== Done")
-
-        # Load event timing data
-        print("== Trying to load events data")
-        self._loadlocal_events() # Load all spike times
-        if DEBUG_TIMING:
-            ts = makeTimeStamp()
-            print("@@@@ DEBUG TIMING, COMPLETED", "self._loadlocal_events()", ts)
-        print("== Done")
 
         # Load raw things
         print("== Loading TDT tank")
@@ -334,7 +353,49 @@ class Session(object):
         self.TrialsOnset = self._behcode_extract_times(9)
         self.TrialsOffset = self._behcode_extract_times(18)
 
-        if not MINIMAL_LOADING:
+        # Sanity check: are you using the correct loading version?
+        # Not allowed to do full loading if you already have gotten to final preprocessed state
+        if self._LOAD_VERSION == "FULL_LOADING":
+            check_dict = self._check_preprocess_status()
+            assert check_dict["allow_full_loading"], "you have already completed preproicessing. use MINIMAL_LOADING instead"
+        elif self._LOAD_VERSION == "MINIMAL_LOADING":
+            check_dict = self._check_preprocess_status()
+            assert check_dict["exists_2"], "you have not yet saved cached files. rerun load_and_preprocess_single_session"
+
+        if MINIMAL_LOADING or FULL_LOADING:
+            # Load event timing data
+            print("== Trying to load events data") 
+            succ = self._loadlocal_events() # Load all spike times
+            if MINIMAL_LOADING:
+                assert succ==True, "must have already saved local events."
+            if DEBUG_TIMING:
+                ts = makeTimeStamp()
+                print("@@@@ DEBUG TIMING, COMPLETED", "self._loadlocal_events()", ts)
+            print("== Done")
+
+        if MINIMAL_LOADING: 
+            # not FULL_LOADING. Expect to load all previously cached data.
+            assert do_all_copy_to_local == False
+            assert do_sanity_checks_rawdupl == False
+            assert extract_spiketrain_elephant == False
+
+            # Load previously cached.
+            print("** MINIMAL_LOADING, therefore loading previuosly cached data")
+            self._savelocalcached_load()
+
+            # Hacky things to do, since cannot do in oeroginal extract of dataset.
+            self.Datasetbeh.supervision_epochs_extract_orig()
+
+
+        if FULL_LOADING:
+            # The initial step. This saves and caches whatever is required.
+            # Load spikes. THIS IS ONLY USED TO EXTRACT FURTHER DATA. not needed if already
+            print("== Loading spike times")
+            self.load_spike_times() # Load all spike times
+            if DEBUG_TIMING:
+                ts = makeTimeStamp()
+                print("@@@@ DEBUG TIMING, COMPLETED", "self.load_spike_times()", ts)
+            print("== Done")
 
             # Load beh 
             print("== Loading ml2 behavior")
@@ -345,9 +406,11 @@ class Session(object):
             print("== Done")
 
             # Check trial mapping between tdt and ml2
+            self._beh_prune_trial_number()
             self._beh_validate_trial_number()
             self._beh_validate_trial_mapping(ploton=True, do_update_of_mapper=True, 
                 fail_if_not_aligned=False)
+            
             if DEBUG_TIMING:
                 ts = makeTimeStamp()
                 print("@@@@ DEBUG TIMING, COMPLETED", "self._beh_validate_trial_mapping()", ts)
@@ -368,34 +431,126 @@ class Session(object):
 
             if do_sanity_checks_rawdupl:
                 # Load raw and dupl and compare them (sanity check)
+                print("RUNNIGN plot_raw_dupl_sanity_check")
                 self.plot_raw_dupl_sanity_check()
                 if DEBUG_TIMING:
                     ts = makeTimeStamp()
                     print("@@@@ DEBUG TIMING, COMPLETED", "self.plot_raw_dupl_sanity_check()", ts)
 
             # Precompute mappers (quick)
+            print("RUNNIGN _generate_mappers_quickly_datasetbeh")
             self._generate_mappers_quickly_datasetbeh()
             if DEBUG_TIMING:
                 ts = makeTimeStamp()
                 print("@@@@ DEBUG TIMING, COMPLETED", "self._generate_mappers_quickly_datasetbeh()", ts)
 
             # Extract raw and spikes
+            print("RUNNIGN extract_raw_and_spikes_helper")
             self.extract_raw_and_spikes_helper()
 
             # Extract 
             # Get spike trains for all trials.
             if extract_spiketrain_elephant:
+                print("RUNNIGN spiketrain_as_elephant_batch")
                 self.spiketrain_as_elephant_batch()
                 if DEBUG_TIMING:
                     ts = makeTimeStamp()
                     print("@@@@ DEBUG TIMING, COMPLETED", "self.spiketrain_as_elephant_batch()", ts)
 
             # Load beh dataset
-            self.datasetbeh_load_helper(dataset_beh_expt)
-        else:
-            assert do_all_copy_to_local == False
-            assert do_sanity_checks_rawdupl == False
-            assert extract_spiketrain_elephant == False
+            print("RUNNIGN datasetbeh_load_helper")
+            self.datasetbeh_load_helper(dataset_beh_expt)            
+
+        # if not BAREBONES_LOADING:
+        #     # Load event timing data
+        #     print("== Trying to load events data") 
+        #     succ = self._loadlocal_events() # Load all spike times
+        #     if MINIMAL_LOADING:
+        #         assert succ==True, "must have already saved local events."
+        #     if DEBUG_TIMING:
+        #         ts = makeTimeStamp()
+        #         print("@@@@ DEBUG TIMING, COMPLETED", "self._loadlocal_events()", ts)
+        #     print("== Done")
+
+        #     if not MINIMAL_LOADING:
+                
+        #         # Load spikes. THIS IS ONLY USED TO EXTRACT FURTHER DATA. not needed if already
+        #         print("== Loading spike times")
+        #         self.load_spike_times() # Load all spike times
+        #         if DEBUG_TIMING:
+        #             ts = makeTimeStamp()
+        #             print("@@@@ DEBUG TIMING, COMPLETED", "self.load_spike_times()", ts)
+        #         print("== Done")
+
+        #         # Load beh 
+        #         print("== Loading ml2 behavior")
+        #         self.load_behavior()
+        #         if DEBUG_TIMING:
+        #             ts = makeTimeStamp()
+        #             print("@@@@ DEBUG TIMING, COMPLETED", "self.load_behavior()", ts)
+        #         print("== Done")
+
+        #         # Check trial mapping between tdt and ml2
+        #         self._beh_validate_trial_number()
+        #         self._beh_validate_trial_mapping(ploton=True, do_update_of_mapper=True, 
+        #             fail_if_not_aligned=False)
+        #         if DEBUG_TIMING:
+        #             ts = makeTimeStamp()
+        #             print("@@@@ DEBUG TIMING, COMPLETED", "self._beh_validate_trial_mapping()", ts)
+        #             print("@@@@ DEBUG TIMING, COMPLETED", "self._beh_validate_trial_number()", ts)
+
+        #         if do_all_copy_to_local:
+        #             # Copy spike waveforms saved during tdt thresholding and extraction
+        #             self.load_and_save_spike_waveform_images()
+        #             if DEBUG_TIMING:
+        #                 ts = makeTimeStamp()
+        #                 print("@@@@ DEBUG TIMING, COMPLETED", "load_and_save_spike_waveform_images()", ts)
+
+        #         if False:
+        #             # Skip for now, need to fix:
+        #             # at this line, gets error that list index out of range: FLOOR = x["valminmax"][0]
+        #             if do_sanity_checks:
+        #                 self.plot_behcode_photodiode_sanity_check()
+
+        #         if do_sanity_checks_rawdupl:
+        #             # Load raw and dupl and compare them (sanity check)
+        #             print("RUNNIGN plot_raw_dupl_sanity_check")
+        #             self.plot_raw_dupl_sanity_check()
+        #             if DEBUG_TIMING:
+        #                 ts = makeTimeStamp()
+        #                 print("@@@@ DEBUG TIMING, COMPLETED", "self.plot_raw_dupl_sanity_check()", ts)
+
+        #         # Precompute mappers (quick)
+        #         print("RUNNIGN _generate_mappers_quickly_datasetbeh")
+        #         self._generate_mappers_quickly_datasetbeh()
+        #         if DEBUG_TIMING:
+        #             ts = makeTimeStamp()
+        #             print("@@@@ DEBUG TIMING, COMPLETED", "self._generate_mappers_quickly_datasetbeh()", ts)
+
+        #         # Extract raw and spikes
+        #         print("RUNNIGN extract_raw_and_spikes_helper")
+        #         self.extract_raw_and_spikes_helper()
+
+        #         # Extract 
+        #         # Get spike trains for all trials.
+        #         if extract_spiketrain_elephant:
+        #             print("RUNNIGN spiketrain_as_elephant_batch")
+        #             self.spiketrain_as_elephant_batch()
+        #             if DEBUG_TIMING:
+        #                 ts = makeTimeStamp()
+        #                 print("@@@@ DEBUG TIMING, COMPLETED", "self.spiketrain_as_elephant_batch()", ts)
+
+        #         # Load beh dataset
+        #         print("RUNNIGN datasetbeh_load_helper")
+        #         self.datasetbeh_load_helper(dataset_beh_expt)
+        #     else:
+        #         assert do_all_copy_to_local == False
+        #         assert do_sanity_checks_rawdupl == False
+        #         assert extract_spiketrain_elephant == False
+
+        #         # Load previously cached.
+        #         print("** MINIMAL_LOADING, therefore loading previuosly cached data")
+        #         self._savelocalcached_load()
 
 
         # Various cleanups
@@ -415,19 +570,48 @@ class Session(object):
         - Sanity checks, etc. SHould be quick.
         """
 
-        # If any spike chans are None, that means there was error in loading it. Mark this as
-        # a bad site.
-        sites_bad = []
-        for dat in self.DatSpikes:
-            if dat["spike_times"] is None:
-                rs = dat["rs"]
-                chan = dat["chan"]
-                site = self.convert_rschan_to_site(rs, chan)
-                print("[cleanup] Found a bad site (rs, chan, site): ", rs, chan, site)
-                sites_bad.append(site)
+        if self._LOAD_VERSION == "FULL_LOADING":
+        # if not self._MINIMAL_LOADING and not self._BAREBONES_LOADING: # becuase doesnt load datspikes if is minimal loading.
+            # If any spike chans are None, that means there was error in loading it. Mark this as
+            # a bad site.
+            sites_bad = []
+            for dat in self.DatSpikes:
+                if dat["spike_times"] is None:
+                    rs = dat["rs"]
+                    chan = dat["chan"]
+                    site = self.convert_rschan_to_site(rs, chan)
+                    print("[cleanup] Found a bad site (rs, chan, site): ", rs, chan, site)
+                    sites_bad.append(site)
 
-        print("Saved all bad site to self.SitesErrorSpikeDat")
-        self.SitesMetadata["sites_error_spikes"] = sites_bad
+            print("Saved all bad site to self.SitesErrorSpikeDat")
+            self.SitesMetadata["sites_error_spikes"] = sites_bad
+
+    def _check_preprocess_status(self):
+        """ Check the status of preprocessing, which is these steps in
+        load_and_preprocess_single_session()
+        RETURNS:
+        - check_dict, dict holding whether each step (key) is done or not (bools).
+        """
+
+        # 1st preprocessing
+        exists_1 = os.path.exists(self.Paths["datall_local"])
+
+        # 2nd preprocessing (caching)
+        exists_2 = self._savelocalcached_check_done()
+
+        # if you have already done 2nd and deleted 1st, then would be waste of time
+        # to do full loading.
+        preprocessing_all_complete = not exists_1 and exists_2 
+        allow_full_loading = not preprocessing_all_complete
+
+        check_dict = {
+            "exists_1":exists_1,
+            "exists_2":exists_2,
+            "allow_full_loading":allow_full_loading,
+            "preprocessing_all_complete":preprocessing_all_complete
+        }
+        return check_dict
+
 
     def load_metadata_sites(self):
         """ Load info about which sites are garbage, hand coded
@@ -894,7 +1078,9 @@ class Session(object):
         RETURNS;
         - objects all starting with _Cached, e.g, self._CachedStrokesTask
         """
-        assert self._MINIMAL_LOADING == False
+        assert self._LOAD_VERSION=="FULL_LOADING"
+        # assert self._MINIMAL_LOADING == False
+        # assert self._BAREBONES_LOADING == False
 
         # get trials
         self.get_trials_list(False, False)
@@ -902,10 +1088,10 @@ class Session(object):
         self.get_trials_list(True, False)
         self.get_trials_list(True, True)
 
-        for trial in self.get_trials_list():
+        for trial in self.get_trials_list(SAVELOCALCACHED_TRIALS_FIXATION_SUCCESS):
             self._CachedTrialOnset[trial] = self.ml2_get_trial_onset(trial)
 
-        for trial in self.get_trials_list():
+        for trial in self.get_trials_list(SAVELOCALCACHED_TRIALS_FIXATION_SUCCESS):
             self._CachedStrokesTask[trial] = self.strokes_task_extract(trial)
             self._CachedStrokes[trial] = self.strokes_extract(trial, peanuts_only=False)
             self._CachedStrokesPeanutsOnly[trial] = self.strokes_extract(trial, peanuts_only=True)
@@ -919,7 +1105,9 @@ class Session(object):
 
         # ONLY ALLOWED to do this if this was not using MINIMAL loading. Otherwise not sure
         # if did correct sanity checks (which si only possible wihtout minimal locading)
-        assert self._MINIMAL_LOADING == False
+        assert self._LOAD_VERSION == "FULL_LOADING"
+        # assert self._MINIMAL_LOADING == False
+        # assert self._BAREBONES_LOADING == False
 
         pathdir = self.Paths["cached_dir"]
 
@@ -940,9 +1128,11 @@ class Session(object):
             self.Datasetbeh.save(pathdir)
 
         if save_datslices:
+            list_trials = self.get_trials_list(SAVELOCALCACHED_TRIALS_FIXATION_SUCCESS)
+            # list_trials = self.get_trials_list(False)
             path = f"{pathdir}/datall_site_trial"
             os.makedirs(path, exist_ok=True)
-            for trial in self.get_trials_list():
+            for trial in list_trials:
                 if trial%20==0:
                     print("trial:", trial)
                 for site in self.sitegetter_all(clean=False):
@@ -951,6 +1141,27 @@ class Session(object):
                     with open(paththis, "wb") as f:
                         pickle.dump(this, f)
                        
+    def _savelocalcached_check_done(self):
+        """
+        Check if all things done for saving local cached data. Returns True if all things have been saved
+        """
+
+        pathdir = self.Paths["cached_dir"]
+
+        def _check_this(filename):
+            path = f"{pathdir}/{filename}.pkl"
+            return os.path.exists(path)
+
+        # _CachedTrialOnset
+        for x in ["trials_list", "trial_onsets", "strokes", "strokes_peanutsonly", "strokes_task", "touch_data", "dataset_beh"]:
+            if _check_this(x)==False:
+                return False
+
+        if self._savelocalcached_checksaved_datslice()==False:
+            return False
+
+        return True
+
 
     def _savelocalcached_load(self):
         """
@@ -965,7 +1176,6 @@ class Session(object):
                 out = pickle.load(f)
             return out
 
-
         # _CachedTrialOnset
         self._CachedTrialsList = _load_this("trials_list")
         self._CachedTrialOnset = _load_this("trial_onsets")
@@ -979,13 +1189,17 @@ class Session(object):
             self.Datasetbeh = pickle.load(f)
         self._generate_mappers_quickly_datasetbeh()
 
-    def _savelocalcached_loadextract_datslice(self, trial, site):
+    def _savelocalcached_loadextract_datslice(self, trial, site, only_check_if_exists=False):
         """
         Load a specific data slice (trial x site) from disk. 
+        PARAMS:
+        - only_check_if_exists, bool, if True, then doesnt load, just returns True/False 
+        for whrther file exists.
         RETURNS:
         -- if saved/exits, then dict for this (trial,site), and adds to self._CachedDatSlice
         -- if doesnt exist, then returns None
         """
+        import os
 
         if (trial, site) in self._CachedDatSlice.keys():
             # 1. Then return already extracted
@@ -995,19 +1209,51 @@ class Session(object):
             # Try to load
             path = f"{pathdir}/datall_site_trial"
             paththis = f"{path}/datslice_trial{trial}_site{site}.pkl"
-            if os.path.isfile(paththis):
-                # 2. Then exists, load it.
-                try:
-                    with open(paththis, "rb") as f:
-                        dat = pickle.load(f)
-                except Exception as err:
-                    print(paththis)
-                    raise err
-                self._CachedDatSlice[(trial, site)] = dat
-                return dat
+
+            if only_check_if_exists:
+                return os.path.exists(paththis)
             else:
-                # 3. Doesnt exist, return None.
-                return None
+                if os.path.isfile(paththis):
+                    # 2. Then exists, load it.
+                    try:
+                        with open(paththis, "rb") as f:
+                            dat = pickle.load(f)
+                    except Exception as err:
+                        print(paththis)
+                        raise err
+                    self._CachedDatSlice[(trial, site)] = dat
+                    return dat
+                else:
+                    # 3. Doesnt exist, return None.
+                    return None
+
+    def _savelocalcached_checksaved_datslice(self):
+        """ Returns bool, whether all trials/sites have their
+        data extraacted. Doesnt check that the files are not corrupted..
+        NOTE: this is more general. checks whether oyu have completed caching
+        """
+
+        # First, check that you have cached trials. If not, 
+        if not os.path.exists(f"{self.Paths['cached_dir']}/trials_list.pkl"):
+            return False
+        else:
+            # load the trials
+            import pickle
+            path = f"{self.Paths['cached_dir']}/trials_list.pkl"
+            with open(path, "rb") as f:
+                self._CachedTrialsList = pickle.load(f)
+
+
+        trials = self.get_trials_list(SAVELOCALCACHED_TRIALS_FIXATION_SUCCESS)
+        sites = self.sitegetter_all(clean=True)
+
+        for t in trials:
+            for s in sites:
+                exists = self._savelocalcached_loadextract_datslice(t, s, only_check_if_exists=True)
+                if not exists:
+                    return False
+        return True
+
 
     def load_spike_times(self):
         """ Load and strore all spike times (across all trials, and chans)
@@ -1077,8 +1323,8 @@ class Session(object):
             if os.path.exists(targ):
                 print(f"Skipping, since already copied: {targ}")
             else:
+                print(f"Copying... : {x['filename_final_ext']} to {targ}")
                 shutil.copy2(im, targ)
-                print(f"Copied : {x['filename_final_ext']} to {targ}")
         
         print("DONE!")
         
@@ -1336,8 +1582,13 @@ class Session(object):
         # convert
         # event_onsets = [0.123, 0.450]
         # event_offsets = [0.300, 0.490]
+        # onset of this trial cannot be positive, if so, then is remnant of previous trial.
+        # remove it.
+        clamp_onset_to_this = 0.
         times, vals = convert_discrete_events_to_time_series(t0, tend, 
-            ontimes, offtimes, fs, ploton=ploton)
+            ontimes, offtimes, fs, ploton=ploton, clamp_onset_to_this=clamp_onset_to_this)
+
+
 
         return times, vals
 
@@ -1824,6 +2075,8 @@ class Session(object):
             if (site, trial0) not in self._MapperSiteTrial2DatAllInd.keys():
                 # Then extract
                 print("/////////")
+                print(site, trial0)
+                print(self._MapperSiteTrial2DatAllInd.keys())
                 self.print_summarize_expt_params()
                 assert False, "first run extract_raw_and_spikes_helper to pre-save self.DatAll and self._MapperSiteTrial2DatAllInd"
                 
@@ -1931,12 +2184,28 @@ class Session(object):
         return dat_to_time(vals, fs)
 
     ####################### CONVERSIONS BETWEEN BEH AND NEURAKL
+    def _beh_prune_trial_number(self):
+        """ perpocess, quick ways to prune the trials, based on comparison of neural and ml2_beh data
+        """
+
+        trials_all = self.get_trials_list(False, False)
+        trials_exist_in_ml2 = self.get_trials_list(False, True)
+
+        if trials_all == trials_exist_in_ml2 + [max(trials_exist_in_ml2)+1]:
+            # then extra trial gotten in neural. remove it.
+            print("-- pruning off the last trial, beucase not found in beh")
+            self.TrialsOffset = self.TrialsOffset[:-1]
+            self.TrialsOnset = self.TrialsOnset[:-1]
+            # Clear cache
+            self._CachedTrialsList = {}
+
     def _beh_validate_trial_number(self):
         """ Confirms that each neural trial has a corresponding mapping that exists in ml2 data.
         In combination with self._beh_validate_trial_mapping(), this ensures that each nbeural trials
         is mapped to _correct_ beh trial. Fails (assertion) if this check fails."""
         trials_all = self.get_trials_list(False, False)
         trials_exist_in_ml2 = self.get_trials_list(False, True)
+
         if not trials_all==trials_exist_in_ml2:
             # check whether this session is allowed to fail this.
             from ..utils.monkeylogic import _load_sessions_corrupted
@@ -1946,8 +2215,11 @@ class Session(object):
                 # then ok, expect to fail
                 print("_beh_validate_trial_number failed, but OK becuase is expected!!")
             else:
+                print("**&*&**")
                 print(trials_all)
                 print(trials_exist_in_ml2)
+                print([t for t in trials_all if t not in trials_exist_in_ml2])
+                print([t for t in trials_exist_in_ml2 if t not in trials_all])
                 self.print_summarize_expt_params()
                 print("_beh_validate_trial_number failed!!")
                 assert False, "there exist neural trials which are not succesuflly matched to beh trial"
@@ -2708,7 +2980,8 @@ class Session(object):
 
         return fig, summary, frdict
 
-    def plotbatch_sitestats_fr_overview(self, LIST_FR_THRESH = (2, 4.5, 10, 15, 40)):
+    def plotbatch_sitestats_fr_overview(self, LIST_FR_THRESH = (2, 4.5, 10, 15, 40),
+            skip_if_done=False):
         """ [preprocessing] Plots and saves fr across sites
         , including (1) printing the sites (2) histograms, 
         (3) example rasters (sites, across triasl).
@@ -2725,7 +2998,7 @@ class Session(object):
 
         savedir = f"{self.Paths['figs_local']}/fr_distributions"
 
-        if checkIfDirExistsAndHasFiles(savedir)[1]:
+        if skip_if_done and checkIfDirExistsAndHasFiles(savedir)[1]:
         # if os.path.exists(savedir):
             return
 
@@ -3012,6 +3285,7 @@ class Session(object):
                     # might be bad. check that most vals are close to extremes. if so, then ok
                     vals_frac_of_range = (valsthis - valminmax[0])/(valminmax[1] - valminmax[0])
                     if np.any(np.isnan(vals_frac_of_range)):
+                        print("-------")
                         print("Trial:", trial)
                         print(valminmax)
                         print(ratio_minmax)
@@ -3690,7 +3964,7 @@ class Session(object):
                 self.EventsTimeUsingPhd = pickle.load(f)
             return True
         else:
-            print("DOESNT EXIST")
+            print("_loadlocal_events DOESNT EXIST")
             return False
 
 
@@ -3712,13 +3986,20 @@ class Session(object):
         RETURNS:
         - times, list of times, deals with situation where event was saved
         using old or new names.
-        - or None, if either of folliwing suations:
+        - or None, reason,
+        if either of folliwing suations:
         --- 1. events not previously cached
         --- 2. cached, but this (trial, event) not gotten
+        where None is None
+        reason is string, either "events_not_cached" or "trial_event_not_found", or "found"
         """
 
         if not hasattr(self, "EventsTimeUsingPhd"):
             self.EventsTimeUsingPhd = {}
+            return None, "events_not_cached"
+        if len(self.EventsTimeUsingPhd)==0:
+            return None, "events_not_cached"
+
 
         map_event_newname_to_oldname = {
             "stim_onset":"samp",
@@ -3733,31 +4014,29 @@ class Session(object):
             """ Returns either the times or None (if key not in dict)
             """
             if key in self.EventsTimeUsingPhd.keys():
-                return self.EventsTimeUsingPhd[key]
+                return self.EventsTimeUsingPhd[key], "found"
             else:
-                return None
+                return None, "trial_event_not_found"
 
         # 1) try the input
         key = (trial, event)
-        out = _query(key)
+        out, reason = _query(key)
         if out is None:
             # 2) then try see if this is old/new name
             if event in map_event_newname_to_oldname.keys():
                 # This is old name. try the new name
                 ev = map_event_newname_to_oldname[event]
                 key = (trial, ev)
-                out = _query(key)
-                return out
+                return _query(key)
             elif event in map_event_newname_to_oldname.values():
                 # Then this is new name, try old.
                 ev = [k for k, v in map_event_newname_to_oldname.items() if v==event][0]
                 key = (trial, ev)
-                out = _query(key)
-                return out
+                return _query(key)
             else:
-                return out
+                return out, reason
         else:
-            return out
+            return out, reason
 
 
     def events_get_time_using_photodiode(self, trial, 
@@ -3805,7 +4084,8 @@ class Session(object):
 
  
         def compute_times_from_scratch(event):
-            """ Returns times, list of scalars"""
+            """ Returns times, list of scalars. Empty list if no times found.
+            """
             # 1) Skip this, if no fixation success
             if not self.beh_fixation_success(trial) and event in list_events_skip_if_no_fixation:
                 times = []
@@ -3842,7 +4122,7 @@ class Session(object):
                     times = _extract_times(out)
 
                 elif event in ["fixtch", "fix_touch"]:
-                    behcode = "fixtch"
+                    behcode = "fixtch" 
                     try:
                         # onset of touch of fixation cue, based on detection of finger on screen.
                         # NOTE: if fails, likely t_pre should be even larger (since could touch but fail to trigger the eventcode for some time)
@@ -4132,16 +4412,25 @@ class Session(object):
         dict_events = {}
         for event in list_events:
 
-            if not overwrite:
+            if overwrite:
+                # then recompute times.
+                RECOMPUTE = True
+            else:
                 # then try to load from cached
-                times = self.events_read_time_from_cached(trial, event)
+                times, reason = self.events_read_time_from_cached(trial, event)
+
                 if times is None:
-                    # did not find it...
+                    # This means you have not cached the result (not even attempted. if attempted, then times would be empty list)
                     RECOMPUTE = True
                 else:
+                    # You cached result and found it., could still be []
+
+                    # If you want to retry, e.g., if previous cached was innacurate.
+                    if len(times)==0 and do_reextract:
+                        print("Trying to reextract (trial, event):", trial, event)
+                        times = self.events_get_time_using_photodiode(trial, 
+                            list_events=[event], overwrite=True)[event]
                     RECOMPUTE = False
-            else:
-                RECOMPUTE = True
 
             # key = (trial, event)
             # if not overwrite and key in self.EventsTimeUsingPhd.keys():
@@ -4156,7 +4445,7 @@ class Session(object):
 
             if RECOMPUTE:
                 try:
-                    times = compute_times_from_scratch(event)
+                    times = compute_times_from_scratch(event) 
                 except Exception as err:
                     print(">>>>>>>>>>>>>>>")
                     print("trial, event:", trial, event)
@@ -4168,12 +4457,12 @@ class Session(object):
             dict_events[event] = times
 
         # if any events didnt get anythjing, try to reextract
-        if do_reextract:
-            for ev, times in dict_events.items():
-                if len(times)==0 and overwrite==False:
-                    print("Trying to reextract (trial, event):", trial, ev)
-                    dict_events[ev] = self.events_get_time_using_photodiode(trial, 
-                        list_events=[ev], overwrite=True)[ev]
+        # if do_reextract:
+        #     for ev, times in dict_events.items():
+        #         if len(times)==0 and RECOMPUTE==False:
+        #             print("Trying to reextract (trial, event):", trial, ev)
+        #             dict_events[ev] = self.events_get_time_using_photodiode(trial, 
+        #                 list_events=[ev], overwrite=True)[ev]
 
         return dict_events
 
@@ -4987,7 +5276,7 @@ class Session(object):
     def get_trials_list(self, only_if_ml2_fixation_success=False,
         only_if_has_valid_ml2_trial=True, only_if_in_dataset=False, 
         events_that_must_include=None,
-        dataset_input = None):
+        dataset_input = None, nrand=None):
         """
         Get list of ints, trials,
         PARAMS:
@@ -5044,7 +5333,6 @@ class Session(object):
             self._CachedTrialsList[key] = trials
 
         if only_if_in_dataset:
-            print("get_trials_list - only_if_in_dataset")
             trials_keep = []
             for t in trials:
                 if self.datasetbeh_trial_to_datidx(t, dataset_input=dataset_input) is None:
@@ -5056,6 +5344,12 @@ class Session(object):
 
         if len(events_that_must_include)>0:
             trials = self._get_trials_list_if_include_these_events(trials, events_that_must_include)
+
+        if nrand is not None:
+            # take randmo subset, ordered.
+            if nrand < len(trials):
+                import random
+                trials = sorted(random.sample(trials, nrand))
 
         return trials
 
@@ -5220,10 +5514,35 @@ class Session(object):
             assert isinstance(YLIM, list), "mistake..."
             figholder = self._plot_spike_waveform_multchans(list_sites, YLIM, saveon, prefix)
 
+    def _plot_raster_trials_blocked_generate_list_trials(self, trials_pool, dataset_group):
+        """
+        Using dataset categories, generatelist of trial blocks, each
+        with same vale for some category
+        """
+
+        D = self.Datasetbeh
+
+        # get the subsets of trials_all for each level
+        dict_lev_trials = D.grouping_get_inner_items(dataset_group, sort_keys=True)
+        # convert to neural trials
+        dict_lev_trials = {lev:[self.datasetbeh_datidx_to_trial(i) for i in tri] for lev, tri in dict_lev_trials.items()}
+        # make sure is in acceptable trials
+        dict_lev_trials = {lev:[i for i in tri if i in trials_pool] for lev, tri in dict_lev_trials.items()}    
+
+        # Extract into separate items
+        list_labels = []
+        list_list_trials = []
+        for lev, tri in dict_lev_trials.items():
+            list_labels.append(lev)
+            list_list_trials.append(tri)
+
+        return list_list_trials, list_labels, 
+
     def plot_raster_trials_blocked(self, ax, list_list_trials, site, list_labels=None,
-                                   align_to=None, overlay_trial_events=True,                                
+                                   alignto=None, overlay_trial_events=True,                                
                                    sort_trials_within_blocks=True,
-                                   xmin = None, xmax = None, DEBUG=False):
+                                   xmin = None, xmax = None, DEBUG=False,
+                                   alpha_raster=0.8):
         """
         Plot raster across trials, where trials come in blocks, useful if the trials
         correspond to distinct levelts of some feature (e.g., epoch, shape), and want to 
@@ -5258,7 +5577,8 @@ class Session(object):
         # Plot rasters
         self.plot_raster_trials(ax, list_trials_plotting_order, site, 
                                 overlay_trial_events=overlay_trial_events,
-                                alignto=align_to, xmin=xmin, xmax=xmax)
+                                alignto=alignto, xmin=xmin, xmax=xmax,
+                                alpha_raster=alpha_raster)
             
         # Plot y markers splitting the blocks
         ymarks = [y-0.5 for y in list_index_first_trial_in_block]
@@ -5276,8 +5596,6 @@ class Session(object):
         """ Plot raster, for these trials, on this axis.
         PARAMS:
         - list_trials, list of indices into self. will plot them in order, from bottom to top
-
-
         """
 
         for i, trial in enumerate(list_trials):
@@ -5301,7 +5619,8 @@ class Session(object):
                     linelengths=raster_linelengths, alpha=alpha_raster)
             
             # - overlay beh things
-            ALPHA_MARKERS = 1-np.clip(len(list_trials)/ 200, 0.25, 0.75)
+            ALPHA_MARKERS = 1-np.clip(len(list_trials)/ 100, 0.6, 0.82)
+            # ALPHA_MARKERS = 0.05
             if overlay_trial_events:
                 # Auto determine alpha for markers, based on num trials
 
@@ -5312,13 +5631,18 @@ class Session(object):
                     include_text = False
                 self.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, only_on_edge="bottom", 
                                                 YLIM=[i-0.3, i+0.5], which_events=["key_events_correct"], 
-                                                include_text=include_text, text_yshift = -0.5, alpha=ALPHA_MARKERS)
+                                                include_text=include_text, text_yshift = -0.5, alpha=ALPHA_MARKERS,
+                                                xmin = xmin, xmax =xmax
+                                                )
+
                 self.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, 
-                                                YLIM=[i-0.4, i-0.2], which_events=["strokes"], alpha=ALPHA_MARKERS)
+                                                YLIM=[i-0.4, i-0.2], which_events=["strokes"], alpha=ALPHA_MARKERS,
+                                                xmin = xmin, xmax =xmax)
             elif overlay_strokes:
                 self.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, 
                                                 YLIM=[i-0.4, i-0.2], which_events=["strokes"], 
-                                                alpha=ALPHA_MARKERS, strokes_patches=True)
+                                                alpha=ALPHA_MARKERS, strokes_patches=True,
+                                                xmin = xmin, xmax =xmax)
         
         # subsample trials to label
         if ylabel_trials:
@@ -5335,10 +5659,36 @@ class Session(object):
 
         if site is not None:
             ax.set_title(self.sitegetter_summarytext(site)) 
+        # ax.set_xbound(xmin, xmax)
         if xmin is not None:
-            ax.set_xlim(left=xmin)
+            ax.set_xlim(xmin=xmin)
         if xmax is not None:
-            ax.set_xlim(right=xmax)
+            ax.set_xlim(xmax=xmax)
+        # plt.axis('scaled')
+
+
+    def _plot_raster_create_figure_blank(self, duration, n_raster_lines, n_subplot_rows=1,
+            nsubplot_cols=1):
+        """ Helper to genreate figure with correct size, based on duration and num rows
+        RETURNS:
+        - fig,
+        - axes,
+        - kwargs, to pass into self.plot_raster_trials(..., **kwargs)
+        """
+
+        aspect = 0.8 * (duration/4) # empriically, 0.8 is good for a window of 4sec
+        height = n_subplot_rows * n_raster_lines * 0.03
+        if height < 10:
+            height = 10
+        if height > 22:
+            height = 22
+        width = nsubplot_cols * aspect * height
+        fig, axes = plt.subplots(n_subplot_rows, nsubplot_cols, figsize = (width, height))
+
+        kwargs = {
+            "alpha_raster":0.7
+        }
+        return fig, axes, kwargs
 
 
     def plot_raster_line(self, ax, times, yval, color='k', alignto_time=None,
@@ -5444,8 +5794,9 @@ class Session(object):
 
 
     def plotmod_overlay_trial_events(self, ax, trial0, strokes_patches=True, 
-            alignto_time=None, only_on_edge=None, YLIM=None, alpha = 0.2,
-            which_events=("key_events_correct", "strokes"), include_text=True, text_yshift = 0.):
+            alignto_time=None, only_on_edge=None, YLIM=None, alpha = 0.15,
+            which_events=("key_events_correct", "strokes"), include_text=True, 
+            text_yshift = 0., xmin=None, xmax=None):
         """ Overlines trial events in vertical lines
         Time is rel trial onset (ml2 code 9)
         Run this after everything else, so get propoer YLIM.
@@ -5472,7 +5823,7 @@ class Session(object):
             # names_codes = [beh_codes[c] for c in list_codes]
             names_codes = [self.behcode_convert(c, shorthand=True) for c in list_codes] 
             # names_codes = ["on", "fixcue", "fixtch", "samp", "go", "doneb", "fb_vs", "rew"]
-            colors_codes = ["k",  "m",       "b",    "r",   "y",  "g",     "m",     "k"]
+            colors_codes = ["c",  "m",  "b",    "r",   "y",  "g",     "m",    "c"]
         else:
             # list_codes = []
             times_codes = np.array([])
@@ -5489,7 +5840,7 @@ class Session(object):
             # events = ["fixcue", "fixtch", "samp", "go", "first_raise", 
             #     "seqon", "doneb", "post", "rew"]
             color_map = {
-                "fixcue":"k",
+                "fixcue":"g",
                 "fixtch":"m",
                 "samp":"r",
                 "go":"b",
@@ -5498,7 +5849,7 @@ class Session(object):
                 "doneb":"g",
                 "post":"m", 
                 "rew":"k",
-                "reward_all":"k"
+                "reward_all":"b"
             }
             # colors_codes = ["k",  "m",       "r",    "b",  "c",  "y",  "g",     "m",     "k"]
             dict_events = self.events_get_time_using_photodiode(trial0, events)
@@ -5531,6 +5882,10 @@ class Session(object):
         ############## Plot marker for each event
         for time, name, col in zip(times_codes, names_codes, colors_codes):
             if np.isnan(time):
+                continue
+            if xmin is not None and time<xmin:
+                continue
+            if xmax is not None and  time>xmax:
                 continue
             if only_on_edge:
                 if only_on_edge=="top":
@@ -5570,7 +5925,6 @@ class Session(object):
                         linewidth=1, edgecolor='r',facecolor='r', alpha=alpha)
                     ax.add_patch(rect)
 
-
     def plot_trial_timecourse_summary(self, ax, trial0, number_strokes=True,
         overlay_trial_events=True):
         """ Overlays events onto an axis
@@ -5604,7 +5958,7 @@ class Session(object):
         strokes = self.strokes_extract(trialtdt, peanuts_only=strokes_only)
         plotDatStrokes(strokes, ax, clean_ordered_ordinal=True, number_from_zero=True)
 
-    def beh_extract_touch_in_fixation_square(self, trial, window_delta_pixels = 37.5,
+    def beh_extract_touch_in_fixation_square(self, trial, window_delta_pixels = 38.5,
         ploton=False):
         """ Return binary wherther is touching fixation
         Evaluates if is touching within fixation square
@@ -5633,7 +5987,7 @@ class Session(object):
 
         if ploton:
             # overlay with times of touch (any location)
-            times2, touching2 = self.beh_extract_touching_binary(trial)
+            times2, touching2 = self.beh_extract_touching_binary(trial) 
             plt.figure()
             plt.plot(times, touchingfix*200, "-k", label="in fixation square")
             plt.plot(times2, touching2*200, ":m", label="touching screen")
@@ -5847,14 +6201,15 @@ class Session(object):
             ax.plot(times, vals, '-', label=which)
 
 
-    def plotwrapper_raster_multrials_onesite(self, list_trials, site=None, alignto=None, 
-            SIZE=0.5, SIZE_HEIGHT_TOTAL = None, SIZE_WIDTH_TOTAL = 25., 
+    def plotwrapper_raster_multrials_onesite(self, list_trials=None, site=None, alignto=None, 
+            SIZE=0.5, SIZE_HEIGHT_TOTAL = None, SIZE_WIDTH_TOTAL = 22., 
             plot_beh=True, plot_rasters=True, 
             alpha_raster = 0.9,
             xmin = None, xmax = None,
             raster_linelengths=0.9,
             overlay_trial_events=True,
-            ylabel_trials=True):
+            ylabel_trials=True, overlay_strokes=True, 
+            nrand_trials = 20):
         """ Plot one site, mult trials, overlaying for each trial its major events
         PARAMS:
         - list_trials, list of int. if None, then plots 20 random
@@ -5869,9 +6224,10 @@ class Session(object):
             assert plot_rasters==False
 
         if list_trials is None:
-            import random
-            nrand = 20
-            list_trials = sorted(random.sample(self.get_trials_list(True), nrand))
+            list_trials = self.get_trials_list(True)
+            if len(list_trials)>nrand_trials:
+                import random
+                list_trials = sorted(random.sample(list_trials, nrand_trials))
         nrows = len(list_trials)
         ncols = 1
 
@@ -5886,7 +6242,7 @@ class Session(object):
 
         self.plot_raster_trials(ax, list_trials, site, alignto,
             raster_linelengths, alpha_raster, overlay_trial_events, 
-            ylabel_trials, plot_rasters, xmin, xmax)
+            ylabel_trials, plot_rasters, xmin, xmax, overlay_strokes=overlay_strokes)
 
         # Final drawing
             #     ax = axes.flatten()[2*i + 1]
@@ -5997,6 +6353,103 @@ class Session(object):
 
         return fig1, fig2
 
+    def plotwrapper_raster_onesite_eventsubplots(self, site, trials=None, 
+            ntrials = 200, list_alignto=None, sdir=None, xmin=-2, xmax=2):
+        """ A single plot of rasters, aligned to each event in list_alignto, each a 
+        seaprate subplots. 
+        PARAMS;
+        - site, int
+        - trials, eitehr lsit of int, or None, in which case will sample random trials 
+        (ntrials)
+        - ntrials, int, how many random trials to get, if trials is None
+        - list_alignto, list of str, events. or None, to get default events
+        NOTE:
+        - each trial will be enforced to have each event.
+        """
+
+
+        if list_alignto is None:
+            # list_alignto = ["fixtch", "samp", "go", 
+            #     "on_stroke_1", "off_stroke_last", "doneb", "reward_all"]
+            list_alignto = ["fixtch", "samp", "go", 
+                "on_stroke_1", "off_stroke_last", "reward_all"]
+
+        # only keep trials with all events
+        if trials is None:
+            # get random trials.
+            trials = self.get_trials_list(True, True, True, list_alignto, nrand=ntrials)
+        else:
+            trials = self._get_trials_list_if_include_these_events(trials, list_alignto)
+
+        assert len(trials)>0
+
+        # FIgure size params
+        dur = xmax-xmin
+        ncols = 6
+        nrows = int(np.ceil(len(list_alignto)/ncols))
+
+        ntrials = len(trials)
+        fig, axes, kwargs = self._plot_raster_create_figure_blank(dur, ntrials, nrows, ncols)
+
+        # make plot
+        for i, (alignto, ax) in enumerate(zip(list_alignto, axes.flatten())):
+        #     ax = axes.flatten()[0]
+            self.plot_raster_trials(ax, trials, site, alignto, xmin = xmin, xmax=xmax, **kwargs);
+            ax.set_title(alignto)
+            if i==0:
+                ax.set_ylabel(self.sitegetter_summarytext(site))
+
+        if sdir:
+            # fig.savefig(f"{sdir}/rastersevents-{self.sitegetter_summarytext(site)}.png", anti_alias=True, dpi=300) # aa and dpi dont help. 300 is default
+            fig.savefig(f"{sdir}/rastersevents-{self.sitegetter_summarytext(site)}.png")
+            
+        return fig
+
+
+    def plotwrapper_raster_onesite_eventsubplots_blocked(self, site, dataset_group,
+            trials = None, ntrials = 200, list_alignto=None, sdir=None, xmin=-2, xmax=2):
+        """ 
+        """
+
+
+        if list_alignto is None:
+            # list_alignto = ["fixtch", "samp", "go", 
+            #     "on_stroke_1", "off_stroke_last", "doneb", "reward_all"]
+            list_alignto = ["fixtch", "samp", "go", 
+                "on_stroke_1", "off_stroke_last", "reward_all"]
+
+        # only keep trials with all events
+        if trials is None:
+            # get random trials.
+            trials = self.get_trials_list(True, True, True, list_alignto, nrand=ntrials)
+        else:
+            trials = self._get_trials_list_if_include_these_events(trials, list_alignto)
+        list_list_trials, list_labels = self._plot_raster_trials_blocked_generate_list_trials(trials, dataset_group)
+
+        # FIgure size params
+        dur = xmax-xmin
+        ncols = 6
+        nrows = int(np.ceil(len(list_alignto)/ncols))
+
+        ntrials = len(trials)
+        fig, axes, kwargs = self._plot_raster_create_figure_blank(dur, ntrials, nrows, ncols)
+
+        # make plot
+        for i, (alignto, ax) in enumerate(zip(list_alignto, axes.flatten())):
+        #     ax = axes.flatten()[0]
+            self.plot_raster_trials_blocked(ax, list_list_trials, site, list_labels, 
+                alignto, xmin = xmin, xmax=xmax, **kwargs);
+            ax.set_title(alignto)
+            if i==0:
+                ax.set_ylabel(self.sitegetter_summarytext(site))
+
+        if sdir:
+            # fig.savefig(f"{sdir}/rastersevents-{self.sitegetter_summarytext(site)}.png", anti_alias=True, dpi=300) # aa and dpi dont help. 300 is default
+            fig.savefig(f"{sdir}/rastersevents-{self.sitegetter_summarytext(site)}.png")
+            
+        return fig
+
+
     def plotwrapper_smoothed_multtrials_multsites_timewindow(self, sites, trials, 
             alignto="go", pre_dur=-0.5, post_dur=2, ax=None,
             plot_indiv=True, plot_summary=False, error_ver="sem",
@@ -6027,7 +6480,6 @@ class Session(object):
                     axthis.set_xlim(right=xmax)
 
         return fig1, ax1, fig2, ax2
-
 
 
     def plotwrapper_smoothed_multtrials_multsites(self, sites, trials, ax, YLIM=None):
@@ -6063,13 +6515,43 @@ class Session(object):
 
 
     ################################################### SUMMARY PLOTS
+    def plotbatch_rastersevents_blocked(self, sdir, ntrials = 250, dataset_group = "ep_tknd_sup"):
+        """ each site plots many trials, each a separaet event(subplot)
+        Withn each subplot, groups trials by category, defined by dataset_group, a column
+        in self.DatasetBeh
+        """
+
+        if dataset_group=="ep_tknd_sup":
+            self.Datasetbeh.grouping_append_col(["epoch", "task_kind", "supervision_stage_concise"], "ep_tknd_sup")
+            # self.Datasetbeh.Dat["ep_tknd_sup"].value_counts()
+        sites = self.sitegetter_all()
+        print("Plotting plotbatch_rastersevents_blocked ...")
+        for s in sites:
+            if s%10==0:
+                print(s)
+            fig = self.plotwrapper_raster_onesite_eventsubplots_blocked(s, dataset_group, 
+                ntrials=ntrials, sdir=sdir)
+            plt.close("all")
+
+
+    def plotbatch_rastersevents_each_site(self, sdir, ntrials = 150):
+        """ each site plots many trials, each a separaet event(subplot)
+        NOTE: about 10x faster for .png vs. .pdf
+        """
+        sites = self.sitegetter_all()
+        for s in sites:
+            fig = self.plotwrapper_raster_onesite_eventsubplots(s, ntrials=ntrials, sdir=sdir)
+            # print("saving fig", s)
+            # fig.savefig(f"{sdir}/rastersevents-{self.sitegetter_summarytext(s)}.png", dpi=300)
+            plt.close("all")
+
     def plotbatch_alltrails_for_each_site(self, sdir):
         """ one plot for each site, raster across all trials
         """
         SIZE_HEIGHT_TOTAL = 15.
         SIZE_WIDTH_TOTAL = 20.
-        XMIN = -3.5
-        XMAX = 6.5
+        XMIN = -4
+        XMAX = 8
         
         trials = self.get_trials_list(True)
         print("This many good trials: ", len(trials))
@@ -6082,12 +6564,16 @@ class Session(object):
             bregion = self.sitegetter_thissite_info(s)["region"]
             for ALIGNTO in LIST_ALIGN_TO:
                 print("generating fig", s, ALIGNTO)
-                fig = self.plotwrapper_raster_multrials_onesite(trials, s, alignto =ALIGNTO,
+                # fig = self.plotwrapper_raster_multrials_onesite(trials, s, alignto =ALIGNTO,
+                #                                               SIZE_HEIGHT_TOTAL=SIZE_HEIGHT_TOTAL, 
+                #                                               SIZE_WIDTH_TOTAL=SIZE_WIDTH_TOTAL, 
+                #                                               plot_beh=False, xmin = XMIN, xmax = XMAX, nrand_trials=200)[0]
+                fig = self.plotwrapper_raster_multrials_onesite(None, s, alignto =ALIGNTO,
                                                               SIZE_HEIGHT_TOTAL=SIZE_HEIGHT_TOTAL, 
                                                               SIZE_WIDTH_TOTAL=SIZE_WIDTH_TOTAL, 
-                                                              plot_beh=False, xmin = XMIN, xmax = XMAX)[0]
+                                                              plot_beh=False, xmin = XMIN, xmax = XMAX, nrand_trials=200)[0]
                 print("saving fig", s, ALIGNTO)
-                fig.savefig(f"{sdir}/eachsite_alltrials-{s}_{bregion}-alignedto_{ALIGNTO}.pdf")
+                fig.savefig(f"{sdir}/eachsite_alltrials-{s}_{bregion}-alignedto_{ALIGNTO}.png")
             plt.close("all")
 
     def plot_behcode_photodiode_sanity_check(self, skip_if_done=True):

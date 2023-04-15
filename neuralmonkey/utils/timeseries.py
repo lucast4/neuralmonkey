@@ -14,7 +14,7 @@ def dat_to_time(vals, fs):
     return t
 
 def convert_discrete_events_to_time_series(t0, tend, event_onsets, event_offsets, fs,
-    ploton=False):
+    ploton=False, clamp_onset_to_this=None):
     """ Given times of discrete events, return time series where 1 means even is occuring
     PARAMS:
     - t0, time of first bin, inclusive
@@ -56,9 +56,42 @@ def convert_discrete_events_to_time_series(t0, tend, event_onsets, event_offsets
 
         vals[indon:indoff+1] = 1.
 
+    # clamp_onset_to_this = 1.
+    # vals = 1-vals
+
     if ploton:
-        plt.figure()
-        plt.plot(times, vals)
+        fig, ax = plt.subplots()
+        ax.plot(times, vals, label="before clamping onset")
+
+    # help clean it up by forcinfg the onset to be a certain bvalue. 
+    # e.g, onset of this trial cannot be positive, if so, then is remnant of previous trial.
+    # remove it.
+    if clamp_onset_to_this==0.:
+        if vals[0]==1.:
+            inds = np.where(np.diff(vals)==-1.)[0]
+            vals[:inds[0]+1] = 0.
+            if inds[0]/len(vals)>0.1:
+                ax.plot(times, vals, '--r', label="after clamping onset")
+                ax.legend()                
+                print(inds)
+                print(len(vals))
+                assert False, "this may be bug. expect clamping to not extend this far into the time series."
+    elif clamp_onset_to_this==1.:
+        if vals[0]==0.:
+            inds = np.where(np.diff(vals)==1.)[0]
+            vals[:inds[0]+1] = 1.
+            if inds[0]/len(vals)>0.1:
+                ax.plot(times, vals, '--r', label="after clamping onset")
+                ax.legend()                
+                print(inds)
+                print(len(vals))
+                assert False, "this may be bug. expect clamping to not extend this far into the time series."
+    else:
+        assert clamp_onset_to_this is None
+
+    if ploton:
+        ax.plot(times, vals, '--r', label="after clamping onset")
+        ax.legend()
 
     return times, vals
 
