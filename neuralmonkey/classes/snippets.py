@@ -40,10 +40,13 @@ class Snippets(object):
         - list_features_get_conjunction, list of str, features for which will get conjuction
         of other features. Thesea re also the features that wil be plot and anlyszes. 
         - dataset_pruned_for_trial_analysis, Dataset object, which,if not None, will
-        be used to determine which trials (i.e. onluy tjhose in Dataset)             
+        be used to determine which trials (i.e. onluy tjhose in Dataset)            
+        NOTE: see extraction_helper() for notes on params.
         """
 
         assert trials_prune_just_those_including_events==True, "this on by defualt. if turn off, then change line below in SN.get_trials_list"
+        if dataset_pruned_for_trial_analysis is None:
+            dataset_pruned_for_trial_analysis = SN.Datasetbeh
 
         self.DfScalar = None
         self.SN = SN
@@ -67,20 +70,22 @@ class Snippets(object):
         ### EXTRACT SNIPPETS
         if which_level=="stroke":
             # Sanity checks
+            assert len(list_events)==0, "event is stroke. you made a mistake (old code, site anova?)"
             assert len(list_pre_dur)==1
             assert len(list_post_dur)==1
-            assert len(list_events)==0
 
             pre_dur=list_pre_dur[0]
             post_dur = list_post_dur[0]
 
             # Each datapt matches a single stroke
-            DS = datasetstrokes_extract(SN.Datasetbeh, strokes_only_keep_single,
-                tasks_only_keep_these, prune_feature_levels_min_n_trials, 
+            DS = datasetstrokes_extract(dataset_pruned_for_trial_analysis, 
+                strokes_only_keep_single, tasks_only_keep_these, 
+                prune_feature_levels_min_n_trials, 
                 list_features_extraction)
             trials = None
 
-            ListPA = self.extract_snippets_strokes(DS, sites_keep, pre_dur, post_dur)
+            ListPA = self.extract_snippets_strokes(DS, sites_keep, pre_dur, post_dur,
+                features_to_get_extra=list_features_extraction)
 
             # Fill in dummy variables
             list_events = ["stroke"]
@@ -95,6 +100,9 @@ class Snippets(object):
                 events_that_must_include = list_events)
             print("\n == extracting these trials: ", trials)
             DS = None
+
+            assert len(list_events) == len(list_pre_dur)
+            assert len(list_events) == len(list_post_dur)
 
             ListPA, list_events_uniqnames = self.extract_snippets_trials(trials, sites_keep, list_events, list_pre_dur, list_post_dur,
                 list_features_extraction)
@@ -146,7 +154,8 @@ class Snippets(object):
         print(f"** Generated Snippets, (ver {which_level}). Final length of SP.DfScalar: {len(self.DfScalar)}")
 
 
-    def extract_snippets_strokes(self, DS, sites_keep, pre_dur, post_dur):
+    def extract_snippets_strokes(self, DS, sites_keep, pre_dur, post_dur,
+            features_to_get_extra=None):
         """ Extract popanal, one data pt per stroke
         """
 
@@ -154,7 +163,8 @@ class Snippets(object):
         ListPA = self.SN.popanal_generate_alldata_bystroke(DS, sites_keep, align_to_stroke=True, 
                                                       align_to_alternative=[], 
                                                       pre_dur=pre_dur, post_dur=post_dur,
-                                                      use_combined_region=False)
+                                                      use_combined_region=False,
+                                                      features_to_get_extra=features_to_get_extra)
         assert len(ListPA)==1
         return ListPA
 
@@ -302,7 +312,7 @@ class Snippets(object):
         from pythonlib.tools.pandastools import applyFunctionToAllRows
 
         if self.DfScalar is None:
-            self.listpa_convert_to_smfr()
+            self.listpa_convert_to_smfr() 
 
         # take mean over time
         def F(x):
@@ -459,6 +469,45 @@ class Snippets(object):
 
 
     ################ DATA EXTRACTIONS
+    def dataextract_as_df_conjunction_vars(self, var, vars_others, site=None,
+        n_min = 8):
+        """ Helper to extract dataframe (i) appending a new column
+        with ocnjucntions of desired vars, and (ii) keeping only 
+        levels of this vars (vars_others) that has at least n trials for 
+        each level of a var of interest (var).
+        Useful becuase the output is ensured to have all levels of var, and (wiht 
+        some mods) could be used to help balance the dataset.
+        PARAMS:
+        - var, str, the variabiel you wisht ot use this dataset to compute 
+        moudlation for.
+        - vars_others, list of str, variables that conjucntion will define a 
+        new goruping var.
+        - site, either None (all data) or int.
+        - n_min, min n trials desired for each level of var. will only keep
+        conucntions of (vars_others) which have at least this many for each evel of
+        var.
+        EG:
+        - you wish to ask about shape moudlation for each combaiton of location and 
+        size. then var = shape and vars_others = [location, size]
+        RETURNS:
+        - dataframe, with new column "vars_others"
+        - dict, lev:df
+        """
+        from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars
+        import numpy as np
+
+        # 1) extract for this site.
+        if site is None:
+            dfthis = self.DfScalar
+        else:
+            dfthis = self.DfScalar[(self.DfScalar["chan"] == site)]
+
+        # 2) extract_with_levels_of_conjunction_vars
+        dfthis, dict_lev_df = extract_with_levels_of_conjunction_vars(dfthis, var, vars_others, n_min)
+
+        return dfthis, dict_lev_df
+
+
     def dataextract_as_df(self, grouping_variables, grouped_var_col_name):
         from pythonlib.tools.pandastools import append_col_with_grp_index
         dfthis = append_col_with_grp_index(self.DfScalar, grouping_variables, 
@@ -510,13 +559,10 @@ class Snippets(object):
         """ Return a single popanal """
         assert False, "in progress"
 
-    def dataextract_as_metrics_scalar(self, chan):
-        """ Return scalar data for this chan, as a MetricsScalar object, which 
-        has methods for computing modulation, etc
+    def _dataextract_as_metrics_scalar(self, dfthis):
+        """ Pass in dfthis directly
         """
         from neuralmonkey.metrics.scalar import MetricsScalar
-
-        dfthis = self.DfScalar[self.DfScalar["chan"]==chan]
         
         # Input to Metrics
         # (use this, instead of auto, to ensure common values across all chans)
@@ -531,8 +577,110 @@ class Snippets(object):
 
     # def dataextract_as_sm_fr_mat(self, chan)
 
+    def dataextract_as_metrics_scalar(self, chan):
+        """ Return scalar data for this chan, as a MetricsScalar object, which 
+        has methods for computing modulation, etc
+        """
+        from neuralmonkey.metrics.scalar import MetricsScalar
+
+        dfthis = self.DfScalar[self.DfScalar["chan"]==chan]
+        return self._dataextract_as_metrics_scalar(dfthis)
+
+        # # Input to Metrics
+        # # (use this, instead of auto, to ensure common values across all chans)
+        # list_var = self.Params["list_features_get_conjunction"]
+        # list_events_uniqnames = self.Params["list_events_uniqnames"]
+        # map_var_to_othervars = self.Params["map_var_to_othervars"]
+        # map_var_to_levels = self.Params["map_var_to_levels"]
+        # Mscal = MetricsScalar(dfthis, list_var, map_var_to_othervars, 
+        #     map_var_to_levels, 
+        #     list_events_uniqnames)
+        # return Mscal
+
+    # def dataextract_as_sm_fr_mat(self, chan)
+
 
     ################ MODULATION BY VARIABLES
+    def modulationgood_compute_wrapper(self, var, vars_conjuction=None, list_site=None,
+            n_min =8, score_ver="r2smfr_minshuff"):
+        """ Good, flexible helper to compute modulation of all kinds and all ways of slicing 
+        the dataset.
+        PARAMS;
+        - n_min, min n trials required for each level of var. if faisl, then skips this datset 
+        entirely (i.e., the level of vars_conjuction, or this site)
+        """
+        from pythonlib.tools.pandastools import append_col_with_grp_index
+        import numpy as np
+
+        # var = "chunk_rank"
+
+        # Want to use entier data for this site? or do separately for each level of a given
+        # conjunction variable.
+        if vars_conjuction is None:
+            # then place a dummy variable so that entire thing is one level
+            vars_conjuction = ["dummy_var"]
+            assert "dummy_var" not in self.DfScalar
+            self.DfScalar["dummy_var"] = "IGNORE"
+            # vars_conjuction = ['gridloc', 'chunk_within_rank'] # list of str, vars to take conjunction over
+
+        if list_site is None:
+            list_site = self.Sites
+
+        list_events = self.Params["list_events_uniqnames"]
+        # n_min =8
+        # score_ver = "r2smfr_minshuff"
+        # map_score_to_index_in_res = {
+        #     "r2smfr_minshuff":3
+        # }
+        # INDEX_IN_RES = map_score_to_index_in_res[score_ver]
+
+        # Collect data for each site
+        OUT = []
+        for site in list_site:
+                    
+            if site%20==0:
+                print(site)
+            region = self.SN.sitegetter_map_site_to_region(site)
+            # Clean up dataset
+            dfthis, _ = self.dataextract_as_df_conjunction_vars(var, vars_conjuction, site, n_min)
+                
+            if len(dfthis)==0:
+                # then no level of vars_conjuction had enough data across all levels of var.
+                continue
+
+            # for each level of vars_conj, compute modulation
+            levels_others = dfthis["vars_others"].unique().tolist()
+
+            for lev in levels_others:
+                
+                # get data
+                dfthisthis = dfthis[dfthis["vars_others"]==lev]
+                
+                # compute modulation
+                MS = self._dataextract_as_metrics_scalar(dfthisthis)
+                eventscores = MS.modulationgood_wrapper_(var, version=score_ver)
+                
+                for ev in list_events:
+                    score = eventscores[ev]
+
+                    # save
+                    OUT.append({
+                        "site":site,
+                        "var":var,
+                        "var_others":vars_conjuction,
+                        "lev_in_var_others":lev,
+                        "event":ev,
+                        "score_ver":score_ver,
+                        "score":score,
+                        "region":region
+                    })
+
+        dfout = pd.DataFrame(OUT)
+
+        if "dummy_var" in self.DfScalar:
+            del self.DfScalar["dummy_var"]
+        return dfout
+
     def modulation_compute_each_chan(self, DEBUG=False, 
         bregion_add_num_prefix=True, 
         bregion_combine=False, things_to_compute=("modulation", "fr")):
@@ -542,7 +690,8 @@ class Snippets(object):
         """
 
         RES_ALL_CHANS = []
-        list_chans = self.DfScalar["chan"].unique().tolist()
+        # list_chans = self.DfScalar["chan"].unique().tolist()
+        list_chans = self.Sites
 
         if DEBUG:
             # faster...
@@ -1039,8 +1188,8 @@ class Snippets(object):
 
 
             if variables_ordered_increasing_effect is None:
-                variables_ordered_increasing_effect = ("gridsize", "gridloc", "shape_oriented", "velmean_x", 
-                    "velmean_y", "velmean_thbin", "velmean_norm", "velmean_normbin", "epoch")
+                variables_ordered_increasing_effect = ("gridsize", "gridloc", "shape_oriented", "chunk_rank', 'chunk_within_rank",
+                    "velmean_x", "velmean_y", "velmean_thbin", "velmean_norm", "velmean_normbin", "epoch")
             def _find_hue():    
                 # 1) Find the hue
                 for var_other in variables_ordered_increasing_effect:
@@ -1687,13 +1836,12 @@ class Snippets(object):
         #     list_events_uniqnames = self.Params["list_events_uniqnames"]
         # list_pre_dur = self.Params["list_pre_dur"]
         # list_post_dur = self.Params["list_post_dur"]
+        if list_var is None:
+            list_var = self.Params["list_features_get_conjunction"]
         map_var_to_levels = self.Params["map_var_to_levels"]
         for var in list_var:
             if var not in map_var_to_levels.keys():
                 self._preprocess_map_features_to_levels_input(var)
-
-        if list_var is None:
-            list_var = self.Params["list_features_get_conjunction"]
 
         if orient=="vert":
             nrows = len(list_events_uniqnames)
@@ -1864,7 +2012,7 @@ class Snippets(object):
 
                 # method in sn, plitting rasters with blocked trials
                 self.SN.plot_raster_trials_blocked(ax, list_trials_sn, site, list_labels, 
-                                           align_to=event_orig,
+                                           alignto=event_orig,
                                            overlay_trial_events=False, xmin=pre_dur-0.2, 
                                            xmax=post_dur+0.2)
 
@@ -2141,23 +2289,29 @@ class Snippets(object):
         # Trials
 
 
-def extraction_helper(SN, which_level="trial"):
+def extraction_helper(SN, which_level="trial", list_features_modulation_append=None,
+    dataset_pruned_for_trial_analysis = None):
     """ Helper to extract Snippets for this session
+    PARAMS;
+    - list_features_modulation_append, eitehr None (do nothing) or list of str,
+    which are features to add for computing modulation for.
     """
 
+    # === DEFAULTS
     PRE_DUR = -0.4
     POST_DUR = 0.4
 
-    dataset_pruned_for_trial_analysis = _dataset_extract_prune_general(SN)
-    
+    # General cleanup of dataset.
+    if dataset_pruned_for_trial_analysis is None:
+        # This is generally what you want
+        dataset_pruned_for_trial_analysis = _dataset_extract_prune_general(SN)
 
     if which_level=="trial":
         # Events
         do_prune_by_inter_event_times = False
         dict_events_bounds, dict_int_bounds = SN.eventsanaly_helper_pre_postdur_for_analysis(
             do_prune_by_inter_event_times=do_prune_by_inter_event_times)
-        # # sn = MS.SessionsList[0]
-        # which_level = "trial"
+
         # list_events = ["samp", "go", "done_button", "off_stroke_last", "reward_all"]
         list_events = list(dict_events_bounds.keys())
         list_features_extraction = []
@@ -2175,18 +2329,25 @@ def extraction_helper(SN, which_level="trial"):
         prune_feature_levels_min_n_trials = 1
 
     elif which_level=="stroke":
-        # sn = MS.SessionsList[1]
+        # Extracts snippets aligned to strokes. Features are columns in DS.
         which_level = "stroke"
-        list_events = []
-        list_features_extraction = []
-        list_features_get_conjunction = []
+        list_events = [] # must be empty
+        list_features_extraction = ["shape_oriented", "gridloc"] # e.g, ['shape_oriented', 'gridloc']
+        # list_features_get_conjunction = ["shape_oriented", "gridloc"] # not required, but useful if you want to get conjunction of these vars.
+        list_features_get_conjunction = ["shape_oriented", "gridloc"] # REQUIRED. these are if you want to get conjunction of these vars, and
+        # also those for computing moduulation.
         list_pre_dur = [PRE_DUR]
         list_post_dur = [POST_DUR]
-        strokes_only_keep_single = False
-        prune_feature_levels_min_n_trials = 1
+        strokes_only_keep_single = False # if True, then prunes dataset, removing trials "remove_if_multiple_behstrokes_per_taskstroke"
+        prune_feature_levels_min_n_trials = 1 
     else:
         print(which_level)
         assert False
+
+    if list_features_modulation_append is not None:
+        assert isinstance(list_features_modulation_append, list)
+        list_features_extraction = list_features_extraction + list_features_modulation_append
+        list_features_get_conjunction = list_features_get_conjunction + list_features_modulation_append
 
 
     SP = Snippets(SN=SN, which_level=which_level, list_events=list_events, 
@@ -2203,11 +2364,17 @@ def extraction_helper(SN, which_level="trial"):
 def datasetstrokes_extract(D, strokes_only_keep_single=False, tasks_only_keep_these=None, 
     prune_feature_levels_min_n_trials=None, list_features=None, vel_onset_twindow = (0, 0.2)):
     """ Helper to extract dataset strokes
+    PARAMS:
+    - strokes_only_keep_single, bool, if True, then prunes dataset: 
+    "remove_if_multiple_behstrokes_per_taskstroke"
+
     """
 
     # 1. Extract all strokes, as bag of strokes.
     from pythonlib.dataset.dataset_strokes import DatStrokes
     DS = DatStrokes(D)
+    for f in list_features:
+        assert f in DS.Dat.columns, "must extract this feature first. is it a datseg feature that you failed to extract?"
 
     if strokes_only_keep_single:
         DS.clean_data(["remove_if_multiple_behstrokes_per_taskstroke"])
@@ -2246,7 +2413,7 @@ def datasetstrokes_extract(D, strokes_only_keep_single=False, tasks_only_keep_th
     return DS
 
 
-def _dataset_extract_prune_general(sn):
+def _dataset_extract_prune_general(sn, list_superv_keep = None):
     """
     Generic, should add to this.
     """
@@ -2255,12 +2422,19 @@ def _dataset_extract_prune_general(sn):
     # Remove if aborted
     Dcopy.filterPandas({"aborted":[False]}, "modify")
 
-    print("############ TAKING ONLY NO SUPERVISION TRIALS")
-    LIST_NO_SUPERV = ["off|0||0", "off|1|solid|0", "off|1|rank|0"]
+    if list_superv_keep is None:
+        print("############ TAKING ONLY NO SUPERVISION TRIALS")
+        list_superv_keep = ["off|0||0", "off|1|solid|0", "off|1|rank|0"]
+    else:
+        print("############ TAKING ONLY THESE SUPERVISION TRIALS:")
+        print(list_superv_keep)
+
     # Only during no-supervision blocks
-    print("BEFORE REMOVE:", Dcopy.Dat["supervision_stage_concise"].value_counts())
-    Dcopy.filterPandas({"supervision_stage_concise":LIST_NO_SUPERV}, "modify")
-    print("AFTER REMOVE:", Dcopy.Dat["supervision_stage_concise"].value_counts())
+    print("--BEFORE REMOVE; existing supervision_stage_concise:")
+    print(Dcopy.Dat["supervision_stage_concise"].value_counts())
+    Dcopy.filterPandas({"supervision_stage_concise":list_superv_keep}, "modify")
+    print("--AFTER REMOVE; existing supervision_stage_concise:")
+    print(Dcopy.Dat["supervision_stage_concise"].value_counts())
     
     print("Dataset final len:", len(Dcopy.Dat))
 

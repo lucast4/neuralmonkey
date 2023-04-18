@@ -3499,6 +3499,7 @@ class Session(object):
             for k, v in dict_full2short.items():
                 if v==short:
                     return k
+            print(short)
             assert False
 
     def behcode_convert(self, codenum=None, codename=None, shorthand=False):
@@ -4797,7 +4798,7 @@ class Session(object):
     ####################### GENERATE POPANAL for a trial
     def _popanal_generate_alldata_bystroke(self, DS, sites, 
         pre_dur, post_dur, fail_if_times_outside_existing,
-        use_combined_region):
+        use_combined_region, features_to_get_extra=None):
         """ Low level 
         """
         # 1) Get trials and stroke inds
@@ -4825,9 +4826,21 @@ class Session(object):
         # 3) Assign stroke-level features
         print("Sanity check, extracting trialcode into pa.Xlabel [trials]")
         list_cols = ['task_kind', 'gridsize', 'dataset_trialcode', 
-            'stroke_index', 'stroke_index_fromlast', "stroke_index_semantic", 'shape_oriented', 'ind_taskstroke_orig', 'gridloc',
+            'stroke_index', 'stroke_index_fromlast', 'stroke_index_semantic', 
+            'shape_oriented', 'ind_taskstroke_orig', 'gridloc',
             'gridloc_x', 'gridloc_y', 'h_v_move_from_prev']
+
+        if features_to_get_extra is not None:
+            assert isinstance(features_to_get_extra, list)
+            list_cols = list(set(list_cols + features_to_get_extra))
         pa.labels_features_input_from_dataframe(DS.Dat, list_cols, dim="trials")
+        assert all([c in pa.Xlabels["trials"].columns for c in list_cols])
+            
+        # also extract index and call it a new name
+        pa.labels_features_input_from_dataframe(DS.Dat, ["index"], dim="trials", overwrite=False)
+        pa.Xlabels["trials"]["index_DS"] = pa.Xlabels["trials"]["index"]
+        del pa.Xlabels["trials"]["index"]
+
         # Sanity check, input order matches output order
         assert pa.Xlabels["trials"]["dataset_trialcode"].tolist() == trialcodes
         # Rename it trialcode
@@ -4861,7 +4874,7 @@ class Session(object):
             # Return the single pa, aligned to each stroke in
             pa = self._popanal_generate_alldata_bystroke(DS, sites, 
                 pre_dur, post_dur, fail_if_times_outside_existing,
-                use_combined_region)
+                use_combined_region, features_to_get_extra=features_to_get_extra)
             ListPA = [pa]
         else:
             assert False, "this is HACKY. this only uses DS.Dat to collect one datapt for each stroke in DS.Dat. This should either be trial level or stroke level"
@@ -4893,12 +4906,14 @@ class Session(object):
             list_cols = []
             if features_to_get_extra is not None:
                 assert isinstance(features_to_get_extra, list)
-                list_cols = list_cols + features_to_get_extra
+                list_cols = list(set(list_cols + features_to_get_extra))
             for pa in ListPA:
                 pa.labels_features_input_from_dataframe(DS.Dat, list_cols, dim="trials")
                 # Sanity check, input order matches output order
                 # assert pa.Xlabels["trials"]["dataset_trialcode"].tolist() == trialcodes
                 assert pa.Xlabels["trials"]["trialcode"].tolist() == trialcodes
+
+                assert all([c in pa.Xlabels["trials"].columns for c in list_cols])
 
         return ListPA
 
@@ -5024,7 +5039,7 @@ class Session(object):
         # 1) extract each trials' PA. Use the slicing tool in PA to extract snippet
         for tr, indstrok in zip(trials, strokeids):
             # extract popanal
-            pa = self.popanal_generate_save_trial(tr)
+            pa = self.popanal_generate_save_trial(tr) 
 
             # slice to desired channels
             pa = pa._slice_by_chan(sites)
@@ -5073,9 +5088,9 @@ class Session(object):
 
             # then concat
             PAall = concatenate_popanals(list_xslices, "trials", 
-            assert_otherdims_have_same_values=True, 
-            assert_otherdims_restrict_to_these=("chans", "times"),
-            all_pa_inherit_times_of_pa_at_this_index=0)
+                assert_otherdims_have_same_values=True, 
+                assert_otherdims_restrict_to_these=("chans", "times"),
+                all_pa_inherit_times_of_pa_at_this_index=0)
  
 
         return PAall

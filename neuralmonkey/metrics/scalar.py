@@ -115,6 +115,7 @@ class MetricsScalar(object):
         dict_event_var_r2 = {}
         dict_event_var_r2_shuff = {}
         dict_event_var_r2_z = {}
+        dict_event_var_r2_minshuff = {}
 
         for event in list_events:
             
@@ -144,9 +145,13 @@ class MetricsScalar(object):
         for i, ev in enumerate(list_events):
             vals_shuff = dict_r2_shuffles[ev]
             val = list_r2[i]
+            val2 = dict_event_var_r2[(ev)]
+
             r2_z = zscore(val, vals_shuff)
             list_r2_zscored.append(r2_z)
             dict_event_var_r2_z[(ev)] = r2_z
+            dict_event_var_r2_minshuff[(ev)] = val - np.mean(vals_shuff)
+
 
         if plot_results_summary:
             fig, axes = plt.subplots(3, 1, figsize=(8, 8), sharey=False)
@@ -177,7 +182,7 @@ class MetricsScalar(object):
             ax.axhline(-3)
             ax.axhline(3)
 
-        return dict_event_var_r2, dict_event_var_r2_shuff, dict_event_var_r2_z
+        return dict_event_var_r2, dict_event_var_r2_shuff, dict_event_var_r2_z, dict_event_var_r2_minshuff
 
 
     def calc_modulation_by(self):
@@ -214,9 +219,9 @@ class MetricsScalar(object):
         for ev in list_events_uniqnames:
             datathis = data[data["event_aligned"]==ev]
 
-            for var in self.ListVar:
+            for var in self.ListVar: 
                 res = _calc_modulation_by(datathis, var, map_var_to_othervars=map_var_to_othervars)
-                
+                    
                 # 1. for each event, one value for modulation by this var
                 dict_modulation[(ev, var)] = res["all_data"]
                 
@@ -322,7 +327,7 @@ class MetricsScalar(object):
         RES = {}
         list_var = self.ListVar
 
-        results = self.calc_modulation_by()
+        results = self.calc_modulation_by() 
 
         # Variance explained, using firing rates
         list_events_uniqnames = self.ListEventsUniqname
@@ -535,6 +540,21 @@ class MetricsScalar(object):
         
         return frmat 
 
+    def modulationgood_wrapper_(self, var, version, dfthis=None):
+        """ Wrapper to help call different subfunctions for computing modulation 
+        by a var
+        RETURNS:
+        - eventscores, dict, keys are events and values are modulation scores.
+        """
+
+        if version=="r2smfr_minshuff":
+            # r2 using smoothed fr, minus shuffled
+            eventscores = self._calc_r2_smoothed_fr(var)[3]
+        else:
+            print(version)
+            assert False, "code it"
+        return eventscores
+
 ####################### UTILS
 def _shuffle_dataset(df, var):
     """ returns a copy of df, with var labels shuffled
@@ -683,8 +703,9 @@ def _calc_modulation_by_frsm(dfthis, var, COL_FR = 'fr_sm_sqrt',
     
         
 def _calc_modulation_by(data, by, response_var = 'fr_scalar', 
-    map_var_to_othervars=None, n_min_dat = 10):
-    """ Calculatio modulation of response_var ba <by>,
+    map_var_to_othervars=None, n_min_dat = 8):
+    """ [GOOD] Calculatio modulation of response_var ba <by>, given a data (df),
+    and does so also for all conjunctions of other variables. 
     PARAMS:
     - by, string name of variabel whose levels modulate the reposnse_var
     - response_var, string, name of variable response

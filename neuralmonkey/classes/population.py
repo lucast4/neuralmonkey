@@ -1012,12 +1012,13 @@ class PopAnal():
         """
         return self.labels_input(name, values, dim)
 
-    def labels_features_input_from_dataframe(self, df, list_cols, dim):
+    def labels_features_input_from_dataframe(self, df, list_cols, dim, overwrite=True):
         """ Assign batchwise, labels to self.Xlabels
         PARAMS:
         - df, dataframe from which values will be extarcted
-        - list_cols, feature names, strings, columns in df.
+        - list_cols, feature names, strings, columns in df. if "index" then gets that
         - dim, which dimension in self to modify.
+        - overwrite, if False, then throws error if that var already exists in self.Xlabels[dim]
         NOTE: assumes that df is ordereed idetncail to the data in dim.
         """
 
@@ -1025,8 +1026,13 @@ class PopAnal():
 
         # store each val
         for col in list_cols:
-            values = df[col].tolist()
-            self.labels_input(col, values, dim=dim)          
+            if col=="index":
+                # confirm that this is nto exist as a column
+                assert "index" not in df.columns, "problem, ambiguos you want df.index or df[index]?"
+                values = df.index.tolist()
+            else:
+                values = df[col].tolist()
+            self.labels_input(col, values, dim=dim, overwrite=overwrite)          
 
     def labels_features_input_conjunction_other_vars(self, dim, list_var):
         """ Assingn new columns to self.Xlabels[dim], one for each conjunction
@@ -1083,14 +1089,14 @@ class PopAnal():
 
 
 
-    def labels_input(self, name, values, dim="trials"):
+    def labels_input(self, name, values, dim="trials", overwrite=True):
         """ Append values, stored in self.Xlabels[dim]. Does 
         sanity check that lenghts are correct
         PARAMS:
         - name, str
         - values, list-like values, must match the size of this dim exactly.
         - dim, str, whether labels match {trials, times, chans}
-        NOTE: opverwrites name if it has been p[reviusly entered]
+        - overwrite, bool, if true, opverwrites name if it has been p[reviusly entered]
         """
 
         # Extract the desired dataframe
@@ -1108,6 +1114,9 @@ class PopAnal():
             print(dim)
             assert False
 
+        if overwrite==False:
+            # confirm that it doesnt aklready exist
+            assert name not in df.columns
         df[name] = values
 
 
