@@ -32,10 +32,6 @@ class MetricsScalar(object):
         if list_var is None:
             list_var = []
             # assert False, "code it"
-        for var in list_var:
-            assert var in data.columns
-            assert var in map_var_to_othervars.keys()
-        self.ListVar = list_var
 
         if map_var_to_othervars is None:
             map_var_to_othervars = {}
@@ -44,7 +40,13 @@ class MetricsScalar(object):
                 assert othervar in data.columns
         self.MapVarToConjunctionOthers = map_var_to_othervars
 
+        for var in list_var:
+            assert var in data.columns
+            # assert var in map_var_to_othervars.keys()
+        self.ListVar = list_var
+
         if map_var_to_levels is None:
+            map_var_to_levels = {}
             for var in self.ListVar:
                 levels = sorted(data[var].unique().tolist())
                 map_var_to_levels[var] = levels
@@ -121,6 +123,7 @@ class MetricsScalar(object):
             
             dfthis = self.Data[(self.Data["event_aligned"]==event)]
             
+            assert len(dfthis)>0
             # Dataset
             r2, SS, SST = _calc_modulation_by_frsm(dfthis, var, COL_FR, 
                 plot_fr=False)
@@ -550,6 +553,9 @@ class MetricsScalar(object):
         if version=="r2smfr_minshuff":
             # r2 using smoothed fr, minus shuffled
             eventscores = self._calc_r2_smoothed_fr(var)[3]
+        elif version=="r2scal_minshuff":
+            assert False, "code it..."
+            # _calc_modulation_by
         else:
             print(version)
             assert False, "code it"

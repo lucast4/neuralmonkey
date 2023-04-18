@@ -28,7 +28,9 @@ class Snippets(object):
         tasks_only_keep_these=None,
         prune_feature_levels_min_n_trials=10, 
         dataset_pruned_for_trial_analysis=None,
-        trials_prune_just_those_including_events=True):
+        trials_prune_just_those_including_events=True,
+        fr_which_version="sqrt",
+        NEW_VERSION=True):
         """ Initialize a dataset
         PARAMS:
         - SN, Sessions object, holding neural data for a single session
@@ -43,6 +45,7 @@ class Snippets(object):
         be used to determine which trials (i.e. onluy tjhose in Dataset)            
         NOTE: see extraction_helper() for notes on params.
         """
+        from pythonlib.tools.pandastools import applyFunctionToAllRows
 
         assert trials_prune_just_those_including_events==True, "this on by defualt. if turn off, then change line below in SN.get_trials_list"
         if dataset_pruned_for_trial_analysis is None:
@@ -84,8 +87,15 @@ class Snippets(object):
                 list_features_extraction)
             trials = None
 
-            ListPA = self.extract_snippets_strokes(DS, sites_keep, pre_dur, post_dur,
-                features_to_get_extra=list_features_extraction)
+            print("Extracting, SN.snippets_extract_bystroke...")
+            if NEW_VERSION:
+                DfScalar = SN.snippets_extract_bystroke(sites_keep, DS, 
+                    features_to_get_extra=list_features_extraction, fr_which_version=fr_which_version)
+                ListPA = None
+            else:
+                ListPA = self.extract_snippets_strokes(DS, sites_keep, pre_dur, post_dur,
+                    features_to_get_extra=list_features_extraction)
+
 
             # Fill in dummy variables
             list_events = ["stroke"]
@@ -104,17 +114,25 @@ class Snippets(object):
             assert len(list_events) == len(list_pre_dur)
             assert len(list_events) == len(list_post_dur)
 
-            ListPA, list_events_uniqnames = self.extract_snippets_trials(trials, sites_keep, list_events, list_pre_dur, list_post_dur,
-                list_features_extraction)
+            if NEW_VERSION:
+                assert False, "code it"
+                ListPA = None
+            else:
+                ListPA, list_events_uniqnames = self.extract_snippets_trials(trials, sites_keep, list_events, list_pre_dur, list_post_dur,
+                    list_features_extraction)
         else:
             assert False
 
         # Map var conjunctions.
-        for pa in ListPA:
-            map_var_to_othervars = pa.labels_features_input_conjunction_other_vars(dim="trials", 
-                list_var = list_features_get_conjunction)
+        if NEW_VERSION:
+            map_var_to_othervars = None
+        else:
+            for pa in ListPA:
+                map_var_to_othervars = pa.labels_features_input_conjunction_other_vars(dim="trials", 
+                    list_var = list_features_get_conjunction)
 
         ### SAVE VARIABLES
+        self._NEW_VERSION = NEW_VERSION
         self.ListPA = ListPA
         self.Sites = sites_keep
         self.DS = DS
@@ -131,25 +149,38 @@ class Snippets(object):
             "strokes_only_keep_single":strokes_only_keep_single,
             "tasks_only_keep_these":tasks_only_keep_these,
             "prune_feature_levels_min_n_trials":prune_feature_levels_min_n_trials,
+            "fr_which_version":fr_which_version
         }
 
+        
         # Genreate scalars
-        if False:
-            # Old version
-            print("\n == listpa_convert_to_scalars")        
-            self.listpa_convert_to_scalars()
-            print("\n == pascal_convert_to_dataframe")        
-            self.pascal_convert_to_dataframe(fr_which_version="sqrt")
+        if NEW_VERSION:
+            self.DfScalar = DfScalar
+
         else:
-            self.listpa_convert_to_scalar_v2(fr_which_version="sqrt")
-            self.DfScalar = self.DfScalar # they are the same
+            if False:
+                # Old version
+                print("\n == listpa_convert_to_scalars")        
+                self.listpa_convert_to_scalars()
+                print("\n == pascal_convert_to_dataframe")        
+                self.pascal_convert_to_dataframe(fr_which_version=fr_which_version)
+            else:
+                self.listpa_convert_to_scalar_v2(fr_which_version=fr_which_version)
+                self.DfScalar = self.DfScalar # they are the same
 
         self.pascal_remove_outliers()
 
         # Get useful variables
-        print("\n == _preprocess_map_features_to_levels")        
-        self._preprocess_map_features_to_levels()
-        self._preprocess_map_features_to_levels_input("character")
+        if not NEW_VERSION:
+            print("\n == _preprocess_map_features_to_levels")        
+            self._preprocess_map_features_to_levels()
+            self._preprocess_map_features_to_levels_input("character")
+
+        if not NEW_VERSION:
+            map_var_to_levels = {}
+            for var in self.Params["list_features_get_conjunction"]:
+                map_var_to_levels[var] = sorted(self.DfScalar[var].unique().tolist())
+            self.Params["map_var_to_levels"] = map_var_to_levels
 
         print(f"** Generated Snippets, (ver {which_level}). Final length of SP.DfScalar: {len(self.DfScalar)}")
 
@@ -469,8 +500,8 @@ class Snippets(object):
 
 
     ################ DATA EXTRACTIONS
-    def dataextract_as_df_conjunction_vars(self, var, vars_others, site=None,
-        n_min = 8):
+    def dataextract_as_df_conjunction_vars(self, var, vars_others=None, site=None,
+        n_min = 5):
         """ Helper to extract dataframe (i) appending a new column
         with ocnjucntions of desired vars, and (ii) keeping only 
         levels of this vars (vars_others) that has at least n trials for 
@@ -502,10 +533,14 @@ class Snippets(object):
         else:
             dfthis = self.DfScalar[(self.DfScalar["chan"] == site)]
 
-        # 2) extract_with_levels_of_conjunction_vars
-        dfthis, dict_lev_df = extract_with_levels_of_conjunction_vars(dfthis, var, vars_others, n_min)
+        # Use all unique levels in entire dataset
+        levels_var = sorted(self.DfScalar[var].unique().tolist())
 
-        return dfthis, dict_lev_df
+        # 2) extract_with_levels_of_conjunction_vars
+        dfthis, dict_lev_df = extract_with_levels_of_conjunction_vars(dfthis, var, 
+            vars_others, levels_var, n_min)
+
+        return dfthis, dict_lev_df, levels_var
 
 
     def dataextract_as_df(self, grouping_variables, grouped_var_col_name):
@@ -599,12 +634,50 @@ class Snippets(object):
 
     # def dataextract_as_sm_fr_mat(self, chan)
 
+    def datamod_append_bregion(self, df):
+        """ Appends bregion for each row, using the chan in df["chan"]
+        RETURNS:
+        - copy of df, with column "bregion"
+        """
+        from pythonlib.tools.pandastools import applyFunctionToAllRows
+        def F(x):
+            region = self.SN.sitegetter_map_site_to_region(x["chan"])
+            return region
+        return applyFunctionToAllRows(df, F, "bregion")
+
 
     ################ MODULATION BY VARIABLES
+    def modulationgood_compute_fr_quick(self, var, fr_var = "fr_scalar"):
+        """
+        Temporary, qucik computation of fr across chans, var levels, etc.
+        PARAMS:
+        - var, to get the levels of interst
+        RETURNS:
+        - df_fr, each row is a single (chan, event)
+        - df_fr_levels, each row is a single (chan, event, level_of_var)
+        """
+        from pythonlib.tools.pandastools import aggregGeneral
+
+        df_fr = aggregGeneral(self.DfScalar, group=["chan", "event_aligned"], values = [fr_var])
+        # give bregion
+        df_fr = self.datamod_append_bregion(df_fr)
+        df_fr["event"] = df_fr["event_aligned"]
+        df_fr["val"] = df_fr[fr_var]
+        df_fr["val_kind"] = fr_var
+
+        df_fr_levels = aggregGeneral(self.DfScalar, group=["chan", "event_aligned", var], values = [fr_var])
+        # give bregion
+        df_fr_levels = self.datamod_append_bregion(df_fr_levels)
+        df_fr_levels["event"] = df_fr_levels["event_aligned"]
+        df_fr_levels["val"] = df_fr_levels[fr_var]
+        df_fr_levels["val_kind"] = "fr_each_level"
+
+        return df_fr, df_fr_levels
+
     def modulationgood_compute_wrapper(self, var, vars_conjuction=None, list_site=None,
-            n_min =8, score_ver="r2smfr_minshuff"):
+            n_min = 5, score_ver="r2smfr_minshuff"):
         """ Good, flexible helper to compute modulation of all kinds and all ways of slicing 
-        the dataset.
+        the dataset. 
         PARAMS;
         - n_min, min n trials required for each level of var. if faisl, then skips this datset 
         entirely (i.e., the level of vars_conjuction, or this site)
@@ -627,12 +700,6 @@ class Snippets(object):
             list_site = self.Sites
 
         list_events = self.Params["list_events_uniqnames"]
-        # n_min =8
-        # score_ver = "r2smfr_minshuff"
-        # map_score_to_index_in_res = {
-        #     "r2smfr_minshuff":3
-        # }
-        # INDEX_IN_RES = map_score_to_index_in_res[score_ver]
 
         # Collect data for each site
         OUT = []
@@ -642,8 +709,8 @@ class Snippets(object):
                 print(site)
             region = self.SN.sitegetter_map_site_to_region(site)
             # Clean up dataset
-            dfthis, _ = self.dataextract_as_df_conjunction_vars(var, vars_conjuction, site, n_min)
-                
+            dfthis, _, levels_var = self.dataextract_as_df_conjunction_vars(var, vars_conjuction, site, n_min)
+            
             if len(dfthis)==0:
                 # then no level of vars_conjuction had enough data across all levels of var.
                 continue
@@ -654,26 +721,56 @@ class Snippets(object):
             for lev in levels_others:
                 
                 # get data
-                dfthisthis = dfthis[dfthis["vars_others"]==lev]
+                dfthisthis = dfthis[dfthis["vars_others"]==lev] # specific df (lev_other)
                 
-                # compute modulation
-                MS = self._dataextract_as_metrics_scalar(dfthisthis)
-                eventscores = MS.modulationgood_wrapper_(var, version=score_ver)
-                
-                for ev in list_events:
-                    score = eventscores[ev]
+                if score_ver in ["r2smfr_minshuff"]:
+                    # Then is a single score per (chan, event, var)
+                    # compute modulation
+                    # - one value for each var.
+                    MS = self._dataextract_as_metrics_scalar(dfthisthis)
+                    eventscores = MS.modulationgood_wrapper_(var, version=score_ver)
+                    
+                    for ev in list_events:
+                        score = eventscores[ev]
 
-                    # save
-                    OUT.append({
-                        "site":site,
-                        "var":var,
-                        "var_others":vars_conjuction,
-                        "lev_in_var_others":lev,
-                        "event":ev,
-                        "score_ver":score_ver,
-                        "score":score,
-                        "region":region
-                    })
+                        # save
+                        OUT.append({
+                            "chan":site,
+                            "var":var,
+                            "var_others":vars_conjuction,
+                            "lev_in_var_others":lev,
+                            "event":ev,
+                            "val_kind":"modulation_subgroups",
+                            "val_method":score_ver,
+                            "val":score,
+                            "bregion":region
+                        })
+                elif score_ver in ["fr_chan_level"]:
+                    assert False, "in progress... just need to modify MS to take in var and levels."
+                    # Then is a single score for each level of var
+                    MS = self._dataextract_as_metrics_scalar(dfthisthis)
+                    tmp = MS.calc_fr_across_levels()
+                    print(tmp)
+                    assert False
+
+                    # frates = _calc_fr_across_levels(dfthisthis, var, levels_var)["all_data"]
+                    
+                    for lv, fr in zip(levels_var, frates):
+                        OUT.append({
+                            "chan":site,
+                            "var":var,
+                            "lev_in_var":lv,                            
+                            "var_others":vars_conjuction,
+                            "lev_in_var_others":lev,
+                            "event":ev,
+                            "val_kind":"modulation_subgroups",
+                            "val_method":score_ver,
+                            "val":score,
+                            "bregion":region
+                        })
+                else:
+                    print(score_ver)
+                    assert False
 
         dfout = pd.DataFrame(OUT)
 
@@ -1364,6 +1461,176 @@ class Snippets(object):
             fig.savefig(f"{savedir}/{bregion}-{chan}-overview.pdf")
             plt.close("all")
             
+
+    def modulationgood_plot_summarystats(self, df_var, var, 
+            df_fr_each_lev=None, 
+            df_fr=None, savedir="/tmp"):
+        """ 
+        [GOOD] Plot modulation of fr by a single variable. Uses NEW_VERSION. Pass in dataframes directly.
+        PARAMS:
+        - df_var, dataframe, each row is a (chan, event, variable). with
+        modulation by that variable. 
+        REturns from self.modulationgood_compute_wrapper()
+        EG:
+            chan    var     var_others  lev_in_var_others   event   val_kind    val_method  val     bregion
+            0   2   shape_oriented  [gridloc, chunk_within_rank]    ((-1, 1), 0)    00_stroke   modulation_subgroups    r2smfr_minshuff     0.319396    M1_m
+            1   2   shape_oriented  [gridloc, chunk_within_rank]    ((1, 1), 1)     00_stroke   modulation_subgroups    r2smfr_minshuff     0.188035    M1_m
+            2   2   shape_oriented  [gridloc, chunk_within_rank]    ((0, 0), 0)     00_stroke   modulation_subgroups    r2smfr_minshuff     0.401434    M1_m
+            3   15  shape_oriented  [gridloc, chunk_within_rank]    ((-1, 1), 0)    00_stroke   modulation_subgroups    r2smfr_minshuff     0.032230    M1_m
+            4   15  shape_oriented  [gridloc, chunk_within_rank]    ((1, 1), 1)     00_stroke   modulation_subgroups    r2smfr_minshuff     0.089292    M1_m
+        - var, string, which variable for plots to care about [in progress for df_var]
+        - df_fr_each_lev, holding fr for each (chan, event, variable, level_variable)
+        - df_fr, holding fr for each (chan, event)
+        For the latter two, hacky code:
+            from pythonlib.tools.pandastools import aggregGeneral
+            df_fr = aggregGeneral(SP.DfScalar, group=["chan", "event_aligned"], values = ["fr_scalar_raw"])
+            # give bregion
+            df_fr = SP.datamod_append_bregion(df_fr)
+            df_fr["event"] = df_fr["event_aligned"]
+
+            df_fr["val"] = df_fr["fr_scalar_raw"]
+            df_fr["val_kind"] = "fr_scalar_raw"
+
+
+            from pythonlib.tools.pandastools import aggregGeneral
+            df_fr_levels = aggregGeneral(SP.DfScalar, group=["chan", "event_aligned", var], values = ["fr_scalar"])
+            # give bregion
+            df_fr_levels = SP.datamod_append_bregion(df_fr_levels)
+            df_fr_levels["event"] = df_fr_levels["event_aligned"]
+
+            df_fr_levels["val"] = df_fr_levels["fr_scalar"]
+            df_fr_levels["val_kind"] = "fr_each_level"
+            df_fr_levels
+        """
+        from pythonlib.tools.snstools import rotateLabel
+        from pythonlib.tools.snstools import plotgood_lineplot
+        import seaborn as sns
+
+        # Compare across events
+        fig = sns.catplot(data=df_var, x="event", y="val", hue="val_kind",
+                          col="bregion", row="var", kind="point", aspect=1, height=3);
+        rotateLabel(fig)
+        fig.savefig(f"{savedir}/1_lines_modulation_kinds.pdf")
+
+        # Comparing brain regions
+        fig = sns.catplot(data=df_var, x="bregion", y="val", col="event", 
+                    row="var", kind="bar", aspect=2, height=4);
+        rotateLabel(fig)
+        fig.savefig(f"{savedir}/2_bars_feature_vs_event.pdf")      
+
+        # Comparing brain regions
+        fig = sns.catplot(data=df_var, x="bregion", y="val", col="val_kind",
+                    row="event", kind="bar", hue="var", aspect=2, height=4);
+        rotateLabel(fig)
+        fig.savefig(f"{savedir}/2_bars_feature_vs_valkind.pdf")
+
+        # Compare across events
+        fig = sns.catplot(data=df_var, x="event", y="val", hue="var",
+                          col="bregion", row="val_kind", kind="point", aspect=1, height=3);
+        rotateLabel(fig)
+        fig.savefig(f"{savedir}/3_lines_valkinds.pdf")
+
+        from pythonlib.tools.snstools import plotgood_lineplot
+        fig = plotgood_lineplot(df_var, xval="event", yval="val", line_grouping="chan",
+                                include_mean=True, 
+                                relplot_kw={"row":"var", "col":"bregion"});
+        rotateLabel(fig)
+        fig.savefig(f"{savedir}/4_lineschans_feature_vs_region.pdf")
+
+
+        # # AVGMOD
+        # dfthis = dfdat_var_methods
+        # fig = sns.catplot(data=dfthis, x="val_kindmethod", y="val", hue="var",
+        #                   col="bregion", col_wrap=4, kind="point", aspect=1, height=3);
+        # rotateLabel(fig)
+        # fig.savefig(f"{savedir}/6_lines_avgmodulation_vs_method.pdf")
+
+        # # AVGMOD
+        # dfthis = dfdat_var_methods
+        # fig = plotgood_lineplot(dfthis, xval="method", yval="val", line_grouping="chan",
+        #                         include_mean=True, 
+        #                         relplot_kw={"row":"var", "col":"bregion"});
+        # rotateLabel(fig)
+        # fig.savefig(f"{savedir}/6_lineschans_avgmodulation_vs_method.pdf")
+
+        # Comparing brain regions
+        fig = sns.catplot(data=df_var, x="bregion", y="val", col="val_kind",
+                    row="var", kind="bar", hue="event", aspect=2.5, height=4);
+        rotateLabel(fig)
+        fig.savefig(f"{savedir}/7_bars_feature_vs_valkind.pdf")
+
+        # dfthis = dfdat_summary_mod[dfdat_summary_mod["val_kind"].isin([f"{var}_delt" for var in list_var])]
+        # # fig = sns.catplot(data=dfthis, x="val_kind", y="val", col="bregion", col_wrap=4, aspect=1.5, height=2,
+        # #                  kind="bar");
+        # fig = sns.catplot(data=dfthis, x="bregion", y="val", col="val_kind", aspect=2, height=4, kind="bar");
+        # rotateLabel(fig)
+        # fig.savefig(f"{savedir}/8_bars_deltsonly.pdf")
+
+        # dfthis = dfdat_summary_mod[dfdat_summary_mod["val_kind"].isin([f"{var}_mean" for var in list_var])]
+        # fig = sns.catplot(data=dfthis, x="bregion", y="val", col="val_kind", aspect=2, height=4, kind="bar");
+        # rotateLabel(fig)
+        # fig.savefig(f"{savedir}/8_bars_meansonly.pdf")
+
+
+        # dfthis = dfdat_summary_mod[dfdat_summary_mod["val_kind"].isin([f"{var}_delt" for var in list_var])]
+        # fig = sns.catplot(data=dfthis, x="val_kind", y="val", hue="bregion",aspect=3, height=4,
+        #                  kind="bar");
+        # rotateLabel(fig)
+        # fig.savefig(f"{savedir}/8_bars_features_deltonly.pdf")
+
+        # dfthis = dfdat_summary_mod[dfdat_summary_mod["val_kind"].isin([f"{var}_mean" for var in list_var])]
+        # fig = sns.catplot(data=dfthis, x="val_kind", y="val", hue="bregion",aspect=3, height=4,
+        #                  kind="bar");
+        # rotateLabel(fig)
+        # fig.savefig(f"{savedir}/8_bars_features_meanonly.pdf")
+
+
+        # dfthis = dfdat_summary_mod
+        # fig = sns.catplot(data=dfthis, x="val_kind", y="val", col="bregion", col_wrap=4, aspect=1.5, height=2,
+        #                  kind="bar");
+        # rotateLabel(fig)
+        # fig.savefig(f"{savedir}/8_bars_all.pdf")
+        # # fig = sns.catplot(data=dfthis, x="bregion", y="val", hue="val_kind",aspect=2, height=4,
+        # #                  kind="bar");
+        # # from pythonlib.tools.snstools import rotateLabel
+        # # rotateLabel(fig)
+
+        # fig = sns.catplot(data=dfthis, x="val_kind", y="val", hue="bregion",aspect=3, height=4,
+        #                  kind="bar");
+        # rotateLabel(fig)
+        # fig.savefig(f"{savedir}/8_bars_features_all.pdf")
+
+        if df_fr is not None:
+            fig = sns.catplot(data=df_fr, x="event", y="val", hue="val_kind",
+                              col="bregion", col_wrap=4, kind="point", aspect=1, height=3);
+            rotateLabel(fig)
+            fig.savefig(f"{savedir}/5_lines_fr.pdf")
+
+            fig = plotgood_lineplot(df_fr, xval="event", yval="val", line_grouping="chan",
+                                    include_mean=True, colvar="bregion", col_wrap=4);
+            rotateLabel(fig)
+            fig.savefig(f"{savedir}/5_lineschans_fr.pdf")
+
+        if df_fr_each_lev is not None:
+            ################## FR MODULATION BY LEVELS
+            fig = sns.catplot(data=df_fr_each_lev, x=var, hue="event", y="val", col="bregion", col_wrap=4, kind="point")
+            rotateLabel(fig)
+            fig.savefig(f"{savedir}/9_{var}-lines_fr_vs_level.pdf")
+
+            # try:
+            fig = plotgood_lineplot(df_fr_each_lev, xval=var, yval="val", line_grouping="chan",
+                                    include_mean=True, 
+                                    relplot_kw={"row":"event", "col":"bregion"});
+            rotateLabel(fig)
+            fig.savefig(f"{savedir}/9_{var}-lineschans_fr_vs_level.pdf")
+            # except Exception as err:
+            #     print(dfthis["var_level"].value_counts())
+            #     print(dfthis["chan"].value_counts())
+            #     print(dfthis["event"].value_counts())
+            #     print(dfthis["bregion"].value_counts())
+            #     # raise err
+            #     fig = None            
+
     def modulation_plot_summarystats(self, OUT, savedir="/tmp", which_modulation_variable="scalar"):
         """ 
         Plot many variations, for output from modulation_compute_higher_stats
@@ -1895,6 +2162,128 @@ class Snippets(object):
         return fig, axes
                     
 
+    def _plotgood_rasters_extract_xmin_xmax(self, xmin=None, xmax=None):
+        """ Simple helper: extract window based on durations used for extractio of data
+        """
+        if xmin is None:
+            xmin = self.Params["list_pre_dur"][0]
+        if xmax is None:
+            xmax = self.Params["list_post_dur"][0]
+        return xmin, xmax
+
+    def _plotgood_rasters(self, dfthis, xmin=None, xmax=None):
+        """Plot rasters for all trials of this dataframe
+        """
+        trials = dfthis["trial_neural"].tolist()
+        list_spiketimes = dfthis["spike_times"].tolist()
+        event_times = dfthis["event_time"].tolist()
+        # include_text = False
+
+        xmin, xmax = self._plotgood_rasters_extract_xmin_xmax(xmin, xmax)
+        dur = xmax-xmin
+        ncols = 1
+        nrows = 1
+        fig, ax, kwargs = self.SN._plot_raster_create_figure_blank(dur, len(dfthis), nrows, ncols)
+        # fig, ax = plt.subplots(figsize=(11,4))
+        self.SN._plot_raster_line_mult(ax, list_spiketimes, ylabel_trials=trials)
+        self.SN.plotmod_overlay_trial_events_mult(ax, trials, event_times, xmin=xmin, xmax=xmax)
+
+        # 2
+        # sn.plotwrapper_raster_multrials_onesite(trials, site, alignto="on_strokeidx_0", xmin=-0.4, xmax=0.4, plot_beh=False);
+
+
+    def _plotgood_rasters_split_by_feature_levels(self, ax, dfthis, var, levels_var=None,
+        xmin=None, xmax=None):
+        """
+        Plot rasters for this dataset, blocked by levels of a given feature (var). 
+        PARAMS:
+        - var, variable whos levels iwll plot
+        - levels_var, which to plot, in order from bottom to top.
+        """
+
+        if levels_var is None:
+            levels_var = sorted(dfthis[var].unique().tolist())
+
+        # extract
+        list_list_st = []
+        list_labels = []
+        list_list_trials = []
+        list_indstroke_flat = []
+        list_list_evtimes = []
+        for lev_var in levels_var:
+            dfthisthis = dfthis[(dfthis[var]==lev_var)]
+            
+            # hier params
+            list_st = dfthisthis["spike_times"].tolist()
+            list_list_st.append(list_st)
+            list_labels.append(lev_var)
+        
+            # Flat params
+            trials = dfthisthis["trial_neural"].tolist()
+            # ind_stroke = dfthisthis["ind_taskstroke_orig"].tolist()
+            ev_time = dfthisthis["event_time"].tolist()
+            list_list_trials.append(trials)
+            # list_indstroke_flat.append(ind_stroke)
+            list_list_evtimes.append(ev_time)
+            
+        # Plot
+        self.SN.plot_raster_spiketimes_blocked(ax, list_list_st, list_labels, list_list_trials, 
+            list_list_evtimes, xmin = xmin, xmax=xmax)
+
+    def plotgood_rasters_split_by_feature_levels_grpbyothervar(self, site, var,
+            vars_others, xmin=None, xmax=None):
+        """ [GOOD] Makes a grid plot, showing rasters, each grid shows all levels for ver, for a specific
+        level of (var_others).
+        Uses spiketimes stored in self.DfScalar, instead of
+        in Session. 
+        """
+        # levels_var = SP.DfScalar[var].unique().tolist()
+        dftmp, levdat, levels_var = self.dataextract_as_df_conjunction_vars(var, 
+                vars_others, site)
+
+        xmin, xmax = self._plotgood_rasters_extract_xmin_xmax(xmin, xmax)
+
+        ntrials = len(dftmp)
+
+        if ntrials == 0:
+            print("skipping, no data!")
+            fig, axes = None, None
+        else:
+            ncols = 4
+            ngrid = len(levdat)
+            nrows = int(np.ceil(ngrid/ncols))
+            dur = xmax - xmin
+            fig, axes, kwargs = self.SN._plot_raster_create_figure_blank(dur, ntrials, nrows, ncols)
+
+            for ax, (lev_other, dfthis) in zip(axes.flatten(), levdat.items()):
+                self._plotgood_rasters_split_by_feature_levels(ax, dfthis, var, xmin=xmin, xmax=xmax)
+                ax.set_title(lev_other)
+                ax.axvline(0, color="m")
+
+        return fig, axes
+            
+
+    def plotgood_rasters_split_by_feature_levels_grpbyevent(self, site, var,
+            list_events, xmin=None, xmax=None):
+        """ [GOOD, in that uses spiketimes stored in self.DfScalar, instead of
+        in Session. Makes a grid plot, showing rasters, each grid shows all levels for ver, for a specific
+        level of (var_others).
+    
+        """
+
+        assert False, "in progress, make it like plotgood_rasters_split_by_feature_levels_grpbyothervar"
+
+        # eventdat = ...
+
+        # # plot
+        # fig, axes = plt.subplots(3,3, figsize=(20, 20))
+
+        # for ax, (lev_other, dfthis) in zip(axes.flatten(), levdat.items()):
+        #     self._plotgood_rasters_split_by_feature_levels(ax, dfthis, var, xmin=xmin, xmax=xmax)
+        #     ax.set_title(lev_other)
+        #     ax.axvline(0, color="m")
+
+
     def plot_rasters_split_by_feature_levels(self, list_sites=None, savedir=None,
             list_var = None, save_ext="png", list_events=None, orient="vert"):
         """ Plot each site, and also split into each feature and event.
@@ -2290,7 +2679,7 @@ class Snippets(object):
 
 
 def extraction_helper(SN, which_level="trial", list_features_modulation_append=None,
-    dataset_pruned_for_trial_analysis = None):
+    dataset_pruned_for_trial_analysis = None, NEW_VERSION=True):
     """ Helper to extract Snippets for this session
     PARAMS;
     - list_features_modulation_append, eitehr None (do nothing) or list of str,
@@ -2355,8 +2744,8 @@ def extraction_helper(SN, which_level="trial", list_features_modulation_append=N
                 list_pre_dur=list_pre_dur, list_post_dur=list_post_dur,
                 strokes_only_keep_single=strokes_only_keep_single,
                   prune_feature_levels_min_n_trials=prune_feature_levels_min_n_trials,
-                  dataset_pruned_for_trial_analysis = dataset_pruned_for_trial_analysis
-                 )
+                  dataset_pruned_for_trial_analysis = dataset_pruned_for_trial_analysis,
+                NEW_VERSION=NEW_VERSION )
 
     return SP
 

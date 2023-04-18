@@ -40,6 +40,7 @@ class PopAnal():
         reorder. *(nunits, ntrials, time)
 
         """
+        self.Params = {}
         self.Xdataframe = None
         self.Xz = None
 
@@ -632,13 +633,16 @@ class PopAnal():
 
 
     def _slice_by_time_window(self, t1, t2, return_as_popanal=False,
-            fail_if_times_outside_existing=True, version="raw"):
+            fail_if_times_outside_existing=True, version="raw", 
+            subtract_this_from_times = None):
         """ Slice population by time window, where
         time is based on self.Times
         PARAMS;
         - t1, t2, start and end time for slicing
         - fail_if_times_outside_existing, bool, if True, then self.Times must have times
         before t1 and after t2 (i.e., t1 and t2 are within range of data)
+        - subtract_this_from_times, scalar, will subtract from times (to recenter). or None 
+        does nothing.
         RETURNS:
         - np array, (nchans, ntrials, timesliced)
         """
@@ -651,7 +655,10 @@ class PopAnal():
         # print(sum(inds))
         assert sum(inds)>0, "must give times that have data within them!!"
         x_windowed = X[:, :, inds]
-        times = self.Times[inds]
+        times = np.array(self.Times[inds])
+
+        if subtract_this_from_times:
+            times = times - subtract_this_from_times
 
         if return_as_popanal:
             PA = PopAnal(x_windowed, times, chans=self.Chans, 

@@ -4821,7 +4821,7 @@ class Session(object):
         # 2) generate PA (Align to each stroke)
         pa = self.smoothedfr_extract_timewindow_bystroke(trials, strokeids, sites, 
             pre_dur=pre_dur, post_dur=post_dur, 
-            fail_if_times_outside_existing=fail_if_times_outside_existing)
+            fail_if_times_outside_existing=fail_if_times_outside_existing) 
 
         # 3) Assign stroke-level features
         print("Sanity check, extracting trialcode into pa.Xlabel [trials]")
@@ -4971,11 +4971,36 @@ class Session(object):
 
         return ListPA
 
+    def elephant_spiketrain_to_smoothedfr(self, spike_times, 
+        time_on, time_off, 
+        gaussian_sigma = 0.025, # changed to 0.025 on 4/3/23. ,
+        sampling_period=0.01):
+        """
+        Convert spiketrain to smoothed fr
+        PARAMS;
+        - spike_times, array-like of scalar times (seconds).
+        - time_on, time_off, scalar times, boundaries of spike times.
+        RETURNS:
+        - times, (1, tbins)
+        - rates, (1, tbins)
+        """
+        from elephant.kernels import GaussianKernel        
+        from elephant.statistics import time_histogram, instantaneous_rate,mean_firing_rate
+        from quantities import s
+        from neo.core import SpikeTrain
+
+        spiketrain = SpikeTrain(spike_times*s, t_stop=time_off, t_start=time_on)
+
+        frate = instantaneous_rate(spiketrain, sampling_period=sampling_period*s, 
+            kernel=GaussianKernel(gaussian_sigma*s))
+        
+        return frate.times[None, :], frate.T.magnitude
 
     def popanal_generate_save_trial(self, trial, 
             # gaussian_sigma = 0.1, 
             gaussian_sigma = 0.025, # changed to 0.025 on 4/3/23. 
-            sampling_period=0.01, print_shape_confirmation=False,
+            sampling_period=0.005, # changed to 0.005 from 0.01 on 4/18/23.
+            print_shape_confirmation=False,
             clean_chans=True, overwrite=False):
         """ Genreate a single PopAnal object for this trial.
         Holds data across all sites
@@ -5010,12 +5035,13 @@ class Session(object):
                 list_spiketrain.append(dat["spiketrain"])
                 
             # Convert spike train to smoothed FR
-            frate = instantaneous_rate(list_spiketrain, sampling_period=sampling_period*s, kernel=GaussianKernel(gaussian_sigma*s))
+            frate = instantaneous_rate(list_spiketrain, sampling_period=sampling_period*s, 
+                kernel=GaussianKernel(gaussian_sigma*s))
 
             # Convert to popanal
             PA = PopAnal(frate.T.magnitude, frate.times, chans = list_sites,
                 spike_trains = [list_spiketrain], print_shape_confirmation=print_shape_confirmation)
-
+            # PA.Params["frate_sampling_period"] = sampling_period
             self.PopAnalDict[trial] = PA
 
         # Return
@@ -5025,9 +5051,10 @@ class Session(object):
     ###################### SMOOTHED FR
     def smoothedfr_extract_timewindow_bystroke(self, trials, strokeids, 
         sites, pre_dur=-0.1, post_dur=0.1,
-        fail_if_times_outside_existing=True):
-
-
+        fail_if_times_outside_existing=True,
+        sampling_period=0.005):
+        """ Extract smoothed fr dataset for these trials and strokeids
+        """
         from quantities import s
         from .population import PopAnal
         
@@ -5039,11 +5066,11 @@ class Session(object):
         # 1) extract each trials' PA. Use the slicing tool in PA to extract snippet
         for tr, indstrok in zip(trials, strokeids):
             # extract popanal
-            pa = self.popanal_generate_save_trial(tr) 
+            pa = self.popanal_generate_save_trial(tr, sampling_period=sampling_period)   
 
             # slice to desired channels
-            pa = pa._slice_by_chan(sites)
- 
+            pa = pa._slice_by_chan(sites) 
+  
             # slice to time window
             if False:
                 # Then align to onset of stroke that is in DS
@@ -5064,7 +5091,8 @@ class Session(object):
             t1 = time_align + pre_dur
             t2 = time_align + post_dur
             pa = pa._slice_by_time_window(t1, t2, return_as_popanal=True,
-                fail_if_times_outside_existing=fail_if_times_outside_existing)
+                fail_if_times_outside_existing=fail_if_times_outside_existing,
+                subtract_this_from_times=time_align)
             
             # save this slice
             list_xslices.append(pa)
@@ -5075,7 +5103,8 @@ class Session(object):
         
         # Replace all times with this time relative to alignement.
         for pa in list_xslices:
-            TIMES = (pa.Times - pa.Times[0]) + pre_dur*s # times all as [-predur, ..., postdur]
+            # sampling period, to acocunt for random variation in alignment across snips.
+            TIMES = (pa.Times - pa.Times[0]) + pre_dur + sampling_period/2 # times all as [-predur, ..., postdur]
             pa.Times = TIMES
 
         # get list of np arrays
@@ -5091,7 +5120,6 @@ class Session(object):
                 assert_otherdims_have_same_values=True, 
                 assert_otherdims_restrict_to_these=("chans", "times"),
                 all_pa_inherit_times_of_pa_at_this_index=0)
- 
 
         return PAall
 
@@ -5553,6 +5581,59 @@ class Session(object):
 
         return list_list_trials, list_labels, 
 
+    def plot_raster_spiketimes_blocked(self, ax, list_list_spiketimes, list_labels=None,
+                                    list_list_trials = None, list_list_evtimes = None,
+                                    overlay_trial_events=True,                                
+                                   xmin = None, xmax = None, alpha_raster=0.8):
+        """
+        Plot rasters, hierarhcially inputted, giving the spiketimes directly.
+        Is simialr to plot_raster_trials_blocked, but there pass in trials.
+        PARAMS;
+        - list_list_spiketimes, list of list of spike times
+        - list_labels, list of str labels, matching len(list_list_spiketimes)
+        - list_list_trials, list of lsit of ints, matching each datapt in list_list_spiketimes,
+        for overlayign events.
+        - list_list_evtimes, list of list of scalar times, in the original time in trial,
+        that is now defined as 0 for the matching spiektime. for overlayign events.
+        """
+
+        if list_labels is not None:
+            assert len(list_labels)==len(list_list_spiketimes)
+        
+
+        # 1. Concatenate trials from different inner lists (i.e, blocks), keeping track of 
+        # thier boundaires.
+        list_st_plotting_order = []
+        list_index_first_trial_in_block = []
+        idx_first_tracker = 0
+        for list_st in list_list_spiketimes:
+            list_st_plotting_order.extend(list_st)
+
+            list_index_first_trial_in_block.append(idx_first_tracker)
+            idx_first_tracker = idx_first_tracker+len(list_st) # update the tracker
+        
+        # Plot rasters
+        self._plot_raster_line_mult(ax, list_st_plotting_order, xmin = xmin, xmax = xmax, 
+            alpha_raster=alpha_raster)
+
+        # Overlay trial events
+        if overlay_trial_events:
+            # Flatten
+            list_trials_flat = [t for X in list_list_trials for t in X]
+            list_evtimes_flat = [t for X in list_list_evtimes for t in X]
+            self.plotmod_overlay_trial_events_mult(ax, list_trials_flat, list_evtimes_flat, 
+                xmin=xmin, xmax=xmax) 
+
+        # Plot y markers splitting the blocks
+        ymarks = [y-0.5 for y in list_index_first_trial_in_block]
+        self.plotmod_overlay_y_events(ax, ymarks, list_labels, True, textcolor="m")
+        
+        if xmin is not None:
+            ax.set_xlim(xmin=xmin)
+        if xmax is not None:
+            ax.set_xlim(xmax=xmax)
+
+
     def plot_raster_trials_blocked(self, ax, list_list_trials, site, list_labels=None,
                                    alignto=None, overlay_trial_events=True,                                
                                    sort_trials_within_blocks=True,
@@ -5603,6 +5684,38 @@ class Session(object):
             print(len(list_trials_plotting_order))
             print("index of first trials in each block: ", list_index_first_trial_in_block)
 
+    def _plot_raster_line_mult(self, ax, list_spiketimes, alignto_time=0., 
+        raster_linelengths=0.9, alpha_raster = 0.9, 
+        xmin = None, xmax = None, ylabel_trials=None):
+        """ Low-level code to plot raster, for these trials, on this axis, 
+        inputing spiktimes directly.
+        PARAMS:
+        - list_spiketimes, list of list of scalar times. will plot them in order, from bottom to top
+        """
+
+        for i, spiketimes in enumerate(list_spiketimes):
+            self._plot_raster_line(ax, spiketimes, i, alignto_time=alignto_time, 
+                linelengths=raster_linelengths, alpha=alpha_raster)
+        
+        # subsample trials to label
+        if ylabel_trials:
+            assert len(ylabel_trials)==len(list_spiketimes)
+            if len(ylabel_trials)>20:
+                n = len(ylabel_trials)
+                step = int(np.ceil(n/15))
+                inds = range(0, n, step)
+                ax.set_yticks(inds)
+                ax.set_yticklabels([ylabel_trials[i] for i in inds]);
+            else:
+                ax.set_yticks(range(len(ylabel_trials)))
+                ax.set_yticklabels(ylabel_trials);
+        ax.set_ylabel('trial');
+
+        if xmin is not None:
+            ax.set_xlim(xmin=xmin)
+        if xmax is not None:
+            ax.set_xlim(xmax=xmax)
+
 
     def plot_raster_trials(self, ax, list_trials, site, alignto=None,
         raster_linelengths=0.9, alpha_raster = 0.9, overlay_trial_events=True,
@@ -5613,73 +5726,36 @@ class Session(object):
         - list_trials, list of indices into self. will plot them in order, from bottom to top
         """
 
+        assert plot_rasters==True
+
+        list_align_time = []
         for i, trial in enumerate(list_trials):
             
             # get time of this event (first instance)
             if alignto:
-                timesthis = self.events_get_time_helper(alignto, trial)
+                timesthis = self.events_get_time_helper(alignto, trial) 
                 # if long, then take the first one
                 assert len(timesthis)>0
                 alignto_time = timesthis[0]
             else:
                 alignto_time = None
 
-            # Rasters
-            if plot_rasters:
-                # rs, chan = self.convert_site_to_rschan(site)
-                D = self.datall_slice_single_bysite(site, trial)
-                # D = self.datall_slice_single(rs, chan, trial0=trial)
-                spikes = D["spike_times"]
-                self.plot_raster_line(ax, spikes, i, alignto_time=alignto_time, 
-                    linelengths=raster_linelengths, alpha=alpha_raster)
+            list_align_time.append(alignto_time)
             
-            # - overlay beh things
-            ALPHA_MARKERS = 1-np.clip(len(list_trials)/ 100, 0.6, 0.82)
-            # ALPHA_MARKERS = 0.05
-            if overlay_trial_events:
-                # Auto determine alpha for markers, based on num trials
-
-            #     SN.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, only_on_edge="top")
-                if i==0:
-                    include_text = True
-                else:
-                    include_text = False
-                self.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, only_on_edge="bottom", 
-                                                YLIM=[i-0.3, i+0.5], which_events=["key_events_correct"], 
-                                                include_text=include_text, text_yshift = -0.5, alpha=ALPHA_MARKERS,
-                                                xmin = xmin, xmax =xmax
-                                                )
-
-                self.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, 
-                                                YLIM=[i-0.4, i-0.2], which_events=["strokes"], alpha=ALPHA_MARKERS,
-                                                xmin = xmin, xmax =xmax)
-            elif overlay_strokes:
-                self.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, 
-                                                YLIM=[i-0.4, i-0.2], which_events=["strokes"], 
-                                                alpha=ALPHA_MARKERS, strokes_patches=True,
-                                                xmin = xmin, xmax =xmax)
+            # Rasters
+            # rs, chan = self.convert_site_to_rschan(site)
+            D = self.datall_slice_single_bysite(site, trial)
+            # D = self.datall_slice_single(rs, chan, trial0=trial)
+            spikes = D["spike_times"]
+            self._plot_raster_line(ax, spikes, i, alignto_time=alignto_time, 
+                linelengths=raster_linelengths, alpha=alpha_raster)
         
-        # subsample trials to label
-        if ylabel_trials:
-            if len(list_trials)>20:
-                n = len(list_trials)
-                step = int(np.ceil(n/15))
-                inds = range(0, n, step)
-                ax.set_yticks(inds)
-                ax.set_yticklabels([list_trials[i] for i in inds]);
-            else:
-                ax.set_yticks(range(len(list_trials)))
-                ax.set_yticklabels(list_trials);
-        ax.set_ylabel('trial');
 
+        self.plotmod_overlay_trial_events_mult(ax, list_trials, list_align_time,
+            ylabel_trials, xmin, xmax)
+        
         if site is not None:
             ax.set_title(self.sitegetter_summarytext(site)) 
-        # ax.set_xbound(xmin, xmax)
-        if xmin is not None:
-            ax.set_xlim(xmin=xmin)
-        if xmax is not None:
-            ax.set_xlim(xmax=xmax)
-        # plt.axis('scaled')
 
 
     def _plot_raster_create_figure_blank(self, duration, n_raster_lines, n_subplot_rows=1,
@@ -5692,12 +5768,16 @@ class Session(object):
         """
 
         aspect = 0.8 * (duration/4) # empriically, 0.8 is good for a window of 4sec
-        height = n_subplot_rows * n_raster_lines * 0.03
-        if height < 10:
-            height = 10
-        if height > 22:
-            height = 22
+        if aspect<0.6:
+            aspect = 0.6
+
+        height = n_subplot_rows * n_raster_lines * 0.028
+        if height < 5:
+            height = 5
+        if height > 20:
+            height = 20
         width = nsubplot_cols * aspect * height
+
         fig, axes = plt.subplots(n_subplot_rows, nsubplot_cols, figsize = (width, height))
 
         kwargs = {
@@ -5706,7 +5786,7 @@ class Session(object):
         return fig, axes, kwargs
 
 
-    def plot_raster_line(self, ax, times, yval, color='k', alignto_time=None,
+    def _plot_raster_line(self, ax, times, yval, color='k', alignto_time=None,
         linelengths = 0.85, alpha=0.4):
         """ plot a single raster line at times at row yval
         PARAMS:
@@ -5806,6 +5886,66 @@ class Session(object):
                 YLIM = ax.get_ylim()
                 y_text = YLIM[0]
                 ax.text(time, y_text, name, rotation="vertical", fontsize=14)
+
+    def plotmod_overlay_trial_events_mult(self, ax, list_trials, list_align_time,
+        ylabel_trials=None, xmin=None, xmax =None, overlay_strokes=True):
+        """
+        Flexible helper to plot events for specified trials, at specific alignemnet times.
+        PARAMS:
+        - list_trials, neural trials
+        - list_align_time, list of times, one for each trial, will recenter that trial so that
+        its time in list_align_time is plotted at 0.
+        """
+
+
+        assert len(list_align_time)==len(list_trials)
+
+        for i, (trial, alignto_time) in enumerate(zip(list_trials, list_align_time)):
+
+            # - overlay beh things
+            ALPHA_MARKERS = 1-np.clip(len(list_trials)/ 90, 0.63, 0.82)
+            # ALPHA_MARKERS = 0.05
+            # Auto determine alpha for markers, based on num trials
+
+        #     SN.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, only_on_edge="top")
+            if i==0:
+                include_text = True
+            else:
+                include_text = False
+            self.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, only_on_edge="bottom", 
+                                            YLIM=[i-0.3, i+0.5], which_events=["key_events_correct"], 
+                                            include_text=include_text, text_yshift = -0.5, alpha=ALPHA_MARKERS,
+                                            xmin = xmin, xmax =xmax
+                                            )
+            if overlay_strokes:
+                self.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, 
+                                                YLIM=[i-0.4, i-0.2], which_events=["strokes"], alpha=ALPHA_MARKERS,
+                                                xmin = xmin, xmax =xmax)
+        
+        # subsample trials to label
+        if ylabel_trials is None:
+            ylabel_trials = list_trials
+        else:
+            assert len(ylabel_trials)==len(list_trials)
+
+        if len(ylabel_trials)>20:
+            n = len(ylabel_trials)
+            step = int(np.ceil(n/15))
+            inds = range(0, n, step)
+            ax.set_yticks(inds)
+            ax.set_yticklabels([ylabel_trials[i] for i in inds]);
+        else:
+            ax.set_yticks(range(len(ylabel_trials)))
+            ax.set_yticklabels(ylabel_trials);
+        ax.set_ylabel('trial');
+
+        # ax.set_xbound(xmin, xmax)
+        if xmin is not None:
+            ax.set_xlim(xmin=xmin)
+        if xmax is not None:
+            ax.set_xlim(xmax=xmax)
+        # plt.axis('scaled')
+
 
 
     def plotmod_overlay_trial_events(self, ax, trial0, strokes_patches=True, 
@@ -6166,7 +6306,7 @@ class Session(object):
                 if site==site_to_highlight:
                     # the random one plotted, color diff 
                     pcol = 'r';
-            self.plot_raster_line(ax, st, yval=i, color=pcol, linelengths=1, alpha=0.5)
+            self._plot_raster_line(ax, st, yval=i, color=pcol, linelengths=1, alpha=0.5)
 
             # collect for ylabel
             rs, chan = self.convert_site_to_rschan(site)
@@ -6833,6 +6973,157 @@ class Session(object):
         assert len(self._MapperTrialcode2TrialToTrial)>0, "cannot check without this..."
         return [trialcode for trialcode in list_trialcodes if trialcode in self._MapperTrialcode2TrialToTrial.keys()]
         
+
+    ##################### SNIPPETS
+    def snippets_extract_bystroke(self, sites, DS, pre_dur= -0.4, post_dur= 0.4,
+        features_to_get_extra=None, fr_which_version="sqrt", SANITY_CHECK=False):
+        """ Helper to extract snippets in flexible way, saligend to each stroke onset.
+        PARAMS:
+        - sites, list of ints to extract.
+        - DS, DatasetStrokes, generated from sn.DatasetBeh
+        - features_to_get_extra, list of str, features to extract from DS. fails if these dont
+        already exist in DS.
+        - SANITY_CHECK, if True, checks alignment across diff columns of df during extraction, no mistakes.
+        RETURNS:
+        - dataframe, each row a (chan, event).
+        """
+
+        import pandas as pd
+        from pythonlib.tools.pandastools import applyFunctionToAllRows
+
+        event_name = "00_stroke"
+        
+        list_cols = ['task_kind', 'gridsize', 'dataset_trialcode', 
+            'stroke_index', 'stroke_index_fromlast', 'stroke_index_semantic', 
+            'shape_oriented', 'ind_taskstroke_orig', 'gridloc',
+            'gridloc_x', 'gridloc_y', 'h_v_move_from_prev']
+
+        OUT = []
+        trials = []
+        strokeids = []
+        list_ind = []
+        for ind in range(len(DS.Dat)):
+
+            # print(ind)
+            if ind%50==0:
+                print("index strokes: ", ind)
+
+            tc = DS.Dat.iloc[ind]["dataset_trialcode"]
+            si = DS.Dat.iloc[ind]["stroke_index"]
+            trial_neural = self.datasetbeh_trialcode_to_trial(tc) 
+            event = f"on_strokeidx_{si}"
+            event_time = self.events_get_time_helper(event, trial_neural)[0]
+
+            trials.append(trial_neural)
+            strokeids.append(si)
+            for s in sites:
+
+                # get spiketimes
+                # print(s, "i")
+                dat = self.datall_slice_single_bysite(s, trial_neural)
+                spike_times = dat["spike_times"]
+                time_on = dat["time_on"]
+                time_off = dat["time_off"]
+                # spike_times = dat["spiketrain"]
+                
+                # recenter s times to event
+                spike_times = spike_times - event_time
+                time_on = time_on - event_time
+                time_off = time_off - event_time
+
+                # get windowed spike times
+                if True:
+                    # use popanal
+                    spike_times = spike_times[(spike_times >= pre_dur) & (spike_times <= post_dur)]
+                else:
+                    # get smoothed fr
+                    # print(s, "ii")
+                    if False:
+                        fr_sm_times, fr_sm = self.elephant_spiketrain_to_smoothedfr(spike_times, 
+                            time_on, time_off)
+                    else:
+                        fr_sm_times, fr_sm = None, None
+
+                # get smoothed fr
+
+
+                # get metadat 
+        #         for col in list_cols:
+        #             DS.    
+
+                # save it
+                OUT.append({
+                    "index_DS":ind,
+                    "trialcode":tc,
+                    "chan":s,
+                    "event_aligned":event_name,
+                    # "fr_sm":fr_sm, # (1, time)
+                    # "fr_sm_times":fr_sm_times,
+                    "spike_times":spike_times,
+                    "trial_neural":trial_neural,
+                    "event_time":event_time
+                })
+
+                list_ind.append(ind)
+                
+        # Get smoothed fr. this is MUCH faster than computing above.
+        fail_if_times_outside_existing = True
+        pa = self.smoothedfr_extract_timewindow_bystroke(trials, strokeids, sites, 
+            pre_dur=pre_dur, post_dur=post_dur, 
+            fail_if_times_outside_existing=fail_if_times_outside_existing) 
+        # print(pa.X.shape) # (chans, trials, tbins)
+        # print(pa.Trials)
+        # print(pa.Chans) 
+        # deal out time to each site and trial.
+        ct = 0
+        for i in range(len(DS.Dat)):
+            for j in range(len(sites)):
+                fr_sm = pa.X[j, i, :]
+                fr_sm_times = pa.Times
+                OUT[ct]["fr_sm"] = fr_sm[None, :]
+                OUT[ct]["fr_sm_times"] = fr_sm_times[None, :]
+                ct+=1
+
+                if SANITY_CHECK:
+                    assert OUT[ct-1]["chan"] == sites[j]
+                    assert OUT[ct-1]["index_DS"] == i
+
+        # ----
+        df = pd.DataFrame(OUT)
+
+        # get every column in DS
+        # for col in DS.Dat.columns:
+        for col in list_cols:
+            df[col] = DS.Dat.iloc[list_ind][col].tolist()
+            # OUT[-1][col] = DS.Dat.iloc[ind][col]
+        for col in features_to_get_extra:
+            df[col] = DS.Dat.iloc[list_ind][col].tolist()
+            # OUT[-1][col] = DS.Dat.iloc[ind][col]
+
+        if SANITY_CHECK:
+            assert df["trialcode"].tolist() == DS.Dat.iloc[list_ind]["dataset_trialcode"].tolist()
+
+        # Compute fr scalar
+        dur = post_dur - pre_dur
+        def F(x):
+            inds = (x["spike_times"]>=pre_dur) & (x["spike_times"]<=post_dur)
+            nspk = sum(inds)
+            rate = nspk/dur
+            return rate
+        df = applyFunctionToAllRows(df, F, "fr_scalar_raw")
+
+        # tgransform the fr if desired
+        if fr_which_version=="raw":
+            df["fr_scalar"] = df["fr_scalar_raw"] 
+        elif fr_which_version=="sqrt":
+            df["fr_scalar"] = df["fr_scalar_raw"]**0.5
+        else:
+            print(fr_which_version)
+            assert False
+
+        df["fr_sm_sqrt"] = df["fr_sm"]**0.5
+
+        return df
 
 
     #################### CHECK THINGS
