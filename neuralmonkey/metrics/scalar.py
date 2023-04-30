@@ -3,6 +3,7 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from pythonlib.tools.listtools import sort_mixed_type
 
 class MetricsScalar(object):
     """docstring for ClassName"""
@@ -48,7 +49,11 @@ class MetricsScalar(object):
         if map_var_to_levels is None:
             map_var_to_levels = {}
             for var in self.ListVar:
-                levels = sorted(data[var].unique().tolist())
+                levels = sort_mixed_type(data[var].unique().tolist())
+                try:
+                    levels = sorted(levels)
+                except TypeError as err:
+                    pass
                 map_var_to_levels[var] = levels
         for var in list_var:
             assert var in map_var_to_levels
@@ -101,7 +106,7 @@ class MetricsScalar(object):
         
         return output
 
-    def _calc_r2_smoothed_fr(self, var, COL_FR = "fr_sm_sqrt", 
+    def calc_r2_smoothed_fr(self, var, COL_FR = "fr_sm_sqrt", 
             n_shuff = 25, plot_results_summary=False):
         """
         PARAMS:
@@ -109,6 +114,7 @@ class MetricsScalar(object):
         affect orig dataset
         """   
         
+        PLOT_FR = plot_results_summary
 
         list_r2 = []
         list_events = self.ListEventsUniqname
@@ -122,11 +128,12 @@ class MetricsScalar(object):
         for event in list_events:
             
             dfthis = self.Data[(self.Data["event_aligned"]==event)]
-            
+            levels_var = self.MapVarToLevels[var]
+
             assert len(dfthis)>0
             # Dataset
-            r2, SS, SST = _calc_modulation_by_frsm(dfthis, var, COL_FR, 
-                plot_fr=False)
+            r2, SS, SST = _calc_modulation_by_frsm(dfthis, var, levels_var, COL_FR,  
+                plot_fr=PLOT_FR)
             list_r2.append(r2)
             dict_event_var_r2[(event)] = r2
             
@@ -134,13 +141,14 @@ class MetricsScalar(object):
             tmp = []
             dict_r2_shuffles[event] = []
             for i in range(n_shuff):
-                r2, _, _ = _calc_modulation_by_frsm(dfthis, var, COL_FR, 
+                r2, _, _ = _calc_modulation_by_frsm(dfthis, var, levels_var, COL_FR, 
                     do_shuffle=True, plot_fr=False)
                 tmp.append(r2)
                 dict_r2_shuffles[event].append(r2)
             dict_event_var_r2_shuff[(event)] = tmp
             list_r2_shuff_mean.append(np.mean(tmp))
             
+
         # 3) zscored
         from pythonlib.tools.statstools import zscore
         # convert to z-score relative shuffle.
@@ -155,8 +163,11 @@ class MetricsScalar(object):
             dict_event_var_r2_z[(ev)] = r2_z
             dict_event_var_r2_minshuff[(ev)] = val - np.mean(vals_shuff)
 
+            if plot_results_summary:
+                print(ev, ' -- ', val, r2_z, np.mean(vals_shuff), np.std(vals_shuff))
 
         if plot_results_summary:
+            
             fig, axes = plt.subplots(3, 1, figsize=(8, 8), sharey=False)
 
             # 1) Old version
@@ -187,6 +198,109 @@ class MetricsScalar(object):
 
         return dict_event_var_r2, dict_event_var_r2_shuff, dict_event_var_r2_z, dict_event_var_r2_minshuff
 
+    def calc_modulation_frsm_v2(self, var, levels=None, dfthis=None, event=None,
+        COL_FR="fr_sm_sqrt", n_shuff = 40, DEBUG=False):
+        """ Calculate modulation (like anova) by a variable across these levels.
+        std of smoothed fr / mean_scalar. Then subtract mean over shuffles of label. 
+        PARAMS;
+        - levels, will try across these levels. is ok if dfthis is missing one.
+        RETURNS
+        - modulation, scalar
+        - shuff_moduldations, list scalar 
+        - modulation_minshuff, scal
+        NOTE: 
+        - not the 
+        """
+
+        if levels is None:
+            levels = self.MapVarToLevels[var]
+        if dfthis is None:
+            dfthis = self.Data
+        if event is not None:
+            dfthis = dfthis[dfthis["event"]==event]
+
+        # 1) Modulation
+        modulation = self._calc_modulation_by_frsm_v2(dfthis, var, levels, COL_FR, False)
+
+        # 2) Shuffles
+        shuff_moduldations = []
+        for i in range(n_shuff):
+            tmp = self._calc_modulation_by_frsm_v2(dfthis, var, levels, COL_FR, True)
+            shuff_moduldations.append(tmp)
+
+        # 3) Difference
+        modulation_minshuff = modulation - np.mean(shuff_moduldations)
+
+        # 4) zscore
+        from pythonlib.tools.statstools import zscore
+        modulation_zscore = zscore(modulation, shuff_moduldations)
+
+        if DEBUG:
+            print("===== var, ' -- ' , modulation, modulation_minshuff, modulation_zscore, np.mean(shuff_moduldations), np.std(shuff_moduldations")
+            print(var, ' -- ' , modulation, modulation_minshuff, modulation_zscore, np.mean(shuff_moduldations), np.std(shuff_moduldations))
+
+        return modulation, shuff_moduldations, modulation_minshuff, modulation_zscore
+
+    def _calc_modulation_by_frsm_v2(self, dfthis, var, levels, COL_FR="fr_sm_sqrt",
+                                   do_shuffle = False):
+        """ Low-level code for calculating modulations. See 
+        calc_modulation_frsm_v2
+        PARAMS:
+        - do_shuffle, bool, then runs on a copy of dfthis with labels for var shuffle.d
+        RETURNS:
+        - modulation, scalar
+        """
+
+        if levels is None:
+            levels = self.MapVarToLevels[var]
+
+
+        if do_shuffle:
+            dfthis = _shuffle_dataset(dfthis, var)
+
+        if len(levels)==0 or len(dfthis)==0:
+            print(dfthis[var].unique())
+            print(var)
+            assert False
+
+        # 1) get mean fr for each level
+        try:
+            list_frmean = []
+            for lev in levels:
+                dfthisthis = dfthis[dfthis[var]==lev]
+                if len(dfthisthis)>0:
+                    frmean = self.frmat_calc_mean_fr_from_df(dfthisthis) # (1, ntime)
+                    list_frmean.append(frmean) 
+                else:
+                    print("hererere", var, lev)
+            frmean_eachlevel = np.concatenate(list_frmean) # (nlev, ntime)
+        except Exception as err:
+            print("=====")
+            print(dfthis)
+            print("=====")
+            print(var)
+            print("=====")
+            print(dfthis[var].tolist())
+            print("=====")
+            print(levels)
+            print("=====")
+            print(do_shuffle)
+            print("=====")
+            print(list_frmean)
+            print("=====")
+            for lev in levels:
+                dfthisthis = dfthis[dfthis[var]==lev]
+                print(lev, len(dfthisthis))
+                print(type(lev))
+            raise err
+
+        # 2) compute difference
+        # -- TODO: dtw
+        frmod = np.mean(np.std(frmean_eachlevel, axis=0)) # (1,), mean over time of STD(1,ntime)
+        frmeanscal = np.mean(frmean_eachlevel[:]) # (1,)
+        modulation = frmod/frmeanscal # convert to ratio relative mean fr.
+        
+        return modulation
 
     def calc_modulation_by(self):
         """ Wrapper to compute, for each channel, how it is mouldated by 
@@ -272,6 +386,12 @@ class MetricsScalar(object):
         
         assert False, '# PROBLEM: corr doesnt work for n vals <=2'
 
+    def frmat_calc_mean_fr_from_df(self, dfthis, COL_FR="fr_sm_sqrt"):
+        frmat = np.concatenate(dfthis[COL_FR].tolist(), axis=0)
+        assert len(frmat)>0
+        frmean = _calc_mean_fr(frmat)
+        assert frmean.shape[1]>0
+        return frmean
 
     def modulation_extract_vals_byvar(self, ev, results, list_var=None, ver="othervars_mean"):
         """
@@ -337,7 +457,7 @@ class MetricsScalar(object):
         RES["modulation_across_events_usingsmfr"] = {}
         RES["modulation_across_events_usingsmfr_zscored"] = {}
         for var in list_var:
-            dict_event_var_r2, dict_event_var_r2_shuff, dict_event_var_r2_z = self._calc_r2_smoothed_fr(var, COL_FR = "fr_sm_sqrt", 
+            dict_event_var_r2, dict_event_var_r2_shuff, dict_event_var_r2_z = self.calc_r2_smoothed_fr(var, COL_FR = "fr_sm_sqrt", 
                 n_shuff = 25, plot_results_summary=False)
             RES["modulation_across_events_usingsmfr"][var] = [dict_event_var_r2[ev] for ev in list_events_uniqnames]
             RES["modulation_across_events_usingsmfr_zscored"][var] = [dict_event_var_r2_z[ev] for ev in list_events_uniqnames]
@@ -543,38 +663,160 @@ class MetricsScalar(object):
         
         return frmat 
 
-    def modulationgood_wrapper_(self, var, version, dfthis=None):
+    def modulationgood_wrapper_plotexamples(self, site, var, vars_conjuction):
+        """ Helper to quickly plot example rasters, sm fr, and modulation scores,
+        comparing different modulations cores. 
+
+        """
+        
+        dfthis = self.dataextract_as_df_conjunction_vars(var, vars_conjuction[:1], site)[0]
+        # sp.plotgood_rasters_smfr_each_level_combined(site, var, vars_conjuction[:1]);
+        ms = self._dataextract_as_metrics_scalar(dfthis)
+
+        levels = ms.MapVarToLevels[var]
+        COL_FR = "fr_sm"
+        modulation, shuff_moduldations, modulation_minshuff = calc_modulation_by_frsm_v2(dfthis, var, levels, COL_FR, n_shuff=50)
+
+        vars_others_this = [vars_others[0]]
+        self.plotgood_rasters_smfr_each_level_combined(site, var, vars_others_this);
+
+        _, lev_df, _ = self.dataextract_as_df_conjunction_vars(var, vars_others_this, site)
+
+        df[var].value_counts()
+
+        for lev, df in lev_df.items():
+            print(lev)
+            modu, shuff_modu, modu_min_shuff = calc_modulation_by_frsm_v2(df, var, levels, COL_FR)
+            print(modu_min_shuff)
+
+        print(self.modulationgood_compute_wrapper(var, vars_others_this, list_site=[site]))
+
+
+
+    def modulationgood_wrapper_(self, var, version, dfthis=None, return_as_score_zscore_tuple=True):
         """ Wrapper to help call different subfunctions for computing modulation 
         by a var
+        PARAMS:
+        - return_as_score_zscore_tuple, bool, then returns a dict where each value is 
+        a tuple (score, zscore).
         RETURNS:
         - eventscores, dict, keys are events and values are modulation scores.
         """
 
+        if return_as_score_zscore_tuple:
+            assert version in ["fracmod_smfr_minshuff"], "code it!"
+
         if version=="r2smfr_minshuff":
             # r2 using smoothed fr, minus shuffled
-            eventscores = self._calc_r2_smoothed_fr(var)[3]
+            eventscores = self.calc_r2_smoothed_fr(var)[3]
+        elif version=="r2smfr_zscore":
+            # r2 using smoothed fr, zscored
+            eventscores = self.calc_r2_smoothed_fr(var)[2]
+        elif version=="fracmod_smfr_minshuff":
+            # std as fraction of mean fr, minus shuffle.
+            eventscores = {}
+            for event in self.ListEventsUniqname:
+                res = self.calc_modulation_frsm_v2(var, event=event)
+                if return_as_score_zscore_tuple:
+                    # then get (score, zxcore)
+                    eventscores[event] = (res[2], res[3])
+                else:
+                    eventscores[event] = res[2]
+        elif version=="fracmod_smfr_zscore":
+            # std as fraction of mean fr, minus shuffle.
+            eventscores = {}
+            for event in self.ListEventsUniqname:
+                eventscores[event] = self.calc_modulation_frsm_v2(var, event=event)[3]
         elif version=="r2scal_minshuff":
             assert False, "code it..."
             # _calc_modulation_by
         else:
             print(version)
             assert False, "code it"
-        return eventscores
+
+        if return_as_score_zscore_tuple:
+            return eventscores
+        else:
+            return eventscores
 
 ####################### UTILS
-def _shuffle_dataset(df, var):
+def _shuffle_dataset(df, var, maintain_block_temporal_structure=True, 
+        shift_level="datapt", DEBUG=False):
     """ returns a copy of df, with var labels shuffled
     NOTE: confirmed that does not affect df
+    PARAMS:
+    - maintain_block_temporal_structure, bool, if True, then shuffles by
+    circular shifting of trials. THis is better if you didn't randopmly interleave 
+    trials. It is a better estimate of variance of shuffles. 
     """
     import random
+    from pythonlib.tools.stringtools import decompose_string
+    from pythonlib.tools.listtools import extract_novel_unique_items_in_order
+    from pythonlib.tools.listtools import list_roll
+
     levels_orig = df[var].tolist()
+
+    if maintain_block_temporal_structure:
+        # make sure dataframe is in order of trials.
+
+        def tc_to_tupleints(tc):
+            """ 
+            tc "2022-1-10" --> tupleints (2022, 1, 10)
+            """
+            this = decompose_string(tc, "-")
+            return [int(x) for x in this]
+
+        trialcodes = df["trialcode"].tolist()
+        trialcodes_sorted = sorted(trialcodes, key=lambda x: tc_to_tupleints(x))
+        # for t1, t2 in zip(trialcodes, trialcodes_sorted):
+        #     print(t1, t2)
+        assert trialcodes==trialcodes_sorted, "ok, you need to code this. sort dataframe"
+        # return the levels in this order
+        # print(trialcodes)
+        # print(sorted(trialcodes))
+        # this = [(x, y) for x, y in zip(levels_orig, trialcodes)]
 
     # shuffle a copy
     levels_orig_shuff = [lev for lev in levels_orig]
-    random.shuffle(levels_orig_shuff)
+    if maintain_block_temporal_structure:
+        if shift_level=="trial":
+            # then shift to not break within-trial correlations
+            possible_shifts = extract_novel_unique_items_in_order(trialcodes)[1]
+            shift = random.sample(possible_shifts, 1)[0]
+        elif shift_level=="datapt":
+            # shift at any datpt.
+            shift = random.randint(0, len(levels_orig)-1) # 0, 1, 2, ... n-1, possible shifts
+        else:
+            print(shift_level)
+            assert False
+
+        # Do shuffle
+        # Dont use this. it converts list of tuples to list of list.
+        # levels_orig_shuff = np.roll(levels_orig_shuff, -shift).tolist() # negative, so that works for trial.
+        levels_orig_shuff = list_roll(levels_orig_shuff, -shift)
+
+        if DEBUG:
+            print("trialcodes, levels(orig):")
+            for t1, t2 in zip(trialcodes, levels_orig):
+                print(t1, t2)   
+            # print(possible_shifts)
+            # print(levels_orig)
+            print(levels_orig_shuff)
+            print(shift)
+            assert False
+    else:
+        # independently shuffle eachj location
+        random.shuffle(levels_orig_shuff)
 
     dfthis_shuff = df.copy(deep=False)
     dfthis_shuff[var] = levels_orig_shuff
+
+    if type(levels_orig_shuff[0])!=type(levels_orig[0]):
+        print("orig: ", levels_orig)
+        print("shuffed:", levels_orig_shuff)
+        print(type(levels_orig_shuff[0]))
+        print(type(levels_orig[0]))
+        assert False
     
     return dfthis_shuff
     
@@ -586,8 +828,16 @@ def _calc_mean_fr(frmat):
     RETURNS:
     - frmean, (1, ntime)
     """
+
+    assert len(frmat.shape)==2
+    
     xmean = np.mean(frmat, axis=0, keepdims=True) # (1, ntime)
-    assert len(xmean.shape)==2
+    if len(xmean.shape)!=2:
+        print(frmat)
+        print(frmat.shape)
+        print(xmean)
+        print(xmean.shape)
+        assert False
     return xmean
 
 def _calc_residuals(frmat, frmean):
@@ -624,7 +874,7 @@ def _calc_modulation_by_frsm_event_aligned_time(frmat):
 
     return r2
 
-def _calc_modulation_by_frsm(dfthis, var, COL_FR = 'fr_sm_sqrt',
+def _calc_modulation_by_frsm(dfthis, var, levels, COL_FR = 'fr_sm_sqrt',
                              do_shuffle=False,
                              plot_fr=False, plot_results=False):   
     """ Calculate modulation of smoothed fr by variable var, returning
@@ -636,8 +886,8 @@ def _calc_modulation_by_frsm(dfthis, var, COL_FR = 'fr_sm_sqrt',
     - do_shuffle, then shuffles the labels of var before computing. 
     """
 
-    levels = sorted(dfthis[var].unique().tolist())
-
+    # levels = sorted(dfthis[var].unique().tolist())
+    # levels = self.MapVarToLevels[var]
     if do_shuffle:
         dfthis = _shuffle_dataset(dfthis, var)
 
@@ -660,7 +910,7 @@ def _calc_modulation_by_frsm(dfthis, var, COL_FR = 'fr_sm_sqrt',
         helper to calc resid using df
         """
         frmat = np.concatenate(df[COL_FR].tolist(), axis=0)
-        frmean = _calc_mean_fr(frmat)
+        frmean = _calc_mean_fr(frmat) 
         residuals = _calc_residuals(frmat, frmean)
         return residuals
         
@@ -672,7 +922,7 @@ def _calc_modulation_by_frsm(dfthis, var, COL_FR = 'fr_sm_sqrt',
     residuals_levels = []
     for lev in levels:
         dfthisthis = dfthis[dfthis[var]==lev]
-        res = _calc_resid_helper(dfthisthis)
+        res = _calc_resid_helper(dfthisthis) 
         residuals_levels.extend(res)
     
     # 3. get each level's mean relative to global mean
@@ -774,7 +1024,8 @@ def _calc_modulation_by(data, by, response_var = 'fr_scalar',
     else:
         colname_othervars = map_var_to_othervars[by]
         if colname_othervars is not None:
-            levels = sorted(data[colname_othervars].unique().tolist())
+            # levels = sorted(data[colname_othervars].unique().tolist())
+            levels = self.MapVarToLevels[colname_othervars]
             dict_mod_othervars = {}
             for lev in levels:
                 # print("level: ", lev, "colname_othervars: ", colname_othervars)
@@ -840,7 +1091,8 @@ def _calc_fr_across_levels(data, var, list_levels, map_var_to_othervars=None,
         levels_others = None
     else:
         colname_othervars = map_var_to_othervars[var]
-        levels_others = sorted(data[colname_othervars].unique().tolist())
+        # levels_others = sorted(data[colname_othervars].unique().tolist())
+        levels_others = self.MapVarToLevels[colname_othervars]
         list_means_others = {}
         for lev in levels_others:
             datathis = data[data[colname_othervars]==lev]

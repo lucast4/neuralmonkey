@@ -19,6 +19,9 @@ from pythonlib.globals import PATH_NEURALMONKEY, PATH_DATA_NEURAL_RAW, PATH_DATA
 assert os.path.exists(PATH_DATA_NEURAL_RAW), "might have to mount servr?"
 
 
+SMFR_SIGMA = 0.025
+SMFR_TIMEBIN = 0.01
+
 BEH_CODES = {
         9:"start",
         10:"fix cue",
@@ -319,6 +322,10 @@ class Session(object):
         self._CachedTouchData = {}
         self._CachedTrialsList = {}
 
+        # Debug mode?
+        self._DEBUG_PRUNE_SITES = False
+
+        # Initialize paths
         self._initialize_paths()
         print("== PATHS for this expt: ")
         for k, v in self.Paths.items():
@@ -2186,8 +2193,8 @@ class Session(object):
     ####################### CONVERSIONS BETWEEN BEH AND NEURAKL
     def _beh_prune_trial_number(self):
         """ perpocess, quick ways to prune the trials, based on comparison of neural and ml2_beh data
+        to remove excess trials that will cause later.
         """
-
         trials_all = self.get_trials_list(False, False)
         trials_exist_in_ml2 = self.get_trials_list(False, True)
 
@@ -2593,11 +2600,20 @@ class Session(object):
         """ Given a region (string) map to a list of ints (sites)
         """
         mapper = self._sitegetter_generate_mapper_region_to_sites(clean, False)
-        if region in mapper.keys():
-            return mapper[region]
-        else:
+        if region not in mapper.keys():
             mapper = self._sitegetter_generate_mapper_region_to_sites(clean, True)
-            return mapper[region]
+        sites = mapper[region]
+
+        if self._DEBUG_PRUNE_SITES:
+            sites = [sites[0]]
+
+        return sites
+
+        # if region in mapper.keys():
+        #     return mapper[region]
+        # else:
+        #     mapper = self._sitegetter_generate_mapper_region_to_sites(clean, True)
+        #     return mapper[region]
 
 
     def sitegetter_map_site_to_region(self, site, region_combined=False):
@@ -4796,6 +4812,30 @@ class Session(object):
             self._savelocal_datall()
 
     ####################### GENERATE POPANAL for a trial
+    def _popanal_generate_from_raw(self, frate_mat, times, chans, df_label_trials=None,
+        df_label_cols_get=None):
+        """ Low level code to generate from inputed raw fr data
+        PARAMS:
+        - frate_mat, shape (chans, trials, times)
+        - times, shape (times,)
+        - df_label_trials, either None (ignroes) or df labeling each trial, 
+        whwere the rows match frmat[-, :, -]
+        - df_label_cols_get, which cols of df_label_trials to take.
+        RETURNS:
+        - PopAnal object
+        """
+        from neuralmonkey.classes.population import PopAnal
+
+        PA = PopAnal(frate_mat, times, chans = chans, print_shape_confirmation=False)
+
+        # Input labels
+        if df_label_trials is not None:
+            assert df_label_cols_get is not None
+            PA.labels_features_input_from_dataframe(df_label_trials, df_label_cols_get, dim="trials")
+
+        return PA
+
+
     def _popanal_generate_alldata_bystroke(self, DS, sites, 
         pre_dur, post_dur, fail_if_times_outside_existing,
         use_combined_region, features_to_get_extra=None):
@@ -4973,8 +5013,8 @@ class Session(object):
 
     def elephant_spiketrain_to_smoothedfr(self, spike_times, 
         time_on, time_off, 
-        gaussian_sigma = 0.025, # changed to 0.025 on 4/3/23. ,
-        sampling_period=0.01):
+        gaussian_sigma = SMFR_SIGMA, # changed to 0.025 on 4/3/23. ,
+        sampling_period=SMFR_TIMEBIN):
         """
         Convert spiketrain to smoothed fr
         PARAMS;
@@ -4998,8 +5038,10 @@ class Session(object):
 
     def popanal_generate_save_trial(self, trial, 
             # gaussian_sigma = 0.1, 
-            gaussian_sigma = 0.025, # changed to 0.025 on 4/3/23. 
-            sampling_period=0.005, # changed to 0.005 from 0.01 on 4/18/23.
+            # gaussian_sigma = 0.025, # changed to 0.025 on 4/3/23. 
+            # sampling_period=0.005, # changed to 0.005 from 0.01 on 4/18/23.
+            gaussian_sigma = SMFR_SIGMA, # made global on 4/23
+            sampling_period = SMFR_TIMEBIN, # made global on 4/23
             print_shape_confirmation=False,
             clean_chans=True, overwrite=False):
         """ Genreate a single PopAnal object for this trial.
@@ -5149,7 +5191,7 @@ class Session(object):
         assert len(trials)>0
         for tr in trials:
             # extract popanal
-            pa = self.popanal_generate_save_trial(tr)
+            pa = self.popanal_generate_save_trial(tr) 
 
             # slice to desired channels
             pa = pa._slice_by_chan(sites)
@@ -5759,7 +5801,7 @@ class Session(object):
 
 
     def _plot_raster_create_figure_blank(self, duration, n_raster_lines, n_subplot_rows=1,
-            nsubplot_cols=1):
+            nsubplot_cols=1, reduce_height_for_sm_fr=False, sharex=True):
         """ Helper to genreate figure with correct size, based on duration and num rows
         RETURNS:
         - fig,
@@ -5767,18 +5809,39 @@ class Session(object):
         - kwargs, to pass into self.plot_raster_trials(..., **kwargs)
         """
 
+        # assert n_raster_lines<1500
+        # assert n_subplot_rows<10
+        # assert nsubplot_cols<10
+
         aspect = 0.8 * (duration/4) # empriically, 0.8 is good for a window of 4sec
         if aspect<0.6:
             aspect = 0.6
+        if aspect>1.5:
+            aspect = 1.5
 
-        height = n_subplot_rows * n_raster_lines * 0.028
-        if height < 5:
-            height = 5
-        if height > 20:
-            height = 20
-        width = nsubplot_cols * aspect * height
+        height_cell = n_raster_lines * 0.025
+        if reduce_height_for_sm_fr:
+            # make it wider
+            height_cell = 0.9*height_cell
+            aspect = 1.1 * aspect
 
-        fig, axes = plt.subplots(n_subplot_rows, nsubplot_cols, figsize = (width, height))
+        if height_cell < 3.5:
+            height_cell = 3.5
+        if height_cell > 10:
+            height_cell = 10
+
+        width_cell = aspect * height_cell
+
+        height = n_subplot_rows * height_cell
+        width = nsubplot_cols * width_cell
+
+        if False:
+            print(n_raster_lines, height_cell, n_subplot_rows)
+            print(duration, width_cell)
+            print(width, height, aspect)
+            # assert False
+        fig, axes = plt.subplots(n_subplot_rows, nsubplot_cols, sharex=sharex, 
+            figsize = (width, height), squeeze=False)
 
         kwargs = {
             "alpha_raster":0.7
@@ -5888,7 +5951,8 @@ class Session(object):
                 ax.text(time, y_text, name, rotation="vertical", fontsize=14)
 
     def plotmod_overlay_trial_events_mult(self, ax, list_trials, list_align_time,
-        ylabel_trials=None, xmin=None, xmax =None, overlay_strokes=True):
+        ylabel_trials=None, list_yvals=None, xmin=None, xmax =None, overlay_strokes=True,
+        clear_old_yticks = True):
         """
         Flexible helper to plot events for specified trials, at specific alignemnet times.
         PARAMS:
@@ -5897,10 +5961,13 @@ class Session(object):
         its time in list_align_time is plotted at 0.
         """
 
+        if list_yvals is None:
+            # start from bottom
+            list_yvals = list(range(len(list_trials)))
 
         assert len(list_align_time)==len(list_trials)
 
-        for i, (trial, alignto_time) in enumerate(zip(list_trials, list_align_time)):
+        for i, (yval, trial, alignto_time) in enumerate(zip(list_yvals, list_trials, list_align_time)):
 
             # - overlay beh things
             ALPHA_MARKERS = 1-np.clip(len(list_trials)/ 90, 0.63, 0.82)
@@ -5913,31 +5980,46 @@ class Session(object):
             else:
                 include_text = False
             self.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, only_on_edge="bottom", 
-                                            YLIM=[i-0.3, i+0.5], which_events=["key_events_correct"], 
+                                            YLIM=[yval-0.3, yval+0.5], which_events=["key_events_correct"], 
                                             include_text=include_text, text_yshift = -0.5, alpha=ALPHA_MARKERS,
                                             xmin = xmin, xmax =xmax
                                             )
+            # overlay_strokes = False
             if overlay_strokes:
+                ALPHA_STROKES = 0.8*ALPHA_MARKERS
                 self.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, 
-                                                YLIM=[i-0.4, i-0.2], which_events=["strokes"], alpha=ALPHA_MARKERS,
+                                                YLIM=[yval-0.4, yval-0.3], which_events=["strokes"], alpha=ALPHA_STROKES,
                                                 xmin = xmin, xmax =xmax)
         
         # subsample trials to label
         if ylabel_trials is None:
             ylabel_trials = list_trials
+        elif ylabel_trials==True:
+            ylabel_trials = list_trials
         else:
             assert len(ylabel_trials)==len(list_trials)
 
-        if len(ylabel_trials)>20:
-            n = len(ylabel_trials)
-            step = int(np.ceil(n/15))
-            inds = range(0, n, step)
-            ax.set_yticks(inds)
-            ax.set_yticklabels([ylabel_trials[i] for i in inds]);
+        # if len(ylabel_trials)>20:
+        #     n = len(ylabel_trials)
+        #     step = int(np.ceil(n/15))
+        #     inds = range(0, n, step)
+        #     ax.set_yticks(inds)
+        #     ax.set_yticklabels([ylabel_trials[i] for i in inds]);
+        # else:
+        #     ax.set_yticks(range(len(ylabel_trials)))
+        #     ax.set_yticklabels(ylabel_trials);
+        # ax.set_ylabel('trial');
+        if clear_old_yticks:
+            ticks_current = []
+            labels_current =[]
         else:
-            ax.set_yticks(range(len(ylabel_trials)))
-            ax.set_yticklabels(ylabel_trials);
-        ax.set_ylabel('trial');
+            ticks_current = list(ax.get_yticks())
+            labels_current = list(ax.get_yticklabels())
+
+        ax.set_yticks(ticks_current+list_yvals, labels=labels_current+ylabel_trials, 
+            fontsize=5)
+        # # ax.set_yticklabels(ylabel_trials);
+        # ax.set_ylabel('trial');
 
         # ax.set_xbound(xmin, xmax)
         if xmin is not None:
@@ -5966,6 +6048,10 @@ class Session(object):
         - text_yshift, shfit text by this amnt.
         """
 
+        # Strokes should be lower alpha, so not obscure spikes.
+        alpha_st = alpha
+        if alpha_st>0.2:
+            alpha_st = 0.2 
 
         for ev in which_events:
             assert ev in ["behcodes", "key_events_correct", "strokes"], "doesnt exist..."
@@ -6077,7 +6163,7 @@ class Session(object):
                         # ax., YLIM[1], "v", color=col)
                 else:
                     rect = Rectangle((on, YLIM[0]), of-on, YLIM[1]-YLIM[0], 
-                        linewidth=1, edgecolor='r',facecolor='r', alpha=alpha)
+                        linewidth=1, edgecolor='r',facecolor='r', alpha=alpha_st)
                     ax.add_patch(rect)
 
     def plot_trial_timecourse_summary(self, ax, trial0, number_strokes=True,
@@ -6996,7 +7082,7 @@ class Session(object):
         list_cols = ['task_kind', 'gridsize', 'dataset_trialcode', 
             'stroke_index', 'stroke_index_fromlast', 'stroke_index_semantic', 
             'shape_oriented', 'ind_taskstroke_orig', 'gridloc',
-            'gridloc_x', 'gridloc_y', 'h_v_move_from_prev']
+            'gridloc_x', 'gridloc_y']
 
         OUT = []
         trials = []
@@ -7067,6 +7153,7 @@ class Session(object):
                 list_ind.append(ind)
                 
         # Get smoothed fr. this is MUCH faster than computing above.
+        print("Extracting smoothed FR for all data...")
         fail_if_times_outside_existing = True
         pa = self.smoothedfr_extract_timewindow_bystroke(trials, strokeids, sites, 
             pre_dur=pre_dur, post_dur=post_dur, 
@@ -7075,6 +7162,7 @@ class Session(object):
         # print(pa.Trials)
         # print(pa.Chans) 
         # deal out time to each site and trial.
+        print("Inserting smoothed FR into dataset...")
         ct = 0
         for i in range(len(DS.Dat)):
             for j in range(len(sites)):
@@ -7093,6 +7181,7 @@ class Session(object):
 
         # get every column in DS
         # for col in DS.Dat.columns:
+        print("Appending other columns into dataset...")
         for col in list_cols:
             df[col] = DS.Dat.iloc[list_ind][col].tolist()
             # OUT[-1][col] = DS.Dat.iloc[ind][col]
@@ -7104,26 +7193,42 @@ class Session(object):
             assert df["trialcode"].tolist() == DS.Dat.iloc[list_ind]["dataset_trialcode"].tolist()
 
         # Compute fr scalar
-        dur = post_dur - pre_dur
-        def F(x):
-            inds = (x["spike_times"]>=pre_dur) & (x["spike_times"]<=post_dur)
-            nspk = sum(inds)
-            rate = nspk/dur
-            return rate
-        df = applyFunctionToAllRows(df, F, "fr_scalar_raw")
+        if False:
+            # moved to snippets
+            dur = post_dur - pre_dur
+            def F(x):
+                inds = (x["spike_times"]>=pre_dur) & (x["spike_times"]<=post_dur)
+                nspk = sum(inds)
+                rate = nspk/dur
+                return rate
+            df = applyFunctionToAllRows(df, F, "fr_scalar_raw")
 
-        # tgransform the fr if desired
-        if fr_which_version=="raw":
-            df["fr_scalar"] = df["fr_scalar_raw"] 
-        elif fr_which_version=="sqrt":
-            df["fr_scalar"] = df["fr_scalar_raw"]**0.5
-        else:
-            print(fr_which_version)
-            assert False
+            # tgransform the fr if desired
+            if fr_which_version=="raw":
+                df["fr_scalar"] = df["fr_scalar_raw"] 
+            elif fr_which_version=="sqrt":
+                df["fr_scalar"] = df["fr_scalar_raw"]**0.5
+            else:
+                print(fr_which_version)
+                assert False
 
-        df["fr_sm_sqrt"] = df["fr_sm"]**0.5
+            df["fr_sm_sqrt"] = df["fr_sm"]**0.5
 
         return df
+
+
+    def subsample_trials(self, n_keep):
+        """ Keep n_keep trials, evenly distributed.
+        NOTE: is approx n_keep.
+        THIS is permanent...
+        NOTE: only works if using minimal loading
+        """
+        assert self._LOAD_VERSION=="MINIMAL_LOADING"
+
+        for k, trials in self._CachedTrialsList.items():
+            incr = int(len(trials)/n_keep)
+            self._CachedTrialsList[k] = trials[::incr]
+            print("pruned trials:", k, "to ", trials)
 
 
     #################### CHECK THINGS

@@ -18,6 +18,25 @@ class MultSessions(object):
         self._generate_index() 
 
 
+    ################ PARAMS
+    def animal(self):
+        """ return the common animal
+        if different animals, then error
+        """
+        animals = list(set([sn.Animal for sn in self.SessionsList]))
+        assert len(animals)==1
+        return animals[0]
+
+
+    def date(self):
+        """ return the common date
+        if different dates, then error
+        """
+
+        dates = list(set([sn.Date for sn in self.SessionsList]))
+        assert len(dates)==1
+        return dates[0]
+
 
     ################ Indexing
     def _generate_index(self):
@@ -34,6 +53,7 @@ class MultSessions(object):
                 self._MapperInd2Trialcode[ind] = trialcode
                 ind+=1
         print("Generated index mappers!")
+
 
     def index_convert(self, index, output="sn_trial"):
         """ 
@@ -60,7 +80,7 @@ class MultSessions(object):
         elif isinstance(index, tuple):
             # (sessnum trial)
             assert len(index)==2
-            sessnum, trial = index
+            sessnum, trial_in_sess = index
         else:
             print(index)
             assert False, "code it"
@@ -102,6 +122,15 @@ class MultSessions(object):
         self.SessionsList = [sn for sn in self.SessionsList if _good(sn)]
         print("Ending num sessions: ", len(self.SessionsList))
 
+
+    # def session_generate_single_nodata(self):
+    #     """ Generate a single sn for use in analyses that aggregated across
+    #     sessions, where sn is used for thigns that are common across
+    #     sessions, such as site info, and for methods.
+    #     Takes the first session, and clears all the neural data, and
+    #     does sanity check that all sessions have same metadata
+    #     """
+        
 
     ################### SITES
     # (Generally asserts that all sessions have same channels ...)
