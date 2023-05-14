@@ -4,7 +4,9 @@ import pandas as pd
 from pythonlib.tools.pandastools import applyFunctionToAllRows
 from pythonlib.tools.listtools import sort_mixed_type
 
-SAVEDIR_SNIPPETS = "/gorilla1/analyses/recordings/main/chunks_modulation" # for snippets
+SAVEDIR_SNIPPETS_STROKE = "/gorilla1/analyses/recordings/main/anova/bystroke" # for snippets
+# SAVEDIR_SNIPPETS_STROKE = "/gorilla1/analyses/recordings/main/chunks_modulation" # for snippets
+SAVEDIR_SNIPPETS_TRIAL = "/gorilla1/analyses/recordings/main/anova/bytrial" # for snippets
 
 def load_snippets(sdir, fname="Snippets"):
     import pickle as pkl
@@ -16,7 +18,7 @@ def load_snippets(sdir, fname="Snippets"):
     return SP
 
 
-def load_snippet_single(sn, SAVEDIR = SAVEDIR_SNIPPETS):
+def load_snippet_single(sn, which_level):
     """ Load a single prevsiouly saved snippet
     """
 
@@ -26,6 +28,13 @@ def load_snippet_single(sn, SAVEDIR = SAVEDIR_SNIPPETS):
     sp = Snippets(sn, None, None, None, None, None, None, SKIP_DATA_EXTRACTION=True)
 
     # 2) load        
+    if which_level=="trial":
+        SAVEDIR = SAVEDIR_SNIPPETS_TRIAL
+    elif which_level=="stroke":
+        SAVEDIR = SAVEDIR_SNIPPETS_STROKE
+    else:
+        print(which_level)
+        assert False
     sdir = f"{SAVEDIR}/{sn.Animal}-{sn.Date}-sess_{sess}"
 
     # 3) regenerate all data.
@@ -36,8 +45,8 @@ def load_snippet_single(sn, SAVEDIR = SAVEDIR_SNIPPETS):
 
     return sp
 
-def load_and_concat_mult_snippets(MS, SITES_COMBINE_METHODS = "intersect",
-    SAVEDIR = SAVEDIR_SNIPPETS):
+def load_and_concat_mult_snippets(MS, which_level, SITES_COMBINE_METHODS = "intersect",
+    DEBUG = False):
     """ previously saved snippets using save_v2
     PARAMS:
     - MS, MultSessions, holding all the sessions for which each will
@@ -54,11 +63,21 @@ def load_and_concat_mult_snippets(MS, SITES_COMBINE_METHODS = "intersect",
     from pythonlib.tools.checktools import check_objects_identical
     import os
         
+    if which_level=="trial":
+        SAVEDIR = SAVEDIR_SNIPPETS_TRIAL
+    elif which_level=="stroke":
+        SAVEDIR = SAVEDIR_SNIPPETS_STROKE
+    else:
+        print(which_level)
+        assert False
+
     # Genreate the seave dir. 
     # Assumes there is only single animal and date... (not necessary, just 
     # conven ient for filenames)
     sesses = "_".join([str(x) for x in list(range(len(MS.SessionsList)))])
     SAVEDIR_ALL = f"{SAVEDIR}/MULT_SESS/{MS.animal()}-{MS.date()}-{sesses}"
+    # if DEBUG:
+    #     SAVEDIR_ALL = SAVEDIR_ALL + "-DEBUG"
     os.makedirs(SAVEDIR_ALL, exist_ok=True)
 
     # list_session = [0,1,2,3]
@@ -69,7 +88,7 @@ def load_and_concat_mult_snippets(MS, SITES_COMBINE_METHODS = "intersect",
         sess = sn.RecSession
         assert i==sess, "confusing... not necessary but best to fix this so not confused later."
 
-        sp = load_snippet_single(sn)
+        sp = load_snippet_single(sn, which_level)
 
         # store
         list_sp.append(sp)
@@ -270,9 +289,14 @@ class Snippets(object):
             # Each datapt is a single trial
             # no need to extract antyhing, use sn.Datasetbeh
             # only those trials that exist in SN.Datasetbeh
+
+            # trials = SN.get_trials_list(True, True, only_if_in_dataset=True, 
+            #     dataset_input=dataset_pruned_for_trial_analysis,
+            #     events_that_must_include = list_events)
+            events_that_must_include = ["fix_touch", "on_strokeidx_0"]
             trials = SN.get_trials_list(True, True, only_if_in_dataset=True, 
                 dataset_input=dataset_pruned_for_trial_analysis,
-                events_that_must_include = list_events)
+                events_that_must_include = events_that_must_include)
             print("\n == extracting these trials: ", trials)
             DS = None
 
@@ -280,52 +304,15 @@ class Snippets(object):
             assert len(list_events) == len(list_post_dur)
 
             if NEW_VERSION:
-                assert False, "code it"
-                # IN PROGRESS!!! Trial level
-
-                # # Extract snippets across all trials, sites, and events.
-                # # trials = sn.get_trials_list(True)[:5]
-                # EVENTS = ["fixtch", "go"]
+                # Extract snippets across all trials, sites, and events.
+                # trials = sn.get_trials_list(True)[:5]
                 # list_cols = ['task_kind', 'gridsize', 'dataset_trialcode', 
                 #     'stroke_index', 'stroke_index_fromlast', 'stroke_index_semantic', 
                 #     'shape_oriented', 'ind_taskstroke_orig', 'gridloc',
                 #     'gridloc_x', 'gridloc_y', 'h_v_move_from_prev']
-                    
-                # for t in trials:
-                        
-                #     # What events?
-                #     if stroke version;''
-                #         # how many strokes for this trial?
-                #         events = _get_stroke events this trial(t)
-                #     elif trial version;
-                #         events = EVENTS
-                #     else:
-                #         assert False
-                    
-                #     for s in sites:
-                #         for e in events:
-
-                #             # get eventtime
-                #             list_event_time = sn.events_get_time_helper(e, t)
-                #             # take the first
-                #             if len(list_event_time)>0:
-                #                 event_time = list_event_time[0]
-                #             else:
-                #                 print(t, s, e)
-                #                 assert False, "no event"
-                            
-                #             # get spiketimes
-                #             dat = sn.datall_slice_single_bysite(s, t)
-                #             spike_times = dat["spike_times"]
-                            
-                #             # get smoothed fr
-                            
-                            
-                #             # recenter s times to event
-                #             spike_times = spike_times - event_time
-                                        
-                #             # get metadat 
-                #             for col in list_cols:
+                DfScalar, list_events_uniqnames = SN.snippets_extract_bytrial(sites_keep, trials,
+                    list_events, features_to_get_extra=list_features_extraction, 
+                    pre_dur=PRE_DUR, post_dur=POST_DUR)
                 ListPA = None
             else:
                 ListPA, list_events_uniqnames = self.extract_snippets_trials(trials, sites_keep, list_events, list_pre_dur, list_post_dur,
@@ -348,7 +335,8 @@ class Snippets(object):
         self.Trials = trials
         self.Params = {
             "which_level":which_level,
-            "list_events":list_events, 
+            # "list_events":list_events, 
+            "_list_events":list_events,
             "list_events_uniqnames":list_events_uniqnames,
             "list_features_extraction":list_features_extraction,
             "list_features_get_conjunction":list_features_get_conjunction,
@@ -360,7 +348,7 @@ class Snippets(object):
             "prune_feature_levels_min_n_trials":prune_feature_levels_min_n_trials,
             "fr_which_version":fr_which_version
         }
-        self.globals_update() 
+        self.globals_initialize() 
         
         # Genreate scalars
         if NEW_VERSION:
@@ -372,7 +360,7 @@ class Snippets(object):
 
         else:
             if False:
-                # Old version
+                # Old version 
                 print("\n == listpa_convert_to_scalars")        
                 self.listpa_convert_to_scalars()
                 print("\n == pascal_convert_to_dataframe")        
@@ -402,23 +390,77 @@ class Snippets(object):
         # 
         self.DfScalar["event"] = self.DfScalar["event_aligned"]
 
-    def globals_update(self, 
-            globals_nmin = 5,
-            globals_lenient_allow_data_if_has_n_levels = 2,
-            PRE_DUR_CALC=None, 
-            POST_DUR_CALC=None
-            ):
-
-        if PRE_DUR_CALC is None:
-            PRE_DUR_CALC = self.Params["list_pre_dur"][0]
-        if POST_DUR_CALC is None:
-            POST_DUR_CALC = self.Params["list_post_dur"][0]
+    def globals_initialize(self):
+        """ Initialize self.ParamsGlobals to defaults"""
         self.ParamsGlobals = {
-            "n_min_trials_per_level":globals_nmin,
-            "lenient_allow_data_if_has_n_levels":globals_lenient_allow_data_if_has_n_levels,
-            "PRE_DUR_CALC":PRE_DUR_CALC,
-            "POST_DUR_CALC":POST_DUR_CALC
+            "n_min_trials_per_level":5,
+            "lenient_allow_data_if_has_n_levels":2,
+            "PRE_DUR_CALC":self.Params["list_pre_dur"][0],
+            "POST_DUR_CALC":self.Params["list_post_dur"][0],
+            "list_events":self.Params["list_events_uniqnames"],
+            "list_pre_dur":self.Params["list_pre_dur"],
+            "list_post_dur":self.Params["list_post_dur"]
         }
+
+    def globals_update(self, 
+            globals_nmin = None,
+            globals_lenient_allow_data_if_has_n_levels = None,
+            PRE_DUR_CALC=None, 
+            POST_DUR_CALC=None,
+            list_events = None,
+            list_pre_dur = None,
+            list_post_dur = None):
+        """ 
+        Update self.ParamsGlobals specific keys (those that are not None).
+        PArams for ongoing anaklysis,.
+        NOTE: Leave anything None to skip update.
+        """
+
+        if globals_nmin is not None:
+            self.ParamsGlobals["n_min_trials_per_level"] = globals_nmin
+        if globals_lenient_allow_data_if_has_n_levels is not None:
+            self.ParamsGlobals["lenient_allow_data_if_has_n_levels"] = globals_lenient_allow_data_if_has_n_levels
+        if PRE_DUR_CALC is not None:
+            self.ParamsGlobals["PRE_DUR_CALC"] = PRE_DUR_CALC
+        if POST_DUR_CALC is not None:
+            self.ParamsGlobals["POST_DUR_CALC"] = POST_DUR_CALC
+        if list_events is not None:
+            for ev in list_events:
+                assert ev in self.Params["list_events_uniqnames"], "You entered an incorrect event name"
+            self.ParamsGlobals["list_events"] = list_events
+        if list_pre_dur is not None:
+            self.ParamsGlobals["list_pre_dur"] = list_pre_dur
+        if list_post_dur is not None:
+            self.ParamsGlobals["list_post_dur"] = list_post_dur
+
+        # if list_pre_dur is None:
+        #     list_pre_dur = self.ParamsGlobals["list_pre_dur"]
+        # if list_post_dur is None:
+        #     list_post_dur = self.ParamsGlobals["list_post_dur"]
+
+        # if PRE_DUR_CALC is None:
+        #     PRE_DUR_CALC = self.ParamsGlobals["PRE_DUR_CALC"]
+        # if POST_DUR_CALC is None:
+        #     POST_DUR_CALC = self.ParamsGlobals["POST_DUR_CALC"]
+        # if globals_nmin is None:
+        #     globals_nmin = self.ParamsGlobals["n_min_trials_per_level"]
+        # if globals_lenient_allow_data_if_has_n_levels is None:
+        #     globals_lenient_allow_data_if_has_n_levels = self.ParamsGlobals["lenient_allow_data_if_has_n_levels"]
+
+
+        # self.ParamsGlobals = {
+        #     "n_min_trials_per_level":globals_nmin,
+        #     "lenient_allow_data_if_has_n_levels":globals_lenient_allow_data_if_has_n_levels,
+        #     "PRE_DUR_CALC":PRE_DUR_CALC,
+        #     "POST_DUR_CALC":POST_DUR_CALC,
+        #     "list_events":list_events,
+        #     "list_pre_dur":list_pre_dur,
+        #     "list_post_dur":list_post_dur
+        # }
+
+        # SANITY
+        for k, v in self.ParamsGlobals.items():
+            assert v is not None
 
         print("Updated self.ParamsGlobals:")
         for k, v in self.ParamsGlobals.items():
@@ -832,7 +874,10 @@ class Snippets(object):
         _, dict_lev_df, levels_var = self.dataextract_as_df_conjunction_vars(var, vars_others, site, event)
 
         if list_cols is None:
-            list_cols = self.Params["list_features_extraction"] + ["index"] + [var] + vars_others + ["event"]
+            if vars_others is not None:
+                list_cols = self.Params["list_features_extraction"] + ["index"] + [var] + vars_others + ["event"]
+            else:
+                list_cols = self.Params["list_features_extraction"] + ["index"] + [var] + ["event"]
             list_cols = list(set(list_cols))
 
         dict_lev_pa = {}
@@ -842,14 +887,43 @@ class Snippets(object):
 
         return dict_lev_pa, levels_var
 
+    def dataextract_as_df_good(self, chan=None, event=None, var=None, var_level=None, dfthis=None):
+        """ 
+        Extract dfthis, slice of self.DfScalar
+        PARAMS
+        - chan, int
+        - event, unique event (00_..) into event_aligned
+        - var, var_level, either both None (ignore var), or string and value.
+        RETURNS:
+        - df
+        """
+        
+        assert (var_level==None) == (var==None)
+            
+        if dfthis is None:
+            dfthis = self.DfScalar
+
+        if chan is not None:
+            dfthis = dfthis[(dfthis["chan"]==chan)]
+
+        if event is not None:
+            dfthis = dfthis[(dfthis["event"]==event)]
+
+        if var is not None:
+            dfthis = dfthis[(dfthis[var]==var_level)]
+
+        return dfthis
+
     def dataextract_as_df_conjunction_vars(self, var, vars_others=None, site=None,
-        event=None):
+        event=None, DEBUG_CONJUNCTIONS=False):
         """ Helper to extract dataframe (i) appending a new column
         with ocnjucntions of desired vars, and (ii) keeping only 
         levels of this vars (vars_others) that has at least n trials for 
         each level of a var of interest (var).
         Useful becuase the output is ensured to have all levels of var, and (wiht 
         some mods) could be used to help balance the dataset.
+        NOTE: can choose to allow levels of vars_others to have only a subset of
+        levels of var, by makign the param lenient_allow_data_if_has_n_levels an int.
         PARAMS:
         - var, str, the variabiel you wisht ot use this dataset to compute 
         moudlation for.
@@ -869,6 +943,7 @@ class Snippets(object):
         from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars
         import numpy as np
 
+        # print("HERERER:", len(self.DfScalar))
 
         # 1) extract for this site.
         if site is None and event is None:
@@ -880,16 +955,36 @@ class Snippets(object):
         else:
             dfthis = self.DfScalar[(self.DfScalar["chan"] == site) & (self.DfScalar["event"] == event)]
 
-        # Use all unique levels in entire dataset
+        # Use all unique levels in entire dataset, across all sublevels.
         levels_var = sort_mixed_type(self.DfScalar[var].unique().tolist())
 
         n_min = self.ParamsGlobals["n_min_trials_per_level"]
         lenient_allow_data_if_has_n_levels = self.ParamsGlobals["lenient_allow_data_if_has_n_levels"]
 
+        # Remove rows that have None or na for any of the variables
+        # var = "seqc_nstrokes_beh"
+        # vars_conjuction = ["seqc_0_shape", "seqc_1_shape", "seqc_2_shape"] # list of str, vars to take conjunction over
+        if vars_others is None:
+            list_vars_check = [var]
+        else:
+            list_vars_check = vars_others+[var]
+        for varthis in list_vars_check:
+
+            # for each variable, remove rows that have nan or None
+            tmp = dfthis[varthis].isna()
+            # indsdrop = np.where([x is None for x in tmp])
+            indsdrop = np.where(tmp)[0]
+            if DEBUG_CONJUNCTIONS:
+                print(f"var {varthis}, Removing this many rows with None or nan: {sum(indsdrop)}")
+            dfthis = dfthis.drop(indsdrop, axis=0).reset_index(drop=True)
+
         # 2) extract_with_levels_of_conjunction_vars
+        assert len(dfthis)>0, "why is empty? incorrect event or sites?"
+        # print("HERERER:", len(dfthis))
         dfthis, dict_lev_df = extract_with_levels_of_conjunction_vars(dfthis, var, 
             vars_others, levels_var, n_min, 
-            lenient_allow_data_if_has_n_levels=lenient_allow_data_if_has_n_levels)
+            lenient_allow_data_if_has_n_levels=lenient_allow_data_if_has_n_levels,
+            DEBUG=DEBUG_CONJUNCTIONS)
 
         return dfthis, dict_lev_df, levels_var
 
@@ -943,10 +1038,12 @@ class Snippets(object):
 
 
     def _dataextract_as_metrics_scalar(self, dfthis, var=None):
-        """ Pass in dfthis directly
+        """ Pass in dfthis directly, to generate an MS object.
         """
         from neuralmonkey.metrics.scalar import MetricsScalar
         
+        assert len(dfthis)>0
+
         # Prune dfthis to the desired temporal window
         pre_dur = self.ParamsGlobals["PRE_DUR_CALC"]
         post_dur = self.ParamsGlobals["POST_DUR_CALC"]
@@ -1034,7 +1131,8 @@ class Snippets(object):
 
         return dfthis
 
-    def datamod_compute_fr_scalar(self, df, pre_dur=None, post_dur=None, fr_which_version=None):
+    def datamod_compute_fr_scalar(self, df, pre_dur=None, post_dur=None, 
+        fr_which_version=None):
         """
         Appends columns with fr scalar values, given a time window of interest
         PARAMS:
@@ -1127,13 +1225,28 @@ class Snippets(object):
 
     def modulationgood_compute_plot_ALL(self, var, vars_conjuction, 
         score_ver='r2smfr_minshuff', SAVEDIR="/tmp", 
-        PRE_DUR_CALC = None, POST_DUR_CALC= None):
+        PRE_DUR_CALC = None, POST_DUR_CALC= None,
+        globals_nmin = None, globals_lenient_allow_data_if_has_n_levels = None,
+        FR_THRESH=4,
+        list_events = None, list_pre_dur = None, list_post_dur = None,
+        DEBUG_CONJUNCTIONS = False,
+        PLOT_EACH_CHAN=False,
+        get_z_score=True):
         """
         New version for computing and plotting all modulation (anova) for a given variable. and set
         of conjunction variables. 
         PRE_DUR_CALC = None, POST_DUR_CALC= None, for calculating modulation, differnet from
         what was used for extraction.
+        PARAMS;
+        - 
+            list_events = ["00_fix_touch", "01_samp", "03_first_raise"],
+            list_pre_dur = [-0.5, 0.05, -0.1],
+            list_post_dur = [-0, 0.6, -0.5],):\
+        - DEBUG_CONJUNCTIONS, bool, if true, then for each data extraction prints the n trials
+        for each var/othervar conjunctions, to help see what data extracted. 
         """
+        from pythonlib.tools.expttools import writeDictToYaml        
+        import pickle
         import os
         import seaborn as sns
         from pythonlib.tools.snstools import rotateLabel
@@ -1148,81 +1261,117 @@ class Snippets(object):
         # for k, v in dict_lev_df.items():
         #     print(k, "---", len(v))
 
-
-        sdir_base = f"{SAVEDIR}/var_by_varsother/{var}-{'_'.join(vars_conjuction)}-{score_ver}"
+        sdir_base = f"{SAVEDIR}/var_by_varsother/VAR_{var}-OV_{'_'.join(vars_conjuction)}-SV_{score_ver}"
         os.makedirs(sdir_base, exist_ok=True)
         print(sdir_base)
 
         # Focus on the higher firing rate sites
-        fig = self.sites_update_fr_thresh(4, True, True)
+        fig = self.sites_update_fr_thresh(FR_THRESH, True, True)
         fig.savefig(f"{SAVEDIR}/sites_pruned_by_fr_hist.pdf")
 
-        pre, post = self._plotgood_rasters_extract_xmin_xmax()
+        ###### GLOBALS
         if PRE_DUR_CALC is None:
-            PRE_DUR_CALC = pre
-        if POST_DUR_CALC is None:
-            POST_DUR_CALC = post
-        for dur in self.Params["list_pre_dur"]:
-            assert PRE_DUR_CALC>=dur
-        for dur in self.Params["list_post_dur"]:
-            assert POST_DUR_CALC<=dur
-        
-        self.ParamsGlobals["PRE_DUR_CALC"] = PRE_DUR_CALC
-        self.ParamsGlobals["POST_DUR_CALC"] = POST_DUR_CALC
+            assert list_pre_dur is not None
+        else:
+            assert list_pre_dur is None
+
+        self.globals_initialize()
+        self.globals_update(globals_nmin, 
+            globals_lenient_allow_data_if_has_n_levels, 
+            PRE_DUR_CALC, POST_DUR_CALC, list_events,
+            list_pre_dur, list_post_dur)
+
+        # self.ParamsGlobals["PRE_DUR_CALC"] = PRE_DUR_CALC
+        # self.ParamsGlobals["POST_DUR_CALC"] = POST_DUR_CALC
         sn, _ = self._session_extract_sn_and_trial()
 
         print("TODO: do fr scalar computation only once! takes too much time.")
         print("** Computing modulation...")
-        df_var = self.modulationgood_compute_wrapper(var, vars_conjuction, score_ver=score_ver,
-            get_z_score=True)
+
+        df_var, list_eventwindow_event = self.modulationgood_compute_wrapper(var, 
+            vars_conjuction, score_ver=score_ver, get_z_score=get_z_score,
+            DEBUG_CONJUNCTIONS=DEBUG_CONJUNCTIONS)
+        list_events_window = sorted(df_var["event"].unique().tolist()) 
+
+        # Save df_var
+        path = f"{sdir_base}/df_var.pkl"
+        print("SAving: ", path)
+        with open(path, "wb") as f:
+            pickle.dump(df_var, f)
+
+        # Save df_var
+        path = f"{sdir_base}/list_eventwindow_event.pkl"
+        print("SAving: ", path)
+        with open(path, "wb") as f:
+            pickle.dump(list_eventwindow_event, f)
+
+        # Save params
+        writeDictToYaml(self.ParamsGlobals, path)
+
         print("** Computing fr quick...")
         df_fr, df_fr_levels = self.modulationgood_compute_fr_quick(var) 
+        # df_fr = df_fr[df_fr["event_aligned"] == event]
+        # df_fr_levels = df_fr_levels[df_fr_levels["event_aligned"] == event]
+        assert len(df_fr)>0
+        assert len(df_fr_levels)>0
 
-        # df_var_chan = aggregGeneral(df_var, group=["chan", "event", "var", "var_others", "val_kind", "val_method"], values = ["val"], 
-        #       nonnumercols=["bregion"]) # one datapt per chan
+        # Save df_var
+        path = f"{sdir_base}/df_fr.pkl"
+        print("SAving: ", path)
+        with open(path, "wb") as f:
+            pickle.dump(df_fr, f)
+
+        # Save df_var
+        path = f"{sdir_base}/df_fr_levels.pkl"
+        print("SAving: ", path)
+        with open(path, "wb") as f:
+            pickle.dump(df_fr_levels, f)
+
+
+        # Get conjunctions and print
+        if vars_conjuction is None:
+            _list_vars = [var]
+        else:
+            _lsit_vars = [var] + vars_conjuction
+        self.modulationgood_plot_list_conjuctions(_list_vars, SAVEDIR=sdir_base)
 
         if len(df_var)>0:
             ######### SAVE PARAMS
-            from pythonlib.tools.expttools import writeDictToYaml
-            path = f"{SAVEDIR}/var_by_varsother/{var}-{'_'.join(vars_conjuction)}-{score_ver}/Params.yaml"
+            path = f"{sdir_base}/Params.yaml"
             writeDictToYaml(self.Params, path)
 
-            path = f"{SAVEDIR}/var_by_varsother/{var}-{'_'.join(vars_conjuction)}-{score_ver}/ParamsGlobals.yaml"
+            path = f"{sdir_base}/ParamsGlobals.yaml"
             writeDictToYaml(self.ParamsGlobals, path)
 
             paramstmp = {
                 "var":var,
                 "vars_conjuction":vars_conjuction,
+                "list_events":list_events,
+                "list_events_window":list_events_window,
                 "score_ver":score_ver,
                 "SAVEDIR":SAVEDIR,
                 "PRE_DUR_CALC":PRE_DUR_CALC,
-                "POST_DUR_CALC":POST_DUR_CALC
+                "POST_DUR_CALC":POST_DUR_CALC,
+                "globals_nmin":globals_nmin,
+                "globals_lenient_allow_data_if_has_n_levels":globals_lenient_allow_data_if_has_n_levels,
+                "FR_THRESH":FR_THRESH,
+                "get_z_score":get_z_score
                 }
-            path = f"{SAVEDIR}/var_by_varsother/{var}-{'_'.join(vars_conjuction)}-{score_ver}/params_modulationgood_compute.yaml"
+            path = f"{sdir_base}/params_modulationgood_compute.yaml"
             writeDictToYaml(paramstmp, path)
 
             ####### SUmmary plot of anova
-            sdir = f"{SAVEDIR}/var_by_varsother/{var}-{'_'.join(vars_conjuction)}-{score_ver}/modulation_v2"
+            sdir = f"{sdir_base}/modulation"
             os.makedirs(sdir, exist_ok=True)
             print(sdir)
 
             print("** Plotting summarystats")
-            self.modulationgood_plot_summarystats_v2(df_var, savedir=sdir)
-            plt.close("all")
-            
-
-            ####### SUmmary plot of anova
-            sdir = f"{SAVEDIR}/var_by_varsother/{var}-{'_'.join(vars_conjuction)}-{score_ver}/modulation"
-            os.makedirs(sdir, exist_ok=True)
-            print(sdir)
-
-            print("** Plotting summarystats")
-            self.modulationgood_plot_summarystats(df_var, df_fr_levels, df_fr, savedir=sdir)
+            self.modulationgood_plot_summarystats(df_var, df_fr_levels, df_fr, savedir=sdir) 
             plt.close("all")
 
 
             ######### Plot moduulation for each chans
-            sdir = f"{SAVEDIR}/var_by_varsother/{var}-{'_'.join(vars_conjuction)}-{score_ver}/each_chan_summary"
+            sdir = f"{sdir_base}/each_chan_summary"
             os.makedirs(sdir, exist_ok=True)
 
             fig = sns.catplot(data=df_var, x="chan", y="val", row="event", hue="bregion", aspect=10, kind="point")
@@ -1235,66 +1384,104 @@ class Snippets(object):
             ##### Plot example strokes extracted. Group them by levels of var
             # if self.DS is not None:
             print("** Plotting example strokes")
-            sdir = f"{SAVEDIR}/var_by_varsother/{var}-{'_'.join(vars_conjuction)}-{score_ver}/drawings"
+            sdir = f"{sdir_base}/drawings"
             os.makedirs(sdir, exist_ok=True)
             self.modulationgood_plot_drawings_variables(var, vars_conjuction, sdir)
 
-            ############## PRINT INFO
-            from pythonlib.tools.expttools import writeStringsToFile
-            spath = f"{SAVEDIR}/var_by_varsother/{var}-{'_'.join(vars_conjuction)}-{score_ver}/variable_conjunctions-actually_used.txt"
-            _, dict_levs, levels_var = self.dataextract_as_df_conjunction_vars(var, 
-                vars_conjuction, site=self.Sites[0])
-            list_s = []
-            for lev_other, dfthis in dict_levs.items():
-                list_s.append(f"LEVEL OTHER: {lev_other}")
-                for lev in levels_var:
-                    n = sum(dfthis[var]==lev)
-                    list_s.append(f"    {lev} : {n}")
-            writeStringsToFile(spath, list_s)
-
-
-            df = self.DfScalar[(self.DfScalar["chan"] == self.Sites[0])]
-            spath = f"{SAVEDIR}/var_by_varsother/{var}-{'_'.join(vars_conjuction)}-{score_ver}/variable_conjunctions-all_possible.txt"
-            from pythonlib.tools.pandastools import grouping_print_n_samples
-            nmin = self.ParamsGlobals["n_min_trials_per_level"]
-            grouping_print_n_samples(df, [var] + vars_conjuction, nmin, spath, True)
-
-
-            ##### Plot rasters
-            if False:
-                sdir = f"{SAVEDIR}/var_by_varsother/{var}-{'_'.join(vars_conjuction)}-{score_ver}/rasters"
-                os.makedirs(sdir, exist_ok=True)
-                # Plot rasters for each site
-                for site in self.Sites:
-                    fig, axes = self.plotgood_rasters_split_by_feature_levels_grpbyothervar(site, var, vars_conjuction)
-                    fig.savefig(f"{sdir}/{sn.sitegetter_summarytext(site)}.png")
-                    plt.close("all")
-            else:
-                print("** Plotting raster + sm fr")
-                ##### Plot raster + sm fr
-                sdir = f"{SAVEDIR}/var_by_varsother/{var}-{'_'.join(vars_conjuction)}-{score_ver}/rasters_smfr"
-                os.makedirs(sdir, exist_ok=True)
-                # Plot rasters for each site
-                for site in self.Sites:
-                    fig, axes = self.plotgood_rasters_smfr_each_level_combined(site, var, vars_conjuction)
-                    fig.savefig(f"{sdir}/{sn.sitegetter_summarytext(site)}.png")
-                    plt.close("all")
-
 
             ######### Plot moduulation for each chans
-            print("** Plotting modulation each chan")
-            sdir = f"{SAVEDIR}/var_by_varsother/{var}-{'_'.join(vars_conjuction)}-{score_ver}/each_chan"
-            os.makedirs(sdir, exist_ok=True)
-            self.modulationgood_plot_each_chan(df_var, var, vars_conjuction, sdir)
-            plt.close("all")           
+            if PLOT_EACH_CHAN:
+                print("** Plotting modulation each chan")
+                sdir = f"{sdir_base}/each_chan"
+                os.makedirs(sdir, exist_ok=True)
+                self.modulationgood_plot_each_chan(df_var, var, vars_conjuction, sdir)
+                plt.close("all")           
+
+            events_already_done = []
+            for event_window, event in list_eventwindow_event:
+                print("** Making plots for this event_window: ")
+                print(event_window)
+
+                sdir_base_this = f"{sdir_base}/EACH_EVENT/{event_window}"
+                os.makedirs(sdir_base_this, exist_ok=True)
+                print(f"Saving this event, {event_window}, to {sdir_base_this}")
+
+                df_var_this = df_var[df_var["event"]==event_window]
+
+                if len(df_var_this)==0:
+                    print(len(df_var))
+                    print(df_var["event"].value_counts())
+                    print(event_window, event)
+                    assert False
+                    
+                ####### SUmmary plot of anova
+                if get_z_score:
+                    sdir = f"{sdir_base_this}/modulation_v2"
+                    os.makedirs(sdir, exist_ok=True)
+                    print(sdir)
+
+                    print("** Plotting summarystats")
+                    self.modulationgood_plot_summarystats_v2(df_var_this, savedir=sdir) 
+                    plt.close("all")
+                    
+                ############## PRINT INFO
+                from pythonlib.tools.expttools import writeStringsToFile
+                spath = f"{sdir_base_this}/variable_conjunctions-actually_used.txt"
+                _, dict_levs, levels_var = self.dataextract_as_df_conjunction_vars(var, 
+                    vars_conjuction, site=self.Sites[0], event=event)
+                list_s = []
+                for lev_other, dfthis in dict_levs.items():
+                    list_s.append(f"LEVEL OTHER: {lev_other}")
+                    for lev in levels_var:
+                        n = sum(dfthis[var]==lev)
+                        list_s.append(f"    {lev} : {n}")
+                writeStringsToFile(spath, list_s)
+
+                if False:
+                    # incorrectly includes all levels. fix if want to keep this
+                    df = self.DfScalar[(self.DfScalar["chan"] == self.Sites[0])]
+                    spath = f"{sdir_base_this}/variable_conjunctions-all_possible.txt"
+                    from pythonlib.tools.pandastools import grouping_print_n_samples
+                    nmin = self.ParamsGlobals["n_min_trials_per_level"]
+                    grouping_print_n_samples(df, [var] + vars_conjuction, nmin, spath, True)
+
+
+                ##### Plot rasters
+                if event not in events_already_done:
+                    # Skip if this event already done, since each event_window plots the
+                    # same rasters.
+                    if False:
+                        assert False, 'incoprorate event.'
+                        sdir = f"{sdir_base_this}/rasters"
+                        os.makedirs(sdir, exist_ok=True)
+                        # Plot rasters for each site
+                        for site in self.Sites:
+                            fig, axes = self.plotgood_rasters_split_by_feature_levels_grpbyothervar(site, var, vars_conjuction)
+                            fig.savefig(f"{sdir}/{sn.sitegetter_summarytext(site)}.png")
+                            plt.close("all")
+                    else:
+                        print("** Plotting raster + sm fr")
+                        ##### Plot raster + sm fr
+                        sdir = f"{sdir_base_this}/rasters_smfr"
+                        os.makedirs(sdir, exist_ok=True)
+                        # Plot rasters for each site
+                        for site in self.Sites:
+                            fig, axes = self.plotgood_rasters_smfr_each_level_combined(site, var, vars_conjuction, 
+                                event=event)
+                            fig.savefig(f"{sdir}/{sn.sitegetter_summarytext(site)}.png")
+                            plt.close("all")
+
+                # Track.
+                events_already_done.append(event)
+
         else:
             print("!!SKIPPING PLOTS!! not enough data") 
             print(len(df_var))
 
 
-
     def modulationgood_compute_wrapper(self, var, vars_conjuction=None, list_site=None, 
-            score_ver="r2smfr_minshuff", get_z_score=False):
+            score_ver="r2smfr_minshuff", get_z_score=False,
+            DEBUG_CONJUNCTIONS=False):
         """ Good, flexible helper to compute modulation of all kinds and all ways of slicing 
         the dataset. 
         PARAMS;
@@ -1303,139 +1490,384 @@ class Snippets(object):
         - lenient_allow_data_if_has_n_levels, eitehr None (ignore) or int, how many
         levels of var you need to get >n_min datapts, in order to keep this level of vars_conj./
         See within for detials.
+        RETURNS:
+        - df_var
+        - list_eventwindow_event, list of tuples, each a (event_window, event), whgere ew is conjucntion
+        of event and (predur, postdur) and event is the original event name. such as :
+            [('00_fix_touch_-500_to_0', '00_fix_touch'),
+             ('01_samp_50_to_600', '01_samp'),
+             ('03_first_raise_-100_to_500', '03_first_raise')]
         """
         from pythonlib.tools.pandastools import append_col_with_grp_index
         import numpy as np
+        from pythonlib.tools.pandastools import grouping_print_n_samples
 
         # var = "chunk_rank"
-
         # Want to use entier data for this site? or do separately for each level of a given
         # conjunction variable.
         if vars_conjuction is None:
             # then place a dummy variable so that entire thing is one level
             vars_conjuction = ["dummy_var"]
-            assert "dummy_var" not in self.DfScalar
+            assert "dummy_var" not in self.DfScalar.columns
             self.DfScalar["dummy_var"] = "IGNORE"
             # vars_conjuction = ['gridloc', 'chunk_within_rank'] # list of str, vars to take conjunction over
 
         if list_site is None:
             list_site = self.Sites
 
-        list_events = self.Params["list_events_uniqnames"]
+        # Extract globals for analys
+        list_events = self.ParamsGlobals["list_events"]
+        list_pre_dur = self.ParamsGlobals["list_pre_dur"]
+        list_post_dur = self.ParamsGlobals["list_post_dur"]
+        print("DOing these! ...")
+        print("list_events", list_events)
+        print("list_pre_dur", list_pre_dur)
+        print("list_post_dur", list_post_dur)
 
         sn, _ = self._session_extract_sn_and_trial()
 
+        # First, skip everything if there is not enough data
+        list_grp = ["chan", "event", var]
+        if vars_conjuction:
+            list_grp = list_grp + vars_conjuction
+        groupdict = grouping_print_n_samples(self.DfScalar, list_grp)
+        n_max = max([n for n in groupdict.values()])
+        if n_max<self.ParamsGlobals["n_min_trials_per_level"]:
+            print("SKIPPING PREEMPTIVELY, not enough data. (chan, event, vars, othervars) max n = ", n_max)
+            print("... which is lower than ", self.ParamsGlobals['n_min_trials_per_level'])
+            from pythonlib.tools.exceptions import NotEnoughDataException
+            raise NotEnoughDataException
+
         # Collect data for each site
         OUT = []
-        for site in list_site:
-                    
-            if site%20==0:
-                print("site :", site)
-            region = sn.sitegetter_map_site_to_region(site)
-            # Clean up dataset
-            dfthis, _, levels_var = self.dataextract_as_df_conjunction_vars(var, 
-                vars_conjuction, site)
-            
-            if len(dfthis)==0:
-                # then no level of vars_conjuction had enough data across all levels of var.
-                continue
+        for event, pre_dur, post_dur in zip(list_events, list_pre_dur, list_post_dur):
+            print("DOING THIS EVENT: ", event)
+            print(" ")
+            print(f"Updated ParamsGlobals for event {event} to:")
+            self.globals_update(PRE_DUR_CALC=pre_dur, POST_DUR_CALC=post_dur)
+            event_window_combo_name = f"{event}_{pre_dur*1000:.0f}_to_{post_dur*1000:.0f}"
+            # for k, v in self.ParamsGlobals.items():
+            #     print(k, ' = ', v)
 
-            # for each level of vars_conj, compute modulation
-            levels_others = dfthis["vars_others"].unique().tolist()
-
-            for lev in levels_others:
+            # TODO: give this event a unique name
+            for site in list_site:
+                if site%20==0:
+                    print("site :", site)
+                region = sn.sitegetter_map_site_to_region(site)
                 
-                assert len(lev)==len(vars_conjuction)
-                
-                # get data
-                dfthisthis = dfthis[dfthis["vars_others"]==lev] # specific df (lev_other)
-                assert len(dfthisthis)>0
-
-                if score_ver in ["fr_chan_level"]:
-                    assert False, "in progress... just need to modify MS to take in var and levels."
-                    # Then is a single score for each level of var
-                    MS = self._dataextract_as_metrics_scalar(dfthisthis, var)
-                    tmp = MS.calc_fr_across_levels()
-                    print(tmp)
-                    assert False
-
-                    # frates = _calc_fr_across_levels(dfthisthis, var, levels_var)["all_data"]
+                # Clean up dataset
+                dfthis, levs_df, levels_var = self.dataextract_as_df_conjunction_vars(var, 
+                    vars_conjuction, site, event=event, DEBUG_CONJUNCTIONS=DEBUG_CONJUNCTIONS)
                     
-                    for lv, fr in zip(levels_var, frates):
-                        OUT.append({
-                            "chan":site,
-                            "var":var,
-                            "lev_in_var":lv,                            
-                            "var_others":tuple(vars_conjuction),
-                            "lev_in_var_others":lev,
-                            "event":ev,
-                            "val_kind":"modulation_subgroups",
-                            "val_method":score_ver,
-                            "val":score,
-                            "bregion":region
-                        })
-                        # also save columns for each var in vars_others
-                        for l, v in zip(lev, vars_conjuction):
-                            OUT[-1][v] = l
-                else:
-                    # if score_ver in ["r2smfr_zscore", "r2smfr_minshuff", "fracmod_smfr_minshuff"]:
-                    # Then is a single score per (chan, event, var)
-                    # compute modulation
-                    # - one value for each var.
-                    MS = self._dataextract_as_metrics_scalar(dfthisthis, var) 
+                if len(dfthis)==0:
+                    print("SKIPPING ", event, site)
+                    continue
 
-                    try:
-                        eventscores = MS.modulationgood_wrapper_(var, version=score_ver, 
-                            return_as_score_zscore_tuple=get_z_score)
-                    except Exception as err:
-                        print("HERE")
-                        print(MS.Data)
-                        print("HERE")
-                        print(site, lev)
-                        print("HERE")
-                        print(len(MS.Data))
-                        print("HERE")
-                        print(MS.Data[var])
-                        raise err
+                # v2) two-way anova
+                if score_ver in ["r2smfr_running_maxtime_twoway"]:
+
+                    TWO_WAY=True
                     
-                    for ev in list_events:
-                        score = eventscores[ev]
+                    MS = self._dataextract_as_metrics_scalar(dfthis, var)  
 
-                        if get_z_score:
-                            score, zscore = score
-                        else:
-                            zscore = np.nan
+                    assert get_z_score==False, "not yet coded, this gets messy, one z for var, var_others, interaction"
+                    eventscores = MS.modulationgood_wrapper_twoway(var, version=score_ver, 
+                        vars_others = "vars_others")
+                    assert len(eventscores.keys())==1, "should only be one event"
+                    
+                    score, score_others, score_interaction = eventscores[event]
 
-                        # save
+                    assert isinstance(score, float), "no np arrays allowed. will fail seaborn"
+                    assert isinstance(score_others, float), "no np arrays allowed. will fail seaborn"
+                    assert isinstance(score_interaction, float), "no np arrays allowed. will fail seaborn"
+
+                    # save
+                    for val_kind, val in zip(["val", "val_others", "val_interaction"], [score, score_others, score_interaction]):
                         OUT.append({
                             "chan":site,
                             "var":var,
                             "var_others":tuple(vars_conjuction),
-                            "lev_in_var_others":lev,
-                            "event":ev,
-                            "val_kind":"modulation_subgroups",
+                            "_event":event,
+                            "event":event_window_combo_name,                            
+                            "val_kind":val_kind,
                             "val_method":score_ver,
-                            "val":score,
-                            "val_zscore":zscore,
+                            "val":val,
                             "bregion":region,
                             "n_datapts":len(MS.Data)
                         })
 
-                        # also save columns for each var in vars_others
-                        for l, v in zip(lev, vars_conjuction):
-                            OUT[-1][v] = l
 
-                # else:
-                #     print(score_ver)
-                #     assert False
+                else:
+                    TWO_WAY = False
+                    # if len(dfthis)==0:
+                    #     # then no level of vars_conjuction had enough data across all levels of var.
+                    #     continue
 
-        df_var = pd.DataFrame(OUT)
+                    # for each level of vars_conj, compute modulation
+                    # levels_others = dfthis["vars_others"].unique().tolist()
+                    for lev, dfthisthis in levs_df.items():
+                    # for lev in levels_others:
+                        
+                    #     assert len(lev)==len(vars_conjuction)
+                        
+                    #     # get data
+                    #     dfthisthis = dfthis[dfthis["vars_others"]==lev] # specific df (lev_other)
+                    #     assert len(dfthisthis)>0
+
+                        # v1) keeping fr for each level of each var
+                        if score_ver in ["fr_chan_level"]:
+                            assert False, "in progress... just need to modify MS to take in var and levels."
+                            # Then is a single score for each level of var
+                            MS = self._dataextract_as_metrics_scalar(dfthisthis, var, event=event)
+                            tmp = MS.calc_fr_across_levels()
+                            print(tmp)
+                            assert False
+
+                            # frates = _calc_fr_across_levels(dfthisthis, var, levels_var)["all_data"]
+                            
+                            for lv, fr in zip(levels_var, frates):
+                                OUT.append({
+                                    "chan":site,
+                                    "var":var,
+                                    "lev_in_var":lv,                            
+                                    "var_others":tuple(vars_conjuction),
+                                    "lev_in_var_others":lev,
+                                    "event":ev,
+                                    "val_kind":"modulation_subgroups",
+                                    "val_method":score_ver,
+                                    "val":score,
+                                    "bregion":region
+                                })
+                                # also save columns for each var in vars_others
+                                for l, v in zip(lev, vars_conjuction):
+                                    OUT[-1][v] = l
+
+                        # v3) one-way anova (but doing separately for each level of othervars)
+                        else:
+                            # if score_ver in ["r2smfr_zscore", "r2smfr_minshuff", "fracmod_smfr_minshuff"]:
+                            # Then is a single score per (chan, event, var)
+                            # compute modulation
+                            # - one value for each var.
+                            MS = self._dataextract_as_metrics_scalar(dfthisthis, var) 
+
+                            # try:
+                            eventscores = MS.modulationgood_wrapper_(var, version=score_ver, 
+                                return_as_score_zscore_tuple=get_z_score)
+                            # except Exception as err:
+                            #     print("HERE")
+                            #     print(len(MS.Data))
+                            #     print("HERE")
+                            #     print(site, lev)
+                            #     print("HERE")
+                            #     print(MS.Data[var].value_counts())
+                            #     raise err
+                            
+                            assert len(eventscores.keys())==1, "should only be one event"
+                            score = eventscores[event]
+
+                            if get_z_score:
+                                score, zscore = score
+                            else:
+                                zscore = np.nan
+
+                            assert isinstance(score, float), "no np arrays allowed. will fail seaborn"
+                            assert isinstance(zscore, float), "no np arrays allowed. will fail seaborn"
+
+                            # save
+                            OUT.append({
+                                "chan":site,
+                                "var":var,
+                                "var_others":tuple(vars_conjuction),
+                                "lev_in_var_others":lev,
+                                "_event":event,
+                                "event":event_window_combo_name,                            
+                                "val_kind":"modulation_subgroups",
+                                "val_method":score_ver,
+                                "val":score,
+                                "val_zscore":zscore,
+                                "bregion":region,
+                                "n_datapts":len(MS.Data)
+                            })
+
+                            # also save columns for each var in vars_others
+                            for l, v in zip(lev, vars_conjuction):
+                                OUT[-1][v] = l
+
+        df_var = pd.DataFrame(OUT)      
+        if len(df_var)==0:
+            print("SKIPPING, Probably you have not enough data for this conjunctions, try setting DEBUG_CONJUNCTIONS=True and reading the low-level data it prints.")
+            from pythonlib.tools.exceptions import NotEnoughDataException
+            raise NotEnoughDataException
 
         if "dummy_var" in self.DfScalar:
             del self.DfScalar["dummy_var"]
 
+        # Melt, if this is anova with multiple levels. such that "val_kind" holds var, other, and interaction.
+        if False: # Becuase this was failing. cant get uniqque values for numericals
+            if TWO_WAY:
+                from pythonlib.tools.pandastools import unpivot
+                print(df_var.columns)
+                df_var = unpivot(df_var, id_vars=["chan", "var", "var_others", "_event", "event", "val_kind", "val_method", "bregion", "n_datapts"], 
+                        value_vars=["val", "val_others", "val_interaction"], var_name="val_kind", value_name="val")
 
-        return df_var
+                print(df_var.columns)
+        list_eventwindow_event = sorted(set([tuple(x) for x in df_var.loc[:, ["event", "_event"]].values.tolist()]))
+        # [('00_fix_touch_-500_to_0', '00_fix_touch'),
+        #  ('01_samp_50_to_600', '01_samp'),
+        #  ('03_first_raise_-100_to_500', '03_first_raise')]#
+        return df_var, list_eventwindow_event
+
+    # def modulationgood_compute_wrapper(self, var, vars_conjuction=None, list_site=None, 
+    #         score_ver="r2smfr_minshuff", get_z_score=False, list_events=None):
+    #     """ Good, flexible helper to compute modulation of all kinds and all ways of slicing 
+    #     the dataset. 
+    #     PARAMS;
+    #     - n_min, min n trials required for each level of var. if faisl, then skips this datset 
+    #     entirely (i.e., the level of vars_conjuction, or this site)
+    #     - lenient_allow_data_if_has_n_levels, eitehr None (ignore) or int, how many
+    #     levels of var you need to get >n_min datapts, in order to keep this level of vars_conj./
+    #     See within for detials.
+    #     """
+    #     from pythonlib.tools.pandastools import append_col_with_grp_index
+    #     import numpy as np
+
+    #     # var = "chunk_rank"
+
+    #     # Want to use entier data for this site? or do separately for each level of a given
+    #     # conjunction variable.
+    #     if vars_conjuction is None:
+    #         # then place a dummy variable so that entire thing is one level
+    #         vars_conjuction = ["dummy_var"]
+    #         assert "dummy_var" not in self.DfScalar.columns
+    #         self.DfScalar["dummy_var"] = "IGNORE"
+    #         # vars_conjuction = ['gridloc', 'chunk_within_rank'] # list of str, vars to take conjunction over
+
+    #     if list_site is None:
+    #         list_site = self.Sites
+
+    #     if list_events is not None:
+    #         list_events = self.Params["list_events_uniqnames"]
+
+    #     sn, _ = self._session_extract_sn_and_trial()
+
+    #     # Collect data for each site
+    #     OUT = []
+    #     for site in list_site:
+    #         if site%20==0:
+    #             print("site :", site)
+    #         region = sn.sitegetter_map_site_to_region(site)
+    #         # Clean up dataset
+    #         dfthis, _, levels_var = self.dataextract_as_df_conjunction_vars(var, 
+    #             vars_conjuction, site)
+            
+    #         # print(dfthis)
+    #         # print(levels_var)
+    #         # print(dfthis["vars_others"].unique().tolist())
+    #         # assert False            
+    #         if len(dfthis)==0:
+    #             # then no level of vars_conjuction had enough data across all levels of var.
+    #             continue
+
+    #         # for each level of vars_conj, compute modulation
+    #         levels_others = dfthis["vars_others"].unique().tolist()
+
+    #         for lev in levels_others:
+                
+    #             assert len(lev)==len(vars_conjuction)
+                
+    #             # get data
+    #             dfthisthis = dfthis[dfthis["vars_others"]==lev] # specific df (lev_other)
+    #             assert len(dfthisthis)>0
+
+    #             if score_ver in ["fr_chan_level"]:
+    #                 assert False, "in progress... just need to modify MS to take in var and levels."
+    #                 # Then is a single score for each level of var
+    #                 MS = self._dataextract_as_metrics_scalar(dfthisthis, var, event=event)
+    #                 tmp = MS.calc_fr_across_levels()
+    #                 print(tmp)
+    #                 assert False
+
+    #                 # frates = _calc_fr_across_levels(dfthisthis, var, levels_var)["all_data"]
+                    
+    #                 for lv, fr in zip(levels_var, frates):
+    #                     OUT.append({
+    #                         "chan":site,
+    #                         "var":var,
+    #                         "lev_in_var":lv,                            
+    #                         "var_others":tuple(vars_conjuction),
+    #                         "lev_in_var_others":lev,
+    #                         "event":ev,
+    #                         "val_kind":"modulation_subgroups",
+    #                         "val_method":score_ver,
+    #                         "val":score,
+    #                         "bregion":region
+    #                     })
+    #                     # also save columns for each var in vars_others
+    #                     for l, v in zip(lev, vars_conjuction):
+    #                         OUT[-1][v] = l
+    #             else:
+    #                 # if score_ver in ["r2smfr_zscore", "r2smfr_minshuff", "fracmod_smfr_minshuff"]:
+    #                 # Then is a single score per (chan, event, var)
+    #                 # compute modulation
+    #                 # - one value for each var.
+    #                 MS = self._dataextract_as_metrics_scalar(dfthisthis, var) 
+
+    #                 # print(1, len(dfthisthis))
+    #                 # print(2, len(MS.Data))
+    #                 # print(3, var)
+    #                 # print(MS.Data[var].unique)
+    #                 # assert False
+    #                 try:
+    #                     eventscores = MS.modulationgood_wrapper_(var, version=score_ver, 
+    #                         return_as_score_zscore_tuple=get_z_score)
+    #                 except Exception as err:
+    #                     print("HERE")
+    #                     print(MS.Data)
+    #                     print("HERE")
+    #                     print(site, lev)
+    #                     print("HERE")
+    #                     print(len(MS.Data))
+    #                     print("HERE")
+    #                     print(MS.Data[var])
+    #                     raise err
+                    
+    #                 for ev in list_events:
+    #                     score = eventscores[ev]
+
+    #                     if get_z_score:
+    #                         score, zscore = score
+    #                     else:
+    #                         zscore = np.nan
+
+    #                     # save
+    #                     OUT.append({
+    #                         "chan":site,
+    #                         "var":var,
+    #                         "var_others":tuple(vars_conjuction),
+    #                         "lev_in_var_others":lev,
+    #                         "event":ev,
+    #                         "val_kind":"modulation_subgroups",
+    #                         "val_method":score_ver,
+    #                         "val":score,
+    #                         "val_zscore":zscore,
+    #                         "bregion":region,
+    #                         "n_datapts":len(MS.Data)
+    #                     })
+
+    #                     # also save columns for each var in vars_others
+    #                     for l, v in zip(lev, vars_conjuction):
+    #                         OUT[-1][v] = l
+
+    #             # else:
+    #             #     print(score_ver)
+    #             #     assert False
+
+    #     df_var = pd.DataFrame(OUT)
+
+    #     if "dummy_var" in self.DfScalar:
+    #         del self.DfScalar["dummy_var"]
+
+    #     return df_var
 
     def modulationgood_aggregate_df(self, df_var, aggmethod="weighted_avg"):
         """ Wrapper for methods for aggregating data, using so there's single datapt
@@ -1448,17 +1880,28 @@ class Snippets(object):
             # Take weighted average, where weights are based on n ttrials
             # - avg of scores
             def F(x):
-                vals = x["val"]
-                ndats = x["n_datapts"]
-                weights = (ndats/np.mean(ndats))**0.5
-                tmp = np.average(vals, weights=weights)
+                try:
+                    vals = x["val"]
+                    ndats = x["n_datapts"]
+                    weights = (ndats/np.mean(ndats))**0.5
+                    tmp = np.average(vals, weights=weights)
+                except Exception as err:
+                    print(x["val"].tolist())
+                    print(x["n_datapts"].tolist())
+                    raise err
                 return tmp
             df_var = aggregThenReassignToNewColumn(df_var, F, ["chan"], "val_weighted_avg")
+
             def F(x):
                 vals = x["val_zscore"]
                 ndats = x["n_datapts"]
                 weights = (ndats/np.mean(ndats))**0.5
-                tmp = np.average(vals, weights=weights)
+                try:
+                    tmp = np.average(vals, weights=weights)
+                except Exception as err:
+                    print(x["val_zscore"].tolist())
+                    print(x["n_datapts"].tolist())
+                    raise err
                 return tmp
             df_var = aggregThenReassignToNewColumn(df_var, F, ["chan"], "val_z_weighted_avg")
 
@@ -2203,8 +2646,8 @@ class Snippets(object):
             
     def modulationgood_plot_each_chan(self, df_var, var, vars_conjuction,
         savedir="/tmp"):
-        """ Plot for each chan, overview of modulation across all variables.
-
+        """ Plot for each chan, overview of modulation across all variables, 
+        and alll events
         """
         import seaborn as sns
 
@@ -2330,21 +2773,86 @@ class Snippets(object):
         figure for each level of the conjucntion variaable.
         """
 
+        if self.Params["which_level"]=="trial":
+            plotfunc = lambda var, vars_conjuction, sdir, nplot: self._modulationgood_plot_drawings_variables_bytrial(var, vars_conjuction, sdir, nplot)
+        elif self.Params["which_level"]=="stroke":
+            plotfunc = lambda var, vars_conjuction, sdir, nplot: self._modulationgood_plot_drawings_variables(var, vars_conjuction, sdir, nplot)
+        else:
+            assert False
+
+        # First, is this trial or stroke level.
         if self.SNmult is None:
             # Then this is a single session, plot it.
-            return self._modulationgood_plot_drawings_variables(var, vars_conjuction, sdir, nplot)
+            if self.Params["which_level"]=="trial":
+                return self._modulationgood_plot_drawings_variables_bytrial(var, vars_conjuction, sdir, nplot)
+            else:
+                return self._modulationgood_plot_drawings_variables(var, vars_conjuction, sdir, nplot)
         else:
             # Load the frist session, and plot it.
             sn = self.SNmult.SessionsList[0]
-            sp = load_snippet_single(sn)
-            return sp.modulationgood_plot_drawings_variables(var, vars_conjuction, sdir, nplot)
+            sp = load_snippet_single(sn, which_level=self.Params["which_level"])
+            if self.Params["which_level"]=="trial":
+                return sp._modulationgood_plot_drawings_variables_bytrial(var, vars_conjuction, sdir, nplot)
+            else:
+                return sp._modulationgood_plot_drawings_variables(var, vars_conjuction, sdir, nplot)
+
+    def _modulationgood_plot_drawings_variables_bytrial(self, var, vars_conjuction, sdir,
+            nplot = 40):
+        """ Plot example drawings across all levels for a given sublevel_conjucntion (figures)
+        """
+
+        site = self.Sites[1] # pick any site.
+        _, dict_dfs, _ = self.dataextract_as_df_conjunction_vars(var, vars_conjuction, site)
+
+        for lev_others, dfsub in dict_dfs.items():
+            print("Plotting .. ", lev_others)
+            
+            trialcodes = dfsub["trialcode"].tolist()
+
+            # pick n random
+            if len(trialcodes)>nplot:
+                import random
+                indsplot = sorted(random.sample(range(len(trialcodes)), nplot))
+            else:
+                indsplot = range(len(trialcodes))
+
+            # Get data
+            tmp = dfsub[var].to_list()
+            titles = [tmp[i] for i in indsplot]
+            tcs = [trialcodes[i] for i in indsplot]
+            
+            # convert trialcodes to dataset indices
+            inds_dat_beh = [self.SN.datasetbeh_trialcode_to_datidx(tc) for tc in tcs]
+
+            if len(inds_dat_beh)==0 or any([x is None for x in inds_dat_beh]):
+                print("trialcodes: ", trialcodes)
+                print("tcs: ", tcs)
+                print("len(dfsub):", len(dfsub))
+                print(inds_dat_beh)
+                assert False
+
+            # -- PLOT BEH            
+            fig, axes, _ = self.SN.Datasetbeh.plotMultTrials2(inds_dat_beh, "strokes_beh", titles=titles)
+            for ax, tit, tcthis in zip(axes.flatten(), titles, tcs):
+                # ax.set_title(f"{var}:{tit}")
+                ax.set_ylabel(f"{tcthis}")
+            fig.savefig(f"{sdir}/lev_others-{'-'.join([str(x) for x in lev_others])}-BEH.pdf")
+            
+            # -- PLOT TASK            
+            fig, axes, _ = self.SN.Datasetbeh.plotMultTrials2(inds_dat_beh, "strokes_task", titles=titles)
+            for ax, tit, tcthis in zip(axes.flatten(), titles, tcs):
+                # ax.set_title(f"{var}:{tit}")
+                ax.set_ylabel(f"{tcthis}")
+            fig.savefig(f"{sdir}/lev_others-{'-'.join([str(x) for x in lev_others])}-TASK.pdf")
+
+            plt.close("all")
 
     def _modulationgood_plot_drawings_variables(self, var, vars_conjuction, sdir,
             nplot = 40):
         """
         Plot example drawings across lewvels for a given variable, seaprate
         figure for each level of the conjucntion variaable.
-        """
+        """ 
 
         site = self.Sites[1] # pick any site.
         _, dict_dfs, _ = self.dataextract_as_df_conjunction_vars(var, vars_conjuction, site)
@@ -2377,9 +2885,109 @@ class Snippets(object):
 
             plt.close("all")
 
+
+    def modulationgood_plot_list_conjuctions(self, vars_check, SAVEDIR, PLOT = False):
+        """ Useful before spending long time on plots, see sample size for different 
+        conjunctions of variables.
+        PARAMS:
+        - PLOT, bool, if make plots of all conjucntionsa nd N. This can take a while, if 
+        many variables, so better to just print (always does).
+        """
+        from pythonlib.tools.listtools import partition, powerset
+        import os
+
+        sdir = f"{SAVEDIR}/snippets_check_conjunctions_variables"
+        os.makedirs(sdir, exist_ok=True)
+        print(sdir)
+        
+        for var in vars_check:
+            assert var in self.DfScalar.columns, f"this var doesnt exist!! {var}"
+        if PLOT:
+            assert len(vars_check)<7, "are you sure? maybe limit the length of subsets. will take long time."
+
+        site = self.Sites[0] # assume all sites have same trials.
+
+        RES = {}
+        for var in vars_check:
+            vars_check_others = [v for v in vars_check if not v==var]
+            levels_var = self.DfScalar[var].unique().tolist()
+            res = []
+            lines = []
+            for x in powerset(vars_check_others):
+                if len(x)>0:
+                    vars_others = list(x)
+                    print("var -- vars_others: ", var, ' --- ', vars_others)
+                        
+                    _, dict_lev_df, _ = self.dataextract_as_df_conjunction_vars(var, vars_others, site)
+                    
+                    # how many levels of vars_others have enough data?
+                    n_found = len(dict_lev_df)
+                    RES[(var, tuple(vars_others))] = n_found
+                    
+                    # get n for each lev of others
+                    for lev_o, dfthis in dict_lev_df.items():
+                        for lev_v in levels_var:
+                            n = sum(dfthis[var]==lev_v)
+                            res.append({
+                                "lev_others":lev_o,
+                                "lev_var":lev_v,
+                                "vars_others":tuple(vars_others),
+                                "n":n
+                            })
+                            
+                            if n < self.ParamsGlobals["n_min_trials_per_level"]:
+                                lines.append(f"{tuple(vars_others)} - {lev_o} - {lev_v}  :  [{n}]")
+                            else:
+                                lines.append(f"{tuple(vars_others)} - {lev_o} - {lev_v}  :  {n}")
+                        lines.append(" ")
+                    lines.append(" ")                    
+            
+            if PLOT:
+                assert False, "not coded cleanyl, cehck it"
+                dftmp = pd.DataFrame(res)
+                # Plot for this var
+                print("Plotting!! ")
+                import seaborn as sns
+                fig = sns.catplot(data=dftmp, x="lev_var", y="n", hue="lev_others", kind="point", col="vars_others", col_wrap=4)
+
+                for ax in fig.axes.flatten():
+                    ax.axhline(self.ParamsGlobals["n_min_trials_per_level"])    
+
+                fig.savefig(f"{sdir}/{var}_ncounts.pdf")
+                plt.close("all")
+            
+            # Print for this var
+        #     from pythonlib.tools.pandastools import grouping_print_n_samples
+        #     path = f"{sdir}/ncounts-{var}-vs-varothers-levothers-levvar.txt"
+        #     grouping_print_n_samples(dftmp, list_groupouter_grouping_vars=["vars_others", "lev_others", "lev_var"], 
+        #                             print_value_not_n=True, savepath=path, save_convert_keys_to_str=True,
+        #                             save_as="text")
+
+            from pythonlib.tools.pandastools import grouping_print_n_samples
+            path = f"{sdir}/ncounts-{var}-vs-varothers-levothers-levvar.txt"
+            from pythonlib.tools.expttools import writeStringsToFile
+            writeStringsToFile(path, lines)
+            print(path)
+
+        # fig = sns.catplot(data=dftmp, x="lev_var", y="n", hue="lev_others", kind="point", col="vars_others", col_wrap=4)
+
+        # for ax in fig.axes.flatten():
+        #     ax.axhline(self.ParamsGlobals["n_min_trials_per_level"])    
+
+        # fig.savefig(f"{sdir}/{var}_ncounts.pdf")
+        # plt.close("all")
+
+
+        # from pythonlib.tools.pandastools import grouping_print_n_samples
+        # path = f"{sdir}/ncounts-{var}-vs-varothers-levothers-levvar.txt"
+        # grouping_print_n_samples(dftmp, list_groupouter_grouping_vars=["vars_others", "lev_others", "lev_var"], 
+        #                          savepath=path, save_convert_keys_to_str=True, save_as="text")
+
+
+
     def modulationgood_plot_summarystats_v2(self, df_var, savedir="/tmp"):
         """
-
+        Takes into account z-score, for significance
         """
         from pythonlib.tools.pandastools import convert_to_2d_dataframe
         from pythonlib.tools.snstools import rotateLabel
@@ -2404,7 +3012,7 @@ class Snippets(object):
             ax.axhline(0)
             ax.axhline(3)
             
-        fig.savefig(f"{savedir}agg_scatter_valzscore.pdf")
+        fig.savefig(f"{savedir}/agg_scatter_valzscore.pdf")
 
 
         fig = sns.catplot(data=dfagg, x="bregion", y="val", aspect=2, alpha=0.2)
@@ -2434,7 +3042,7 @@ class Snippets(object):
             ax.axhline(0)
             ax.axhline(3)
             
-        fig.savefig(f"{savedir}chanxotherlevel_scatter_valzscore.pdf")
+        fig.savefig(f"{savedir}/chanxotherlevel_scatter_valzscore.pdf")
 
 
         fig = sns.catplot(data=df_var, x="bregion", y="val", aspect=2, alpha=0.2)
@@ -2482,6 +3090,7 @@ class Snippets(object):
             df_fr=None, savedir="/tmp"):
         """ 
         [GOOD] Plot modulation of fr by a single variable. Uses NEW_VERSION. Pass in dataframes directly.
+        - Plots are across all events.
         PARAMS:
         - df_var, dataframe, each row is a (chan, event, variable, level_other_var). with
         modulation by that variable. DO NOT aggregate before passing in.
@@ -2539,23 +3148,29 @@ class Snippets(object):
         # print(df_var.keys())
         fig = sns.catplot(data=df_var_chan, x="event", y="val", hue="val_kind",
                           col="bregion", row="var", kind="point", aspect=1, height=3);
+        for ax in fig.axes.flatten():
+            ax.axhline(0, color="k")
         rotateLabel(fig)
         fig.savefig(f"{savedir}/1_lines_modulation_kinds.pdf")
 
         fig = sns.catplot(data=df_var_chan, x="event", y="val", hue="val_kind",
-                          col="bregion", row="var", aspect=1, height=3);
+                          col="bregion", row="var", aspect=1, height=3, jitter=True);
         rotateLabel(fig)
+        for ax in fig.axes.flatten():
+            ax.axhline(0, color="k")
         fig.savefig(f"{savedir}/1_scatter_modulation_kinds.pdf")
 
         # Comparing brain regions
-        fig = sns.catplot(data=df_var_chan, x="bregion", y="val", col="event", 
+        fig = sns.catplot(data=df_var_chan, x="bregion", y="val", col="event", hue="val_kind",
                     row="var", kind="bar", aspect=2, height=4);
         rotateLabel(fig)
         fig.savefig(f"{savedir}/2_bars_feature_vs_event.pdf")      
 
-        fig = sns.catplot(data=df_var_chan, x="bregion", y="val", col="event", 
+        fig = sns.catplot(data=df_var_chan, x="bregion", y="val", col="event", hue="val_kind",
                     row="var", aspect=2, height=4);
         rotateLabel(fig)
+        for ax in fig.axes.flatten():
+            ax.axhline(0, color="k")        
         fig.savefig(f"{savedir}/2_scatter_feature_vs_event.pdf")      
 
         # Comparing brain regions
@@ -2569,51 +3184,61 @@ class Snippets(object):
         fig = sns.catplot(data=df_var_chan, x="event", y="val", hue="var",
                           col="bregion", row="val_kind", kind="point", aspect=1, height=3);
         rotateLabel(fig)
+        for ax in fig.axes.flatten():
+            ax.axhline(0, color="k")        
         fig.savefig(f"{savedir}/3_lines_valkinds.pdf")
 
         from pythonlib.tools.snstools import plotgood_lineplot
-        fig = plotgood_lineplot(df_var_chan, xval="event", yval="val", line_grouping="chan",
-                                include_mean=True, 
-                                relplot_kw={"row":"var", "col":"bregion"});
-        rotateLabel(fig)
-        fig.savefig(f"{savedir}/4_lineschans_feature_vs_region.pdf")
+        for val_kind in df_var_chan["val_kind"].unique():
+            df_var_chan_this = df_var_chan[df_var_chan["val_kind"]==val_kind]
+            fig = plotgood_lineplot(df_var_chan_this, xval="event", yval="val", line_grouping="chan",
+                                    include_mean=True, 
+                                    relplot_kw={"row":"var", "col":"bregion"});
+            rotateLabel(fig)
+            for ax in fig.axes.flatten():
+                ax.axhline(0, color="k")        
+            fig.savefig(f"{savedir}/4_lineschans_feature_vs_region.pdf")
         plt.close("all")
 
         # Comparing brain regions
         fig = sns.catplot(data=df_var_chan, x="bregion", y="val", col="val_kind",
-                    row="var", kind="bar", hue="event", aspect=2.5, height=4);
+                    row="var", kind="bar", hue="event", aspect=3, height=4);
         rotateLabel(fig)
         fig.savefig(f"{savedir}/7_bars_feature_vs_valkind.pdf")
 
 
         ####### MODULATION FOR EACH LEVEL_OTHER, AND GROUPINGS OF LEVEL_OTHER.
         # plot summary, grouping by each marginal level of vars_others
-        for var_other_single in var_others: # var_other_single = "stroke_index"
-            df_var_agg = aggregGeneral(df_var, group=["chan", "event", "var", "var_others", "val_kind", "val_method", var_other_single], 
-                          values = ["val"], 
-                          nonnumercols=["bregion"])
-            
-            # print("HJERE!!!")
-            # print(df_var_agg)
-            # print(df_var_agg.columns)
-            # print(var_other_single)
-            fig = sns.catplot(data=df_var_agg, x=var_other_single, y="val", col="bregion", col_wrap=4, kind="bar")
-            rotateLabel(fig)
-            fig.savefig(f"{savedir}/10_bars_vs_marginalvarother_{var_other_single}-1.pdf")
+        if len(df_var["var_others"].unique().tolist())>1:
+            for var_other_single in var_others: # var_other_single = "stroke_index"
+                df_var_agg = aggregGeneral(df_var, group=["chan", "event", "var", "var_others", "val_kind", "val_method", var_other_single], 
+                              values = ["val"], 
+                              nonnumercols=["bregion"])
+                
+                # print("HJERE!!!")
+                # print(df_var_agg)
+                # print(df_var_agg.columns)
+                # print(var_other_single)
+                fig = sns.catplot(data=df_var_agg, x=var_other_single, y="val", row="event", col="bregion", kind="bar")
+                rotateLabel(fig)
+                fig.savefig(f"{savedir}/10_bars_vs_marginalvarother_{var_other_single}-1.pdf")
 
-            fig = sns.catplot(data=df_var_agg, x="bregion", y="val", col=var_other_single, col_wrap=4, kind="bar")
-            rotateLabel(fig)
-            fig.savefig(f"{savedir}/10_bars_vs_marginalvarother_{var_other_single}-2.pdf")
+                fig = sns.catplot(data=df_var_agg, x="bregion", y="val", row="event", col=var_other_single, kind="bar")
+                rotateLabel(fig)
+                fig.savefig(f"{savedir}/10_bars_vs_marginalvarother_{var_other_single}-2.pdf")
 
 
-        # Plot summary of modulation for each level_other, 
-        fig = sns.catplot(data=df_var, x="bregion", y="val", col="lev_in_var_others", col_wrap=4, kind="bar")
-        rotateLabel(fig)
-        fig.savefig(f"{savedir}/10_bars_vs_each_level_varother-1.pdf")
-        
-        fig = sns.catplot(data=df_var, x="lev_in_var_others", y="val", col="bregion", col_wrap=4, kind="bar")
-        rotateLabel(fig)
-        fig.savefig(f"{savedir}/10_bars_vs_each_level_varother-2.pdf")
+            # Plot summary of modulation for each level_other, 
+            try:
+                fig = sns.catplot(data=df_var, x="bregion", y="val", hue="event", col="lev_in_var_others", col_wrap=4, kind="bar")
+                rotateLabel(fig)
+                fig.savefig(f"{savedir}/10_bars_vs_each_level_varother-1.pdf")
+                
+                fig = sns.catplot(data=df_var, x="lev_in_var_others", y="val", hue="event", col="bregion", col_wrap=4, kind="bar")
+                rotateLabel(fig)
+                fig.savefig(f"{savedir}/10_bars_vs_each_level_varother-2.pdf")
+            except Exception as err:
+                pass
         
         # # AVGMOD
         # dfthis = dfdat_var_methods
@@ -2673,24 +3298,26 @@ class Snippets(object):
         # fig.savefig(f"{savedir}/8_bars_features_all.pdf")
 
         if df_fr is not None:
-            fig = sns.catplot(data=df_fr, x="event", y="val", hue="val_kind",
-                              col="bregion", col_wrap=4, kind="point", aspect=1, height=3);
-            rotateLabel(fig)
-            fig.savefig(f"{savedir}/5_lines_fr.pdf")
+            try:
+                fig = sns.catplot(data=df_fr, x="event", y="val", hue="val_kind",
+                                  col="bregion", col_wrap=4, kind="point", aspect=1, height=3);
+                rotateLabel(fig)
+                fig.savefig(f"{savedir}/5_lines_fr.pdf")
 
-            fig = plotgood_lineplot(df_fr, xval="event", yval="val", line_grouping="chan",
-                                    include_mean=True, colvar="bregion", col_wrap=4);
-            rotateLabel(fig)
-            fig.savefig(f"{savedir}/5_lineschans_fr.pdf")
+                fig = plotgood_lineplot(df_fr, xval="event", yval="val", line_grouping="chan",
+                                        include_mean=True, colvar="bregion", col_wrap=4);
+                rotateLabel(fig)
+                fig.savefig(f"{savedir}/5_lineschans_fr.pdf")
+            except ValueError as err:
+                pass
 
         if df_fr_each_lev is not None:
-            ################## FR MODULATION BY LEVELS
-            fig = sns.catplot(data=df_fr_each_lev, x=var, hue="event", y="val", col="bregion", col_wrap=4, kind="point")
-            rotateLabel(fig)
-            fig.savefig(f"{savedir}/9_{var}-lines_fr_vs_level.pdf")
-
-            # try:
             try:
+                ################## FR MODULATION BY LEVELS
+                fig = sns.catplot(data=df_fr_each_lev, x=var, hue="event", y="val", col="bregion", col_wrap=4, kind="point")
+                rotateLabel(fig)
+                fig.savefig(f"{savedir}/9_{var}-lines_fr_vs_level.pdf")
+
                 fig = plotgood_lineplot(df_fr_each_lev, xval=var, yval="val", line_grouping="chan",
                                         include_mean=True, 
                                         relplot_kw={"row":"event", "col":"bregion"});
@@ -2698,6 +3325,7 @@ class Snippets(object):
                 fig.savefig(f"{savedir}/9_{var}-lineschans_fr_vs_level.pdf")
             except Exception as err:
                 pass
+        plt.close("all")
 
     def modulation_plot_summarystats(self, OUT, savedir="/tmp", which_modulation_variable="scalar"):
         """ 
@@ -3301,8 +3929,8 @@ class Snippets(object):
         sn.plotmod_overlay_trial_events_mult(ax, trials, event_times, xmin=xmin, xmax=xmax)
 
 
-    def _plotgood_rasters_split_by_feature_levels(self, ax, dfthis, var, levels_var=None,
-        xmin=None, xmax=None):
+    def _plotgood_rasters_split_by_feature_levels(self, ax, dfthis, var, event=None, 
+        levels_var=None, xmin=None, xmax=None):
         """
         Plot rasters for this dataset, blocked by levels of a given feature (var). 
         PARAMS:
@@ -3325,7 +3953,9 @@ class Snippets(object):
         list_list_snidx = []
         ymax_prev = 0
         for lev_var in levels_var:
-            dfthisthis = dfthis[(dfthis[var]==lev_var)]
+            dfthisthis = self.dataextract_as_df_good(dfthis=dfthis, event=event, var=var, var_level=lev_var)
+            # assert False, "get event"
+            # dfthisthis = dfthis[(dfthis[var]==lev_var) & (dfthis[event]==lev_var)]
             
             # hier params
             list_st = dfthisthis["spike_times"].tolist()
@@ -3354,11 +3984,7 @@ class Snippets(object):
         sn.plot_raster_spiketimes_blocked(ax, list_list_st, list_labels, list_list_trials, 
             list_list_evtimes, xmin = xmin, xmax=xmax, overlay_trial_events=overlay_trial_events)
 
-        # 2) for each session, plot its event times.
-        # print(list_list_snidx)
-        # print(list_list_trials)
-        # print(list_list_yval)
-        
+        # 2) for each session, plot its event times.        
         if self._CONCATTED_SNIPPETS:
             # Overlay each sub sn
 
@@ -3465,6 +4091,8 @@ class Snippets(object):
         ax.axvline(post_dur)
 
         ax.set_title(f"DfScalar row {ind}")
+
+        print("Mainly check: spikes matches smoothed fr")
 
     def plot_rasters_split_by_feature_levels(self, list_sites=None, savedir=None,
             list_var = None, save_ext="png", list_events=None, orient="vert"):
@@ -3599,7 +4227,7 @@ class Snippets(object):
         return fig, axes
 
     def plotgood_rasters_smfr_each_level_combined(self, site, var, 
-                vars_others=None):
+                vars_others=None, event=None):
         """ [Good], plot in a single figure both rasters (top row) and sm fr (bottom), aligned.
         Each column is a level of vars_others. 
         PARAMS;
@@ -3628,40 +4256,45 @@ class Snippets(object):
         # PREPARE plot
         # Extract data, just to see many subplots to make.
         _, levdat, levels_var = self.dataextract_as_df_conjunction_vars(var, 
-                vars_others, site)
-        ntrials = np.mean([len(v) for k, v in levdat.items()])
-        ncols = len(levdat)
-        xmin, xmax = self._plotgood_rasters_extract_xmin_xmax()
-        dur = xmax-xmin
-        nrows = 2
-        sn, _ = self._session_extract_sn_and_trial()
-        fig, axesall, kwargs = sn._plot_raster_create_figure_blank(dur, ntrials, nrows, ncols, 
-                                                                       reduce_height_for_sm_fr=True)
+                vars_others, site, event=event)
 
-        # 1) Plot the rasters ont he top row.
-        axes = axesall[0]
-        for ax, (lev_other, dfthis) in zip(axes.flatten(), levdat.items()):
-            self._plotgood_rasters_split_by_feature_levels(ax, dfthis, var, xmin=xmin, xmax=xmax)
-            ax.set_title(lev_other, fontsize=6)
-            ax.axvline(0, color="m")
+        if len(levdat)>0:
+            ntrials = np.mean([len(v) for k, v in levdat.items()])
+            ncols = len(levdat)
+            xmin, xmax = self._plotgood_rasters_extract_xmin_xmax()
+            dur = xmax-xmin
+            nrows = 2
+            sn, _ = self._session_extract_sn_and_trial()
+            fig, axesall, kwargs = sn._plot_raster_create_figure_blank(dur, ntrials, nrows, ncols, 
+                                                                           reduce_height_for_sm_fr=True)
 
-        # 2) Plot the sm fr on the lower row
-        axes = axesall[1]
-        levels_of_varsothers = list(levdat.keys())
-        self._plotgood_smoothfr_average_each_level(site, var, vars_others, 
-                                                 plot_these_levels_of_varsothers=levels_of_varsothers,
-                                                 plot_on_these_axes=axes)
+            # 1) Plot the rasters ont he top row.
+            axes = axesall[0]
+            for ax, (lev_other, dfthis) in zip(axes.flatten(), levdat.items()):
+                self._plotgood_rasters_split_by_feature_levels(ax, dfthis, var, event=event, 
+                    xmin=xmin, xmax=xmax) 
+                ax.set_title(lev_other, fontsize=6)
+                ax.axvline(0, color="m")
 
-        # make sure x axes is same for raster and sm fr
-        for i in range(ncols):
-            ax1 = axesall[0][i]
-            ax2 = axesall[1][i]
-            ax2.set_xlim(ax1.get_xlim())
+            # 2) Plot the sm fr on the lower row
+            axes = axesall[1]
+            levels_of_varsothers = list(levdat.keys())
+            self._plotgood_smoothfr_average_each_level(site, var, vars_others, event=event,
+                                                     plot_these_levels_of_varsothers=levels_of_varsothers,
+                                                     plot_on_these_axes=axes) 
 
-        # frates, floor at 0
-        for i in range(ncols):
-            ax2 = axesall[1][i]
-            ax2.set_ylim(0)
+            # make sure x axes is same for raster and sm fr
+            for i in range(ncols):
+                ax1 = axesall[0][i]
+                ax2 = axesall[1][i]
+                ax2.set_xlim(ax1.get_xlim())
+
+            # frates, floor at 0
+            for i in range(ncols):
+                ax2 = axesall[1][i]
+                ax2.set_ylim(0)
+        else:
+            fig, axes = plt.subplots()
 
         return fig, axes
 
@@ -3888,6 +4521,12 @@ class Snippets(object):
         print("starting sites: ", len(self.Sites))
         print("starting sites: ", self.Sites)
 
+        if "fr_scalar_raw" not in self.DfScalar.columns:
+            # quickly extract
+            frmat = np.concatenate(self.DfScalar["fr_sm"].tolist())
+            assert frmat.shape[0] == len(self.DfScalar)
+            self.DfScalar["fr_scalar_raw"] = np.mean(frmat,1)
+
         # (2) Remove low fr sites.
         df_fr = aggregGeneral(self.DfScalar, ["chan"], values=["fr_scalar_raw"])
         if plot_hist:
@@ -3917,7 +4556,6 @@ class Snippets(object):
         """
         import pickle
 
-
         # remove recomputable things taht are large.
         # DfScalar = DfScalar.drop(["fr_sm_sqrt", "fr_sm_times", "fr_scalar_raw", "fr_scalar", "outlier_lims_upper", "outlier_remove"], axis=1)
         path = f"{savedir}/DfScalar.pkl"
@@ -3945,8 +4583,9 @@ class Snippets(object):
                 setattr(self, a, this)
 
         # Recompute scalar fr (to help remove outliers)
-        print("Computing fr scalar ...")
-        self.DfScalar = self.datamod_compute_fr_scalar(self.DfScalar)
+        if False: # takes too long. now does qquiock computation (not winodwed)
+            print("Computing fr scalar ...")
+            self.DfScalar = self.datamod_compute_fr_scalar(self.DfScalar)
         if False: # Skip, since have already removed outliers.
             print("Removing outliers (using fr scalar) ...")
             self.pascal_remove_outliers()
@@ -4000,9 +4639,22 @@ class Snippets(object):
 
             print("SAving: ", path)
             with open(path, "wb") as f:
-                pickle.dump(this, f)
+                pickle.dump(this, f)    
 
+        # Save yaml files of params
+        from pythonlib.tools.expttools import writeDictToYaml
+        path = f"{savedir}/Params.yaml"
+        writeDictToYaml(self.Params, path)
 
+        path = f"{savedir}/ParamsGlobals.yaml"
+        writeDictToYaml(self.ParamsGlobals, path)
+
+        path = f"{savedir}/trials_sites.yaml"
+        dict_trials_sites = {
+            "trials":self.Trials,
+            "sites":self.Sites
+        }
+        writeDictToYaml(dict_trials_sites, path)
 
     def save(self, savedir, name="SP.pkl"):
         """ Helper to save, which if tried to save all , would
@@ -4090,7 +4742,8 @@ def extraction_helper(SN, which_level="trial", list_features_modulation_append=N
         # Events
         do_prune_by_inter_event_times = False
         dict_events_bounds, dict_int_bounds = SN.eventsanaly_helper_pre_postdur_for_analysis(
-            do_prune_by_inter_event_times=do_prune_by_inter_event_times)
+            do_prune_by_inter_event_times=do_prune_by_inter_event_times,
+            just_get_list_events=True)
 
         # list_events = ["samp", "go", "done_button", "off_stroke_last", "reward_all"]
         list_events = list(dict_events_bounds.keys())
@@ -4131,7 +4784,8 @@ def extraction_helper(SN, which_level="trial", list_features_modulation_append=N
 
 
     SP = Snippets(SN=SN, which_level=which_level, list_events=list_events, 
-                list_features_extraction=list_features_extraction, list_features_get_conjunction=list_features_get_conjunction, 
+                list_features_extraction=list_features_extraction, 
+                list_features_get_conjunction=list_features_get_conjunction, 
                 list_pre_dur=list_pre_dur, list_post_dur=list_post_dur,
                 strokes_only_keep_single=strokes_only_keep_single,
                   prune_feature_levels_min_n_trials=prune_feature_levels_min_n_trials,

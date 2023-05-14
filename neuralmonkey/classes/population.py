@@ -1680,11 +1680,15 @@ def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None,
     - all_pa_inherit_times_of_pa_at_this_index, either None (does nothign) or int, which
     is index into list_pa. all pa will be forced to use pa.Times from this pa.
     RETURNS:
-    - PopAnal object
+    - PopAnal object,
+    --- or None, if inputed list_pa is empty.
     NOTE:
     - for the non-concatted dim, will use the values for the first pa. assumes
     this is same across pa.
     """
+
+    if len(list_pa)==0:
+        return None
 
     dim, dim_str = help_get_dimensions(dim)
 

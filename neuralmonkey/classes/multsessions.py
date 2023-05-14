@@ -155,3 +155,14 @@ class MultSessions(object):
 
         return list_list_sites[0]
 
+    def print_summary_sessions(self):
+        """ Helper to print summary of n trial and sites for each sn
+        """
+        print("=== N trials per session")
+        for sn in self.SessionsList:
+            print(len(sn.get_trials_list()))
+
+        print("=== N units per session")
+        for i, sn in enumerate(self.SessionsList):
+            print("\n====== SESSION NUM: ", i)
+            sn.sitegetter_print_summary_nunits_by_region()
