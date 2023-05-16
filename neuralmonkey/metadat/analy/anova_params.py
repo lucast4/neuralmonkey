@@ -1,6 +1,7 @@
 """ Holds params for anava analysis for each date
 """
 
+LIST_ANALYSES = ["rulesw", "seqcontext", "singleprim"] # repo of possible analses
 
 def exptlist_getter(self):
 
@@ -18,16 +19,20 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
     Used in analy_anova_plot.py
     """
 
+    assert ANALY_VER in LIST_ANALYSES, "add this to list"
+
     PRE_DUR_CALC = None # None, since below uses diff ones for each event.
     POST_DUR_CALC = None
     globals_nmin = 8 
     globals_lenient_allow_data_if_has_n_levels = 2
     if anova_interaction:
-        score_ver='r2smfr_running_maxtime_twoway'
+        # score_ver='r2smfr_running_maxtime_twoway'
+        score_ver='r2_maxtime_2way_mshuff'
         get_z_score = False
     else:
         # score_ver='fracmod_smfr_minshuff'
-        score_ver='r2smfr_running_maxtime_oneway'
+        # score_ver='r2smfr_running_maxtime_oneway'
+        score_ver='r2_maxtime_1way_mshuff'
         get_z_score=True
 
 
@@ -42,35 +47,26 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
             "seqc_0_loc",
             "seqc_1_shape",
             "seqc_1_loc",
-            "seqc_2_shape",
-            "seqc_2_loc",
-            # "seqc_1_shape",
             # "seqc_2_shape",
-            # "seqc_3_shape",
-            # "seqc_1_loc",
             # "seqc_2_loc",
-            # "seqc_3_loc",
             ]
         LIST_VARS_CONJUNCTION = [
             ["seqc_0_shape", "seqc_0_loc", "seqc_1_shape", "seqc_1_loc", "seqc_2_shape", "seqc_2_loc"],
             ["seqc_0_shape", "seqc_0_loc", "seqc_1_shape", "seqc_1_loc"],
             ["seqc_0_shape", "seqc_0_loc"],
-            ["epoch"],
-            ["epoch"],
-            ["seqc_0_shape", "seqc_0_loc"],
-            ["seqc_0_shape", "seqc_0_loc"],
-            ["seqc_0_shape", "seqc_0_loc", "seqc_1_shape", "seqc_1_loc"],
-            ["seqc_0_shape", "seqc_0_loc", "seqc_1_shape", "seqc_1_loc"],
-            # ["epoch"],
-            # ["epoch"],
-            # ["epoch"],
-            # ["epoch"],
-            # ["epoch"],
-            # ["epoch"],
+            ["seqc_0_loc"],
+            ["seqc_0_shape"],
+            ["seqc_0_shape", "seqc_0_loc", "seqc_1_loc"],
+            ["seqc_0_shape", "seqc_0_loc", "seqc_1_shape"],
+            # ["seqc_0_shape", "seqc_0_loc", "seqc_1_shape", "seqc_1_loc"],
+            # ["seqc_0_shape", "seqc_0_loc", "seqc_1_shape", "seqc_1_loc"],
         ]           
-        list_events = ["01_fix_touch", "02_samp", "04_first_raise"]
-        list_pre_dur = [-0.4, 0.05, -0.1]
-        list_post_dur = [0.4, 0.6, 0.5]
+        # list_events = ["01_fix_touch", "02_samp", "04_first_raise"]
+        # list_pre_dur = [-0.4, 0.05, -0.1]
+        # list_post_dur = [0.4, 0.6, 0.5]
+        list_events = ["02_samp", "02_samp", "04_first_raise", "05_on_strokeidx_0", "08_post", "09_reward_all"]
+        list_pre_dur = [-0.6, 0.05, -0.6, -0.1, 0.05, 0.05]
+        list_post_dur = [-0.05, 0.6, -0.05, 0.6, 0.6, 0.6]
 
     elif which_level=="trial" and ANALY_VER=="rulesw":
         # Rule switching.
@@ -78,16 +74,38 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
             "epoch",
             "seqc_0_shape",
             "seqc_0_loc",
+            "probe",
         ]
         LIST_VARS_CONJUNCTION = [
             ["taskgroup"],
             ["epoch", "seqc_0_loc"],
             ["epoch", "seqc_0_shape"],
+            ["seqc_0_loc", "seqc_0_shape", "epoch"] 
         ]
 
-        list_events = ["00_fixcue", "00_fixcue", "01_fix_touch", "02_samp", "03_go_cue", "05_on_strokeidx_0"]
-        list_pre_dur = [-0.6, 0.05, -0.4, 0.05, -0.6, -0.2]
-        list_post_dur = [0,   0.38, 0.4, 0.6, -0.05, 0.45]
+        # list_events = ["00_fixcue", "00_fixcue", "01_fix_touch", "02_samp", "03_go_cue", "05_on_strokeidx_0", ""]
+        # list_pre_dur = [-0.6, 0.05, -0.4, 0.05, -0.6, -0.2]
+        # list_post_dur = [0,   0.38, 0.4, 0.6, -0.05, 0.45]
+        list_events = ["00_fixcue", "00_fixcue", "02_samp", "04_first_raise", "05_on_strokeidx_0", "07_doneb", "08_post", "09_reward_all"]
+        list_pre_dur = [-0.6, 0.05, 0.05, -0.6, -0.1, -0.5, 0.05, 0.05]
+        list_post_dur = [-0.05, 0.6, 0.6, -0.05, 0.6, 0.3, 0.6, 0.6]
+
+    elif which_level=="trial" and ANALY_VER=="singleprim":
+        # single prim (the first stroke)
+        LIST_VAR = [
+            "gridsize",
+            "seqc_0_shape",
+            "seqc_0_loc",
+        ]
+        LIST_VARS_CONJUNCTION = [
+            ["seqc_0_loc", "seqc_0_shape"],
+            ["seqc_0_loc", "gridsize"],
+            ["gridsize", "seqc_0_shape"],
+        ]
+
+        list_events = ["02_samp", "02_samp", "04_first_raise", "05_on_strokeidx_0", "08_post", "09_reward_all"]
+        list_pre_dur = [-0.6, 0.05, -0.6, -0.1, 0.05, 0.05]
+        list_post_dur = [-0.05, 0.6, -0.05, 0.6, 0.6, 0.6]
 
     # ###################################
     # LIST_VAR = [
@@ -179,7 +197,7 @@ def params_getter_extraction(animal, DATE, which_level, ANALY_VER):
     """
 
     assert isinstance(DATE, int)
-    assert ANALY_VER in ["rulesw", "seqcontext"] # repo of possible analses
+    assert ANALY_VER in LIST_ANALYSES, "add this to list"
 
     ################ SCORE PERFORMANCE?
     if ANALY_VER in ["rulesw"]:
@@ -197,7 +215,7 @@ def params_getter_extraction(animal, DATE, which_level, ANALY_VER):
     ################ SEQUENCE CONTEXT?
     if ANALY_VER in []:
         DO_EXTRACT_CONTEXT = False
-    elif ANALY_VER in ["seqcontext", "rulesw"]:
+    elif ANALY_VER in ["seqcontext", "rulesw", "singleprim"]:
         DO_EXTRACT_CONTEXT = True
     else:
         assert False
@@ -205,22 +223,25 @@ def params_getter_extraction(animal, DATE, which_level, ANALY_VER):
     ################ BEH DATASET PREPROCESS STEPS
     if ANALY_VER in ["rulesw"]:
         preprocess_steps_append = ["sanity_gridloc_identical", "correct_sequencing_binary_score", "one_to_one_beh_task_strokes"]
-    elif ANALY_VER in ["seqcontext"]:
+    elif ANALY_VER in ["seqcontext", "singleprim"]:
         preprocess_steps_append = ["sanity_gridloc_identical", "one_to_one_beh_task_strokes"]
     else:
         assert False
 
     ################ FEATURES TO EXTRACT
-    if ANALY_VER in ["rulesw", "seqcontext"]:
+    if ANALY_VER in ["rulesw", "seqcontext", "singleprim"]:
         list_features_modulation_append = ["probe", "taskgroup", "character", "trialcode", "epoch", 
                                             "task_kind", "supervision_stage_concise"]
     else:
         assert False
+
     if DO_EXTRACT_CONTEXT:
+        # These are features that are gotten from extracting context
         list_features_modulation_append = list_features_modulation_append + ["seqc_nstrokes_beh", "seqc_nstrokes_task",
                                            "seqc_0_shape", "seqc_0_loc", "seqc_1_shape", 
                                            "seqc_1_loc", "seqc_2_shape", "seqc_2_loc", 
-                                           "seqc_3_shape", "seqc_3_loc"]
+                                           "seqc_3_shape", "seqc_3_loc", 
+                                           "gridsize"]
 
     params = {
         "DATE":DATE,

@@ -65,6 +65,9 @@ class MetricsScalar(object):
         assert np.all(np.diff(fr_times_mat, axis=0)<0.001), "some rows have different time bins from each other"
         self.TimesFrSm = self.Data.iloc[0]["fr_sm_times"].squeeze() # (ntimes,)
 
+        # Sort so is increasing trialcode.
+        from pythonlib.tools.pandastools import sort_rows_by_trialcode
+        self.Data = sort_rows_by_trialcode(self.Data)
 
     def calc_fr_across_levels(self):
         """ Wrapper to cmpute, for each channel:
@@ -229,6 +232,8 @@ class MetricsScalar(object):
             print(self.Data["event"].unique())
             print(event)
             assert False
+
+        dfthis = dfthis.reset_index(drop=True)
         # 1) Modulation
         modulation = self._calc_modulation_by_frsm_v2(dfthis, var, levels, COL_FR, False)
 
@@ -263,7 +268,6 @@ class MetricsScalar(object):
 
         if levels is None:
             levels = self.MapVarToLevels[var]
-
 
         if do_shuffle:
             dfthis = _shuffle_dataset(dfthis, var)
@@ -548,6 +552,82 @@ class MetricsScalar(object):
 
     #     dfthis =
 
+    def _anova_running_wrapper_nosplits(self, dfthis, var, vars_others="vars_others",
+        TIME_BIN_SIZE=0.2, agg_method="max_sse", do_minus_shuff=True, n_shuff = 12,
+        CHECK_SAMPLE_SIZE=False):
+        """ Anova, taking the peta for the time bin that is max. 
+        Emprically, with bin size of 0.2, n_shuff of 10 is very good for score minus shuffle,
+        even for low-fr and low modulation cases. NOTE: but not good for z-score, there is high
+        variance, even for n = 20-30. Probably want like n = 50.
+        PARAMS:
+        - vars_others, either str col name (2-way anova) or None (1-way)
+        - CHECK_SAMPLE_SIZE, code for iterating for differnet n_shuff and plotting, so see where
+        variance drops. 
+        RETURNS:
+        - DICT_SCORE, dict[source]=scalar, partial eta 2
+        - DICT_MINSHUFF, same but minus shuffle
+        - DICT_ZSCORE, same, but minus z-score
+        """
+
+        from pythonlib.tools.statstools import zscore
+        # 1) Modulation
+        res_dict_peta2 = self._anova_running_wrapper_nosplits_inner(dfthis, var, vars_others, TIME_BIN_SIZE,
+            agg_method)
+
+        # 2) Shuffles
+        res_dict_peta2_shuff = []
+        for i in range(n_shuff):
+            tmp = self._anova_running_wrapper_nosplits_inner(dfthis, var, vars_others, TIME_BIN_SIZE,
+                agg_method, do_shuffle=True)
+            res_dict_peta2_shuff.append(tmp)
+
+        # 3) Difference
+        list_source = list(res_dict_peta2.keys())
+        DICT_MINSHUFF = {}
+        DICT_ZSCORE = {}
+        DICT_SCORE = res_dict_peta2
+        for s in list_source:
+            val = res_dict_peta2[s]
+            vals_shuff = [x[s] for x in res_dict_peta2_shuff]
+
+            val_minus_shuff = val - np.mean(vals_shuff)
+            val_zscore = zscore(val, vals_shuff)
+            DICT_MINSHUFF[s] = val_minus_shuff
+            DICT_ZSCORE[s] = val_zscore
+            # print(val)
+            # print(vals_shuff)
+            # print(np.mean(vals_shuff))
+            # print(np.std(vals_shuff))
+            # assert False
+
+        if CHECK_SAMPLE_SIZE:
+            assert False, "run this in notebook."
+            RES_ZSCORE = []
+            RES_MINSHUFF = []
+            for _ in range(5):
+                for nshuff in range(5, 20, 2):
+                    print(nshuff)
+                    DICT_SCORE, DICT_MINSHUFF, DICT_ZSCORE = MS._anova_running_wrapper_nosplits(MS.Data, var, n_shuff=nshuff)
+                    DICT_ZSCORE["nshuff"] = nshuff
+                    DICT_MINSHUFF["nshuff"] = nshuff
+                    RES_ZSCORE.append(DICT_ZSCORE)        
+                    RES_MINSHUFF.append(DICT_MINSHUFF)
+            #         print(DICT_SCORE)
+            #         print(DICT_MINSHUFF)
+            #         print(DICT_ZSCORE)
+
+            import seaborn as sns
+            # dftmp = pd.DataFrame(RES_ZSCORE)
+            dftmp = pd.DataFrame(RES_MINSHUFF)
+            fig = sns.catplot(data=dftmp, x="nshuff", y="epoch")
+            plt.axhline(0)
+            sns.catplot(data=dftmp, x="nshuff", y="vars_others")
+            plt.axhline(0)
+            sns.catplot(data=dftmp, x="nshuff", y="epoch * vars_others")
+            plt.axhline(0)
+
+        return DICT_SCORE, DICT_MINSHUFF, DICT_ZSCORE
+
     def _anova_running_wrapper(self, dfthis, var, vars_others="vars_others",
             n_iter=None, time_bin_size = None, PLOT=False, event=None, 
             PLOT_RESULTS_STANDARD_ERROR=False):
@@ -681,6 +761,83 @@ class MetricsScalar(object):
             petas = self._anova_running_results_compute_peta(dict_results, source)
             ax.plot(petas, label=source)
         ax.legend()
+
+    def _anova_running_wrapper_nosplits_inner(self, dfthis, var, vars_others="vars_others", 
+            TIME_BIN_SIZE = 0.2, agg_method="max_sse", PLOT=False, do_shuffle = False):
+        """
+        Wrapper for different methods for summarizing running anova into a single partial-eta squared
+        value, wihtout splitting data into train/test.
+        PARAMS;
+        - var, str
+        - vars_others, str, column name --> 2-way anova.
+        - agg_method, str, method.
+        --- max_sse, take the peta2 at the timebin with max sse, Collect the sse separately for each source.
+        but compute peta by normalizing to the mean residual error across the sources.
+        RETURNS:
+        - res_dict_peta2, dict holding scalar p-eta-sq for each source (var, var_others, var_interaction)
+            {'epoch': 0.01647922097755133,
+             'vars_others': 0.0509808147337901,
+             'epoch * vars_others': 0.029849446813140834}
+        """
+
+        assert agg_method=="max_sse", "not yet coded for others"
+
+        if do_shuffle:
+            if vars_others is None:
+                # One way
+                dfthis = _shuffle_dataset(dfthis, var)
+            else:
+                # two way
+                dfthis = _shuffle_dataset_varconj(dfthis, [var, vars_others])
+
+        # Compute running anova to find max indices, using training set
+        # print("_anova_running_compute")
+        dict_results, times, dict_peta2 = self._anova_running_compute(dfthis, var, 
+            vars_others=vars_others, time_bin_size=TIME_BIN_SIZE, return_peta2=True)
+
+        if PLOT:
+            self._anova_running_results_plot(dict_results)
+            
+        # Using training data, find min/max ind. Then extract peta for the test data
+        list_source = dict_results.keys()
+        dict_ss_effects = {}
+        dict_ss_resid = {} # collect all residuals
+        # list_residuals = []
+        res_dict_peta2 = {}
+        for s in list_source:
+
+            if s=="Residual":
+                continue
+
+            indmax = np.argmax(dict_results[s]) # maximum ss effect
+            peta2_max = dict_peta2[s][indmax]
+            
+            if PLOT:
+                print(f"max ind for {s} = {indmax}")
+                print(f"peta2: {peta2_max}")
+
+            res_dict_peta2[s] = peta2_max
+            dict_ss_effects[s] = dict_results[s][indmax]
+            dict_ss_resid[s] = dict_results["Residual"][indmax]
+
+        # Take the mean residual as the single global residual
+        ss_resid_mean = np.mean(list(dict_ss_resid.values()))
+
+        # FINALLY, compute peta for each source
+        dict_peta2_commonresidual = {}
+        for source, ss_effect in dict_ss_effects.items():
+    #         dict_peta2[source] = ss_effect/(ss_effect + ss_resid_max)
+            dict_peta2_commonresidual[source] = ss_effect/(ss_effect + ss_resid_mean)
+
+        if PLOT:
+            print("----")
+            print("EFFECTS:", dict_ss_effects)
+            print("RESID:", dict_ss_resid)
+            print("PETA2 (using resid for each own tbin):", res_dict_peta2)
+            print("PETA2 (using common ss resid):", dict_peta2_commonresidual)
+
+        return dict_peta2_commonresidual
+
 
     def _anova_running_wrapper_inner(self, dfthis, var, vars_others="vars_others", 
             TIME_BIN_SIZE = 0.1, PLOT=False, test_size=0.75):
@@ -838,7 +995,7 @@ class MetricsScalar(object):
     #     return dict_results
 
     def _anova_running_compute(self, dfthis, var, vars_others="vars_others", 
-            fr_ver="fr_sm_sqrt", time_bin_size=0.2, single_time_sec=None):
+            fr_ver="fr_sm_sqrt", time_bin_size=0.2, single_time_sec=None, return_peta2=False):
         """ Get running two-way anova, var and othervars
         If vars_others is None, then does one-way (var). Otherwise is two-way (var, vars_others)
         PARAMS:
@@ -854,6 +1011,9 @@ class MetricsScalar(object):
             times = array([0.3500000000000001])
         """
         import pingouin as pg
+            
+        if vars_others is not None:
+            assert isinstance(vars_others, str), "this must be the the column name, not list of vars"
 
         # Extract data
         # print("_dataextract_as_frmat")
@@ -865,7 +1025,10 @@ class MetricsScalar(object):
         # Get running anova.
         ntimes = frmat.shape[1]
         assert ntimes == len(times)
+            
+        # Initialize results
         dict_results = {}
+        dict_peta2 = {}
         if vars_others is not None:
             list_sources = [var, vars_others, f"{var} * {vars_others}", "Residual"]
         else:
@@ -874,15 +1037,18 @@ class MetricsScalar(object):
         for s in list_sources:
             if s=="Within":
                 dict_results["Residual"] = []
+                dict_peta2["Residual"] = []
             else:
                 dict_results[s] = []
+                dict_peta2[s] = []
 
         if single_time_sec is None:
             list_time_bins = range(ntimes)
         else:
             # get the bin that is closes to this single time
-            _frvec, _ind, times = self._dataextract_frvec_single_timebin_frmat(frmat, times, single_time_sec)
+            _frvec, _ind, _time = self._dataextract_frvec_single_timebin_frmat(frmat, times, single_time_sec)
             list_time_bins = [_ind]
+            times = [_time]
 
         for i in list_time_bins:
             
@@ -902,18 +1068,29 @@ class MetricsScalar(object):
                 # print(s)
                 # print("HERE",   aov[aov["Source"]==s]["SS"].values)
                 SS = aov[aov["Source"]==s]["SS"].values[0]
+                peta2 = aov[aov["Source"]==s]["n2"].values[0]
+
                 if s=="Within":
                     # for one-way, it is called Within.
                     dict_results["Residual"].append(SS)
+                    dict_peta2["Residual"].append(peta2)
                 else:
                     dict_results[s].append(SS)
+                    dict_peta2[s].append(peta2)
+
 
         # print(frmat.shape)
         # for source, dat in dict_results.items():
         #     print(source, len(dat))
         # assert False
 
-        return dict_results, times
+        for k, v in dict_results.items():
+            assert len(v)==len(times), "this needed, as I take index into teims later."
+
+        if return_peta2:
+            return dict_results, times, dict_peta2
+        else:
+            return dict_results, times
 
 
     ########################### MODULATION BY TIME (e.g., event-aligned)
@@ -1085,7 +1262,7 @@ class MetricsScalar(object):
                 timesthis = times[indsthis]
                 dur = max(timesthis) - min(timesthis)
                 if dur<MINDUR:
-                    print("Skipping bin: ", binid, dur)
+                    # print("Skipping bin: ", binid, dur)
                     continue
                 frmatthis = frmat[:, indsthis]
                 
@@ -1166,7 +1343,8 @@ class MetricsScalar(object):
             print(event)
             print(self.Data.columns)
             assert False, "what type is this event?"
-            
+        
+        dfthis = dfthis.reset_index(drop=True)
         return self._dataextract_as_frmat(dfthis, fr_ver) 
 
     def modulationgood_wrapper_plotexamples(self, site, var, vars_conjuction):
@@ -1209,6 +1387,7 @@ class MetricsScalar(object):
         - eventscores, dict, keys are events and values are modulation scores.
         """
 
+
         assert vars_others is not None, "You shoudl use modulationgood_wrapper_ instead"
         if version=="r2smfr_running_maxtime_twoway":
             # running anova, then take peta2 at max timepoint (cross-validated)
@@ -1223,6 +1402,14 @@ class MetricsScalar(object):
                 val_interaction = np.mean(res[f"{var} * {vars_others}"]).item()
 
                 eventscores[event] = (val, val_others, val_interaction)
+        elif version=="r2_maxtime_2way_mshuff":
+            """ Max time of r2, without splitting, and subtracting shuffled data."""
+            eventscores = {}
+            for event in self.ListEventsUniqname:
+                dfthis = self.Data[self.Data["event"]==event]
+                _, DICT_MINSHUFF, _ = self._anova_running_wrapper_nosplits(dfthis, var, 
+                        vars_others=vars_others)
+                eventscores[event] = (DICT_MINSHUFF[var], DICT_MINSHUFF[vars_others], DICT_MINSHUFF[f"{var} * {vars_others}"])
         else:
             print(version)
             assert False, "code it"
@@ -1240,7 +1427,7 @@ class MetricsScalar(object):
         """
 
         if return_as_score_zscore_tuple:
-            assert version in ["fracmod_smfr_minshuff", "r2smfr_running_maxtime_oneway"], "code it!"
+            assert version in ["fracmod_smfr_minshuff", "r2smfr_running_maxtime_oneway", "r2_maxtime_1way_mshuff"], "code it!"
 
         if version=="r2smfr_minshuff":
             # r2 using smoothed fr, minus shuffled
@@ -1266,6 +1453,19 @@ class MetricsScalar(object):
         elif version=="r2scal_minshuff":
             assert False, "code it..."
             # _calc_modulation_by
+
+        elif version=="r2_maxtime_1way_mshuff":
+            # running anova, then take max peta2, and substract the mean over shuffles
+            eventscores = {}
+            for event in self.ListEventsUniqname:
+                dfthis = self.Data[self.Data["event"]==event]
+                DICT_SCORE, DICT_MINSHUFF, DICT_ZSCORE = self._anova_running_wrapper_nosplits(dfthis, var, 
+                        vars_others=None)
+                if return_as_score_zscore_tuple:
+                    eventscores[event] = (DICT_MINSHUFF[var], DICT_ZSCORE[var])
+                else:
+                    eventscores[event] = DICT_MINSHUFF[var]
+
         elif version=="r2smfr_running_maxtime_oneway":
             # running anova, then take peta2 at max timepoint (cross-validated)
             # minus peta2 at min timepoint.
@@ -1303,6 +1503,56 @@ class MetricsScalar(object):
             return eventscores
 
 ####################### UTILS
+def _shuffle_dataset_varconj(df, list_var, maintain_block_temporal_structure=True, 
+        shift_level="datapt", DEBUG=False, PRINT=False):
+    """ Like _shuffle_dataset, but allowing you maintain the correlation between
+    multiple varialbes. e..g, if you are doing two-way anova, want to make sure the sample
+    size of conjunction var1xvar2 does not change. TO do this, make dummy variable that 
+    is conjunciton, shuffle using that varaibale, then pull out new var1 and var2 from 
+    dummy
+    PARAMS:
+    - list_var, list of str, 
+    RETURNS:
+    - copy of df, with labels for each var in list_var shuffed
+    """
+    # make a new temp var
+    from pythonlib.tools.pandastools import append_col_with_grp_index, applyFunctionToAllRows, grouping_print_n_samples
+
+    assert len(list_var)==2, "not yet coded for >2"
+
+    # 1) Make a dummy conjunction variable.
+    dfthis = append_col_with_grp_index(df, list_var, "dummy", use_strings=False)
+
+    # 2) Shuffle
+    dfthis = _shuffle_dataset(dfthis, "dummy", maintain_block_temporal_structure, shift_level, DEBUG)
+
+    # 3) Pull out the var1 and var2
+    # resassign var and vars_others
+    def F(x):
+        return x["dummy"][0]
+    dfthis = applyFunctionToAllRows(dfthis, F, list_var[0])
+
+    def F(x):
+        return x["dummy"][1]
+    dfthis = applyFunctionToAllRows(dfthis, F, list_var[1])
+
+    if PRINT:
+        print("=== Original, first 5 inds. SHOULD NOT CHANGE")
+        print(df[list_var[0]][:5])
+        print(df[list_var[1]][:5])
+
+        print("=== Shuffled, first 5 inds. SHOULD CHANGE")
+        print(dfthis[list_var[0]][:5])
+        print(dfthis[list_var[1]][:5])
+
+        print("=== Orig/Shuffled, n for each conj. SHOULD NOT CHANGE")
+        print("-orig")
+        grouping_print_n_samples(df, list_var)
+        print("-shuffled")
+        grouping_print_n_samples(dfthis, list_var)
+
+    return dfthis
+
 def _shuffle_dataset(df, var, maintain_block_temporal_structure=True, 
         shift_level="datapt", DEBUG=False):
     """ returns a copy of df, with var labels shuffled
@@ -1318,7 +1568,7 @@ def _shuffle_dataset(df, var, maintain_block_temporal_structure=True,
     from pythonlib.tools.listtools import list_roll
 
     levels_orig = df[var].tolist()
-
+    # maintain_block_temporal_structure=False
     if maintain_block_temporal_structure:
         # make sure dataframe is in order of trials.
 
@@ -1331,9 +1581,11 @@ def _shuffle_dataset(df, var, maintain_block_temporal_structure=True,
 
         trialcodes = df["trialcode"].tolist()
         trialcodes_sorted = sorted(trialcodes, key=lambda x: tc_to_tupleints(x))
-        # for t1, t2 in zip(trialcodes, trialcodes_sorted):
-        #     print(t1, t2)
-        assert trialcodes==trialcodes_sorted, "ok, you need to code this. sort dataframe"
+        if not trialcodes==trialcodes_sorted:
+            print("Trialcodes, -- , trialcodes_sorted")
+            for t1, t2 in zip(trialcodes, trialcodes_sorted):
+                print(t1, t2)
+            assert False, "ok, you need to code this. sort dataframe"
         # return the levels in this order
         # print(trialcodes)
         # print(sorted(trialcodes))

@@ -74,13 +74,10 @@ if __name__=="__main__":
         writeDictToYaml(params, path)
 
         from neuralmonkey.classes.snippets import _dataset_extract_prune_general
-        list_superv_keep = ["off|1|rank|0", "off|0||0", "off|1|solid|0"]
-        # if ANALY_VER in ["trial_rulesw"]:
-        #     preprocess_steps_append = ["correct_sequencing_binary_score", "one_to_one_beh_task_strokes"]
-        # elif ANALY_VER in ["trial_seqcontext"]:
-        #     preprocess_steps_append = ["one_to_one_beh_task_strokes"]
-        # else:
-        #     assert False
+        if True:
+            list_superv_keep = "all" # DONT PRUNE!
+        else:
+            list_superv_keep = None # keep only not_training
         dataset_pruned_for_trial_analysis = _dataset_extract_prune_general(sn, 
             list_superv_keep=list_superv_keep, 
             preprocess_steps_append=params["preprocess_steps_append"])    

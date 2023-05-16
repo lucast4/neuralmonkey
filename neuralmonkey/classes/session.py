@@ -6183,7 +6183,7 @@ class Session(object):
                 y_text = YLIM[0]
             if include_text:
                 y_text = y_text + text_yshift
-                ax.text(time, y_text, name, rotation="vertical", fontsize=14)
+                ax.text(time, y_text, name, rotation="vertical", fontsize=10, color="m", alpha=0.5)
 
         # color in stroke times
         if strokes_patches and "strokes" in which_events:

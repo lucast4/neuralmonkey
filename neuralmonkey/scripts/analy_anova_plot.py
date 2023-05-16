@@ -72,6 +72,12 @@ if __name__=="__main__":
                     globals_nmin = params["globals_nmin"],
                     globals_lenient_allow_data_if_has_n_levels = params["globals_lenient_allow_data_if_has_n_levels"],
                     get_z_score=params["get_z_score"])
+            if SP.DfScalarBeforeRemoveSuperv is not None:
+                # then pruned. replace the original
+                SP.DfScalar = SP.DfScalarBeforeRemoveSuperv
         except NotEnoughDataException as err:
             print("!! SKIPPING: ", var, vars_conjuction)
+            if SP.DfScalarBeforeRemoveSuperv is not None:
+                # then pruned. replace the original
+                SP.DfScalar = SP.DfScalarBeforeRemoveSuperv
             pass

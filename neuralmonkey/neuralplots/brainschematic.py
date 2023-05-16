@@ -87,14 +87,16 @@ def regions_get_ordered_by_x(ver="hand", prune_index=True, combined_regions=Fals
     
     return regions_ordered_by_x
 
-def plot_df(df, valname, subplot_var=None, savedir = None, savesuffix="", 
+def plot_df(df, valname, subplot_var, savedir = None, savesuffix="", 
         DEBUG=False, diverge=False):
     """
+    GOOD - plot given df with values in column (valname) and multiple subplots
+    (subplot_var). 
     PARAMS:
     - df, long-form dataframe with N rows per brain region, if N>1, then will
     agg by taking mean.
-    - valname, str, column name in df to plot.
-    - subplot_var, which variables levels to have in each subplot. Leave None if doesnt
+    - valname, str, column name in df that maps to color (e.g., "val")
+    - subplot_var, which variables levels to separate into subplots. Leave None if doesnt
     have.
     """
     from pythonlib.tools.pandastools import convert_to_2d_dataframe
@@ -216,6 +218,7 @@ def plot_df(df, valname, subplot_var=None, savedir = None, savesuffix="",
         print("Saving to: ", path)
         fig.savefig(path)
         fig_hist.savefig(path_hist)
+        
     return fig, axes
 
 
