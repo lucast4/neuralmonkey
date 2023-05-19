@@ -1,0 +1,8 @@
+# Union, across sessions
+# -- These usually the same across sessions
+sites_garbage: [21, 26, 36, 65, 67, 100, 102, 105, 112, 222, 348, 403, 462]
+
+# Using 4.5x STD (thresh: 4.5, based on inspection of raw data)
+sites_low_fr: []
+
+done_garbage: true

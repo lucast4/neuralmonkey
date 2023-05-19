@@ -212,7 +212,8 @@ class Snippets(object):
         - list_features_get_conjunction, list of str, features for which will get conjuction
         of other features. Thesea re also the features that wil be plot and anlyszes. 
         - dataset_pruned_for_trial_analysis, Dataset object, which,if not None, will
-        be used to determine which trials (i.e. onluy tjhose in Dataset)            
+        be used to determine which trials (i.e. onluy tjhose in Dataset). NOTE: used only for trials,
+        not for its data.            
         NOTE: see extraction_helper() for notes on params.
         """
 
@@ -251,11 +252,13 @@ class Snippets(object):
         if dataset_pruned_for_trial_analysis is None:
             dataset_pruned_for_trial_analysis = SN.Datasetbeh
 
-        if NEW_VERSION:
-            assert len(list(set(list_pre_dur)))==1, "assumes same. prob makes sense, then later prune for computation."
-            assert len(list(set(list_post_dur)))==1, "assumes same. prob makes sense, then later prune for computation."
-            PRE_DUR = list_pre_dur[0]
-            POST_DUR = list_post_dur[0]
+        if False:
+            # Stop doing this, to allow different durations
+            if NEW_VERSION:
+                assert len(list(set(list_pre_dur)))==1, "assumes same. prob makes sense, then later prune for computation."
+                assert len(list(set(list_post_dur)))==1, "assumes same. prob makes sense, then later prune for computation."
+                PRE_DUR = list_pre_dur[0]
+                POST_DUR = list_post_dur[0]
 
         ### EXTRACT SNIPPETS
         if which_level=="stroke":
@@ -274,8 +277,14 @@ class Snippets(object):
                 list_features_extraction)
             trials = None
 
-
             print("Extracting, SN.snippets_extract_bystroke...")
+            for var in list_features_extraction:
+                if (var not in SN.Datasetbeh.Dat.columns) or (var not in DS.Dat.columns):
+                    print(var)
+                    print(SN.Datasetbeh.columns)
+                    print(DS.Dat.columns)
+                    assert False, "get this feature"
+
             if NEW_VERSION:
                 DfScalar = SN.snippets_extract_bystroke(sites_keep, DS, 
                     features_to_get_extra=list_features_extraction, 
@@ -316,9 +325,17 @@ class Snippets(object):
                 #     'stroke_index', 'stroke_index_fromlast', 'stroke_index_semantic', 
                 #     'shape_oriented', 'ind_taskstroke_orig', 'gridloc',
                 #     'gridloc_x', 'gridloc_y', 'h_v_move_from_prev']
+
+                # Fail here if dataset doesnt have features
+                for var in list_features_extraction:
+                    if var not in SN.Datasetbeh.Dat.columns:
+                        print(var)
+                        print(SN.Datasetbeh.columns)
+                        assert False, "get this feature"
+
                 DfScalar, list_events_uniqnames = SN.snippets_extract_bytrial(sites_keep, trials,
-                    list_events, features_to_get_extra=list_features_extraction, 
-                    pre_dur=PRE_DUR, post_dur=POST_DUR)
+                    list_events, list_pre_dur, list_post_dur,
+                    features_to_get_extra=list_features_extraction)
                 ListPA = None
             else:
                 ListPA, list_events_uniqnames = self.extract_snippets_trials(trials, sites_keep, list_events, list_pre_dur, list_post_dur,
@@ -983,7 +1000,7 @@ class Snippets(object):
             # for each variable, remove rows that have nan or None
             tmp = dfthis[varthis].isna()
             # indsdrop = np.where([x is None for x in tmp])
-            indsdrop = list(np.where(tmp)[0])
+            indsdrop = np.where(tmp)[0]
             if DEBUG_CONJUNCTIONS:
                 print(f"var {varthis}, Removing this many rows with None or nan: {sum(indsdrop)}")
             try:
@@ -997,7 +1014,10 @@ class Snippets(object):
                 raise err
 
         # 2) extract_with_levels_of_conjunction_vars
-        assert len(dfthis)>0, "why is empty? incorrect event or sites?"
+        if False: # is fine to not have, since now I am not constraining that events must exist for all
+            # trials (at equal proportion across events)
+            assert len(dfthis)>0, "why is empty? incorrect event or sites?"
+
         # print("HERERER:", len(dfthis))
         dfthis, dict_lev_df = extract_with_levels_of_conjunction_vars(dfthis, var, 
             vars_others, levels_var, n_min, 
@@ -1245,13 +1265,16 @@ class Snippets(object):
         score_ver='r2smfr_minshuff', SAVEDIR="/tmp", 
         PRE_DUR_CALC = None, POST_DUR_CALC= None,
         globals_nmin = None, globals_lenient_allow_data_if_has_n_levels = None,
-        FR_THRESH=4,
+        FR_THRESH=None, FR_PERCENTILE = 10, 
         list_events = None, list_pre_dur = None, list_post_dur = None,
         DEBUG_CONJUNCTIONS = False,
         PLOT_EACH_CHAN=False,
         get_z_score=True,
         reload_df_var_if_exists=True,
-        supervision_keep_only_not_training=True):
+        supervision_keep_only_not_training=True,
+        trialcodes_keep=None,
+        ANALY_VER = "default",
+        params_to_save=None):
         """
         New version for computing and plotting all modulation (anova) for a given variable. and set
         of conjunction variables. 
@@ -1264,6 +1287,7 @@ class Snippets(object):
             list_post_dur = [-0, 0.6, -0.5],):\
         - DEBUG_CONJUNCTIONS, bool, if true, then for each data extraction prints the n trials
         for each var/othervar conjunctions, to help see what data extracted. 
+        - params_to_save, usually the params that hold the meta params. see analy_anova_plot
         """
         from pythonlib.tools.expttools import writeDictToYaml        
         import pickle
@@ -1277,41 +1301,63 @@ class Snippets(object):
         
         assert isinstance(vars_conjuction, list)
 
-        if supervision_keep_only_not_training:
-            # In general, prune supervision (to remove training trials), 
-            # unless var or vars_conjuction cares about supervision.
-            # if has to prune:
-                # --> stores copy of DfScalar in DfScalarBeforeRemoveSuperv
-                # --> prunes so DfScalar only has no_supervision trials.
-            # else:
-                # --> DfScalarBeforeRemoveSuperv = None
-            if var=="supervision_stage_concise" or "supervision_stage_concise" in vars_conjuction:
-                # is ok, do not prune supervision stage
+        df_scalar_orig_length = len(self.DfScalar)
+        if trialcodes_keep is not None:
+            assert isinstance(trialcodes_keep, list)
+            # Then prune to just these trialcodes.
+            indskeep = self.DfScalar["trialcode"].isin(trialcodes_keep)
+            if all(indskeep):
+                # do nothing, all are already in "not training"
                 pass
+            elif all(~indskeep):
+                # Lost all trials, this is weird.
+                print(trialcodes_keep)
+                print(self.DfScalar["trialcode"].tolist())
+                assert False
             else:
-                indskeep = self.DfScalar["supervision_stage_concise"].isin(LIST_SUPERV_NOT_TRAINING)
-                if all(indskeep):
-                    # do nothing, all are already in "not training"
+                # save the old DfScalar
+                self.DfScalarBeforeRemoveSuperv = self.DfScalar.copy()
+                self.DfScalar = self.DfScalar[indskeep].reset_index(drop=True)
+        df_scalar_pruned_length = len(self.DfScalar)
+        
+        if False:
+            # Old version, which automatically pruned supervision stage. Now this is replaced
+            # by trialcode_keep
+            if supervision_keep_only_not_training:
+                # In general, prune supervision (to remove training trials), 
+                # unless var or vars_conjuction cares about supervision.
+                # if has to prune:
+                    # --> stores copy of DfScalar in DfScalarBeforeRemoveSuperv
+                    # --> prunes so DfScalar only has no_supervision trials.
+                # else:
+                    # --> DfScalarBeforeRemoveSuperv = None
+                if var=="supervision_stage_concise" or "supervision_stage_concise" in vars_conjuction:
+                    # is ok, do not prune supervision stage
                     pass
-                elif all(~indskeep):
-                    # Lost all trials, this is weird.
-                    print(LIST_SUPERV_NOT_TRAINING)
-                    print(self.DfScalar["supervision_stage_concise"].value_counts())
-                    assert False
                 else:
-                    # save the old DfScalar
-                    self.DfScalarBeforeRemoveSuperv = self.DfScalar.copy()
-                    self.DfScalar = self.DfScalar[indskeep].reset_index(drop=True)
-        else:
-            self.DfScalarBeforeRemoveSuperv = None
+                    indskeep = self.DfScalar["supervision_stage_concise"].isin(LIST_SUPERV_NOT_TRAINING)
+                    if all(indskeep):
+                        # do nothing, all are already in "not training"
+                        pass
+                    elif all(~indskeep):
+                        # Lost all trials, this is weird.
+                        print(LIST_SUPERV_NOT_TRAINING)
+                        print(self.DfScalar["supervision_stage_concise"].value_counts())
+                        assert False
+                    else:
+                        # save the old DfScalar
+                        self.DfScalarBeforeRemoveSuperv = self.DfScalar.copy()
+                        self.DfScalar = self.DfScalar[indskeep].reset_index(drop=True)
+            else:
+                self.DfScalarBeforeRemoveSuperv = None
 
-        sdir_base = f"{SAVEDIR}/var_by_varsother/VAR_{var}-OV_{'_'.join(vars_conjuction)}/SV_{score_ver}"
+        sdir_base = f"{SAVEDIR}/{ANALY_VER}/var_by_varsother/VAR_{var}-OV_{'_'.join(vars_conjuction)}/SV_{score_ver}"
         os.makedirs(sdir_base, exist_ok=True)
-        print(sdir_base)
+        print("Saving to:", sdir_base)
 
         # Focus on the higher firing rate sites
-        fig = self.sites_update_fr_thresh(FR_THRESH, True, True)
-        fig.savefig(f"{SAVEDIR}/sites_pruned_by_fr_hist.pdf")
+        fig = self.sites_update_fr_thresh(FR_THRESH, FR_PERCENTILE, True, True)
+        fig.savefig(f"{sdir_base}/sites_pruned_by_fr_hist.pdf")
 
         ###### GLOBALS
         if PRE_DUR_CALC is None:
@@ -1370,8 +1416,16 @@ class Snippets(object):
 
         list_events_window = sorted(df_var["event"].unique().tolist()) 
 
-        # Save params
+        ######### SAVE PARAMS
+        path = f"{sdir_base}/Params.yaml"
+        writeDictToYaml(self.Params, path)
+
+        path = f"{sdir_base}/ParamsGlobals.yaml"
         writeDictToYaml(self.ParamsGlobals, path)
+
+        if params_to_save is not None:            
+            path = f"{sdir_base}/params_to_save.yaml"
+            writeDictToYaml(params_to_save, path)
 
         if False:
             # Skip this, slows things down, including the plots.
@@ -1404,6 +1458,7 @@ class Snippets(object):
             _list_vars = [var] + vars_conjuction
         self.modulationgood_plot_list_conjuctions(_list_vars, SAVEDIR=sdir_base) 
 
+        ################### MAIN PLOTS OF MODULATION
         if len(df_var)>0:
 
             # How many ways anova?
@@ -1412,13 +1467,6 @@ class Snippets(object):
                 N_WAYS = 2
             else:
                 N_WAYS = 1
-
-            ######### SAVE PARAMS
-            path = f"{sdir_base}/Params.yaml"
-            writeDictToYaml(self.Params, path)
-
-            path = f"{sdir_base}/ParamsGlobals.yaml"
-            writeDictToYaml(self.ParamsGlobals, path)
 
             paramstmp = {
                 "anova_n_ways":N_WAYS,
@@ -1433,7 +1481,12 @@ class Snippets(object):
                 "globals_nmin":globals_nmin,
                 "globals_lenient_allow_data_if_has_n_levels":globals_lenient_allow_data_if_has_n_levels,
                 "FR_THRESH":FR_THRESH,
-                "get_z_score":get_z_score
+                "get_z_score":get_z_score,
+                "ANALY_VER":ANALY_VER,
+                "supervision_keep_only_not_training":supervision_keep_only_not_training,
+                "trialcodes_keep":trialcodes_keep,
+                "df_scalar_pruned_length":df_scalar_pruned_length,
+                "df_scalar_orig_length":df_scalar_orig_length
                 }
             path = f"{sdir_base}/params_modulationgood_compute.yaml"
             writeDictToYaml(paramstmp, path)
@@ -1465,7 +1518,6 @@ class Snippets(object):
             ######### Plot moduulation for each chans
             sdir = f"{sdir_base}/each_chan_summary"
             os.makedirs(sdir, exist_ok=True)
-
             fig = sns.catplot(data=df_var, x="chan", y="val", row="event", hue="bregion", aspect=10, kind="point")
             rotateLabel(fig)
             for ax in fig.axes.flatten():
@@ -1488,6 +1540,7 @@ class Snippets(object):
                 self.modulationgood_plot_each_chan(df_var, var, vars_conjuction, sdir)
                 plt.close("all")           
 
+            ########### SEPARATE PLOT FOR EACH EVENT
             events_already_done = []
             for event_window, event in list_eventwindow_event:
                 print("** Making plots for this event_window: ")
@@ -1536,22 +1589,25 @@ class Snippets(object):
                     nmin = self.ParamsGlobals["n_min_trials_per_level"]
                     grouping_print_n_samples(df, [var] + vars_conjuction, nmin, spath, True)
 
-
                 ##### Plot rasters
-                sdir_rasters = f"{SAVEDIR}/var_by_varsother/VAR_{var}-OV_{'_'.join(vars_conjuction)}/rasters/{event}"
+                # (Only do once for each event)
+                sdir_rasters = f"{SAVEDIR}/{ANALY_VER}/var_by_varsother/VAR_{var}-OV_{'_'.join(vars_conjuction)}/rasters/{event}"
                 os.makedirs(sdir_rasters, exist_ok=True)
-                from pythonlib.tools.expttools import checkIfDirExistsAndHasFiles
-                exists, hasfiles = checkIfDirExistsAndHasFiles(sdir_rasters)
-                if not hasfiles:
-                    print("** Plotting raster + sm fr:", sdir_rasters)
-                    ##### Plot raster + sm fr
-                    # Plot rasters for each site
-                    for site in self.Sites:
+
+                # from pythonlib.tools.expttools import checkIfDirExistsAndHasFiles
+                # exists, hasfiles = checkIfDirExistsAndHasFiles(sdir_rasters)
+                # if not hasfiles:
+                
+                print("** Plotting raster + sm fr:", sdir_rasters)
+                ##### Plot raster + sm fr
+                # Plot rasters for each site
+                for site in self.Sites:
+                    path = f"{sdir_rasters}/{sn.sitegetter_summarytext(site)}.png"
+                    if not os.path.exists(path):
                         fig, axes = self.plotgood_rasters_smfr_each_level_combined(site, var, vars_conjuction, 
                             event=event)
-                        fig.savefig(f"{sdir_rasters}/{sn.sitegetter_summarytext(site)}.png")
+                        fig.savefig(path)
                         plt.close("all")
-
 
                 # if event not in events_already_done:
                 #     # Skip if this event already done, since each event_window plots the
@@ -1575,7 +1631,6 @@ class Snippets(object):
 
                 # # Track.
                 # events_already_done.append(event)
-
         else:
             print("!!SKIPPING PLOTS!! not enough data") 
             print(len(df_var))
@@ -1638,8 +1693,13 @@ class Snippets(object):
             groupdict = grouping_print_n_samples(self.DfScalar, list_grp)
             n_max = max([n for n in groupdict.values()])
         else:
-            from pythonlib.tools.pandastools import grouping_count_n_samples_quick
-            n_min, n_max = grouping_count_n_samples_quick(self.DfScalar, list_grp)
+            try:
+                from pythonlib.tools.pandastools import grouping_count_n_samples_quick
+                n_min, n_max = grouping_count_n_samples_quick(self.DfScalar, list_grp)
+            except Exception as err:
+                print(self.DfScalar.columns)
+                print(list_grp)
+                raise err
 
         if n_max<self.ParamsGlobals["n_min_trials_per_level"]:
             print("SKIPPING PREEMPTIVELY, not enough data. (chan, event, vars, othervars) max n = ", n_max)
@@ -1994,11 +2054,12 @@ class Snippets(object):
 
     def modulationgood_aggregate_df(self, df_var, aggmethod="weighted_avg"):
         """ Wrapper for methods for aggregating data, using so there's single datapt
-        per chan
+        per chan. 
         """
         from pythonlib.tools.pandastools import aggregThenReassignToNewColumn, aggregGeneral
         # AGGMETHOD = "max"
 
+        GROUPING = ["chan", "event", "var", "var_others", "val_kind", "val_method"]
         if aggmethod=="weighted_avg":
             # Take weighted average, where weights are based on n ttrials
             # - avg of scores
@@ -2013,27 +2074,33 @@ class Snippets(object):
                     print(x["n_datapts"].tolist())
                     raise err
                 return tmp
-            df_var = aggregThenReassignToNewColumn(df_var, F, ["chan"], "val_weighted_avg")
+            df_var = aggregThenReassignToNewColumn(df_var, F, GROUPING, "val_weighted_avg")
 
-            def F(x):
-                vals = x["val_zscore"]
-                ndats = x["n_datapts"]
-                weights = (ndats/np.mean(ndats))**0.5
-                try:
-                    tmp = np.average(vals, weights=weights)
-                except Exception as err:
-                    print(x["val_zscore"].tolist())
-                    print(x["n_datapts"].tolist())
-                    raise err
-                return tmp
-            df_var = aggregThenReassignToNewColumn(df_var, F, ["chan"], "val_z_weighted_avg")
+            if "val_zscore" in df_var.columns:
+                def F(x):
+                    vals = x["val_zscore"]
+                    ndats = x["n_datapts"]
+                    weights = (ndats/np.mean(ndats))**0.5
+                    try:
+                        tmp = np.average(vals, weights=weights)
+                    except Exception as err:
+                        print(x["val_zscore"].tolist())
+                        print(x["n_datapts"].tolist())
+                        raise err
+                    return tmp
+                df_var = aggregThenReassignToNewColumn(df_var, F, GROUPING, "val_z_weighted_avg")
 
-            # - Do aggregation
-            dfout_agg = aggregGeneral(df_var, group=["chan", "event"], values=["val_weighted_avg", "val_z_weighted_avg"])
-            dfout_agg["val"] = dfout_agg["val_weighted_avg"]
-            dfout_agg["val_zscore"] = dfout_agg["val_z_weighted_avg"]
-            dfout_agg = dfout_agg.drop("val_weighted_avg", axis=1)
-            dfout_agg = dfout_agg.drop("val_z_weighted_avg", axis=1)
+                # - Do aggregation
+                dfout_agg = aggregGeneral(df_var, group=GROUPING, values=["val_weighted_avg", "val_z_weighted_avg"])
+                dfout_agg["val"] = dfout_agg["val_weighted_avg"]
+                dfout_agg["val_zscore"] = dfout_agg["val_z_weighted_avg"]
+                dfout_agg = dfout_agg.drop("val_weighted_avg", axis=1)
+                dfout_agg = dfout_agg.drop("val_z_weighted_avg", axis=1)
+            else:
+                # This is probably 2-way anova, or other analyses, which did not have z-score
+                dfout_agg = aggregGeneral(df_var, group=GROUPING, values=["val_weighted_avg"])
+                dfout_agg["val"] = dfout_agg["val_weighted_avg"]
+                dfout_agg = dfout_agg.drop("val_weighted_avg", axis=1)
         elif aggmethod=="max":
             assert False, "in p[rogess by basiclaly done, below."
             # TAKING, using zsocre to get argmax. 
@@ -2064,17 +2131,19 @@ class Snippets(object):
             thresh_zscore = 3
             res = []
             for site in self.Sites:
-                dfthis = df_var[df_var["chan"]==site]
-                
-                nsig = sum(dfthis["val_zscore"]>=thresh_zscore)
-                ntot = len(dfthis)
-                
-                res.append({
-                    "chan":site,
-                    "nsig":nsig,
-                    "ntot":ntot
-                })
-                
+                for ev in df_var["event"].unique().tolist():
+                    dfthis = df_var[(df_var["chan"]==site) & (df_var["event"]==ev)]
+                    
+                    nsig = sum(dfthis["val_zscore"]>=thresh_zscore)
+                    ntot = len(dfthis)
+                    
+                    res.append({
+                        "event":ev,
+                        "chan":site,
+                        "nsig":nsig,
+                        "ntot":ntot
+                    })
+                    
             dfout_agg = pd.DataFrame(res)
 
 
@@ -2911,13 +2980,22 @@ class Snippets(object):
             else:
                 return self._modulationgood_plot_drawings_variables(var, vars_conjuction, sdir, nplot)
         else:
-            # Load the frist session, and plot it.
-            sn = self.SNmult.SessionsList[0]
-            sp = load_snippet_single(sn, which_level=self.Params["which_level"])
-            if self.Params["which_level"]=="trial":
-                return sp._modulationgood_plot_drawings_variables_bytrial(var, vars_conjuction, sdir, nplot)
-            else:
-                return sp._modulationgood_plot_drawings_variables(var, vars_conjuction, sdir, nplot)
+            # Load each session, and plot it.
+            for idx_session in self.DfScalar["session_idx"].unique().tolist():
+                
+                sn = self.SNmult.SessionsList[idx_session]
+                sp = load_snippet_single(sn, which_level=self.Params["which_level"])
+
+                # replace sp with pruned trials according to self. Makes suer to only plot included trials.
+                df = self.DfScalar[self.DfScalar["session_idx"] == idx_session]
+                sp.DfScalar = df
+
+                sdir_this = f"{sdir}/session_{idx_session}"
+                os.makedirs(sdir_this, exist_ok=True)
+                if self.Params["which_level"]=="trial":
+                    return sp._modulationgood_plot_drawings_variables_bytrial(var, vars_conjuction, sdir_this, nplot)
+                else:
+                    return sp._modulationgood_plot_drawings_variables(var, vars_conjuction, sdir_this, nplot)
 
     def _modulationgood_plot_drawings_variables_bytrial(self, var, vars_conjuction, sdir,
             nplot = 40):
@@ -2980,11 +3058,12 @@ class Snippets(object):
         site = self.Sites[1] # pick any site.
         _, dict_dfs, _ = self.dataextract_as_df_conjunction_vars(var, vars_conjuction, site)
 
-        DS = self.DS
         for lev_others, dfsub in dict_dfs.items():
             print(lev_others)
             index_DS = dfsub["index_DS"].tolist()
             trialcodes = dfsub["trialcode"].tolist()
+
+            # Restrict to trialcodes that exist in dfscalar
 
             # pick n random
             if len(index_DS)>nplot:
@@ -2998,7 +3077,7 @@ class Snippets(object):
             inds = [index_DS[i] for i in indsplot]
             tcs = [trialcodes[i] for i in indsplot]
 
-            fig, axes, inds_trials_dataset = DS.plot_multiple_overlay_entire_trial(inds, 8);
+            fig, axes, inds_trials_dataset = self.DS.plot_multiple_overlay_entire_trial(inds, 8);
 
             for ax, tit, tcthis in zip(axes.flatten(), titles, tcs):
                 ax.set_title(f"{var}:{tit}")
@@ -3120,7 +3199,7 @@ class Snippets(object):
         assert "val_zscore" in df_var.columns, "need this for some significance-related analysis"
 
         # Get aggregation
-        dfagg = self.modulationgood_aggregate_df(df_var, aggmethod="weighted_avg")
+        dfagg = self.modulationgood_aggregate_df(df_var, aggmethod="weighted_avg") 
 
         fig = sns.relplot(data=dfagg, x="val_zscore", y="val", col="bregion", col_wrap=4, alpha=0.5)
         for ax in fig.axes.flatten():
@@ -3329,9 +3408,14 @@ class Snippets(object):
         print("Found this var_others: ", var_others)
 
         # Aggreagated
-        print("Aggregating dataframe ...")
-        df_var_chan = aggregGeneral(df_var, group=["chan", "event", "var", "var_others", "val_kind", "val_method"], values = ["val"], 
-          nonnumercols=["bregion"]) # one datapt per chan
+        print("Aggregating dataframe over all othervars ...")
+        if "n_datapts" in df_var.columns:
+            # Then this is one-way, has n datapts for each othervar_level:
+            df_var_chan = self.modulationgood_aggregate_df(df_var)
+        else:
+            # then this is probably 2-way, dont even need to aggregate...
+            df_var_chan = aggregGeneral(df_var, group=["chan", "event", "var", "var_others", "val_kind", "val_method"], values = ["val"], 
+              nonnumercols=["bregion"]) # one datapt per chan
 
         print("Plotting ...")
         # Compare across events
@@ -4744,11 +4828,17 @@ class Snippets(object):
             assert False, "in progress"
             # TODO: check that this[site] is identical to unqiue list of sites
 
-    def sites_update_fr_thresh(self, fr_thresh=4, plot_hist=False, do_update=True):
+    def sites_update_fr_thresh(self, fr_thresh=4, fr_percentile=None, 
+        plot_hist=False, do_update=True):
         """ Updates self.Sites to use only sites with mean fr >= fr_thresh
         Moves orig sites to self.SitesOrig, if it doesnt exist
         """
         from pythonlib.tools.pandastools import aggregGeneral
+
+        if fr_thresh:
+            assert fr_percentile is None
+        if fr_percentile:
+            assert fr_thresh is None
 
         print("starting sites: ", len(self.Sites))
         print("starting sites: ", self.Sites)
@@ -4759,8 +4849,24 @@ class Snippets(object):
             assert frmat.shape[0] == len(self.DfScalar)
             self.DfScalar["fr_scalar_raw"] = np.mean(frmat,1)
 
-        # (2) Remove low fr sites.
         df_fr = aggregGeneral(self.DfScalar, ["chan"], values=["fr_scalar_raw"])
+
+        # convert percentile to fr threshold.
+        if fr_percentile:
+            fr_thresh = np.percentile(df_fr["fr_scalar_raw"], fr_percentile)
+            print(f"For percentile {fr_percentile}, using this threshold: {fr_thresh}")
+            if plot_hist:
+                ps = np.linspace(0, 100, 50)
+                frs = np.percentile(df_fr["fr_scalar_raw"], ps)
+                fig, ax = plt.subplots()
+                ax.plot(frs, ps, '-ok')
+                ax.set_xlabel('fr')
+                ax.set_ylabel('percentile')
+                if False:
+                    print("percentile -- fr")
+                    print(np.c_[ps, frs])
+
+        # (2) Remove low fr sites.
         if plot_hist:
             fig = plt.figure()
             df_fr["fr_scalar_raw"].hist(bins=100)
@@ -4957,11 +5063,13 @@ class Snippets(object):
 
 def extraction_helper(SN, which_level="trial", list_features_modulation_append=None,
     dataset_pruned_for_trial_analysis = None, NEW_VERSION=True, PRE_DUR = -0.4,
-    POST_DUR = 0.4):
+    POST_DUR = 0.4, PRE_DUR_FIXCUE=None):
     """ Helper to extract Snippets for this session
     PARAMS;
     - list_features_modulation_append, eitehr None (do nothing) or list of str,
     which are features to add for computing modulation for.
+    - PRE_DUR_FIXCUE, if not None, this overwrites predur for fixcue, which is useful becuase
+     it is onset of trial, might wnat to make shorter.
     """
 
 
@@ -4993,6 +5101,14 @@ def extraction_helper(SN, which_level="trial", list_features_modulation_append=N
         strokes_only_keep_single = False
         prune_feature_levels_min_n_trials = 1
 
+        if PRE_DUR_FIXCUE:
+            for i, (ev, pre, post) in enumerate(zip(list_events, list_pre_dur, list_post_dur)):
+                if ev=="fixcue":
+                    list_pre_dur[i] = PRE_DUR_FIXCUE
+            print(f"Updated predur of fixcue to {PRE_DUR_FIXCUE}. New events and durs:")
+            print(list_events)
+            print(list_pre_dur)
+            print(list_post_dur)
     elif which_level=="stroke":
         # Extracts snippets aligned to strokes. Features are columns in DS.
         which_level = "stroke"
@@ -5022,7 +5138,7 @@ def extraction_helper(SN, which_level="trial", list_features_modulation_append=N
                 strokes_only_keep_single=strokes_only_keep_single,
                   prune_feature_levels_min_n_trials=prune_feature_levels_min_n_trials,
                   dataset_pruned_for_trial_analysis = dataset_pruned_for_trial_analysis,
-                NEW_VERSION=NEW_VERSION )
+                NEW_VERSION=NEW_VERSION)
 
     return SP
 
@@ -5087,14 +5203,18 @@ def datasetstrokes_extract(D, strokes_only_keep_single=False, tasks_only_keep_th
 
 
 def _dataset_extract_prune_general(sn, list_superv_keep = None,
-        preprocess_steps_append=None):
+        preprocess_steps_append=None, remove_aborts=True,
+        list_superv_keep_full=None):
     """
     Generic, should add to this.
     """
     Dcopy = sn.Datasetbeh.copy()
 
+    print("Starting length of D.Dat:", len(Dcopy.Dat))
     # Remove if aborted
-    Dcopy.filterPandas({"aborted":[False]}, "modify")
+    if remove_aborts:
+        Dcopy.filterPandas({"aborted":[False]}, "modify")
+        print("Len, after remove aborts:", len(Dcopy.Dat))
 
     if list_superv_keep == "all":
         # Then don't prune based on superv
@@ -5117,6 +5237,12 @@ def _dataset_extract_prune_general(sn, list_superv_keep = None,
         print(Dcopy.Dat["supervision_stage_concise"].value_counts())
         
         print("Dataset final len:", len(Dcopy.Dat))
+
+    if list_superv_keep_full is not None:
+        print("--BEFORE REMOVE; existing supervision_stage_new:")
+        print(Dcopy.Dat["supervision_stage_new"].value_counts())
+        Dcopy.filterPandas({"supervision_stage_new":list_superv_keep_full}, "modify")
+        print(Dcopy.Dat["supervision_stage_new"].value_counts())
 
     if preprocess_steps_append is not None:
         Dcopy.preprocessGood(params=preprocess_steps_append)

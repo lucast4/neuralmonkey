@@ -87,7 +87,7 @@ def _load_session_mapper(animal, date = None):
         print(date)
         assert False
 
-def session_map_from_rec_to_ml2_ntrials_mapping(animal, date, rec_session):
+def session_map_from_rec_to_ml2_ntrials_mapping(animal, date, rec_session, DEBUG=False):
     """ Help to identify ampping between nerual and beh, if beh was split into
     multiple sessions, with fierst trial of first session matching firsr trial of
     neural. 
@@ -107,6 +107,11 @@ def session_map_from_rec_to_ml2_ntrials_mapping(animal, date, rec_session):
     beh_session, exptname, sessdict = session_map_from_rec_to_ml2(animal, date, 0)
     # sessdict =
     # (2, 'priminvar3e', {'220719': [(1, 'priminvar3e'), (2, 'priminvar3e')]})
+
+    if DEBUG:
+        print("HERE")
+        print(animal, date, rec_session)
+        print(beh_session, exptname, sessdict)
 
     # Iterate over each beh session
     n_beh_sessions = len(sessdict[date])
@@ -138,7 +143,8 @@ def session_map_from_rec_to_ml2(animal, date, rec_session):
     - if rec/beh session both exist:
     --- beh_session, int index
     --- exptname, name of expt for this session
-    --- sessdict, dict for this day holding all sessions (beh).
+    --- sessdict, dict for this day holding all sessions (beh), including those that 
+    you might not acutally use (ignroed)
     - if doesnt exist:
     --- None
     """
@@ -147,8 +153,13 @@ def session_map_from_rec_to_ml2(animal, date, rec_session):
     # beh_session = rec_session+1    
 
     # Which beh session maps to this neural session?
-    session_map = _load_session_mapper(animal, int(date))
+    session_map = _load_session_mapper(animal, int(date)) # e..g [3,4,5] for beh sessions
     sessdict = getSessionsList(animal, datelist=[date])
+
+    # Prune sessdict that that it only keeps the beh sessions that are used.
+    assert list(sessdict.keys()) == [date]
+    if session_map is not None:
+        sessdict[date] = [sess_expt for sess_expt in sessdict[date] if sess_expt[0] in session_map]
 
     if session_map is not None:
         # then use hand-entered session

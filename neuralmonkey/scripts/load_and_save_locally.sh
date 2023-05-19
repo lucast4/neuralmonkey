@@ -39,7 +39,10 @@ touch preprocess_log.txt
 # datelist=( 220715 )
 
 # 230508
-datelist=( 220709 )
+# datelist=( 220709 )
+
+# 230517
+datelist=( 220930 221024 )
 
 for date1 in "${datelist[@]}"
 do

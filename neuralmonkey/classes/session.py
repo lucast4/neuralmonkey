@@ -11,6 +11,7 @@ from ..utils import monkeylogic as mkl
 import pickle
 import os
 from pythonlib.tools.expttools import checkIfDirExistsAndHasFiles
+from pythonlib.tools.exceptions import NotEnoughDataException
 
 from pythonlib.globals import PATH_NEURALMONKEY, PATH_DATA_NEURAL_RAW, PATH_DATA_NEURAL_PREPROCESSED
 # PATH_NEURALMONKEY = "/data1/code/python/neuralmonkey/neuralmonkey"
@@ -132,7 +133,7 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
         assert len(dataset_beh_expt)>1, "if skip, then make this None"
 
     # 1) Find the raw beh data (filedata)
-    beh_session, exptname, sessdict = session_map_from_rec_to_ml2(animal, DATE, rec_session)
+    beh_session, exptname, _ = session_map_from_rec_to_ml2(animal, DATE, rec_session)
 
     # # Assume that the beh sessions increment in order, matching the neural sessions
     # sessdict = mkl.getSessionsList(animal, datelist=[DATE])
@@ -165,7 +166,6 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
     print("Loading these beh expts:", beh_expt_list)
     print("Loading these beh sessions:",beh_sess_list)
     print("Loading this neural session:", rec_session)
-
 
 
     try:
@@ -621,7 +621,7 @@ class Session(object):
         return check_dict
 
 
-    def load_metadata_sites(self):
+    def load_metadata_sites(self, fail_if_no_exist=True):
         """ Load info about which sites are garbage, hand coded
         PARAMS:
         """
@@ -653,6 +653,9 @@ class Session(object):
                 self.SitesMetadata[k] = v
         else:
             print("Sites metada path doesnt exist: ", path)
+            if fail_if_no_exist:
+                assert False, "make the file first."
+
 
         self._sitesdirty_update()
 
@@ -3747,6 +3750,7 @@ class Session(object):
         dict_events_bounds = {
             "fixcue":[-0.6, 0.6], # onset of fixation cue
             "fix_touch":[-0.6, 0.6], # button-touch
+            "rulecue2":[-0.6, 0.6], # 
             "samp":[-0.6, 0.6], # image response
             "go_cue":[-0.6, 0.6], # movement onset.
             "first_raise":[-0.6, 0.6], # image response
@@ -4176,6 +4180,19 @@ class Session(object):
                     times = _extract_times(out)
 
 
+                elif event in ["rulecue2"]:
+                    # rule cue that switches on between fix touch and samp. Exists only on some days, but it one-to-one linked
+                    # to behcode 132. 
+                    # includes both those overlapping fix, and those separate from fix.
+                    out = self.behcode_get_stream_crossings_in_window(trial, 132, t_pre=0.05, t_post = 0.2, whichstream="pd2", 
+                                          ploton=plot_beh_code_stream, cross_dir_to_take="down", 
+                                          assert_single_crossing_per_behcode_instance=True,
+                                            assert_single_crossing_this_trial = False,
+                                              assert_expected_direction_first_crossing = "down",
+                                              refrac_period_between_events=0.05)              
+
+                    times = _extract_times(out)
+
                 elif event in ["samp", "stim_onset"]:
                     # Use photodiode
                     # behcode = 91
@@ -4185,8 +4202,6 @@ class Session(object):
                     t_pre = -0.005
                     t_post = 0.16
                     assert_single_crossing_this_trial = True
-                    assert_expected_direction_first_crossing = None
-                    take_first_behcode_instance = False
 
                     try:
                         VER = 1
@@ -4194,7 +4209,7 @@ class Session(object):
                                                                   cross_dir_to_take=cross_dir, t_pre=t_pre,
                                                                   t_post=t_post,
                                                                   ploton=plot_beh_code_stream, assert_single_crossing_per_behcode_instance=True, 
-                                                                  assert_single_crossing_this_trial = True) 
+                                                                  assert_single_crossing_this_trial = assert_single_crossing_this_trial) 
                         times = _extract_times(out)
                         times_behcode = self.behcode_extract_times_semantic(behcode, trial)
 
@@ -4452,7 +4467,6 @@ class Session(object):
                     RECOMPUTE = True
                 else:
                     # You cached result and found it., could still be []
-
                     # If you want to retry, e.g., if previous cached was innacurate.
                     if len(times)==0 and do_reextract:
                         print("Trying to reextract (trial, event):", trial, event)
@@ -5213,7 +5227,6 @@ class Session(object):
             has_event = self.events_does_trial_include_all_events(tr, [alignto])
             if has_event:
 
-                trials_gotten.append(tr)
                 time_align = self.events_get_time_using_photodiode(tr, list_events=[alignto])[alignto]
 
                 # extract popanal
@@ -5239,12 +5252,19 @@ class Session(object):
                 time_align = time_align[0] # take first time in list of times.
                 t1 = time_align + pre_dur
                 t2 = time_align + post_dur
-                pa = pa._slice_by_time_window(t1, t2, return_as_popanal=True,
-                    fail_if_times_outside_existing=fail_if_times_outside_existing,
-                    subtract_this_from_times=time_align)
+
+                try:
+                    pa = pa._slice_by_time_window(t1, t2, return_as_popanal=True,
+                        fail_if_times_outside_existing=fail_if_times_outside_existing,
+                        subtract_this_from_times=time_align)
+                except NotEnoughDataException as err:
+                    # not enough data for this time window.
+                    print(f"[smoothedfr_extract_timewindow] SKIPPING trial {tr}, time window too large (alignto, t1, t2, time_align): {alignto}, {t1}, {t2}, {time_align}")
+                    continue
                 
                 # save this slice
                 list_xslices.append(pa)
+                trials_gotten.append(tr)
 
         # 2) Concatenate all PA into a single PA
         if not fail_if_times_outside_existing:
@@ -7248,7 +7268,7 @@ class Session(object):
         return df
 
     def snippets_extract_bytrial(self, sites, trials, events,
-        features_to_get_extra=None, pre_dur= -0.4, post_dur= 0.4):
+        list_pre_dur, list_post_dur, features_to_get_extra=None):
         """ Helper to extract snippets in flexible way, saligend to specific events.
         PARAMS:
         - sites, list of ints to extract.
@@ -7261,13 +7281,16 @@ class Session(object):
         import pandas as pd
         from pythonlib.tools.pandastools import applyFunctionToAllRows
 
+        assert len(list_pre_dur)==len(events)
+        assert len(list_post_dur)==len(events)
+
         # Extract snippets across all trials, sites, and events.
         # list_cols = ['task_kind']
         list_cols = []
 
         OUT = []
         list_events_uniqnames = []
-        for i_e, e in enumerate(events):
+        for i_e, (e, pre_dur, post_dur) in enumerate(zip(events, list_pre_dur, list_post_dur)):
                 
             if i_e<10:
                 idx_str = f"0{i_e}"
@@ -7277,6 +7300,7 @@ class Session(object):
             list_events_uniqnames.append(event_unique_name)
 
             # Skip if this trial doesnt have this event
+            print("Extraction pa for this event... ", e)
             pa, trials_this_event = self.smoothedfr_extract_timewindow(trials, sites, e, pre_dur, post_dur)
 
             if len(trials_this_event)==0:
@@ -7292,6 +7316,7 @@ class Session(object):
             # print(len(sites))
             # print(pa.X.shape) # (sites, trials, tbins)
 
+            print("... extracting data for each trial for event ", e)
             for i_t, t in enumerate(trials_this_event):
 
                 if t%100==0:

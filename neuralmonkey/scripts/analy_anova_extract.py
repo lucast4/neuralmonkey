@@ -8,7 +8,7 @@ import neuralmonkey.utils.monkeylogic as mkl
 from neuralmonkey.classes.session import load_session_helper, load_mult_session_helper
 import os
 import sys
-
+from neuralmonkey.classes.snippets import load_snippet_single
 
 LIST_SESSIONS = None
 DEBUG = False # runs fast
@@ -47,6 +47,23 @@ if __name__=="__main__":
     for session in LIST_SESSIONS:
         sn = MS.SessionsList[session]
 
+        try:
+            sp = load_snippet_single(sn, which_level)
+            SKIP_EXTRACTION = True
+        except Exception as err:
+            # Then recompute
+            SKIP_EXTRACTION = False
+
+        if SKIP_EXTRACTION:
+            print("** SKIPPING EXTRACTION, since was able to load snippets, for: ")
+            print("(animal, DATE, which_level, ANALY_VER, session)")
+            print(animal, DATE, which_level, ANALY_VER, session)
+            continue
+        else:
+            print("** NOT SKIPPING EXTRACTION, since was not able to load snippets, for: ")
+            print("(animal, DATE, which_level, ANALY_VER, session)")
+            print(animal, DATE, which_level, ANALY_VER, session)
+
         ###################################
         D = sn.Datasetbeh
 
@@ -59,40 +76,73 @@ if __name__=="__main__":
             assert params["DO_SCORE_SEQUENCE_VER"] is None
 
         ######################## 
+        D.behclass_preprocess_wrapper()
         if params["DO_EXTRACT_CONTEXT"]:
-            # D.behclass_preprocess_wrapper()
             D.seqcontext_preprocess()
 
+        if params["taskgroup_reassign_simple_neural"]:
+            # do here, so the new taskgroup can be used as a feature.
+            D.taskgroup_reassign_ignoring_whether_is_probe(CLASSIFY_PROBE_DETAILED=False)                
+            print("Resulting taskgroup/probe combo, after taskgroup_reassign_simple_neural...")
+            D.grouping_print_n_samples(["taskgroup", "probe"])
+                
+        # Merge epochs (i.e., rename them)
+        for this in params["list_epoch_merge"]:
+            # D.supervision_epochs_merge_these(["rndstr", "AnBmTR|1", "TR|1"], "rank|1")
+            D.supervision_epochs_merge_these(this[0], this[1])
+
+        # Assign each row of D a char_seq
+        if params["DO_CHARSEQ_VER"] is not None:
+            D.sequence_char_taskclass_assign_char_seq(ver=params["DO_CHARSEQ_VER"])
+
+        # Extract epochsets
+        if params["EXTRACT_EPOCHSETS"]:
+            D.epochset_extract_common_epoch_sets(
+                trial_label=params["EXTRACT_EPOCHSETS_trial_label"],
+                n_max_epochs=params["EXTRACT_EPOCHSETS_n_max_epochs"])
+
+        ##############################
         # if DEBUG:
         #     SAVEDIR = f"/gorilla1/analyses/recordings/main/anova/bytrial/{animal}-{DATE}-sess_{session}-DEBUG"
         # else:
         SAVEDIR = f"/gorilla1/analyses/recordings/main/anova/bytrial/{animal}-{DATE}-sess_{session}"
         os.makedirs(SAVEDIR, exist_ok=True)
 
+        # if detects already extracted, and can successfully load, then skips.
+
         from pythonlib.tools.expttools import writeDictToYaml
         path = f"{SAVEDIR}/params_extraction.yaml"
         writeDictToYaml(params, path)
 
         from neuralmonkey.classes.snippets import _dataset_extract_prune_general
-        if True:
-            list_superv_keep = "all" # DONT PRUNE!
+        if False:
+            # Old method, where pruned dataset before extraction. Instead, now I run on 
+            # entire dataset, then do pruning before each plot.
+            if True:
+                list_superv_keep = "all" # DONT PRUNE!
+            else:
+                list_superv_keep = None # keep only not_training
+            dataset_pruned_for_trial_analysis = _dataset_extract_prune_general(sn, 
+                list_superv_keep=list_superv_keep, 
+                preprocess_steps_append=params["preprocess_steps_append"],
+                remove_aborts=True)    
         else:
-            list_superv_keep = None # keep only not_training
-        dataset_pruned_for_trial_analysis = _dataset_extract_prune_general(sn, 
-            list_superv_keep=list_superv_keep, 
-            preprocess_steps_append=params["preprocess_steps_append"])    
+            preprocess_steps_append = ["sanity_gridloc_identical"]
+            dataset_pruned_for_trial_analysis = _dataset_extract_prune_general(sn, 
+                list_superv_keep="all", 
+                preprocess_steps_append=preprocess_steps_append,
+                remove_aborts=False)    
 
         if DEBUG:
             sn._DEBUG_PRUNE_SITES = True
             dataset_pruned_for_trial_analysis.subsampleTrials(10, 1)
 
         from neuralmonkey.classes.snippets import Snippets, extraction_helper
-        PRE_DUR = -0.6
-        POST_DUR = 0.6
         SP = extraction_helper(sn, "trial", params["list_features_modulation_append"], 
                                dataset_pruned_for_trial_analysis=dataset_pruned_for_trial_analysis, 
                                NEW_VERSION=True, 
-                               PRE_DUR = PRE_DUR, POST_DUR = POST_DUR)
+                               PRE_DUR = params["PRE_DUR"], POST_DUR = params["POST_DUR"],
+                               PRE_DUR_FIXCUE=params["PRE_DUR_FIXCUE"])
 
         SP.save_v2(SAVEDIR)
 
