@@ -1,0 +1,11 @@
+# Union, across sessions
+# -- These usually the same across sessions
+
+sites_garbage: [18, 21, 26, 34, 36, 44, 69, 160, 201, 279]
+
+# Using 4x STD, (~10, lower than usual, since also doing spike height pruning)
+# sites_low_fr: [381, 312, 293, 137, 170, 238, 369, 307, 380, 247, 228, 214,
+#   129, 379, 131, 313, 283, 222, 6, 231, 297, 361, 339, 298, 229, 246, 274, 383, 72,
+#   289, 176, 21]
+
+done_garbage: true

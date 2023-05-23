@@ -30,6 +30,10 @@
 
 # params=( Pancho 220929 trial rulesw )
 
+# params=( Pancho 220930 trial rulesw )
+
+# params=( Pancho 221001 trial rulesw )
+
 # params=( Pancho 221014 trial rulesw )
 # params=( Pancho 221014 trial ruleswERROR )
 
@@ -38,17 +42,25 @@
 # params=( Pancho 221020 trial rulesw y)
 # params=( Pancho 221020 trial ruleswERROR )
 
+# params=( Pancho 221021 trial rulesw )
+
 # params=( Pancho 221031 trial rulesw )
 # params=( Pancho 221031 trial ruleswERROR )
+
+# params=( Pancho 221102 trial rulesw )
 
 # params=( Pancho 221107 trial rulesw )
 # params=( Pancho 221107 trial ruleswERROR )
 
-params=( Pancho 221114 trial rulesw )
+# params=( Pancho 221112 trial rulesw )
+
+# params=( Pancho 221114 trial rulesw )
 # params=( Pancho 221114 trial ruleswERROR )
 
 # params=( Pancho 221119 trial rulesw )
 # params=( Pancho 221119 trial ruleswERROR )
+
+params=( Pancho 221121 trial rulesw )
 
 # params=( Pancho 221125 trial rulesw )
 # params=( Pancho 221125 trial ruleswERROR )
@@ -64,4 +76,6 @@ params=( Pancho 221114 trial rulesw )
 
 # python analy_anova_extract.py ${params[@]}
 # python analy_anova_plot.py ${params[@]} n
-python analy_anova_plot.py ${params[@]} y
+# python analy_anova_plot.py ${params[@]} y
+
+taskset --cpu-list 0,1,2,3,4,5,6,7 bash ./_analy_anova_script.sh ${params[@]}

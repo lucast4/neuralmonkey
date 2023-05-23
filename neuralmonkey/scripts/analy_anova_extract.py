@@ -89,7 +89,7 @@ if __name__=="__main__":
         # Merge epochs (i.e., rename them)
         for this in params["list_epoch_merge"]:
             # D.supervision_epochs_merge_these(["rndstr", "AnBmTR|1", "TR|1"], "rank|1")
-            D.supervision_epochs_merge_these(this[0], this[1])
+            D.supervision_epochs_merge_these(this[0], this[1], key=params["epoch_merge_key"])
 
         # Assign each row of D a char_seq
         if params["DO_CHARSEQ_VER"] is not None:
@@ -99,7 +99,9 @@ if __name__=="__main__":
         if params["EXTRACT_EPOCHSETS"]:
             D.epochset_extract_common_epoch_sets(
                 trial_label=params["EXTRACT_EPOCHSETS_trial_label"],
-                n_max_epochs=params["EXTRACT_EPOCHSETS_n_max_epochs"])
+                n_max_epochs=params["EXTRACT_EPOCHSETS_n_max_epochs"],
+                merge_sets_with_only_single_epoch=False,
+                merge_sets_with_only_single_epoch_name = "LEFTOVER")
 
         ##############################
         # if DEBUG:
@@ -145,6 +147,15 @@ if __name__=="__main__":
                                PRE_DUR_FIXCUE=params["PRE_DUR_FIXCUE"])
 
         SP.save_v2(SAVEDIR)
+
+        # Delete from memory, causes OOM error.
+        import gc
+        del SP
+        del sn
+        del D
+        del dataset_pruned_for_trial_analysis
+        gc.collect()
+
 
         if PLOT:
             ######## PLOTS

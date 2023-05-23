@@ -49,7 +49,6 @@ do
     echo ${date1}
     # python -m neuralmonkey.scripts.load_and_save_locally ${date1} 2>>&1 | tee preprocess_log.txt
     python -m neuralmonkey.scripts.load_and_save_locally ${date1} |& tee -a preprocess_log.txt
-    date1=$(date +%y%m%d -d "${date1} + 1 day")
 done
 
 

@@ -95,11 +95,13 @@ if __name__=="__main__":
             )    
 
         # Sanity check that didn't remove too much data.
-        npre = len(sn.Datasetbeh.Dat)
-        npost = len(dat_pruned.Dat)
-        if npost/npre<0.25:
-            print(params)
-            assert False, "dataset pruning removed >0.75 of data. Are you sure correct? Maybe removing a supervisiuon stage that is actually important?"
+        if "wrong_sequencing_binary_score" not in params["preprocess_steps_append"]:
+            # Skip if is error trials.
+            npre = len(sn.Datasetbeh.Dat)
+            npost = len(dat_pruned.Dat)
+            if npost/npre<0.25 and len(sn.Datasetbeh.Dat)>200: # ie ignore this if it is a small session...
+                print(params)
+                assert False, "dataset pruning removed >0.75 of data. Are you sure correct? Maybe removing a supervisiuon stage that is actually important?"
 
         list_dataset.append(dat_pruned)
     
@@ -108,6 +110,15 @@ if __name__=="__main__":
 
     # Only keep these trialcodes
     trialcodes_keep = dataset_pruned_for_trial_analysis.Dat["trialcode"].tolist()
+
+    # Delete MS from memory, causes OOM error.
+    import gc
+    del MS
+    del sn
+    del dataset_pruned_for_trial_analysis
+    del list_dataset
+    del dat_pruned
+    gc.collect()
 
     #######################
     for var, vars_conjuction in zip(params["LIST_VAR"], params["LIST_VARS_CONJUNCTION"]):

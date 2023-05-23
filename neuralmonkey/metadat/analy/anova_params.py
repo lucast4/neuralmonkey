@@ -22,8 +22,8 @@ def _params_score_sequence_ver(animal, DATE, ANALY_VER):
         if animal=="Pancho" and DATE in [220913]:
             DO_SCORE_SEQUENCE_VER = "parses"
         elif animal=="Pancho" and DATE in [220812, 220814, 220815, 220816, 220827,
-            220921, 220928, 220929, 221014, 221020, 
-            221031, 221107, 221114, 221119, 221125]:
+            220921, 220928, 220929, 220930, 221001, 221014, 221020, 221021,
+            221031, 221102, 221107, 221112, 221114, 221119, 221121, 221125]:
             # determenistic (single solution)
             DO_SCORE_SEQUENCE_VER = "matlab"
         else:
@@ -49,9 +49,8 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
     globals_nmin = 8
     globals_lenient_allow_data_if_has_n_levels = 2
 
-    ################## SUPERVISION LEVELS TO KEEP
-    list_superv_keep = None # None means just keep all cases that are "no supervision"
 
+    ################## SUPERVISION LEVELS TO KEEP
     ################# OPTIONALLY KEEP ONLY SPECIFIC "FULL" SUPERVISION NAMES
     if animal=="Pancho" and DATE==220921:
         # This day has "randomseq-sequence mask"... (rare)
@@ -60,8 +59,11 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
         list_superv_keep_full = ["mask|0.5|0||0|none",
                                   "off|1.0|0||0|none",
                                   "off|1.0|0||0|none"]
+        list_superv_keep = "all" # None means just keep all cases that are "no supervision"
     else:
+        # Prune so is just "no supervision" (i.e., list_superv_keep is None)
         list_superv_keep_full = None
+        list_superv_keep = None # None means just keep all cases that are "no supervision"
 
 
     ################ SCORE PERFORMANCE?
@@ -98,6 +100,7 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
         score_ver='r2_maxtime_1way_mshuff'
         get_z_score=True
 
+    ############################# VARIABLES
     if which_level=="trial" and ANALY_VER=="seqcontext":
 
         LIST_VAR = [
@@ -130,73 +133,126 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
     elif which_level=="trial" and ANALY_VER in ["rulesw", "ruleswERROR"]:
         # Rule switching.
 
-        if DATE in [220928, 220929]:
-            # grmamar vs. color rank. should do epochsets, but decided to try
+        if DATE in [220921]:
+            # grmamar vs. sequence mask rank. This must use epoch_superv, since
+            # epoch does not indiciate whether is using superv.
+            LIST_VAR = [
+                "epoch_superv",
+                "epoch_superv",
+            ]
+            LIST_VARS_CONJUNCTION = [
+                ["epochset"],
+                ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
+            ]
+        elif DATE in [221102]:
+            # combines blocks and trial cues within blocks.
+            # (e.g., rapid switching blcoks, and rule vs. rand within block, with siwtchingin
+            # bnetween 2 rules between blocks)
+            # Thus want to get both matched tasks (trial) and across blcoks.
+            LIST_VAR = [
+                "epoch",
+                "epoch",
+                "epoch",
+            ]
+            LIST_VARS_CONJUNCTION = [
+                ["epochset"],
+                ["taskgroup"],
+                ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
+            ]
+
+        elif DATE in [220928, 220929, 221001, 221014, 221021]:
+            # grmamar vs. color rank (where color rank mixes random + grammar ssecretly). should do epochsets, but decided to try
             # this becuase epochsets would throw out like 1/2 the data (keeping only
             # epochset spanning both epochs)
             # - possibly try both meothds.
             # strategy here is to get "same beh" as those with matched first stroke.
             LIST_VAR = [
                 "epoch",
-            ]
-            LIST_VARS_CONJUNCTION = [
-                ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
-            ]
-        elif DATE in [221014]:
-            # Then this uses epochsets
-            LIST_VAR = [
                 "epoch",
-                "seqc_0_shape",
-                "seqc_0_loc",
             ]
             LIST_VARS_CONJUNCTION = [
                 ["epochset"],
-                ["epoch", "seqc_0_loc"],
-                ["epoch", "seqc_0_shape"],
+                ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
             ]
+        # elif DATE in [221014]:
+        #     # Then this uses epochsets
+        #     LIST_VAR = [
+        #         "epoch",
+        #         "seqc_0_shape",
+        #         "seqc_0_loc",
+        #     ]
+        #     LIST_VARS_CONJUNCTION = [
+        #         ["epochset"],
+        #         ["epoch", "seqc_0_loc"],
+        #         ["epoch", "seqc_0_shape"],
+        #     ]
         else:
+            # Everything else, especially trial by trial,
             LIST_VAR = [
                 "epoch",
-                "seqc_0_shape",
-                "seqc_0_loc",
-                "probe",
+                "epoch",
+                "epoch",
             ]
             LIST_VARS_CONJUNCTION = [
                 ["taskgroup", "probe"],
-                ["epoch", "seqc_0_loc"],
-                ["epoch", "seqc_0_shape"],
-                ["seqc_0_loc", "seqc_0_shape", "epoch"] 
+                ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
+                ["epochset"],
             ]
+
+            # --- OLD, takes too long.
+            # LIST_VAR = [
+            #     "epoch",
+            #     "epoch",
+            #     "seqc_0_shape",
+            #     "seqc_0_loc",
+            #     "probe",
+            # ]
+            # LIST_VARS_CONJUNCTION = [
+            #     ["taskgroup", "probe"],
+            #     ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
+            #     ["epoch", "seqc_0_loc"],
+            #     ["epoch", "seqc_0_shape"],
+            #     ["seqc_0_loc", "seqc_0_shape", "epoch"] 
+            # ]
 
         if ONLY_ESSENTIAL_VARS or (ANALY_VER in ["ruleswERROR"]): 
             # just test epoch, for error trials
-            LIST_VAR = LIST_VAR[:1]
-            LIST_VARS_CONJUNCTION = LIST_VARS_CONJUNCTION[:1]
+            LIST_VAR = LIST_VAR[:2]
+            LIST_VARS_CONJUNCTION = LIST_VARS_CONJUNCTION[:2]
 
         # list_events = ["00_fixcue", "00_fixcue", "01_fix_touch", "02_samp", "03_go_cue", "05_on_strokeidx_0", ""]
         # list_pre_dur = [-0.6, 0.05, -0.4, 0.05, -0.6, -0.2]
         # list_post_dur = [0,   0.38, 0.4, 0.6, -0.05, 0.45]
 
-        if DATE in [220812, 220814, 220815, 220816, 220827, 220913, 220921, 220928, 220929]:
+        if (DATE in [220812, 220814, 220815, 220816, 220827, 220913, 220921, 220928, 220929, 220930]) or (DATE in [221001]):
             # NO COLOR (blocks)
+            # - OR - 
+            # grammar vs. color_rank (no color cue on fixation, since the strokes are colored).
             list_events = ["03_samp", "03_samp", "05_first_raise", "06_on_strokeidx_0", "08_doneb", "09_post", "10_reward_all"]
             list_pre_dur = [-0.6, 0.05, -0.6, -0.1, -0.5, 0.05, 0.05]
             list_post_dur = [-0.05, 0.6, -0.05, 0.6, 0.3, 0.6, 0.6]
-        elif DATE in [221014, 221020]:
+        elif DATE in [221014, 221020, 221021]:
             # fixcue[colored] --> fixtouch --> image[colored] --> go...
             list_events = ["00_fixcue", "00_fixcue", "03_samp", "05_first_raise", "06_on_strokeidx_0", "08_doneb", "09_post", "10_reward_all"]
             list_pre_dur = [-0.6, 0.05, 0.05, -0.6, -0.1, -0.5, 0.05, 0.05]
             list_post_dur = [-0.05, 0.6, 0.6, -0.05, 0.6, 0.3, 0.6, 0.6]
-        elif DATE in [221031, 221107, 221114, 221119, 221125]:
-            # fuxcue --> fixtouch --> rulecue2[e.g, fixcue_color_change] --> samp + cue_color_off
+        elif DATE in [221031, 221102, 221107, 221112, 221114, 221119, 221121, 221125]:
+            # fuxcue[nocolor] --> fixtouch --> rulecue2[e.g, fixcue_color_change] --> samp + cue_color_off
 
             # OLD, post-rule_cue was not immediately after rule cue, missed transient stuff.
             # list_events = ["02_rulecue2",   "03_samp",  "03_samp", "05_first_raise", "06_on_strokeidx_0", "08_doneb", "09_post", "10_reward_all"]
             # list_pre_dur = [-0.6,           -0.6,       0.05, -0.6, -0.1, -0.5, 0.05, 0.05]
             # list_post_dur = [-0.04,         -0.04,      0.6, -0.05, 0.6, 0.3, 0.6, 0.6]
-            list_events = ["02_rulecue2",   "02_rulecue2",  "03_samp", "05_first_raise", "06_on_strokeidx_0", "08_doneb", "09_post", "10_reward_all"]
-            list_pre_dur = [-0.6,           0.04,       0.05, -0.6, -0.1, -0.5, 0.05, 0.05]
-            list_post_dur = [-0.04,         0.6,      0.6, -0.05, 0.6, 0.3, 0.6, 0.6]
+
+            if False:
+                list_events = ["02_rulecue2",   "02_rulecue2",  "03_samp", "05_first_raise", "06_on_strokeidx_0", "08_doneb", "09_post", "10_reward_all"]
+                list_pre_dur = [-0.6,           0.04,       0.05, -0.6, -0.1, -0.5, 0.05, 0.05]
+                list_post_dur = [-0.04,         0.6,      0.6, -0.05, 0.6, 0.3, 0.6, 0.6]
+            else:
+                # 5/21/23 - adding to get slower response.
+                list_events = ["02_rulecue2",   "02_rulecue2",  "03_samp", "03_samp",   "04_go_cue",    "05_first_raise",   "06_on_strokeidx_0",    "08_doneb", "09_post", "10_reward_all"]
+                list_pre_dur = [-0.6,           0.04,           -0.6,       0.05,       -0.6,           -0.6,               -0.25,                  -0.5, 0.05, 0.05]
+                list_post_dur = [-0.04,         0.6,            -0.04,      0.6,        -0.05,          -0.05,              0.35,                   0.3, 0.6, 0.6]
         else:
             print(DATE)
             assert False
@@ -341,25 +397,81 @@ def params_getter_extraction(animal, DATE, which_level, ANALY_VER):
     # else:
     #     assert False
 
-    ############### RENAME EPOCHS
-    if animal=="Pancho" and DATE in  [220928, 220929, 221014]:
+    ############### RENAME EPOCHS (to help merge)
+    if animal=="Pancho" and DATE in  [220928, 220929, 220930, 221014]:
+        # Color-supervision -- ie single epochs which combine
+        # random sequence + structured sequence. merge those since
+        # the subject doesnt know.
         list_epoch_merge = [
             (["rndstr", "AnBmTR|1", "TR|1"], "rank|1")
         ]
+        epoch_merge_key = "epoch"
+    elif animal=="Pancho" and DATE in  [221102]:
+        # Color-supervision, just differnet set of rules/epochs
+        list_epoch_merge = [
+            (["rndstr", "llV1|1", "L|1"], "rank|1")
+        ]
+        epoch_merge_key = "epoch"
+    elif animal =="Pancho" and DATE in [220921]:
+        # Sequence mask supervision, i..e, an old version before
+        # designed the color supervision mask (so it is rare). ie.. 
+        # in single epoch mixing random + structured sequence. merge those since
+        # the subject doesnt know.
+        _epochs_to_merge = [("AnBmTR", "mask|0||0"), ("TR", "mask|0||0"), ("rndstr", "mask|0||0")]
+        _new_epoch_name = "rank_mask"
+        list_epoch_merge = [
+            (_epochs_to_merge, _new_epoch_name)
+        ]
+        epoch_merge_key = "epoch_superv"
+    else:
+        list_epoch_merge = []
+        epoch_merge_key = None
+
+
+    ############# LOOK FOR "SAME_BEH" BASED ON EPOCHSETS?
+    # (Useful if >2 epochs, then same_beh would be confused)
+    # (Or if each task can be done different ways, such as for random sequence rank)
+    if animal=="Pancho" and DATE in  [220928, 220929, 220930, 221014, 221001, 221102]:
+        # Color-supervision -- ie single epochs which combine
+        # random sequence + structured sequence. merge those since
+        # the subject doesnt know.
         DO_CHARSEQ_VER = "task_matlab"
         EXTRACT_EPOCHSETS = True
         EXTRACT_EPOCHSETS_trial_label = "char_seq"
-        EXTRACT_EPOCHSETS_n_max_epochs = 2
+        EXTRACT_EPOCHSETS_n_max_epochs = 3
+    elif animal =="Pancho" and DATE in [220921]:
+        # Sequence mask supervision, i..e, an old version before
+        # designed the color supervision mask (so it is rare). ie.. 
+        # in single epoch mixing random + structured sequence. merge those since
+        # the subject doesnt know.
+        DO_CHARSEQ_VER = "task_matlab"
+        EXTRACT_EPOCHSETS = True
+        EXTRACT_EPOCHSETS_trial_label = "char_seq"
+        EXTRACT_EPOCHSETS_n_max_epochs = 3
+    elif animal =="Pancho" and DATE in [221021]:
+        # Cases with >2 epochs, then need to use trial-level definition of "same-beh",
+        # which is done here
+        DO_CHARSEQ_VER = "task_matlab"
+        EXTRACT_EPOCHSETS = True
+        EXTRACT_EPOCHSETS_trial_label = "char_seq"
+        EXTRACT_EPOCHSETS_n_max_epochs = 3
     else:
-        list_epoch_merge = []
         DO_CHARSEQ_VER = None
         EXTRACT_EPOCHSETS = False
         EXTRACT_EPOCHSETS_trial_label = None
         EXTRACT_EPOCHSETS_n_max_epochs = None
 
+    ############ rules will generally need to use this.
+    if ANALY_VER in ["ruleswERROR", "rulesw"] and EXTRACT_EPOCHSETS==False:
+        DO_CHARSEQ_VER = "task_matlab"
+        EXTRACT_EPOCHSETS = True
+        EXTRACT_EPOCHSETS_trial_label = "char_seq"
+        EXTRACT_EPOCHSETS_n_max_epochs = 3
+
     ################ FEATURES TO EXTRACT
     if ANALY_VER in ["ruleswERROR", "rulesw", "seqcontext", "singleprim"]:
-        list_features_modulation_append = ["probe", "taskgroup", "character", "trialcode", "epoch", 
+        list_features_modulation_append = ["probe", "taskgroup", "character", "trialcode", "epoch",
+                                            "epoch_superv",  
                                             "task_kind", "supervision_stage_concise"]
     else:
         assert False
@@ -409,7 +521,8 @@ def params_getter_extraction(animal, DATE, which_level, ANALY_VER):
         "DO_CHARSEQ_VER":DO_CHARSEQ_VER,
         "EXTRACT_EPOCHSETS":EXTRACT_EPOCHSETS,
         "EXTRACT_EPOCHSETS_trial_label":EXTRACT_EPOCHSETS_trial_label,
-        "EXTRACT_EPOCHSETS_n_max_epochs":EXTRACT_EPOCHSETS_n_max_epochs
+        "EXTRACT_EPOCHSETS_n_max_epochs":EXTRACT_EPOCHSETS_n_max_epochs,
+        "epoch_merge_key":epoch_merge_key
         }
 
     return params

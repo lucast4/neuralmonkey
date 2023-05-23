@@ -590,7 +590,7 @@ class Snippets(object):
 
         if feature in self.DfScalar.columns:
             if feature not in self.Params["map_var_to_levels"]:
-                levels = sorted(self.DfScalar[feature].unique().tolist())
+                levels = sort_mixed_type(self.DfScalar[feature].unique().tolist())
                 self.Params["map_var_to_levels"][feature] = levels
 
 
@@ -1377,30 +1377,75 @@ class Snippets(object):
 
         print("TODO: do fr scalar computation only once! takes too much time.")
         RECOMPUTE = True
+        EVENTS_ALREADY_DONE = []
+
         # Check if df_var is already saved
         path = f"{sdir_base}/df_var.pkl"
-        if os.path.exists(path) and reload_df_var_if_exists:
-            from pickle import UnpicklingError
-            try:
-                with open(path, "rb") as f:
-                    df_var = pickle.load(f)
-                print("RELOADED df_var!!!")
-                print("... from:", path)
+        print(path)
+        if reload_df_var_if_exists:
+            print("Searching for already-done df_var at this path:")
+            if os.path.exists(path):
+                from pickle import UnpicklingError
+                try:
+                    with open(path, "rb") as f:
+                        df_var_saved = pickle.load(f)
+                    print("RELOADED df_var!!!")
+                    print("... from:", path)
 
-                list_eventwindow_event = sorted(set([tuple(x) for x in df_var.loc[:, ["event", "_event"]].values.tolist()]))
-                # path = f"{sdir_base}/list_eventwindow_event.pkl" 
-                # with open(path, "rb") as f:
-                #     list_eventwindow_event = pickle.load(f)
-                RECOMPUTE = False
-            except UnpicklingError as err:
-                print("Corrupted df_var.pkl --> Recomputing!")
-                RECOMPUTE = True
+                    list_eventwindow_event_saved = sorted(set([tuple(x) for x in df_var_saved.loc[:, ["event", "_event"]].values.tolist()]))
+
+                    # Only recompute events which you have not already extradcted.
+                    EVENTS_ALREADY_DONE = [x[0] for x in list_eventwindow_event_saved] # er.g, [02_rulecue2_40_to_600]
+                    print("Events already done: (will skip these when recomputing)...")
+                    print(EVENTS_ALREADY_DONE)
+                    RECOMPUTE = True
+
+                except UnpicklingError as err:
+                    print("Corrupted df_var.pkl --> Recomputing!")
+                    RECOMPUTE = True
+                    EVENTS_ALREADY_DONE = []
+            else:
+                print("df_var doesnt exist...!")
 
         if RECOMPUTE:
             print("COMPUTING df_var!!!")
             df_var, list_eventwindow_event = self.modulationgood_compute_wrapper(var, 
                 vars_conjuction, score_ver=score_ver, get_z_score=get_z_score,
-                DEBUG_CONJUNCTIONS=DEBUG_CONJUNCTIONS)
+                DEBUG_CONJUNCTIONS=DEBUG_CONJUNCTIONS,
+                events_windowed_skip = EVENTS_ALREADY_DONE) 
+
+            ##### IF you skipped events that you already extracted in preloaded df_var,
+            # merge that preloaded with the new one.
+            if len(EVENTS_ALREADY_DONE)>0:
+                print("... Merging pre-saved and new df_var!")
+                print("-- Len of old df_var, and events that exist in it:")
+                print(len(df_var_saved))
+                print(df_var_saved["event"].unique())
+                print("-- Len of new df_var, and events that exist in it:")
+                print(len(df_var))
+                print(df_var["event"].unique())
+                df_var = pd.concat([df_var, df_var_saved], axis=0).reset_index(drop=True)
+                list_eventwindow_event.extend(list_eventwindow_event_saved)
+
+                print("-- Len of MERGED df_var, and events that exist in it:")
+                print(len(df_var))
+                print(df_var["event"].unique())
+
+                ######### MOVE OLD DF_VAR AND OLD PLOTS
+                from pythonlib.tools.expttools import makeTimeStamp
+                import glob
+                import shutil
+                from pythonlib.tools.expttools import fileparts
+                ts = makeTimeStamp()
+                items = glob.glob(f"{sdir_base}/*")
+                dir_move = f"{sdir_base}/OLD_PLOTS-moved_on_{ts}"
+                os.makedirs(dir_move, exist_ok=True)
+                for it in items:
+                    fname = fileparts(it)[-2] + fileparts(it)[-1] # e.g., df_var.pkl
+                    path_new = f"{dir_move}/{fname}"
+                    print(f"Moving {it} to {path_new}")
+                    shutil.move(it, path_new)
+                print("All files moved... ready to remake plots!!")
 
             # Save df_var
             path = f"{sdir_base}/df_var.pkl"
@@ -1414,6 +1459,7 @@ class Snippets(object):
             with open(path, "wb") as f:
                 pickle.dump(list_eventwindow_event, f)
 
+        df_var = df_var.reset_index(drop=True)
         list_events_window = sorted(df_var["event"].unique().tolist()) 
 
         ######### SAVE PARAMS
@@ -1638,7 +1684,8 @@ class Snippets(object):
 
     def modulationgood_compute_wrapper(self, var, vars_conjuction=None, list_site=None, 
             score_ver="r2smfr_minshuff", get_z_score=False,
-            DEBUG_CONJUNCTIONS=False):
+            DEBUG_CONJUNCTIONS=False,
+            events_windowed_skip = None):
         """ Good, flexible helper to compute modulation of all kinds and all ways of slicing 
         the dataset. 
         PARAMS;
@@ -1647,6 +1694,8 @@ class Snippets(object):
         - lenient_allow_data_if_has_n_levels, eitehr None (ignore) or int, how many
         levels of var you need to get >n_min datapts, in order to keep this level of vars_conj./
         See within for detials.
+        - events_windowed_skip, either None(ignores) or list of str, each an event to skip if 
+        it comes up during analy, e.g, [02_rulecue2_40_to_600]
         RETURNS:
         - df_var
         - list_eventwindow_event, list of tuples, each a (event_window, event), whgere ew is conjucntion
@@ -1669,21 +1718,7 @@ class Snippets(object):
             self.DfScalar["dummy_var"] = "IGNORE"
             # vars_conjuction = ['gridloc', 'chunk_within_rank'] # list of str, vars to take conjunction over
 
-        if list_site is None:
-            list_site = self.Sites
-
-        # Extract globals for analys
-        list_events = self.ParamsGlobals["list_events"]
-        list_pre_dur = self.ParamsGlobals["list_pre_dur"]
-        list_post_dur = self.ParamsGlobals["list_post_dur"]
-        print("DOing these! ...")
-        print("list_events", list_events)
-        print("list_pre_dur", list_pre_dur)
-        print("list_post_dur", list_post_dur)
-
-        sn, _ = self._session_extract_sn_and_trial()
-
-        # First, skip everything if there is not enough data
+        ##### First, skip everything if there is not enough data
         list_grp = ["chan", "event", var]
         if vars_conjuction:
             list_grp = list_grp + vars_conjuction
@@ -1696,10 +1731,38 @@ class Snippets(object):
             try:
                 from pythonlib.tools.pandastools import grouping_count_n_samples_quick
                 n_min, n_max = grouping_count_n_samples_quick(self.DfScalar, list_grp)
-            except Exception as err:
+            except KeyError as err:
+                print("SKipping, you dont have a variable in self.DfScalar. Need to rerun extraction..")
+                print("These are the existing columns")
                 print(self.DfScalar.columns)
+                print("failed searchign for these columns:")
+                print(list_grp)
+                raise NotEnoughDataException
+            except Exception as err:
+                print("These are the existing columns")
+                print(self.DfScalar.columns)
+                print("failed searchign for these columns:")
                 print(list_grp)
                 raise err
+
+        if list_site is None:
+            list_site = self.Sites
+
+        # Extract globals for analys
+        list_events = self.ParamsGlobals["list_events"]
+        list_pre_dur = self.ParamsGlobals["list_pre_dur"]
+        list_post_dur = self.ParamsGlobals["list_post_dur"]
+        print("DOing these! ...")
+        print("list_events", list_events)
+        print("list_pre_dur", list_pre_dur)
+        print("list_post_dur", list_post_dur)
+        
+        if events_windowed_skip is not None:
+            print("WILL SKIP THESE EVENTS...")
+            print(events_windowed_skip)
+
+        sn, _ = self._session_extract_sn_and_trial()
+
 
         if n_max<self.ParamsGlobals["n_min_trials_per_level"]:
             print("SKIPPING PREEMPTIVELY, not enough data. (chan, event, vars, othervars) max n = ", n_max)
@@ -1722,13 +1785,16 @@ class Snippets(object):
         # Collect data for each site
         OUT = []
         for event, pre_dur, post_dur in zip(list_events, list_pre_dur, list_post_dur):
-            print("DOING THIS EVENT: ", event)
             print(" ")
             print(f"Updated ParamsGlobals for event {event} to:")
             self.globals_update(PRE_DUR_CALC=pre_dur, POST_DUR_CALC=post_dur)
             event_window_combo_name = f"{event}_{pre_dur*1000:.0f}_to_{post_dur*1000:.0f}"
-            # for k, v in self.ParamsGlobals.items():
-            #     print(k, ' = ', v)
+            print("DOING THIS EVENT: ", event_window_combo_name)
+
+            if event_window_combo_name in events_windowed_skip:
+                print("!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:")
+                print(event_window_combo_name)
+                continue
 
             # TODO: give this event a unique name
             for site in list_site:
@@ -1879,7 +1945,7 @@ class Snippets(object):
 
         df_var = pd.DataFrame(OUT)      
         if len(df_var)==0:
-            print("SKIPPING, Probably you have not enough data for this conjunctions, try setting DEBUG_CONJUNCTIONS=True and reading the low-level data it prints.")
+            print("SKIPPING, extracted df_var is empty. Probably you have not enough data for this conjunctions, try setting DEBUG_CONJUNCTIONS=True and reading the low-level data it prints.")
             raise NotEnoughDataException
 
         if "dummy_var" in self.DfScalar:
@@ -1894,7 +1960,7 @@ class Snippets(object):
                         value_vars=["val", "val_others", "val_interaction"], var_name="val_kind", value_name="val")
 
                 print(df_var.columns)
-        list_eventwindow_event = sorted(set([tuple(x) for x in df_var.loc[:, ["event", "_event"]].values.tolist()]))
+        list_eventwindow_event = sort_mixed_type(set([tuple(x) for x in df_var.loc[:, ["event", "_event"]].values.tolist()]))
         # [('00_fix_touch_-500_to_0', '00_fix_touch'),
         #  ('01_samp_50_to_600', '01_samp'),
         #  ('03_first_raise_-100_to_500', '03_first_raise')]#
@@ -3397,6 +3463,8 @@ class Snippets(object):
         import seaborn as sns
         from pythonlib.tools.pandastools import aggregGeneral
 
+        df_var = df_var.reset_index(drop=True)
+
         list_var = sort_mixed_type(df_var["var"].unique().tolist())
         list_var_others = sort_mixed_type(df_var["var_others"].unique().tolist())
         assert len(list_var)==1, "not yet coded! shoudl use this as lower loevel code, iterate over vars outside"
@@ -4257,7 +4325,8 @@ class Snippets(object):
         sn, _ = self._session_extract_sn_and_trial()
 
         if levels_var is None:
-            levels_var = sorted(dfthis[var].unique().tolist())
+            # levels_var = sorted(dfthis[var].unique().tolist())
+            levels_var = sort_mixed_type(dfthis[var].unique().tolist())
 
         # extract
         list_list_st = []
