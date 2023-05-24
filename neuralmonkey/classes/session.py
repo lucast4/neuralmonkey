@@ -6355,7 +6355,6 @@ class Session(object):
         return times, touchingdone.astype(int)
 
 
-
     def beh_extract_touch_data(self, trial):
         """ Extract touch data, raw.
         RETURNS:
@@ -6389,6 +6388,130 @@ class Session(object):
         # times, touching = mkl.getTrialsTouchingBinary(fd, trialml)
         return times, touching
 
+    def beh_extract_eye_good(self, trial, apply_empirical_offset=False,
+        CHECK_TDT_ML2_MATCH=False, THRESH=5, PLOT=False):
+        """
+        Get eye track data in units of pixels (matching strokes), by using
+        voltage saved in TDT, but doing projective transform using the T
+        matrix saved in monkeylogic. Do this instaed of using saved ml2 values, 
+        becuase the latter does not extend over the entire trial.
+        PARAMS:
+        - apply_empirical_offset, bool, if True, then this helps the match between
+        ml2 and tdt. not sure why...
+        - CHECK_TDT_ML2_MATCH, bool, if true, then asserts that the diff between tdt and 
+        ml2 (after calibrating tdt) are below a threshold (pixel rms)
+        RETURNS:
+        - times_tdt, (ntimes, ) array of times
+        - vals_tdt_calibrated, (ntimes, 2) array of x and y coords, pixels
+        """
+
+        if len(self.BehFdList)==0:
+            self.load_behavior()
+
+        # Load ml2 analog data
+        # Load calibrated from monkeylogic
+        fd, fd_trialnum = self.beh_get_fd_trial(trial)
+        # mkl.getTrialsAnalogData(fd, fd_trialnum, "Touch")
+        dat_ml2 = mkl.getTrialsEyeData(fd, fd_trialnum, return_as_pixels=True)
+        times_ml2 = dat_ml2[:,2]
+        vals_ml2 = dat_ml2[:,:2]
+        fs_ml2 = fd["params"]["sample_rate"]
+
+        # Load voltage from tdt
+        tx, vals_x, fs_tdt = self.extract_data_tank_streams("eyex", trial)
+        ty, vals_y, fs_tdt = self.extract_data_tank_streams("eyey", trial)
+        assert np.all(tx==ty)
+        vals_tdt = np.stack([vals_x, vals_y], axis=0).T # (times, 2)
+        times_tdt = tx
+
+        # Apply empriical offset, which leads to better alignement between calibrated
+        # tdt data vs. saved ml2.
+        if apply_empirical_offset:
+            assert False, "not ready. this requires a  different offset for each session. should compute the offset by converting ml2 back to voltage"
+            vals_tdt = vals_tdt- [0.04,0.04] # Emprical offset...
+
+        # Try to transform using calibration matrix
+        T = fd["MLConfig"]["EyeTransform"]["5"]["tdata"]["T"]
+        tmp = np.ones((vals_tdt.shape[0], 1))
+        vals_tdt_ones = np.concatenate([vals_tdt, tmp], axis=1)
+        vals_tdt_calibrated = (T@vals_tdt_ones.T).T
+        # normalize by last column
+        vals_tdt_calibrated = vals_tdt_calibrated/vals_tdt_calibrated[:, 2][:, None]
+        vals_tdt_calibrated = vals_tdt_calibrated[:,:2] # remove last column of ones.
+        # print("RESULT:")
+        # print(vals_tdt_calibrated[:5])
+        # print(vals_tdt_calibrated.shape)
+
+        # COnvert from degress to pixels
+        vals_tdt_calibrated = mkl.convertDeg2PixArray(fd, vals_tdt_calibrated)
+
+        if CHECK_TDT_ML2_MATCH:
+            assert False, "not ready. this requires a  different offset for each session. should compute the offset by converting ml2 back to voltage"
+            # Sanity check that (i) tdt voltage transformed --> pix == (ii) monkeylogic saved.
+            # - interpolate to same time base
+            from pythonlib.tools.stroketools import strokesInterpolate2, smoothStrokes
+
+            strokes_tdt = [np.concatenate([vals_tdt_calibrated, times_tdt[:,None]], axis=1)]
+            strokes_tdt = smoothStrokes(strokes_tdt, fs_tdt, 0.05)
+            strokes_tdt = strokesInterpolate2(strokes_tdt, ["input_times", times_ml2], plot_outcome=PLOT)
+            vals_tdt_calibrated_atml2times_sm = strokes_tdt[0][:,:2]
+
+            # smooth the ml2 version
+            strokes_ml2 = [np.concatenate([vals_ml2, times_ml2[:,None]], axis=1)]
+            strokes_ml2 = smoothStrokes(strokes_ml2, fs_ml2, 0.05)
+            vals_ml2_sm = strokes_ml2[0][:,:2]
+
+            diff_ml2_tdt_rms = np.sum((vals_tdt_calibrated_atml2times_sm - vals_ml2_sm)**2, axis=1)**0.5
+            try:
+                diff_floor = np.percentile(diff_ml2_tdt_rms[int(fs_ml2/2):-int(fs_ml2/2)], [10]) # skip the firs tand last 500 samp, which is usualyl one sec
+            except Exception as err:
+                diff_floor = np.percentile(diff_ml2_tdt_rms, [10])[0] # skip the firs tand last 500 samp, which is usualyl one sec
+            print("This is 10th percentile of rms diff between ml2 and tdt pix values.. lower the better")
+            print(diff_floor)
+
+            if PLOT:
+                fig, axes = plt.subplots(1,2)
+
+                ax = axes.flatten()[0]
+                ax.plot(times_ml2, vals_ml2_sm, label="ml2")
+                ax.plot(times_ml2, vals_tdt_calibrated_atml2times_sm, label="tdt_calib_interp_to_ml2_times")
+                ax.legend()
+
+                ax = axes.flatten()[1]
+                ax.plot(times_ml2, diff_ml2_tdt_rms, label="diff_ml2_tdt_rms")
+                ax.legend()
+                
+            if diff_floor>THRESH:
+                print(diff_floor, THRESH)
+                assert False, "empriclaly, this is too high..."
+
+
+        # plot
+        if PLOT:
+            # Plot and overlay
+            fig, axes = plt.subplots(3,2, figsize=(8,12))
+
+            ax = axes.flatten()[0]
+            ax.plot(times_ml2, vals_ml2, label="ml2")
+            ax.plot(times_tdt, vals_tdt, label="tdt")
+            ax.plot(times_tdt, vals_tdt_calibrated, label="tdt_calib")
+            ax.legend()
+
+            ax = axes.flatten()[1]
+            ax.plot(times_ml2, vals_ml2, label="ml2")
+            # ax.plot(times_tdt, vals_tdt, label="tdt")
+            ax.plot(times_tdt, vals_tdt_calibrated, label="tdt_calib")
+            ax.legend()
+
+            ax = axes.flatten()[2]
+            # ax.plot(times_ml2, vals_ml2, label="ml2")
+            ax.plot(times_tdt, vals_tdt, label="tdt")
+            ax.plot(times_tdt, vals_tdt_calibrated, label="tdt_calib")
+            ax.legend()
+
+        return times_tdt, vals_tdt_calibrated
+
+     
 
     def strokes_task_extract(self, trial):
         """ Extract the strokes for this task
