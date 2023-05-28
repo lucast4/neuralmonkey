@@ -19,6 +19,10 @@ from pythonlib.globals import PATH_NEURALMONKEY, PATH_DATA_NEURAL_RAW, PATH_DATA
 
 assert os.path.exists(PATH_DATA_NEURAL_RAW), "might have to mount servr?"
 
+REGIONS_IN_ORDER = ["M1_m", "M1_l", "PMv_l", "PMv_m",
+                "PMd_p", "PMd_a", "dlPFC_p", "dlPFC_a", 
+                "vlPFC_p", "vlPFC_a", "FP_p", "FP_a", 
+                "SMA_p", "SMA_a", "preSMA_p", "preSMA_a"]
 
 # SMFR_SIGMA = 0.025
 SMFR_SIGMA = 0.040 # 4/29/23
@@ -74,7 +78,9 @@ BEH_CODES = {
 SAVELOCALCACHED_TRIALS_FIXATION_SUCCESS = True 
 
 
-def load_mult_session_helper(DATE, animal, dataset_beh_expt=None, expt = "*", MINIMAL_LOADING=True):
+def load_mult_session_helper(DATE, animal, dataset_beh_expt=None, expt = "*", 
+    MINIMAL_LOADING=True,
+    units_metadat_fail_if_no_exist=False):
     """ Hacky, iterates over range(10) sessions, concatenations into a single MultSessions
     for this date.
     """
@@ -100,7 +106,8 @@ def load_mult_session_helper(DATE, animal, dataset_beh_expt=None, expt = "*", MI
         # print(sessdict)
 
         SN = load_session_helper(DATE, dataset_beh_expt, rec_session, animal, expt,
-            MINIMAL_LOADING=MINIMAL_LOADING)
+            MINIMAL_LOADING=MINIMAL_LOADING,
+            units_metadat_fail_if_no_exist=units_metadat_fail_if_no_exist)
         SNlist.append(SN)
         print("Extracted successfully for session: ", rec_session)
 
@@ -114,7 +121,8 @@ def load_mult_session_helper(DATE, animal, dataset_beh_expt=None, expt = "*", MI
 def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Pancho", 
     expt="*", do_all_copy_to_local=False,
     extract_spiketrain_elephant=False, DEBUG_TIMING=False,
-    MINIMAL_LOADING = False, BAREBONES_LOADING=False):
+    MINIMAL_LOADING = False, BAREBONES_LOADING=False,
+    units_metadat_fail_if_no_exist=False):
     """ Load a single recording session.
     PARAMS:
     - DATE, str, "yymmdd"
@@ -163,30 +171,43 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
         beh_sess_list = [beh_session]
         beh_trial_map_list = [(1, 0)]
 
+    print("------------------------------")
+    print("Loading this neural session:", rec_session)
     print("Loading these beh expts:", beh_expt_list)
     print("Loading these beh sessions:",beh_sess_list)
-    print("Loading this neural session:", rec_session)
+    print("Using this beh_trial_map_list:", beh_trial_map_list)
 
+    ALLOW_RETRY=True
+    # Hard code sessions where multiple sec sessions to a single beh session, this leads to
+    # error where the rec sessions doesnt know which beh trial to start at.
+    if int(DATE)==221024 and rec_session==1:
+        beh_trial_map_list = [(667, 0)]
+        ALLOW_RETRY=False
 
     try:
         SN = Session(DATE, beh_expt_list, beh_sess_list, beh_trial_map_list, 
             rec_session = rec_session, dataset_beh_expt=dataset_beh_expt, 
             extract_spiketrain_elephant=extract_spiketrain_elephant,
             do_all_copy_to_local=do_all_copy_to_local, DEBUG_TIMING=DEBUG_TIMING,
-            MINIMAL_LOADING= MINIMAL_LOADING, BAREBONES_LOADING=BAREBONES_LOADING)
+            MINIMAL_LOADING= MINIMAL_LOADING, BAREBONES_LOADING=BAREBONES_LOADING,
+            units_metadat_fail_if_no_exist=units_metadat_fail_if_no_exist)
     except AssertionError as err:
-        print("FAILED loading session:", DATE, rec_session)
-        print("Possible that this one session maps to multiple beh sessions. try loading it automatically.")
-        beh_expt_list, beh_sess_list, beh_trial_map_list = session_map_from_rec_to_ml2_ntrials_mapping(
-            animal, DATE, rec_session)
-        print("ATTEMPTING RELOAD WITH THESE BEH SESSIONS:")
-        print("beh sessions: ", beh_expt_list, beh_sess_list)
-        print("beh_trial_map_list: ", beh_trial_map_list)
-        SN = Session(DATE, beh_expt_list, beh_sess_list, beh_trial_map_list, 
-            rec_session = rec_session, dataset_beh_expt=dataset_beh_expt, 
-            extract_spiketrain_elephant=extract_spiketrain_elephant,
-            do_all_copy_to_local=do_all_copy_to_local, DEBUG_TIMING=DEBUG_TIMING, 
-            MINIMAL_LOADING= MINIMAL_LOADING)
+        if ALLOW_RETRY:
+            print("FAILED loading session:", DATE, rec_session)
+            print("Possible that this one session maps to multiple beh sessions. try loading it automatically.")
+            beh_expt_list, beh_sess_list, beh_trial_map_list = session_map_from_rec_to_ml2_ntrials_mapping(
+                animal, DATE, rec_session)
+            print("ATTEMPTING RELOAD WITH THESE BEH SESSIONS:")
+            print("beh sessions: ", beh_expt_list, beh_sess_list)
+            print("beh_trial_map_list: ", beh_trial_map_list)
+            SN = Session(DATE, beh_expt_list, beh_sess_list, beh_trial_map_list, 
+                rec_session = rec_session, dataset_beh_expt=dataset_beh_expt, 
+                extract_spiketrain_elephant=extract_spiketrain_elephant,
+                do_all_copy_to_local=do_all_copy_to_local, DEBUG_TIMING=DEBUG_TIMING, 
+                MINIMAL_LOADING= MINIMAL_LOADING,
+                units_metadat_fail_if_no_exist=units_metadat_fail_if_no_exist)
+        else:
+            raise err
 
     # if not MINIMAL_LOADING and RESAVE_CACHE:
     #     # Save cached
@@ -220,7 +241,8 @@ class Session(object):
             extract_spiketrain_elephant=False, 
             do_sanity_checks=False, do_sanity_checks_rawdupl=False,
             dataset_beh_expt= None, DEBUG_TIMING=False,
-            MINIMAL_LOADING = False, BAREBONES_LOADING=False):
+            MINIMAL_LOADING = False, BAREBONES_LOADING=False,
+            units_metadat_fail_if_no_exist=False):
         """
         PARAMS:
         - datestr, string, YYMMDD, e.g, "220609"
@@ -339,7 +361,7 @@ class Session(object):
         # Metadat about good sites, etc. Run this first before other things.
         assert sites_garbage is None, "use metadata instead"
         # then look for metadata
-        self.load_metadata_sites()
+        self.load_metadata_sites(fail_if_no_exist=units_metadat_fail_if_no_exist)
         if DEBUG_TIMING:
             ts = makeTimeStamp()
             print("@@@@ DEBUG TIMING, COMPLETED:", "self.load_metadata_sites()", ts)
@@ -2286,7 +2308,7 @@ class Session(object):
         durs_exist_ml2 = []
         trials_exist_ml2 = []
         for trial in trials_exist:
-            fd, t = self.beh_get_fd_trial(trial)
+            fd, t = self.beh_get_fd_trial(trial) 
             tmp = mkl.getTrialsBehCodes(fd, t)
             codes = tmp["num"]
             times = tmp["time"]
@@ -2302,7 +2324,44 @@ class Session(object):
             
             trials_exist_ml2.append(t)
             durs_exist_ml2.append(dur)
-                
+        
+        # all ml2 trials
+        _trials = mkl.getIndsTrials(fd)
+        _durs = []
+        for t in _trials:
+            tmp = mkl.getTrialsBehCodes(fd, t)
+            codes = tmp["num"]
+            times = tmp["time"]
+
+            def get_code_time(codethis):
+                tmp = [t for t, c in zip(times, codes) if c==codethis]
+                assert len(tmp)==1
+                return tmp[0]
+            
+            tstart = get_code_time(9)
+            tend = get_code_time(18)
+            dur = tend - tstart
+            _durs.append(dur)
+
+
+        # do running subtractio
+        if False: # was debuggin with this, but not needed and it didnt work anyway
+            print("SAVING LAGS!!")
+            print(f"/tmp/lags-sess{self.RecSession}.pdf")
+            list_std = []
+            list_lags = []
+            for i in range(len(_durs)-len(durs_exist)):
+                print("testing lag ", i)
+                durs_ml2_tmp = _durs[i:i+len(durs_exist)]
+                list_std.append(np.std(np.array(durs_exist) - np.array(durs_ml2_tmp)))
+                list_lags.append(i)
+            fig, ax = plt.subplots(1,1)
+            ax.plot(list_lags, list_std, '-x')
+            print("lag - std")
+            fig.savefig(f"/tmp/lags-sess{self.RecSession}.pdf")
+            for a, b in zip(list_lags, list_std):
+                print(a, b)
+
 
         # check if cross correlation peaks at 0 lag
         if len(durs_exist)==0 or len(durs_exist_ml2)==0:
@@ -2325,38 +2384,65 @@ class Session(object):
         print("-- This is the variation in (tdt - ml2) durations across trials. shodl be clsoe to 0")        
         print(variation)
 
-
         ## Plots
         def _doplot():
+            print("____PLOTTING!")
             """ Quick plots for diagnostic. plots overlays trial durations vs. trials"""
-            fig, axes = plt.subplots(1,1,figsize=(10,5))
-            plt.plot(trials_exist, durs_exist, '-ok', label="tdt")
-            plt.plot(trials_exist, durs_exist_ml2, '-or', label="ml2(mapped from tdt trials)")
-            # plt.plot(trials_exist_ml2, durs_exist_ml2, '-gx', alpha=0.5, label="ml2(ml2 trials)")
-            plt.title('Goal: k and r should overlap')
-            plt.ylabel('trial durations')
-            plt.xlabel('trials(tdt)')
-            plt.legend()   
+            fig, axes = plt.subplots(2,2,figsize=(15,8))
+
+            ax = axes.flatten()[0]
+            ax.plot(trials_exist, durs_exist, '-xk', label="tdt")
+            ax.plot(trials_exist, durs_exist_ml2, '-xr', label="ml2(mapped from tdt trials)")
+            ax.set_title('Goal: k and r should overlap')
+            ax.set_ylabel('trial durations')
+            ax.set_xlabel('trials(tdt)')
+            ax.legend()   
+
+            # plot all beh trials (not just those matching neural.
+            ax = axes.flatten()[1]
+            ax.plot(_trials, _durs, '-xk', label="ml2_all")
+            ax.plot(trials_exist_ml2, durs_exist_ml2, '-gx', alpha=0.5, label="ml2(ml2 trials)")
+            ax.legend()
+
+            # DEBUG, hand plot specific items to find what works
+            if False:
+                ax = axes.flatten()[2]
+                ax.plot(_trials[600:], _durs[600:], '-xk', label="ml2_all")
+                # ax.plot(trials_exist_ml2, durs_exist_ml2, '-gx', alpha=0.5, label="ml2(ml2 trials)")
+                ax.legend()
+
+            return fig
 
         def _summarize():
             fd, _ = self.beh_get_fd_trial(0)
             print("* n trials: ", len(self.get_trials_list()), len(mkl.getIndsTrials(fd)))
-            print(self.BehTrialMapList)
-            print(self.BehTrialMapListGood)
+            print("self.BehTrialMapList", self.BehTrialMapList)
+            print("self.BehTrialMapListGood", self.BehTrialMapListGood)
             print(lagshift)
             print(variation)
             print(corr[np.argmax(corr)-3:np.argmax(corr)+4])
             _doplot()
 
         if ploton:
-            _doplot()
+            fig=_doplot()
+            os.makedirs(self.Paths['figs_local'], exist_ok=True)
+            fig.savefig(f"{self.Paths['figs_local']}/tdt_ml2_lags.pdf")
 
         if variation<ACCEPTABLE_VARIATION:
             if lagshift!=0:
                 self.print_summarize_expt_params()
+                _summarize()
+                fig = _doplot()
+                fig.savefig(f"{self.Paths['figs_local']}/DEBUG.pdf")
+                print("** SAVED DEBUG FIGURE  to /self.Paths['figs_local']/DEBUG.pdf")
+                self.print_summarize_expt_params()
                 assert False, "variation says they are aligned... (but lagshift doesnt)"
         else:
             if lagshift==0:
+                fig = _doplot()
+                _summarize()
+                fig.savefig(f"{self.Paths['figs_local']}/DEBUG.pdf")
+                print("** SAVED DEBUG FIGURE  to /self.Paths['figs_local']/DEBUG.pdf")
                 self.print_summarize_expt_params()
                 assert False, "variation says misaligned, but lagshift says algined..."
 
@@ -2419,6 +2505,10 @@ class Session(object):
         ntrials = len(self.get_trials_list(only_if_ml2_fixation_success=False, only_if_has_valid_ml2_trial=False))
         # ntrials = len(self.TrialsOnset) 
         self.BehTrialMapListGood = get_map_trial_and_set(self.BehTrialMapList, ntrials)
+
+        print("... Generated these...")
+        print("self.BehTrialMapList", self.BehTrialMapList)
+        print("self.BehTrialMapListGood", self.BehTrialMapListGood)
 
     def _beh_get_fdnum_trial(self, trialtdt):
         """ Get the filedata indices and trial indices (beh) for
@@ -2547,10 +2637,7 @@ class Session(object):
         #         "PMd_p", "PMd_a", "SMA_p", "SMA_a", 
         #         "dlPFC_p", "dlPFC_a", "vlPFC_p", "vlPFC_a", 
         #         "preSMA_p", "preSMA_a", "FP_p", "FP_a"]
-        regions_in_order = ["M1_m", "M1_l", "PMv_l", "PMv_m",
-                "PMd_p", "PMd_a", "dlPFC_p", "dlPFC_a", 
-                "vlPFC_p", "vlPFC_a", "FP_p", "FP_a", 
-                "SMA_p", "SMA_a", "preSMA_p", "preSMA_a"]
+        regions_in_order = REGIONS_IN_ORDER
         dict_sites ={}
         for i, name in enumerate(regions_in_order):
             dict_sites[name] = list(range(1+32*i, 1+32*(i+1)))
@@ -4232,7 +4319,8 @@ class Session(object):
                     stream = 'pd2'
                     cross_dir = 'down'
                     t_pre = -0.01
-                    t_post = 0.16
+                    # t_post = 0.16 # missed. too short.
+                    t_post = 0.2
                     out = self.behcode_get_stream_crossings_in_window(trial, behcode, whichstream=stream, 
                                                               cross_dir_to_take=cross_dir, t_pre=t_pre,
                                                               t_post=t_post,

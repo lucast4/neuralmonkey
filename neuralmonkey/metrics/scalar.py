@@ -1206,7 +1206,7 @@ class MetricsScalar(object):
         - dfthis_train
         - dfthis_test
         """
-        from pythonlib.tools.pandastools import append_col_with_grp_index, append_col_with_index_in_group
+        from pythonlib.tools.pandastools import append_col_with_grp_index
         from sklearn.model_selection import train_test_split
 
         # print(dfthis[vars_others])

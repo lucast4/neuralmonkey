@@ -88,6 +88,16 @@ class MultSessions(object):
         SN = self.SessionsList[sessnum]
         return SN, trial_in_sess, sessnum
 
+    def session_extract_largest(self):
+        """ Get the sn with the most trials"""
+        # pull out the largest sn
+        list_n = []
+        for i, sn in enumerate(self.SessionsList):
+            list_n.append(len(sn.Datasetbeh.Dat))
+        i = list_n.index(max(list_n))
+        sn = self.SessionsList[i]
+        return sn
+
 
     ########### DATASET beh
     def datasetbeh_extract(self):

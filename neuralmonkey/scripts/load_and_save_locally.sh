@@ -42,14 +42,20 @@ touch preprocess_log.txt
 # datelist=( 220709 )
 
 # 230517
-datelist=( 220930 221024 )
+# datelist=( 220930 221024 )
 
-for date1 in "${datelist[@]}"
-do
-    echo ${date1}
-    # python -m neuralmonkey.scripts.load_and_save_locally ${date1} 2>>&1 | tee preprocess_log.txt
-    python -m neuralmonkey.scripts.load_and_save_locally ${date1} |& tee -a preprocess_log.txt
-done
+# 230524
+# datelist=( 221023 )
+# datelist=( 221024 )
+# datelist=( 221113 )
+
+
+# for date1 in "${datelist[@]}"
+# do
+#     echo ${date1}
+#     # python -m neuralmonkey.scripts.load_and_save_locally ${date1} 2>>&1 | tee preprocess_log.txt
+#     python -m neuralmonkey.scripts.load_and_save_locally ${date1} |& tee -a preprocess_log.txt
+# done
 
 
 
@@ -192,10 +198,14 @@ done
 # d=220526 # first date to check.
 # date2=230403 # the final date to check
 
-# date1=$d
-# until [[ ${date1} > ${date2} ]]; do
-#   echo ${date1}
-#   # python -m neuralmonkey.scripts.load_and_save_locally ${date1} 2>>&1 | tee preprocess_log.txt
-#   python -m neuralmonkey.scripts.load_and_save_locally ${date1} |& tee -a preprocess_log.txt
-#   date1=$(date +%y%m%d -d "${date1} + 1 day")
-# done
+# 230525
+d=220526 # first date to check.
+date2=230403 # the final date to check
+
+date1=$d
+until [[ ${date1} > ${date2} ]]; do
+  echo ${date1}
+  # python -m neuralmonkey.scripts.load_and_save_locally ${date1} 2>>&1 | tee preprocess_log.txt
+  python -m neuralmonkey.scripts.load_and_save_locally ${date1} |& tee -a preprocess_log.txt
+  date1=$(date +%y%m%d -d "${date1} + 1 day")
+done

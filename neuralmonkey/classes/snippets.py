@@ -941,7 +941,8 @@ class Snippets(object):
         return dfthis.reset_index(drop=True)
 
     def dataextract_as_df_conjunction_vars(self, var, vars_others=None, site=None,
-        event=None, DEBUG_CONJUNCTIONS=False):
+        event=None, DEBUG_CONJUNCTIONS=False,
+        OVERWRITE_n_min=None, OVERWRITE_lenient_n=None):
         """ Helper to extract dataframe (i) appending a new column
         with ocnjucntions of desired vars, and (ii) keeping only 
         levels of this vars (vars_others) that has at least n trials for 
@@ -1019,6 +1020,11 @@ class Snippets(object):
             assert len(dfthis)>0, "why is empty? incorrect event or sites?"
 
         # print("HERERER:", len(dfthis))
+        if OVERWRITE_n_min:
+            n_min = OVERWRITE_n_min
+        if OVERWRITE_lenient_n:
+            lenient_allow_data_if_has_n_levels = OVERWRITE_lenient_n
+            
         dfthis, dict_lev_df = extract_with_levels_of_conjunction_vars(dfthis, var, 
             vars_others, levels_var, n_min, 
             lenient_allow_data_if_has_n_levels=lenient_allow_data_if_has_n_levels,
@@ -1274,7 +1280,8 @@ class Snippets(object):
         supervision_keep_only_not_training=True,
         trialcodes_keep=None,
         ANALY_VER = "default",
-        params_to_save=None):
+        params_to_save=None,
+        do_only_print_conjunctions=False):
         """
         New version for computing and plotting all modulation (anova) for a given variable. and set
         of conjunction variables. 
@@ -1288,6 +1295,9 @@ class Snippets(object):
         - DEBUG_CONJUNCTIONS, bool, if true, then for each data extraction prints the n trials
         for each var/othervar conjunctions, to help see what data extracted. 
         - params_to_save, usually the params that hold the meta params. see analy_anova_plot
+        - do_only_print_conjunctions, bool, then applies all preprocessing then only prints and
+        saves conjunctions of varialbes. allows inspecting this before running entire analysis which
+        takes long time.
         """
         from pythonlib.tools.expttools import writeDictToYaml        
         import pickle
@@ -1370,6 +1380,17 @@ class Snippets(object):
             globals_lenient_allow_data_if_has_n_levels, 
             PRE_DUR_CALC, POST_DUR_CALC, list_events,
             list_pre_dur, list_post_dur)
+
+        ##############################################
+        # Get conjunctions and print
+        if vars_conjuction is None:
+            _list_vars = [var]
+        else:
+            _list_vars = [var] + vars_conjuction
+        self.modulationgood_plot_list_conjuctions(_list_vars, SAVEDIR=sdir_base) 
+        if do_only_print_conjunctions:
+            print("DONE! just printed conjunctions, as you requested... (exiting..)")
+            return
 
         # self.ParamsGlobals["PRE_DUR_CALC"] = PRE_DUR_CALC
         # self.ParamsGlobals["POST_DUR_CALC"] = POST_DUR_CALC
@@ -1497,12 +1518,6 @@ class Snippets(object):
             df_fr = None
             df_fr_levels = None
 
-        # Get conjunctions and print
-        if vars_conjuction is None:
-            _list_vars = [var]
-        else:
-            _list_vars = [var] + vars_conjuction
-        self.modulationgood_plot_list_conjuctions(_list_vars, SAVEDIR=sdir_base) 
 
         ################### MAIN PLOTS OF MODULATION
         if len(df_var)>0:
@@ -3156,7 +3171,10 @@ class Snippets(object):
 
     def modulationgood_plot_list_conjuctions(self, vars_check, SAVEDIR, PLOT = False):
         """ Useful before spending long time on plots, see sample size for different 
-        conjunctions of variables.
+        conjunctions of variables. NOTE: picks the first channel and event as arbitrary ones, to
+        make sure the output n is accurate (i.e, n trials for a given site and event).
+        NOTE: this should get EVERY trial, even for cases where not enough data for spnaning
+        multiple levels of a var.
         PARAMS:
         - PLOT, bool, if make plots of all conjucntionsa nd N. This can take a while, if 
         many variables, so better to just print (always does).
@@ -3174,7 +3192,7 @@ class Snippets(object):
             assert len(vars_check)<7, "are you sure? maybe limit the length of subsets. will take long time."
 
         site = self.Sites[0] # assume all sites have same trials.
-
+        event = self.DfScalar["event"].unique().tolist()[0]
         RES = {}
         for var in vars_check:
             vars_check_others = [v for v in vars_check if not v==var]
@@ -3186,11 +3204,12 @@ class Snippets(object):
                     vars_others = list(x)
                     print("var -- vars_others: ", var, ' --- ', vars_others)
                         
-                    _, dict_lev_df, _ = self.dataextract_as_df_conjunction_vars(var, vars_others, site)
+                    _, dict_lev_df, _ = self.dataextract_as_df_conjunction_vars(var, vars_others, 
+                        site, event, OVERWRITE_n_min=0, OVERWRITE_lenient_n=1)
                     
                     # how many levels of vars_others have enough data?
-                    n_found = len(dict_lev_df)
-                    RES[(var, tuple(vars_others))] = n_found
+                    # n_found = len(dict_lev_df)
+                    RES[(var, tuple(vars_others))] = len(dict_lev_df)
                     
                     # get n for each lev of others
                     for lev_o, dfthis in dict_lev_df.items():
@@ -3419,7 +3438,7 @@ class Snippets(object):
 
 
     def modulationgood_plot_summarystats(self, df_var, df_fr_each_lev=None, 
-            df_fr=None, savedir="/tmp"):
+            df_fr=None, savedir="/tmp", skip_agg=False):
         """ 
         [GOOD] Plot modulation of fr by a single variable. Uses NEW_VERSION. Pass in dataframes directly.
         - Plots are across all events.
@@ -3476,26 +3495,36 @@ class Snippets(object):
         print("Found this var_others: ", var_others)
 
         # Aggreagated
-        print("Aggregating dataframe over all othervars ...")
-        if "n_datapts" in df_var.columns:
-            # Then this is one-way, has n datapts for each othervar_level:
-            df_var_chan = self.modulationgood_aggregate_df(df_var)
+        if skip_agg:
+            df_var_chan = df_var.copy()
         else:
-            # then this is probably 2-way, dont even need to aggregate...
-            df_var_chan = aggregGeneral(df_var, group=["chan", "event", "var", "var_others", "val_kind", "val_method"], values = ["val"], 
-              nonnumercols=["bregion"]) # one datapt per chan
+            print("Aggregating dataframe over all othervars ...")
+            if "n_datapts" in df_var.columns:
+                # Then this is one-way, has n datapts for each othervar_level:
+                df_var_chan = self.modulationgood_aggregate_df(df_var)
+            else:
+                # then this is probably 2-way, dont even need to aggregate...
+                df_var_chan = aggregGeneral(df_var, group=["chan", "event", "var", "var_others", "val_kind", "val_method"], values = ["val"], 
+                  nonnumercols=["bregion"]) # one datapt per chan
+
+        # order the events
+        # events_sorted = sorted(df_var_chan["event"].unique())
+        from neuralmonkey.analyses.anova_agg_plots import _eventwindow_sort
+        events_sorted = _eventwindow_sort(df_var_chan["event"].unique().tolist())
 
         print("Plotting ...")
         # Compare across events
         fig = sns.catplot(data=df_var_chan, x="event", y="val", hue="val_kind",
-                          col="bregion", row="var", kind="point", ci=68, aspect=1, height=3);
+                          col="bregion", row="var", kind="point", ci=68, aspect=1, height=3,
+                          order=events_sorted);
         for ax in fig.axes.flatten():
             ax.axhline(0, color="k")
         rotateLabel(fig)
         fig.savefig(f"{savedir}/1_lines_modulation_kinds.pdf")
 
         fig = sns.catplot(data=df_var_chan, x="event", y="val", hue="val_kind",
-                          col="bregion", row="var", aspect=1, height=3, jitter=True, alpha=0.25);
+                          col="bregion", row="var", aspect=1, height=3, jitter=True, 
+                          alpha=0.25, order=events_sorted);
         rotateLabel(fig)
         for ax in fig.axes.flatten():
             ax.axhline(0, color="k")
@@ -3503,12 +3532,12 @@ class Snippets(object):
 
         # Comparing brain regions
         fig = sns.catplot(data=df_var_chan, x="bregion", y="val", col="event", hue="val_kind",
-                    row="var", kind="bar", ci=68, aspect=2, height=4);
+                    row="var", kind="bar", ci=68, aspect=2, height=4, col_order=events_sorted);
         rotateLabel(fig)
         fig.savefig(f"{savedir}/2_bars_feature_vs_event.pdf")      
 
         fig = sns.catplot(data=df_var_chan, x="bregion", y="val", col="event", hue="val_kind",
-                    row="var", aspect=2, height=4, alpha=0.25);
+                    row="var", aspect=2, height=4, alpha=0.25, col_order=events_sorted);
         rotateLabel(fig)
         for ax in fig.axes.flatten():
             ax.axhline(0, color="k")        
@@ -3517,13 +3546,15 @@ class Snippets(object):
         # Comparing brain regions
         if False:
             fig = sns.catplot(data=df_var_chan, x="bregion", y="val", col="val_kind",
-                        row="event", kind="bar", ci=68, hue="var", aspect=2, height=4);
+                        row="event", kind="bar", ci=68, hue="var", aspect=2, height=4,
+                        row_order=events_sorted);
             rotateLabel(fig)
             fig.savefig(f"{savedir}/2_bars_feature_vs_valkind.pdf")
 
         # Compare across events
         fig = sns.catplot(data=df_var_chan, x="event", y="val", hue="var",
-                          col="bregion", row="val_kind", kind="point", ci=68, aspect=1, height=3);
+                          col="bregion", row="val_kind", kind="point", ci=68, aspect=1, 
+                          height=3, order=events_sorted);
         rotateLabel(fig)
         for ax in fig.axes.flatten():
             ax.axhline(0, color="k")        
@@ -3554,6 +3585,10 @@ class Snippets(object):
         # if len(df_var["lev_in_var_others"].unique().tolist())>1:
             for var_other_single in var_others: # var_other_single = "stroke_index"
 
+                if var_other_single=="DUMMY":
+                    print(f"SKIPPING plotting for specific single other var, since it is called DUMMY")
+                    continue
+
                 print(f"Plotting for specific single other var: {var_other_single}...")
                 # No need to agg. does nothing.
                 df_var_agg = aggregGeneral(df_var, group=["chan", "event", "var", "var_others", "val_kind", "val_method", var_other_single], 
@@ -3564,7 +3599,8 @@ class Snippets(object):
                 # rotateLabel(fig)
                 # fig.savefig(f"{savedir}/10_bars_vs_marginalvarother_{var_other_single}-1.pdf")
 
-                fig = sns.catplot(data=df_var_agg, x="bregion", y="val", row="event", col=var_other_single, kind="bar", ci=68)
+                fig = sns.catplot(data=df_var_agg, x="bregion", y="val", row="event", 
+                    col=var_other_single, kind="bar", ci=68, row_order=events_sorted)
                 rotateLabel(fig)
                 fig.savefig(f"{savedir}/10_{var_other_single}-1.pdf")
 
@@ -3572,11 +3608,13 @@ class Snippets(object):
                 # rotateLabel(fig)
                 # fig.savefig(f"{savedir}/10_bars_vs_each_level_varother-1.pdf")
 
-                fig = sns.catplot(data=df_var_agg, x=var_other_single, y="val", hue="event", col="bregion", col_wrap=4, kind="bar", ci=68)
+                fig = sns.catplot(data=df_var_agg, x=var_other_single, y="val", hue="event", 
+                    col="bregion", col_wrap=4, kind="bar", ci=68)
                 rotateLabel(fig)
                 fig.savefig(f"{savedir}/10_{var_other_single}-2.pdf")
 
-                fig = sns.catplot(data=df_var_agg, x="event", y="val", hue=var_other_single, col="bregion", kind="bar", ci=68)
+                fig = sns.catplot(data=df_var_agg, x="event", y="val", hue=var_other_single, 
+                    col="bregion", kind="bar", ci=68, order=events_sorted)
                 rotateLabel(fig)
                 fig.savefig(f"{savedir}/10_{var_other_single}-3.pdf")
 
@@ -3585,7 +3623,7 @@ class Snippets(object):
                 for sharey in [True, "row"]:
                     fig = sns.catplot(data=df_var_agg, x="event", y="val", hue="val_kind",
                                       col="bregion", row=var_other_single, aspect=1, height=3, jitter=True,
-                                     alpha=0.25, sharey=sharey);
+                                     alpha=0.25, sharey=sharey, order=events_sorted);
                     for ax in fig.axes.flatten():
                         ax.axhline(0)
                     rotateLabel(fig)
@@ -3595,7 +3633,7 @@ class Snippets(object):
                 for sharey in [True, "row"]:
                     fig = sns.catplot(data=df_var_agg, x="event", y="val", hue="val_kind",
                                       col="bregion", row=var_other_single, aspect=1, height=3, kind="bar",
-                                      ci=68, sharey=sharey);
+                                      ci=68, sharey=sharey, order=events_sorted);
                     rotateLabel(fig)
                     fig.savefig(f"{savedir}/10_{var_other_single}-sharey_{sharey}_5.pdf")
 
@@ -3661,7 +3699,8 @@ class Snippets(object):
         if df_fr is not None:
             try:
                 fig = sns.catplot(data=df_fr, x="event", y="val", hue="val_kind",
-                                  col="bregion", col_wrap=4, kind="point", aspect=1, height=3);
+                                  col="bregion", col_wrap=4, kind="point", aspect=1, height=3,
+                                  order=events_sorted);
                 rotateLabel(fig)
                 fig.savefig(f"{savedir}/5_lines_fr.pdf")
 
@@ -3703,7 +3742,7 @@ class Snippets(object):
             plot_df(dfthis, "val", "event", savedir=sdir, savesuffix=f"{valkind}")
 
             # remove movement event
-            inds_motor = dfthis["_event"].str.contains("strokeidx")
+            inds_motor = dfthis["_event"].str.contains("stroke")
             dfthismotor = dfthis[~inds_motor]
             if len(dfthismotor)>0:
                 plot_df(dfthismotor, "val", "event", savedir=sdir, savesuffix=f"{valkind}-NOMOTOR")
@@ -5270,14 +5309,11 @@ def datasetstrokes_extract(D, strokes_only_keep_single=False, tasks_only_keep_th
 
     return DS
 
-
-def _dataset_extract_prune_general(sn, list_superv_keep = None,
+def _dataset_extract_prune_general_dataset(D, list_superv_keep = None,
         preprocess_steps_append=None, remove_aborts=True,
         list_superv_keep_full=None):
-    """
-    Generic, should add to this.
-    """
-    Dcopy = sn.Datasetbeh.copy()
+
+    Dcopy = D.copy()
 
     print("Starting length of D.Dat:", len(Dcopy.Dat))
     # Remove if aborted
@@ -5317,6 +5353,55 @@ def _dataset_extract_prune_general(sn, list_superv_keep = None,
         Dcopy.preprocessGood(params=preprocess_steps_append)
 
     return Dcopy
+    
+
+
+def _dataset_extract_prune_general(sn, list_superv_keep = None,
+        preprocess_steps_append=None, remove_aborts=True,
+        list_superv_keep_full=None):
+    """
+    Generic, should add to this.
+    """
+    return _dataset_extract_prune_general_dataset(sn.Datasetbeh)
+
+    # print("Starting length of D.Dat:", len(Dcopy.Dat))
+    # # Remove if aborted
+    # if remove_aborts:
+    #     Dcopy.filterPandas({"aborted":[False]}, "modify")
+    #     print("Len, after remove aborts:", len(Dcopy.Dat))
+
+    # if list_superv_keep == "all":
+    #     # Then don't prune based on superv
+    #     print("############ NOT PRUNING SUPERVISION TRIALS")
+    #     pass
+    # else:
+    #     if list_superv_keep is None:
+    #         print("############ TAKING ONLY NO SUPERVISION TRIALS")
+    #         list_superv_keep = LIST_SUPERV_NOT_TRAINING
+    #     else:
+    #         print("############ TAKING ONLY THESE SUPERVISION TRIALS:")
+    #         print(list_superv_keep)
+    #         assert isinstance(list_superv_keep, list)
+
+    #     # Only during no-supervision blocks
+    #     print("--BEFORE REMOVE; existing supervision_stage_concise:")
+    #     print(Dcopy.Dat["supervision_stage_concise"].value_counts())
+    #     Dcopy.filterPandas({"supervision_stage_concise":list_superv_keep}, "modify")
+    #     print("--AFTER REMOVE; existing supervision_stage_concise:")
+    #     print(Dcopy.Dat["supervision_stage_concise"].value_counts())
+        
+    #     print("Dataset final len:", len(Dcopy.Dat))
+
+    # if list_superv_keep_full is not None:
+    #     print("--BEFORE REMOVE; existing supervision_stage_new:")
+    #     print(Dcopy.Dat["supervision_stage_new"].value_counts())
+    #     Dcopy.filterPandas({"supervision_stage_new":list_superv_keep_full}, "modify")
+    #     print(Dcopy.Dat["supervision_stage_new"].value_counts())
+
+    # if preprocess_steps_append is not None:
+    #     Dcopy.preprocessGood(params=preprocess_steps_append)
+
+    # return Dcopy
 
 def _dataset_extract_prune_sequence(sn, n_strok_max = 2):
     """ Prep beh dataset before extracting snippets.
