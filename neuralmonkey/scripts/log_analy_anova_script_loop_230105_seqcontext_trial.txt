@@ -1,0 +1,21 @@
+Got these LIST_VAR and LIST_VARS_CONJUNCTION:
+['seqc_nstrokes_beh', 'seqc_0_shape', 'seqc_0_loc', 'seqc_1_shape', 'seqc_1_loc', 'seqc_nstrokes_beh', 'seqc_nstrokes_beh']
+[['seqc_0_shape', 'seqc_0_loc'], ['seqc_0_loc'], ['seqc_0_shape'], ['seqc_0_shape', 'seqc_0_loc', 'seqc_1_loc'], ['seqc_0_shape', 'seqc_0_loc', 'seqc_1_shape'], ['seqc_0_shape', 'seqc_0_loc', 'seqc_1_shape', 'seqc_1_loc'], ['seqc_0_shape', 'seqc_0_loc', 'seqc_1_shape', 'seqc_1_loc', 'seqc_2_shape', 'seqc_2_loc']]
+Traceback (most recent call last):
+  File "analy_anova_extract.py", line 38, in <module>
+    params = params_getter_extraction(animal, DATE, which_level, ANALY_VER)
+  File "/gorilla1/code/neuralmonkey/neuralmonkey/metadat/analy/anova_params.py", line 687, in params_getter_extraction
+    "EXTRACT_EPOCHSETS_merge_sets":EXTRACT_EPOCHSETS_merge_sets,
+UnboundLocalError: local variable 'EXTRACT_EPOCHSETS_merge_sets' referenced before assignment
+Got these LIST_VAR and LIST_VARS_CONJUNCTION:
+['seqc_nstrokes_beh', 'seqc_0_shape', 'seqc_0_loc', 'seqc_1_shape', 'seqc_1_loc', 'seqc_nstrokes_beh', 'seqc_nstrokes_beh']
+[['seqc_0_shape', 'seqc_0_loc'], ['seqc_0_loc'], ['seqc_0_shape'], ['seqc_0_shape', 'seqc_0_loc', 'seqc_1_loc'], ['seqc_0_shape', 'seqc_0_loc', 'seqc_1_shape'], ['seqc_0_shape', 'seqc_0_loc', 'seqc_1_shape', 'seqc_1_loc'], ['seqc_0_shape', 'seqc_0_loc', 'seqc_1_shape', 'seqc_1_loc', 'seqc_2_shape', 'seqc_2_loc']]
+Got these LIST_VAR and LIST_VARS_CONJUNCTION:
+['seqc_nstrokes_beh', 'seqc_0_shape', 'seqc_0_loc', 'seqc_1_shape', 'seqc_1_loc', 'seqc_nstrokes_beh', 'seqc_nstrokes_beh']
+[['seqc_0_shape', 'seqc_0_loc'], ['seqc_0_loc'], ['seqc_0_shape'], ['seqc_0_shape', 'seqc_0_loc', 'seqc_1_loc'], ['seqc_0_shape', 'seqc_0_loc', 'seqc_1_shape'], ['seqc_0_shape', 'seqc_0_loc', 'seqc_1_shape', 'seqc_1_loc'], ['seqc_0_shape', 'seqc_0_loc', 'seqc_1_shape', 'seqc_1_loc', 'seqc_2_shape', 'seqc_2_loc']]
+Traceback (most recent call last):
+  File "analy_anova_plot.py", line 53, in <module>
+    params_extraction = params_getter_extraction(animal, DATE, which_level, ANALY_VER)
+  File "/gorilla1/code/neuralmonkey/neuralmonkey/metadat/analy/anova_params.py", line 687, in params_getter_extraction
+    "EXTRACT_EPOCHSETS_merge_sets":EXTRACT_EPOCHSETS_merge_sets,
+UnboundLocalError: local variable 'EXTRACT_EPOCHSETS_merge_sets' referenced before assignment

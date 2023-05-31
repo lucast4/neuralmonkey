@@ -16,9 +16,12 @@ from neuralmonkey.classes.snippets import load_and_concat_mult_snippets
 from neuralmonkey.classes.snippets import _dataset_extract_prune_general, _dataset_extract_prune_general_dataset
 from pythonlib.dataset.analy_dlist import concatDatasets
 from pythonlib.tools.expttools import writeDictToYaml
+import pandas as pd
+import numpy as np
 
 DEBUG = False
 DO_ONLY_PRINT_CONJUNCTIONS = False
+DEBUG_CONJUNCTIONS = False
 
 if __name__=="__main__":
 
@@ -68,8 +71,14 @@ if __name__=="__main__":
     ################# BEH DATASET
     # First, concatenate all D.
     list_dataset = []
-    for sn in MS.SessionsList:
+    for i, sn in enumerate(MS.SessionsList):
+        # if which_level=="trial":
+        # use the dataset here, since it is not saved
         D = sn.Datasetbeh
+        # else:
+        #     # use the dataset linked to DS, since it is saved
+        #     D = SP.DSmult[i].Dataset
+        #     assert len(D.Dat)==len(sn.Datasetbeh.Dat), "a sanity check. desnt have to be, but I am curious why it is not..."
 
         # THINGs that must be done by each individual D
         D.behclass_preprocess_wrapper()
@@ -113,6 +122,9 @@ if __name__=="__main__":
             merge_sets_with_only_single_epoch=params_extraction["EXTRACT_EPOCHSETS_merge_sets"],
             merge_sets_with_only_single_epoch_name = ("LEFTOVER",))
 
+    if params_extraction["DO_EXTRACT_EPOCHKIND"]:
+        Dall.supervision_epochs_extract_epochkind()
+
     # Sanity check that didn't remove too much data.
     if False:
         if "wrong_sequencing_binary_score" not in params["preprocess_steps_append"]:
@@ -126,55 +138,119 @@ if __name__=="__main__":
     
 
     ####################### REEXTRACT VARIABLES
-    # First collect all variables that you might need (before deleting dataset).
-    # By default, recompute them, since concatting datasets might change some variables.
-    def _reextract_var(SP, varthis):
-        """ Repopulate SP.DfScalar[varthis] with the new values in
-        dataset.
-        Modifies SP in place
-        """
-        from pythonlib.tools.pandastools import slice_by_row_label
-        
-        trialcodesthis = SP.DfScalar["trialcode"].tolist()
-
-        # keep onlyt the trialcodes that exist in dataset (after pruning)
-        # tmp = Dall.Dat["trialcode"].tolist()
-        # trialcodesthis = [tc for tc in trialcodesthis if tc in tmp]
-
-        # Get the sliced dataframe
-        dfslice = slice_by_row_label(Dall.Dat, "trialcode", trialcodesthis,
-            reset_index=True, assert_exactly_one_each=True)
-        
-        # sanity check
-        if False:
-            # is now done in slice_by_row_label
-            assert dfslice["trialcode"].tolist() == trialcodesthis
-
-        # Assign the values to SP
-        print("Updating this column of SP.DfScalar with Dataset beh:")
-        print(varthis)
-        SP.DfScalar[varthis] = dfslice[varthis].tolist()
-
-    vars_already_extracted =[]
+    list_var_reextract = []
     for var, vars_conjuction in zip(params["LIST_VAR"], params["LIST_VARS_CONJUNCTION"]):
-
-        # If any of these vars dont exist, try to extract them again from dataset
-        # if var not in SP.DfScalar.columns:
-        #     valuesthis = _reextract_var(SP, var)
-        #     SP.DfScalar[var] = valuesthis
-        # for v in vars_conjuction:
-        #     if v not in SP.DfScalar.columns:
-        #         valuesthis = _reextract_var(SP, v)
-        #         SP.DfScalar[v] = valuesthis
-
-        if var not in vars_already_extracted:
-            _reextract_var(SP, var)
-            vars_already_extracted.append(var)
-
+        list_var_reextract.append(var)
         for v in vars_conjuction:
-            if v not in vars_already_extracted:
-                _reextract_var(SP, v)
-                vars_already_extracted.append(v)
+            list_var_reextract.append(v)
+    list_var_reextract = list(set(list_var_reextract))
+    print("* REEXTRACTING THESE VARS to SP.DfScalar:")
+    print(list_var_reextract)
+
+
+    if which_level=="trial":
+        # First collect all variables that you might need (before deleting dataset).
+        # By default, recompute them, since concatting datasets might change some variables.
+        def _reextract_var(SP, varthis):
+            """ Repopulate SP.DfScalar[varthis] with the new values in
+            dataset.
+            Modifies SP in place
+            """
+            from pythonlib.tools.pandastools import slice_by_row_label
+            
+            trialcodesthis = SP.DfScalar["trialcode"].tolist()
+
+            # Get the sliced dataframe
+            dfslice = slice_by_row_label(Dall.Dat, "trialcode", trialcodesthis,
+                reset_index=True, assert_exactly_one_each=True)
+
+            # Assign the values to SP
+            print("Updating this column of SP.DfScalar with Dataset beh:")
+            print(varthis)
+            SP.DfScalar[varthis] = dfslice[varthis].tolist()
+
+        # vars_already_extracted =[]
+        for var in list_var_reextract:
+        # for var, vars_conjuction in zip(params["LIST_VAR"], params["LIST_VARS_CONJUNCTION"]):
+
+            # If any of these vars dont exist, try to extract them again from dataset
+            # if var not in SP.DfScalar.columns:
+            #     valuesthis = _reextract_var(SP, var)
+            #     SP.DfScalar[var] = valuesthis
+            # for v in vars_conjuction:
+            #     if v not in SP.DfScalar.columns:
+            #         valuesthis = _reextract_var(SP, v)
+            #         SP.DfScalar[v] = valuesthis
+            _reextract_var(SP, var)
+
+        # For deletion code later, make dummys
+        list_ds_dat = None
+        DS = None
+        dfstrokes = None
+        dfstrokes_slice = None
+
+    elif which_level=="stroke":
+            
+        # For each DS (session) extract the column from Dall
+        list_ds_dat = []
+        for DS in SP.DSmult:
+
+            # Update dataset
+            DS.dataset_replace_dataset(Dall)
+
+            # get fields from Dall
+            for var in list_var_reextract:
+                if var in DS.Dataset.Dat.columns:
+                    # 1) append a new column in DS that has the desired variable from Dataset
+                    DS.dataset_append_column(var)
+                else:
+                    print("SHOULD REGENERATE DS  with this var!!")
+
+            # concat 
+            list_ds_dat.append(DS.Dat)
+
+        # Extract the concatenated df strokes            
+        dfstrokes = pd.concat(list_ds_dat).reset_index(drop=True)
+
+        # 2) extract a slice of DS with desired trialcodes and strokeindices.
+        list_trialcode = SP.DfScalar["trialcode"].tolist()
+        list_stroke_index = SP.DfScalar["stroke_index"].tolist()
+        dfstrokes_slice = SP.DSmult[0].dataset_slice_by_trialcode_strokeindex(list_trialcode, list_stroke_index, 
+            df=dfstrokes)
+
+        # Sanity checks
+        assert np.all(SP.DfScalar["trialcode"] == dfstrokes_slice["trialcode"])
+        assert np.all(SP.DfScalar["stroke_index"] == dfstrokes_slice["stroke_index"])
+        # if not np.all(SP.DfScalar["gridloc"] == dfstrokes_slice["gridloc"]):
+        #     for i in range(len(dfstrokes_slice)):
+        #         a = SP.DfScalar.iloc[i]["gridloc"]
+        #         b = dfstrokes_slice.iloc[i]["gridloc"]
+        #         if a == b:
+        #             print(i, a, b)
+        #         if a != b:
+        #             print("**", i, a, b)
+        #     assert False, "why different?"
+
+        # Debug, if rows are not one to one
+        if False:
+            dfstrokes[dfstrokes["trialcode"]=="221020-2-211"]
+
+            sp.DS.Dat[sp.DS.Dat["trialcode"]=="221020-2-211"]
+
+            import numpy as np
+            assert np.all(sp.DfScalar["trialcode"] == dfstrokes_slice["trialcode"])
+            assert np.all(sp.DfScalar["stroke_index"] == dfstrokes_slice["stroke_index"])
+            assert np.all(sp.DfScalar["gridloc"] == dfstrokes_slice["gridloc"])
+
+        # merge with sp
+        for var in list_var_reextract:
+            print("Updating this column of SP.DfScalar with DatStrokes beh:")
+            print(var)
+            SP.DfScalar[var] = dfstrokes_slice[var]
+    else:
+        print(which_level)
+        assert False
+
 
     ###### PRUNE DATASET TO GET SUBSET TRIALCODES
     # Only keep subset these trialcodes
@@ -213,6 +289,13 @@ if __name__=="__main__":
     del dataset_pruned_for_trial_analysis
     del list_dataset
     del Dall
+    del SP.DSmult
+
+    del list_ds_dat
+    del DS
+    del dfstrokes
+    del dfstrokes_slice
+
     # del dat_pruned
     gc.collect()
 
@@ -231,6 +314,7 @@ if __name__=="__main__":
                     trialcodes_keep=TRIALCODES_KEEP,
                     ANALY_VER=ANALY_VER,
                     params_to_save=params,
+                    DEBUG_CONJUNCTIONS=DEBUG_CONJUNCTIONS,
                     do_only_print_conjunctions=DO_ONLY_PRINT_CONJUNCTIONS)
             if SP.DfScalarBeforeRemoveSuperv is not None:
                 # then pruned. replace the original

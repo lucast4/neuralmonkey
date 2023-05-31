@@ -37,6 +37,8 @@
 # params=( Pancho 221014 trial rulesw )
 # params=( Pancho 221014 trial ruleswERROR )
 
+params=( Pancho 221020 stroke rulesw )
+
 # params=( Pancho 221020 trial rulesw )
 # params=( Pancho 221020 trial ruleswALLDATA )
 # params=( Pancho 221020 trial rulesw n)

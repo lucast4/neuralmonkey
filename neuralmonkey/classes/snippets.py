@@ -13,6 +13,9 @@ SAVEDIR_SNIPPETS_TRIAL = "/gorilla1/analyses/recordings/main/anova/bytrial" # fo
 
 LIST_SUPERV_NOT_TRAINING = ["off|0||0", "off|1|solid|0", "off|1|rank|0"]
 
+# import warnings
+# warnings.filterwarnings("error")
+
 def load_snippets(sdir, fname="Snippets"):
     import pickle as pkl
 
@@ -119,7 +122,8 @@ def load_and_concat_mult_snippets(MS, which_level, SITES_COMBINE_METHODS = "inte
     # SPall.DS = None
     SPall._CONCATTED_SNIPPETS = True
     SPall.SNmult = MS
-
+    SPall.DSmult = [sp.DS for sp in list_sp]
+    
     # ind_sess = 0
     # trial_within = 0 
     # ms.index_convert((ind_sess, trial_within))
@@ -223,6 +227,7 @@ class Snippets(object):
         self.DfScalarBeforeRemoveSuperv = None
         self.SN = SN
         self.SNmult = None
+        self.DSmult = None
         self._NEW_VERSION = NEW_VERSION
         self._SKIP_DATA_EXTRACTION = SKIP_DATA_EXTRACTION
         self._CONCATTED_SNIPPETS = False
@@ -279,9 +284,9 @@ class Snippets(object):
 
             print("Extracting, SN.snippets_extract_bystroke...")
             for var in list_features_extraction:
-                if (var not in SN.Datasetbeh.Dat.columns) or (var not in DS.Dat.columns):
+                if (var not in SN.Datasetbeh.Dat.columns) and (var not in DS.Dat.columns):
                     print(var)
-                    print(SN.Datasetbeh.columns)
+                    print(SN.Datasetbeh.Dat.columns)
                     print(DS.Dat.columns)
                     assert False, "get this feature"
 
@@ -1024,7 +1029,7 @@ class Snippets(object):
             n_min = OVERWRITE_n_min
         if OVERWRITE_lenient_n:
             lenient_allow_data_if_has_n_levels = OVERWRITE_lenient_n
-            
+
         dfthis, dict_lev_df = extract_with_levels_of_conjunction_vars(dfthis, var, 
             vars_others, levels_var, n_min, 
             lenient_allow_data_if_has_n_levels=lenient_allow_data_if_has_n_levels,
@@ -1835,11 +1840,21 @@ class Snippets(object):
 
                     MS = self._dataextract_as_metrics_scalar(dfthis, var)  
 
+                    # try:
                     assert get_z_score==False, "not yet coded, this gets messy, one z for var, var_others, interaction"
                     eventscores = MS.modulationgood_wrapper_twoway(var, version=score_ver, 
                         vars_others = "vars_others")
                     assert len(eventscores.keys())==1, "should only be one event"
-                    
+                    # except ValueWarning as err:
+                    #     print("HERE")
+                    #     print(len(MS.Data))
+                    #     print("HERE")
+                    #     print(site, lev)
+                    #     print("HERE")
+                    #     print(MS.Data[var].value_counts())
+                    #     raise err
+                    #     assert False
+
                     score, score_others, score_interaction = eventscores[event]
 
                     assert isinstance(score, float), "no np arrays allowed. will fail seaborn"
@@ -1918,7 +1933,7 @@ class Snippets(object):
                             # try:
                             eventscores = MS.modulationgood_wrapper_(var, version=score_ver, 
                                 return_as_score_zscore_tuple=get_z_score)
-                            # except Exception as err:
+                            # except ValueWarning as err:
                             #     print("HERE")
                             #     print(len(MS.Data))
                             #     print("HERE")
@@ -1926,6 +1941,7 @@ class Snippets(object):
                             #     print("HERE")
                             #     print(MS.Data[var].value_counts())
                             #     raise err
+                            #     assert False
                             
                             assert len(eventscores.keys())==1, "should only be one event"
                             score = eventscores[event]

@@ -7405,6 +7405,7 @@ class Session(object):
                     "trialcode":tc,
                     "chan":s,
                     "event_aligned":event_name,
+                    "stroke_index":si,
                     # "fr_sm":fr_sm, # (1, time)
                     # "fr_sm_times":fr_sm_times,
                     "spike_times":spike_times,

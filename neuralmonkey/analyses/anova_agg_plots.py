@@ -103,12 +103,12 @@ def load_and_preprocess_alldays(animal, ANALY_VER, var_desired, LIST_DATE,
 
         print("Loaded already-saved data!!", SAVEDIR_ALL)
 
-        if "preprocess_done" in _PARAMS.keys() and _PARAMS["preprocess_done"]==True:
-            print("Skipping preprocess - already done!!")
-            pass
-        else:
-            print("Doing preprocess!!")
-            _preprocess_dfvar(DF_VAR, METADAT, _PARAMS)
+        # if "preprocess_done" in _PARAMS.keys() and _PARAMS["preprocess_done"]==True:
+        #     print("Skipping preprocess - already done!!")
+        #     pass
+        # else:
+        print("Doing preprocess!!")
+        _preprocess_dfvar(DF_VAR, METADAT, _PARAMS)
 
     else:
 
@@ -417,7 +417,7 @@ def _extract_epochs_have_same_beh(df_var, vars_conjunction, call_first_stroke_ma
                 return True
             elif isinstance(epochset, tuple) and len(epochset)==1:
                 return False
-            elif isinstance(epochset, str) and epochset==("LEFTOVER",):
+            elif isinstance(epochset, str) and epochset=="LEFTOVER":
                 return False
             else:
                 print(epochset)
@@ -437,12 +437,19 @@ def _extract_epochs_have_same_beh(df_var, vars_conjunction, call_first_stroke_ma
 
 def _eventwindow_sort(list_eventwindow):
     """ Sort chronotically
+    PARAMS;
+    - list_eventwindow, list of str, either:
+    --- 06_on_strokeidx_0_-250_to_350 or
+    --- 00_baseline
     """
 
     list_keys = []
     for ev in list_eventwindow:
         numev, _, predur, postdur = _eventwindow_to_predur_postdur(ev)
-        key = (numev, predur, postdur, ev)
+        if predur is not None:
+            key = (numev, predur, postdur, ev)
+        else:
+            key = (numev, ev, ev, ev)
         list_keys.append(key)
 
     list_keys = sorted(list_keys)
@@ -455,22 +462,32 @@ def _eventwindow_to_predur_postdur(eventwindow):
     """ Convert from string holding the specific event and its time winodw
     to decomposed data, inmcludiong predur/postdur
     PARAMS:
-    - eventwindow, e.g, eventwindow = "05_first_raise_-600_to_-50"
+    - eventwindow, e.g, eventwindow = "05_first_raise_-600_to_-50" or
+    00_baseline, in which case predur and postdur returns NOne.
     RETURNS:
     - (numevent, eventabstract, pre_dur, post_dur)
     e.g., ('05_first_raise', 'first_raise', -0.6, -0.05)
     """
     
     tmp = decompose_string(eventwindow, "_") # ['05', 'first', 'raise', '-600', 'to', '-50']
-    if len(tmp)<5:
-        print(eventwindow)
-        print(tmp)
-        assert False
 
-    numevent = "_".join(tmp[:-3])
-    eventabstract = "_".join(tmp[1:-3])
-    pre_dur = int(tmp[-3])/1000
-    post_dur = int(tmp[-1])/1000
+
+    if len(tmp)<5:
+        # ['05', 'first', 'raise']
+        pre_dur = None
+        post_dur = None
+        # print(eventwindow)
+        # print(tmp)
+        # assert False
+        numevent = "_".join(tmp)
+        assert numevent==eventwindow, f"sanioty check..., {numevent}, {eventwindow}"
+        eventabstract = "_".join(tmp[1:])
+    else:
+        # ['05', 'first', 'raise', '-600', 'to', '-50']
+        pre_dur = int(tmp[-3])/1000
+        post_dur = int(tmp[-1])/1000
+        numevent = "_".join(tmp[:-3])
+        eventabstract = "_".join(tmp[1:-3])
         
     return numevent, eventabstract, pre_dur, post_dur
 
@@ -912,11 +929,14 @@ def aggregate_df_var(DF_VAR):
     return DF_VAR_AGG, DF_VAR_AGG_EXPT
 
 
-def plotwrapper_contrasts(DF_VAR, var_contrast, grouping, _PARAMS, PRINT=False):
+def plotwrapper_contrasts(DF_VAR, var_contrast, grouping, _PARAMS, PRINT=False,
+    SAVE_SUFFIX = None, MINIMAL_PLOTS=False):
     """ Make plots that emphasize the contrast between levels for var_contrast.
     PARAMS:
     - var_contrast, string, column in DF_VAR,..
     - grouping, list of str, these are the "expt" level datapts
+    - MINIMAL_PLOTS, then (i) skips scatter plots (takes a while) and some other
+    plots ofo conjucntion of variables.
     """
 
     import seaborn as sns
@@ -950,6 +970,8 @@ def plotwrapper_contrasts(DF_VAR, var_contrast, grouping, _PARAMS, PRINT=False):
 
     ## Plots
     eventsemantic_ordered = _plot_get_eventsemantic_ordered(DF_VAR)
+    tmp = DF_VAR["bregion"].unique().tolist()
+    REGIONS_IN_ORDER = [r for r in REGIONS_IN_ORDER if r in tmp]
 
     if False:
         # in progress -- need to fix the code for computing differences
@@ -977,7 +999,10 @@ def plotwrapper_contrasts(DF_VAR, var_contrast, grouping, _PARAMS, PRINT=False):
         plt.close("all")
 
     ## SAVEDIR
-    SAVEDIR = f"{_PARAMS['SAVEDIR_ALL']}/PLOTS_CONTRAST_{var_contrast}"
+    if SAVE_SUFFIX:
+        SAVEDIR = f"{_PARAMS['SAVEDIR_ALL']}/PLOTS_CONTRAST_{var_contrast}_{SAVE_SUFFIX}"
+    else:
+        SAVEDIR = f"{_PARAMS['SAVEDIR_ALL']}/PLOTS_CONTRAST_{var_contrast}"
     os.makedirs(SAVEDIR, exist_ok=True)
 
     ## Save text, params.
@@ -993,7 +1018,7 @@ def plotwrapper_contrasts(DF_VAR, var_contrast, grouping, _PARAMS, PRINT=False):
         "grouping":grouping
     }
     writeDictToYaml(_params, path )
-
+    
     # Grand average | combine levels | dat=chan
     fig = sns.catplot(data=DF_VAR_AGG, x="eventsemantic", y="val", col="bregion", order=eventsemantic_ordered, 
         kind="point", ci=68, col_order=REGIONS_IN_ORDER)
@@ -1054,15 +1079,16 @@ def plotwrapper_contrasts(DF_VAR, var_contrast, grouping, _PARAMS, PRINT=False):
         ax.axhline(0, color="k", alpha=0.4)                        
     fig.savefig(f"{SAVEDIR}/row_level-dat_expt-point.pdf")
 
-    # Row = level | data = scatter chan
-    fig = sns.catplot(data=DF_VAR_AGG, x="eventsemantic", y="val", col="bregion", hue="exptgrp", 
-                      row=var_contrast,
-                      order=eventsemantic_ordered, jitter=True, alpha=0.4, col_order=REGIONS_IN_ORDER)
-    rotateLabel(fig)
-    for ax in fig.axes.flatten():
-        ax.axhline(0, color="k", alpha=0.4)                        
-    fig.savefig(f"{SAVEDIR}/row_level-dat_chan-scatter.pdf")
-    plt.close("all")
+    if not MINIMAL_PLOTS:
+        # Row = level | data = scatter chan
+        fig = sns.catplot(data=DF_VAR_AGG, x="eventsemantic", y="val", col="bregion", hue="exptgrp", 
+                          row=var_contrast,
+                          order=eventsemantic_ordered, jitter=True, alpha=0.4, col_order=REGIONS_IN_ORDER)
+        rotateLabel(fig)
+        for ax in fig.axes.flatten():
+            ax.axhline(0, color="k", alpha=0.4)                        
+        fig.savefig(f"{SAVEDIR}/row_level-dat_chan-scatter.pdf")
+        plt.close("all")
 
     # row = exptgrp | {mean_chan, scatter_chan}
     ngrps = len(DF_VAR_AGG["exptgrp"].unique())
@@ -1075,13 +1101,14 @@ def plotwrapper_contrasts(DF_VAR, var_contrast, grouping, _PARAMS, PRINT=False):
             ax.axhline(0, color="k", alpha=0.4)                           
         fig.savefig(f"{SAVEDIR}/row_exptgrp-dat_chan-point.pdf")
         
-        fig = sns.catplot(data=DF_VAR_AGG, x="eventsemantic", y="val", col="bregion", hue=var_contrast, 
-                          row="exptgrp",
-                          order=eventsemantic_ordered, jitter=True, alpha=0.4, col_order=REGIONS_IN_ORDER)
-        rotateLabel(fig)
-        for ax in fig.axes.flatten():
-            ax.axhline(0, color="k", alpha=0.4)                        
-        fig.savefig(f"{SAVEDIR}/row_exptgrp-dat_chan-scatter.pdf")
+        if not MINIMAL_PLOTS:
+            fig = sns.catplot(data=DF_VAR_AGG, x="eventsemantic", y="val", col="bregion", hue=var_contrast, 
+                              row="exptgrp",
+                              order=eventsemantic_ordered, jitter=True, alpha=0.4, col_order=REGIONS_IN_ORDER)
+            rotateLabel(fig)
+            for ax in fig.axes.flatten():
+                ax.axhline(0, color="k", alpha=0.4)                        
+            fig.savefig(f"{SAVEDIR}/row_exptgrp-dat_chan-scatter.pdf")
 
         # fig.savefig(f"{SAVEDIR_ALL}/overview-{level}-grouping_{i}-{kind}-row_{row}.pdf")
         plt.close("all")
@@ -1101,6 +1128,7 @@ def plotwrapper_contrasts(DF_VAR, var_contrast, grouping, _PARAMS, PRINT=False):
             fig.savefig(f"{SAVEDIR}/row_{_row}-dat_chan-point.pdf")
             
             
+        if not MINIMAL_PLOTS:
             fig = sns.catplot(data=DF_VAR_AGG, x="eventsemantic", y="val", col="bregion", hue=var_contrast, 
                               row=_row,
                               order=eventsemantic_ordered, jitter=True, alpha=0.35, col_order=REGIONS_IN_ORDER)
@@ -1108,7 +1136,7 @@ def plotwrapper_contrasts(DF_VAR, var_contrast, grouping, _PARAMS, PRINT=False):
             for ax in fig.axes.flatten():
                 ax.axhline(0, color="k", alpha=0.4)                        
             fig.savefig(f"{SAVEDIR}/row_{_row}-dat_chan-scatter.pdf")
-            
+                
             plt.close("all")
 
             
@@ -1143,28 +1171,37 @@ def plotwrapper_contrasts(DF_VAR, var_contrast, grouping, _PARAMS, PRINT=False):
                 fig.savefig(f"{SAVEDIR}/row_{var_contrast}-lev_of_{_row}_{lev}-dat_chan.pdf")
             plt.close("all")
 
-                
+                    
 
     # Fig = exptgrp | Row = level | data = chan
     list_grp = DF_VAR_AGG["exptgrp"].unique()
     for grp in list_grp:
         dfthis = DF_VAR_AGG[DF_VAR_AGG["exptgrp"]==grp]
-        fig = sns.catplot(data=dfthis, x="eventsemantic", y="val", col="bregion", hue=var_contrast,
-                          row = var_contrast,
-                          order=eventsemantic_ordered, jitter=True, alpha=0.3, col_order=REGIONS_IN_ORDER)
-        rotateLabel(fig)
-        for ax in fig.axes.flatten():
-            ax.axhline(0, color="k", alpha=0.4)                        
-        fig.savefig(f"{SAVEDIR}/row_{var_contrast}-exptgrp_{grp}-dat_chan-scatter.pdf")
+
+        if not MINIMAL_PLOTS:
+            fig = sns.catplot(data=dfthis, x="eventsemantic", y="val", col="bregion", hue=var_contrast,
+                              order=eventsemantic_ordered, jitter=True, alpha=0.3, col_order=REGIONS_IN_ORDER)
+            rotateLabel(fig)
+            for ax in fig.axes.flatten():
+                ax.axhline(0, color="k", alpha=0.4)                        
+            fig.savefig(f"{SAVEDIR}/row_{var_contrast}-exptgrp_{grp}-dat_chan-scatter.pdf")
+            
         
-        
         fig = sns.catplot(data=dfthis, x="eventsemantic", y="val", col="bregion", hue=var_contrast,
-                          row = var_contrast,
                           order=eventsemantic_ordered, kind="point", ci=68, col_order=REGIONS_IN_ORDER)
         rotateLabel(fig)
         for ax in fig.axes.flatten():
             ax.axhline(0, color="k", alpha=0.4)                        
         fig.savefig(f"{SAVEDIR}/row_{var_contrast}-exptgrp_{grp}-dat_chan-point.pdf")
+        plt.close("all")
+        
+        fig = sns.catplot(data=dfthis, x="eventsemantic", y="val", col="bregion", hue=var_contrast,
+                            row=var_contrast,
+                          order=eventsemantic_ordered, kind="point", ci=68, col_order=REGIONS_IN_ORDER)
+        rotateLabel(fig)
+        for ax in fig.axes.flatten():
+            ax.axhline(0, color="k", alpha=0.4)                        
+        fig.savefig(f"{SAVEDIR}/row_{var_contrast}-exptgrp_{grp}-dat_chan-point-2.pdf")
         plt.close("all")
         
 

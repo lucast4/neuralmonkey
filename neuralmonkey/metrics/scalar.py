@@ -5,6 +5,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from pythonlib.tools.listtools import sort_mixed_type
 
+# import warnings
+# warnings.filterwarnings("error")
+
 class MetricsScalar(object):
     """docstring for ClassName"""
     def __init__(self, data, list_var=None, map_var_to_othervars=None,
@@ -792,6 +795,9 @@ class MetricsScalar(object):
 
         # Compute running anova to find max indices, using training set
         # print("_anova_running_compute")
+        # import warnings
+        # with warnings.catch_warnings():
+        #     warnings.simplefilter('error') # to break if fails to converge
         dict_results, times, dict_peta2 = self._anova_running_compute(dfthis, var, 
             vars_others=vars_others, time_bin_size=TIME_BIN_SIZE, return_peta2=True)
 

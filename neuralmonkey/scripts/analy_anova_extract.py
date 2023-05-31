@@ -103,12 +103,16 @@ if __name__=="__main__":
                 n_max_epochs=params["EXTRACT_EPOCHSETS_n_max_epochs"],
                 merge_sets_with_only_single_epoch=params["EXTRACT_EPOCHSETS_merge_sets"],
                 merge_sets_with_only_single_epoch_name = ("LEFTOVER",))
+            
+        if params["DO_EXTRACT_EPOCHKIND"]:
+            D.supervision_epochs_extract_epochkind()
 
         ##############################
         # if DEBUG:
         #     SAVEDIR = f"/gorilla1/analyses/recordings/main/anova/bytrial/{animal}-{DATE}-sess_{session}-DEBUG"
         # else:
-        SAVEDIR = f"/gorilla1/analyses/recordings/main/anova/bytrial/{animal}-{DATE}-sess_{session}"
+        SAVEDIR = f"/gorilla1/analyses/recordings/main/anova/by{which_level}/{animal}-{DATE}-sess_{session}"
+        # SAVEDIR = f"/gorilla1/analyses/recordings/main/anova/bytrial/{animal}-{DATE}-sess_{session}"
         os.makedirs(SAVEDIR, exist_ok=True)
 
         # if detects already extracted, and can successfully load, then skips.
@@ -141,7 +145,7 @@ if __name__=="__main__":
             dataset_pruned_for_trial_analysis.subsampleTrials(10, 1)
 
         from neuralmonkey.classes.snippets import Snippets, extraction_helper
-        SP = extraction_helper(sn, "trial", params["list_features_modulation_append"], 
+        SP = extraction_helper(sn, which_level, params["list_features_modulation_append"], 
                                dataset_pruned_for_trial_analysis=dataset_pruned_for_trial_analysis, 
                                NEW_VERSION=True, 
                                PRE_DUR = params["PRE_DUR"], POST_DUR = params["POST_DUR"],
@@ -158,21 +162,21 @@ if __name__=="__main__":
         gc.collect()
 
 
-        if PLOT:
-            ######## PLOTS
-            var = "epoch"
-            vars_conjuction = ['taskgroup'] # list of str, vars to take conjunction over
-            # PRE_DUR_CALC = -0.25
-            # POST_DUR_CALC = 0.25
-            PRE_DUR_CALC = None
-            POST_DUR_CALC = None
-            score_ver='fracmod_smfr_minshuff'
-            # score_ver='r2smfr_zscore'
-            list_events = ["00_fix_touch", "01_samp", "03_first_raise"]
-            list_pre_dur = [-0.5, 0.05, -0.1]
-            list_post_dur = [-0, 0.6, 0.5]
+        # if PLOT:
+        #     ######## PLOTS
+        #     var = "epoch"
+        #     vars_conjuction = ['taskgroup'] # list of str, vars to take conjunction over
+        #     # PRE_DUR_CALC = -0.25
+        #     # POST_DUR_CALC = 0.25
+        #     PRE_DUR_CALC = None
+        #     POST_DUR_CALC = None
+        #     score_ver='fracmod_smfr_minshuff'
+        #     # score_ver='r2smfr_zscore'
+        #     list_events = ["00_fix_touch", "01_samp", "03_first_raise"]
+        #     list_pre_dur = [-0.5, 0.05, -0.1]
+        #     list_post_dur = [-0, 0.6, 0.5]
 
-            SP.modulationgood_compute_plot_ALL(var, vars_conjuction, score_ver, SAVEDIR=SAVEDIR, 
-                                               PRE_DUR_CALC=PRE_DUR_CALC, 
-                                               POST_DUR_CALC=POST_DUR_CALC,
-                                              list_events=list_events, list_pre_dur=list_pre_dur, list_post_dur=list_post_dur)
+        #     SP.modulationgood_compute_plot_ALL(var, vars_conjuction, score_ver, SAVEDIR=SAVEDIR, 
+        #                                        PRE_DUR_CALC=PRE_DUR_CALC, 
+        #                                        POST_DUR_CALC=POST_DUR_CALC,
+        #                                       list_events=list_events, list_pre_dur=list_pre_dur, list_post_dur=list_post_dur)

@@ -81,7 +81,74 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
         get_z_score=True
 
     ############################# VARIABLES
-    if which_level=="trial" and ANALY_VER=="seqcontext":
+    if which_level=="stroke" and ANALY_VER in ["rulesw"]:
+        # Rule switching.
+
+        LIST_VAR = [
+            "gridloc", # 1) state space expansion
+            "shape_oriented",
+            "gridloc",
+            "epoch", # 2) epoch encoidng
+            # "shape_oriented",
+            # "gridloc",
+            "shape_oriented", # 3) prim encoding.
+            "gridloc",
+            "stroke_index",
+            # "character"
+        ]
+        LIST_VARS_CONJUNCTION = [
+            ["shape_oriented", "epochkind"], # this allows combining multiple "direction" epochs into a single epochkind (state space expansion).
+            ["gridloc", "epoch"], # removed stroke_index, since this is not dissociated from both location and shape (for a given rule).
+            ["shape_oriented", "epoch"], # removed stroke_index, since this is not dissociated from both location and shape (for a given rule).
+            ["epochset", "stroke_index"],
+            # ["gridloc", "epoch", "stroke_index"], # useful for comparison across areas
+            # ["shape_oriented", "epoch", "stroke_index"], 
+            ["gridloc", "epoch", "stroke_index", "CTXT_loc_prev", "CTXT_shape_prev"], # useful for comparison across areas
+            ["shape_oriented", "epoch", "stroke_index", "CTXT_loc_prev", "CTXT_shape_prev"], 
+            ["gridloc", "shape_oriented", "epoch"], 
+            # ["epoch", "epochset", "stroke_index"],
+        ]
+
+        # # Consistency of loc and shape activity in sequence.
+        # LIST_VAR = [
+        #     "gridloc",
+        #     "shape_oriented",
+        # ]
+        # LIST_VARS_CONJUNCTION = [
+        #     ["shape_oriented", "stroke_index"],
+        #     ["gridloc", "stroke_index"], # removed stroke_index, since this is not dissociated from both location and shape (for a given rule).
+        # ]
+
+        WINDOWS_DEFAULT = [
+            ('00_stroke', -0.25, 0.35)]
+        list_events = [x[0] for x in WINDOWS_DEFAULT]
+        list_pre_dur = [x[1] for x in WINDOWS_DEFAULT]
+        list_post_dur = [x[2] for x in WINDOWS_DEFAULT]
+
+    elif which_level=="stroke" and ANALY_VER=="seqcontext":
+
+        LIST_VAR = [
+            # "gridloc",
+            # "shape_oriented",
+            "gridloc",
+            "shape_oriented",
+            "stroke_index",
+        ]
+        LIST_VARS_CONJUNCTION = [
+            # ["shape_oriented", "stroke_index"],
+            # ["gridloc", "stroke_index"], 
+            ["shape_oriented", "stroke_index", "CTXT_loc_prev", "CTXT_shape_prev"],
+            ["gridloc", "stroke_index", "CTXT_loc_prev", "CTXT_shape_prev"], 
+            ["gridloc", "shape_oriented", "CTXT_loc_prev", "CTXT_shape_prev"], 
+        ]
+
+        WINDOWS_DEFAULT = [
+            ('00_stroke', -0.25, 0.35)]
+        list_events = [x[0] for x in WINDOWS_DEFAULT]
+        list_pre_dur = [x[1] for x in WINDOWS_DEFAULT]
+        list_post_dur = [x[2] for x in WINDOWS_DEFAULT]
+
+    elif which_level=="trial" and ANALY_VER=="seqcontext":
 
         LIST_VAR = [
             "seqc_nstrokes_beh",
@@ -113,198 +180,146 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
         list_events = ["03_samp",   "03_samp", "04_go_cue",  "05_first_raise",   "06_on_strokeidx_0", "08_doneb", "09_post", "10_reward_all"]
         list_pre_dur = [-0.6,       0.05,      -0.6,        -0.6,               -0.25, -0.5, 0.05, 0.05]
         list_post_dur = [-0.04,     0.6,       -0.04,       -0.05,              0.35, 0.3, 0.6, 0.6]
+    
 
-    elif which_level=="trial" and ANALY_VER in ["rulesw", "ruleswERROR"]:
+    elif which_level=="trial" and ANALY_VER in ["rulesw", "ruleswERROR", "ruleswALLDATA"]:
         # Rule switching.
 
-        if DATE in [220921]:
-            # grmamar vs. sequence mask rank. This must use epoch_superv, since
-            # epoch does not indiciate whether is using superv.
-            # LIST_VAR = [
-            #     "epoch_superv",
-            #     "epoch_superv",
-            # ]
-            # LIST_VARS_CONJUNCTION = [
-            #     ["epochset"],
-            #     ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
-            # ]
-
-            LIST_VAR = [
-                "epoch",
-                "epoch",
-                "character",
-                "seqc_0_loc_shape",
-                "seqc_0_loc",
-                "seqc_1_loc_shape",
-            ]
-            LIST_VARS_CONJUNCTION = [
-                ["epochset"],
-                ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
-                ["epoch", "epochset"],
-                ["epoch", "epochset"],
-                ["epoch", "epochset"],
-                ["epoch", "epochset", "seqc_0_loc_shape"]
-            ]
-
-        elif DATE in [221102]:
-            # combines blocks and trial cues within blocks.
-            # (e.g., rapid switching blcoks, and rule vs. rand within block, with siwtchingin
-            # bnetween 2 rules between blocks)
-            # Thus want to get both matched tasks (trial) and across blcoks.
-            # LIST_VAR = [
-            #     "epoch",
-            #     "epoch",
-            #     "epoch",
-            # ]
-            # LIST_VARS_CONJUNCTION = [
-            #     ["epochset"],
-            #     ["taskgroup"],
-            #     ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
-            # ]
-            LIST_VAR = [
-                "epoch",
-                "epoch",
-                "character",
-                "seqc_0_loc_shape",
-                "seqc_0_loc",
-                "seqc_1_loc_shape",
-            ]
-            LIST_VARS_CONJUNCTION = [
-                ["epochset"],
-                ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
-                ["epoch", "epochset"],
-                ["epoch", "epochset"],
-                ["epoch", "epochset"],
-                ["epoch", "epochset", "seqc_0_loc_shape"]
-            ]
-
-        elif DATE in [220928, 220929, 221001, 221014, 221023, 221024, 221113, 221021, 221118]:
-            # grmamar vs. color rank (where color rank mixes random + grammar ssecretly). should do epochsets, but decided to try
-            # this becuase epochsets would throw out like 1/2 the data (keeping only
-            # epochset spanning both epochs)
-            # - possibly try both meothds.
-            # strategy here is to get "same beh" as those with matched first stroke.
-            
-            # LIST_VAR = [
-            #     "epoch",
-            #     "epoch",
-            # ]
-            # LIST_VARS_CONJUNCTION = [
-            #     ["epochset"],
-            #     ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
-            # ]
-                    
-            LIST_VAR = [
-                "epoch",
-                "epoch",
-                "character",
-                "seqc_0_loc_shape",
-                "seqc_0_loc",
-                "seqc_1_loc_shape",
-            ]
-            LIST_VARS_CONJUNCTION = [
-                ["epochset"],
-                ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
-                ["epoch", "epochset"],
-                ["epoch", "epochset"],
-                ["epoch", "epochset"],
-                ["epoch", "epochset", "seqc_0_loc_shape"]
-            ]
-
-        else:
+        if ANALY_VER == "ruleswALLDATA":
             # Everything else, especially trial by trial,
             LIST_VAR = [
-                "epoch",
-                "epoch",
-                "character",
-                "seqc_0_loc_shape",
-                "seqc_0_loc",
-                "seqc_1_loc_shape",
+                "success_binary_quick",
+                "success_binary_quick",
+                # "success_binary_quick",
+                "success_binary_quick",
+                # "success_binary_quick",
+                # "success_binary_quick",
+                "seqc_0_loc_shape"
             ]
             LIST_VARS_CONJUNCTION = [
-                ["epochset"],
-                ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
+                ["epoch", "character"],
                 ["epoch", "epochset"],
-                ["epoch", "epochset"],
-                ["epoch", "epochset"],
-                ["epoch", "epochset", "seqc_0_loc_shape"]
+                # ["epoch", "epochset"],
+                ["epoch", "seqc_0_loc_shape"], 
+                # ["epoch", "epochset", "seqc_0_loc_shape"], # not enough data...
+                # ["epoch", "epochset", "seqc_0_loc_shape"]
+                ["epoch", "character"],
             ]
-
-        if (DATE in [220812, 220814, 220815, 220816, 220827, 220913, 220921, 220928, 220929, 220930]) or (DATE in [221001]):
-            # NO COLOR (blocks)
-            # - OR - 
-            # grammar vs. color_rank (no color cue on fixation, since the strokes are colored).
-            list_events = ["03_samp",   "03_samp", "04_go_cue",  "05_first_raise", "06_on_strokeidx_0", "08_doneb", "09_post", "10_reward_all"]
-            list_pre_dur = [-0.6,       0.05,      -0.6,        -0.6, -0.25, -0.5, 0.05, 0.05]
-            list_post_dur = [-0.04,     0.6,       -0.04,       -0.05, 0.35, 0.3, 0.6, 0.6]
-        elif DATE in [221002, 221014, 221020, 221021, 221023, 221024]:
-            # fixcue[colored] --> fixtouch --> image[colored] --> go...
-            # list_events = ["00_fixcue", "00_fixcue", "03_samp",       "03_samp", "04_go_cue",   "05_first_raise", "06_on_strokeidx_0", "08_doneb", "09_post", "10_reward_all"]
-            # list_pre_dur = [-0.6, 0.05,              -0.6,       0.05,           -0.6,    -0.6, -0.1, -0.5, 0.05, 0.05]
-            # list_post_dur = [-0.05, 0.6,             -0.04,       0.6,           -0.04,    -0.05, 0.6, 0.3, 0.6, 0.6]
-
-            # Updated 5/26/23: (1) including fast and slow visual. (2) using list of tuples format.
-            WINDOWS_DEFAULT = [
-                ('00_fixcue', -0.6, -0.05),
-                ('00_fixcue', 0.04, 0.24),
-                ('00_fixcue', 0.26, 0.6),
-                ('03_samp', -0.6, -0.04),
-                ('03_samp', 0.04, 0.24),
-                ('03_samp', 0.26, 0.6),
-                ('04_go_cue', -0.6, -0.04),
-                ('05_first_raise', -0.6, -0.05),
-                ('06_on_strokeidx_0', -0.25, 0.35),
-                ('08_doneb', -0.5, 0.3),
-                ('09_post', 0.05, 0.6),
-                ('10_reward_all', 0.05, 0.6)]
-            list_events = [x[0] for x in WINDOWS_DEFAULT]
-            list_pre_dur = [x[1] for x in WINDOWS_DEFAULT]
-            list_post_dur = [x[2] for x in WINDOWS_DEFAULT]
-        elif DATE in [221031, 221102, 221107, 221112, 221113, 221114, 221118, 221119, 221121, 221125]:
-            # fuxcue[nocolor] --> fixtouch --> rulecue2[e.g, fixcue_color_change] --> samp + cue_color_off
-
-            # OLD, post-rule_cue was not immediately after rule cue, missed transient stuff.
-            # list_events = ["02_rulecue2",   "03_samp",  "03_samp", "05_first_raise", "06_on_strokeidx_0", "08_doneb", "09_post", "10_reward_all"]
-            # list_pre_dur = [-0.6,           -0.6,       0.05, -0.6, -0.1, -0.5, 0.05, 0.05]
-            # list_post_dur = [-0.04,         -0.04,      0.6, -0.05, 0.6, 0.3, 0.6, 0.6]
-
-            if False:
-                list_events = ["02_rulecue2",   "02_rulecue2",  "03_samp", "05_first_raise", "06_on_strokeidx_0", "08_doneb", "09_post", "10_reward_all"]
-                list_pre_dur = [-0.6,           0.04,       0.05, -0.6, -0.1, -0.5, 0.05, 0.05]
-                list_post_dur = [-0.04,         0.6,      0.6, -0.05, 0.6, 0.3, 0.6, 0.6]
-            else:
-                # 5/21/23 - adding to get slower response.
-                list_events = ["02_rulecue2",   "02_rulecue2",  "03_samp", "03_samp",   "04_go_cue",    "05_first_raise",   "06_on_strokeidx_0",    "08_doneb", "09_post", "10_reward_all"]
-                list_pre_dur = [-0.6,           0.04,           -0.6,       0.04,       -0.6,           -0.6,               -0.25,                  -0.5, 0.05, 0.05]
-                list_post_dur = [-0.04,         0.6,            -0.04,      0.6,        -0.05,          -0.05,              0.35,                   0.3, 0.6, 0.6]
         else:
-            print(DATE)
-            assert False
+            if DATE in [220921]:
+                # grmamar vs. sequence mask rank. This must use epoch_superv, since
+                # epoch does not indiciate whether is using superv.
+                # LIST_VAR = [
+                #     "epoch_superv",
+                #     "epoch_superv",
+                # ]
+                # LIST_VARS_CONJUNCTION = [
+                #     ["epochset"],
+                #     ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
+                # ]
 
-    elif which_level=="trial" and ANALY_VER in ["ruleswALLDATA"]:
-        # Rule switching, inclding all data such as failures, etc.
+                LIST_VAR = [
+                    "epoch",
+                    "epoch",
+                    "character",
+                    "seqc_0_loc_shape",
+                    "seqc_0_loc",
+                    "seqc_1_loc_shape",
+                ]
+                LIST_VARS_CONJUNCTION = [
+                    ["epochset"],
+                    ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
+                    ["epoch", "epochset"],
+                    ["epoch", "epochset"],
+                    ["epoch", "epochset"],
+                    ["epoch", "epochset", "seqc_0_loc_shape"]
+                ]
 
+            elif DATE in [221102]:
+                # combines blocks and trial cues within blocks.
+                # (e.g., rapid switching blcoks, and rule vs. rand within block, with siwtchingin
+                # bnetween 2 rules between blocks)
+                # Thus want to get both matched tasks (trial) and across blcoks.
+                # LIST_VAR = [
+                #     "epoch",
+                #     "epoch",
+                #     "epoch",
+                # ]
+                # LIST_VARS_CONJUNCTION = [
+                #     ["epochset"],
+                #     ["taskgroup"],
+                #     ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
+                # ]
+                LIST_VAR = [
+                    "epoch",
+                    "epoch",
+                    "character",
+                    "seqc_0_loc_shape",
+                    "seqc_0_loc",
+                    "seqc_1_loc_shape",
+                ]
+                LIST_VARS_CONJUNCTION = [
+                    ["epochset"],
+                    ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
+                    ["epoch", "epochset"],
+                    ["epoch", "epochset"],
+                    ["epoch", "epochset"],
+                    ["epoch", "epochset", "seqc_0_loc_shape"]
+                ]
 
-        # Everything else, especially trial by trial,
-        LIST_VAR = [
-            "success_binary_quick",
-            "success_binary_quick",
-            # "success_binary_quick",
-            "success_binary_quick",
-            # "success_binary_quick",
-            # "success_binary_quick",
-            "seqc_0_loc_shape"
-        ]
-        LIST_VARS_CONJUNCTION = [
-            ["epoch", "character"],
-            ["epoch", "epochset"],
-            # ["epoch", "epochset"],
-            ["epoch", "seqc_0_loc_shape"], 
-            # ["epoch", "epochset", "seqc_0_loc_shape"], # not enough data...
-            # ["epoch", "epochset", "seqc_0_loc_shape"]
-            ["epoch", "character"],
-        ]
+            elif DATE in [220928, 220929, 221001, 221014, 221023, 221024, 221113, 221021, 221118]:
+                # grmamar vs. color rank (where color rank mixes random + grammar ssecretly). should do epochsets, but decided to try
+                # this becuase epochsets would throw out like 1/2 the data (keeping only
+                # epochset spanning both epochs)
+                # - possibly try both meothds.
+                # strategy here is to get "same beh" as those with matched first stroke.
+                
+                # LIST_VAR = [
+                #     "epoch",
+                #     "epoch",
+                # ]
+                # LIST_VARS_CONJUNCTION = [
+                #     ["epochset"],
+                #     ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
+                # ]
+                        
+                LIST_VAR = [
+                    "epoch",
+                    "epoch",
+                    "character",
+                    "seqc_0_loc_shape",
+                    "seqc_0_loc",
+                    "seqc_1_loc_shape",
+                ]
+                LIST_VARS_CONJUNCTION = [
+                    ["epochset"],
+                    ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
+                    ["epoch", "epochset"],
+                    ["epoch", "epochset"],
+                    ["epoch", "epochset"],
+                    ["epoch", "epochset", "seqc_0_loc_shape"]
+                ]
 
+            else:
+                # Everything else, especially trial by trial,
+                LIST_VAR = [
+                    "epoch",
+                    "epoch",
+                    "character",
+                    "seqc_0_loc_shape",
+                    "seqc_0_loc",
+                    "seqc_1_loc_shape",
+                ]
+                LIST_VARS_CONJUNCTION = [
+                    ["epochset"],
+                    ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
+                    ["epoch", "epochset"],
+                    ["epoch", "epochset"],
+                    ["epoch", "epochset"],
+                    ["epoch", "epochset", "seqc_0_loc_shape"]
+                ]
+
+        #### EVENTS
         if (DATE in [220812, 220814, 220815, 220816, 220827, 220913, 220921, 220928, 220929, 220930]) or (DATE in [221001]):
             # NO COLOR (blocks)
             # - OR - 
@@ -383,6 +398,7 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
         list_pre_dur = [x[1] for x in WINDOWS_DEFAULT]
         list_post_dur = [x[2] for x in WINDOWS_DEFAULT]
 
+
     elif which_level=="trial" and ANALY_VER=="singleprim":
         # single prim (the first stroke)
         LIST_VAR = [
@@ -396,12 +412,24 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
             ["gridsize", "seqc_0_shape"],
         ]
 
-        # list_events = ["03_samp", "03_samp",    "05_first_raise",   "06_on_strokeidx_0", "09_post", "10_reward_all"]
-        # list_pre_dur = [-0.6, 0.05,             -0.6,               -0.1, 0.05, 0.05]
-        # list_post_dur = [-0.05, 0.6,            -0.05,              0.6, 0.6, 0.6]
-        list_events = ["03_samp",   "03_samp", "04_go_cue",  "05_first_raise",   "06_on_strokeidx_0", "08_doneb", "09_post", "10_reward_all"]
-        list_pre_dur = [-0.6,       0.05,      -0.6,        -0.6,               -0.25, -0.5, 0.05, 0.05]
-        list_post_dur = [-0.04,     0.6,       -0.04,       -0.05,              0.35, 0.3, 0.6, 0.6]
+        if False:
+            list_events = ["03_samp",   "03_samp", "04_go_cue",  "05_first_raise",   "06_on_strokeidx_0", "08_doneb", "09_post", "10_reward_all"]
+            list_pre_dur = [-0.6,       0.05,      -0.6,        -0.6,               -0.25, -0.5, 0.05, 0.05]
+            list_post_dur = [-0.04,     0.6,       -0.04,       -0.05,              0.35, 0.3, 0.6, 0.6]
+        else:
+            WINDOWS_DEFAULT = [
+                ('03_samp', -0.6, -0.04),
+                ('03_samp', 0.04, 0.24),
+                ('03_samp', 0.26, 0.6),
+                ('04_go_cue', -0.6, -0.04),
+                ('05_first_raise', -0.6, -0.05),
+                ('06_on_strokeidx_0', -0.25, 0.35),
+                ('08_doneb', -0.5, 0.3),
+                ('09_post', 0.05, 0.6),
+                ('10_reward_all', 0.05, 0.6)]
+            list_events = [x[0] for x in WINDOWS_DEFAULT]
+            list_pre_dur = [x[1] for x in WINDOWS_DEFAULT]
+            list_post_dur = [x[2] for x in WINDOWS_DEFAULT]
 
     ####################### CLEAN UP VARS
     print("Got these LIST_VAR and LIST_VARS_CONJUNCTION:")
@@ -501,8 +529,10 @@ def params_getter_extraction(animal, DATE, which_level, ANALY_VER):
     # for grid sequence tasks with different probes, want to merge them for larger N.
     if ANALY_VER in ["ruleswERROR", "rulesw", "ruleswALLDATA"]:
         taskgroup_reassign_simple_neural = True
+        DO_EXTRACT_EPOCHKIND = True
     else:
         taskgroup_reassign_simple_neural = False
+        DO_EXTRACT_EPOCHKIND = False
 
     ################ SEQUENCE CONTEXT?
     DO_EXTRACT_CONTEXT = True    
@@ -594,23 +624,37 @@ def params_getter_extraction(animal, DATE, which_level, ANALY_VER):
         EXTRACT_EPOCHSETS = False
         EXTRACT_EPOCHSETS_trial_label = None
         EXTRACT_EPOCHSETS_n_max_epochs = None
+        EXTRACT_EPOCHSETS_merge_sets = None
 
     ################ FEATURES TO EXTRACT
-    if ANALY_VER in ["ruleswALLDATA", "ruleswERROR", "rulesw", "seqcontext", "singleprim"]:
-        list_features_modulation_append = ["probe", "taskgroup", "character", "trialcode", "epoch",
-                                            "epoch_superv",  
-                                            "task_kind", "supervision_stage_concise"]
-    else:
-        assert False
+    if which_level=="trial":
+        if ANALY_VER in ["ruleswALLDATA", "ruleswERROR", "rulesw", "seqcontext", "singleprim"]:
+            list_features_modulation_append = ["probe", "taskgroup", "character", "trialcode", "epoch",
+                                                "epoch_superv",  
+                                                "task_kind", "supervision_stage_concise"]
+        else:
+            assert False
 
-    if DO_EXTRACT_CONTEXT:
-        # These are features that are gotten from extracting context
-        list_features_modulation_append = list_features_modulation_append + ["seqc_nstrokes_beh", "seqc_nstrokes_task",
-                                           "seqc_0_shape", "seqc_0_loc", "seqc_0_loc_shape",
-                                           "seqc_1_shape", "seqc_1_loc", "seqc_1_loc_shape",
-                                           "seqc_2_shape", "seqc_2_loc", "seqc_2_loc_shape",
-                                           "seqc_3_shape", "seqc_3_loc", "seqc_3_loc_shape",
-                                           "gridsize"]
+        if DO_EXTRACT_CONTEXT:
+            # These are features that are gotten from extracting context
+            list_features_modulation_append = list_features_modulation_append + ["seqc_nstrokes_beh", "seqc_nstrokes_task",
+                                               "seqc_0_shape", "seqc_0_loc", "seqc_0_loc_shape",
+                                               "seqc_1_shape", "seqc_1_loc", "seqc_1_loc_shape",
+                                               "seqc_2_shape", "seqc_2_loc", "seqc_2_loc_shape",
+                                               "seqc_3_shape", "seqc_3_loc", "seqc_3_loc_shape",
+                                               "gridsize"]
+    elif which_level=="stroke":
+        if ANALY_VER in ["ruleswALLDATA", "ruleswERROR", "rulesw", "seqcontext", "singleprim"]:
+            list_features_modulation_append = ["probe", "taskgroup", "character", "trialcode", "epoch",
+                                                "epoch_superv",  
+                                                "task_kind", "supervision_stage_concise",
+                                                "CTXT_loc_prev", "CTXT_shape_prev", "CTXT_loc_next", "CTXT_shape_next",
+                                                "shape_oriented", "gridloc", "stroke_index"]
+        else:
+            assert False        
+    else:
+        print(which_level)
+        assert False, "typo?"                                               
 
     if DO_CHARSEQ_VER:
         list_features_modulation_append.append("char_seq")                                        
@@ -618,6 +662,11 @@ def params_getter_extraction(animal, DATE, which_level, ANALY_VER):
         list_features_modulation_append.append("epochset")               
     if DO_SCORE_SEQUENCE_VER:
         list_features_modulation_append.append("success_binary_quick")                         
+    if DO_EXTRACT_EPOCHKIND:
+        list_features_modulation_append.append("epochkind")                         
+
+    # print(list_features_modulation_append)
+    # assert False
 
     # make sure all vars that you will use for plots are included in extraction
     params_plots = params_getter_plots(animal, DATE, which_level, ANALY_VER)
@@ -652,7 +701,8 @@ def params_getter_extraction(animal, DATE, which_level, ANALY_VER):
         "EXTRACT_EPOCHSETS_trial_label":EXTRACT_EPOCHSETS_trial_label,
         "EXTRACT_EPOCHSETS_n_max_epochs":EXTRACT_EPOCHSETS_n_max_epochs,
         "EXTRACT_EPOCHSETS_merge_sets":EXTRACT_EPOCHSETS_merge_sets,
-        "epoch_merge_key":epoch_merge_key
+        "epoch_merge_key":epoch_merge_key,
+        "DO_EXTRACT_EPOCHKIND":DO_EXTRACT_EPOCHKIND
         }
 
     return params
