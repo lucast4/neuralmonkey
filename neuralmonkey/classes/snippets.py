@@ -1435,10 +1435,19 @@ class Snippets(object):
 
         if RECOMPUTE:
             print("COMPUTING df_var!!!")
-            df_var, list_eventwindow_event = self.modulationgood_compute_wrapper(var, 
-                vars_conjuction, score_ver=score_ver, get_z_score=get_z_score,
-                DEBUG_CONJUNCTIONS=DEBUG_CONJUNCTIONS,
-                events_windowed_skip = EVENTS_ALREADY_DONE) 
+            try:
+                df_var, list_eventwindow_event = self.modulationgood_compute_wrapper(var, 
+                    vars_conjuction, score_ver=score_ver, get_z_score=get_z_score,
+                    DEBUG_CONJUNCTIONS=DEBUG_CONJUNCTIONS,
+                    events_windowed_skip = EVENTS_ALREADY_DONE, SAVEDIR=sdir_base) 
+            except NotEnoughDataException as err:
+                print("!! Failed during: ", var, vars_conjuction, score_ver)
+                print("Now rerunning modulationgood_compute_wrapper, with DEBUG_CONJUNCTIONS=True...")
+                df_var, list_eventwindow_event = self.modulationgood_compute_wrapper(var, 
+                    vars_conjuction, score_ver=score_ver, get_z_score=get_z_score,
+                    DEBUG_CONJUNCTIONS=True,
+                    events_windowed_skip = EVENTS_ALREADY_DONE, SAVEDIR=sdir_base) 
+                raise err
 
             ##### IF you skipped events that you already extracted in preloaded df_var,
             # merge that preloaded with the new one.
@@ -1705,7 +1714,7 @@ class Snippets(object):
     def modulationgood_compute_wrapper(self, var, vars_conjuction=None, list_site=None, 
             score_ver="r2smfr_minshuff", get_z_score=False,
             DEBUG_CONJUNCTIONS=False,
-            events_windowed_skip = None):
+            events_windowed_skip = None, SAVEDIR=None):
         """ Good, flexible helper to compute modulation of all kinds and all ways of slicing 
         the dataset. 
         PARAMS;
@@ -1817,6 +1826,7 @@ class Snippets(object):
                 continue
 
             # TODO: give this event a unique name
+            _saved_counts = False
             for site in list_site:
                 if site%20==0:
                     print("site :", site)
@@ -1842,8 +1852,8 @@ class Snippets(object):
 
                     # try:
                     assert get_z_score==False, "not yet coded, this gets messy, one z for var, var_others, interaction"
-                    eventscores = MS.modulationgood_wrapper_twoway(var, version=score_ver, 
-                        vars_others = "vars_others")
+                    eventscores, dfcounts = MS.modulationgood_wrapper_twoway(var, version=score_ver, 
+                        vars_others = "vars_others", auto_balance_conjunctions_exist=True)
                     assert len(eventscores.keys())==1, "should only be one event"
                     # except ValueWarning as err:
                     #     print("HERE")
@@ -1860,6 +1870,16 @@ class Snippets(object):
                     assert isinstance(score, float), "no np arrays allowed. will fail seaborn"
                     assert isinstance(score_others, float), "no np arrays allowed. will fail seaborn"
                     assert isinstance(score_interaction, float), "no np arrays allowed. will fail seaborn"
+
+                    # Save csv of n data, to know how much pruning was done...
+                    # (to balance the data)
+                    # Only plot the first one, since they should be same across sites
+                    if _saved_counts==False:
+                        dirthis = f"{SAVEDIR}/twoway_pruned_balance_samplesizes"
+                        os.makedirs(dirthis, exist_ok=True)
+                        path = f"{dirthis}/{event_window_combo_name}-{site}.csv"
+                        dfcounts.to_csv(path)
+                        _saved_counts = True
 
                     # save
                     for val_kind, val in zip(["val", "val_others", "val_interaction"], [score, score_others, score_interaction]):

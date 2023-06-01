@@ -1382,17 +1382,32 @@ class MetricsScalar(object):
         print(self.modulationgood_compute_wrapper(var, vars_others_this, list_site=[site]))
 
 
-    def modulationgood_wrapper_twoway(self, var, version, vars_others="vars_others"):
+    def modulationgood_wrapper_twoway(self, var, version, vars_others="vars_others",
+        auto_balance_conjunctions_exist=True):
         """ Wrapper to help call different subfunctions for computing modulation 
         by a var and vars_others. 
         PARAMS:
         - return_as_score_zscore_tuple, bool, then returns a dict where each value is 
         a tuple (score, zscore).
         - vars_others, str name of a single column holding conjunction variable.
+        - auto_balance_conjunctions_exist, bool, leave this True, so that each conjunction
+        of levels has some data. otherwise will run into errors in anova.
         RETURNS:
-        - eventscores, dict, keys are events and values are modulation scores.
+        - eventscores, dict, keys are events and values are modulation scores, for 
+        (var, vars_others, interaction)
         """
 
+        if auto_balance_conjunctions_exist:
+            # First, make the data balanced (i.e., each conjunction of levels has some data)
+            # (doesnt try to balance the asmple size.)
+            from pythonlib.tools.exceptions import NotEnoughDataException
+            from pythonlib.tools.pandastools import conjunction_vars_prune_to_balance
+            DFTHIS, dfcounts = conjunction_vars_prune_to_balance(self.Data, var, "vars_others", PLOT=False)
+            if len(DFTHIS)==0:
+                raise NotEnoughDataException
+        else:
+            dfcounts = None
+            # DFTHIS = self.Data
 
         assert vars_others is not None, "You shoudl use modulationgood_wrapper_ instead"
         if version=="r2smfr_running_maxtime_twoway":
@@ -1400,7 +1415,7 @@ class MetricsScalar(object):
             # minus peta2 at min timepoint.
             eventscores = {}
             for event in self.ListEventsUniqname:
-                res = self._anova_running_wrapper(self.Data, var=var, 
+                res = self._anova_running_wrapper(DFTHIS, var=var, 
                     vars_others=vars_others, event=event)
 
                 val = np.mean(res[var]).item()
@@ -1412,7 +1427,7 @@ class MetricsScalar(object):
             """ Max time of r2, without splitting, and subtracting shuffled data."""
             eventscores = {}
             for event in self.ListEventsUniqname:
-                dfthis = self.Data[self.Data["event"]==event]
+                dfthis = DFTHIS[DFTHIS["event"]==event]
                 _, DICT_MINSHUFF, _ = self._anova_running_wrapper_nosplits(dfthis, var, 
                         vars_others=vars_others)
                 eventscores[event] = (DICT_MINSHUFF[var], DICT_MINSHUFF[vars_others], DICT_MINSHUFF[f"{var} * {vars_others}"])
@@ -1420,7 +1435,7 @@ class MetricsScalar(object):
             print(version)
             assert False, "code it"
 
-        return eventscores
+        return eventscores, dfcounts
 
     def modulationgood_wrapper_(self, var, version, return_as_score_zscore_tuple=True):
         """ Wrapper to help call different subfunctions for computing modulation 
