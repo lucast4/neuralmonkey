@@ -1233,13 +1233,13 @@ Updates self.Sites
 ending sites:  345
 ending sites:  [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 18, 19, 21, 22, 24, 25, 27, 28, 29, 30, 31, 32, 33, 37, 38, 39, 40, 41, 42, 43, 44, 45, 47, 49, 50, 51, 52, 53, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 66, 67, 68, 69, 72, 74, 75, 77, 78, 80, 81, 85, 90, 92, 96, 97, 98, 99, 102, 105, 106, 107, 111, 112, 113, 114, 116, 118, 119, 121, 122, 123, 124, 130, 132, 133, 134, 135, 136, 138, 139, 140, 141, 142, 143, 144, 147, 148, 150, 153, 154, 155, 156, 158, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 171, 173, 174, 176, 177, 179, 181, 184, 186, 187, 190, 191, 192, 193, 194, 195, 199, 200, 202, 203, 204, 205, 206, 207, 209, 210, 211, 213, 214, 215, 219, 220, 223, 224, 225, 226, 227, 228, 233, 235, 237, 240, 241, 243, 244, 245, 247, 248, 251, 252, 253, 254, 255, 256, 257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267, 269, 270, 271, 272, 274, 276, 277, 278, 279, 281, 282, 283, 284, 286, 288, 290, 294, 296, 297, 300, 301, 302, 303, 304, 308, 310, 312, 313, 314, 316, 317, 318, 319, 320, 327, 329, 330, 331, 332, 333, 334, 343, 346, 347, 348, 349, 351, 352, 353, 355, 364, 367, 368, 369, 371, 372, 373, 374, 376, 384, 385, 386, 387, 388, 389, 390, 393, 394, 395, 396, 397, 398, 399, 400, 401, 403, 404, 405, 406, 407, 408, 410, 411, 413, 414, 415, 417, 418, 419, 420, 421, 422, 423, 425, 429, 430, 433, 434, 435, 436, 437, 438, 439, 440, 441, 442, 443, 445, 447, 449, 450, 451, 452, 454, 455, 459, 460, 461, 462, 463, 464, 465, 467, 468, 469, 470, 471, 472, 473, 474, 475, 477, 478, 479, 480, 481, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 493, 494, 495, 496, 497, 498, 499, 500, 501, 502, 503, 504, 505, 506, 508, 509, 512]
 Updated self.ParamsGlobals:
-n_min_trials_per_level  =  8
+n_min_trials_per_level  =  7
 lenient_allow_data_if_has_n_levels  =  2
 PRE_DUR_CALC  =  -0.65
 POST_DUR_CALC  =  0.65
-list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
 /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220918-0/singleprim/var_by_varsother/VAR_gridsize-OV_seqc_0_loc_seqc_0_shape/SV_r2_maxtime_1way_mshuff/snippets_check_conjunctions_variables
 var -- vars_others:  gridsize  ---  ['seqc_0_loc']
 var -- vars_others:  gridsize  ---  ['seqc_0_shape']
@@ -1260,13 +1260,24 @@ df_var doesnt exist...!
 COMPUTING df_var!!!
 Running grouping_print_n_samples...
 DOing these! ...
-list_events ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur [-0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur [-0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
+list_events ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
 WILL SKIP THESE EVENTS...
 []
 SKIPPING PREEMPTIVELY, not enough data. (chan, event, vars, othervars) max n =  5
-... which is lower than  8
+... which is lower than  7
+!! Failed during:  gridsize ['seqc_0_loc', 'seqc_0_shape'] r2_maxtime_1way_mshuff
+Now rerunning modulationgood_compute_wrapper, with DEBUG_CONJUNCTIONS=True...
+Running grouping_print_n_samples...
+DOing these! ...
+list_events ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+WILL SKIP THESE EVENTS...
+[]
+SKIPPING PREEMPTIVELY, not enough data. (chan, event, vars, othervars) max n =  5
+... which is lower than  7
 !! SKIPPING:  gridsize ['seqc_0_loc', 'seqc_0_shape']
 Saving to: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220918-0/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff
 starting sites:  345
@@ -1278,13 +1289,13 @@ Updates self.Sites
 ending sites:  345
 ending sites:  [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 18, 19, 21, 22, 24, 25, 27, 28, 29, 30, 31, 32, 33, 37, 38, 39, 40, 41, 42, 43, 44, 45, 47, 49, 50, 51, 52, 53, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 66, 67, 68, 69, 72, 74, 75, 77, 78, 80, 81, 85, 90, 92, 96, 97, 98, 99, 102, 105, 106, 107, 111, 112, 113, 114, 116, 118, 119, 121, 122, 123, 124, 130, 132, 133, 134, 135, 136, 138, 139, 140, 141, 142, 143, 144, 147, 148, 150, 153, 154, 155, 156, 158, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 171, 173, 174, 176, 177, 179, 181, 184, 186, 187, 190, 191, 192, 193, 194, 195, 199, 200, 202, 203, 204, 205, 206, 207, 209, 210, 211, 213, 214, 215, 219, 220, 223, 224, 225, 226, 227, 228, 233, 235, 237, 240, 241, 243, 244, 245, 247, 248, 251, 252, 253, 254, 255, 256, 257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267, 269, 270, 271, 272, 274, 276, 277, 278, 279, 281, 282, 283, 284, 286, 288, 290, 294, 296, 297, 300, 301, 302, 303, 304, 308, 310, 312, 313, 314, 316, 317, 318, 319, 320, 327, 329, 330, 331, 332, 333, 334, 343, 346, 347, 348, 349, 351, 352, 353, 355, 364, 367, 368, 369, 371, 372, 373, 374, 376, 384, 385, 386, 387, 388, 389, 390, 393, 394, 395, 396, 397, 398, 399, 400, 401, 403, 404, 405, 406, 407, 408, 410, 411, 413, 414, 415, 417, 418, 419, 420, 421, 422, 423, 425, 429, 430, 433, 434, 435, 436, 437, 438, 439, 440, 441, 442, 443, 445, 447, 449, 450, 451, 452, 454, 455, 459, 460, 461, 462, 463, 464, 465, 467, 468, 469, 470, 471, 472, 473, 474, 475, 477, 478, 479, 480, 481, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 493, 494, 495, 496, 497, 498, 499, 500, 501, 502, 503, 504, 505, 506, 508, 509, 512]
 Updated self.ParamsGlobals:
-n_min_trials_per_level  =  8
+n_min_trials_per_level  =  7
 lenient_allow_data_if_has_n_levels  =  2
 PRE_DUR_CALC  =  -0.65
 POST_DUR_CALC  =  0.65
-list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
 /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220918-0/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/snippets_check_conjunctions_variables
 var -- vars_others:  seqc_0_shape  ---  ['seqc_0_loc']
 var -- vars_others:  seqc_0_shape  ---  ['gridsize']
@@ -1305,13 +1316,24 @@ df_var doesnt exist...!
 COMPUTING df_var!!!
 Running grouping_print_n_samples...
 DOing these! ...
-list_events ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur [-0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur [-0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
+list_events ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
 WILL SKIP THESE EVENTS...
 []
 SKIPPING PREEMPTIVELY, not enough data. (chan, event, vars, othervars) max n =  5
-... which is lower than  8
+... which is lower than  7
+!! Failed during:  seqc_0_shape ['seqc_0_loc', 'gridsize'] r2_maxtime_1way_mshuff
+Now rerunning modulationgood_compute_wrapper, with DEBUG_CONJUNCTIONS=True...
+Running grouping_print_n_samples...
+DOing these! ...
+list_events ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+WILL SKIP THESE EVENTS...
+[]
+SKIPPING PREEMPTIVELY, not enough data. (chan, event, vars, othervars) max n =  5
+... which is lower than  7
 !! SKIPPING:  seqc_0_shape ['seqc_0_loc', 'gridsize']
 Saving to: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220918-0/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff
 starting sites:  345
@@ -1323,13 +1345,13 @@ Updates self.Sites
 ending sites:  345
 ending sites:  [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 18, 19, 21, 22, 24, 25, 27, 28, 29, 30, 31, 32, 33, 37, 38, 39, 40, 41, 42, 43, 44, 45, 47, 49, 50, 51, 52, 53, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 66, 67, 68, 69, 72, 74, 75, 77, 78, 80, 81, 85, 90, 92, 96, 97, 98, 99, 102, 105, 106, 107, 111, 112, 113, 114, 116, 118, 119, 121, 122, 123, 124, 130, 132, 133, 134, 135, 136, 138, 139, 140, 141, 142, 143, 144, 147, 148, 150, 153, 154, 155, 156, 158, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 171, 173, 174, 176, 177, 179, 181, 184, 186, 187, 190, 191, 192, 193, 194, 195, 199, 200, 202, 203, 204, 205, 206, 207, 209, 210, 211, 213, 214, 215, 219, 220, 223, 224, 225, 226, 227, 228, 233, 235, 237, 240, 241, 243, 244, 245, 247, 248, 251, 252, 253, 254, 255, 256, 257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267, 269, 270, 271, 272, 274, 276, 277, 278, 279, 281, 282, 283, 284, 286, 288, 290, 294, 296, 297, 300, 301, 302, 303, 304, 308, 310, 312, 313, 314, 316, 317, 318, 319, 320, 327, 329, 330, 331, 332, 333, 334, 343, 346, 347, 348, 349, 351, 352, 353, 355, 364, 367, 368, 369, 371, 372, 373, 374, 376, 384, 385, 386, 387, 388, 389, 390, 393, 394, 395, 396, 397, 398, 399, 400, 401, 403, 404, 405, 406, 407, 408, 410, 411, 413, 414, 415, 417, 418, 419, 420, 421, 422, 423, 425, 429, 430, 433, 434, 435, 436, 437, 438, 439, 440, 441, 442, 443, 445, 447, 449, 450, 451, 452, 454, 455, 459, 460, 461, 462, 463, 464, 465, 467, 468, 469, 470, 471, 472, 473, 474, 475, 477, 478, 479, 480, 481, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 493, 494, 495, 496, 497, 498, 499, 500, 501, 502, 503, 504, 505, 506, 508, 509, 512]
 Updated self.ParamsGlobals:
-n_min_trials_per_level  =  8
+n_min_trials_per_level  =  7
 lenient_allow_data_if_has_n_levels  =  2
 PRE_DUR_CALC  =  -0.65
 POST_DUR_CALC  =  0.65
-list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
 /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220918-0/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/snippets_check_conjunctions_variables
 var -- vars_others:  seqc_0_loc  ---  ['gridsize']
 var -- vars_others:  seqc_0_loc  ---  ['seqc_0_shape']
@@ -1350,13 +1372,24 @@ df_var doesnt exist...!
 COMPUTING df_var!!!
 Running grouping_print_n_samples...
 DOing these! ...
-list_events ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur [-0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur [-0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
+list_events ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
 WILL SKIP THESE EVENTS...
 []
 SKIPPING PREEMPTIVELY, not enough data. (chan, event, vars, othervars) max n =  5
-... which is lower than  8
+... which is lower than  7
+!! Failed during:  seqc_0_loc ['gridsize', 'seqc_0_shape'] r2_maxtime_1way_mshuff
+Now rerunning modulationgood_compute_wrapper, with DEBUG_CONJUNCTIONS=True...
+Running grouping_print_n_samples...
+DOing these! ...
+list_events ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+WILL SKIP THESE EVENTS...
+[]
+SKIPPING PREEMPTIVELY, not enough data. (chan, event, vars, othervars) max n =  5
+... which is lower than  7
 !! SKIPPING:  seqc_0_loc ['gridsize', 'seqc_0_shape']
 Got these LIST_VAR and LIST_VARS_CONJUNCTION:
 ['gridsize', 'seqc_0_shape', 'seqc_0_loc']
@@ -1972,13 +2005,13 @@ Running D.behclass_tokens_extract_datsegs
 800
 Appended columns gridsize!
 * REEXTRACTING THESE VARS to SP.DfScalar:
-['gridsize', 'seqc_0_loc', 'seqc_0_shape']
+['gridsize', 'seqc_0_shape', 'seqc_0_loc']
 Updating this column of SP.DfScalar with Dataset beh:
 gridsize
 Updating this column of SP.DfScalar with Dataset beh:
-seqc_0_loc
-Updating this column of SP.DfScalar with Dataset beh:
 seqc_0_shape
+Updating this column of SP.DfScalar with Dataset beh:
+seqc_0_loc
 Starting length of D.Dat: 930
 self.Dat modified!!
 Len, after remove aborts: 820
@@ -2012,13 +2045,13 @@ Updates self.Sites
 ending sites:  345
 ending sites:  [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 18, 19, 21, 22, 24, 25, 27, 28, 29, 30, 31, 32, 33, 37, 38, 39, 40, 41, 42, 43, 44, 45, 47, 49, 50, 51, 52, 53, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 66, 67, 68, 69, 72, 74, 75, 77, 78, 80, 81, 85, 90, 92, 96, 97, 98, 99, 102, 105, 106, 107, 111, 112, 113, 114, 116, 118, 119, 121, 122, 123, 124, 130, 132, 133, 134, 135, 136, 138, 139, 140, 141, 142, 143, 144, 147, 148, 150, 153, 154, 155, 156, 158, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 171, 173, 174, 176, 177, 179, 181, 184, 186, 187, 190, 191, 192, 193, 194, 195, 199, 200, 202, 203, 204, 205, 206, 207, 209, 210, 211, 213, 214, 215, 219, 220, 223, 224, 225, 226, 227, 228, 233, 235, 237, 240, 241, 243, 244, 245, 247, 248, 251, 252, 253, 254, 255, 256, 257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267, 269, 270, 271, 272, 274, 276, 277, 278, 279, 281, 282, 283, 284, 286, 288, 290, 294, 296, 297, 300, 301, 302, 303, 304, 308, 310, 312, 313, 314, 316, 317, 318, 319, 320, 327, 329, 330, 331, 332, 333, 334, 343, 346, 347, 348, 349, 351, 352, 353, 355, 364, 367, 368, 369, 371, 372, 373, 374, 376, 384, 385, 386, 387, 388, 389, 390, 393, 394, 395, 396, 397, 398, 399, 400, 401, 403, 404, 405, 406, 407, 408, 410, 411, 413, 414, 415, 417, 418, 419, 420, 421, 422, 423, 425, 429, 430, 433, 434, 435, 436, 437, 438, 439, 440, 441, 442, 443, 445, 447, 449, 450, 451, 452, 454, 455, 459, 460, 461, 462, 463, 464, 465, 467, 468, 469, 470, 471, 472, 473, 474, 475, 477, 478, 479, 480, 481, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 493, 494, 495, 496, 497, 498, 499, 500, 501, 502, 503, 504, 505, 506, 508, 509, 512]
 Updated self.ParamsGlobals:
-n_min_trials_per_level  =  8
+n_min_trials_per_level  =  7
 lenient_allow_data_if_has_n_levels  =  2
 PRE_DUR_CALC  =  -0.65
 POST_DUR_CALC  =  0.65
-list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
 /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220918-0/singleprim/var_by_varsother/VAR_gridsize-OV_seqc_0_loc_seqc_0_shape/SV_r2_maxtime_2way_mshuff/snippets_check_conjunctions_variables
 var -- vars_others:  gridsize  ---  ['seqc_0_loc']
 var -- vars_others:  gridsize  ---  ['seqc_0_shape']
@@ -2039,13 +2072,24 @@ df_var doesnt exist...!
 COMPUTING df_var!!!
 Running grouping_print_n_samples...
 DOing these! ...
-list_events ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur [-0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur [-0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
+list_events ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
 WILL SKIP THESE EVENTS...
 []
 SKIPPING PREEMPTIVELY, not enough data. (chan, event, vars, othervars) max n =  5
-... which is lower than  8
+... which is lower than  7
+!! Failed during:  gridsize ['seqc_0_loc', 'seqc_0_shape'] r2_maxtime_2way_mshuff
+Now rerunning modulationgood_compute_wrapper, with DEBUG_CONJUNCTIONS=True...
+Running grouping_print_n_samples...
+DOing these! ...
+list_events ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+WILL SKIP THESE EVENTS...
+[]
+SKIPPING PREEMPTIVELY, not enough data. (chan, event, vars, othervars) max n =  5
+... which is lower than  7
 !! SKIPPING:  gridsize ['seqc_0_loc', 'seqc_0_shape']
 Saving to: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220918-0/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff
 starting sites:  345
@@ -2057,13 +2101,13 @@ Updates self.Sites
 ending sites:  345
 ending sites:  [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 18, 19, 21, 22, 24, 25, 27, 28, 29, 30, 31, 32, 33, 37, 38, 39, 40, 41, 42, 43, 44, 45, 47, 49, 50, 51, 52, 53, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 66, 67, 68, 69, 72, 74, 75, 77, 78, 80, 81, 85, 90, 92, 96, 97, 98, 99, 102, 105, 106, 107, 111, 112, 113, 114, 116, 118, 119, 121, 122, 123, 124, 130, 132, 133, 134, 135, 136, 138, 139, 140, 141, 142, 143, 144, 147, 148, 150, 153, 154, 155, 156, 158, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 171, 173, 174, 176, 177, 179, 181, 184, 186, 187, 190, 191, 192, 193, 194, 195, 199, 200, 202, 203, 204, 205, 206, 207, 209, 210, 211, 213, 214, 215, 219, 220, 223, 224, 225, 226, 227, 228, 233, 235, 237, 240, 241, 243, 244, 245, 247, 248, 251, 252, 253, 254, 255, 256, 257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267, 269, 270, 271, 272, 274, 276, 277, 278, 279, 281, 282, 283, 284, 286, 288, 290, 294, 296, 297, 300, 301, 302, 303, 304, 308, 310, 312, 313, 314, 316, 317, 318, 319, 320, 327, 329, 330, 331, 332, 333, 334, 343, 346, 347, 348, 349, 351, 352, 353, 355, 364, 367, 368, 369, 371, 372, 373, 374, 376, 384, 385, 386, 387, 388, 389, 390, 393, 394, 395, 396, 397, 398, 399, 400, 401, 403, 404, 405, 406, 407, 408, 410, 411, 413, 414, 415, 417, 418, 419, 420, 421, 422, 423, 425, 429, 430, 433, 434, 435, 436, 437, 438, 439, 440, 441, 442, 443, 445, 447, 449, 450, 451, 452, 454, 455, 459, 460, 461, 462, 463, 464, 465, 467, 468, 469, 470, 471, 472, 473, 474, 475, 477, 478, 479, 480, 481, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 493, 494, 495, 496, 497, 498, 499, 500, 501, 502, 503, 504, 505, 506, 508, 509, 512]
 Updated self.ParamsGlobals:
-n_min_trials_per_level  =  8
+n_min_trials_per_level  =  7
 lenient_allow_data_if_has_n_levels  =  2
 PRE_DUR_CALC  =  -0.65
 POST_DUR_CALC  =  0.65
-list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
 /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220918-0/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/snippets_check_conjunctions_variables
 var -- vars_others:  seqc_0_shape  ---  ['seqc_0_loc']
 var -- vars_others:  seqc_0_shape  ---  ['gridsize']
@@ -2084,13 +2128,24 @@ df_var doesnt exist...!
 COMPUTING df_var!!!
 Running grouping_print_n_samples...
 DOing these! ...
-list_events ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur [-0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur [-0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
+list_events ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
 WILL SKIP THESE EVENTS...
 []
 SKIPPING PREEMPTIVELY, not enough data. (chan, event, vars, othervars) max n =  5
-... which is lower than  8
+... which is lower than  7
+!! Failed during:  seqc_0_shape ['seqc_0_loc', 'gridsize'] r2_maxtime_2way_mshuff
+Now rerunning modulationgood_compute_wrapper, with DEBUG_CONJUNCTIONS=True...
+Running grouping_print_n_samples...
+DOing these! ...
+list_events ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+WILL SKIP THESE EVENTS...
+[]
+SKIPPING PREEMPTIVELY, not enough data. (chan, event, vars, othervars) max n =  5
+... which is lower than  7
 !! SKIPPING:  seqc_0_shape ['seqc_0_loc', 'gridsize']
 Saving to: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220918-0/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff
 starting sites:  345
@@ -2102,13 +2157,13 @@ Updates self.Sites
 ending sites:  345
 ending sites:  [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 18, 19, 21, 22, 24, 25, 27, 28, 29, 30, 31, 32, 33, 37, 38, 39, 40, 41, 42, 43, 44, 45, 47, 49, 50, 51, 52, 53, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 66, 67, 68, 69, 72, 74, 75, 77, 78, 80, 81, 85, 90, 92, 96, 97, 98, 99, 102, 105, 106, 107, 111, 112, 113, 114, 116, 118, 119, 121, 122, 123, 124, 130, 132, 133, 134, 135, 136, 138, 139, 140, 141, 142, 143, 144, 147, 148, 150, 153, 154, 155, 156, 158, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 171, 173, 174, 176, 177, 179, 181, 184, 186, 187, 190, 191, 192, 193, 194, 195, 199, 200, 202, 203, 204, 205, 206, 207, 209, 210, 211, 213, 214, 215, 219, 220, 223, 224, 225, 226, 227, 228, 233, 235, 237, 240, 241, 243, 244, 245, 247, 248, 251, 252, 253, 254, 255, 256, 257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267, 269, 270, 271, 272, 274, 276, 277, 278, 279, 281, 282, 283, 284, 286, 288, 290, 294, 296, 297, 300, 301, 302, 303, 304, 308, 310, 312, 313, 314, 316, 317, 318, 319, 320, 327, 329, 330, 331, 332, 333, 334, 343, 346, 347, 348, 349, 351, 352, 353, 355, 364, 367, 368, 369, 371, 372, 373, 374, 376, 384, 385, 386, 387, 388, 389, 390, 393, 394, 395, 396, 397, 398, 399, 400, 401, 403, 404, 405, 406, 407, 408, 410, 411, 413, 414, 415, 417, 418, 419, 420, 421, 422, 423, 425, 429, 430, 433, 434, 435, 436, 437, 438, 439, 440, 441, 442, 443, 445, 447, 449, 450, 451, 452, 454, 455, 459, 460, 461, 462, 463, 464, 465, 467, 468, 469, 470, 471, 472, 473, 474, 475, 477, 478, 479, 480, 481, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 493, 494, 495, 496, 497, 498, 499, 500, 501, 502, 503, 504, 505, 506, 508, 509, 512]
 Updated self.ParamsGlobals:
-n_min_trials_per_level  =  8
+n_min_trials_per_level  =  7
 lenient_allow_data_if_has_n_levels  =  2
 PRE_DUR_CALC  =  -0.65
 POST_DUR_CALC  =  0.65
-list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
 /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220918-0/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/snippets_check_conjunctions_variables
 var -- vars_others:  seqc_0_loc  ---  ['gridsize']
 var -- vars_others:  seqc_0_loc  ---  ['seqc_0_shape']
@@ -2129,11 +2184,22 @@ df_var doesnt exist...!
 COMPUTING df_var!!!
 Running grouping_print_n_samples...
 DOing these! ...
-list_events ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur [-0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur [-0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
+list_events ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
 WILL SKIP THESE EVENTS...
 []
 SKIPPING PREEMPTIVELY, not enough data. (chan, event, vars, othervars) max n =  5
-... which is lower than  8
+... which is lower than  7
+!! Failed during:  seqc_0_loc ['gridsize', 'seqc_0_shape'] r2_maxtime_2way_mshuff
+Now rerunning modulationgood_compute_wrapper, with DEBUG_CONJUNCTIONS=True...
+Running grouping_print_n_samples...
+DOing these! ...
+list_events ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+WILL SKIP THESE EVENTS...
+[]
+SKIPPING PREEMPTIVELY, not enough data. (chan, event, vars, othervars) max n =  5
+... which is lower than  7
 !! SKIPPING:  seqc_0_loc ['gridsize', 'seqc_0_shape']

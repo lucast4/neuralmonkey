@@ -1,7 +1,8 @@
 #!/bin/bash -e
 
 # SINGLE PRIMS
-datelist=(220715 220716 220717 220918)
+# datelist=(220606 220608 220610 220715 220716 220717 220918)
+datelist=( 220715 220716 220717 )
 # datelist=(220715 220716)
 ANALY_VER="singleprim"
 which_level="trial"

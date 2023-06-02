@@ -1,6 +1,6 @@
 Got these LIST_VAR and LIST_VARS_CONJUNCTION:
-['epoch', 'epoch', 'character', 'seqc_0_loc_shape', 'seqc_0_loc', 'seqc_1_loc_shape']
-[['epochset'], ['seqc_0_loc', 'seqc_0_shape', 'seqc_nstrokes_beh'], ['epoch', 'epochset'], ['epoch', 'epochset'], ['epoch', 'epochset'], ['epoch', 'epochset', 'seqc_0_loc_shape']]
+['seqc_1_loc_shape', 'seqc_1_loc_shape']
+[['epoch', 'epochset'], ['epoch', 'epochset', 'seqc_0_loc_shape']]
 Searching using this string:
 /mnt/hopfield_data01/ltian/recordings/*Pancho*/*221020*/**
 Found this many paths:
@@ -1187,11 +1187,11 @@ Loading:  /gorilla1/analyses/recordings/main/anova/bytrial/Pancho-221020-sess_1/
 (animal, DATE, which_level, ANALY_VER, session)
 Pancho 221020 trial rulesw 1
 Got these LIST_VAR and LIST_VARS_CONJUNCTION:
-['epoch', 'epoch', 'character', 'seqc_0_loc_shape', 'seqc_0_loc', 'seqc_1_loc_shape']
-[['epochset'], ['seqc_0_loc', 'seqc_0_shape', 'seqc_nstrokes_beh'], ['epoch', 'epochset'], ['epoch', 'epochset'], ['epoch', 'epochset'], ['epoch', 'epochset', 'seqc_0_loc_shape']]
+['seqc_1_loc_shape', 'seqc_1_loc_shape']
+[['epoch', 'epochset'], ['epoch', 'epochset', 'seqc_0_loc_shape']]
 Got these LIST_VAR and LIST_VARS_CONJUNCTION:
-['epoch', 'epoch', 'character', 'seqc_0_loc_shape', 'seqc_0_loc', 'seqc_1_loc_shape']
-[['epochset'], ['seqc_0_loc', 'seqc_0_shape', 'seqc_nstrokes_beh'], ['epoch', 'epochset'], ['epoch', 'epochset'], ['epoch', 'epochset'], ['epoch', 'epochset', 'seqc_0_loc_shape']]
+['seqc_1_loc_shape', 'seqc_1_loc_shape']
+[['epoch', 'epochset'], ['epoch', 'epochset', 'seqc_0_loc_shape']]
 Searching using this string:
 /mnt/hopfield_data01/ltian/recordings/*Pancho*/*221020*/**
 Found this many paths:
@@ -2446,11 +2446,6 @@ Running D.behclass_tokens_extract_datsegs
 600
 Appended columns gridsize!
 Defined new column: epochset
-... value_counts:
-(L,)         258
-(llV1,)      246
-(L, llV1)    128
-Name: epochset, dtype: int64
 ... merge_sets_with_only_single_epoch... 
 ('L',) only has one epoch!:  ['L']
 ('llV1',) only has one epoch!:  ['llV1']
@@ -2461,22 +2456,17 @@ Final epochsets:
 (LEFTOVER,)    504
 (L, llV1)      128
 Name: epochset, dtype: int64
+Updated self.Dat with new column: epochkind
+* REEXTRACTING THESE VARS to SP.DfScalar:
+['epoch', 'epochset', 'seqc_1_loc_shape', 'seqc_0_loc_shape']
 Updating this column of SP.DfScalar with Dataset beh:
 epoch
 Updating this column of SP.DfScalar with Dataset beh:
 epochset
 Updating this column of SP.DfScalar with Dataset beh:
-seqc_0_loc
-Updating this column of SP.DfScalar with Dataset beh:
-seqc_0_shape
-Updating this column of SP.DfScalar with Dataset beh:
-seqc_nstrokes_beh
-Updating this column of SP.DfScalar with Dataset beh:
-character
+seqc_1_loc_shape
 Updating this column of SP.DfScalar with Dataset beh:
 seqc_0_loc_shape
-Updating this column of SP.DfScalar with Dataset beh:
-seqc_1_loc_shape
 Starting length of D.Dat: 632
 self.Dat modified!!
 Len, after remove aborts: 520
@@ -2506,7 +2496,10 @@ after: 459
 after: 458
 -- Len of D, before applying this param: beh_strokes_at_least_one, ... 458
 after: 458
-Saving to: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-221020-0_1/rulesw/var_by_varsother/VAR_epoch-OV_epochset/SV_r2_maxtime_1way_mshuff
+ !!! RUNNING modulationgood_compute_plot_ALL for var and vars_conjuction:
+seqc_1_loc_shape
+['epoch', 'epochset']
+Saving to: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-221020-0_1/rulesw/var_by_varsother/VAR_seqc_1_loc_shape-OV_epoch_epochset/SV_r2_maxtime_1way_mshuff
 starting sites:  349
 starting sites:  [1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 13, 14, 15, 16, 17, 18, 19, 21, 22, 24, 27, 28, 29, 31, 32, 33, 37, 39, 40, 41, 42, 43, 45, 47, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 72, 73, 74, 76, 78, 79, 80, 84, 85, 86, 88, 92, 94, 95, 96, 97, 98, 100, 101, 102, 108, 111, 112, 114, 116, 117, 118, 119, 120, 121, 122, 123, 125, 126, 129, 130, 132, 133, 134, 136, 138, 140, 141, 142, 143, 144, 145, 148, 150, 153, 154, 157, 158, 159, 160, 161, 163, 164, 165, 167, 168, 169, 173, 174, 175, 177, 178, 179, 180, 181, 182, 184, 188, 189, 191, 192, 193, 194, 195, 197, 199, 200, 203, 204, 205, 206, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 229, 233, 235, 237, 240, 241, 243, 244, 247, 248, 251, 252, 253, 254, 255, 256, 257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267, 269, 270, 272, 273, 274, 275, 276, 277, 278, 280, 281, 282, 283, 284, 285, 286, 288, 289, 290, 294, 296, 298, 300, 301, 302, 304, 306, 307, 309, 310, 312, 314, 316, 318, 320, 324, 327, 329, 330, 332, 333, 334, 341, 343, 344, 346, 349, 350, 351, 352, 358, 360, 362, 366, 367, 368, 369, 373, 375, 382, 385, 386, 387, 388, 389, 393, 394, 395, 396, 397, 398, 400, 401, 402, 403, 404, 405, 406, 407, 408, 410, 411, 412, 414, 415, 416, 417, 418, 419, 420, 421, 422, 423, 424, 425, 427, 429, 430, 433, 434, 435, 436, 438, 439, 440, 441, 443, 445, 447, 449, 450, 451, 452, 453, 454, 455, 456, 457, 458, 459, 460, 461, 462, 463, 464, 465, 467, 468, 469, 471, 472, 473, 474, 475, 477, 478, 479, 480, 481, 483, 484, 485, 486, 487, 488, 489, 491, 492, 493, 494, 495, 496, 497, 498, 499, 500, 501, 502, 503, 504, 505, 506, 512]
 For percentile 10, using this threshold: 3.3063676165956757
@@ -2523,647 +2516,23 @@ POST_DUR_CALC  =  0.75
 list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
 list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
 list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-221020-0_1/rulesw/var_by_varsother/VAR_epoch-OV_epochset/SV_r2_maxtime_1way_mshuff/snippets_check_conjunctions_variables
+/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-221020-0_1/rulesw/var_by_varsother/VAR_seqc_1_loc_shape-OV_epoch_epochset/SV_r2_maxtime_1way_mshuff/snippets_check_conjunctions_variables
+var -- vars_others:  seqc_1_loc_shape  ---  ['epoch']
+var -- vars_others:  seqc_1_loc_shape  ---  ['epochset']
+var -- vars_others:  seqc_1_loc_shape  ---  ['epoch', 'epochset']
+/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-221020-0_1/rulesw/var_by_varsother/VAR_seqc_1_loc_shape-OV_epoch_epochset/SV_r2_maxtime_1way_mshuff/snippets_check_conjunctions_variables/ncounts-seqc_1_loc_shape-vs-varothers-levothers-levvar.txt
+var -- vars_others:  epoch  ---  ['seqc_1_loc_shape']
 var -- vars_others:  epoch  ---  ['epochset']
-/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-221020-0_1/rulesw/var_by_varsother/VAR_epoch-OV_epochset/SV_r2_maxtime_1way_mshuff/snippets_check_conjunctions_variables/ncounts-epoch-vs-varothers-levothers-levvar.txt
+var -- vars_others:  epoch  ---  ['seqc_1_loc_shape', 'epochset']
+/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-221020-0_1/rulesw/var_by_varsother/VAR_seqc_1_loc_shape-OV_epoch_epochset/SV_r2_maxtime_1way_mshuff/snippets_check_conjunctions_variables/ncounts-epoch-vs-varothers-levothers-levvar.txt
+var -- vars_others:  epochset  ---  ['seqc_1_loc_shape']
 var -- vars_others:  epochset  ---  ['epoch']
-/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-221020-0_1/rulesw/var_by_varsother/VAR_epoch-OV_epochset/SV_r2_maxtime_1way_mshuff/snippets_check_conjunctions_variables/ncounts-epochset-vs-varothers-levothers-levvar.txt
+var -- vars_others:  epochset  ---  ['seqc_1_loc_shape', 'epoch']
+/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-221020-0_1/rulesw/var_by_varsother/VAR_seqc_1_loc_shape-OV_epoch_epochset/SV_r2_maxtime_1way_mshuff/snippets_check_conjunctions_variables/ncounts-epochset-vs-varothers-levothers-levvar.txt
 TODO: do fr scalar computation only once! takes too much time.
-/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-221020-0_1/rulesw/var_by_varsother/VAR_epoch-OV_epochset/SV_r2_maxtime_1way_mshuff/df_var.pkl
 Searching for already-done df_var at this path:
-RELOADED df_var!!!
-... from: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-221020-0_1/rulesw/var_by_varsother/VAR_epoch-OV_epochset/SV_r2_maxtime_1way_mshuff/df_var.pkl
-Events already done: (will skip these when recomputing)...
-['00_fixcue_-600_to_-50', '00_fixcue_260_to_600', '00_fixcue_40_to_240', '03_samp_-600_to_-40', '03_samp_260_to_600', '03_samp_40_to_240', '04_go_cue_-600_to_-40', '05_first_raise_-600_to_-50', '06_on_strokeidx_0_-250_to_350', '08_doneb_-500_to_300', '09_post_50_to_600', '10_reward_all_50_to_600']
-COMPUTING df_var!!!
-Running grouping_print_n_samples...
-DOing these! ...
-list_events ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-WILL SKIP THESE EVENTS...
-['00_fixcue_-600_to_-50', '00_fixcue_260_to_600', '00_fixcue_40_to_240', '03_samp_-600_to_-40', '03_samp_260_to_600', '03_samp_40_to_240', '04_go_cue_-600_to_-40', '05_first_raise_-600_to_-50', '06_on_strokeidx_0_-250_to_350', '08_doneb_-500_to_300', '09_post_50_to_600', '10_reward_all_50_to_600']
-GOOD!, enough data, max n per grouping conjunction (nmin, nmax)  0 183
- 
-Updated ParamsGlobals for event 00_fixcue to:
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  -0.6
-POST_DUR_CALC  =  -0.05
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  00_fixcue_-600_to_-50
-!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
-00_fixcue_-600_to_-50
- 
-Updated ParamsGlobals for event 00_fixcue to:
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  0.04
-POST_DUR_CALC  =  0.24
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  00_fixcue_40_to_240
-!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
-00_fixcue_40_to_240
- 
-Updated ParamsGlobals for event 00_fixcue to:
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  0.26
-POST_DUR_CALC  =  0.6
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  00_fixcue_260_to_600
-!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
-00_fixcue_260_to_600
- 
-Updated ParamsGlobals for event 03_samp to:
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  -0.6
-POST_DUR_CALC  =  -0.04
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  03_samp_-600_to_-40
-!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
-03_samp_-600_to_-40
- 
-Updated ParamsGlobals for event 03_samp to:
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  0.04
-POST_DUR_CALC  =  0.24
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  03_samp_40_to_240
-!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
-03_samp_40_to_240
- 
-Updated ParamsGlobals for event 03_samp to:
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  0.26
-POST_DUR_CALC  =  0.6
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  03_samp_260_to_600
-!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
-03_samp_260_to_600
- 
-Updated ParamsGlobals for event 04_go_cue to:
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  -0.6
-POST_DUR_CALC  =  -0.04
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  04_go_cue_-600_to_-40
-!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
-04_go_cue_-600_to_-40
- 
-Updated ParamsGlobals for event 05_first_raise to:
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  -0.6
-POST_DUR_CALC  =  -0.05
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  05_first_raise_-600_to_-50
-!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
-05_first_raise_-600_to_-50
- 
-Updated ParamsGlobals for event 06_on_strokeidx_0 to:
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  -0.25
-POST_DUR_CALC  =  0.35
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  06_on_strokeidx_0_-250_to_350
-!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
-06_on_strokeidx_0_-250_to_350
- 
-Updated ParamsGlobals for event 08_doneb to:
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  -0.5
-POST_DUR_CALC  =  0.3
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  08_doneb_-500_to_300
-!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
-08_doneb_-500_to_300
- 
-Updated ParamsGlobals for event 09_post to:
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  0.05
-POST_DUR_CALC  =  0.6
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  09_post_50_to_600
-!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
-09_post_50_to_600
- 
-Updated ParamsGlobals for event 10_reward_all to:
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  0.05
-POST_DUR_CALC  =  0.6
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  10_reward_all_50_to_600
-!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
-10_reward_all_50_to_600
-SKIPPING, extracted df_var is empty. Probably you have not enough data for this conjunctions, try setting DEBUG_CONJUNCTIONS=True and reading the low-level data it prints.
-!! SKIPPING:  epoch ['epochset']
-Saving to: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-221020-0_1/rulesw/var_by_varsother/VAR_epoch-OV_seqc_0_loc_seqc_0_shape_seqc_nstrokes_beh/SV_r2_maxtime_1way_mshuff
-starting sites:  320
-starting sites:  [1, 2, 3, 5, 6, 7, 8, 9, 11, 13, 14, 15, 16, 21, 22, 24, 27, 28, 29, 31, 32, 37, 40, 41, 42, 43, 45, 47, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 72, 73, 74, 76, 78, 79, 80, 84, 85, 86, 92, 94, 95, 97, 98, 100, 101, 102, 108, 111, 112, 114, 116, 117, 118, 119, 120, 121, 122, 123, 125, 126, 129, 130, 132, 133, 134, 136, 138, 140, 141, 142, 143, 144, 145, 148, 150, 153, 154, 157, 158, 159, 161, 163, 164, 165, 167, 169, 173, 174, 177, 179, 180, 181, 184, 188, 189, 191, 192, 193, 194, 195, 197, 199, 200, 203, 204, 205, 206, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 224, 225, 226, 227, 229, 233, 235, 237, 241, 244, 248, 251, 252, 253, 254, 255, 256, 257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267, 269, 270, 272, 273, 276, 277, 278, 280, 281, 283, 284, 285, 286, 288, 289, 290, 294, 298, 300, 301, 302, 304, 306, 307, 310, 312, 314, 316, 318, 320, 324, 327, 329, 332, 333, 334, 343, 344, 346, 349, 350, 351, 352, 360, 362, 366, 367, 368, 375, 385, 386, 387, 388, 389, 393, 394, 395, 396, 397, 398, 400, 401, 402, 403, 404, 405, 406, 407, 408, 410, 411, 412, 414, 415, 416, 417, 418, 419, 420, 421, 422, 423, 425, 427, 429, 430, 433, 434, 435, 436, 438, 439, 440, 441, 443, 445, 447, 449, 450, 451, 452, 453, 454, 455, 456, 457, 458, 459, 460, 461, 462, 463, 464, 465, 467, 468, 469, 471, 472, 473, 474, 475, 477, 478, 479, 480, 481, 483, 484, 485, 486, 487, 488, 489, 491, 492, 493, 494, 495, 496, 497, 498, 499, 500, 501, 502, 503, 504, 505, 506, 512]
-For percentile 10, using this threshold: 3.3063676165956757
-sites_good:  332
-sites_bad:  37
-Updates self.Sites
-ending sites:  320
-ending sites:  [1, 2, 3, 5, 6, 7, 8, 9, 11, 13, 14, 15, 16, 21, 22, 24, 27, 28, 29, 31, 32, 37, 40, 41, 42, 43, 45, 47, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 72, 73, 74, 76, 78, 79, 80, 84, 85, 86, 92, 94, 95, 97, 98, 100, 101, 102, 108, 111, 112, 114, 116, 117, 118, 119, 120, 121, 122, 123, 125, 126, 129, 130, 132, 133, 134, 136, 138, 140, 141, 142, 143, 144, 145, 148, 150, 153, 154, 157, 158, 159, 161, 163, 164, 165, 167, 169, 173, 174, 177, 179, 180, 181, 184, 188, 189, 191, 192, 193, 194, 195, 197, 199, 200, 203, 204, 205, 206, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 224, 225, 226, 227, 229, 233, 235, 237, 241, 244, 248, 251, 252, 253, 254, 255, 256, 257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267, 269, 270, 272, 273, 276, 277, 278, 280, 281, 283, 284, 285, 286, 288, 289, 290, 294, 298, 300, 301, 302, 304, 306, 307, 310, 312, 314, 316, 318, 320, 324, 327, 329, 332, 333, 334, 343, 344, 346, 349, 350, 351, 352, 360, 362, 366, 367, 368, 375, 385, 386, 387, 388, 389, 393, 394, 395, 396, 397, 398, 400, 401, 402, 403, 404, 405, 406, 407, 408, 410, 411, 412, 414, 415, 416, 417, 418, 419, 420, 421, 422, 423, 425, 427, 429, 430, 433, 434, 435, 436, 438, 439, 440, 441, 443, 445, 447, 449, 450, 451, 452, 453, 454, 455, 456, 457, 458, 459, 460, 461, 462, 463, 464, 465, 467, 468, 469, 471, 472, 473, 474, 475, 477, 478, 479, 480, 481, 483, 484, 485, 486, 487, 488, 489, 491, 492, 493, 494, 495, 496, 497, 498, 499, 500, 501, 502, 503, 504, 505, 506, 512]
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  -0.75
-POST_DUR_CALC  =  0.75
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-221020-0_1/rulesw/var_by_varsother/VAR_epoch-OV_seqc_0_loc_seqc_0_shape_seqc_nstrokes_beh/SV_r2_maxtime_1way_mshuff/snippets_check_conjunctions_variables
-var -- vars_others:  epoch  ---  ['seqc_0_loc']
-var -- vars_others:  epoch  ---  ['seqc_0_shape']
-var -- vars_others:  epoch  ---  ['seqc_nstrokes_beh']
-var -- vars_others:  epoch  ---  ['seqc_0_loc', 'seqc_0_shape']
-var -- vars_others:  epoch  ---  ['seqc_0_loc', 'seqc_nstrokes_beh']
-var -- vars_others:  epoch  ---  ['seqc_0_shape', 'seqc_nstrokes_beh']
-var -- vars_others:  epoch  ---  ['seqc_0_loc', 'seqc_0_shape', 'seqc_nstrokes_beh']
-/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-221020-0_1/rulesw/var_by_varsother/VAR_epoch-OV_seqc_0_loc_seqc_0_shape_seqc_nstrokes_beh/SV_r2_maxtime_1way_mshuff/snippets_check_conjunctions_variables/ncounts-epoch-vs-varothers-levothers-levvar.txt
-var -- vars_others:  seqc_0_loc  ---  ['epoch']
-var -- vars_others:  seqc_0_loc  ---  ['seqc_0_shape']
-var -- vars_others:  seqc_0_loc  ---  ['seqc_nstrokes_beh']
-var -- vars_others:  seqc_0_loc  ---  ['epoch', 'seqc_0_shape']
-var -- vars_others:  seqc_0_loc  ---  ['epoch', 'seqc_nstrokes_beh']
-var -- vars_others:  seqc_0_loc  ---  ['seqc_0_shape', 'seqc_nstrokes_beh']
-var -- vars_others:  seqc_0_loc  ---  ['epoch', 'seqc_0_shape', 'seqc_nstrokes_beh']
-/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-221020-0_1/rulesw/var_by_varsother/VAR_epoch-OV_seqc_0_loc_seqc_0_shape_seqc_nstrokes_beh/SV_r2_maxtime_1way_mshuff/snippets_check_conjunctions_variables/ncounts-seqc_0_loc-vs-varothers-levothers-levvar.txt
-var -- vars_others:  seqc_0_shape  ---  ['epoch']
-var -- vars_others:  seqc_0_shape  ---  ['seqc_0_loc']
-var -- vars_others:  seqc_0_shape  ---  ['seqc_nstrokes_beh']
-var -- vars_others:  seqc_0_shape  ---  ['epoch', 'seqc_0_loc']
-var -- vars_others:  seqc_0_shape  ---  ['epoch', 'seqc_nstrokes_beh']
-var -- vars_others:  seqc_0_shape  ---  ['seqc_0_loc', 'seqc_nstrokes_beh']
-var -- vars_others:  seqc_0_shape  ---  ['epoch', 'seqc_0_loc', 'seqc_nstrokes_beh']
-/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-221020-0_1/rulesw/var_by_varsother/VAR_epoch-OV_seqc_0_loc_seqc_0_shape_seqc_nstrokes_beh/SV_r2_maxtime_1way_mshuff/snippets_check_conjunctions_variables/ncounts-seqc_0_shape-vs-varothers-levothers-levvar.txt
-var -- vars_others:  seqc_nstrokes_beh  ---  ['epoch']
-var -- vars_others:  seqc_nstrokes_beh  ---  ['seqc_0_loc']
-var -- vars_others:  seqc_nstrokes_beh  ---  ['seqc_0_shape']
-var -- vars_others:  seqc_nstrokes_beh  ---  ['epoch', 'seqc_0_loc']
-var -- vars_others:  seqc_nstrokes_beh  ---  ['epoch', 'seqc_0_shape']
-var -- vars_others:  seqc_nstrokes_beh  ---  ['seqc_0_loc', 'seqc_0_shape']
-var -- vars_others:  seqc_nstrokes_beh  ---  ['epoch', 'seqc_0_loc', 'seqc_0_shape']
-/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-221020-0_1/rulesw/var_by_varsother/VAR_epoch-OV_seqc_0_loc_seqc_0_shape_seqc_nstrokes_beh/SV_r2_maxtime_1way_mshuff/snippets_check_conjunctions_variables/ncounts-seqc_nstrokes_beh-vs-varothers-levothers-levvar.txt
-TODO: do fr scalar computation only once! takes too much time.
-/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-221020-0_1/rulesw/var_by_varsother/VAR_epoch-OV_seqc_0_loc_seqc_0_shape_seqc_nstrokes_beh/SV_r2_maxtime_1way_mshuff/df_var.pkl
-Searching for already-done df_var at this path:
-RELOADED df_var!!!
-... from: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-221020-0_1/rulesw/var_by_varsother/VAR_epoch-OV_seqc_0_loc_seqc_0_shape_seqc_nstrokes_beh/SV_r2_maxtime_1way_mshuff/df_var.pkl
-Events already done: (will skip these when recomputing)...
-['00_fixcue_-600_to_-50', '00_fixcue_260_to_600', '00_fixcue_40_to_240', '00_fixcue_50_to_600', '03_samp_-600_to_-40', '03_samp_260_to_600', '03_samp_40_to_240', '03_samp_50_to_600', '04_go_cue_-600_to_-40', '05_first_raise_-600_to_-50', '06_on_strokeidx_0_-100_to_600', '06_on_strokeidx_0_-250_to_350', '08_doneb_-500_to_300', '09_post_50_to_600', '10_reward_all_50_to_600']
-COMPUTING df_var!!!
-Running grouping_print_n_samples...
-DOing these! ...
-list_events ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-WILL SKIP THESE EVENTS...
-['00_fixcue_-600_to_-50', '00_fixcue_260_to_600', '00_fixcue_40_to_240', '00_fixcue_50_to_600', '03_samp_-600_to_-40', '03_samp_260_to_600', '03_samp_40_to_240', '03_samp_50_to_600', '04_go_cue_-600_to_-40', '05_first_raise_-600_to_-50', '06_on_strokeidx_0_-100_to_600', '06_on_strokeidx_0_-250_to_350', '08_doneb_-500_to_300', '09_post_50_to_600', '10_reward_all_50_to_600']
-GOOD!, enough data, max n per grouping conjunction (nmin, nmax)  0 53
- 
-Updated ParamsGlobals for event 00_fixcue to:
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  -0.6
-POST_DUR_CALC  =  -0.05
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  00_fixcue_-600_to_-50
-!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
-00_fixcue_-600_to_-50
- 
-Updated ParamsGlobals for event 00_fixcue to:
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  0.04
-POST_DUR_CALC  =  0.24
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  00_fixcue_40_to_240
-!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
-00_fixcue_40_to_240
- 
-Updated ParamsGlobals for event 00_fixcue to:
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  0.26
-POST_DUR_CALC  =  0.6
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  00_fixcue_260_to_600
-!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
-00_fixcue_260_to_600
- 
-Updated ParamsGlobals for event 03_samp to:
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  -0.6
-POST_DUR_CALC  =  -0.04
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  03_samp_-600_to_-40
-!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
-03_samp_-600_to_-40
- 
-Updated ParamsGlobals for event 03_samp to:
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  0.04
-POST_DUR_CALC  =  0.24
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  03_samp_40_to_240
-!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
-03_samp_40_to_240
- 
-Updated ParamsGlobals for event 03_samp to:
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  0.26
-POST_DUR_CALC  =  0.6
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  03_samp_260_to_600
-!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
-03_samp_260_to_600
- 
-Updated ParamsGlobals for event 04_go_cue to:
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  -0.6
-POST_DUR_CALC  =  -0.04
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  04_go_cue_-600_to_-40
-!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
-04_go_cue_-600_to_-40
- 
-Updated ParamsGlobals for event 05_first_raise to:
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  -0.6
-POST_DUR_CALC  =  -0.05
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  05_first_raise_-600_to_-50
-!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
-05_first_raise_-600_to_-50
- 
-Updated ParamsGlobals for event 06_on_strokeidx_0 to:
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  -0.25
-POST_DUR_CALC  =  0.35
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  06_on_strokeidx_0_-250_to_350
-!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
-06_on_strokeidx_0_-250_to_350
- 
-Updated ParamsGlobals for event 08_doneb to:
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  -0.5
-POST_DUR_CALC  =  0.3
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  08_doneb_-500_to_300
-!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
-08_doneb_-500_to_300
- 
-Updated ParamsGlobals for event 09_post to:
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  0.05
-POST_DUR_CALC  =  0.6
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  09_post_50_to_600
-!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
-09_post_50_to_600
- 
-Updated ParamsGlobals for event 10_reward_all to:
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  0.05
-POST_DUR_CALC  =  0.6
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  10_reward_all_50_to_600
-!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
-10_reward_all_50_to_600
-SKIPPING, extracted df_var is empty. Probably you have not enough data for this conjunctions, try setting DEBUG_CONJUNCTIONS=True and reading the low-level data it prints.
-!! SKIPPING:  epoch ['seqc_0_loc', 'seqc_0_shape', 'seqc_nstrokes_beh']
-Saving to: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-221020-0_1/rulesw/var_by_varsother/VAR_character-OV_epoch_epochset/SV_r2_maxtime_1way_mshuff
-starting sites:  320
-starting sites:  [1, 2, 3, 5, 6, 7, 8, 9, 11, 13, 14, 15, 16, 21, 22, 24, 27, 28, 29, 31, 32, 37, 40, 41, 42, 43, 45, 47, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 72, 73, 74, 76, 78, 79, 80, 84, 85, 86, 92, 94, 95, 97, 98, 100, 101, 102, 108, 111, 112, 114, 116, 117, 118, 119, 120, 121, 122, 123, 125, 126, 129, 130, 132, 133, 134, 136, 138, 140, 141, 142, 143, 144, 145, 148, 150, 153, 154, 157, 158, 159, 161, 163, 164, 165, 167, 169, 173, 174, 177, 179, 180, 181, 184, 188, 189, 191, 192, 193, 194, 195, 197, 199, 200, 203, 204, 205, 206, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 224, 225, 226, 227, 229, 233, 235, 237, 241, 244, 248, 251, 252, 253, 254, 255, 256, 257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267, 269, 270, 272, 273, 276, 277, 278, 280, 281, 283, 284, 285, 286, 288, 289, 290, 294, 298, 300, 301, 302, 304, 306, 307, 310, 312, 314, 316, 318, 320, 324, 327, 329, 332, 333, 334, 343, 344, 346, 349, 350, 351, 352, 360, 362, 366, 367, 368, 375, 385, 386, 387, 388, 389, 393, 394, 395, 396, 397, 398, 400, 401, 402, 403, 404, 405, 406, 407, 408, 410, 411, 412, 414, 415, 416, 417, 418, 419, 420, 421, 422, 423, 425, 427, 429, 430, 433, 434, 435, 436, 438, 439, 440, 441, 443, 445, 447, 449, 450, 451, 452, 453, 454, 455, 456, 457, 458, 459, 460, 461, 462, 463, 464, 465, 467, 468, 469, 471, 472, 473, 474, 475, 477, 478, 479, 480, 481, 483, 484, 485, 486, 487, 488, 489, 491, 492, 493, 494, 495, 496, 497, 498, 499, 500, 501, 502, 503, 504, 505, 506, 512]
-For percentile 10, using this threshold: 3.3063676165956757
-sites_good:  332
-sites_bad:  37
-Updates self.Sites
-ending sites:  320
-ending sites:  [1, 2, 3, 5, 6, 7, 8, 9, 11, 13, 14, 15, 16, 21, 22, 24, 27, 28, 29, 31, 32, 37, 40, 41, 42, 43, 45, 47, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 72, 73, 74, 76, 78, 79, 80, 84, 85, 86, 92, 94, 95, 97, 98, 100, 101, 102, 108, 111, 112, 114, 116, 117, 118, 119, 120, 121, 122, 123, 125, 126, 129, 130, 132, 133, 134, 136, 138, 140, 141, 142, 143, 144, 145, 148, 150, 153, 154, 157, 158, 159, 161, 163, 164, 165, 167, 169, 173, 174, 177, 179, 180, 181, 184, 188, 189, 191, 192, 193, 194, 195, 197, 199, 200, 203, 204, 205, 206, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 224, 225, 226, 227, 229, 233, 235, 237, 241, 244, 248, 251, 252, 253, 254, 255, 256, 257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267, 269, 270, 272, 273, 276, 277, 278, 280, 281, 283, 284, 285, 286, 288, 289, 290, 294, 298, 300, 301, 302, 304, 306, 307, 310, 312, 314, 316, 318, 320, 324, 327, 329, 332, 333, 334, 343, 344, 346, 349, 350, 351, 352, 360, 362, 366, 367, 368, 375, 385, 386, 387, 388, 389, 393, 394, 395, 396, 397, 398, 400, 401, 402, 403, 404, 405, 406, 407, 408, 410, 411, 412, 414, 415, 416, 417, 418, 419, 420, 421, 422, 423, 425, 427, 429, 430, 433, 434, 435, 436, 438, 439, 440, 441, 443, 445, 447, 449, 450, 451, 452, 453, 454, 455, 456, 457, 458, 459, 460, 461, 462, 463, 464, 465, 467, 468, 469, 471, 472, 473, 474, 475, 477, 478, 479, 480, 481, 483, 484, 485, 486, 487, 488, 489, 491, 492, 493, 494, 495, 496, 497, 498, 499, 500, 501, 502, 503, 504, 505, 506, 512]
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  -0.75
-POST_DUR_CALC  =  0.75
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-221020-0_1/rulesw/var_by_varsother/VAR_character-OV_epoch_epochset/SV_r2_maxtime_1way_mshuff/snippets_check_conjunctions_variables
-var -- vars_others:  character  ---  ['epoch']
-var -- vars_others:  character  ---  ['epochset']
-var -- vars_others:  character  ---  ['epoch', 'epochset']
-/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-221020-0_1/rulesw/var_by_varsother/VAR_character-OV_epoch_epochset/SV_r2_maxtime_1way_mshuff/snippets_check_conjunctions_variables/ncounts-character-vs-varothers-levothers-levvar.txt
-var -- vars_others:  epoch  ---  ['character']
-var -- vars_others:  epoch  ---  ['epochset']
-var -- vars_others:  epoch  ---  ['character', 'epochset']
-/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-221020-0_1/rulesw/var_by_varsother/VAR_character-OV_epoch_epochset/SV_r2_maxtime_1way_mshuff/snippets_check_conjunctions_variables/ncounts-epoch-vs-varothers-levothers-levvar.txt
-var -- vars_others:  epochset  ---  ['character']
-var -- vars_others:  epochset  ---  ['epoch']
-var -- vars_others:  epochset  ---  ['character', 'epoch']
-/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-221020-0_1/rulesw/var_by_varsother/VAR_character-OV_epoch_epochset/SV_r2_maxtime_1way_mshuff/snippets_check_conjunctions_variables/ncounts-epochset-vs-varothers-levothers-levvar.txt
-TODO: do fr scalar computation only once! takes too much time.
-/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-221020-0_1/rulesw/var_by_varsother/VAR_character-OV_epoch_epochset/SV_r2_maxtime_1way_mshuff/df_var.pkl
-Searching for already-done df_var at this path:
-RELOADED df_var!!!
-... from: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-221020-0_1/rulesw/var_by_varsother/VAR_character-OV_epoch_epochset/SV_r2_maxtime_1way_mshuff/df_var.pkl
-Events already done: (will skip these when recomputing)...
-['00_fixcue_-600_to_-50', '00_fixcue_260_to_600', '00_fixcue_40_to_240', '03_samp_-600_to_-40', '03_samp_260_to_600', '03_samp_40_to_240', '04_go_cue_-600_to_-40', '05_first_raise_-600_to_-50', '06_on_strokeidx_0_-250_to_350', '08_doneb_-500_to_300', '09_post_50_to_600', '10_reward_all_50_to_600']
-COMPUTING df_var!!!
-Running grouping_print_n_samples...
-DOing these! ...
-list_events ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-WILL SKIP THESE EVENTS...
-['00_fixcue_-600_to_-50', '00_fixcue_260_to_600', '00_fixcue_40_to_240', '03_samp_-600_to_-40', '03_samp_260_to_600', '03_samp_40_to_240', '04_go_cue_-600_to_-40', '05_first_raise_-600_to_-50', '06_on_strokeidx_0_-250_to_350', '08_doneb_-500_to_300', '09_post_50_to_600', '10_reward_all_50_to_600']
-GOOD!, enough data, max n per grouping conjunction (nmin, nmax)  0 11
- 
-Updated ParamsGlobals for event 00_fixcue to:
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  -0.6
-POST_DUR_CALC  =  -0.05
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  00_fixcue_-600_to_-50
-!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
-00_fixcue_-600_to_-50
- 
-Updated ParamsGlobals for event 00_fixcue to:
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  0.04
-POST_DUR_CALC  =  0.24
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  00_fixcue_40_to_240
-!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
-00_fixcue_40_to_240
- 
-Updated ParamsGlobals for event 00_fixcue to:
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  0.26
-POST_DUR_CALC  =  0.6
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  00_fixcue_260_to_600
-!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
-00_fixcue_260_to_600
- 
-Updated ParamsGlobals for event 03_samp to:
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  -0.6
-POST_DUR_CALC  =  -0.04
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  03_samp_-600_to_-40
-!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
-03_samp_-600_to_-40
- 
-Updated ParamsGlobals for event 03_samp to:
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  0.04
-POST_DUR_CALC  =  0.24
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  03_samp_40_to_240
-!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
-03_samp_40_to_240
- 
-Updated ParamsGlobals for event 03_samp to:
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  0.26
-POST_DUR_CALC  =  0.6
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  03_samp_260_to_600
-!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
-03_samp_260_to_600
- 
-Updated ParamsGlobals for event 04_go_cue to:
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  -0.6
-POST_DUR_CALC  =  -0.04
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  04_go_cue_-600_to_-40
-!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
-04_go_cue_-600_to_-40
- 
-Updated ParamsGlobals for event 05_first_raise to:
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  -0.6
-POST_DUR_CALC  =  -0.05
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  05_first_raise_-600_to_-50
-!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
-05_first_raise_-600_to_-50
- 
-Updated ParamsGlobals for event 06_on_strokeidx_0 to:
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  -0.25
-POST_DUR_CALC  =  0.35
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  06_on_strokeidx_0_-250_to_350
-!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
-06_on_strokeidx_0_-250_to_350
- 
-Updated ParamsGlobals for event 08_doneb to:
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  -0.5
-POST_DUR_CALC  =  0.3
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  08_doneb_-500_to_300
-!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
-08_doneb_-500_to_300
- 
-Updated ParamsGlobals for event 09_post to:
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  0.05
-POST_DUR_CALC  =  0.6
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  09_post_50_to_600
-!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
-09_post_50_to_600
- 
-Updated ParamsGlobals for event 10_reward_all to:
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  0.05
-POST_DUR_CALC  =  0.6
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  10_reward_all_50_to_600
-!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
-10_reward_all_50_to_600
-SKIPPING, extracted df_var is empty. Probably you have not enough data for this conjunctions, try setting DEBUG_CONJUNCTIONS=True and reading the low-level data it prints.
-!! SKIPPING:  character ['epoch', 'epochset']
-Saving to: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-221020-0_1/rulesw/var_by_varsother/VAR_seqc_0_loc_shape-OV_epoch_epochset/SV_r2_maxtime_1way_mshuff
-starting sites:  320
-starting sites:  [1, 2, 3, 5, 6, 7, 8, 9, 11, 13, 14, 15, 16, 21, 22, 24, 27, 28, 29, 31, 32, 37, 40, 41, 42, 43, 45, 47, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 72, 73, 74, 76, 78, 79, 80, 84, 85, 86, 92, 94, 95, 97, 98, 100, 101, 102, 108, 111, 112, 114, 116, 117, 118, 119, 120, 121, 122, 123, 125, 126, 129, 130, 132, 133, 134, 136, 138, 140, 141, 142, 143, 144, 145, 148, 150, 153, 154, 157, 158, 159, 161, 163, 164, 165, 167, 169, 173, 174, 177, 179, 180, 181, 184, 188, 189, 191, 192, 193, 194, 195, 197, 199, 200, 203, 204, 205, 206, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 224, 225, 226, 227, 229, 233, 235, 237, 241, 244, 248, 251, 252, 253, 254, 255, 256, 257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267, 269, 270, 272, 273, 276, 277, 278, 280, 281, 283, 284, 285, 286, 288, 289, 290, 294, 298, 300, 301, 302, 304, 306, 307, 310, 312, 314, 316, 318, 320, 324, 327, 329, 332, 333, 334, 343, 344, 346, 349, 350, 351, 352, 360, 362, 366, 367, 368, 375, 385, 386, 387, 388, 389, 393, 394, 395, 396, 397, 398, 400, 401, 402, 403, 404, 405, 406, 407, 408, 410, 411, 412, 414, 415, 416, 417, 418, 419, 420, 421, 422, 423, 425, 427, 429, 430, 433, 434, 435, 436, 438, 439, 440, 441, 443, 445, 447, 449, 450, 451, 452, 453, 454, 455, 456, 457, 458, 459, 460, 461, 462, 463, 464, 465, 467, 468, 469, 471, 472, 473, 474, 475, 477, 478, 479, 480, 481, 483, 484, 485, 486, 487, 488, 489, 491, 492, 493, 494, 495, 496, 497, 498, 499, 500, 501, 502, 503, 504, 505, 506, 512]
-For percentile 10, using this threshold: 3.3063676165956757
-sites_good:  332
-sites_bad:  37
-Updates self.Sites
-ending sites:  320
-ending sites:  [1, 2, 3, 5, 6, 7, 8, 9, 11, 13, 14, 15, 16, 21, 22, 24, 27, 28, 29, 31, 32, 37, 40, 41, 42, 43, 45, 47, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 72, 73, 74, 76, 78, 79, 80, 84, 85, 86, 92, 94, 95, 97, 98, 100, 101, 102, 108, 111, 112, 114, 116, 117, 118, 119, 120, 121, 122, 123, 125, 126, 129, 130, 132, 133, 134, 136, 138, 140, 141, 142, 143, 144, 145, 148, 150, 153, 154, 157, 158, 159, 161, 163, 164, 165, 167, 169, 173, 174, 177, 179, 180, 181, 184, 188, 189, 191, 192, 193, 194, 195, 197, 199, 200, 203, 204, 205, 206, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 224, 225, 226, 227, 229, 233, 235, 237, 241, 244, 248, 251, 252, 253, 254, 255, 256, 257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267, 269, 270, 272, 273, 276, 277, 278, 280, 281, 283, 284, 285, 286, 288, 289, 290, 294, 298, 300, 301, 302, 304, 306, 307, 310, 312, 314, 316, 318, 320, 324, 327, 329, 332, 333, 334, 343, 344, 346, 349, 350, 351, 352, 360, 362, 366, 367, 368, 375, 385, 386, 387, 388, 389, 393, 394, 395, 396, 397, 398, 400, 401, 402, 403, 404, 405, 406, 407, 408, 410, 411, 412, 414, 415, 416, 417, 418, 419, 420, 421, 422, 423, 425, 427, 429, 430, 433, 434, 435, 436, 438, 439, 440, 441, 443, 445, 447, 449, 450, 451, 452, 453, 454, 455, 456, 457, 458, 459, 460, 461, 462, 463, 464, 465, 467, 468, 469, 471, 472, 473, 474, 475, 477, 478, 479, 480, 481, 483, 484, 485, 486, 487, 488, 489, 491, 492, 493, 494, 495, 496, 497, 498, 499, 500, 501, 502, 503, 504, 505, 506, 512]
-Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  -0.75
-POST_DUR_CALC  =  0.75
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-221020-0_1/rulesw/var_by_varsother/VAR_seqc_0_loc_shape-OV_epoch_epochset/SV_r2_maxtime_1way_mshuff/snippets_check_conjunctions_variables
-var -- vars_others:  seqc_0_loc_shape  ---  ['epoch']
-var -- vars_others:  seqc_0_loc_shape  ---  ['epochset']
-var -- vars_others:  seqc_0_loc_shape  ---  ['epoch', 'epochset']
-/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-221020-0_1/rulesw/var_by_varsother/VAR_seqc_0_loc_shape-OV_epoch_epochset/SV_r2_maxtime_1way_mshuff/snippets_check_conjunctions_variables/ncounts-seqc_0_loc_shape-vs-varothers-levothers-levvar.txt
-var -- vars_others:  epoch  ---  ['seqc_0_loc_shape']
-var -- vars_others:  epoch  ---  ['epochset']
-var -- vars_others:  epoch  ---  ['seqc_0_loc_shape', 'epochset']
-/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-221020-0_1/rulesw/var_by_varsother/VAR_seqc_0_loc_shape-OV_epoch_epochset/SV_r2_maxtime_1way_mshuff/snippets_check_conjunctions_variables/ncounts-epoch-vs-varothers-levothers-levvar.txt
-var -- vars_others:  epochset  ---  ['seqc_0_loc_shape']
-var -- vars_others:  epochset  ---  ['epoch']
-var -- vars_others:  epochset  ---  ['seqc_0_loc_shape', 'epoch']
-/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-221020-0_1/rulesw/var_by_varsother/VAR_seqc_0_loc_shape-OV_epoch_epochset/SV_r2_maxtime_1way_mshuff/snippets_check_conjunctions_variables/ncounts-epochset-vs-varothers-levothers-levvar.txt
-TODO: do fr scalar computation only once! takes too much time.
-/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-221020-0_1/rulesw/var_by_varsother/VAR_seqc_0_loc_shape-OV_epoch_epochset/SV_r2_maxtime_1way_mshuff/df_var.pkl
-Searching for already-done df_var at this path:
-df_var doesnt exist...!
+/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-221020-0_1/rulesw/var_by_varsother/VAR_seqc_1_loc_shape-OV_epoch_epochset/SV_r2_maxtime_1way_mshuff/df_var.pkl
+df_var doesnt exist...! Recomputing...
 COMPUTING df_var!!!
 Running grouping_print_n_samples...
 DOing these! ...
@@ -3172,7 +2541,7 @@ list_pre_dur [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05,
 list_post_dur [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
 WILL SKIP THESE EVENTS...
 []
-GOOD!, enough data, max n per grouping conjunction (nmin, nmax)  0 49
+GOOD!, enough data, max n per grouping conjunction (nmin, nmax)  0 41
  
 Updated ParamsGlobals for event 00_fixcue to:
 Updated self.ParamsGlobals:
@@ -3517,32 +2886,3 @@ site : 500
  
 Updated ParamsGlobals for event 10_reward_all to:
 Updated self.ParamsGlobals:
-n_min_trials_per_level  =  7
-lenient_allow_data_if_has_n_levels  =  2
-PRE_DUR_CALC  =  0.05
-POST_DUR_CALC  =  0.6
-list_events  =  ['00_fixcue', '00_fixcue', '00_fixcue', '03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
-list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, 0.04, 0.26, -0.6, -0.6, -0.25, -0.5, 0.05, 0.05]
-list_post_dur  =  [-0.05, 0.24, 0.6, -0.04, 0.24, 0.6, -0.04, -0.05, 0.35, 0.3, 0.6, 0.6]
-DOING THIS EVENT:  10_reward_all_50_to_600
-site : 40
-site : 60
-site : 80
-site : 100
-site : 120
-site : 140
-site : 180
-site : 200
-site : 220
-site : 260
-site : 280
-site : 300
-site : 320
-site : 360
-site : 400
-site : 420
-site : 440
-site : 460
-site : 480
-site : 500
-SAving:  ./_analy_anova_script.sh: line 4: 17419 Killed                  python analy_anova_plot.py $@ n

@@ -206,118 +206,121 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
                 ["epoch", "character"],
             ]
         else:
-            if DATE in [220921]:
-                # grmamar vs. sequence mask rank. This must use epoch_superv, since
-                # epoch does not indiciate whether is using superv.
-                # LIST_VAR = [
-                #     "epoch_superv",
-                #     "epoch_superv",
-                # ]
-                # LIST_VARS_CONJUNCTION = [
-                #     ["epochset"],
-                #     ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
-                # ]
+            ### NOTE: commented out is left here just for notes re: what's 
+            # special about each day.
+            # if DATE in [220921]:
+            #     # grmamar vs. sequence mask rank. This must use epoch_superv, since
+            #     # epoch does not indiciate whether is using superv.
+            #     # LIST_VAR = [
+            #     #     "epoch_superv",
+            #     #     "epoch_superv",
+            #     # ]
+            #     # LIST_VARS_CONJUNCTION = [
+            #     #     ["epochset"],
+            #     #     ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
+            #     # ]
 
-                LIST_VAR = [
-                    "epoch",
-                    "epoch",
-                    "character",
-                    "seqc_0_loc_shape",
-                    "seqc_0_loc",
-                    "seqc_1_loc_shape",
-                ]
-                LIST_VARS_CONJUNCTION = [
-                    ["epochset"],
-                    ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
-                    ["epoch", "epochset"],
-                    ["epoch", "epochset"],
-                    ["epoch", "epochset"],
-                    ["epoch", "epochset", "seqc_0_loc_shape"]
-                ]
+            #     LIST_VAR = [
+            #         "epoch",
+            #         "epoch",
+            #         "character",
+            #         "seqc_0_loc_shape",
+            #         "seqc_0_loc",
+            #         "seqc_1_loc_shape",
+            #     ]
+            #     LIST_VARS_CONJUNCTION = [
+            #         ["epochset"],
+            #         ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
+            #         ["epoch", "epochset"],
+            #         ["epoch", "epochset"],
+            #         ["epoch", "epochset"],
+            #         ["epoch", "epochset", "seqc_0_loc_shape"]
+            #     ]
 
-            elif DATE in [221102]:
-                # combines blocks and trial cues within blocks.
-                # (e.g., rapid switching blcoks, and rule vs. rand within block, with siwtchingin
-                # bnetween 2 rules between blocks)
-                # Thus want to get both matched tasks (trial) and across blcoks.
-                # LIST_VAR = [
-                #     "epoch",
-                #     "epoch",
-                #     "epoch",
-                # ]
-                # LIST_VARS_CONJUNCTION = [
-                #     ["epochset"],
-                #     ["taskgroup"],
-                #     ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
-                # ]
-                LIST_VAR = [
-                    "epoch",
-                    "epoch",
-                    "character",
-                    "seqc_0_loc_shape",
-                    "seqc_0_loc",
-                    "seqc_1_loc_shape",
-                ]
-                LIST_VARS_CONJUNCTION = [
-                    ["epochset"],
-                    ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
-                    ["epoch", "epochset"],
-                    ["epoch", "epochset"],
-                    ["epoch", "epochset"],
-                    ["epoch", "epochset", "seqc_0_loc_shape"]
-                ]
+            # elif DATE in [221102]:
+            #     # combines blocks and trial cues within blocks.
+            #     # (e.g., rapid switching blcoks, and rule vs. rand within block, with siwtchingin
+            #     # bnetween 2 rules between blocks)
+            #     # Thus want to get both matched tasks (trial) and across blcoks.
+            #     # LIST_VAR = [
+            #     #     "epoch",
+            #     #     "epoch",
+            #     #     "epoch",
+            #     # ]
+            #     # LIST_VARS_CONJUNCTION = [
+            #     #     ["epochset"],
+            #     #     ["taskgroup"],
+            #     #     ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
+            #     # ]
+            #     LIST_VAR = [
+            #         "epoch",
+            #         "epoch",
+            #         "character",
+            #         "seqc_0_loc_shape",
+            #         "seqc_0_loc",
+            #         "seqc_1_loc_shape",
+            #     ]
+            #     LIST_VARS_CONJUNCTION = [
+            #         ["epochset"],
+            #         ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
+            #         ["epoch", "epochset"],
+            #         ["epoch", "epochset"],
+            #         ["epoch", "epochset"],
+            #         ["epoch", "epochset", "seqc_0_loc_shape"]
+            #     ]
 
-            elif DATE in [220928, 220929, 221001, 221014, 221023, 221024, 221113, 221021, 221118]:
-                # grmamar vs. color rank (where color rank mixes random + grammar ssecretly). should do epochsets, but decided to try
-                # this becuase epochsets would throw out like 1/2 the data (keeping only
-                # epochset spanning both epochs)
-                # - possibly try both meothds.
-                # strategy here is to get "same beh" as those with matched first stroke.
+            # elif DATE in [220928, 220929, 221001, 221014, 221023, 221024, 221113, 221021, 221118]:
+            #     # grmamar vs. color rank (where color rank mixes random + grammar ssecretly). should do epochsets, but decided to try
+            #     # this becuase epochsets would throw out like 1/2 the data (keeping only
+            #     # epochset spanning both epochs)
+            #     # - possibly try both meothds.
+            #     # strategy here is to get "same beh" as those with matched first stroke.
                 
-                # LIST_VAR = [
-                #     "epoch",
-                #     "epoch",
-                # ]
-                # LIST_VARS_CONJUNCTION = [
-                #     ["epochset"],
-                #     ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
-                # ]
+            #     # LIST_VAR = [
+            #     #     "epoch",
+            #     #     "epoch",
+            #     # ]
+            #     # LIST_VARS_CONJUNCTION = [
+            #     #     ["epochset"],
+            #     #     ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
+            #     # ]
                         
-                LIST_VAR = [
-                    "epoch",
-                    "epoch",
-                    "character",
-                    "seqc_0_loc_shape",
-                    "seqc_0_loc",
-                    "seqc_1_loc_shape",
-                ]
-                LIST_VARS_CONJUNCTION = [
-                    ["epochset"],
-                    ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
-                    ["epoch", "epochset"],
-                    ["epoch", "epochset"],
-                    ["epoch", "epochset"],
-                    ["epoch", "epochset", "seqc_0_loc_shape"]
-                ]
+            #     LIST_VAR = [
+            #         "epoch",
+            #         "epoch",
+            #         "character",
+            #         "seqc_0_loc_shape",
+            #         "seqc_0_loc",
+            #         "seqc_1_loc_shape",
+            #     ]
+            #     LIST_VARS_CONJUNCTION = [
+            #         ["epochset"],
+            #         ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
+            #         ["epoch", "epochset"],
+            #         ["epoch", "epochset"],
+            #         ["epoch", "epochset"],
+            #         ["epoch", "epochset", "seqc_0_loc_shape"]
+            #     ]
 
-            else:
-                # Everything else, especially trial by trial,
-                LIST_VAR = [
-                    "epoch",
-                    "epoch",
-                    "character",
-                    "seqc_0_loc_shape",
-                    "seqc_0_loc",
-                    "seqc_1_loc_shape",
-                ]
-                LIST_VARS_CONJUNCTION = [
-                    ["epochset"],
-                    ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
-                    ["epoch", "epochset"],
-                    ["epoch", "epochset"],
-                    ["epoch", "epochset"],
-                    ["epoch", "epochset", "seqc_0_loc_shape"]
-                ]
+            # Everything else, especially trial by trial,
+            LIST_VAR = [
+                "epoch",
+                "epoch",
+                "character",
+                "seqc_0_loc_shape",
+                "seqc_0_loc",
+                "seqc_1_loc_shape",
+                "seqc_1_loc_shape",
+            ]
+            LIST_VARS_CONJUNCTION = [
+                ["epochset"],
+                ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
+                ["epoch", "epochset"],
+                ["epoch", "epochset"],
+                ["epoch", "epochset"],
+                ["epoch", "epochset"],
+                ["epoch", "epochset", "seqc_0_loc_shape"]
+            ]
 
         #### EVENTS
         if (DATE in [220812, 220814, 220815, 220816, 220827, 220913, 220921, 220928, 220929, 220930]) or (DATE in [221001]):
@@ -423,7 +426,8 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
                 ('03_samp', 0.26, 0.6),
                 ('04_go_cue', -0.6, -0.04),
                 ('05_first_raise', -0.6, -0.05),
-                ('06_on_strokeidx_0', -0.25, 0.35),
+                ('06_on_strokeidx_0', -0.45, -0.05),
+                ('06_on_strokeidx_0', -0.05, 0.35),
                 ('08_doneb', -0.5, 0.3),
                 ('09_post', 0.05, 0.6),
                 ('10_reward_all', 0.05, 0.6)]
