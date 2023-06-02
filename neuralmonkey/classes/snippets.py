@@ -6,6 +6,7 @@ from pythonlib.tools.listtools import sort_mixed_type
 import os
 import seaborn as sns
 from pythonlib.tools.exceptions import NotEnoughDataException
+import pickle
 
 SAVEDIR_SNIPPETS_STROKE = "/gorilla1/analyses/recordings/main/anova/bystroke" # for snippets
 # SAVEDIR_SNIPPETS_STROKE = "/gorilla1/analyses/recordings/main/chunks_modulation" # for snippets
@@ -234,6 +235,8 @@ class Snippets(object):
         self._LOADED = False
         self.ListPA = None
         self.DS = None
+        # To cache sanity checks.
+        self._SanityFrSmTimesIdentical = None
 
         if SKIP_DATA_EXTRACTION:
             # Then useful if tyou want to load old data.
@@ -437,7 +440,8 @@ class Snippets(object):
             POST_DUR_CALC=None,
             list_events = None,
             list_pre_dur = None,
-            list_post_dur = None):
+            list_post_dur = None,
+            PRINT=True):
         """ 
         Update self.ParamsGlobals specific keys (those that are not None).
         PArams for ongoing anaklysis,.
@@ -464,38 +468,14 @@ class Snippets(object):
         if list_post_dur is not None:
             self.ParamsGlobals["list_post_dur"] = list_post_dur
 
-        # if list_pre_dur is None:
-        #     list_pre_dur = self.ParamsGlobals["list_pre_dur"]
-        # if list_post_dur is None:
-        #     list_post_dur = self.ParamsGlobals["list_post_dur"]
-
-        # if PRE_DUR_CALC is None:
-        #     PRE_DUR_CALC = self.ParamsGlobals["PRE_DUR_CALC"]
-        # if POST_DUR_CALC is None:
-        #     POST_DUR_CALC = self.ParamsGlobals["POST_DUR_CALC"]
-        # if globals_nmin is None:
-        #     globals_nmin = self.ParamsGlobals["n_min_trials_per_level"]
-        # if globals_lenient_allow_data_if_has_n_levels is None:
-        #     globals_lenient_allow_data_if_has_n_levels = self.ParamsGlobals["lenient_allow_data_if_has_n_levels"]
-
-
-        # self.ParamsGlobals = {
-        #     "n_min_trials_per_level":globals_nmin,
-        #     "lenient_allow_data_if_has_n_levels":globals_lenient_allow_data_if_has_n_levels,
-        #     "PRE_DUR_CALC":PRE_DUR_CALC,
-        #     "POST_DUR_CALC":POST_DUR_CALC,
-        #     "list_events":list_events,
-        #     "list_pre_dur":list_pre_dur,
-        #     "list_post_dur":list_post_dur
-        # }
-
-        # SANITY
+        # SANITY CHECK
         for k, v in self.ParamsGlobals.items():
             assert v is not None
 
-        print("Updated self.ParamsGlobals:")
-        for k, v in self.ParamsGlobals.items():
-            print(k, ' = ' , v)
+        if PRINT:
+            print("Updated self.ParamsGlobals:")
+            for k, v in self.ParamsGlobals.items():
+                print(k, ' = ' , v)
 
     def extract_snippets_strokes(self, DS, sites_keep, pre_dur, post_dur,
             features_to_get_extra=None):
@@ -1235,11 +1215,48 @@ class Snippets(object):
 
 
     ################ MODULATION BY VARIABLES
-    def modulationgood_compute_fr_quick(self, var, fr_var = "fr_scalar"):
+    def _modulationgood_extract_fr(self, which_sm_fr="fr_sm_sqrt",
+        pre_dur=None, post_dur=None, fr_var = "fr_scalar",
+        dfthis=None):
+        """ Compute mean fr and store in self.DfScalar["fr_scalar"], by 
+        using smoothed fr (windowed with pre_dur, post_dur)
+        PARAMS:
+        - which_sm_fr, string, column to use (e.g,, fr_sm_sqrt) 
+        - pre_dur, post_dur, if None, then uses what's in ParamsGlobal[PRE_DUR_CALC], etc.
+        - dfthis, if None, then uses self.DfScalar
+        RETURNS:
+        - modifies dfthis["fr_scalar"], and returns it
         """
-        Temporary, qucik computation of fr across chans, var levels, etc.
+
+        if dfthis is None:
+            dfthis = self.DfScalar
+
+        if pre_dur is not None or post_dur is not None:
+            self.globals_update(PRE_DUR_CALC=pre_dur, POST_DUR_CALC=post_dur)
+        pre_dur = self.ParamsGlobals["PRE_DUR_CALC"]
+        post_dur = self.ParamsGlobals["POST_DUR_CALC"]
+
+        assert self._sanity_fr_sm_times_identical(), "cannot use a single row's times"
+        times = dfthis.iloc[0]["fr_sm_times"]
+        inds = (times>=pre_dur) & (times<=post_dur)
+        inds = inds.squeeze()
+
+        # concat, slice, and take mean to get sclaar
+        frmat = np.concatenate(dfthis[which_sm_fr].tolist(), axis=0)
+        frscal = np.mean(frmat[:, inds], axis=1)
+
+        # update
+        dfthis[fr_var] = frscal    
+
+        return dfthis
+
+
+    def modulationgood_compute_fr_quick(self, var, other_var_str="vars_others", fr_var = "fr_scalar",
+            dfthis = None):
+        """ Compute datafromae hodling scalar fr across (chan, levels)
         PARAMS:
         - var, to get the levels of interst
+        - dfthis, if None , then uses elf.DfScalar
         RETURNS:
         - df_fr, each row is a single (chan, event)
         - df_fr_levels, each row is a single (chan, event, level_of_var)
@@ -1247,14 +1264,21 @@ class Snippets(object):
         from pythonlib.tools.pandastools import aggregGeneral
 
         # fr_which_version = self.Params["fr_which_version"]
-        dfthis = self.DfScalar
-        if "fr_scalar" not in self.DfScalar.columns:
-            # Compute fr based on updated pre and post dur.
-            pre_dur = self.ParamsGlobals["PRE_DUR_CALC"]
-            post_dur = self.ParamsGlobals["POST_DUR_CALC"]
-            print("Computing fr scalar quickly (not windowed), to help prune low Fr neurons...")
-            dfthis = self.datamod_compute_fr_scalar(dfthis, pre_dur, post_dur)
-            print("Done...")
+        if dfthis is None:
+            dfthis = self.DfScalar
+
+        if "fr_scalar" not in dfthis.columns:
+            if False:
+                # Compute fr based on updated pre and post dur.
+                pre_dur = self.ParamsGlobals["PRE_DUR_CALC"]
+                post_dur = self.ParamsGlobals["POST_DUR_CALC"]
+                print("Computing fr scalar quickly (not windowed), to help prune low Fr neurons...")
+                dfthis = self.datamod_compute_fr_scalar(dfthis, pre_dur, post_dur)
+                print("Done...")
+            else:
+                # THe above is too slow. here compute from sm fr.
+                self._modulationgood_extract_fr(fr_var=fr_var,
+                    dfthis=dfthis)
 
         df_fr = aggregGeneral(dfthis, group=["chan", "event_aligned"], values = [fr_var])
         # give bregion
@@ -1263,12 +1287,13 @@ class Snippets(object):
         df_fr["val"] = df_fr[fr_var]
         df_fr["val_kind"] = fr_var
 
-        df_fr_levels = aggregGeneral(dfthis, group=["chan", "event_aligned", var], values = [fr_var])
+        df_fr_levels = aggregGeneral(dfthis, group=["chan", "event_aligned", var, other_var_str], values = [fr_var])
         # give bregion
         df_fr_levels = self.datamod_append_bregion(df_fr_levels)
         df_fr_levels["event"] = df_fr_levels["event_aligned"]
         df_fr_levels["val"] = df_fr_levels[fr_var]
         df_fr_levels["val_kind"] = "fr_each_level"
+        df_fr_levels["var"] = df_fr_levels[var]
 
         return df_fr, df_fr_levels
 
@@ -1314,6 +1339,10 @@ class Snippets(object):
         # vars_conjuction = ['stroke_index', 'gridloc', 'chunk_rank'] # list of str, vars to take conjunction over
         # vars_conjuction = ['gridloc', 'chunk_rank'] # list of str, vars to take conjunction over
         
+        print(" !!! RUNNING modulationgood_compute_plot_ALL for var and vars_conjuction:")
+        print(var)
+        print(vars_conjuction)
+
         assert isinstance(vars_conjuction, list)
 
         df_scalar_orig_length = len(self.DfScalar)
@@ -1397,105 +1426,16 @@ class Snippets(object):
             print("DONE! just printed conjunctions, as you requested... (exiting..)")
             return
 
+        # IF there is no variation in var, then exit
+        if len(self.DfScalar[var].unique().tolist())==1:
+            print("SKIPPING, this var only has one level:")
+            print(self.DfScalar[var].unique().tolist())
+            raise NotEnoughDataException
+
         # self.ParamsGlobals["PRE_DUR_CALC"] = PRE_DUR_CALC
         # self.ParamsGlobals["POST_DUR_CALC"] = POST_DUR_CALC
         sn, _ = self._session_extract_sn_and_trial()
 
-        print("TODO: do fr scalar computation only once! takes too much time.")
-        RECOMPUTE = True
-        EVENTS_ALREADY_DONE = []
-
-        # Check if df_var is already saved
-        path = f"{sdir_base}/df_var.pkl"
-        print(path)
-        if reload_df_var_if_exists:
-            print("Searching for already-done df_var at this path:")
-            if os.path.exists(path):
-                from pickle import UnpicklingError
-                try:
-                    with open(path, "rb") as f:
-                        df_var_saved = pickle.load(f)
-                    print("RELOADED df_var!!!")
-                    print("... from:", path)
-
-                    list_eventwindow_event_saved = sorted(set([tuple(x) for x in df_var_saved.loc[:, ["event", "_event"]].values.tolist()]))
-
-                    # Only recompute events which you have not already extradcted.
-                    EVENTS_ALREADY_DONE = [x[0] for x in list_eventwindow_event_saved] # er.g, [02_rulecue2_40_to_600]
-                    print("Events already done: (will skip these when recomputing)...")
-                    print(EVENTS_ALREADY_DONE)
-                    RECOMPUTE = True
-
-                except UnpicklingError as err:
-                    print("Corrupted df_var.pkl --> Recomputing!")
-                    RECOMPUTE = True
-                    EVENTS_ALREADY_DONE = []
-            else:
-                print("df_var doesnt exist...!")
-
-        if RECOMPUTE:
-            print("COMPUTING df_var!!!")
-            try:
-                df_var, list_eventwindow_event = self.modulationgood_compute_wrapper(var, 
-                    vars_conjuction, score_ver=score_ver, get_z_score=get_z_score,
-                    DEBUG_CONJUNCTIONS=DEBUG_CONJUNCTIONS,
-                    events_windowed_skip = EVENTS_ALREADY_DONE, SAVEDIR=sdir_base) 
-            except NotEnoughDataException as err:
-                print("!! Failed during: ", var, vars_conjuction, score_ver)
-                print("Now rerunning modulationgood_compute_wrapper, with DEBUG_CONJUNCTIONS=True...")
-                df_var, list_eventwindow_event = self.modulationgood_compute_wrapper(var, 
-                    vars_conjuction, score_ver=score_ver, get_z_score=get_z_score,
-                    DEBUG_CONJUNCTIONS=True,
-                    events_windowed_skip = EVENTS_ALREADY_DONE, SAVEDIR=sdir_base) 
-                raise err
-
-            ##### IF you skipped events that you already extracted in preloaded df_var,
-            # merge that preloaded with the new one.
-            if len(EVENTS_ALREADY_DONE)>0:
-                print("... Merging pre-saved and new df_var!")
-                print("-- Len of old df_var, and events that exist in it:")
-                print(len(df_var_saved))
-                print(df_var_saved["event"].unique())
-                print("-- Len of new df_var, and events that exist in it:")
-                print(len(df_var))
-                print(df_var["event"].unique())
-                df_var = pd.concat([df_var, df_var_saved], axis=0).reset_index(drop=True)
-                list_eventwindow_event.extend(list_eventwindow_event_saved)
-
-                print("-- Len of MERGED df_var, and events that exist in it:")
-                print(len(df_var))
-                print(df_var["event"].unique())
-
-                ######### MOVE OLD DF_VAR AND OLD PLOTS
-                from pythonlib.tools.expttools import makeTimeStamp
-                import glob
-                import shutil
-                from pythonlib.tools.expttools import fileparts
-                ts = makeTimeStamp()
-                items = glob.glob(f"{sdir_base}/*")
-                dir_move = f"{sdir_base}/OLD_PLOTS-moved_on_{ts}"
-                os.makedirs(dir_move, exist_ok=True)
-                for it in items:
-                    fname = fileparts(it)[-2] + fileparts(it)[-1] # e.g., df_var.pkl
-                    path_new = f"{dir_move}/{fname}"
-                    print(f"Moving {it} to {path_new}")
-                    shutil.move(it, path_new)
-                print("All files moved... ready to remake plots!!")
-
-            # Save df_var
-            path = f"{sdir_base}/df_var.pkl"
-            print("SAving: ", path)
-            with open(path, "wb") as f:
-                pickle.dump(df_var, f)
-
-            # Save df_var
-            path = f"{sdir_base}/list_eventwindow_event.pkl"
-            print("SAving: ", path)
-            with open(path, "wb") as f:
-                pickle.dump(list_eventwindow_event, f)
-
-        df_var = df_var.reset_index(drop=True)
-        list_events_window = sorted(df_var["event"].unique().tolist()) 
 
         ######### SAVE PARAMS
         path = f"{sdir_base}/Params.yaml"
@@ -1508,8 +1448,120 @@ class Snippets(object):
             path = f"{sdir_base}/params_to_save.yaml"
             writeDictToYaml(params_to_save, path)
 
+        ################# LOAD DF_VAR
+        df_var, list_eventwindow_event = self.modulationgood_load_or_compute(
+            "df_var", sdir_base, var, vars_conjuction, score_ver, get_z_score)
+
+        df_fr_levels, _ = self.modulationgood_load_or_compute(
+            "df_fr_levels", sdir_base, var, vars_conjuction, None, None)
+
+        ################# save again
+        path = f"{sdir_base}/ParamsGlobals.yaml"
+        writeDictToYaml(self.ParamsGlobals, path)
+
+        # RECOMPUTE = True
+        # EVENTS_ALREADY_DONE = []
+
+        # # Check if df_var is already saved
+        # RELOAD_DFVAR_SUCCESSFUL = False
+        # if reload_df_var_if_exists:
+        #     path = f"{sdir_base}/df_var.pkl"
+        #     print("Searching for already-done df_var at this path:")
+        #     print(path)
+        #     if os.path.exists(path):
+        #         from pickle import UnpicklingError
+        #         try:
+        #             with open(path, "rb") as f:
+        #                 df_var_saved = pickle.load(f)
+        #             print("RELOADED df_var!!!")
+        #             print("... from:", path)
+
+        #             list_eventwindow_event_saved = sorted(set([tuple(x) for x in df_var_saved.loc[:, ["event", "_event"]].values.tolist()]))
+
+        #             # Only recompute events which you have not already extradcted.
+        #             RELOAD_DFVAR_SUCCESSFUL = True
+        #             EVENTS_ALREADY_DONE = [x[0] for x in list_eventwindow_event_saved] # er.g, [02_rulecue2_40_to_600]
+        #             print("Events already done: (will skip these when recomputing)...")
+        #             print(EVENTS_ALREADY_DONE)
+        #         except UnpicklingError as err:
+        #             print("Corrupted df_var.pkl --> Recomputing!")
+        #     else:
+        #         print("df_var doesnt exist...! Recomputing...")
+
+        # if RECOMPUTE:
+        #     print("COMPUTING df_var!!!")
+        #     try:
+        #         df_var, df_fr, df_fr_levels, list_eventwindow_event = self.modulationgood_compute_wrapper(var, 
+        #             vars_conjuction, score_ver=score_ver, get_z_score=get_z_score,
+        #             DEBUG_CONJUNCTIONS=DEBUG_CONJUNCTIONS,
+        #             events_windowed_skip = EVENTS_ALREADY_DONE, SAVEDIR=sdir_base) 
+        #     except NotEnoughDataException as err:
+        #         # Is ok, just means that this event doesnt have data
+        #         print("!! Failed [modulationgood_compute_wrapper] during: ", var, vars_conjuction, score_ver)
+        #         if RELOAD_DFVAR_SUCCESSFUL:
+        #             print("This is ok, since you already have pre-saved df_var loaded... continuing")
+        #         else:
+        #             print("Failure, you dont have presaved, and could not extract new... raising error")
+        #             # print("Now rerunning modulationgood_compute_wrapper, with DEBUG_CONJUNCTIONS=True...")
+        #             # df_var, list_eventwindow_event = self.modulationgood_compute_wrapper(var, 
+        #             #     vars_conjuction, score_ver=score_ver, get_z_score=get_z_score,
+        #             #     DEBUG_CONJUNCTIONS=True,
+        #             #     events_windowed_skip = EVENTS_ALREADY_DONE, SAVEDIR=sdir_base) 
+        #             raise err
+
+        #     ##### IF you skipped events that you already extracted in preloaded df_var,
+        #     # merge that preloaded with the new one.
+        #     if RELOAD_DFVAR_SUCCESSFUL:
+        #         print("... Merging pre-saved and new df_var!")
+        #         print("-- Len of old df_var, and events that exist in it:")
+        #         print(len(df_var_saved))
+        #         print(df_var_saved["event"].unique())
+        #         print("-- Len of new df_var, and events that exist in it:")
+        #         print(len(df_var))
+        #         print(df_var["event"].unique())
+
+        #         df_var = pd.concat([df_var, df_var_saved], axis=0).reset_index(drop=True)
+        #         list_eventwindow_event.extend(list_eventwindow_event_saved)
+
+        #         print("-- Len of MERGED df_var, and events that exist in it:")
+        #         print(len(df_var))
+        #         print(df_var["event"].unique())
+
+        #         ######### MOVE OLD DF_VAR AND OLD PLOTS
+        #         from pythonlib.tools.expttools import makeTimeStamp
+        #         import glob
+        #         import shutil
+        #         from pythonlib.tools.expttools import fileparts
+        #         ts = makeTimeStamp()
+        #         items = glob.glob(f"{sdir_base}/*")
+        #         dir_move = f"{sdir_base}/OLD_PLOTS-moved_on_{ts}"
+        #         os.makedirs(dir_move, exist_ok=True)
+        #         for it in items:
+        #             fname = fileparts(it)[-2] + fileparts(it)[-1] # e.g., df_var.pkl
+        #             path_new = f"{dir_move}/{fname}"
+        #             print(f"Moving {it} to {path_new}")
+        #             shutil.move(it, path_new)
+        #         print("All files moved... ready to remake plots!!")
+
+        #     # Save df_var
+        #     path = f"{sdir_base}/df_var.pkl"
+        #     print("SAving: ", path)
+        #     with open(path, "wb") as f:
+        #         pickle.dump(df_var, f)
+
+        #     # Save df_var
+        #     path = f"{sdir_base}/list_eventwindow_event.pkl"
+        #     print("SAving: ", path)
+        #     with open(path, "wb") as f:
+        #         pickle.dump(list_eventwindow_event, f)
+
+        # df_var = df_var.reset_index(drop=True)
+        
+        list_events_window = sorted(df_var["event"].unique().tolist()) 
+
         if False:
             # Skip this, slows things down, including the plots.
+            # OBSOLETE!!
             print("** Computing fr quick...")
             df_fr, df_fr_levels = self.modulationgood_compute_fr_quick(var) 
             # df_fr = df_fr[df_fr["event_aligned"] == event]
@@ -1517,7 +1569,9 @@ class Snippets(object):
             assert len(df_fr)>0
             assert len(df_fr_levels)>0
 
-            # Save df_var
+        # Save df_var
+        if False:
+            # Not using this anymore, doing inside modulationgood_load_or_compute
             path = f"{sdir_base}/df_fr.pkl"
             print("SAving: ", path)
             with open(path, "wb") as f:
@@ -1528,10 +1582,14 @@ class Snippets(object):
             print("SAving: ", path)
             with open(path, "wb") as f:
                 pickle.dump(df_fr_levels, f)
-        else:
-            df_fr = None
-            df_fr_levels = None
 
+        #################### QUICK, plots of fr vs. levels
+        if df_fr_levels is not Non and len(df_fr_levels)>0:
+            sdir = f"{sdir_base}/fr_levels"
+            os.makedirs(sdir, exist_ok=True)
+            print("Plotting... ", sdir)
+            self.modulationgood_plot_summarystats_fr(None, df_fr_levels, savedir=sdir)
+            plt.close("all")
 
         ################### MAIN PLOTS OF MODULATION
         if len(df_var)>0:
@@ -1572,8 +1630,8 @@ class Snippets(object):
             print(sdir)
 
             print("** Plotting summarystats")
-            self.modulationgood_plot_summarystats(df_var, df_fr_levels, df_fr, savedir=sdir) 
-            plt.close("all")
+            self.modulationgood_plot_summarystats(df_var, None, None, savedir=sdir) 
+            plt.close("all") 
 
             ######## 1b) heatmap
             print("** Plotting heatmaps")
@@ -1711,10 +1769,144 @@ class Snippets(object):
             print(len(df_var))
 
 
+    def modulationgood_load_or_compute(self, which_data, sdir_base, var, 
+                    vars_conjuction, score_ver, get_z_score,
+                    DEBUG_CONJUNCTIONS=False):
+        """ Helper to try to load df_var, and then compute any new events taht are
+        not present, and then concatenate and then save again
+        PARAMS:
+        - which_data, string, 
+        - vars_conjuction, list
+        RETURNS:
+        - DFTHIS, either df_var, or df_fr_levels, depending on which_data
+        - list_eventwindow_event, list of tuple, each is (event with exct time window, num_event)
+        """
+
+        from pickle import UnpicklingError
+
+        if which_data=="df_var":
+            FNAME = "df_var"
+            THINGS_TO_EXTRACT = tuple(["anova"])
+            IDX = 0
+        elif which_data=="df_fr_levels":
+            FNAME = "df_fr_levels"
+            THINGS_TO_EXTRACT = tuple(["fr"])
+            IDX = 2
+        else:
+            print(which_data)
+            assert False
+
+        #### TRY LOADING Check if df is already saved
+        EVENTS_ALREADY_DONE = []
+        RELOAD_DFVAR_SUCCESSFUL = False
+        path = f"{sdir_base}/{FNAME}.pkl"
+        print(f"Searching for already-done {which_data} at this path:", path)
+        if os.path.exists(path):
+            try:
+                with open(path, "rb") as f:
+                    DFTHIS_SAVED = pickle.load(f)
+                print(f"RELOADED {which_data}!!!")
+
+                list_eventwindow_event_saved = sorted(set([tuple(x) for x in DFTHIS_SAVED.loc[:, ["event", "_event"]].values.tolist()]))
+
+                # Only recompute events which you have not already extradcted.
+                RELOAD_DFVAR_SUCCESSFUL = True
+                EVENTS_ALREADY_DONE = [x[0] for x in list_eventwindow_event_saved] # er.g, [02_rulecue2_40_to_600]
+                print("Events already done: (will skip these when recomputing)...")
+                print(EVENTS_ALREADY_DONE)
+            except UnpicklingError as err:
+                print(f"Corrupted {FNAME}.pkl --> Recomputing!")
+        else:
+            print("... path does not exist")
+
+        print(f"COMPUTING {which_data}!!!")
+        try:
+            res = self.modulationgood_compute_wrapper(var, 
+                vars_conjuction, score_ver=score_ver, get_z_score=get_z_score,
+                DEBUG_CONJUNCTIONS=DEBUG_CONJUNCTIONS,
+                events_windowed_skip = EVENTS_ALREADY_DONE, SAVEDIR=sdir_base,
+                THINGS_TO_EXTRACT=THINGS_TO_EXTRACT)
+            DFTHIS = res[IDX]
+            list_eventwindow_event = res[3]
+
+            if RELOAD_DFVAR_SUCCESSFUL:
+                # Then you want to merge
+                print("... Merging pre-saved and new df!")
+                print("-- Len of old df, and events that exist in it:")
+                print(len(DFTHIS_SAVED))
+                print(DFTHIS_SAVED["event"].unique())
+                print("-- Len of new df, and events that exist in it:")
+                print(len(DFTHIS))
+                print(DFTHIS["event"].unique())
+
+                DFTHIS = pd.concat([DFTHIS, DFTHIS_SAVED], axis=0).reset_index(drop=True)
+                list_eventwindow_event.extend(list_eventwindow_event_saved)
+            # else:
+            #     print(".. computing for the first time is DONE!")
+            #     DFTHIS = DFTHIS_SAVED
+            #     list_eventwindow_event = list_eventwindow_event_saved
+
+        except NotEnoughDataException as err:
+            print("--NotEnoughDataException [modulationgood_compute_wrapper] during: ", var, vars_conjuction, score_ver)
+            if RELOAD_DFVAR_SUCCESSFUL:
+                print("This is ok, since you already have pre-saved df loaded... continuing with loaded...")
+                DFTHIS = DFTHIS_SAVED
+                list_eventwindow_event = list_eventwindow_event_saved
+            else:
+                print("ACutlaly a failure, you dont have presaved, and could not extract new... raising error")
+                # print("Now rerunning modulationgood_compute_wrapper, with DEBUG_CONJUNCTIONS=True...")
+                # df_var, list_eventwindow_event = self.modulationgood_compute_wrapper(var, 
+                #     vars_conjuction, score_ver=score_ver, get_z_score=get_z_score,
+                #     DEBUG_CONJUNCTIONS=True,
+                #     events_windowed_skip = EVENTS_ALREADY_DONE, SAVEDIR=sdir_base) 
+                raise err
+
+        print("-- Len of FINAL df_var, and events that exist in it:")
+        print(len(DFTHIS))
+        print(DFTHIS["event"].unique())
+
+        ##### Move old plots
+        if RELOAD_DFVAR_SUCCESSFUL:
+            ######### MOVE OLD DF_VAR AND OLD PLOTS
+            from pythonlib.tools.expttools import makeTimeStamp
+            import glob
+            import shutil
+            from pythonlib.tools.expttools import fileparts
+            ts = makeTimeStamp()
+            items = glob.glob(f"{sdir_base}/*")
+            dir_move = f"{sdir_base}/OLD_PLOTS-moved_on_{ts}"
+            os.makedirs(dir_move, exist_ok=True)
+            for it in items:
+                fname = fileparts(it)[-2] + fileparts(it)[-1] # e.g., df_var.pkl
+                path_new = f"{dir_move}/{fname}"
+                print(f"Moving {it} to {path_new}")
+                shutil.move(it, path_new)
+            print("All files moved... ready to remake plots!!")
+
+        ################ CLEAN AND SAVE
+        DFTHIS = DFTHIS.reset_index(drop=True)
+        # list_events_window = sorted(DFTHIS["event"].unique().tolist()) 
+
+        ############ Save df_var
+        path = f"{sdir_base}/{FNAME}.pkl"
+        print("SAving: ", path)
+        with open(path, "wb") as f:
+            pickle.dump(DFTHIS, f)
+
+        # Save df_var
+        path = f"{sdir_base}/list_eventwindow_event.pkl"
+        print("SAving: ", path)
+        with open(path, "wb") as f:
+            pickle.dump(list_eventwindow_event, f)
+
+        return DFTHIS, list_eventwindow_event
+
+
     def modulationgood_compute_wrapper(self, var, vars_conjuction=None, list_site=None, 
             score_ver="r2smfr_minshuff", get_z_score=False,
             DEBUG_CONJUNCTIONS=False,
-            events_windowed_skip = None, SAVEDIR=None):
+            events_windowed_skip = None, SAVEDIR=None,
+            THINGS_TO_EXTRACT=("fr", "anova")):
         """ Good, flexible helper to compute modulation of all kinds and all ways of slicing 
         the dataset. 
         PARAMS;
@@ -1726,7 +1918,9 @@ class Snippets(object):
         - events_windowed_skip, either None(ignores) or list of str, each an event to skip if 
         it comes up during analy, e.g, [02_rulecue2_40_to_600]
         RETURNS:
-        - df_var
+        - DF_VAR, 
+        - DF_FR, [IGNORE THIS]
+        - DF_FR_LEVELS
         - list_eventwindow_event, list of tuples, each a (event_window, event), whgere ew is conjucntion
         of event and (predur, postdur) and event is the original event name. such as :
             [('00_fix_touch_-500_to_0', '00_fix_touch'),
@@ -1789,9 +1983,10 @@ class Snippets(object):
         if events_windowed_skip is not None:
             print("WILL SKIP THESE EVENTS...")
             print(events_windowed_skip)
+        else:
+            events_windowed_skip = []
 
         sn, _ = self._session_extract_sn_and_trial()
-
 
         if n_max<self.ParamsGlobals["n_min_trials_per_level"]:
             print("SKIPPING PREEMPTIVELY, not enough data. (chan, event, vars, othervars) max n = ", n_max)
@@ -1813,7 +2008,13 @@ class Snippets(object):
 
         # Collect data for each site
         OUT = []
+        OUT_FR = []
+        OUT_FR_LEVELS = []
+        list_eventwindow_event = []
         for event, pre_dur, post_dur in zip(list_events, list_pre_dur, list_post_dur):
+            
+            ################################################
+            ################# UDPATE GLOBAL PARAMS!!
             print(" ")
             print(f"Updated ParamsGlobals for event {event} to:")
             self.globals_update(PRE_DUR_CALC=pre_dur, POST_DUR_CALC=post_dur)
@@ -1825,7 +2026,6 @@ class Snippets(object):
                 print(event_window_combo_name)
                 continue
 
-            # TODO: give this event a unique name
             _saved_counts = False
             for site in list_site:
                 if site%20==0:
@@ -1840,111 +2040,133 @@ class Snippets(object):
                     print("SKIPPING ", event, site)
                     continue
 
-                # v2) two-way anova
-                if TWO_WAY:
-                        
-                    if len(levs_df)<2:
-                        # You need at least 2 levels for othervers to run two-way anova
-                        print("!!SKIPPING, since is two-way but only have <2 levels for othervars")
-                        continue
+                if "fr" in THINGS_TO_EXTRACT:
+                    ############### MEAN FR for each (chan, event, var, othervar)
+                    # 1) Reextract FR (since this is a new globals param)
+                    dfthis = self._modulationgood_extract_fr(dfthis=dfthis)
 
-                    MS = self._dataextract_as_metrics_scalar(dfthis, var)  
+                    # 2) Compute
+                    df_fr, df_fr_levels = self.modulationgood_compute_fr_quick(var,
+                        "vars_others", dfthis=dfthis) 
 
-                    # try:
-                    assert get_z_score==False, "not yet coded, this gets messy, one z for var, var_others, interaction"
-                    eventscores, dfcounts = MS.modulationgood_wrapper_twoway(var, version=score_ver, 
-                        vars_others = "vars_others", auto_balance_conjunctions_exist=True)
-                    assert len(eventscores.keys())==1, "should only be one event"
-                    # except ValueWarning as err:
-                    #     print("HERE")
-                    #     print(len(MS.Data))
-                    #     print("HERE")
-                    #     print(site, lev)
-                    #     print("HERE")
-                    #     print(MS.Data[var].value_counts())
-                    #     raise err
-                    #     assert False
+                    # append this window
+                    df_fr["_event"] = df_fr["event"]
+                    df_fr["event"] = event_window_combo_name
+                    df_fr["event_aligned"] = event_window_combo_name
+                    
+                    df_fr_levels["_event"] = df_fr_levels["event"]
+                    df_fr_levels["event"] = event_window_combo_name
+                    df_fr_levels["event_aligned"] = event_window_combo_name
 
-                    score, score_others, score_interaction = eventscores[event]
+                    # 3) Collect
+                    OUT_FR.append(df_fr)
+                    OUT_FR_LEVELS.append(df_fr_levels)
 
-                    assert isinstance(score, float), "no np arrays allowed. will fail seaborn"
-                    assert isinstance(score_others, float), "no np arrays allowed. will fail seaborn"
-                    assert isinstance(score_interaction, float), "no np arrays allowed. will fail seaborn"
-
-                    # Save csv of n data, to know how much pruning was done...
-                    # (to balance the data)
-                    # Only plot the first one, since they should be same across sites
-                    if _saved_counts==False:
-                        dirthis = f"{SAVEDIR}/twoway_pruned_balance_samplesizes"
-                        os.makedirs(dirthis, exist_ok=True)
-                        path = f"{dirthis}/{event_window_combo_name}-{site}.csv"
-                        dfcounts.to_csv(path)
-                        _saved_counts = True
-
-                    # save
-                    for val_kind, val in zip(["val", "val_others", "val_interaction"], [score, score_others, score_interaction]):
-                        OUT.append({
-                            "chan":site,
-                            "var":var,
-                            "var_others":tuple(vars_conjuction),
-                            "_event":event,
-                            "event":event_window_combo_name,                            
-                            "val_kind":val_kind,
-                            "val_method":score_ver,
-                            "val":val,
-                            "bregion":region,
-                            "n_datapts":len(MS.Data)
-                        })
-
-
-                else:
-                    TWO_WAY = False
-                    # if len(dfthis)==0:
-                    #     # then no level of vars_conjuction had enough data across all levels of var.
-                    #     continue
-
-                    # for each level of vars_conj, compute modulation
-                    # levels_others = dfthis["vars_others"].unique().tolist()
-                    for lev, dfthisthis in levs_df.items():
-                    # for lev in levels_others:
-                        
-                    #     assert len(lev)==len(vars_conjuction)
-                        
-                    #     # get data
-                    #     dfthisthis = dfthis[dfthis["vars_others"]==lev] # specific df (lev_other)
-                    #     assert len(dfthisthis)>0
-
-                        # v1) keeping fr for each level of each var
-                        if score_ver in ["fr_chan_level"]:
-                            assert False, "in progress... just need to modify MS to take in var and levels."
-                            # Then is a single score for each level of var
-                            MS = self._dataextract_as_metrics_scalar(dfthisthis, var, event=event)
-                            tmp = MS.calc_fr_across_levels()
-                            print(tmp)
-                            assert False
-
-                            # frates = _calc_fr_across_levels(dfthisthis, var, levels_var)["all_data"]
+                if "anova" in THINGS_TO_EXTRACT:
+                    ################## ANOVA
+                    # v2) two-way anova
+                    if TWO_WAY:
                             
-                            for lv, fr in zip(levels_var, frates):
-                                OUT.append({
-                                    "chan":site,
-                                    "var":var,
-                                    "lev_in_var":lv,                            
-                                    "var_others":tuple(vars_conjuction),
-                                    "lev_in_var_others":lev,
-                                    "event":ev,
-                                    "val_kind":"modulation_subgroups",
-                                    "val_method":score_ver,
-                                    "val":score,
-                                    "bregion":region
-                                })
-                                # also save columns for each var in vars_others
-                                for l, v in zip(lev, vars_conjuction):
-                                    OUT[-1][v] = l
+                        if len(levs_df)<2:
+                            # You need at least 2 levels for othervers to run two-way anova
+                            print("!!SKIPPING, since is two-way but only have <2 levels for othervars")
+                            continue
 
-                        # v3) one-way anova (but doing separately for each level of othervars)
-                        else:
-                            # if score_ver in ["r2smfr_zscore", "r2smfr_minshuff", "fracmod_smfr_minshuff"]:
+                        MS = self._dataextract_as_metrics_scalar(dfthis, var)  
+
+                        # try:
+                        assert get_z_score==False, "not yet coded, this gets messy, one z for var, var_others, interaction"
+                        eventscores, dfcounts = MS.modulationgood_wrapper_twoway(var, version=score_ver, 
+                            vars_others = "vars_others", auto_balance_conjunctions_exist=True)
+                        assert len(eventscores.keys())==1, "should only be one event"
+                        # except ValueWarning as err:
+                        #     print("HERE")
+                        #     print(len(MS.Data))
+                        #     print("HERE")
+                        #     print(site, lev)
+                        #     print("HERE")
+                        #     print(MS.Data[var].value_counts())
+                        #     raise err
+                        #     assert False
+
+                        score, score_others, score_interaction = eventscores[event]
+
+                        assert isinstance(score, float), "no np arrays allowed. will fail seaborn"
+                        assert isinstance(score_others, float), "no np arrays allowed. will fail seaborn"
+                        assert isinstance(score_interaction, float), "no np arrays allowed. will fail seaborn"
+
+                        # Save csv of n data, to know how much pruning was done...
+                        # (to balance the data)
+                        # Only plot the first one, since they should be same across sites
+                        if _saved_counts==False:
+                            dirthis = f"{SAVEDIR}/twoway_pruned_balance_samplesizes"
+                            os.makedirs(dirthis, exist_ok=True)
+                            path = f"{dirthis}/{event_window_combo_name}-{site}.csv"
+                            dfcounts.to_csv(path)
+                            _saved_counts = True
+
+                        # save
+                        for val_kind, val in zip(["val", "val_others", "val_interaction"], [score, score_others, score_interaction]):
+                            OUT.append({
+                                "chan":site,
+                                "var":var,
+                                "var_others":tuple(vars_conjuction),
+                                "_event":event,
+                                "event":event_window_combo_name,                            
+                                "val_kind":val_kind,
+                                "val_method":score_ver,
+                                "val":val,
+                                "bregion":region,
+                                "n_datapts":len(MS.Data)
+                            })
+
+
+                    else:
+                        # TWO_WAY = False
+                        # if len(dfthis)==0:
+                        #     # then no level of vars_conjuction had enough data across all levels of var.
+                        #     continue
+
+                        # for each level of vars_conj, compute modulation
+                        # levels_others = dfthis["vars_others"].unique().tolist()
+                        for lev, dfthisthis in levs_df.items():
+                        # for lev in levels_others:
+                            
+                        #     assert len(lev)==len(vars_conjuction)
+                            
+                        #     # get data
+                        #     dfthisthis = dfthis[dfthis["vars_others"]==lev] # specific df (lev_other)
+                        #     assert len(dfthisthis)>0
+
+                            # v1) keeping fr for each level of each var
+                            # if score_ver in ["fr_chan_level"]:
+                            #     assert False, "in progress... just need to modify MS to take in var and levels."
+                            #     # Then is a single score for each level of var
+                            #     MS = self._dataextract_as_metrics_scalar(dfthisthis, var, event=event)
+                            #     tmp = MS.calc_fr_across_levels()
+                            #     print(tmp)
+                            #     assert False
+
+                            #     # frates = _calc_fr_across_levels(dfthisthis, var, levels_var)["all_data"]
+                                
+                            #     for lv, fr in zip(levels_var, frates):
+                            #         OUT.append({
+                            #             "chan":site,
+                            #             "var":var,
+                            #             "lev_in_var":lv,                            
+                            #             "var_others":tuple(vars_conjuction),
+                            #             "lev_in_var_others":lev,
+                            #             "event":ev,
+                            #             "val_kind":"modulation_subgroups",
+                            #             "val_method":score_ver,
+                            #             "val":score,
+                            #             "bregion":region
+                            #         })
+                            #         # also save columns for each var in vars_others
+                            #         for l, v in zip(lev, vars_conjuction):
+                            #             OUT[-1][v] = l
+
+                            # v3) one-way anova (but doing separately for each level of othervars)
                             # Then is a single score per (chan, event, var)
                             # compute modulation
                             # - one value for each var.
@@ -1994,11 +2216,30 @@ class Snippets(object):
                             for l, v in zip(lev, vars_conjuction):
                                 OUT[-1][v] = l
 
-        df_var = pd.DataFrame(OUT)      
-        if len(df_var)==0:
-            print("SKIPPING, extracted df_var is empty. Probably you have not enough data for this conjunctions, try setting DEBUG_CONJUNCTIONS=True and reading the low-level data it prints.")
-            raise NotEnoughDataException
+            list_eventwindow_event.append((event_window_combo_name, event))
+            
 
+        ##################### CONCATE INTO OUTPUT DATA
+        if "fr" in THINGS_TO_EXTRACT:
+            if len(OUT_FR_LEVELS)==0:
+                print("SKIPPING, extracted DF_FR_LEVELS is empty. Probably you have not enough data for this conjunctions, try setting DEBUG_CONJUNCTIONS=True and reading the low-level data it prints.")
+                raise NotEnoughDataException            
+                
+            DF_FR = pd.concat(OUT_FR).reset_index(drop=True)
+            DF_FR_LEVELS = pd.concat(OUT_FR_LEVELS).reset_index(drop=True)
+        else:
+            DF_FR = None
+            DF_FR_LEVELS = None
+
+        if "anova" in THINGS_TO_EXTRACT:
+            DF_VAR = pd.DataFrame(OUT)      
+            if len(DF_VAR)==0:
+                print("SKIPPING, extracted df_var is empty. Probably you have not enough data for this conjunctions, try setting DEBUG_CONJUNCTIONS=True and reading the low-level data it prints.")
+                raise NotEnoughDataException
+        else:
+            DF_VAR = None
+
+        ################### CLEANUP
         if "dummy_var" in self.DfScalar:
             del self.DfScalar["dummy_var"]
 
@@ -2006,16 +2247,19 @@ class Snippets(object):
         if False: # Becuase this was failing. cant get uniqque values for numericals
             if TWO_WAY:
                 from pythonlib.tools.pandastools import unpivot
-                print(df_var.columns)
-                df_var = unpivot(df_var, id_vars=["chan", "var", "var_others", "_event", "event", "val_kind", "val_method", "bregion", "n_datapts"], 
+                print(DF_VAR.columns)
+                DF_VAR = unpivot(DF_VAR, id_vars=["chan", "var", "var_others", "_event", "event", "val_kind", "val_method", "bregion", "n_datapts"], 
                         value_vars=["val", "val_others", "val_interaction"], var_name="val_kind", value_name="val")
 
-                print(df_var.columns)
-        list_eventwindow_event = sort_mixed_type(set([tuple(x) for x in df_var.loc[:, ["event", "_event"]].values.tolist()]))
-        # [('00_fix_touch_-500_to_0', '00_fix_touch'),
-        #  ('01_samp_50_to_600', '01_samp'),
-        #  ('03_first_raise_-100_to_500', '03_first_raise')]#
-        return df_var, list_eventwindow_event
+                print(DF_VAR.columns)
+
+        if False:
+            list_eventwindow_event = sort_mixed_type(set([tuple(x) for x in DF_VAR.loc[:, ["event", "_event"]].values.tolist()]))
+            # [('00_fix_touch_-500_to_0', '00_fix_touch'),
+            #  ('01_samp_50_to_600', '01_samp'),
+            #  ('03_first_raise_-100_to_500', '03_first_raise')]#
+
+        return DF_VAR, DF_FR, DF_FR_LEVELS, list_eventwindow_event
 
     # def modulationgood_compute_wrapper(self, var, vars_conjuction=None, list_site=None, 
     #         score_ver="r2smfr_minshuff", get_z_score=False, list_events=None):
@@ -3473,6 +3717,63 @@ class Snippets(object):
         plt.close("all")
 
 
+    def modulationgood_plot_summarystats_fr(self, df_fr, df_fr_levels, savedir="/tmp"):
+        """ Plots for analsyis of fr for each (chan, event, var_lev, othervar_lev).
+        """
+        from neuralmonkey.analyses.anova_agg_plots import _eventwindow_sort
+        events_sorted = _eventwindow_sort(df_fr_levels["event"].unique().tolist())
+
+        from pythonlib.tools.snstools import rotateLabel
+        fig = sns.catplot(data=df_fr_levels, x="event", hue="vars_others", y="val", col="bregion", kind="point",
+                          row ="var", ci=68)
+        rotateLabel(fig)
+        fig.savefig(f"{savedir}/fr_levels-row_var-1.pdf")
+
+        fig = sns.catplot(data=df_fr_levels, x="event", hue="vars_others", y="val", col="bregion", row ="var", jitter=True, alpha=0.3)
+        rotateLabel(fig)
+        fig.savefig(f"{savedir}/fr_levels-row_var-2.pdf")
+
+
+        fig = sns.catplot(data=df_fr_levels, x="event", hue="var", y="val", col="bregion", kind="point",
+                          row ="vars_others", ci=68)
+        rotateLabel(fig)
+        fig.savefig(f"{savedir}/fr_levels-row_varsothers-1.pdf")
+
+        fig = sns.catplot(data=df_fr_levels, x="event", hue="var", y="val", col="bregion", row ="vars_others", jitter=True, alpha=0.3)
+        rotateLabel(fig)
+        fig.savefig(f"{savedir}/fr_levels-row_varsothers-2.pdf")
+
+        # if df_fr is not None:
+        #     try:
+        #         fig = sns.catplot(data=df_fr, x="event", y="val", hue="val_kind",
+        #                           col="bregion", col_wrap=4, kind="point", aspect=1, height=3,
+        #                           order=events_sorted);
+        #         rotateLabel(fig)
+        #         fig.savefig(f"{savedir}/5_lines_fr.pdf")
+
+        #         fig = plotgood_lineplot(df_fr, xval="event", yval="val", line_grouping="chan",
+        #                                 include_mean=True, colvar="bregion", col_wrap=4);
+        #         rotateLabel(fig)
+        #         fig.savefig(f"{savedir}/5_lineschans_fr.pdf")
+        #     except ValueError as err:
+        #         pass
+
+        # if df_fr_each_lev is not None:
+        #     try:
+        #         ################## FR MODULATION BY LEVELS
+        #         fig = sns.catplot(data=df_fr_each_lev, x=var, hue="event", y="val", col="bregion", col_wrap=4, kind="point")
+        #         rotateLabel(fig)
+        #         fig.savefig(f"{savedir}/9_{var}-lines_fr_vs_level.pdf")
+
+        #         fig = plotgood_lineplot(df_fr_each_lev, xval=var, yval="val", line_grouping="chan",
+        #                                 include_mean=True, 
+        #                                 relplot_kw={"row":"event", "col":"bregion"});
+        #         rotateLabel(fig)
+        #         fig.savefig(f"{savedir}/9_{var}-lineschans_fr_vs_level.pdf")
+        #     except Exception as err:
+        #         pass
+        plt.close("all")
+
     def modulationgood_plot_summarystats(self, df_var, df_fr_each_lev=None, 
             df_fr=None, savedir="/tmp", skip_agg=False):
         """ 
@@ -3625,55 +3926,89 @@ class Snippets(object):
                     print(f"SKIPPING plotting for specific single other var, since it is called DUMMY")
                     continue
 
-                print(f"Plotting for specific single other var: {var_other_single}...")
-                # No need to agg. does nothing.
-                df_var_agg = aggregGeneral(df_var, group=["chan", "event", "var", "var_others", "val_kind", "val_method", var_other_single], 
-                              values = ["val"], 
-                              nonnumercols=["bregion"])
+                try:
+                    print(f"Plotting for specific single other var: {var_other_single}...")
+                    # No need to agg. does nothing.
+                    df_var_agg = aggregGeneral(df_var, group=["chan", "event", "var", "var_others", "val_kind", "val_method", var_other_single], 
+                                  values = ["val"], 
+                                  nonnumercols=["bregion"])
 
-                # fig = sns.catplot(data=df_var_agg, x=var_other_single, y="val", row="event", col="bregion", kind="bar")
-                # rotateLabel(fig)
-                # fig.savefig(f"{savedir}/10_bars_vs_marginalvarother_{var_other_single}-1.pdf")
+                    # fig = sns.catplot(data=df_var_agg, x=var_other_single, y="val", row="event", col="bregion", kind="bar")
+                    # rotateLabel(fig)
+                    # fig.savefig(f"{savedir}/10_bars_vs_marginalvarother_{var_other_single}-1.pdf")
 
-                fig = sns.catplot(data=df_var_agg, x="bregion", y="val", row="event", 
-                    col=var_other_single, kind="bar", ci=68, row_order=events_sorted)
-                rotateLabel(fig)
-                fig.savefig(f"{savedir}/10_{var_other_single}-1.pdf")
-
-                # fig = sns.catplot(data=df_var, x="bregion", y="val", hue="event", col=var_other_single, col_wrap=4, kind="bar")
-                # rotateLabel(fig)
-                # fig.savefig(f"{savedir}/10_bars_vs_each_level_varother-1.pdf")
-
-                fig = sns.catplot(data=df_var_agg, x=var_other_single, y="val", hue="event", 
-                    col="bregion", col_wrap=4, kind="bar", ci=68)
-                rotateLabel(fig)
-                fig.savefig(f"{savedir}/10_{var_other_single}-2.pdf")
-
-                fig = sns.catplot(data=df_var_agg, x="event", y="val", hue=var_other_single, 
-                    col="bregion", kind="bar", ci=68, order=events_sorted)
-                rotateLabel(fig)
-                fig.savefig(f"{savedir}/10_{var_other_single}-3.pdf")
-
-                plt.close("all")
-
-                for sharey in [True, "row"]:
-                    fig = sns.catplot(data=df_var_agg, x="event", y="val", hue="val_kind",
-                                      col="bregion", row=var_other_single, aspect=1, height=3, jitter=True,
-                                     alpha=0.25, sharey=sharey, order=events_sorted);
-                    for ax in fig.axes.flatten():
-                        ax.axhline(0)
+                    fig = sns.catplot(data=df_var_agg, x="bregion", y="val", row="event", 
+                        col=var_other_single, kind="bar", ci=68, row_order=events_sorted)
                     rotateLabel(fig)
-                    fig.savefig(f"{savedir}/10_{var_other_single}-sharey_{sharey}_4.pdf")
+                    fig.savefig(f"{savedir}/10_{var_other_single}-1.pdf")
 
+                    # fig = sns.catplot(data=df_var, x="bregion", y="val", hue="event", col=var_other_single, col_wrap=4, kind="bar")
+                    # rotateLabel(fig)
+                    # fig.savefig(f"{savedir}/10_bars_vs_each_level_varother-1.pdf")
 
-                for sharey in [True, "row"]:
-                    fig = sns.catplot(data=df_var_agg, x="event", y="val", hue="val_kind",
-                                      col="bregion", row=var_other_single, aspect=1, height=3, kind="bar",
-                                      ci=68, sharey=sharey, order=events_sorted);
+                    fig = sns.catplot(data=df_var_agg, x=var_other_single, y="val", hue="event", 
+                        col="bregion", col_wrap=4, kind="bar", ci=68)
                     rotateLabel(fig)
-                    fig.savefig(f"{savedir}/10_{var_other_single}-sharey_{sharey}_5.pdf")
+                    fig.savefig(f"{savedir}/10_{var_other_single}-2.pdf")
 
-                plt.close("all")
+                    fig = sns.catplot(data=df_var_agg, x="event", y="val", hue=var_other_single, 
+                        col="bregion", kind="bar", ci=68, order=events_sorted)
+                    rotateLabel(fig)
+                    fig.savefig(f"{savedir}/10_{var_other_single}-3.pdf")
+
+                    plt.close("all")
+
+                    for sharey in [True, "row"]:
+                        fig = sns.catplot(data=df_var_agg, x="event", y="val", hue="val_kind",
+                                          col="bregion", row=var_other_single, aspect=1, height=3, jitter=True,
+                                         alpha=0.25, sharey=sharey, order=events_sorted);
+                        for ax in fig.axes.flatten():
+                            ax.axhline(0)
+                        rotateLabel(fig)
+                        fig.savefig(f"{savedir}/10_{var_other_single}-sharey_{sharey}_4.pdf")
+
+
+                    for sharey in [True, "row"]:
+                        fig = sns.catplot(data=df_var_agg, x="event", y="val", hue="val_kind",
+                                          col="bregion", row=var_other_single, aspect=1, height=3, kind="bar",
+                                          ci=68, sharey=sharey, order=events_sorted);
+                        rotateLabel(fig)
+                        fig.savefig(f"{savedir}/10_{var_other_single}-sharey_{sharey}_5.pdf")
+
+                    plt.close("all")
+                except ValueError as err:
+                    # NOT SURE WHYA..
+
+                    # Traceback (most recent call last):
+                    #   File "analy_anova_plot.py", line 305, in <module>
+                    #     SP.modulationgood_compute_plot_ALL(var, vars_conjuction, 
+                    #   File "/gorilla1/code/neuralmonkey/neuralmonkey/classes/snippets.py", line 1575, in modulationgood_compute_plot_ALL
+                    #     self.modulationgood_plot_summarystats(df_var, df_fr_levels, df_fr, savedir=sdir) 
+                    #   File "/gorilla1/code/neuralmonkey/neuralmonkey/classes/snippets.py", line 3652, in modulationgood_plot_summarystats
+                    #     fig = sns.catplot(data=df_var_agg, x="event", y="val", hue=var_other_single, 
+                    #   File "/home/lucast4/miniconda3/envs/drag2_matlab/lib/python3.8/site-packages/seaborn/_decorators.py", line 46, in inner_f
+                    #     return f(**kwargs)
+                    #   File "/home/lucast4/miniconda3/envs/drag2_matlab/lib/python3.8/site-packages/seaborn/categorical.py", line 3847, in catplot
+                    #     g.map_dataframe(plot_func, x=x, y=y, hue=hue, **plot_kws)
+                    #   File "/home/lucast4/miniconda3/envs/drag2_matlab/lib/python3.8/site-packages/seaborn/axisgrid.py", line 777, in map_dataframe
+                    #     self._facet_plot(func, ax, args, kwargs)
+                    #   File "/home/lucast4/miniconda3/envs/drag2_matlab/lib/python3.8/site-packages/seaborn/axisgrid.py", line 806, in _facet_plot
+                    #     func(*plot_args, **plot_kwargs)
+                    #   File "/home/lucast4/miniconda3/envs/drag2_matlab/lib/python3.8/site-packages/seaborn/_decorators.py", line 46, in inner_f
+                    #     return f(**kwargs)
+                    #   File "/home/lucast4/miniconda3/envs/drag2_matlab/lib/python3.8/site-packages/seaborn/categorical.py", line 3190, in barplot
+                    #     plotter.plot(ax, kwargs)
+                    #   File "/home/lucast4/miniconda3/envs/drag2_matlab/lib/python3.8/site-packages/seaborn/categorical.py", line 1639, in plot
+                    #     self.draw_bars(ax, bar_kws)
+                    #   File "/home/lucast4/miniconda3/envs/drag2_matlab/lib/python3.8/site-packages/seaborn/categorical.py", line 1622, in draw_bars
+                    #     barfunc(offpos, self.statistic[:, j], self.nested_width,
+                    #   File "/home/lucast4/miniconda3/envs/drag2_matlab/lib/python3.8/site-packages/matplotlib/__init__.py", line 1442, in inner
+                    #     return func(ax, *map(sanitize_sequence, args), **kwargs)
+                    #   File "/home/lucast4/miniconda3/envs/drag2_matlab/lib/python3.8/site-packages/matplotlib/axes/_axes.py", line 2436, in bar
+                    #     raise ValueError(f'number of labels ({len(patch_labels)}) '
+                    # ValueError: number of labels (2) does not match number of bars (9).
+
+                    pass
 
         # # AVGMOD
         # dfthis = dfdat_var_methods
@@ -3732,36 +4067,6 @@ class Snippets(object):
         # rotateLabel(fig)
         # fig.savefig(f"{savedir}/8_bars_features_all.pdf")
 
-        if df_fr is not None:
-            try:
-                fig = sns.catplot(data=df_fr, x="event", y="val", hue="val_kind",
-                                  col="bregion", col_wrap=4, kind="point", aspect=1, height=3,
-                                  order=events_sorted);
-                rotateLabel(fig)
-                fig.savefig(f"{savedir}/5_lines_fr.pdf")
-
-                fig = plotgood_lineplot(df_fr, xval="event", yval="val", line_grouping="chan",
-                                        include_mean=True, colvar="bregion", col_wrap=4);
-                rotateLabel(fig)
-                fig.savefig(f"{savedir}/5_lineschans_fr.pdf")
-            except ValueError as err:
-                pass
-
-        if df_fr_each_lev is not None:
-            try:
-                ################## FR MODULATION BY LEVELS
-                fig = sns.catplot(data=df_fr_each_lev, x=var, hue="event", y="val", col="bregion", col_wrap=4, kind="point")
-                rotateLabel(fig)
-                fig.savefig(f"{savedir}/9_{var}-lines_fr_vs_level.pdf")
-
-                fig = plotgood_lineplot(df_fr_each_lev, xval=var, yval="val", line_grouping="chan",
-                                        include_mean=True, 
-                                        relplot_kw={"row":"event", "col":"bregion"});
-                rotateLabel(fig)
-                fig.savefig(f"{savedir}/9_{var}-lineschans_fr_vs_level.pdf")
-            except Exception as err:
-                pass
-        plt.close("all")
 
     def modulationgood_plot_brainschematic(self, df_var, sdir):
         """
@@ -4246,15 +4551,47 @@ class Snippets(object):
         """ Low-level plot, each subplot is a single level of var-Others,
         and within each, plot eachlevel for var.
         Figure is a single level of (site, event)
+        PARAMS:
+        - plot_these_levels_of_varsothers, list of values, which will each be a subplot.
+        also defines the order of subplots. skips any values that dont exist.
+        - plot_on_these_axes, list of axes to plot on.
         """
 
         # Extract data
         dict_lev_pa, levels_var = self.dataextract_as_popanal_conjunction_vars(var, 
             vars_others, site, event=event)
 
+        # Prune to data you want.
+        if plot_these_levels_of_varsothers:
+            # dict_lev_pa = {k:v for k, v in dict_lev_pa.items() if k in plot_these_levels_of_varsothers}
+            dict_lev_pa = {k:dict_lev_pa[k] for k in plot_these_levels_of_varsothers if k in dict_lev_pa.keys()}
+
+        # Get event boundaries
         tmp = self._plotgood_rasters_extract_xmin_xmax()
         event_bounds = [tmp[0], 0., tmp[1]]
-        if plot_these_levels_of_varsothers is None:
+
+        # get common levels of var (for assiging each its own color)
+        levels_var_exist = []
+        for pa in dict_lev_pa.values():
+            levels_var_exist.extend(pa.Xlabels["trials"][var].unique().tolist())
+        levels_var_exist = sort_mixed_type(set(levels_var_exist))[::-1] # to match the rasters
+
+        # get common y axis.
+        if False:
+            # was trying to make them sahare axes. but used better way.
+            ymaxes = []
+            for pa in dict_lev_pa.values():
+                tmp = np.mean(pa.X, axis=0, keepdims=True) # mean over chans
+                print(tmp.shape)
+                tmp = np.mean(tmp, axis=1, keepdims=True) # mean over trials
+                print(tmp.shape)
+                ymax = np.max(tmp)
+                ymaxes.append(ymax)
+            print(ymaxes)
+            YMAX = max(ymaxes)
+
+        # if plot_these_levels_of_varsothers is None:
+        if plot_on_these_axes is None:
             # Generate axes
             ncols = 4
             ngrid = len(dict_lev_pa)
@@ -4262,24 +4599,39 @@ class Snippets(object):
             # dur = tmp[1] - tmp[0]
             figsize = (ncols*3, nrows*3)
             fig, axes = plt.subplots(nrows, ncols, figsize=figsize)
-
-            # Make plots
-            for ax, (lev_other, pathis) in zip(axes.flatten(), dict_lev_pa.items()):
-
-                # plot 
-                pathis.plotwrapper_smoothed_fr_split_by_label("trials", var, ax, event_bounds=event_bounds);
-            #     self._plotgood_rasters_split_by_feature_levels(ax, dfthis, var, xmin=xmin, xmax=xmax)
-                ax.set_title(lev_other, fontsize=8)
-                ax.axvline(0, color="m")
-
-            return fig, axes
         else:
-            for lev_other, ax in zip(plot_these_levels_of_varsothers, plot_on_these_axes):
-                pathis = dict_lev_pa[lev_other]
-                pathis.plotwrapper_smoothed_fr_split_by_label("trials", var, ax, event_bounds=event_bounds);
-                ax.set_title(lev_other, fontsize=8)
-                ax.axvline(0, color="m")   
-            return None, None
+            fig = None
+            axes = plot_on_these_axes
+            assert len(axes)>=len(dict_lev_pa), "not enough axes"
+
+        # joint he axes
+        if len(axes.flatten())>0:
+            from pythonlib.tools.plottools import share_axes
+            share_axes(axes, "y")
+
+        # Make plots
+        for ax, (lev_other, pathis) in zip(axes.flatten(), dict_lev_pa.items()):
+
+            # plot 
+            ADD_LEGEND = not len(levels_var_exist)>12
+            pathis.plotwrapper_smoothed_fr_split_by_label("trials", var, ax, 
+                event_bounds=event_bounds, legend_levels=levels_var_exist,
+                add_legend=ADD_LEGEND);
+        #     self._plotgood_rasters_split_by_feature_levels(ax, dfthis, var, xmin=xmin, xmax=xmax)
+            ax.set_title(lev_other, fontsize=8)
+            # ax.set_ylim([0, 1.2*YMAX])
+            ax.axvline(0, color="m")
+
+        return fig, axes
+
+        # else:
+        #     for lev_other, ax in zip(plot_these_levels_of_varsothers, plot_on_these_axes):
+        #         pathis = dict_lev_pa[lev_other]
+        #         pathis.plotwrapper_smoothed_fr_split_by_label("trials", var, ax, event_bounds=event_bounds);
+        #         ax.set_title(lev_other, fontsize=8)
+        #         ax.set_ylim([0, 1.1*YMAX])
+        #         ax.axvline(0, color="m")   
+        #     return None, None
 
 
 
@@ -5080,6 +5432,19 @@ class Snippets(object):
         # self.DS = None
         self._LOADED = True
 
+    def _sanity_fr_sm_times_identical(self):
+        """ Check that fr_sm_times is the same across all rows
+        RETURNS:
+        - bool, False means some rows have different times ffrom each other.
+        """
+
+        if self._SanityFrSmTimesIdentical is None:
+            # then do check
+            x = np.concatenate(self.DfScalar["fr_sm_times"].tolist())
+            self._SanityFrSmTimesIdentical = np.max(np.abs(np.diff(x, axis=0))) < 0.001
+
+        return self._SanityFrSmTimesIdentical
+
     def save_v2(self, savedir):
         """ To save, but instead of pruing then saving, as in save(), here
         extract only what needed. This is new version that doesnt use List PA.
@@ -5093,8 +5458,9 @@ class Snippets(object):
 
         # 2) fr_sm_times
         # check that all have same fr times
-        x = np.concatenate(DfScalar["fr_sm_times"].tolist())
-        assert np.max(np.abs(np.diff(x, axis=0))) < 0.001, "trials have different times..."
+        assert self._sanity_fr_sm_times_identical(), "trials have different times..."
+        # x = np.concatenate(DfScalar["fr_sm_times"].tolist())
+        # assert np.max(np.abs(np.diff(x, axis=0))) < 0.001, "trials have different times..."
 
         # save it
         fr_sm_times = DfScalar.iloc[0]["fr_sm_times"]
