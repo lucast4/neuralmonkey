@@ -110,7 +110,8 @@ def plotNeurTimecourse(X, times=None, ax=None, n_rand=None, marker="-", color="k
     #     shadedErrorBar(t, Xmean, yerr=Xerror, ax=ax)
     return fig, ax
     
-def plotNeurTimecourseErrorbar(Xmean, Xerror, times=None, ax=None, color="k"):
+def plotNeurTimecourseErrorbar(Xmean, Xerror, times=None, ax=None, color="k",
+    alpha_fill=0.4):
     """ Plot timecourse + shaded error bar
     PARAMS:
     - Xmean, (times,)
@@ -129,7 +130,7 @@ def plotNeurTimecourseErrorbar(Xmean, Xerror, times=None, ax=None, color="k"):
         t = np.arange(len(X))
     else:
         t = times
-    shadedErrorBar(t, Xmean, yerr=Xerror, ax=ax, color=color)
+    shadedErrorBar(t, Xmean, yerr=Xerror, ax=ax, color=color, alpha_fill=alpha_fill)
 
     return fig, ax
 

@@ -1293,7 +1293,7 @@ class PopAnal():
     def plotwrapper_smoothed_fr_split_by_label(self, dim_str, dim_variable, ax=None,
                                               plot_indiv=False, plot_summary=True,
                                               event_bounds=[None, None, None], 
-                                              add_legend=True):
+                                              add_legend=True, legend_levels=None):
         """ Plot separate smoothed fr traces, overlaid on single plot, each a different
         level of an inputted variable
         PARAMS:
@@ -1301,15 +1301,26 @@ class PopAnal():
         - dim_variable, column in dataframe in self.Xlabels, to look for levels of
         - event_bounds, [num, num, num] to plot pre, alignemnt, and post times. any that
         are None will be skipped.
+        - legend_levels, list of values that will be used for legend, where the order
+        defines a globally true mapping between level and color, useful if you want to 
+        dictate the colors for levels that are not in this partiucla plot.
         """
         from pythonlib.tools.plottools import makeColors
 
         # Split into each pa for each level
-        list_pa, list_levels = self.split_by_label(dim_str, dim_variable)
+        list_pa, list_levels_matching_pa = self.split_by_label(dim_str, dim_variable) 
         
-        # Plot, one per pa
-        pcols = makeColors(len(list_levels))
-        for pa, pcol in zip(list_pa, pcols):
+        # make dict mapping from level to col
+        if legend_levels is None:
+            # then use the levels within here
+            legend_levels = list_levels_matching_pa
+        pcols = makeColors(len(legend_levels))
+        dict_lev_color = {}
+        for pc, lev in zip(pcols, legend_levels):
+            dict_lev_color[lev] = pc
+
+        for pa, lev in zip(list_pa, list_levels_matching_pa):
+            pcol = dict_lev_color[lev]
             pa.plotwrapper_smoothed_fr(ax=ax, plot_indiv=plot_indiv, plot_summary=plot_summary,
                                           pcol_indiv = pcol, pcol_summary=pcol, 
                                           event_bounds=event_bounds)
@@ -1317,7 +1328,7 @@ class PopAnal():
         # add legend
         if add_legend:
             from pythonlib.tools.plottools import legend_add_manual
-            legend_add_manual(ax, list_levels, pcols, 0.2)
+            legend_add_manual(ax, legend_levels, pcols, 0.2)
 
         return pcols
 

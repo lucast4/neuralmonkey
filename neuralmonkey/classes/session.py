@@ -348,6 +348,10 @@ class Session(object):
         # Debug mode?
         self._DEBUG_PRUNE_SITES = False
 
+        # Immediately fail for these exceptions
+        if self.Animal=="Pancho" and int(self.Date)==230124:
+            assert False, "WS8 out of space -- Lost about 100min in middle of day."
+
         # Initialize paths
         self._initialize_paths()
         print("== PATHS for this expt: ")
@@ -2626,6 +2630,14 @@ class Session(object):
         assert site in sites, "this site not in this brain region!!"
         return site
 
+    def _sitegetter_map_site_to_physical_location_electrode(self, site):
+        """ Get the location
+        RETURNS:
+        - area, str
+        - location, (x, y)
+        """
+        assert False, "code it"
+        assert False, "6/22/22 4B inserted upside down"
 
     def _sitegetter_get_map_brainregion_to_site(self):
         """ Retgurn dict mapping from regions to sites.
@@ -2637,6 +2649,15 @@ class Session(object):
         #         "PMd_p", "PMd_a", "SMA_p", "SMA_a", 
         #         "dlPFC_p", "dlPFC_a", "vlPFC_p", "vlPFC_a", 
         #         "preSMA_p", "preSMA_a", "FP_p", "FP_a"]
+
+        # EXCEPTIONS
+        if self.Animal=="Pancho" and int(self.Date)==221002:
+            # Then 6A (PMvl) and 6B (PMvm) were switched
+            REGIONS_IN_ORDER[2] = "PMv_m"
+            REGIONS_IN_ORDER[3] = "PMv_l"
+        else:
+            pass
+
         regions_in_order = REGIONS_IN_ORDER
         dict_sites ={}
         for i, name in enumerate(regions_in_order):
@@ -4402,6 +4423,20 @@ class Session(object):
                     else:
                         times = [ons[idx]]
 
+                elif "off_strokeidx_" in event:
+                    # e.g., on_strokeidx_2 means onset of 3rd stroke
+                    # Returns empty, if this idx doesnt exist.
+                    assert event.find("off_strokeidx_")==0
+
+                    # - which stroke id
+                    idx = int(event[13:])
+
+                    # onset of idx stroke (touch)
+                    _, offs = self.strokes_extract_ons_offs(trial)
+                    if len(offs)<idx+1:
+                        times = []
+                    else:
+                        times = [offs[idx]]
 
                 elif event=="off_stroke_last":
                     # offset of the last stroke (touch)
@@ -4952,7 +4987,8 @@ class Session(object):
     def _popanal_generate_alldata_bystroke(self, DS, sites, 
         pre_dur, post_dur, fail_if_times_outside_existing,
         use_combined_region, features_to_get_extra=None):
-        """ Low level 
+        """ Low level. Get a single PA, with one row for each stroke in DS.
+        
         """
         # 1) Get trials and stroke inds
         trials = []
@@ -5021,52 +5057,53 @@ class Session(object):
         """
 
         assert post_dur - pre_dur > 0.001
+        assert align_to_stroke==True, "legacy to k eep this param..."
 
         # 2) generate PA
-        if align_to_stroke:
-            # Return the single pa, aligned to each stroke in
-            pa = self._popanal_generate_alldata_bystroke(DS, sites, 
-                pre_dur, post_dur, fail_if_times_outside_existing,
-                use_combined_region, features_to_get_extra=features_to_get_extra)
-            ListPA = [pa]
-        else:
-            assert False, "this is HACKY. this only uses DS.Dat to collect one datapt for each stroke in DS.Dat. This should either be trial level or stroke level"
+        # if align_to_stroke:
+        # Return the single pa, aligned to each stroke in
+        pa = self._popanal_generate_alldata_bystroke(DS, sites, 
+            pre_dur, post_dur, fail_if_times_outside_existing,
+            use_combined_region, features_to_get_extra=features_to_get_extra)
+        ListPA = [pa]
+        # else:
+        #     assert False, "this is HACKY. this only uses DS.Dat to collect one datapt for each stroke in DS.Dat. This should either be trial level or stroke level"
 
-            # just use trials, align to specific item in each trial
-            # (note: would use this over popanal_generate_alldata because here 
-            # saves the stroke-level features)
-            assert len(align_to_alternative)>0, "need to pass in list of str, events to align to"
+        #     # just use trials, align to specific item in each trial
+        #     # (note: would use this over popanal_generate_alldata because here 
+        #     # saves the stroke-level features)
+        #     assert len(align_to_alternative)>0, "need to pass in list of str, events to align to"
 
-            # Which trials?
-            trials = []
-            trialcodes = []
-            for ind in range(len(DS.Dat)):
-                tc = DS.Dat.iloc[ind]["dataset_trialcode"]
-                trial_neural = self.datasetbeh_trialcode_to_trial(tc)
-                trials.append(trial_neural)
-                trialcodes.append(tc)
+        #     # Which trials?
+        #     trials = []
+        #     trialcodes = []
+        #     for ind in range(len(DS.Dat)):
+        #         tc = DS.Dat.iloc[ind]["dataset_trialcode"]
+        #         trial_neural = self.datasetbeh_trialcode_to_trial(tc)
+        #         trials.append(trial_neural)
+        #         trialcodes.append(tc)
 
-            # Collect
-            ListPA = self.popanal_generate_alldata(trials, sites, align_to_alternative, 
-                pre_dur, post_dur)
+        #     # Collect
+        #     ListPA = self.popanal_generate_alldata(trials, sites, align_to_alternative, 
+        #         pre_dur, post_dur)
 
-            # Assign stroke-level features
-            print("Extracting dataset features into pa.Xlabel [trials]")
-            # list_cols = ['task_kind', 'gridsize', 'dataset_trialcode', 
-            # list_cols = ['task_kind', 'gridsize', 'dataset_trialcode', 
-            #     'stroke_index', 'stroke_index_fromlast', 'shape_oriented', 'ind_taskstroke_orig', 'gridloc',
-            #     'gridloc_x', 'gridloc_y', 'h_v_move_from_prev']
-            list_cols = []
-            if features_to_get_extra is not None:
-                assert isinstance(features_to_get_extra, list)
-                list_cols = list(set(list_cols + features_to_get_extra))
-            for pa in ListPA:
-                pa.labels_features_input_from_dataframe(DS.Dat, list_cols, dim="trials")
-                # Sanity check, input order matches output order
-                # assert pa.Xlabels["trials"]["dataset_trialcode"].tolist() == trialcodes
-                assert pa.Xlabels["trials"]["trialcode"].tolist() == trialcodes
+        #     # Assign stroke-level features
+        #     print("Extracting dataset features into pa.Xlabel [trials]")
+        #     # list_cols = ['task_kind', 'gridsize', 'dataset_trialcode', 
+        #     # list_cols = ['task_kind', 'gridsize', 'dataset_trialcode', 
+        #     #     'stroke_index', 'stroke_index_fromlast', 'shape_oriented', 'ind_taskstroke_orig', 'gridloc',
+        #     #     'gridloc_x', 'gridloc_y', 'h_v_move_from_prev']
+        #     list_cols = []
+        #     if features_to_get_extra is not None:
+        #         assert isinstance(features_to_get_extra, list)
+        #         list_cols = list(set(list_cols + features_to_get_extra))
+        #     for pa in ListPA:
+        #         pa.labels_features_input_from_dataframe(DS.Dat, list_cols, dim="trials")
+        #         # Sanity check, input order matches output order
+        #         # assert pa.Xlabels["trials"]["dataset_trialcode"].tolist() == trialcodes
+        #         assert pa.Xlabels["trials"]["trialcode"].tolist() == trialcodes
 
-                assert all([c in pa.Xlabels["trials"].columns for c in list_cols])
+        #         assert all([c in pa.Xlabels["trials"].columns for c in list_cols])
 
         return ListPA
 
@@ -7389,15 +7426,8 @@ class Session(object):
             for s in sites:
 
                 # get spiketimes
-                # print(s, "i")
                 spike_times = self._snippets_extract_single_snip(s, trial_neural, 
                     event_time, pre_dur, post_dur)
-                # get smoothed fr
-
-
-                # get metadat 
-        #         for col in list_cols:
-        #             DS.    
 
                 # save it
                 OUT.append({
