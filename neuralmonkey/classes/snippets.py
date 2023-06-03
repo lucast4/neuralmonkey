@@ -1584,7 +1584,7 @@ class Snippets(object):
                 pickle.dump(df_fr_levels, f)
 
         #################### QUICK, plots of fr vs. levels
-        if df_fr_levels is not Non and len(df_fr_levels)>0:
+        if df_fr_levels is not None and len(df_fr_levels)>0:
             sdir = f"{sdir_base}/fr_levels"
             os.makedirs(sdir, exist_ok=True)
             print("Plotting... ", sdir)

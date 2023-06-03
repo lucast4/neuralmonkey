@@ -2349,13 +2349,13 @@ Running D.behclass_tokens_extract_datsegs
 600
 Appended columns gridsize!
 * REEXTRACTING THESE VARS to SP.DfScalar:
-['gridsize', 'seqc_0_loc', 'seqc_0_shape']
+['seqc_0_shape', 'gridsize', 'seqc_0_loc']
+Updating this column of SP.DfScalar with Dataset beh:
+seqc_0_shape
 Updating this column of SP.DfScalar with Dataset beh:
 gridsize
 Updating this column of SP.DfScalar with Dataset beh:
 seqc_0_loc
-Updating this column of SP.DfScalar with Dataset beh:
-seqc_0_shape
 Starting length of D.Dat: 626
 self.Dat modified!!
 Len, after remove aborts: 623
@@ -2448,11 +2448,8 @@ var -- vars_others:  gridsize  ---  ['seqc_0_shape']
 var -- vars_others:  gridsize  ---  ['seqc_0_loc']
 var -- vars_others:  gridsize  ---  ['seqc_0_shape', 'seqc_0_loc']
 /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/snippets_check_conjunctions_variables/ncounts-gridsize-vs-varothers-levothers-levvar.txt
-TODO: do fr scalar computation only once! takes too much time.
-Searching for already-done df_var at this path:
-/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/df_var.pkl
+Searching for already-done df_var at this path: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/df_var.pkl
 RELOADED df_var!!!
-... from: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/df_var.pkl
 Events already done: (will skip these when recomputing)...
 ['03_samp_-600_to_-40', '03_samp_260_to_600', '03_samp_40_to_240', '03_samp_50_to_600', '04_go_cue_-600_to_-40', '05_first_raise_-600_to_-50', '06_on_strokeidx_0_-250_to_350', '06_on_strokeidx_0_-450_to_-50', '06_on_strokeidx_0_-50_to_350', '09_post_50_to_600', '10_reward_all_50_to_600']
 COMPUTING df_var!!!
@@ -2937,23 +2934,1997 @@ DOING THIS EVENT:  10_reward_all_50_to_600
 !!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
 10_reward_all_50_to_600
 SKIPPING, extracted df_var is empty. Probably you have not enough data for this conjunctions, try setting DEBUG_CONJUNCTIONS=True and reading the low-level data it prints.
-!! Failed [modulationgood_compute_wrapper] during:  seqc_0_shape ['seqc_0_loc', 'gridsize'] r2_maxtime_1way_mshuff
-This is ok, since you already have pre-saved df_var loaded... continuing
-... Merging pre-saved and new df_var!
--- Len of old df_var, and events that exist in it:
+--NotEnoughDataException [modulationgood_compute_wrapper] during:  seqc_0_shape ['seqc_0_loc', 'gridsize'] r2_maxtime_1way_mshuff
+This is ok, since you already have pre-saved df loaded... continuing with loaded...
+-- Len of FINAL df_var, and events that exist in it:
 14432
 ['06_on_strokeidx_0_-450_to_-50' '06_on_strokeidx_0_-50_to_350'
  '03_samp_40_to_240' '03_samp_260_to_600' '03_samp_-600_to_-40'
  '03_samp_50_to_600' '04_go_cue_-600_to_-40' '05_first_raise_-600_to_-50'
  '06_on_strokeidx_0_-250_to_350' '09_post_50_to_600'
  '10_reward_all_50_to_600']
--- Len of new df_var, and events that exist in it:
-Traceback (most recent call last):
-  File "analy_anova_plot.py", line 305, in <module>
-    SP.modulationgood_compute_plot_ALL(var, vars_conjuction, 
-  File "/gorilla1/code/neuralmonkey/neuralmonkey/classes/snippets.py", line 1473, in modulationgood_compute_plot_ALL
-    print(len(df_var))
-UnboundLocalError: local variable 'df_var' referenced before assignment
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/OLD_PLOTS-moved_on_230602_004531 to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/OLD_PLOTS-moved_on_230602_115652/OLD_PLOTS-moved_on_230602_004531
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/df_fr_levels.pkl to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/OLD_PLOTS-moved_on_230602_115652/df_fr_levels.pkl
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/list_eventwindow_event.pkl to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/OLD_PLOTS-moved_on_230602_115652/list_eventwindow_event.pkl
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/Params.yaml to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/OLD_PLOTS-moved_on_230602_115652/Params.yaml
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/snippets_check_conjunctions_variables to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/OLD_PLOTS-moved_on_230602_115652/snippets_check_conjunctions_variables
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/ParamsGlobals.yaml to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/OLD_PLOTS-moved_on_230602_115652/ParamsGlobals.yaml
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/sites_pruned_by_fr_hist.pdf to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/OLD_PLOTS-moved_on_230602_115652/sites_pruned_by_fr_hist.pdf
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/params_to_save.yaml to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/OLD_PLOTS-moved_on_230602_115652/params_to_save.yaml
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/df_var.pkl to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/OLD_PLOTS-moved_on_230602_115652/df_var.pkl
+All files moved... ready to remake plots!!
+SAving:  /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/df_var.pkl
+SAving:  /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/list_eventwindow_event.pkl
+Searching for already-done df_fr_levels at this path: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/df_fr_levels.pkl
+... path does not exist
+COMPUTING df_fr_levels!!!
+Running grouping_print_n_samples...
+DOing these! ...
+list_events ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+WILL SKIP THESE EVENTS...
+[]
+GOOD!, enough data, max n per grouping conjunction (nmin, nmax)  0 24
+ 
+Updated ParamsGlobals for event 03_samp to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  -0.6
+POST_DUR_CALC  =  -0.04
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  03_samp_-600_to_-40
+site : 20
+site : 40
+site : 60
+site : 140
+site : 160
+site : 200
+site : 220
+site : 240
+site : 260
+site : 280
+site : 300
+site : 320
+site : 400
+site : 420
+site : 460
+site : 500
+ 
+Updated ParamsGlobals for event 03_samp to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  0.04
+POST_DUR_CALC  =  0.24
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  03_samp_40_to_240
+site : 20
+site : 40
+site : 60
+site : 140
+site : 160
+site : 200
+site : 220
+site : 240
+site : 260
+site : 280
+site : 300
+site : 320
+site : 400
+site : 420
+site : 460
+site : 500
+ 
+Updated ParamsGlobals for event 03_samp to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  0.26
+POST_DUR_CALC  =  0.6
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  03_samp_260_to_600
+site : 20
+site : 40
+site : 60
+site : 140
+site : 160
+site : 200
+site : 220
+site : 240
+site : 260
+site : 280
+site : 300
+site : 320
+site : 400
+site : 420
+site : 460
+site : 500
+ 
+Updated ParamsGlobals for event 04_go_cue to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  -0.6
+POST_DUR_CALC  =  -0.04
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  04_go_cue_-600_to_-40
+site : 20
+site : 40
+site : 60
+site : 140
+site : 160
+site : 200
+site : 220
+site : 240
+site : 260
+site : 280
+site : 300
+site : 320
+site : 400
+site : 420
+site : 460
+site : 500
+ 
+Updated ParamsGlobals for event 05_first_raise to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  -0.6
+POST_DUR_CALC  =  -0.05
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  05_first_raise_-600_to_-50
+site : 20
+site : 40
+site : 60
+site : 140
+site : 160
+site : 200
+site : 220
+site : 240
+site : 260
+site : 280
+site : 300
+site : 320
+site : 400
+site : 420
+site : 460
+site : 500
+ 
+Updated ParamsGlobals for event 06_on_strokeidx_0 to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  -0.45
+POST_DUR_CALC  =  -0.05
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  06_on_strokeidx_0_-450_to_-50
+site : 20
+site : 40
+site : 60
+site : 140
+site : 160
+site : 200
+site : 220
+site : 240
+site : 260
+site : 280
+site : 300
+site : 320
+site : 400
+site : 420
+site : 460
+site : 500
+ 
+Updated ParamsGlobals for event 06_on_strokeidx_0 to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  -0.05
+POST_DUR_CALC  =  0.35
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  06_on_strokeidx_0_-50_to_350
+site : 20
+site : 40
+site : 60
+site : 140
+site : 160
+site : 200
+site : 220
+site : 240
+site : 260
+site : 280
+site : 300
+site : 320
+site : 400
+site : 420
+site : 460
+site : 500
+ 
+Updated ParamsGlobals for event 08_doneb to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  -0.5
+POST_DUR_CALC  =  0.3
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  08_doneb_-500_to_300
+SKIPPING  08_doneb 1
+SKIPPING  08_doneb 2
+SKIPPING  08_doneb 3
+SKIPPING  08_doneb 4
+SKIPPING  08_doneb 5
+SKIPPING  08_doneb 6
+SKIPPING  08_doneb 7
+SKIPPING  08_doneb 8
+SKIPPING  08_doneb 9
+SKIPPING  08_doneb 10
+SKIPPING  08_doneb 11
+SKIPPING  08_doneb 12
+SKIPPING  08_doneb 13
+SKIPPING  08_doneb 14
+SKIPPING  08_doneb 15
+SKIPPING  08_doneb 16
+SKIPPING  08_doneb 17
+site : 20
+SKIPPING  08_doneb 20
+SKIPPING  08_doneb 22
+SKIPPING  08_doneb 23
+SKIPPING  08_doneb 24
+SKIPPING  08_doneb 25
+SKIPPING  08_doneb 27
+SKIPPING  08_doneb 28
+SKIPPING  08_doneb 29
+SKIPPING  08_doneb 30
+SKIPPING  08_doneb 31
+SKIPPING  08_doneb 32
+SKIPPING  08_doneb 37
+SKIPPING  08_doneb 39
+site : 40
+SKIPPING  08_doneb 40
+SKIPPING  08_doneb 41
+SKIPPING  08_doneb 42
+SKIPPING  08_doneb 43
+SKIPPING  08_doneb 44
+SKIPPING  08_doneb 45
+SKIPPING  08_doneb 47
+SKIPPING  08_doneb 49
+SKIPPING  08_doneb 50
+SKIPPING  08_doneb 51
+SKIPPING  08_doneb 52
+SKIPPING  08_doneb 53
+SKIPPING  08_doneb 55
+SKIPPING  08_doneb 56
+SKIPPING  08_doneb 57
+SKIPPING  08_doneb 58
+SKIPPING  08_doneb 59
+site : 60
+SKIPPING  08_doneb 60
+SKIPPING  08_doneb 61
+SKIPPING  08_doneb 62
+SKIPPING  08_doneb 63
+SKIPPING  08_doneb 65
+SKIPPING  08_doneb 66
+SKIPPING  08_doneb 68
+SKIPPING  08_doneb 69
+SKIPPING  08_doneb 71
+SKIPPING  08_doneb 72
+SKIPPING  08_doneb 74
+SKIPPING  08_doneb 77
+SKIPPING  08_doneb 78
+SKIPPING  08_doneb 84
+SKIPPING  08_doneb 86
+SKIPPING  08_doneb 92
+SKIPPING  08_doneb 94
+SKIPPING  08_doneb 95
+SKIPPING  08_doneb 96
+SKIPPING  08_doneb 97
+SKIPPING  08_doneb 98
+SKIPPING  08_doneb 99
+SKIPPING  08_doneb 101
+SKIPPING  08_doneb 103
+SKIPPING  08_doneb 104
+SKIPPING  08_doneb 106
+SKIPPING  08_doneb 107
+SKIPPING  08_doneb 112
+SKIPPING  08_doneb 114
+SKIPPING  08_doneb 115
+SKIPPING  08_doneb 116
+SKIPPING  08_doneb 117
+SKIPPING  08_doneb 119
+SKIPPING  08_doneb 121
+SKIPPING  08_doneb 122
+SKIPPING  08_doneb 123
+SKIPPING  08_doneb 124
+SKIPPING  08_doneb 126
+SKIPPING  08_doneb 130
+SKIPPING  08_doneb 135
+SKIPPING  08_doneb 136
+SKIPPING  08_doneb 138
+site : 140
+SKIPPING  08_doneb 140
+SKIPPING  08_doneb 142
+SKIPPING  08_doneb 143
+SKIPPING  08_doneb 144
+SKIPPING  08_doneb 146
+SKIPPING  08_doneb 149
+SKIPPING  08_doneb 150
+SKIPPING  08_doneb 154
+SKIPPING  08_doneb 158
+site : 160
+SKIPPING  08_doneb 160
+SKIPPING  08_doneb 161
+SKIPPING  08_doneb 162
+SKIPPING  08_doneb 163
+SKIPPING  08_doneb 164
+SKIPPING  08_doneb 165
+SKIPPING  08_doneb 169
+SKIPPING  08_doneb 170
+SKIPPING  08_doneb 171
+SKIPPING  08_doneb 173
+SKIPPING  08_doneb 174
+SKIPPING  08_doneb 175
+SKIPPING  08_doneb 177
+SKIPPING  08_doneb 179
+SKIPPING  08_doneb 181
+SKIPPING  08_doneb 182
+SKIPPING  08_doneb 184
+SKIPPING  08_doneb 186
+SKIPPING  08_doneb 187
+SKIPPING  08_doneb 188
+SKIPPING  08_doneb 189
+SKIPPING  08_doneb 190
+SKIPPING  08_doneb 191
+SKIPPING  08_doneb 192
+SKIPPING  08_doneb 193
+SKIPPING  08_doneb 194
+SKIPPING  08_doneb 195
+SKIPPING  08_doneb 198
+SKIPPING  08_doneb 199
+site : 200
+SKIPPING  08_doneb 200
+SKIPPING  08_doneb 203
+SKIPPING  08_doneb 204
+SKIPPING  08_doneb 205
+SKIPPING  08_doneb 206
+SKIPPING  08_doneb 207
+SKIPPING  08_doneb 208
+SKIPPING  08_doneb 209
+SKIPPING  08_doneb 210
+SKIPPING  08_doneb 215
+SKIPPING  08_doneb 217
+SKIPPING  08_doneb 219
+site : 220
+SKIPPING  08_doneb 220
+SKIPPING  08_doneb 221
+SKIPPING  08_doneb 223
+SKIPPING  08_doneb 224
+SKIPPING  08_doneb 226
+SKIPPING  08_doneb 227
+SKIPPING  08_doneb 228
+SKIPPING  08_doneb 231
+SKIPPING  08_doneb 233
+SKIPPING  08_doneb 237
+SKIPPING  08_doneb 239
+site : 240
+SKIPPING  08_doneb 240
+SKIPPING  08_doneb 242
+SKIPPING  08_doneb 243
+SKIPPING  08_doneb 244
+SKIPPING  08_doneb 247
+SKIPPING  08_doneb 248
+SKIPPING  08_doneb 249
+SKIPPING  08_doneb 250
+SKIPPING  08_doneb 252
+SKIPPING  08_doneb 253
+SKIPPING  08_doneb 255
+SKIPPING  08_doneb 256
+SKIPPING  08_doneb 257
+SKIPPING  08_doneb 258
+SKIPPING  08_doneb 259
+site : 260
+SKIPPING  08_doneb 260
+SKIPPING  08_doneb 262
+SKIPPING  08_doneb 263
+SKIPPING  08_doneb 264
+SKIPPING  08_doneb 265
+SKIPPING  08_doneb 267
+SKIPPING  08_doneb 269
+SKIPPING  08_doneb 270
+SKIPPING  08_doneb 271
+SKIPPING  08_doneb 272
+SKIPPING  08_doneb 273
+SKIPPING  08_doneb 274
+SKIPPING  08_doneb 275
+SKIPPING  08_doneb 276
+SKIPPING  08_doneb 277
+SKIPPING  08_doneb 278
+SKIPPING  08_doneb 279
+site : 280
+SKIPPING  08_doneb 280
+SKIPPING  08_doneb 281
+SKIPPING  08_doneb 282
+SKIPPING  08_doneb 283
+SKIPPING  08_doneb 285
+SKIPPING  08_doneb 286
+SKIPPING  08_doneb 287
+SKIPPING  08_doneb 288
+SKIPPING  08_doneb 290
+SKIPPING  08_doneb 291
+SKIPPING  08_doneb 294
+SKIPPING  08_doneb 296
+SKIPPING  08_doneb 299
+site : 300
+SKIPPING  08_doneb 300
+SKIPPING  08_doneb 301
+SKIPPING  08_doneb 302
+SKIPPING  08_doneb 303
+SKIPPING  08_doneb 304
+SKIPPING  08_doneb 308
+SKIPPING  08_doneb 310
+SKIPPING  08_doneb 312
+SKIPPING  08_doneb 314
+site : 320
+SKIPPING  08_doneb 320
+SKIPPING  08_doneb 327
+SKIPPING  08_doneb 329
+SKIPPING  08_doneb 331
+SKIPPING  08_doneb 332
+SKIPPING  08_doneb 333
+SKIPPING  08_doneb 338
+SKIPPING  08_doneb 344
+SKIPPING  08_doneb 345
+SKIPPING  08_doneb 346
+SKIPPING  08_doneb 347
+SKIPPING  08_doneb 348
+SKIPPING  08_doneb 349
+SKIPPING  08_doneb 351
+SKIPPING  08_doneb 352
+SKIPPING  08_doneb 353
+SKIPPING  08_doneb 354
+SKIPPING  08_doneb 355
+SKIPPING  08_doneb 356
+SKIPPING  08_doneb 368
+SKIPPING  08_doneb 369
+SKIPPING  08_doneb 371
+SKIPPING  08_doneb 374
+SKIPPING  08_doneb 385
+SKIPPING  08_doneb 386
+SKIPPING  08_doneb 387
+SKIPPING  08_doneb 388
+SKIPPING  08_doneb 389
+SKIPPING  08_doneb 390
+SKIPPING  08_doneb 394
+SKIPPING  08_doneb 395
+SKIPPING  08_doneb 396
+SKIPPING  08_doneb 397
+SKIPPING  08_doneb 398
+site : 400
+SKIPPING  08_doneb 400
+SKIPPING  08_doneb 401
+SKIPPING  08_doneb 402
+SKIPPING  08_doneb 403
+SKIPPING  08_doneb 404
+SKIPPING  08_doneb 405
+SKIPPING  08_doneb 406
+SKIPPING  08_doneb 407
+SKIPPING  08_doneb 408
+SKIPPING  08_doneb 409
+SKIPPING  08_doneb 410
+SKIPPING  08_doneb 412
+SKIPPING  08_doneb 413
+SKIPPING  08_doneb 414
+SKIPPING  08_doneb 415
+SKIPPING  08_doneb 417
+SKIPPING  08_doneb 418
+SKIPPING  08_doneb 419
+site : 420
+SKIPPING  08_doneb 420
+SKIPPING  08_doneb 422
+SKIPPING  08_doneb 423
+SKIPPING  08_doneb 425
+SKIPPING  08_doneb 429
+SKIPPING  08_doneb 430
+SKIPPING  08_doneb 433
+SKIPPING  08_doneb 434
+SKIPPING  08_doneb 435
+SKIPPING  08_doneb 436
+SKIPPING  08_doneb 437
+SKIPPING  08_doneb 439
+SKIPPING  08_doneb 441
+SKIPPING  08_doneb 442
+SKIPPING  08_doneb 443
+SKIPPING  08_doneb 445
+SKIPPING  08_doneb 447
+SKIPPING  08_doneb 449
+SKIPPING  08_doneb 450
+SKIPPING  08_doneb 451
+SKIPPING  08_doneb 452
+SKIPPING  08_doneb 453
+SKIPPING  08_doneb 454
+SKIPPING  08_doneb 455
+SKIPPING  08_doneb 457
+SKIPPING  08_doneb 458
+site : 460
+SKIPPING  08_doneb 460
+SKIPPING  08_doneb 461
+SKIPPING  08_doneb 462
+SKIPPING  08_doneb 463
+SKIPPING  08_doneb 464
+SKIPPING  08_doneb 467
+SKIPPING  08_doneb 468
+SKIPPING  08_doneb 469
+SKIPPING  08_doneb 470
+SKIPPING  08_doneb 471
+SKIPPING  08_doneb 472
+SKIPPING  08_doneb 473
+SKIPPING  08_doneb 474
+SKIPPING  08_doneb 475
+SKIPPING  08_doneb 476
+SKIPPING  08_doneb 477
+SKIPPING  08_doneb 478
+SKIPPING  08_doneb 479
+SKIPPING  08_doneb 481
+SKIPPING  08_doneb 483
+SKIPPING  08_doneb 484
+SKIPPING  08_doneb 485
+SKIPPING  08_doneb 486
+SKIPPING  08_doneb 487
+SKIPPING  08_doneb 489
+SKIPPING  08_doneb 490
+SKIPPING  08_doneb 491
+SKIPPING  08_doneb 492
+SKIPPING  08_doneb 493
+SKIPPING  08_doneb 494
+SKIPPING  08_doneb 495
+SKIPPING  08_doneb 496
+SKIPPING  08_doneb 497
+SKIPPING  08_doneb 498
+SKIPPING  08_doneb 499
+site : 500
+SKIPPING  08_doneb 500
+SKIPPING  08_doneb 501
+SKIPPING  08_doneb 502
+SKIPPING  08_doneb 503
+SKIPPING  08_doneb 504
+SKIPPING  08_doneb 505
+SKIPPING  08_doneb 506
+SKIPPING  08_doneb 508
+SKIPPING  08_doneb 509
+SKIPPING  08_doneb 510
+SKIPPING  08_doneb 511
+ 
+Updated ParamsGlobals for event 09_post to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  0.05
+POST_DUR_CALC  =  0.6
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  09_post_50_to_600
+site : 20
+site : 40
+site : 60
+site : 140
+site : 160
+site : 200
+site : 220
+site : 240
+site : 260
+site : 280
+site : 300
+site : 320
+site : 400
+site : 420
+site : 460
+site : 500
+ 
+Updated ParamsGlobals for event 10_reward_all to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  0.05
+POST_DUR_CALC  =  0.6
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  10_reward_all_50_to_600
+site : 20
+site : 40
+site : 60
+site : 140
+site : 160
+site : 200
+site : 220
+site : 240
+site : 260
+site : 280
+site : 300
+site : 320
+site : 400
+site : 420
+site : 460
+site : 500
+-- Len of FINAL df_var, and events that exist in it:
+81340
+['03_samp_-600_to_-40' '03_samp_40_to_240' '03_samp_260_to_600'
+ '04_go_cue_-600_to_-40' '05_first_raise_-600_to_-50'
+ '06_on_strokeidx_0_-450_to_-50' '06_on_strokeidx_0_-50_to_350'
+ '09_post_50_to_600' '10_reward_all_50_to_600']
+SAving:  /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/df_fr_levels.pkl
+SAving:  /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/list_eventwindow_event.pkl
+Plotting...  /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/fr_levels
+/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/modulation
+** Plotting summarystats
+Saving at: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/modulation
+Found this var:  seqc_0_shape
+Found this var_others:  ('seqc_0_loc', 'gridsize')
+Aggregating dataframe over all othervars ...
+Plotting ...
+Plotting for specific single other var: seqc_0_loc...
+Plotting for specific single other var: gridsize...
+** Plotting heatmaps
+/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/modulation_heatmap
+Saving to:  /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/modulation_heatmap/brainschem-event-val-modulation_subgroups.pdf
+Saving to:  /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/modulation_heatmap/brainschem-event-val-modulation_subgroups-NOMOTOR.pdf
+** Plotting example strokes
+Loading:  /gorilla1/analyses/recordings/main/anova/bytrial/Pancho-220715-sess_0/DfScalar.pkl
+Loading:  /gorilla1/analyses/recordings/main/anova/bytrial/Pancho-220715-sess_0/fr_sm_times.pkl
+Loading:  /gorilla1/analyses/recordings/main/anova/bytrial/Pancho-220715-sess_0/DS.pkl
+Loading:  /gorilla1/analyses/recordings/main/anova/bytrial/Pancho-220715-sess_0/Params.pkl
+Loading:  /gorilla1/analyses/recordings/main/anova/bytrial/Pancho-220715-sess_0/ParamsGlobals.pkl
+Loading:  /gorilla1/analyses/recordings/main/anova/bytrial/Pancho-220715-sess_0/Sites.pkl
+Loading:  /gorilla1/analyses/recordings/main/anova/bytrial/Pancho-220715-sess_0/Trials.pkl
+Plotting ..  ((1, 1), 'rig3_3x3_small')
+Plotting ..  ((1, 0), 'rig3_3x3_small')
+Plotting ..  ((0, 1), 'rig3_3x3_small')
+Plotting ..  ((0, 0), 'rig3_3x3_small')
+** Making plots for this event_window: 
+03_samp_-600_to_-40
+Saving this event, 03_samp_-600_to_-40, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/EACH_EVENT/03_samp_-600_to_-40
+/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/EACH_EVENT/03_samp_-600_to_-40/modulation_v2
+** Plotting summarystats
+** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/rasters/03_samp
+** Making plots for this event_window: 
+03_samp_260_to_600
+Saving this event, 03_samp_260_to_600, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/EACH_EVENT/03_samp_260_to_600
+/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/EACH_EVENT/03_samp_260_to_600/modulation_v2
+** Plotting summarystats
+** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/rasters/03_samp
+** Making plots for this event_window: 
+03_samp_40_to_240
+Saving this event, 03_samp_40_to_240, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/EACH_EVENT/03_samp_40_to_240
+/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/EACH_EVENT/03_samp_40_to_240/modulation_v2
+** Plotting summarystats
+** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/rasters/03_samp
+** Making plots for this event_window: 
+03_samp_50_to_600
+Saving this event, 03_samp_50_to_600, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/EACH_EVENT/03_samp_50_to_600
+/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/EACH_EVENT/03_samp_50_to_600/modulation_v2
+** Plotting summarystats
+** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/rasters/03_samp
+** Making plots for this event_window: 
+04_go_cue_-600_to_-40
+Saving this event, 04_go_cue_-600_to_-40, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/EACH_EVENT/04_go_cue_-600_to_-40
+/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/EACH_EVENT/04_go_cue_-600_to_-40/modulation_v2
+** Plotting summarystats
+** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/rasters/04_go_cue
+** Making plots for this event_window: 
+05_first_raise_-600_to_-50
+Saving this event, 05_first_raise_-600_to_-50, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/EACH_EVENT/05_first_raise_-600_to_-50
+/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/EACH_EVENT/05_first_raise_-600_to_-50/modulation_v2
+** Plotting summarystats
+** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/rasters/05_first_raise
+** Making plots for this event_window: 
+06_on_strokeidx_0_-250_to_350
+Saving this event, 06_on_strokeidx_0_-250_to_350, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/EACH_EVENT/06_on_strokeidx_0_-250_to_350
+/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/EACH_EVENT/06_on_strokeidx_0_-250_to_350/modulation_v2
+** Plotting summarystats
+** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/rasters/06_on_strokeidx_0
+** Making plots for this event_window: 
+06_on_strokeidx_0_-450_to_-50
+Saving this event, 06_on_strokeidx_0_-450_to_-50, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/EACH_EVENT/06_on_strokeidx_0_-450_to_-50
+/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/EACH_EVENT/06_on_strokeidx_0_-450_to_-50/modulation_v2
+** Plotting summarystats
+** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/rasters/06_on_strokeidx_0
+** Making plots for this event_window: 
+06_on_strokeidx_0_-50_to_350
+Saving this event, 06_on_strokeidx_0_-50_to_350, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/EACH_EVENT/06_on_strokeidx_0_-50_to_350
+/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/EACH_EVENT/06_on_strokeidx_0_-50_to_350/modulation_v2
+** Plotting summarystats
+** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/rasters/06_on_strokeidx_0
+** Making plots for this event_window: 
+09_post_50_to_600
+Saving this event, 09_post_50_to_600, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/EACH_EVENT/09_post_50_to_600
+/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/EACH_EVENT/09_post_50_to_600/modulation_v2
+** Plotting summarystats
+** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/rasters/09_post
+** Making plots for this event_window: 
+10_reward_all_50_to_600
+Saving this event, 10_reward_all_50_to_600, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/EACH_EVENT/10_reward_all_50_to_600
+/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_1way_mshuff/EACH_EVENT/10_reward_all_50_to_600/modulation_v2
+** Plotting summarystats
+** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/rasters/10_reward_all
+ !!! RUNNING modulationgood_compute_plot_ALL for var and vars_conjuction:
+seqc_0_loc
+['gridsize', 'seqc_0_shape']
+Saving to: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff
+starting sites:  328
+starting sites:  [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 20, 22, 23, 24, 25, 27, 28, 29, 30, 31, 32, 37, 39, 40, 41, 42, 43, 44, 45, 47, 49, 50, 51, 52, 53, 55, 56, 57, 58, 59, 60, 61, 62, 63, 65, 66, 68, 69, 71, 72, 74, 77, 78, 84, 86, 92, 94, 95, 96, 97, 98, 99, 101, 103, 104, 106, 107, 112, 114, 115, 116, 117, 119, 121, 122, 123, 124, 126, 130, 135, 136, 138, 140, 142, 143, 144, 146, 149, 150, 154, 158, 160, 161, 162, 163, 164, 165, 169, 170, 171, 173, 174, 175, 177, 179, 181, 182, 184, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 198, 199, 200, 203, 204, 205, 206, 207, 208, 209, 210, 215, 217, 219, 220, 221, 223, 224, 226, 227, 228, 231, 233, 237, 239, 240, 242, 243, 244, 247, 248, 249, 250, 252, 253, 255, 256, 257, 258, 259, 260, 262, 263, 264, 265, 267, 269, 270, 271, 272, 273, 274, 275, 276, 277, 278, 279, 280, 281, 282, 283, 285, 286, 287, 288, 290, 291, 294, 296, 299, 300, 301, 302, 303, 304, 308, 310, 312, 314, 320, 327, 329, 331, 332, 333, 338, 344, 345, 346, 347, 348, 349, 351, 352, 353, 354, 355, 356, 368, 369, 371, 374, 385, 386, 387, 388, 389, 390, 394, 395, 396, 397, 398, 400, 401, 402, 403, 404, 405, 406, 407, 408, 409, 410, 412, 413, 414, 415, 417, 418, 419, 420, 422, 423, 425, 429, 430, 433, 434, 435, 436, 437, 439, 441, 442, 443, 445, 447, 449, 450, 451, 452, 453, 454, 455, 457, 458, 460, 461, 462, 463, 464, 467, 468, 469, 470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 481, 483, 484, 485, 486, 487, 489, 490, 491, 492, 493, 494, 495, 496, 497, 498, 499, 500, 501, 502, 503, 504, 505, 506, 508, 509, 510, 511]
+For percentile 10, using this threshold: 34.40422820589977
+sites_good:  352
+sites_bad:  40
+Updates self.Sites
+ending sites:  328
+ending sites:  [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 20, 22, 23, 24, 25, 27, 28, 29, 30, 31, 32, 37, 39, 40, 41, 42, 43, 44, 45, 47, 49, 50, 51, 52, 53, 55, 56, 57, 58, 59, 60, 61, 62, 63, 65, 66, 68, 69, 71, 72, 74, 77, 78, 84, 86, 92, 94, 95, 96, 97, 98, 99, 101, 103, 104, 106, 107, 112, 114, 115, 116, 117, 119, 121, 122, 123, 124, 126, 130, 135, 136, 138, 140, 142, 143, 144, 146, 149, 150, 154, 158, 160, 161, 162, 163, 164, 165, 169, 170, 171, 173, 174, 175, 177, 179, 181, 182, 184, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 198, 199, 200, 203, 204, 205, 206, 207, 208, 209, 210, 215, 217, 219, 220, 221, 223, 224, 226, 227, 228, 231, 233, 237, 239, 240, 242, 243, 244, 247, 248, 249, 250, 252, 253, 255, 256, 257, 258, 259, 260, 262, 263, 264, 265, 267, 269, 270, 271, 272, 273, 274, 275, 276, 277, 278, 279, 280, 281, 282, 283, 285, 286, 287, 288, 290, 291, 294, 296, 299, 300, 301, 302, 303, 304, 308, 310, 312, 314, 320, 327, 329, 331, 332, 333, 338, 344, 345, 346, 347, 348, 349, 351, 352, 353, 354, 355, 356, 368, 369, 371, 374, 385, 386, 387, 388, 389, 390, 394, 395, 396, 397, 398, 400, 401, 402, 403, 404, 405, 406, 407, 408, 409, 410, 412, 413, 414, 415, 417, 418, 419, 420, 422, 423, 425, 429, 430, 433, 434, 435, 436, 437, 439, 441, 442, 443, 445, 447, 449, 450, 451, 452, 453, 454, 455, 457, 458, 460, 461, 462, 463, 464, 467, 468, 469, 470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 481, 483, 484, 485, 486, 487, 489, 490, 491, 492, 493, 494, 495, 496, 497, 498, 499, 500, 501, 502, 503, 504, 505, 506, 508, 509, 510, 511]
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  -0.65
+POST_DUR_CALC  =  0.65
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/snippets_check_conjunctions_variables
+var -- vars_others:  seqc_0_loc  ---  ['gridsize']
+var -- vars_others:  seqc_0_loc  ---  ['seqc_0_shape']
+var -- vars_others:  seqc_0_loc  ---  ['gridsize', 'seqc_0_shape']
+/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/snippets_check_conjunctions_variables/ncounts-seqc_0_loc-vs-varothers-levothers-levvar.txt
+var -- vars_others:  gridsize  ---  ['seqc_0_loc']
+var -- vars_others:  gridsize  ---  ['seqc_0_shape']
+var -- vars_others:  gridsize  ---  ['seqc_0_loc', 'seqc_0_shape']
+/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/snippets_check_conjunctions_variables/ncounts-gridsize-vs-varothers-levothers-levvar.txt
+var -- vars_others:  seqc_0_shape  ---  ['seqc_0_loc']
+var -- vars_others:  seqc_0_shape  ---  ['gridsize']
+var -- vars_others:  seqc_0_shape  ---  ['seqc_0_loc', 'gridsize']
+/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/snippets_check_conjunctions_variables/ncounts-seqc_0_shape-vs-varothers-levothers-levvar.txt
+Searching for already-done df_var at this path: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/df_var.pkl
+RELOADED df_var!!!
+Events already done: (will skip these when recomputing)...
+['03_samp_-600_to_-40', '03_samp_260_to_600', '03_samp_40_to_240', '03_samp_50_to_600', '04_go_cue_-600_to_-40', '05_first_raise_-600_to_-50', '06_on_strokeidx_0_-250_to_350', '06_on_strokeidx_0_-450_to_-50', '06_on_strokeidx_0_-50_to_350', '09_post_50_to_600', '10_reward_all_50_to_600']
+COMPUTING df_var!!!
+Running grouping_print_n_samples...
+DOing these! ...
+list_events ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+WILL SKIP THESE EVENTS...
+['03_samp_-600_to_-40', '03_samp_260_to_600', '03_samp_40_to_240', '03_samp_50_to_600', '04_go_cue_-600_to_-40', '05_first_raise_-600_to_-50', '06_on_strokeidx_0_-250_to_350', '06_on_strokeidx_0_-450_to_-50', '06_on_strokeidx_0_-50_to_350', '09_post_50_to_600', '10_reward_all_50_to_600']
+GOOD!, enough data, max n per grouping conjunction (nmin, nmax)  0 24
+ 
+Updated ParamsGlobals for event 03_samp to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  -0.6
+POST_DUR_CALC  =  -0.04
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  03_samp_-600_to_-40
+!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
+03_samp_-600_to_-40
+ 
+Updated ParamsGlobals for event 03_samp to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  0.04
+POST_DUR_CALC  =  0.24
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  03_samp_40_to_240
+!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
+03_samp_40_to_240
+ 
+Updated ParamsGlobals for event 03_samp to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  0.26
+POST_DUR_CALC  =  0.6
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  03_samp_260_to_600
+!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
+03_samp_260_to_600
+ 
+Updated ParamsGlobals for event 04_go_cue to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  -0.6
+POST_DUR_CALC  =  -0.04
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  04_go_cue_-600_to_-40
+!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
+04_go_cue_-600_to_-40
+ 
+Updated ParamsGlobals for event 05_first_raise to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  -0.6
+POST_DUR_CALC  =  -0.05
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  05_first_raise_-600_to_-50
+!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
+05_first_raise_-600_to_-50
+ 
+Updated ParamsGlobals for event 06_on_strokeidx_0 to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  -0.45
+POST_DUR_CALC  =  -0.05
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  06_on_strokeidx_0_-450_to_-50
+!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
+06_on_strokeidx_0_-450_to_-50
+ 
+Updated ParamsGlobals for event 06_on_strokeidx_0 to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  -0.05
+POST_DUR_CALC  =  0.35
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  06_on_strokeidx_0_-50_to_350
+!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
+06_on_strokeidx_0_-50_to_350
+ 
+Updated ParamsGlobals for event 08_doneb to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  -0.5
+POST_DUR_CALC  =  0.3
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  08_doneb_-500_to_300
+SKIPPING  08_doneb 1
+SKIPPING  08_doneb 2
+SKIPPING  08_doneb 3
+SKIPPING  08_doneb 4
+SKIPPING  08_doneb 5
+SKIPPING  08_doneb 6
+SKIPPING  08_doneb 7
+SKIPPING  08_doneb 8
+SKIPPING  08_doneb 9
+SKIPPING  08_doneb 10
+SKIPPING  08_doneb 11
+SKIPPING  08_doneb 12
+SKIPPING  08_doneb 13
+SKIPPING  08_doneb 14
+SKIPPING  08_doneb 15
+SKIPPING  08_doneb 16
+SKIPPING  08_doneb 17
+site : 20
+SKIPPING  08_doneb 20
+SKIPPING  08_doneb 22
+SKIPPING  08_doneb 23
+SKIPPING  08_doneb 24
+SKIPPING  08_doneb 25
+SKIPPING  08_doneb 27
+SKIPPING  08_doneb 28
+SKIPPING  08_doneb 29
+SKIPPING  08_doneb 30
+SKIPPING  08_doneb 31
+SKIPPING  08_doneb 32
+SKIPPING  08_doneb 37
+SKIPPING  08_doneb 39
+site : 40
+SKIPPING  08_doneb 40
+SKIPPING  08_doneb 41
+SKIPPING  08_doneb 42
+SKIPPING  08_doneb 43
+SKIPPING  08_doneb 44
+SKIPPING  08_doneb 45
+SKIPPING  08_doneb 47
+SKIPPING  08_doneb 49
+SKIPPING  08_doneb 50
+SKIPPING  08_doneb 51
+SKIPPING  08_doneb 52
+SKIPPING  08_doneb 53
+SKIPPING  08_doneb 55
+SKIPPING  08_doneb 56
+SKIPPING  08_doneb 57
+SKIPPING  08_doneb 58
+SKIPPING  08_doneb 59
+site : 60
+SKIPPING  08_doneb 60
+SKIPPING  08_doneb 61
+SKIPPING  08_doneb 62
+SKIPPING  08_doneb 63
+SKIPPING  08_doneb 65
+SKIPPING  08_doneb 66
+SKIPPING  08_doneb 68
+SKIPPING  08_doneb 69
+SKIPPING  08_doneb 71
+SKIPPING  08_doneb 72
+SKIPPING  08_doneb 74
+SKIPPING  08_doneb 77
+SKIPPING  08_doneb 78
+SKIPPING  08_doneb 84
+SKIPPING  08_doneb 86
+SKIPPING  08_doneb 92
+SKIPPING  08_doneb 94
+SKIPPING  08_doneb 95
+SKIPPING  08_doneb 96
+SKIPPING  08_doneb 97
+SKIPPING  08_doneb 98
+SKIPPING  08_doneb 99
+SKIPPING  08_doneb 101
+SKIPPING  08_doneb 103
+SKIPPING  08_doneb 104
+SKIPPING  08_doneb 106
+SKIPPING  08_doneb 107
+SKIPPING  08_doneb 112
+SKIPPING  08_doneb 114
+SKIPPING  08_doneb 115
+SKIPPING  08_doneb 116
+SKIPPING  08_doneb 117
+SKIPPING  08_doneb 119
+SKIPPING  08_doneb 121
+SKIPPING  08_doneb 122
+SKIPPING  08_doneb 123
+SKIPPING  08_doneb 124
+SKIPPING  08_doneb 126
+SKIPPING  08_doneb 130
+SKIPPING  08_doneb 135
+SKIPPING  08_doneb 136
+SKIPPING  08_doneb 138
+site : 140
+SKIPPING  08_doneb 140
+SKIPPING  08_doneb 142
+SKIPPING  08_doneb 143
+SKIPPING  08_doneb 144
+SKIPPING  08_doneb 146
+SKIPPING  08_doneb 149
+SKIPPING  08_doneb 150
+SKIPPING  08_doneb 154
+SKIPPING  08_doneb 158
+site : 160
+SKIPPING  08_doneb 160
+SKIPPING  08_doneb 161
+SKIPPING  08_doneb 162
+SKIPPING  08_doneb 163
+SKIPPING  08_doneb 164
+SKIPPING  08_doneb 165
+SKIPPING  08_doneb 169
+SKIPPING  08_doneb 170
+SKIPPING  08_doneb 171
+SKIPPING  08_doneb 173
+SKIPPING  08_doneb 174
+SKIPPING  08_doneb 175
+SKIPPING  08_doneb 177
+SKIPPING  08_doneb 179
+SKIPPING  08_doneb 181
+SKIPPING  08_doneb 182
+SKIPPING  08_doneb 184
+SKIPPING  08_doneb 186
+SKIPPING  08_doneb 187
+SKIPPING  08_doneb 188
+SKIPPING  08_doneb 189
+SKIPPING  08_doneb 190
+SKIPPING  08_doneb 191
+SKIPPING  08_doneb 192
+SKIPPING  08_doneb 193
+SKIPPING  08_doneb 194
+SKIPPING  08_doneb 195
+SKIPPING  08_doneb 198
+SKIPPING  08_doneb 199
+site : 200
+SKIPPING  08_doneb 200
+SKIPPING  08_doneb 203
+SKIPPING  08_doneb 204
+SKIPPING  08_doneb 205
+SKIPPING  08_doneb 206
+SKIPPING  08_doneb 207
+SKIPPING  08_doneb 208
+SKIPPING  08_doneb 209
+SKIPPING  08_doneb 210
+SKIPPING  08_doneb 215
+SKIPPING  08_doneb 217
+SKIPPING  08_doneb 219
+site : 220
+SKIPPING  08_doneb 220
+SKIPPING  08_doneb 221
+SKIPPING  08_doneb 223
+SKIPPING  08_doneb 224
+SKIPPING  08_doneb 226
+SKIPPING  08_doneb 227
+SKIPPING  08_doneb 228
+SKIPPING  08_doneb 231
+SKIPPING  08_doneb 233
+SKIPPING  08_doneb 237
+SKIPPING  08_doneb 239
+site : 240
+SKIPPING  08_doneb 240
+SKIPPING  08_doneb 242
+SKIPPING  08_doneb 243
+SKIPPING  08_doneb 244
+SKIPPING  08_doneb 247
+SKIPPING  08_doneb 248
+SKIPPING  08_doneb 249
+SKIPPING  08_doneb 250
+SKIPPING  08_doneb 252
+SKIPPING  08_doneb 253
+SKIPPING  08_doneb 255
+SKIPPING  08_doneb 256
+SKIPPING  08_doneb 257
+SKIPPING  08_doneb 258
+SKIPPING  08_doneb 259
+site : 260
+SKIPPING  08_doneb 260
+SKIPPING  08_doneb 262
+SKIPPING  08_doneb 263
+SKIPPING  08_doneb 264
+SKIPPING  08_doneb 265
+SKIPPING  08_doneb 267
+SKIPPING  08_doneb 269
+SKIPPING  08_doneb 270
+SKIPPING  08_doneb 271
+SKIPPING  08_doneb 272
+SKIPPING  08_doneb 273
+SKIPPING  08_doneb 274
+SKIPPING  08_doneb 275
+SKIPPING  08_doneb 276
+SKIPPING  08_doneb 277
+SKIPPING  08_doneb 278
+SKIPPING  08_doneb 279
+site : 280
+SKIPPING  08_doneb 280
+SKIPPING  08_doneb 281
+SKIPPING  08_doneb 282
+SKIPPING  08_doneb 283
+SKIPPING  08_doneb 285
+SKIPPING  08_doneb 286
+SKIPPING  08_doneb 287
+SKIPPING  08_doneb 288
+SKIPPING  08_doneb 290
+SKIPPING  08_doneb 291
+SKIPPING  08_doneb 294
+SKIPPING  08_doneb 296
+SKIPPING  08_doneb 299
+site : 300
+SKIPPING  08_doneb 300
+SKIPPING  08_doneb 301
+SKIPPING  08_doneb 302
+SKIPPING  08_doneb 303
+SKIPPING  08_doneb 304
+SKIPPING  08_doneb 308
+SKIPPING  08_doneb 310
+SKIPPING  08_doneb 312
+SKIPPING  08_doneb 314
+site : 320
+SKIPPING  08_doneb 320
+SKIPPING  08_doneb 327
+SKIPPING  08_doneb 329
+SKIPPING  08_doneb 331
+SKIPPING  08_doneb 332
+SKIPPING  08_doneb 333
+SKIPPING  08_doneb 338
+SKIPPING  08_doneb 344
+SKIPPING  08_doneb 345
+SKIPPING  08_doneb 346
+SKIPPING  08_doneb 347
+SKIPPING  08_doneb 348
+SKIPPING  08_doneb 349
+SKIPPING  08_doneb 351
+SKIPPING  08_doneb 352
+SKIPPING  08_doneb 353
+SKIPPING  08_doneb 354
+SKIPPING  08_doneb 355
+SKIPPING  08_doneb 356
+SKIPPING  08_doneb 368
+SKIPPING  08_doneb 369
+SKIPPING  08_doneb 371
+SKIPPING  08_doneb 374
+SKIPPING  08_doneb 385
+SKIPPING  08_doneb 386
+SKIPPING  08_doneb 387
+SKIPPING  08_doneb 388
+SKIPPING  08_doneb 389
+SKIPPING  08_doneb 390
+SKIPPING  08_doneb 394
+SKIPPING  08_doneb 395
+SKIPPING  08_doneb 396
+SKIPPING  08_doneb 397
+SKIPPING  08_doneb 398
+site : 400
+SKIPPING  08_doneb 400
+SKIPPING  08_doneb 401
+SKIPPING  08_doneb 402
+SKIPPING  08_doneb 403
+SKIPPING  08_doneb 404
+SKIPPING  08_doneb 405
+SKIPPING  08_doneb 406
+SKIPPING  08_doneb 407
+SKIPPING  08_doneb 408
+SKIPPING  08_doneb 409
+SKIPPING  08_doneb 410
+SKIPPING  08_doneb 412
+SKIPPING  08_doneb 413
+SKIPPING  08_doneb 414
+SKIPPING  08_doneb 415
+SKIPPING  08_doneb 417
+SKIPPING  08_doneb 418
+SKIPPING  08_doneb 419
+site : 420
+SKIPPING  08_doneb 420
+SKIPPING  08_doneb 422
+SKIPPING  08_doneb 423
+SKIPPING  08_doneb 425
+SKIPPING  08_doneb 429
+SKIPPING  08_doneb 430
+SKIPPING  08_doneb 433
+SKIPPING  08_doneb 434
+SKIPPING  08_doneb 435
+SKIPPING  08_doneb 436
+SKIPPING  08_doneb 437
+SKIPPING  08_doneb 439
+SKIPPING  08_doneb 441
+SKIPPING  08_doneb 442
+SKIPPING  08_doneb 443
+SKIPPING  08_doneb 445
+SKIPPING  08_doneb 447
+SKIPPING  08_doneb 449
+SKIPPING  08_doneb 450
+SKIPPING  08_doneb 451
+SKIPPING  08_doneb 452
+SKIPPING  08_doneb 453
+SKIPPING  08_doneb 454
+SKIPPING  08_doneb 455
+SKIPPING  08_doneb 457
+SKIPPING  08_doneb 458
+site : 460
+SKIPPING  08_doneb 460
+SKIPPING  08_doneb 461
+SKIPPING  08_doneb 462
+SKIPPING  08_doneb 463
+SKIPPING  08_doneb 464
+SKIPPING  08_doneb 467
+SKIPPING  08_doneb 468
+SKIPPING  08_doneb 469
+SKIPPING  08_doneb 470
+SKIPPING  08_doneb 471
+SKIPPING  08_doneb 472
+SKIPPING  08_doneb 473
+SKIPPING  08_doneb 474
+SKIPPING  08_doneb 475
+SKIPPING  08_doneb 476
+SKIPPING  08_doneb 477
+SKIPPING  08_doneb 478
+SKIPPING  08_doneb 479
+SKIPPING  08_doneb 481
+SKIPPING  08_doneb 483
+SKIPPING  08_doneb 484
+SKIPPING  08_doneb 485
+SKIPPING  08_doneb 486
+SKIPPING  08_doneb 487
+SKIPPING  08_doneb 489
+SKIPPING  08_doneb 490
+SKIPPING  08_doneb 491
+SKIPPING  08_doneb 492
+SKIPPING  08_doneb 493
+SKIPPING  08_doneb 494
+SKIPPING  08_doneb 495
+SKIPPING  08_doneb 496
+SKIPPING  08_doneb 497
+SKIPPING  08_doneb 498
+SKIPPING  08_doneb 499
+site : 500
+SKIPPING  08_doneb 500
+SKIPPING  08_doneb 501
+SKIPPING  08_doneb 502
+SKIPPING  08_doneb 503
+SKIPPING  08_doneb 504
+SKIPPING  08_doneb 505
+SKIPPING  08_doneb 506
+SKIPPING  08_doneb 508
+SKIPPING  08_doneb 509
+SKIPPING  08_doneb 510
+SKIPPING  08_doneb 511
+ 
+Updated ParamsGlobals for event 09_post to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  0.05
+POST_DUR_CALC  =  0.6
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  09_post_50_to_600
+!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
+09_post_50_to_600
+ 
+Updated ParamsGlobals for event 10_reward_all to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  0.05
+POST_DUR_CALC  =  0.6
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  10_reward_all_50_to_600
+!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
+10_reward_all_50_to_600
+SKIPPING, extracted df_var is empty. Probably you have not enough data for this conjunctions, try setting DEBUG_CONJUNCTIONS=True and reading the low-level data it prints.
+--NotEnoughDataException [modulationgood_compute_wrapper] during:  seqc_0_loc ['gridsize', 'seqc_0_shape'] r2_maxtime_1way_mshuff
+This is ok, since you already have pre-saved df loaded... continuing with loaded...
+-- Len of FINAL df_var, and events that exist in it:
+25256
+['03_samp_40_to_240' '03_samp_260_to_600' '06_on_strokeidx_0_-450_to_-50'
+ '06_on_strokeidx_0_-50_to_350' '03_samp_-600_to_-40' '03_samp_50_to_600'
+ '04_go_cue_-600_to_-40' '05_first_raise_-600_to_-50'
+ '06_on_strokeidx_0_-250_to_350' '09_post_50_to_600'
+ '10_reward_all_50_to_600']
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/params_modulationgood_compute.yaml to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/OLD_PLOTS-moved_on_230602_124439/params_modulationgood_compute.yaml
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/OLD_PLOTS-moved_on_230601_110436 to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/OLD_PLOTS-moved_on_230602_124439/OLD_PLOTS-moved_on_230601_110436
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/modulation to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/OLD_PLOTS-moved_on_230602_124439/modulation
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/list_eventwindow_event.pkl to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/OLD_PLOTS-moved_on_230602_124439/list_eventwindow_event.pkl
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/Params.yaml to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/OLD_PLOTS-moved_on_230602_124439/Params.yaml
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/modulation_heatmap to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/OLD_PLOTS-moved_on_230602_124439/modulation_heatmap
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/snippets_check_conjunctions_variables to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/OLD_PLOTS-moved_on_230602_124439/snippets_check_conjunctions_variables
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/EACH_EVENT to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/OLD_PLOTS-moved_on_230602_124439/EACH_EVENT
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/ParamsGlobals.yaml to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/OLD_PLOTS-moved_on_230602_124439/ParamsGlobals.yaml
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/sites_pruned_by_fr_hist.pdf to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/OLD_PLOTS-moved_on_230602_124439/sites_pruned_by_fr_hist.pdf
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/params_to_save.yaml to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/OLD_PLOTS-moved_on_230602_124439/params_to_save.yaml
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/drawings to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/OLD_PLOTS-moved_on_230602_124439/drawings
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/each_chan_summary to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/OLD_PLOTS-moved_on_230602_124439/each_chan_summary
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/df_var.pkl to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/OLD_PLOTS-moved_on_230602_124439/df_var.pkl
+All files moved... ready to remake plots!!
+SAving:  /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/df_var.pkl
+SAving:  /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/list_eventwindow_event.pkl
+Searching for already-done df_fr_levels at this path: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/df_fr_levels.pkl
+... path does not exist
+COMPUTING df_fr_levels!!!
+Running grouping_print_n_samples...
+DOing these! ...
+list_events ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+WILL SKIP THESE EVENTS...
+[]
+GOOD!, enough data, max n per grouping conjunction (nmin, nmax)  0 24
+ 
+Updated ParamsGlobals for event 03_samp to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  -0.6
+POST_DUR_CALC  =  -0.04
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  03_samp_-600_to_-40
+site : 20
+site : 40
+site : 60
+site : 140
+site : 160
+site : 200
+site : 220
+site : 240
+site : 260
+site : 280
+site : 300
+site : 320
+site : 400
+site : 420
+site : 460
+site : 500
+ 
+Updated ParamsGlobals for event 03_samp to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  0.04
+POST_DUR_CALC  =  0.24
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  03_samp_40_to_240
+site : 20
+site : 40
+site : 60
+site : 140
+site : 160
+site : 200
+site : 220
+site : 240
+site : 260
+site : 280
+site : 300
+site : 320
+site : 400
+site : 420
+site : 460
+site : 500
+ 
+Updated ParamsGlobals for event 03_samp to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  0.26
+POST_DUR_CALC  =  0.6
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  03_samp_260_to_600
+site : 20
+site : 40
+site : 60
+site : 140
+site : 160
+site : 200
+site : 220
+site : 240
+site : 260
+site : 280
+site : 300
+site : 320
+site : 400
+site : 420
+site : 460
+site : 500
+ 
+Updated ParamsGlobals for event 04_go_cue to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  -0.6
+POST_DUR_CALC  =  -0.04
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  04_go_cue_-600_to_-40
+site : 20
+site : 40
+site : 60
+site : 140
+site : 160
+site : 200
+site : 220
+site : 240
+site : 260
+site : 280
+site : 300
+site : 320
+site : 400
+site : 420
+site : 460
+site : 500
+ 
+Updated ParamsGlobals for event 05_first_raise to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  -0.6
+POST_DUR_CALC  =  -0.05
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  05_first_raise_-600_to_-50
+site : 20
+site : 40
+site : 60
+site : 140
+site : 160
+site : 200
+site : 220
+site : 240
+site : 260
+site : 280
+site : 300
+site : 320
+site : 400
+site : 420
+site : 460
+site : 500
+ 
+Updated ParamsGlobals for event 06_on_strokeidx_0 to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  -0.45
+POST_DUR_CALC  =  -0.05
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  06_on_strokeidx_0_-450_to_-50
+site : 20
+site : 40
+site : 60
+site : 140
+site : 160
+site : 200
+site : 220
+site : 240
+site : 260
+site : 280
+site : 300
+site : 320
+site : 400
+site : 420
+site : 460
+site : 500
+ 
+Updated ParamsGlobals for event 06_on_strokeidx_0 to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  -0.05
+POST_DUR_CALC  =  0.35
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  06_on_strokeidx_0_-50_to_350
+site : 20
+site : 40
+site : 60
+site : 140
+site : 160
+site : 200
+site : 220
+site : 240
+site : 260
+site : 280
+site : 300
+site : 320
+site : 400
+site : 420
+site : 460
+site : 500
+ 
+Updated ParamsGlobals for event 08_doneb to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  -0.5
+POST_DUR_CALC  =  0.3
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  08_doneb_-500_to_300
+SKIPPING  08_doneb 1
+SKIPPING  08_doneb 2
+SKIPPING  08_doneb 3
+SKIPPING  08_doneb 4
+SKIPPING  08_doneb 5
+SKIPPING  08_doneb 6
+SKIPPING  08_doneb 7
+SKIPPING  08_doneb 8
+SKIPPING  08_doneb 9
+SKIPPING  08_doneb 10
+SKIPPING  08_doneb 11
+SKIPPING  08_doneb 12
+SKIPPING  08_doneb 13
+SKIPPING  08_doneb 14
+SKIPPING  08_doneb 15
+SKIPPING  08_doneb 16
+SKIPPING  08_doneb 17
+site : 20
+SKIPPING  08_doneb 20
+SKIPPING  08_doneb 22
+SKIPPING  08_doneb 23
+SKIPPING  08_doneb 24
+SKIPPING  08_doneb 25
+SKIPPING  08_doneb 27
+SKIPPING  08_doneb 28
+SKIPPING  08_doneb 29
+SKIPPING  08_doneb 30
+SKIPPING  08_doneb 31
+SKIPPING  08_doneb 32
+SKIPPING  08_doneb 37
+SKIPPING  08_doneb 39
+site : 40
+SKIPPING  08_doneb 40
+SKIPPING  08_doneb 41
+SKIPPING  08_doneb 42
+SKIPPING  08_doneb 43
+SKIPPING  08_doneb 44
+SKIPPING  08_doneb 45
+SKIPPING  08_doneb 47
+SKIPPING  08_doneb 49
+SKIPPING  08_doneb 50
+SKIPPING  08_doneb 51
+SKIPPING  08_doneb 52
+SKIPPING  08_doneb 53
+SKIPPING  08_doneb 55
+SKIPPING  08_doneb 56
+SKIPPING  08_doneb 57
+SKIPPING  08_doneb 58
+SKIPPING  08_doneb 59
+site : 60
+SKIPPING  08_doneb 60
+SKIPPING  08_doneb 61
+SKIPPING  08_doneb 62
+SKIPPING  08_doneb 63
+SKIPPING  08_doneb 65
+SKIPPING  08_doneb 66
+SKIPPING  08_doneb 68
+SKIPPING  08_doneb 69
+SKIPPING  08_doneb 71
+SKIPPING  08_doneb 72
+SKIPPING  08_doneb 74
+SKIPPING  08_doneb 77
+SKIPPING  08_doneb 78
+SKIPPING  08_doneb 84
+SKIPPING  08_doneb 86
+SKIPPING  08_doneb 92
+SKIPPING  08_doneb 94
+SKIPPING  08_doneb 95
+SKIPPING  08_doneb 96
+SKIPPING  08_doneb 97
+SKIPPING  08_doneb 98
+SKIPPING  08_doneb 99
+SKIPPING  08_doneb 101
+SKIPPING  08_doneb 103
+SKIPPING  08_doneb 104
+SKIPPING  08_doneb 106
+SKIPPING  08_doneb 107
+SKIPPING  08_doneb 112
+SKIPPING  08_doneb 114
+SKIPPING  08_doneb 115
+SKIPPING  08_doneb 116
+SKIPPING  08_doneb 117
+SKIPPING  08_doneb 119
+SKIPPING  08_doneb 121
+SKIPPING  08_doneb 122
+SKIPPING  08_doneb 123
+SKIPPING  08_doneb 124
+SKIPPING  08_doneb 126
+SKIPPING  08_doneb 130
+SKIPPING  08_doneb 135
+SKIPPING  08_doneb 136
+SKIPPING  08_doneb 138
+site : 140
+SKIPPING  08_doneb 140
+SKIPPING  08_doneb 142
+SKIPPING  08_doneb 143
+SKIPPING  08_doneb 144
+SKIPPING  08_doneb 146
+SKIPPING  08_doneb 149
+SKIPPING  08_doneb 150
+SKIPPING  08_doneb 154
+SKIPPING  08_doneb 158
+site : 160
+SKIPPING  08_doneb 160
+SKIPPING  08_doneb 161
+SKIPPING  08_doneb 162
+SKIPPING  08_doneb 163
+SKIPPING  08_doneb 164
+SKIPPING  08_doneb 165
+SKIPPING  08_doneb 169
+SKIPPING  08_doneb 170
+SKIPPING  08_doneb 171
+SKIPPING  08_doneb 173
+SKIPPING  08_doneb 174
+SKIPPING  08_doneb 175
+SKIPPING  08_doneb 177
+SKIPPING  08_doneb 179
+SKIPPING  08_doneb 181
+SKIPPING  08_doneb 182
+SKIPPING  08_doneb 184
+SKIPPING  08_doneb 186
+SKIPPING  08_doneb 187
+SKIPPING  08_doneb 188
+SKIPPING  08_doneb 189
+SKIPPING  08_doneb 190
+SKIPPING  08_doneb 191
+SKIPPING  08_doneb 192
+SKIPPING  08_doneb 193
+SKIPPING  08_doneb 194
+SKIPPING  08_doneb 195
+SKIPPING  08_doneb 198
+SKIPPING  08_doneb 199
+site : 200
+SKIPPING  08_doneb 200
+SKIPPING  08_doneb 203
+SKIPPING  08_doneb 204
+SKIPPING  08_doneb 205
+SKIPPING  08_doneb 206
+SKIPPING  08_doneb 207
+SKIPPING  08_doneb 208
+SKIPPING  08_doneb 209
+SKIPPING  08_doneb 210
+SKIPPING  08_doneb 215
+SKIPPING  08_doneb 217
+SKIPPING  08_doneb 219
+site : 220
+SKIPPING  08_doneb 220
+SKIPPING  08_doneb 221
+SKIPPING  08_doneb 223
+SKIPPING  08_doneb 224
+SKIPPING  08_doneb 226
+SKIPPING  08_doneb 227
+SKIPPING  08_doneb 228
+SKIPPING  08_doneb 231
+SKIPPING  08_doneb 233
+SKIPPING  08_doneb 237
+SKIPPING  08_doneb 239
+site : 240
+SKIPPING  08_doneb 240
+SKIPPING  08_doneb 242
+SKIPPING  08_doneb 243
+SKIPPING  08_doneb 244
+SKIPPING  08_doneb 247
+SKIPPING  08_doneb 248
+SKIPPING  08_doneb 249
+SKIPPING  08_doneb 250
+SKIPPING  08_doneb 252
+SKIPPING  08_doneb 253
+SKIPPING  08_doneb 255
+SKIPPING  08_doneb 256
+SKIPPING  08_doneb 257
+SKIPPING  08_doneb 258
+SKIPPING  08_doneb 259
+site : 260
+SKIPPING  08_doneb 260
+SKIPPING  08_doneb 262
+SKIPPING  08_doneb 263
+SKIPPING  08_doneb 264
+SKIPPING  08_doneb 265
+SKIPPING  08_doneb 267
+SKIPPING  08_doneb 269
+SKIPPING  08_doneb 270
+SKIPPING  08_doneb 271
+SKIPPING  08_doneb 272
+SKIPPING  08_doneb 273
+SKIPPING  08_doneb 274
+SKIPPING  08_doneb 275
+SKIPPING  08_doneb 276
+SKIPPING  08_doneb 277
+SKIPPING  08_doneb 278
+SKIPPING  08_doneb 279
+site : 280
+SKIPPING  08_doneb 280
+SKIPPING  08_doneb 281
+SKIPPING  08_doneb 282
+SKIPPING  08_doneb 283
+SKIPPING  08_doneb 285
+SKIPPING  08_doneb 286
+SKIPPING  08_doneb 287
+SKIPPING  08_doneb 288
+SKIPPING  08_doneb 290
+SKIPPING  08_doneb 291
+SKIPPING  08_doneb 294
+SKIPPING  08_doneb 296
+SKIPPING  08_doneb 299
+site : 300
+SKIPPING  08_doneb 300
+SKIPPING  08_doneb 301
+SKIPPING  08_doneb 302
+SKIPPING  08_doneb 303
+SKIPPING  08_doneb 304
+SKIPPING  08_doneb 308
+SKIPPING  08_doneb 310
+SKIPPING  08_doneb 312
+SKIPPING  08_doneb 314
+site : 320
+SKIPPING  08_doneb 320
+SKIPPING  08_doneb 327
+SKIPPING  08_doneb 329
+SKIPPING  08_doneb 331
+SKIPPING  08_doneb 332
+SKIPPING  08_doneb 333
+SKIPPING  08_doneb 338
+SKIPPING  08_doneb 344
+SKIPPING  08_doneb 345
+SKIPPING  08_doneb 346
+SKIPPING  08_doneb 347
+SKIPPING  08_doneb 348
+SKIPPING  08_doneb 349
+SKIPPING  08_doneb 351
+SKIPPING  08_doneb 352
+SKIPPING  08_doneb 353
+SKIPPING  08_doneb 354
+SKIPPING  08_doneb 355
+SKIPPING  08_doneb 356
+SKIPPING  08_doneb 368
+SKIPPING  08_doneb 369
+SKIPPING  08_doneb 371
+SKIPPING  08_doneb 374
+SKIPPING  08_doneb 385
+SKIPPING  08_doneb 386
+SKIPPING  08_doneb 387
+SKIPPING  08_doneb 388
+SKIPPING  08_doneb 389
+SKIPPING  08_doneb 390
+SKIPPING  08_doneb 394
+SKIPPING  08_doneb 395
+SKIPPING  08_doneb 396
+SKIPPING  08_doneb 397
+SKIPPING  08_doneb 398
+site : 400
+SKIPPING  08_doneb 400
+SKIPPING  08_doneb 401
+SKIPPING  08_doneb 402
+SKIPPING  08_doneb 403
+SKIPPING  08_doneb 404
+SKIPPING  08_doneb 405
+SKIPPING  08_doneb 406
+SKIPPING  08_doneb 407
+SKIPPING  08_doneb 408
+SKIPPING  08_doneb 409
+SKIPPING  08_doneb 410
+SKIPPING  08_doneb 412
+SKIPPING  08_doneb 413
+SKIPPING  08_doneb 414
+SKIPPING  08_doneb 415
+SKIPPING  08_doneb 417
+SKIPPING  08_doneb 418
+SKIPPING  08_doneb 419
+site : 420
+SKIPPING  08_doneb 420
+SKIPPING  08_doneb 422
+SKIPPING  08_doneb 423
+SKIPPING  08_doneb 425
+SKIPPING  08_doneb 429
+SKIPPING  08_doneb 430
+SKIPPING  08_doneb 433
+SKIPPING  08_doneb 434
+SKIPPING  08_doneb 435
+SKIPPING  08_doneb 436
+SKIPPING  08_doneb 437
+SKIPPING  08_doneb 439
+SKIPPING  08_doneb 441
+SKIPPING  08_doneb 442
+SKIPPING  08_doneb 443
+SKIPPING  08_doneb 445
+SKIPPING  08_doneb 447
+SKIPPING  08_doneb 449
+SKIPPING  08_doneb 450
+SKIPPING  08_doneb 451
+SKIPPING  08_doneb 452
+SKIPPING  08_doneb 453
+SKIPPING  08_doneb 454
+SKIPPING  08_doneb 455
+SKIPPING  08_doneb 457
+SKIPPING  08_doneb 458
+site : 460
+SKIPPING  08_doneb 460
+SKIPPING  08_doneb 461
+SKIPPING  08_doneb 462
+SKIPPING  08_doneb 463
+SKIPPING  08_doneb 464
+SKIPPING  08_doneb 467
+SKIPPING  08_doneb 468
+SKIPPING  08_doneb 469
+SKIPPING  08_doneb 470
+SKIPPING  08_doneb 471
+SKIPPING  08_doneb 472
+SKIPPING  08_doneb 473
+SKIPPING  08_doneb 474
+SKIPPING  08_doneb 475
+SKIPPING  08_doneb 476
+SKIPPING  08_doneb 477
+SKIPPING  08_doneb 478
+SKIPPING  08_doneb 479
+SKIPPING  08_doneb 481
+SKIPPING  08_doneb 483
+SKIPPING  08_doneb 484
+SKIPPING  08_doneb 485
+SKIPPING  08_doneb 486
+SKIPPING  08_doneb 487
+SKIPPING  08_doneb 489
+SKIPPING  08_doneb 490
+SKIPPING  08_doneb 491
+SKIPPING  08_doneb 492
+SKIPPING  08_doneb 493
+SKIPPING  08_doneb 494
+SKIPPING  08_doneb 495
+SKIPPING  08_doneb 496
+SKIPPING  08_doneb 497
+SKIPPING  08_doneb 498
+SKIPPING  08_doneb 499
+site : 500
+SKIPPING  08_doneb 500
+SKIPPING  08_doneb 501
+SKIPPING  08_doneb 502
+SKIPPING  08_doneb 503
+SKIPPING  08_doneb 504
+SKIPPING  08_doneb 505
+SKIPPING  08_doneb 506
+SKIPPING  08_doneb 508
+SKIPPING  08_doneb 509
+SKIPPING  08_doneb 510
+SKIPPING  08_doneb 511
+ 
+Updated ParamsGlobals for event 09_post to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  0.05
+POST_DUR_CALC  =  0.6
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  09_post_50_to_600
+site : 20
+site : 40
+site : 60
+site : 140
+site : 160
+site : 200
+site : 220
+site : 240
+site : 260
+site : 280
+site : 300
+site : 320
+site : 400
+site : 420
+site : 460
+site : 500
+ 
+Updated ParamsGlobals for event 10_reward_all to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  0.05
+POST_DUR_CALC  =  0.6
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  10_reward_all_50_to_600
+site : 20
+site : 40
+site : 60
+site : 140
+site : 160
+site : 200
+site : 220
+site : 240
+site : 260
+site : 280
+site : 300
+site : 320
+site : 400
+site : 420
+site : 460
+site : 500
+-- Len of FINAL df_var, and events that exist in it:
+81340
+['03_samp_-600_to_-40' '03_samp_40_to_240' '03_samp_260_to_600'
+ '04_go_cue_-600_to_-40' '05_first_raise_-600_to_-50'
+ '06_on_strokeidx_0_-450_to_-50' '06_on_strokeidx_0_-50_to_350'
+ '09_post_50_to_600' '10_reward_all_50_to_600']
+SAving:  /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/df_fr_levels.pkl
+SAving:  /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/list_eventwindow_event.pkl
+Plotting...  /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/fr_levels
+/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/modulation
+** Plotting summarystats
+Saving at: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/modulation
+Found this var:  seqc_0_loc
+Found this var_others:  ('gridsize', 'seqc_0_shape')
+Aggregating dataframe over all othervars ...
+Plotting ...
+Plotting for specific single other var: gridsize...
+Plotting for specific single other var: seqc_0_shape...
+** Plotting heatmaps
+/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/modulation_heatmap
+Saving to:  /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/modulation_heatmap/brainschem-event-val-modulation_subgroups.pdf
+Saving to:  /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/modulation_heatmap/brainschem-event-val-modulation_subgroups-NOMOTOR.pdf
+** Plotting example strokes
+Loading:  /gorilla1/analyses/recordings/main/anova/bytrial/Pancho-220715-sess_0/DfScalar.pkl
+Loading:  /gorilla1/analyses/recordings/main/anova/bytrial/Pancho-220715-sess_0/fr_sm_times.pkl
+Loading:  /gorilla1/analyses/recordings/main/anova/bytrial/Pancho-220715-sess_0/DS.pkl
+Loading:  /gorilla1/analyses/recordings/main/anova/bytrial/Pancho-220715-sess_0/Params.pkl
+Loading:  /gorilla1/analyses/recordings/main/anova/bytrial/Pancho-220715-sess_0/ParamsGlobals.pkl
+Loading:  /gorilla1/analyses/recordings/main/anova/bytrial/Pancho-220715-sess_0/Sites.pkl
+Loading:  /gorilla1/analyses/recordings/main/anova/bytrial/Pancho-220715-sess_0/Trials.pkl
+Plotting ..  ('rig3_3x3_small', 'V-2-4-0')
+Plotting ..  ('rig3_3x3_small', 'V-2-2-0')
+Plotting ..  ('rig3_3x3_small', 'squiggle3-3-2-1')
+Plotting ..  ('rig3_3x3_small', 'squiggle3-3-1-0')
+Plotting ..  ('rig3_3x3_small', 'circle-6-1-0')
+Plotting ..  ('rig3_3x3_small', 'Lcentered-4-4-0')
+Plotting ..  ('rig3_3x3_small', 'Lcentered-4-3-0')
+** Making plots for this event_window: 
+03_samp_-600_to_-40
+Saving this event, 03_samp_-600_to_-40, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/EACH_EVENT/03_samp_-600_to_-40
+/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/EACH_EVENT/03_samp_-600_to_-40/modulation_v2
+** Plotting summarystats
+** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/rasters/03_samp
+** Making plots for this event_window: 
+03_samp_260_to_600
+Saving this event, 03_samp_260_to_600, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/EACH_EVENT/03_samp_260_to_600
+/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/EACH_EVENT/03_samp_260_to_600/modulation_v2
+** Plotting summarystats
+** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/rasters/03_samp
+** Making plots for this event_window: 
+03_samp_40_to_240
+Saving this event, 03_samp_40_to_240, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/EACH_EVENT/03_samp_40_to_240
+/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/EACH_EVENT/03_samp_40_to_240/modulation_v2
+** Plotting summarystats
+** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/rasters/03_samp
+** Making plots for this event_window: 
+03_samp_50_to_600
+Saving this event, 03_samp_50_to_600, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/EACH_EVENT/03_samp_50_to_600
+/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/EACH_EVENT/03_samp_50_to_600/modulation_v2
+** Plotting summarystats
+** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/rasters/03_samp
+** Making plots for this event_window: 
+04_go_cue_-600_to_-40
+Saving this event, 04_go_cue_-600_to_-40, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/EACH_EVENT/04_go_cue_-600_to_-40
+/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/EACH_EVENT/04_go_cue_-600_to_-40/modulation_v2
+** Plotting summarystats
+** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/rasters/04_go_cue
+** Making plots for this event_window: 
+05_first_raise_-600_to_-50
+Saving this event, 05_first_raise_-600_to_-50, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/EACH_EVENT/05_first_raise_-600_to_-50
+/gorilla1/code/pythonlib/pythonlib/tools/snstools.py:24: UserWarning: FixedFormatter should only be used together with FixedLocator
+  ax.set_xticklabels(list_text,rotation=rotation, horizontalalignment="right")
+/gorilla1/code/pythonlib/pythonlib/tools/snstools.py:24: UserWarning: FixedFormatter should only be used together with FixedLocator
+  ax.set_xticklabels(list_text,rotation=rotation, horizontalalignment="right")
+/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/EACH_EVENT/05_first_raise_-600_to_-50/modulation_v2
+** Plotting summarystats
+** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/rasters/05_first_raise
+** Making plots for this event_window: 
+06_on_strokeidx_0_-250_to_350
+Saving this event, 06_on_strokeidx_0_-250_to_350, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/EACH_EVENT/06_on_strokeidx_0_-250_to_350
+/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/EACH_EVENT/06_on_strokeidx_0_-250_to_350/modulation_v2
+** Plotting summarystats
+** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/rasters/06_on_strokeidx_0
+** Making plots for this event_window: 
+06_on_strokeidx_0_-450_to_-50
+Saving this event, 06_on_strokeidx_0_-450_to_-50, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/EACH_EVENT/06_on_strokeidx_0_-450_to_-50
+/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/EACH_EVENT/06_on_strokeidx_0_-450_to_-50/modulation_v2
+** Plotting summarystats
+** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/rasters/06_on_strokeidx_0
+** Making plots for this event_window: 
+06_on_strokeidx_0_-50_to_350
+Saving this event, 06_on_strokeidx_0_-50_to_350, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/EACH_EVENT/06_on_strokeidx_0_-50_to_350
+/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/EACH_EVENT/06_on_strokeidx_0_-50_to_350/modulation_v2
+** Plotting summarystats
+** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/rasters/06_on_strokeidx_0
+** Making plots for this event_window: 
+09_post_50_to_600
+Saving this event, 09_post_50_to_600, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/EACH_EVENT/09_post_50_to_600
+/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/EACH_EVENT/09_post_50_to_600/modulation_v2
+** Plotting summarystats
+** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/rasters/09_post
+** Making plots for this event_window: 
+10_reward_all_50_to_600
+Saving this event, 10_reward_all_50_to_600, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/EACH_EVENT/10_reward_all_50_to_600
+/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_1way_mshuff/EACH_EVENT/10_reward_all_50_to_600/modulation_v2
+** Plotting summarystats
+** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/rasters/10_reward_all
 Got these LIST_VAR and LIST_VARS_CONJUNCTION:
 ['gridsize', 'seqc_0_shape', 'seqc_0_loc']
 [['seqc_0_loc', 'seqc_0_shape'], ['seqc_0_loc', 'gridsize'], ['gridsize', 'seqc_0_shape']]
@@ -4145,13 +6116,13 @@ Running D.behclass_tokens_extract_datsegs
 600
 Appended columns gridsize!
 * REEXTRACTING THESE VARS to SP.DfScalar:
-['seqc_0_loc', 'seqc_0_shape', 'gridsize']
-Updating this column of SP.DfScalar with Dataset beh:
-seqc_0_loc
+['seqc_0_shape', 'gridsize', 'seqc_0_loc']
 Updating this column of SP.DfScalar with Dataset beh:
 seqc_0_shape
 Updating this column of SP.DfScalar with Dataset beh:
 gridsize
+Updating this column of SP.DfScalar with Dataset beh:
+seqc_0_loc
 Starting length of D.Dat: 626
 self.Dat modified!!
 Len, after remove aborts: 623
@@ -4244,11 +6215,515 @@ var -- vars_others:  gridsize  ---  ['seqc_0_shape']
 var -- vars_others:  gridsize  ---  ['seqc_0_loc']
 var -- vars_others:  gridsize  ---  ['seqc_0_shape', 'seqc_0_loc']
 /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/snippets_check_conjunctions_variables/ncounts-gridsize-vs-varothers-levothers-levvar.txt
-TODO: do fr scalar computation only once! takes too much time.
-Searching for already-done df_var at this path:
-/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/df_var.pkl
-df_var doesnt exist...! Recomputing...
+Searching for already-done df_var at this path: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/df_var.pkl
+RELOADED df_var!!!
+Events already done: (will skip these when recomputing)...
+['03_samp_-600_to_-40', '03_samp_260_to_600', '03_samp_40_to_240', '04_go_cue_-600_to_-40', '05_first_raise_-600_to_-50', '06_on_strokeidx_0_-450_to_-50', '06_on_strokeidx_0_-50_to_350', '09_post_50_to_600', '10_reward_all_50_to_600']
 COMPUTING df_var!!!
+Running grouping_print_n_samples...
+DOing these! ...
+list_events ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+WILL SKIP THESE EVENTS...
+['03_samp_-600_to_-40', '03_samp_260_to_600', '03_samp_40_to_240', '04_go_cue_-600_to_-40', '05_first_raise_-600_to_-50', '06_on_strokeidx_0_-450_to_-50', '06_on_strokeidx_0_-50_to_350', '09_post_50_to_600', '10_reward_all_50_to_600']
+GOOD!, enough data, max n per grouping conjunction (nmin, nmax)  0 24
+ 
+Updated ParamsGlobals for event 03_samp to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  -0.6
+POST_DUR_CALC  =  -0.04
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  03_samp_-600_to_-40
+!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
+03_samp_-600_to_-40
+ 
+Updated ParamsGlobals for event 03_samp to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  0.04
+POST_DUR_CALC  =  0.24
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  03_samp_40_to_240
+!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
+03_samp_40_to_240
+ 
+Updated ParamsGlobals for event 03_samp to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  0.26
+POST_DUR_CALC  =  0.6
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  03_samp_260_to_600
+!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
+03_samp_260_to_600
+ 
+Updated ParamsGlobals for event 04_go_cue to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  -0.6
+POST_DUR_CALC  =  -0.04
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  04_go_cue_-600_to_-40
+!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
+04_go_cue_-600_to_-40
+ 
+Updated ParamsGlobals for event 05_first_raise to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  -0.6
+POST_DUR_CALC  =  -0.05
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  05_first_raise_-600_to_-50
+!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
+05_first_raise_-600_to_-50
+ 
+Updated ParamsGlobals for event 06_on_strokeidx_0 to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  -0.45
+POST_DUR_CALC  =  -0.05
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  06_on_strokeidx_0_-450_to_-50
+!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
+06_on_strokeidx_0_-450_to_-50
+ 
+Updated ParamsGlobals for event 06_on_strokeidx_0 to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  -0.05
+POST_DUR_CALC  =  0.35
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  06_on_strokeidx_0_-50_to_350
+!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
+06_on_strokeidx_0_-50_to_350
+ 
+Updated ParamsGlobals for event 08_doneb to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  -0.5
+POST_DUR_CALC  =  0.3
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  08_doneb_-500_to_300
+SKIPPING  08_doneb 1
+SKIPPING  08_doneb 2
+SKIPPING  08_doneb 3
+SKIPPING  08_doneb 4
+SKIPPING  08_doneb 5
+SKIPPING  08_doneb 6
+SKIPPING  08_doneb 7
+SKIPPING  08_doneb 8
+SKIPPING  08_doneb 9
+SKIPPING  08_doneb 10
+SKIPPING  08_doneb 11
+SKIPPING  08_doneb 12
+SKIPPING  08_doneb 13
+SKIPPING  08_doneb 14
+SKIPPING  08_doneb 15
+SKIPPING  08_doneb 16
+SKIPPING  08_doneb 17
+site : 20
+SKIPPING  08_doneb 20
+SKIPPING  08_doneb 22
+SKIPPING  08_doneb 23
+SKIPPING  08_doneb 24
+SKIPPING  08_doneb 25
+SKIPPING  08_doneb 27
+SKIPPING  08_doneb 28
+SKIPPING  08_doneb 29
+SKIPPING  08_doneb 30
+SKIPPING  08_doneb 31
+SKIPPING  08_doneb 32
+SKIPPING  08_doneb 37
+SKIPPING  08_doneb 39
+site : 40
+SKIPPING  08_doneb 40
+SKIPPING  08_doneb 41
+SKIPPING  08_doneb 42
+SKIPPING  08_doneb 43
+SKIPPING  08_doneb 44
+SKIPPING  08_doneb 45
+SKIPPING  08_doneb 47
+SKIPPING  08_doneb 49
+SKIPPING  08_doneb 50
+SKIPPING  08_doneb 51
+SKIPPING  08_doneb 52
+SKIPPING  08_doneb 53
+SKIPPING  08_doneb 55
+SKIPPING  08_doneb 56
+SKIPPING  08_doneb 57
+SKIPPING  08_doneb 58
+SKIPPING  08_doneb 59
+site : 60
+SKIPPING  08_doneb 60
+SKIPPING  08_doneb 61
+SKIPPING  08_doneb 62
+SKIPPING  08_doneb 63
+SKIPPING  08_doneb 65
+SKIPPING  08_doneb 66
+SKIPPING  08_doneb 68
+SKIPPING  08_doneb 69
+SKIPPING  08_doneb 71
+SKIPPING  08_doneb 72
+SKIPPING  08_doneb 74
+SKIPPING  08_doneb 77
+SKIPPING  08_doneb 78
+SKIPPING  08_doneb 84
+SKIPPING  08_doneb 86
+SKIPPING  08_doneb 92
+SKIPPING  08_doneb 94
+SKIPPING  08_doneb 95
+SKIPPING  08_doneb 96
+SKIPPING  08_doneb 97
+SKIPPING  08_doneb 98
+SKIPPING  08_doneb 99
+SKIPPING  08_doneb 101
+SKIPPING  08_doneb 103
+SKIPPING  08_doneb 104
+SKIPPING  08_doneb 106
+SKIPPING  08_doneb 107
+SKIPPING  08_doneb 112
+SKIPPING  08_doneb 114
+SKIPPING  08_doneb 115
+SKIPPING  08_doneb 116
+SKIPPING  08_doneb 117
+SKIPPING  08_doneb 119
+SKIPPING  08_doneb 121
+SKIPPING  08_doneb 122
+SKIPPING  08_doneb 123
+SKIPPING  08_doneb 124
+SKIPPING  08_doneb 126
+SKIPPING  08_doneb 130
+SKIPPING  08_doneb 135
+SKIPPING  08_doneb 136
+SKIPPING  08_doneb 138
+site : 140
+SKIPPING  08_doneb 140
+SKIPPING  08_doneb 142
+SKIPPING  08_doneb 143
+SKIPPING  08_doneb 144
+SKIPPING  08_doneb 146
+SKIPPING  08_doneb 149
+SKIPPING  08_doneb 150
+SKIPPING  08_doneb 154
+SKIPPING  08_doneb 158
+site : 160
+SKIPPING  08_doneb 160
+SKIPPING  08_doneb 161
+SKIPPING  08_doneb 162
+SKIPPING  08_doneb 163
+SKIPPING  08_doneb 164
+SKIPPING  08_doneb 165
+SKIPPING  08_doneb 169
+SKIPPING  08_doneb 170
+SKIPPING  08_doneb 171
+SKIPPING  08_doneb 173
+SKIPPING  08_doneb 174
+SKIPPING  08_doneb 175
+SKIPPING  08_doneb 177
+SKIPPING  08_doneb 179
+SKIPPING  08_doneb 181
+SKIPPING  08_doneb 182
+SKIPPING  08_doneb 184
+SKIPPING  08_doneb 186
+SKIPPING  08_doneb 187
+SKIPPING  08_doneb 188
+SKIPPING  08_doneb 189
+SKIPPING  08_doneb 190
+SKIPPING  08_doneb 191
+SKIPPING  08_doneb 192
+SKIPPING  08_doneb 193
+SKIPPING  08_doneb 194
+SKIPPING  08_doneb 195
+SKIPPING  08_doneb 198
+SKIPPING  08_doneb 199
+site : 200
+SKIPPING  08_doneb 200
+SKIPPING  08_doneb 203
+SKIPPING  08_doneb 204
+SKIPPING  08_doneb 205
+SKIPPING  08_doneb 206
+SKIPPING  08_doneb 207
+SKIPPING  08_doneb 208
+SKIPPING  08_doneb 209
+SKIPPING  08_doneb 210
+SKIPPING  08_doneb 215
+SKIPPING  08_doneb 217
+SKIPPING  08_doneb 219
+site : 220
+SKIPPING  08_doneb 220
+SKIPPING  08_doneb 221
+SKIPPING  08_doneb 223
+SKIPPING  08_doneb 224
+SKIPPING  08_doneb 226
+SKIPPING  08_doneb 227
+SKIPPING  08_doneb 228
+SKIPPING  08_doneb 231
+SKIPPING  08_doneb 233
+SKIPPING  08_doneb 237
+SKIPPING  08_doneb 239
+site : 240
+SKIPPING  08_doneb 240
+SKIPPING  08_doneb 242
+SKIPPING  08_doneb 243
+SKIPPING  08_doneb 244
+SKIPPING  08_doneb 247
+SKIPPING  08_doneb 248
+SKIPPING  08_doneb 249
+SKIPPING  08_doneb 250
+SKIPPING  08_doneb 252
+SKIPPING  08_doneb 253
+SKIPPING  08_doneb 255
+SKIPPING  08_doneb 256
+SKIPPING  08_doneb 257
+SKIPPING  08_doneb 258
+SKIPPING  08_doneb 259
+site : 260
+SKIPPING  08_doneb 260
+SKIPPING  08_doneb 262
+SKIPPING  08_doneb 263
+SKIPPING  08_doneb 264
+SKIPPING  08_doneb 265
+SKIPPING  08_doneb 267
+SKIPPING  08_doneb 269
+SKIPPING  08_doneb 270
+SKIPPING  08_doneb 271
+SKIPPING  08_doneb 272
+SKIPPING  08_doneb 273
+SKIPPING  08_doneb 274
+SKIPPING  08_doneb 275
+SKIPPING  08_doneb 276
+SKIPPING  08_doneb 277
+SKIPPING  08_doneb 278
+SKIPPING  08_doneb 279
+site : 280
+SKIPPING  08_doneb 280
+SKIPPING  08_doneb 281
+SKIPPING  08_doneb 282
+SKIPPING  08_doneb 283
+SKIPPING  08_doneb 285
+SKIPPING  08_doneb 286
+SKIPPING  08_doneb 287
+SKIPPING  08_doneb 288
+SKIPPING  08_doneb 290
+SKIPPING  08_doneb 291
+SKIPPING  08_doneb 294
+SKIPPING  08_doneb 296
+SKIPPING  08_doneb 299
+site : 300
+SKIPPING  08_doneb 300
+SKIPPING  08_doneb 301
+SKIPPING  08_doneb 302
+SKIPPING  08_doneb 303
+SKIPPING  08_doneb 304
+SKIPPING  08_doneb 308
+SKIPPING  08_doneb 310
+SKIPPING  08_doneb 312
+SKIPPING  08_doneb 314
+site : 320
+SKIPPING  08_doneb 320
+SKIPPING  08_doneb 327
+SKIPPING  08_doneb 329
+SKIPPING  08_doneb 331
+SKIPPING  08_doneb 332
+SKIPPING  08_doneb 333
+SKIPPING  08_doneb 338
+SKIPPING  08_doneb 344
+SKIPPING  08_doneb 345
+SKIPPING  08_doneb 346
+SKIPPING  08_doneb 347
+SKIPPING  08_doneb 348
+SKIPPING  08_doneb 349
+SKIPPING  08_doneb 351
+SKIPPING  08_doneb 352
+SKIPPING  08_doneb 353
+SKIPPING  08_doneb 354
+SKIPPING  08_doneb 355
+SKIPPING  08_doneb 356
+SKIPPING  08_doneb 368
+SKIPPING  08_doneb 369
+SKIPPING  08_doneb 371
+SKIPPING  08_doneb 374
+SKIPPING  08_doneb 385
+SKIPPING  08_doneb 386
+SKIPPING  08_doneb 387
+SKIPPING  08_doneb 388
+SKIPPING  08_doneb 389
+SKIPPING  08_doneb 390
+SKIPPING  08_doneb 394
+SKIPPING  08_doneb 395
+SKIPPING  08_doneb 396
+SKIPPING  08_doneb 397
+SKIPPING  08_doneb 398
+site : 400
+SKIPPING  08_doneb 400
+SKIPPING  08_doneb 401
+SKIPPING  08_doneb 402
+SKIPPING  08_doneb 403
+SKIPPING  08_doneb 404
+SKIPPING  08_doneb 405
+SKIPPING  08_doneb 406
+SKIPPING  08_doneb 407
+SKIPPING  08_doneb 408
+SKIPPING  08_doneb 409
+SKIPPING  08_doneb 410
+SKIPPING  08_doneb 412
+SKIPPING  08_doneb 413
+SKIPPING  08_doneb 414
+SKIPPING  08_doneb 415
+SKIPPING  08_doneb 417
+SKIPPING  08_doneb 418
+SKIPPING  08_doneb 419
+site : 420
+SKIPPING  08_doneb 420
+SKIPPING  08_doneb 422
+SKIPPING  08_doneb 423
+SKIPPING  08_doneb 425
+SKIPPING  08_doneb 429
+SKIPPING  08_doneb 430
+SKIPPING  08_doneb 433
+SKIPPING  08_doneb 434
+SKIPPING  08_doneb 435
+SKIPPING  08_doneb 436
+SKIPPING  08_doneb 437
+SKIPPING  08_doneb 439
+SKIPPING  08_doneb 441
+SKIPPING  08_doneb 442
+SKIPPING  08_doneb 443
+SKIPPING  08_doneb 445
+SKIPPING  08_doneb 447
+SKIPPING  08_doneb 449
+SKIPPING  08_doneb 450
+SKIPPING  08_doneb 451
+SKIPPING  08_doneb 452
+SKIPPING  08_doneb 453
+SKIPPING  08_doneb 454
+SKIPPING  08_doneb 455
+SKIPPING  08_doneb 457
+SKIPPING  08_doneb 458
+site : 460
+SKIPPING  08_doneb 460
+SKIPPING  08_doneb 461
+SKIPPING  08_doneb 462
+SKIPPING  08_doneb 463
+SKIPPING  08_doneb 464
+SKIPPING  08_doneb 467
+SKIPPING  08_doneb 468
+SKIPPING  08_doneb 469
+SKIPPING  08_doneb 470
+SKIPPING  08_doneb 471
+SKIPPING  08_doneb 472
+SKIPPING  08_doneb 473
+SKIPPING  08_doneb 474
+SKIPPING  08_doneb 475
+SKIPPING  08_doneb 476
+SKIPPING  08_doneb 477
+SKIPPING  08_doneb 478
+SKIPPING  08_doneb 479
+SKIPPING  08_doneb 481
+SKIPPING  08_doneb 483
+SKIPPING  08_doneb 484
+SKIPPING  08_doneb 485
+SKIPPING  08_doneb 486
+SKIPPING  08_doneb 487
+SKIPPING  08_doneb 489
+SKIPPING  08_doneb 490
+SKIPPING  08_doneb 491
+SKIPPING  08_doneb 492
+SKIPPING  08_doneb 493
+SKIPPING  08_doneb 494
+SKIPPING  08_doneb 495
+SKIPPING  08_doneb 496
+SKIPPING  08_doneb 497
+SKIPPING  08_doneb 498
+SKIPPING  08_doneb 499
+site : 500
+SKIPPING  08_doneb 500
+SKIPPING  08_doneb 501
+SKIPPING  08_doneb 502
+SKIPPING  08_doneb 503
+SKIPPING  08_doneb 504
+SKIPPING  08_doneb 505
+SKIPPING  08_doneb 506
+SKIPPING  08_doneb 508
+SKIPPING  08_doneb 509
+SKIPPING  08_doneb 510
+SKIPPING  08_doneb 511
+ 
+Updated ParamsGlobals for event 09_post to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  0.05
+POST_DUR_CALC  =  0.6
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  09_post_50_to_600
+!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
+09_post_50_to_600
+ 
+Updated ParamsGlobals for event 10_reward_all to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  0.05
+POST_DUR_CALC  =  0.6
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  10_reward_all_50_to_600
+!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
+10_reward_all_50_to_600
+SKIPPING, extracted df_var is empty. Probably you have not enough data for this conjunctions, try setting DEBUG_CONJUNCTIONS=True and reading the low-level data it prints.
+--NotEnoughDataException [modulationgood_compute_wrapper] during:  seqc_0_shape ['seqc_0_loc', 'gridsize'] r2_maxtime_2way_mshuff
+This is ok, since you already have pre-saved df loaded... continuing with loaded...
+-- Len of FINAL df_var, and events that exist in it:
+8856
+['03_samp_-600_to_-40' '03_samp_40_to_240' '03_samp_260_to_600'
+ '04_go_cue_-600_to_-40' '05_first_raise_-600_to_-50'
+ '06_on_strokeidx_0_-450_to_-50' '06_on_strokeidx_0_-50_to_350'
+ '09_post_50_to_600' '10_reward_all_50_to_600']
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/df_fr_levels.pkl to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/OLD_PLOTS-moved_on_230602_135154/df_fr_levels.pkl
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/list_eventwindow_event.pkl to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/OLD_PLOTS-moved_on_230602_135154/list_eventwindow_event.pkl
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/Params.yaml to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/OLD_PLOTS-moved_on_230602_135154/Params.yaml
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/snippets_check_conjunctions_variables to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/OLD_PLOTS-moved_on_230602_135154/snippets_check_conjunctions_variables
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/OLD_PLOTS-moved_on_230602_010940 to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/OLD_PLOTS-moved_on_230602_135154/OLD_PLOTS-moved_on_230602_010940
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/ParamsGlobals.yaml to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/OLD_PLOTS-moved_on_230602_135154/ParamsGlobals.yaml
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/sites_pruned_by_fr_hist.pdf to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/OLD_PLOTS-moved_on_230602_135154/sites_pruned_by_fr_hist.pdf
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/params_to_save.yaml to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/OLD_PLOTS-moved_on_230602_135154/params_to_save.yaml
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/df_var.pkl to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/OLD_PLOTS-moved_on_230602_135154/df_var.pkl
+All files moved... ready to remake plots!!
+SAving:  /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/df_var.pkl
+SAving:  /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/list_eventwindow_event.pkl
+Searching for already-done df_fr_levels at this path: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/df_fr_levels.pkl
+... path does not exist
+COMPUTING df_fr_levels!!!
 Running grouping_print_n_samples...
 DOing these! ...
 list_events ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
@@ -4855,8 +7330,15 @@ site : 400
 site : 420
 site : 460
 site : 500
-SAving:  /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/df_var.pkl
+-- Len of FINAL df_var, and events that exist in it:
+81340
+['03_samp_-600_to_-40' '03_samp_40_to_240' '03_samp_260_to_600'
+ '04_go_cue_-600_to_-40' '05_first_raise_-600_to_-50'
+ '06_on_strokeidx_0_-450_to_-50' '06_on_strokeidx_0_-50_to_350'
+ '09_post_50_to_600' '10_reward_all_50_to_600']
+SAving:  /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/df_fr_levels.pkl
 SAving:  /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/list_eventwindow_event.pkl
+Plotting...  /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/fr_levels
 /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/modulation
 ** Plotting summarystats
 Saving at: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/modulation
@@ -4893,34 +7375,22 @@ Loading:  /gorilla1/analyses/recordings/main/anova/bytrial/Pancho-220715-sess_0/
 Loading:  /gorilla1/analyses/recordings/main/anova/bytrial/Pancho-220715-sess_0/ParamsGlobals.pkl
 Loading:  /gorilla1/analyses/recordings/main/anova/bytrial/Pancho-220715-sess_0/Sites.pkl
 Loading:  /gorilla1/analyses/recordings/main/anova/bytrial/Pancho-220715-sess_0/Trials.pkl
-Plotting ..  ((0, 1), 'rig3_3x3_small')
-Plotting ..  ((0, 0), 'rig3_3x3_small')
 Plotting ..  ((1, 1), 'rig3_3x3_small')
 Plotting ..  ((1, 0), 'rig3_3x3_small')
-** Making plots for this event_window: 
-09_post_50_to_600
-Saving this event, 09_post_50_to_600, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/EACH_EVENT/09_post_50_to_600
-** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/rasters/09_post
-** Making plots for this event_window: 
-10_reward_all_50_to_600
-Saving this event, 10_reward_all_50_to_600, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/EACH_EVENT/10_reward_all_50_to_600
-** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/rasters/10_reward_all
-** Making plots for this event_window: 
-03_samp_260_to_600
-Saving this event, 03_samp_260_to_600, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/EACH_EVENT/03_samp_260_to_600
-** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/rasters/03_samp
+Plotting ..  ((0, 1), 'rig3_3x3_small')
+Plotting ..  ((0, 0), 'rig3_3x3_small')
 ** Making plots for this event_window: 
 03_samp_-600_to_-40
 Saving this event, 03_samp_-600_to_-40, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/EACH_EVENT/03_samp_-600_to_-40
 ** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/rasters/03_samp
 ** Making plots for this event_window: 
-06_on_strokeidx_0_-450_to_-50
-Saving this event, 06_on_strokeidx_0_-450_to_-50, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/EACH_EVENT/06_on_strokeidx_0_-450_to_-50
-** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/rasters/06_on_strokeidx_0
+03_samp_260_to_600
+Saving this event, 03_samp_260_to_600, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/EACH_EVENT/03_samp_260_to_600
+** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/rasters/03_samp
 ** Making plots for this event_window: 
-06_on_strokeidx_0_-50_to_350
-Saving this event, 06_on_strokeidx_0_-50_to_350, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/EACH_EVENT/06_on_strokeidx_0_-50_to_350
-** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/rasters/06_on_strokeidx_0
+03_samp_40_to_240
+Saving this event, 03_samp_40_to_240, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/EACH_EVENT/03_samp_40_to_240
+** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/rasters/03_samp
 ** Making plots for this event_window: 
 04_go_cue_-600_to_-40
 Saving this event, 04_go_cue_-600_to_-40, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/EACH_EVENT/04_go_cue_-600_to_-40
@@ -4930,9 +7400,21 @@ Saving this event, 04_go_cue_-600_to_-40, to /gorilla1/analyses/recordings/main/
 Saving this event, 05_first_raise_-600_to_-50, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/EACH_EVENT/05_first_raise_-600_to_-50
 ** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/rasters/05_first_raise
 ** Making plots for this event_window: 
-03_samp_40_to_240
-Saving this event, 03_samp_40_to_240, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/EACH_EVENT/03_samp_40_to_240
-** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/rasters/03_samp
+06_on_strokeidx_0_-450_to_-50
+Saving this event, 06_on_strokeidx_0_-450_to_-50, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/EACH_EVENT/06_on_strokeidx_0_-450_to_-50
+** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/rasters/06_on_strokeidx_0
+** Making plots for this event_window: 
+06_on_strokeidx_0_-50_to_350
+Saving this event, 06_on_strokeidx_0_-50_to_350, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/EACH_EVENT/06_on_strokeidx_0_-50_to_350
+** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/rasters/06_on_strokeidx_0
+** Making plots for this event_window: 
+09_post_50_to_600
+Saving this event, 09_post_50_to_600, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/EACH_EVENT/09_post_50_to_600
+** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/rasters/09_post
+** Making plots for this event_window: 
+10_reward_all_50_to_600
+Saving this event, 10_reward_all_50_to_600, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/SV_r2_maxtime_2way_mshuff/EACH_EVENT/10_reward_all_50_to_600
+** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_shape-OV_seqc_0_loc_gridsize/rasters/10_reward_all
  !!! RUNNING modulationgood_compute_plot_ALL for var and vars_conjuction:
 seqc_0_loc
 ['gridsize', 'seqc_0_shape']
@@ -4966,11 +7448,523 @@ var -- vars_others:  seqc_0_shape  ---  ['seqc_0_loc']
 var -- vars_others:  seqc_0_shape  ---  ['gridsize']
 var -- vars_others:  seqc_0_shape  ---  ['seqc_0_loc', 'gridsize']
 /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/snippets_check_conjunctions_variables/ncounts-seqc_0_shape-vs-varothers-levothers-levvar.txt
-TODO: do fr scalar computation only once! takes too much time.
-Searching for already-done df_var at this path:
-/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/df_var.pkl
-df_var doesnt exist...! Recomputing...
+Searching for already-done df_var at this path: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/df_var.pkl
+RELOADED df_var!!!
+Events already done: (will skip these when recomputing)...
+['03_samp_-600_to_-40', '03_samp_260_to_600', '03_samp_40_to_240', '04_go_cue_-600_to_-40', '05_first_raise_-600_to_-50', '06_on_strokeidx_0_-450_to_-50', '06_on_strokeidx_0_-50_to_350', '09_post_50_to_600', '10_reward_all_50_to_600']
 COMPUTING df_var!!!
+Running grouping_print_n_samples...
+DOing these! ...
+list_events ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+WILL SKIP THESE EVENTS...
+['03_samp_-600_to_-40', '03_samp_260_to_600', '03_samp_40_to_240', '04_go_cue_-600_to_-40', '05_first_raise_-600_to_-50', '06_on_strokeidx_0_-450_to_-50', '06_on_strokeidx_0_-50_to_350', '09_post_50_to_600', '10_reward_all_50_to_600']
+GOOD!, enough data, max n per grouping conjunction (nmin, nmax)  0 24
+ 
+Updated ParamsGlobals for event 03_samp to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  -0.6
+POST_DUR_CALC  =  -0.04
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  03_samp_-600_to_-40
+!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
+03_samp_-600_to_-40
+ 
+Updated ParamsGlobals for event 03_samp to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  0.04
+POST_DUR_CALC  =  0.24
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  03_samp_40_to_240
+!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
+03_samp_40_to_240
+ 
+Updated ParamsGlobals for event 03_samp to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  0.26
+POST_DUR_CALC  =  0.6
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  03_samp_260_to_600
+!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
+03_samp_260_to_600
+ 
+Updated ParamsGlobals for event 04_go_cue to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  -0.6
+POST_DUR_CALC  =  -0.04
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  04_go_cue_-600_to_-40
+!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
+04_go_cue_-600_to_-40
+ 
+Updated ParamsGlobals for event 05_first_raise to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  -0.6
+POST_DUR_CALC  =  -0.05
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  05_first_raise_-600_to_-50
+!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
+05_first_raise_-600_to_-50
+ 
+Updated ParamsGlobals for event 06_on_strokeidx_0 to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  -0.45
+POST_DUR_CALC  =  -0.05
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  06_on_strokeidx_0_-450_to_-50
+!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
+06_on_strokeidx_0_-450_to_-50
+ 
+Updated ParamsGlobals for event 06_on_strokeidx_0 to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  -0.05
+POST_DUR_CALC  =  0.35
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  06_on_strokeidx_0_-50_to_350
+!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
+06_on_strokeidx_0_-50_to_350
+ 
+Updated ParamsGlobals for event 08_doneb to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  -0.5
+POST_DUR_CALC  =  0.3
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  08_doneb_-500_to_300
+SKIPPING  08_doneb 1
+SKIPPING  08_doneb 2
+SKIPPING  08_doneb 3
+SKIPPING  08_doneb 4
+SKIPPING  08_doneb 5
+SKIPPING  08_doneb 6
+SKIPPING  08_doneb 7
+SKIPPING  08_doneb 8
+SKIPPING  08_doneb 9
+SKIPPING  08_doneb 10
+SKIPPING  08_doneb 11
+SKIPPING  08_doneb 12
+SKIPPING  08_doneb 13
+SKIPPING  08_doneb 14
+SKIPPING  08_doneb 15
+SKIPPING  08_doneb 16
+SKIPPING  08_doneb 17
+site : 20
+SKIPPING  08_doneb 20
+SKIPPING  08_doneb 22
+SKIPPING  08_doneb 23
+SKIPPING  08_doneb 24
+SKIPPING  08_doneb 25
+SKIPPING  08_doneb 27
+SKIPPING  08_doneb 28
+SKIPPING  08_doneb 29
+SKIPPING  08_doneb 30
+SKIPPING  08_doneb 31
+SKIPPING  08_doneb 32
+SKIPPING  08_doneb 37
+SKIPPING  08_doneb 39
+site : 40
+SKIPPING  08_doneb 40
+SKIPPING  08_doneb 41
+SKIPPING  08_doneb 42
+SKIPPING  08_doneb 43
+SKIPPING  08_doneb 44
+SKIPPING  08_doneb 45
+SKIPPING  08_doneb 47
+SKIPPING  08_doneb 49
+SKIPPING  08_doneb 50
+SKIPPING  08_doneb 51
+SKIPPING  08_doneb 52
+SKIPPING  08_doneb 53
+SKIPPING  08_doneb 55
+SKIPPING  08_doneb 56
+SKIPPING  08_doneb 57
+SKIPPING  08_doneb 58
+SKIPPING  08_doneb 59
+site : 60
+SKIPPING  08_doneb 60
+SKIPPING  08_doneb 61
+SKIPPING  08_doneb 62
+SKIPPING  08_doneb 63
+SKIPPING  08_doneb 65
+SKIPPING  08_doneb 66
+SKIPPING  08_doneb 68
+SKIPPING  08_doneb 69
+SKIPPING  08_doneb 71
+SKIPPING  08_doneb 72
+SKIPPING  08_doneb 74
+SKIPPING  08_doneb 77
+SKIPPING  08_doneb 78
+SKIPPING  08_doneb 84
+SKIPPING  08_doneb 86
+SKIPPING  08_doneb 92
+SKIPPING  08_doneb 94
+SKIPPING  08_doneb 95
+SKIPPING  08_doneb 96
+SKIPPING  08_doneb 97
+SKIPPING  08_doneb 98
+SKIPPING  08_doneb 99
+SKIPPING  08_doneb 101
+SKIPPING  08_doneb 103
+SKIPPING  08_doneb 104
+SKIPPING  08_doneb 106
+SKIPPING  08_doneb 107
+SKIPPING  08_doneb 112
+SKIPPING  08_doneb 114
+SKIPPING  08_doneb 115
+SKIPPING  08_doneb 116
+SKIPPING  08_doneb 117
+SKIPPING  08_doneb 119
+SKIPPING  08_doneb 121
+SKIPPING  08_doneb 122
+SKIPPING  08_doneb 123
+SKIPPING  08_doneb 124
+SKIPPING  08_doneb 126
+SKIPPING  08_doneb 130
+SKIPPING  08_doneb 135
+SKIPPING  08_doneb 136
+SKIPPING  08_doneb 138
+site : 140
+SKIPPING  08_doneb 140
+SKIPPING  08_doneb 142
+SKIPPING  08_doneb 143
+SKIPPING  08_doneb 144
+SKIPPING  08_doneb 146
+SKIPPING  08_doneb 149
+SKIPPING  08_doneb 150
+SKIPPING  08_doneb 154
+SKIPPING  08_doneb 158
+site : 160
+SKIPPING  08_doneb 160
+SKIPPING  08_doneb 161
+SKIPPING  08_doneb 162
+SKIPPING  08_doneb 163
+SKIPPING  08_doneb 164
+SKIPPING  08_doneb 165
+SKIPPING  08_doneb 169
+SKIPPING  08_doneb 170
+SKIPPING  08_doneb 171
+SKIPPING  08_doneb 173
+SKIPPING  08_doneb 174
+SKIPPING  08_doneb 175
+SKIPPING  08_doneb 177
+SKIPPING  08_doneb 179
+SKIPPING  08_doneb 181
+SKIPPING  08_doneb 182
+SKIPPING  08_doneb 184
+SKIPPING  08_doneb 186
+SKIPPING  08_doneb 187
+SKIPPING  08_doneb 188
+SKIPPING  08_doneb 189
+SKIPPING  08_doneb 190
+SKIPPING  08_doneb 191
+SKIPPING  08_doneb 192
+SKIPPING  08_doneb 193
+SKIPPING  08_doneb 194
+SKIPPING  08_doneb 195
+SKIPPING  08_doneb 198
+SKIPPING  08_doneb 199
+site : 200
+SKIPPING  08_doneb 200
+SKIPPING  08_doneb 203
+SKIPPING  08_doneb 204
+SKIPPING  08_doneb 205
+SKIPPING  08_doneb 206
+SKIPPING  08_doneb 207
+SKIPPING  08_doneb 208
+SKIPPING  08_doneb 209
+SKIPPING  08_doneb 210
+SKIPPING  08_doneb 215
+SKIPPING  08_doneb 217
+SKIPPING  08_doneb 219
+site : 220
+SKIPPING  08_doneb 220
+SKIPPING  08_doneb 221
+SKIPPING  08_doneb 223
+SKIPPING  08_doneb 224
+SKIPPING  08_doneb 226
+SKIPPING  08_doneb 227
+SKIPPING  08_doneb 228
+SKIPPING  08_doneb 231
+SKIPPING  08_doneb 233
+SKIPPING  08_doneb 237
+SKIPPING  08_doneb 239
+site : 240
+SKIPPING  08_doneb 240
+SKIPPING  08_doneb 242
+SKIPPING  08_doneb 243
+SKIPPING  08_doneb 244
+SKIPPING  08_doneb 247
+SKIPPING  08_doneb 248
+SKIPPING  08_doneb 249
+SKIPPING  08_doneb 250
+SKIPPING  08_doneb 252
+SKIPPING  08_doneb 253
+SKIPPING  08_doneb 255
+SKIPPING  08_doneb 256
+SKIPPING  08_doneb 257
+SKIPPING  08_doneb 258
+SKIPPING  08_doneb 259
+site : 260
+SKIPPING  08_doneb 260
+SKIPPING  08_doneb 262
+SKIPPING  08_doneb 263
+SKIPPING  08_doneb 264
+SKIPPING  08_doneb 265
+SKIPPING  08_doneb 267
+SKIPPING  08_doneb 269
+SKIPPING  08_doneb 270
+SKIPPING  08_doneb 271
+SKIPPING  08_doneb 272
+SKIPPING  08_doneb 273
+SKIPPING  08_doneb 274
+SKIPPING  08_doneb 275
+SKIPPING  08_doneb 276
+SKIPPING  08_doneb 277
+SKIPPING  08_doneb 278
+SKIPPING  08_doneb 279
+site : 280
+SKIPPING  08_doneb 280
+SKIPPING  08_doneb 281
+SKIPPING  08_doneb 282
+SKIPPING  08_doneb 283
+SKIPPING  08_doneb 285
+SKIPPING  08_doneb 286
+SKIPPING  08_doneb 287
+SKIPPING  08_doneb 288
+SKIPPING  08_doneb 290
+SKIPPING  08_doneb 291
+SKIPPING  08_doneb 294
+SKIPPING  08_doneb 296
+SKIPPING  08_doneb 299
+site : 300
+SKIPPING  08_doneb 300
+SKIPPING  08_doneb 301
+SKIPPING  08_doneb 302
+SKIPPING  08_doneb 303
+SKIPPING  08_doneb 304
+SKIPPING  08_doneb 308
+SKIPPING  08_doneb 310
+SKIPPING  08_doneb 312
+SKIPPING  08_doneb 314
+site : 320
+SKIPPING  08_doneb 320
+SKIPPING  08_doneb 327
+SKIPPING  08_doneb 329
+SKIPPING  08_doneb 331
+SKIPPING  08_doneb 332
+SKIPPING  08_doneb 333
+SKIPPING  08_doneb 338
+SKIPPING  08_doneb 344
+SKIPPING  08_doneb 345
+SKIPPING  08_doneb 346
+SKIPPING  08_doneb 347
+SKIPPING  08_doneb 348
+SKIPPING  08_doneb 349
+SKIPPING  08_doneb 351
+SKIPPING  08_doneb 352
+SKIPPING  08_doneb 353
+SKIPPING  08_doneb 354
+SKIPPING  08_doneb 355
+SKIPPING  08_doneb 356
+SKIPPING  08_doneb 368
+SKIPPING  08_doneb 369
+SKIPPING  08_doneb 371
+SKIPPING  08_doneb 374
+SKIPPING  08_doneb 385
+SKIPPING  08_doneb 386
+SKIPPING  08_doneb 387
+SKIPPING  08_doneb 388
+SKIPPING  08_doneb 389
+SKIPPING  08_doneb 390
+SKIPPING  08_doneb 394
+SKIPPING  08_doneb 395
+SKIPPING  08_doneb 396
+SKIPPING  08_doneb 397
+SKIPPING  08_doneb 398
+site : 400
+SKIPPING  08_doneb 400
+SKIPPING  08_doneb 401
+SKIPPING  08_doneb 402
+SKIPPING  08_doneb 403
+SKIPPING  08_doneb 404
+SKIPPING  08_doneb 405
+SKIPPING  08_doneb 406
+SKIPPING  08_doneb 407
+SKIPPING  08_doneb 408
+SKIPPING  08_doneb 409
+SKIPPING  08_doneb 410
+SKIPPING  08_doneb 412
+SKIPPING  08_doneb 413
+SKIPPING  08_doneb 414
+SKIPPING  08_doneb 415
+SKIPPING  08_doneb 417
+SKIPPING  08_doneb 418
+SKIPPING  08_doneb 419
+site : 420
+SKIPPING  08_doneb 420
+SKIPPING  08_doneb 422
+SKIPPING  08_doneb 423
+SKIPPING  08_doneb 425
+SKIPPING  08_doneb 429
+SKIPPING  08_doneb 430
+SKIPPING  08_doneb 433
+SKIPPING  08_doneb 434
+SKIPPING  08_doneb 435
+SKIPPING  08_doneb 436
+SKIPPING  08_doneb 437
+SKIPPING  08_doneb 439
+SKIPPING  08_doneb 441
+SKIPPING  08_doneb 442
+SKIPPING  08_doneb 443
+SKIPPING  08_doneb 445
+SKIPPING  08_doneb 447
+SKIPPING  08_doneb 449
+SKIPPING  08_doneb 450
+SKIPPING  08_doneb 451
+SKIPPING  08_doneb 452
+SKIPPING  08_doneb 453
+SKIPPING  08_doneb 454
+SKIPPING  08_doneb 455
+SKIPPING  08_doneb 457
+SKIPPING  08_doneb 458
+site : 460
+SKIPPING  08_doneb 460
+SKIPPING  08_doneb 461
+SKIPPING  08_doneb 462
+SKIPPING  08_doneb 463
+SKIPPING  08_doneb 464
+SKIPPING  08_doneb 467
+SKIPPING  08_doneb 468
+SKIPPING  08_doneb 469
+SKIPPING  08_doneb 470
+SKIPPING  08_doneb 471
+SKIPPING  08_doneb 472
+SKIPPING  08_doneb 473
+SKIPPING  08_doneb 474
+SKIPPING  08_doneb 475
+SKIPPING  08_doneb 476
+SKIPPING  08_doneb 477
+SKIPPING  08_doneb 478
+SKIPPING  08_doneb 479
+SKIPPING  08_doneb 481
+SKIPPING  08_doneb 483
+SKIPPING  08_doneb 484
+SKIPPING  08_doneb 485
+SKIPPING  08_doneb 486
+SKIPPING  08_doneb 487
+SKIPPING  08_doneb 489
+SKIPPING  08_doneb 490
+SKIPPING  08_doneb 491
+SKIPPING  08_doneb 492
+SKIPPING  08_doneb 493
+SKIPPING  08_doneb 494
+SKIPPING  08_doneb 495
+SKIPPING  08_doneb 496
+SKIPPING  08_doneb 497
+SKIPPING  08_doneb 498
+SKIPPING  08_doneb 499
+site : 500
+SKIPPING  08_doneb 500
+SKIPPING  08_doneb 501
+SKIPPING  08_doneb 502
+SKIPPING  08_doneb 503
+SKIPPING  08_doneb 504
+SKIPPING  08_doneb 505
+SKIPPING  08_doneb 506
+SKIPPING  08_doneb 508
+SKIPPING  08_doneb 509
+SKIPPING  08_doneb 510
+SKIPPING  08_doneb 511
+ 
+Updated ParamsGlobals for event 09_post to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  0.05
+POST_DUR_CALC  =  0.6
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  09_post_50_to_600
+!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
+09_post_50_to_600
+ 
+Updated ParamsGlobals for event 10_reward_all to:
+Updated self.ParamsGlobals:
+n_min_trials_per_level  =  7
+lenient_allow_data_if_has_n_levels  =  2
+PRE_DUR_CALC  =  0.05
+POST_DUR_CALC  =  0.6
+list_events  =  ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
+list_pre_dur  =  [-0.6, 0.04, 0.26, -0.6, -0.6, -0.45, -0.05, -0.5, 0.05, 0.05]
+list_post_dur  =  [-0.04, 0.24, 0.6, -0.04, -0.05, -0.05, 0.35, 0.3, 0.6, 0.6]
+DOING THIS EVENT:  10_reward_all_50_to_600
+!!!! SKIPPING this event, since it is in events_windowed_skip that you entered:
+10_reward_all_50_to_600
+SKIPPING, extracted df_var is empty. Probably you have not enough data for this conjunctions, try setting DEBUG_CONJUNCTIONS=True and reading the low-level data it prints.
+--NotEnoughDataException [modulationgood_compute_wrapper] during:  seqc_0_loc ['gridsize', 'seqc_0_shape'] r2_maxtime_2way_mshuff
+This is ok, since you already have pre-saved df loaded... continuing with loaded...
+-- Len of FINAL df_var, and events that exist in it:
+8856
+['03_samp_-600_to_-40' '03_samp_40_to_240' '03_samp_260_to_600'
+ '04_go_cue_-600_to_-40' '05_first_raise_-600_to_-50'
+ '06_on_strokeidx_0_-450_to_-50' '06_on_strokeidx_0_-50_to_350'
+ '09_post_50_to_600' '10_reward_all_50_to_600']
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/params_modulationgood_compute.yaml to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/OLD_PLOTS-moved_on_230602_143702/params_modulationgood_compute.yaml
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/modulation to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/OLD_PLOTS-moved_on_230602_143702/modulation
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/list_eventwindow_event.pkl to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/OLD_PLOTS-moved_on_230602_143702/list_eventwindow_event.pkl
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/2anova_main_inter_rel to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/OLD_PLOTS-moved_on_230602_143702/2anova_main_inter_rel
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/Params.yaml to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/OLD_PLOTS-moved_on_230602_143702/Params.yaml
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/2anova_modulation_mainplusinter to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/OLD_PLOTS-moved_on_230602_143702/2anova_modulation_mainplusinter
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/modulation_heatmap to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/OLD_PLOTS-moved_on_230602_143702/modulation_heatmap
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/snippets_check_conjunctions_variables to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/OLD_PLOTS-moved_on_230602_143702/snippets_check_conjunctions_variables
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/EACH_EVENT to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/OLD_PLOTS-moved_on_230602_143702/EACH_EVENT
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/2anova_modulation_mainplusinter_heatmap to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/OLD_PLOTS-moved_on_230602_143702/2anova_modulation_mainplusinter_heatmap
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/ParamsGlobals.yaml to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/OLD_PLOTS-moved_on_230602_143702/ParamsGlobals.yaml
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/sites_pruned_by_fr_hist.pdf to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/OLD_PLOTS-moved_on_230602_143702/sites_pruned_by_fr_hist.pdf
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/params_to_save.yaml to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/OLD_PLOTS-moved_on_230602_143702/params_to_save.yaml
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/drawings to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/OLD_PLOTS-moved_on_230602_143702/drawings
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/each_chan_summary to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/OLD_PLOTS-moved_on_230602_143702/each_chan_summary
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/df_var.pkl to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/OLD_PLOTS-moved_on_230602_143702/df_var.pkl
+Moving /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/twoway_pruned_balance_samplesizes to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/OLD_PLOTS-moved_on_230602_143702/twoway_pruned_balance_samplesizes
+All files moved... ready to remake plots!!
+SAving:  /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/df_var.pkl
+SAving:  /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/list_eventwindow_event.pkl
+Searching for already-done df_fr_levels at this path: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/df_fr_levels.pkl
+... path does not exist
+COMPUTING df_fr_levels!!!
 Running grouping_print_n_samples...
 DOing these! ...
 list_events ['03_samp', '03_samp', '03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0', '06_on_strokeidx_0', '08_doneb', '09_post', '10_reward_all']
@@ -5577,8 +8571,15 @@ site : 400
 site : 420
 site : 460
 site : 500
-SAving:  /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/df_var.pkl
+-- Len of FINAL df_var, and events that exist in it:
+81340
+['03_samp_-600_to_-40' '03_samp_40_to_240' '03_samp_260_to_600'
+ '04_go_cue_-600_to_-40' '05_first_raise_-600_to_-50'
+ '06_on_strokeidx_0_-450_to_-50' '06_on_strokeidx_0_-50_to_350'
+ '09_post_50_to_600' '10_reward_all_50_to_600']
+SAving:  /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/df_fr_levels.pkl
 SAving:  /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/list_eventwindow_event.pkl
+Plotting...  /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/fr_levels
 /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/modulation
 ** Plotting summarystats
 Saving at: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/modulation
@@ -5603,26 +8604,7 @@ Aggregating dataframe over all othervars ...
 Plotting ...
 ** [TWO-WAY ANOVA] Plotting heatmaps
 /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/2anova_modulation_mainplusinter_heatmap
-Saving to:  /home/lucast4/miniconda3/envs/drag2_matlab/lib/python3.8/site-packages/outdated/utils.py:14: OutdatedPackageWarning: The package pingouin is out of date. Your version is 0.5.2, the latest is 0.5.3.
-Set the environment variable OUTDATED_IGNORE=1 to disable these warnings.
-  return warn(
-/gorilla1/code/pythonlib/pythonlib/tools/snstools.py:12: UserWarning: FixedFormatter should only be used together with FixedLocator
-  a.set_xticklabels(a.get_xticklabels(), rotation=rotation,
-/gorilla1/code/pythonlib/pythonlib/tools/snstools.py:12: UserWarning: FixedFormatter should only be used together with FixedLocator
-  a.set_xticklabels(a.get_xticklabels(), rotation=rotation,
-/gorilla1/code/pythonlib/pythonlib/tools/snstools.py:12: UserWarning: FixedFormatter should only be used together with FixedLocator
-  a.set_xticklabels(a.get_xticklabels(), rotation=rotation,
-/gorilla1/code/pythonlib/pythonlib/tools/snstools.py:12: UserWarning: FixedFormatter should only be used together with FixedLocator
-  a.set_xticklabels(a.get_xticklabels(), rotation=rotation,
-/gorilla1/code/pythonlib/pythonlib/tools/snstools.py:12: UserWarning: FixedFormatter should only be used together with FixedLocator
-  a.set_xticklabels(a.get_xticklabels(), rotation=rotation,
-/gorilla1/code/pythonlib/pythonlib/tools/snstools.py:12: UserWarning: FixedFormatter should only be used together with FixedLocator
-  a.set_xticklabels(a.get_xticklabels(), rotation=rotation,
-/gorilla1/code/pythonlib/pythonlib/tools/snstools.py:12: UserWarning: FixedFormatter should only be used together with FixedLocator
-  a.set_xticklabels(a.get_xticklabels(), rotation=rotation,
-/gorilla1/code/pythonlib/pythonlib/tools/snstools.py:12: UserWarning: FixedFormatter should only be used together with FixedLocator
-  a.set_xticklabels(a.get_xticklabels(), rotation=rotation,
-/gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/2anova_modulation_mainplusinter_heatmap/brainschem-event-val-main_pls_inter.pdf
+Saving to:  /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/2anova_modulation_mainplusinter_heatmap/brainschem-event-val-main_pls_inter.pdf
 Saving to:  /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/2anova_modulation_mainplusinter_heatmap/brainschem-event-val-main_pls_inter-NOMOTOR.pdf
 ** [TWO-WAY ANOVA] Plotting main-interaction relationships
 /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/2anova_main_inter_rel
@@ -5634,37 +8616,41 @@ Loading:  /gorilla1/analyses/recordings/main/anova/bytrial/Pancho-220715-sess_0/
 Loading:  /gorilla1/analyses/recordings/main/anova/bytrial/Pancho-220715-sess_0/ParamsGlobals.pkl
 Loading:  /gorilla1/analyses/recordings/main/anova/bytrial/Pancho-220715-sess_0/Sites.pkl
 Loading:  /gorilla1/analyses/recordings/main/anova/bytrial/Pancho-220715-sess_0/Trials.pkl
+Plotting ..  ('rig3_3x3_small', 'squiggle3-3-2-1')
+Plotting ..  ('rig3_3x3_small', 'V-2-2-0')
 Plotting ..  ('rig3_3x3_small', 'V-2-4-0')
 Plotting ..  ('rig3_3x3_small', 'Lcentered-4-3-0')
 Plotting ..  ('rig3_3x3_small', 'squiggle3-3-1-0')
-Plotting ..  ('rig3_3x3_small', 'circle-6-1-0')
-Plotting ..  ('rig3_3x3_small', 'V-2-2-0')
-Plotting ..  ('rig3_3x3_small', 'squiggle3-3-2-1')
 Plotting ..  ('rig3_3x3_small', 'Lcentered-4-4-0')
+Plotting ..  ('rig3_3x3_small', 'circle-6-1-0')
 ** Making plots for this event_window: 
-09_post_50_to_600
-Saving this event, 09_post_50_to_600, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/EACH_EVENT/09_post_50_to_600
-** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/rasters/09_post
-** Making plots for this event_window: 
-10_reward_all_50_to_600
-Saving this event, 10_reward_all_50_to_600, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/EACH_EVENT/10_reward_all_50_to_600
-** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/rasters/10_reward_all
+03_samp_-600_to_-40
+Saving this event, 03_samp_-600_to_-40, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/EACH_EVENT/03_samp_-600_to_-40
+/gorilla1/code/pythonlib/pythonlib/tools/snstools.py:24: UserWarning: FixedFormatter should only be used together with FixedLocator
+  ax.set_xticklabels(list_text,rotation=rotation, horizontalalignment="right")
+/gorilla1/code/pythonlib/pythonlib/tools/snstools.py:24: UserWarning: FixedFormatter should only be used together with FixedLocator
+  ax.set_xticklabels(list_text,rotation=rotation, horizontalalignment="right")
+/gorilla1/code/pythonlib/pythonlib/tools/snstools.py:24: UserWarning: FixedFormatter should only be used together with FixedLocator
+  ax.set_xticklabels(list_text,rotation=rotation, horizontalalignment="right")
+/gorilla1/code/pythonlib/pythonlib/tools/snstools.py:24: UserWarning: FixedFormatter should only be used together with FixedLocator
+  ax.set_xticklabels(list_text,rotation=rotation, horizontalalignment="right")
+/gorilla1/code/pythonlib/pythonlib/tools/snstools.py:24: UserWarning: FixedFormatter should only be used together with FixedLocator
+  ax.set_xticklabels(list_text,rotation=rotation, horizontalalignment="right")
+/gorilla1/code/pythonlib/pythonlib/tools/snstools.py:24: UserWarning: FixedFormatter should only be used together with FixedLocator
+  ax.set_xticklabels(list_text,rotation=rotation, horizontalalignment="right")
+/gorilla1/code/pythonlib/pythonlib/tools/snstools.py:24: UserWarning: FixedFormatter should only be used together with FixedLocator
+  ax.set_xticklabels(list_text,rotation=rotation, horizontalalignment="right")
+/gorilla1/code/pythonlib/pythonlib/tools/snstools.py:24: UserWarning: FixedFormatter should only be used together with FixedLocator
+  ax.set_xticklabels(list_text,rotation=rotation, horizontalalignment="right")
+** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/rasters/03_samp
 ** Making plots for this event_window: 
 03_samp_260_to_600
 Saving this event, 03_samp_260_to_600, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/EACH_EVENT/03_samp_260_to_600
 ** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/rasters/03_samp
 ** Making plots for this event_window: 
-03_samp_-600_to_-40
-Saving this event, 03_samp_-600_to_-40, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/EACH_EVENT/03_samp_-600_to_-40
+03_samp_40_to_240
+Saving this event, 03_samp_40_to_240, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/EACH_EVENT/03_samp_40_to_240
 ** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/rasters/03_samp
-** Making plots for this event_window: 
-06_on_strokeidx_0_-450_to_-50
-Saving this event, 06_on_strokeidx_0_-450_to_-50, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/EACH_EVENT/06_on_strokeidx_0_-450_to_-50
-** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/rasters/06_on_strokeidx_0
-** Making plots for this event_window: 
-06_on_strokeidx_0_-50_to_350
-Saving this event, 06_on_strokeidx_0_-50_to_350, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/EACH_EVENT/06_on_strokeidx_0_-50_to_350
-** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/rasters/06_on_strokeidx_0
 ** Making plots for this event_window: 
 04_go_cue_-600_to_-40
 Saving this event, 04_go_cue_-600_to_-40, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/EACH_EVENT/04_go_cue_-600_to_-40
@@ -5674,6 +8660,18 @@ Saving this event, 04_go_cue_-600_to_-40, to /gorilla1/analyses/recordings/main/
 Saving this event, 05_first_raise_-600_to_-50, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/EACH_EVENT/05_first_raise_-600_to_-50
 ** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/rasters/05_first_raise
 ** Making plots for this event_window: 
-03_samp_40_to_240
-Saving this event, 03_samp_40_to_240, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/EACH_EVENT/03_samp_40_to_240
-** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/rasters/03_samp
+06_on_strokeidx_0_-450_to_-50
+Saving this event, 06_on_strokeidx_0_-450_to_-50, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/EACH_EVENT/06_on_strokeidx_0_-450_to_-50
+** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/rasters/06_on_strokeidx_0
+** Making plots for this event_window: 
+06_on_strokeidx_0_-50_to_350
+Saving this event, 06_on_strokeidx_0_-50_to_350, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/EACH_EVENT/06_on_strokeidx_0_-50_to_350
+** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/rasters/06_on_strokeidx_0
+** Making plots for this event_window: 
+09_post_50_to_600
+Saving this event, 09_post_50_to_600, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/EACH_EVENT/09_post_50_to_600
+** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/rasters/09_post
+** Making plots for this event_window: 
+10_reward_all_50_to_600
+Saving this event, 10_reward_all_50_to_600, to /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/SV_r2_maxtime_2way_mshuff/EACH_EVENT/10_reward_all_50_to_600
+** Plotting raster + sm fr: /gorilla1/analyses/recordings/main/anova/bytrial/MULT_SESS/Pancho-220715-0_1/singleprim/var_by_varsother/VAR_seqc_0_loc-OV_gridsize_seqc_0_shape/rasters/10_reward_all

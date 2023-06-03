@@ -3,9 +3,10 @@
 # PRIMS IN GRID (SEQUENCE)
 # datelist=(220709 220714 220727 220731 220805 230105 230106)
 # datelist=( 230105 )
-datelist=(220709 220714 220727 220731 220805 230106)
+# datelist=(220709 220714 220727 220731 220805 230106)
+datelist=(220709 220714 230106)
 ANALY_VER="seqcontext"
-which_level="stroke"
+which_level="trial"
 
 for date1 in "${datelist[@]}"
 do

@@ -305,21 +305,23 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
             # Everything else, especially trial by trial,
             LIST_VAR = [
                 "epoch",
-                "epoch",
                 "character",
-                "seqc_0_loc_shape",
                 "seqc_0_loc",
+                "seqc_0_shape",
                 "seqc_1_loc_shape",
                 "seqc_1_loc_shape",
+                "epoch",
+                "epoch", # abstract rule?
             ]
             LIST_VARS_CONJUNCTION = [
                 ["epochset"],
+                ["epoch", "epochset"],
+                ["epoch", "seqc_0_shape"],
+                ["epoch", "seqc_0_loc"],
+                ["epoch"],
+                ["epoch", "seqc_0_loc_shape"],
                 ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
-                ["epoch", "epochset"],
-                ["epoch", "epochset"],
-                ["epoch", "epochset"],
-                ["epoch", "epochset"],
-                ["epoch", "epochset", "seqc_0_loc_shape"]
+                ["epochset", "character"],
             ]
 
         #### EVENTS

@@ -1121,7 +1121,7 @@ o  512 211.82517743476637
 Traceback (most recent call last):
   File "/gorilla1/code/neuralmonkey/neuralmonkey/classes/session.py", line 188, in load_session_helper
     SN = Session(DATE, beh_expt_list, beh_sess_list, beh_trial_map_list, 
-  File "/gorilla1/code/neuralmonkey/neuralmonkey/classes/session.py", line 393, in __init__
+  File "/gorilla1/code/neuralmonkey/neuralmonkey/classes/session.py", line 397, in __init__
     assert check_dict["exists_2"], "you have not yet saved cached files. rerun load_and_preprocess_single_session"
 AssertionError: you have not yet saved cached files. rerun load_and_preprocess_single_session
 
@@ -1134,7 +1134,7 @@ Traceback (most recent call last):
     SN = load_session_helper(DATE, dataset_beh_expt, rec_session, animal, expt,
   File "/gorilla1/code/neuralmonkey/neuralmonkey/classes/session.py", line 203, in load_session_helper
     SN = Session(DATE, beh_expt_list, beh_sess_list, beh_trial_map_list, 
-  File "/gorilla1/code/neuralmonkey/neuralmonkey/classes/session.py", line 393, in __init__
+  File "/gorilla1/code/neuralmonkey/neuralmonkey/classes/session.py", line 397, in __init__
     assert check_dict["exists_2"], "you have not yet saved cached files. rerun load_and_preprocess_single_session"
 AssertionError: you have not yet saved cached files. rerun load_and_preprocess_single_session
 Got these LIST_VAR and LIST_VARS_CONJUNCTION:
@@ -2263,7 +2263,7 @@ o  512 211.82517743476637
 Traceback (most recent call last):
   File "/gorilla1/code/neuralmonkey/neuralmonkey/classes/session.py", line 188, in load_session_helper
     SN = Session(DATE, beh_expt_list, beh_sess_list, beh_trial_map_list, 
-  File "/gorilla1/code/neuralmonkey/neuralmonkey/classes/session.py", line 393, in __init__
+  File "/gorilla1/code/neuralmonkey/neuralmonkey/classes/session.py", line 397, in __init__
     assert check_dict["exists_2"], "you have not yet saved cached files. rerun load_and_preprocess_single_session"
 AssertionError: you have not yet saved cached files. rerun load_and_preprocess_single_session
 
@@ -2276,6 +2276,6 @@ Traceback (most recent call last):
     SN = load_session_helper(DATE, dataset_beh_expt, rec_session, animal, expt,
   File "/gorilla1/code/neuralmonkey/neuralmonkey/classes/session.py", line 203, in load_session_helper
     SN = Session(DATE, beh_expt_list, beh_sess_list, beh_trial_map_list, 
-  File "/gorilla1/code/neuralmonkey/neuralmonkey/classes/session.py", line 393, in __init__
+  File "/gorilla1/code/neuralmonkey/neuralmonkey/classes/session.py", line 397, in __init__
     assert check_dict["exists_2"], "you have not yet saved cached files. rerun load_and_preprocess_single_session"
 AssertionError: you have not yet saved cached files. rerun load_and_preprocess_single_session
