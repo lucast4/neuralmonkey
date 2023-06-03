@@ -7011,7 +7011,7 @@ class Session(object):
 
         assert pre_dur < post_dur
         # 1) Extract the data 
-        pa = self.smoothedfr_extract_timewindow(trials, sites, alignto, pre_dur, post_dur)
+        pa, _ = self.smoothedfr_extract_timewindow(trials, sites, alignto, pre_dur, post_dur)
 
         # 2) plot
         if pcol_both is not None:
