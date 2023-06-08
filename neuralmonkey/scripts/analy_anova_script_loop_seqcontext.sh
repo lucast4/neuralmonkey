@@ -4,7 +4,10 @@
 # datelist=(220709 220714 220727 220731 220805 230105 230106)
 # datelist=( 230105 )
 # datelist=(220709 220714 220727 220731 220805 230106)
-datelist=(220709 220714 230106)
+# datelist=(220709 220714 230106)
+
+datelist=(230105 230106 230108 230109) # 6/6/23 - the well-structured experiments
+
 ANALY_VER="seqcontext"
 which_level="trial"
 

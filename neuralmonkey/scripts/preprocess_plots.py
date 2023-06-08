@@ -22,7 +22,8 @@ if __name__=="__main__":
     PLOT_EVENTS = sys.argv[3]=="y"
     PLOT_EVENTS_TRIALBLOCKED = sys.argv[4]=="y"
 
-    ANIMAL = "Pancho"
+    ANIMAL = "Diego"
+    # ANIMAL = "Pancho"
     MS = load_mult_session_helper(DATE, ANIMAL)
 
     for sn in MS.SessionsList:
