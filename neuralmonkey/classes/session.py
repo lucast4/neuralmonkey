@@ -622,6 +622,46 @@ class Session(object):
             print("Saved all bad site to self.SitesErrorSpikeDat")
             self.SitesMetadata["sites_error_spikes"] = sites_bad
 
+        # Make sure "done button" event occurs after go cue in time (possiuble to get contamination so
+        # it uses fixation time)
+
+        def _check_increasing_up_to_nans(x):
+            """ Check that array has increasinve values, until it hits a nan, after which
+            they are all nans
+            RETURNS:
+            - None, but throws AssertionError if fails
+            EXamples:
+            - [1, 2, 3,4, np.nan, np.nan, np.nan] --> good
+            - [1, 2, 3,4, np.nan, np.nan, 5 ] --> bad
+            - [1, 2, 3,2, np.nan, np.nan, np.nan] --> bad
+            """
+            if np.isnan(x[1]):
+                assert np.all(np.isnan(x[2:]))
+            elif np.isnan(x[2]):
+                assert np.all(np.isnan(x[3:]))
+                assert np.all(np.diff(x[:2])>0)
+            elif np.isnan(x[3]):
+                assert np.all(np.isnan(x[4:]))
+                assert np.all(np.diff(x[:3])>0)
+            elif np.isnan(x[4]):
+                assert np.all(np.isnan(x[5:]))
+                assert np.all(np.diff(x[:4])>0)
+
+        if self._LOAD_VERSION == "MINIMAL_LOADING":
+            # Make sure that events are increasing, and if trial is cut short, then none of the events after the time
+            # of cutting exist
+            for trial in self.get_trials_list(True):                
+                tmp = self.events_get_times_as_array(trial, ["fixcue", "fixtch", "samp", "go", "first_raise", "doneb", "post"])
+                
+                try:
+                    _check_increasing_up_to_nans(tmp)
+                except Exception as err:
+                    print("Trial, ", trial)
+                    print(tmp)
+                    self.print_summarize_expt_params()
+                    print("timings are not possible. bug.")
+                    raise err
+
     def _check_preprocess_status(self):
         """ Check the status of preprocessing, which is these steps in
         load_and_preprocess_single_session()
@@ -2716,6 +2756,15 @@ class Session(object):
             combine_into_larger_areas=combine_into_larger_areas)
         return list(dict_sites.keys())
 
+    def sitegetter_map_multregions_to_sites(self, list_region, clean=True):
+        """ Return lsit of sites,concatenated across regions in lisT_region
+        """
+        return sn.sitegetter_all(list_region, clean=clean)
+        # sites = []
+        # for region in list_region:
+        #     sites.extend(self.sitegetter_map_region_to_sites(region, clean))
+        # return sites
+
     def sitegetter_map_region_to_sites(self, region, clean=True):
         """ Given a region (string) map to a list of ints (sites)
         """
@@ -2819,7 +2868,6 @@ class Session(object):
         RETURNS:
         - list of sites
         """
-
         if list_regions is None:
             list_regions = self.sitegetter_get_brainregion_list(combine_into_larger_areas=False)
 
@@ -2828,19 +2876,7 @@ class Session(object):
             sites_this = self.sitegetter_map_region_to_sites(region, clean=clean)
             sites.extend(sites_this)
 
-        # if list_regions is None:
-        #     bm = self.sitegetter_brainregion("mapper", clean=clean)
-        #     sites = [s for br, ss in bm.items() for s in ss]
-        # else:
-        #     assert isinstance(list_regions, list)           
-        #     tmp = [self.sitegetter_brainregion(reg, clean=clean) for reg in list_regions]
-        #     sites = [site for list_sites in tmp for site in list_sites]
-
-            # bm = {br:sites for br, sites in bregion_mapper.items() if br in list_regions}
-
         return sites
-
-
 
     def sitegetter_brainregion(self, region=None, clean=True):
         """ Flexible mapping from region to site
@@ -4304,17 +4340,39 @@ class Session(object):
 
                     times = _extract_times(out)
 
+                    # take the first time
+                    times = times[:1]
+                    
+                    # sometimes fixtch will be before presntation of fixcue (e.g., if subject touchees in anticiation).
+                    # Make fixtch same (slightly later) than fixcue, or else this might lead to errors later.
+                    time_fixcue = self.events_get_time_using_photodiode(trial, list_events=["fixcue"])["fixcue"]
+                    if len(times)>0:
+                        assert len(time_fixcue)==1, "weird..."
+                        if times[0]<time_fixcue:
+                            times[0] = time_fixcue[0] + 0.001 # 1 ms after
 
                 elif event in ["rulecue2"]:
                     # rule cue that switches on between fix touch and samp. Exists only on some days, but it one-to-one linked
                     # to behcode 132. 
                     # includes both those overlapping fix, and those separate from fix.
-                    out = self.behcode_get_stream_crossings_in_window(trial, 132, t_pre=0.05, t_post = 0.2, whichstream="pd2", 
-                                          ploton=plot_beh_code_stream, cross_dir_to_take="down", 
-                                          assert_single_crossing_per_behcode_instance=True,
-                                            assert_single_crossing_this_trial = False,
-                                              assert_expected_direction_first_crossing = "down",
-                                              refrac_period_between_events=0.05)              
+                    try:
+                        out = self.behcode_get_stream_crossings_in_window(trial, 132, t_pre=0.05, t_post = 0.2, whichstream="pd2", 
+                                              ploton=plot_beh_code_stream, cross_dir_to_take="down", 
+                                              assert_single_crossing_per_behcode_instance=True,
+                                                assert_single_crossing_this_trial = False,
+                                                  assert_expected_direction_first_crossing = "down",
+                                                  refrac_period_between_events=0.05)              
+                    except AssertionError as err:
+                        # sometimes rulecue is shown too quickly relative to fixation cue, e.g.,, becuase subject
+                        # presses quickly in anticiation. Then the predur might have a contamination. solve this by
+                        # shortening predur
+                        out = self.behcode_get_stream_crossings_in_window(trial, 132, t_pre=0.01, t_post = 0.2, whichstream="pd2", 
+                                              ploton=plot_beh_code_stream, cross_dir_to_take="down", 
+                                              assert_single_crossing_per_behcode_instance=True,
+                                                assert_single_crossing_this_trial = False,
+                                                  assert_expected_direction_first_crossing = "down",
+                                                  refrac_period_between_events=0.05)          
+
 
                     times = _extract_times(out)
 
@@ -4476,14 +4534,17 @@ class Session(object):
                     behcode = "doneb"
                     try:
                         # NOte: tpre very large because seomtimes he touches but isnt correctly registered.
-                        out = self.behcode_get_stream_crossings_in_window(trial, behcode, t_pre=2.5, t_post = 1, 
+                        # out = self.behcode_get_stream_crossings_in_window(trial, behcode, t_pre=2.5, t_post = 1, 
+
+                        # ade the t_pre shoerter (was 2.5) so that does not coincide with fixation, which is now at same location.
+                        out = self.behcode_get_stream_crossings_in_window(trial, behcode, t_pre=1.5, t_post = 1, 
                                                 whichstream="touch_done_button", 
                                                 ploton=plot_beh_code_stream, cross_dir_to_take="up", assert_single_crossing_per_behcode_instance=False,
                                                 assert_single_crossing_this_trial = False,
                                                 assert_expected_direction_first_crossing = "up",
                                                 take_first_behcode_instance=True,
                                                 take_first_crossing_for_each_behcode=True,
-                                                refrac_period_between_events=0.05) 
+                                                refrac_period_between_events=0.05)  
                         times = _extract_times(out)
                     except AssertionError as err:
                         # try expanding the window
@@ -4496,9 +4557,22 @@ class Session(object):
                                                 assert_single_crossing_this_trial = False,
                                                 assert_expected_direction_first_crossing = "up",
                                                 take_first_behcode_instance=True,
-                                                take_first_crossing_for_each_behcode=True,
+                                                take_first_crossing_for_each_behcode=False,
                                                 refrac_period_between_events=0.05) 
                         times = _extract_times(out)
+
+                        # take the first time that is following the go cue
+                        times_go = self.events_get_time_using_photodiode(trial, list_events=["go"]) # {'go': [3.3162100494546394]}
+                        # if len(times_go["go"])>0:
+                        tgo = times_go["go"][0]
+                        # print(type(tgo))
+                        # print(times)
+                        # print(times_go)
+                        times = [t for t in times if t > tgo]
+                        # print(times)
+                        # assert False
+                        # else:
+
 
                     times = times[0:1] # take the first time, sometimes can go in and out of squiare
 
@@ -6402,7 +6476,7 @@ class Session(object):
         strokes = self.strokes_extract(trialtdt, peanuts_only=strokes_only)
         plotDatStrokes(strokes, ax, clean_ordered_ordinal=True, number_from_zero=True)
 
-    def beh_extract_touch_in_fixation_square(self, trial, window_delta_pixels = 38.5,
+    def beh_extract_touch_in_fixation_square(self, trial, window_delta_pixels = None,
         ploton=False):
         """ Return binary wherther is touching fixation
         Evaluates if is touching within fixation square
@@ -6413,6 +6487,12 @@ class Session(object):
         - times,
         - touch, 1 where is touchign in square, 0 outside.
         """
+
+        if window_delta_pixels is None:
+            if self.Animal=="Pancho":
+                window_delta_pixels = 38.5
+            elif self.Animal == "Diego":
+                window_delta_pixels = 45
 
         # 1) is touching within fix params?
         fd, t = self.beh_get_fd_trial(trial)

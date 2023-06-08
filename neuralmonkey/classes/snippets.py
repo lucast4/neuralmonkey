@@ -176,6 +176,9 @@ def load_and_concat_mult_snippets(MS, which_level, SITES_COMBINE_METHODS = "inte
         setattr(SPall, attr, items_combine)
         # print("items: ", len(items[0]), len(items[1]), SITES_COMBINE_METHODS, ":", len(items_combine))
 
+    # In data, keep only the sites in self.Sites
+    SPall.DfScalar = SPall.DfScalar[SPall.DfScalar["chan"].isin(SPall.Sites)]
+
     # Remove columns from DfScalar that are ambiguous
     # TODO...
 
@@ -226,6 +229,7 @@ class Snippets(object):
 
         self.DfScalar = None
         self.DfScalarBeforeRemoveSuperv = None
+        self.DfScalarBeforePrune = None
         self.SN = SN
         self.SNmult = None
         self.DSmult = None
@@ -849,6 +853,7 @@ class Snippets(object):
         """ Low-level to convert dfthis to popanal
         """
         assert len(dfthis)>0
+        assert len(sites)==1, "not codede yet for more sites..."
 
         # Extract frmat
         frate_mat = np.stack(dfthis["fr_sm"].tolist())
@@ -879,7 +884,8 @@ class Snippets(object):
 
     def dataextract_as_popanal_conjunction_vars(self, var, vars_others=None, site=None,
         event=None, list_cols=None):
-        """ [GOOD} Return a single popanal """
+        """ [GOOD} Return a single popanal, for a single site.
+        """
 
         assert site is not None, "not coded yet. assumes this for below [site]"
         _, dict_lev_df, levels_var = self.dataextract_as_df_conjunction_vars(var, vars_others, site, event)
@@ -927,7 +933,8 @@ class Snippets(object):
 
     def dataextract_as_df_conjunction_vars(self, var, vars_others=None, site=None,
         event=None, DEBUG_CONJUNCTIONS=False,
-        OVERWRITE_n_min=None, OVERWRITE_lenient_n=None):
+        OVERWRITE_n_min=None, OVERWRITE_lenient_n=None,
+        DFTHIS = None):
         """ Helper to extract dataframe (i) appending a new column
         with ocnjucntions of desired vars, and (ii) keeping only 
         levels of this vars (vars_others) that has at least n trials for 
@@ -949,27 +956,30 @@ class Snippets(object):
         - you wish to ask about shape moudlation for each comsbaiton of location and 
         size. then var = shape and vars_others = [location, size]
         RETURNS:
+        dfthis, dict_lev_df, levels_var
         - dataframe, with new column "vars_others"
         - dict, lev:df
+        - levels_var, list of str, levels of var.
         """
         from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars
         import numpy as np
 
-        # print("HERERER:", len(self.DfScalar))
+        if DFTHIS is None:
+            DFTHIS = self.DfScalar
 
         # 1) extract for this site.
         if site is None and event is None:
-            dfthis = self.DfScalar
+            dfthis = DFTHIS
         elif event is None:
-            dfthis = self.DfScalar[(self.DfScalar["chan"] == site)]
+            dfthis = DFTHIS[(DFTHIS["chan"] == site)]
         elif site is None:
-            dfthis = self.DfScalar[(self.DfScalar["event"] == event)]
+            dfthis = DFTHIS[(DFTHIS["event"] == event)]
         else:
-            dfthis = self.DfScalar[(self.DfScalar["chan"] == site) & (self.DfScalar["event"] == event)]
+            dfthis = DFTHIS[(DFTHIS["chan"] == site) & (DFTHIS["event"] == event)]
         dfthis = dfthis.reset_index(drop=True)
 
         # Use all unique levels in entire dataset, across all sublevels.
-        levels_var = sort_mixed_type(self.DfScalar[var].unique().tolist())
+        levels_var = sort_mixed_type(DFTHIS[var].unique().tolist())
 
         n_min = self.ParamsGlobals["n_min_trials_per_level"]
         lenient_allow_data_if_has_n_levels = self.ParamsGlobals["lenient_allow_data_if_has_n_levels"]
@@ -5454,7 +5464,11 @@ class Snippets(object):
         import pickle
 
         # 1) DfScalar
-        DfScalar = self.DfScalar.copy()
+        if hasattr(self, "DfScalar_BeforeRemoveOutlier"):
+            # Ideally keep all. can easily remove outliers.
+            DfScalar = self.DfScalar_BeforeRemoveOutlier.copy()
+        else:
+            DfScalar = self.DfScalar.copy()
 
         # 2) fr_sm_times
         # check that all have same fr times
@@ -5569,6 +5583,44 @@ class Snippets(object):
         # Params
         # Sites
         # Trials
+
+
+    def debug_subsample_prune(self, n_chans=32, n_trials=20):
+        """ Prune dataset for quicker analyses. Do this by 
+        subsampling chans and trials, in order to try to maintain balanced
+        dataset
+        RETURNS:
+        - modifies slef.DfScalar, with reseted indices.
+        NOTE: saves a copy of orig data in self.DfScalarBeforePrune
+        """
+        from pythonlib.tools.listtools import random_inds_uniformly_distributed
+
+        if self.DfScalarBeforePrune is not None:
+            # use the original data
+            self.DfScalar = self.DfScalarBeforePrune
+        
+        print("Len of orig data: ", len(self.DfScalar))
+
+        # Prune SP
+        chans = sorted(self.DfScalar["chan"].unique().tolist())
+        trialcodes = sorted(self.DfScalar["trialcode"].unique().tolist())
+
+        chans_get = [chans[i] for i in random_inds_uniformly_distributed(chans, n_chans)]
+        trialcodes_get = [trialcodes[i] for i in random_inds_uniformly_distributed(trialcodes, n_trials)]
+
+        # store backup copy of DfScalar
+        self.DfScalarBeforePrune = self.DfScalar.copy()
+
+        print(chans_get)
+        print(trialcodes_get)
+
+        # replace with subsample
+        self.DfScalar = self.DfScalar[(self.DfScalar["chan"].isin(chans_get)) & (self.DfScalar["trialcode"].isin(trialcodes_get))].reset_index(drop=True)
+
+        print("Len of pruned data: ", len(self.DfScalar))
+        self.Sites = sorted(self.DfScalar["chan"].unique().tolist())
+        self.Trials = None
+
 
 
 def extraction_helper(SN, which_level="trial", list_features_modulation_append=None,
@@ -6054,4 +6106,5 @@ def _dataset_extract_prune_rulesw(sn, same_beh_only,
     D.grouping_print_n_samples(["taskgroup", "epoch", "character"])
 
     return D
+
 

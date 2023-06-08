@@ -340,6 +340,7 @@ class PopAnal():
         used to compute the PCA space.
         """
 
+        assert "pca" in self.Saved, "need to first run self.pca()"
         nunits = X.shape[0]
         sh = list(X.shape) # save original shape.
 
@@ -357,9 +358,9 @@ class PopAnal():
             # Ndim = min((nunits, Ndim))
 
         # - get old saved
-        if "pca" not in self.Saved:
-            print(f"- running {ver} for first time")
-            self.pca(ver="eig")
+        # if "pca" not in self.Saved:
+        #     print(f"- running {ver} for first time")
+        #     self.pca(ver="eig")
 
         # 1) center and stack
         # X = X.copy()
@@ -382,7 +383,6 @@ class PopAnal():
         Xsub = np.reshape(Xsub, sh)
 
         return Xsub
-
 
     ### ANALYSIS
     def dataframeByTrial(self, dim_trial = 1, columns_to_add = None):
@@ -737,6 +737,7 @@ class PopAnal():
         """ Return X, but mean over time,
         shape (nchans, ntrials)
         """
+        assert False, "OBSOLETE. use agg_wrapper, it retains Xlabels"
         X = self.extract_activity(version = version)
         if return_as_popanal:
             Xnew = np.mean(X, axis=2, keepdims=True)
@@ -749,6 +750,7 @@ class PopAnal():
         """ Return X, but mean over trials,
         out shape (nchans, 1, time)
         """
+        assert False, "OBSOLETE. use agg_wrapper, it retains Xlabels"
         X = self.extract_activity(version=version)
         return np.mean(X, axis=1, keepdims=True)
 
@@ -993,6 +995,7 @@ class PopAnal():
         - eitehr PopAnal or np array, with data shape = (nchans, ngroups, time),
         with ngroups replacing ntrials after agging.
         """
+        assert False, "OBSOLETE - use slice_and_agg_wrapper"
 
         # 1) Collect X (trial-averaged) for each group
         list_x = []
@@ -1007,7 +1010,10 @@ class PopAnal():
         # 3) Convert to PA
         if return_as_popanal:
             # assert PAnew.shape[1]==len(groupdict)
-            return PopAnal(X, PAthis.Times, PAthis.Chans)
+            PA = PopAnal(X, PAthis.Times, PAthis.Chans)
+            # save the grp labels
+            PA.Xlabels
+            return PA
         else:
             return X
 
@@ -1450,15 +1456,22 @@ def extract_neural_snippets_aligned_to(MS, DS,
 
 # Which dataset to use to construct PCA?
 def pca_make_space(PA, DF, trial_agg_method, trial_agg_grouping, time_agg_method=None, ploton=True):
-    """ Make a PopAnal object where the dataspoints are
-    used to construct a low-D PCA space
+    """ Prperocess data (e.g,, grouping by trial and time) and then
+    Make a PopAnal object holding (i) data for PCA and (ii) the results of
+    PCA.
     PARAMS:
     - PA, popanal object, holds all data. 
     - DF, dataframe, with one column for each categorical variable you care about (in DATAPLOT_GROUPING_VARS).
     The len(DF) must equal num trials in PA (asserts this)
     - trial_agg_grouping, list of str defining how to group trials, e.g,
     ["shape_oriented", "gridloc"]
+    RETURNS:
+    - PApca, a popanal holding the data that went into PCA, and the results of PCA,
+    and methods to project any new data to this space.
     """
+
+    assert DF==None, "instead, put this in PA.Xlabels"
+
     # First, decide whether to take mean over some way of grouping trials
     if trial_agg_method==None:
         # Then dont aggregate by trials
@@ -1467,20 +1480,27 @@ def pca_make_space(PA, DF, trial_agg_method, trial_agg_grouping, time_agg_method
         # Then take mean over trials, after grouping, so shape
         # output is (nchans, ngrps, time), where ngrps < ntrials
         from pythonlib.tools.pandastools import grouping_append_and_return_inner_items
-        groupdict = grouping_append_and_return_inner_items(DF, trial_agg_grouping)
-        # groupdict = DS.grouping_append_and_return_inner_items(trial_agg_grouping)
-        PApca = PA.agg_by_trialgrouping(groupdict)        
+        if DF is None:
+            DF = PA.Xlabels["trials"]
+        if False:
+            groupdict = grouping_append_and_return_inner_items(DF, trial_agg_grouping)
+            # groupdict = DS.grouping_append_and_return_inner_items(trial_agg_grouping)
+            PApca = PA.agg_by_trialgrouping(groupdict)         
+        else:
+            # Better, since it retains Xlabels
+            PApca = PA.slice_and_agg_wrapper("trials", trial_agg_grouping)
     else:
         print(trial_agg_method)
         assert False
         
     # second, whether to agg by time (optional). e..g, take mean over time
     if time_agg_method=="mean":
-        PApca = PApca.mean_over_time(return_as_popanal=True)
+        PApca = PApca.agg_wrapper("times")
+        # PApca = PApca.mean_over_time(return_as_popanal=True)
     else:
         assert time_agg_method==None
 
-    fig = PApca.pca("svd", ploton=ploton)
+    fig = PApca.pca("svd", ploton=ploton) 
     
     return PApca, fig
 
@@ -1518,7 +1538,6 @@ def compute_data_projections(PA, DF, MS, VERSION, REGIONS, DATAPLOT_GROUPING_VAR
         pca_trial_agg_grouping = ["gridloc"]
     assert len(DF)==PA.X.shape[1], "num trials dont match"
 
-
     # How to transform data
     if VERSION=="raw":
         YLIM = [0, 100]
@@ -1533,14 +1552,14 @@ def compute_data_projections(PA, DF, MS, VERSION, REGIONS, DATAPLOT_GROUPING_VAR
         assert False
 
     # Slice to desired chans
-    CHANS = MS.sitegetter_all(REGIONS)
+    CHANS = MS.sitegetter_all(REGIONS, how_combine="intersect")
+    CHANS = [x for x in CHANS if x in PA.Chans]
     assert len(CHANS)>0
     PAallThis = PA._slice_by_chan(CHANS, VERSION_DAT, True)
 
     # Construct PCA space
     if VERSION=="PCA":
         # Construct PCA space
-        # PApca, figs_pca = pca_make_space(PAallThis, pca_trial_agg_method, pca_trial_agg_grouping, pca_time_agg_method, ploton=ploton)
         PApca, figs_pca = pca_make_space(PAallThis, DF, pca_trial_agg_method, pca_trial_agg_grouping, pca_time_agg_method, ploton=ploton)
     else:
         PApca = None

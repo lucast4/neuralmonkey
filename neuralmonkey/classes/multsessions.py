@@ -144,9 +144,11 @@ class MultSessions(object):
 
     ################### SITES
     # (Generally asserts that all sessions have same channels ...)
-    def sitegetter_all(self, list_regions=None, clean=True):
+    def sitegetter_all(self, list_regions=None, clean=True, how_combine="assert_identical"):
         """ Gets list of sites. Runs this for each sessin and checsk that 
         all are identicayul before returning
+        PARAMS:
+        - how_combine, if sessions have diff sites, how to combine? 
         """
 
         list_list_sites = []
@@ -154,16 +156,28 @@ class MultSessions(object):
             list_sites = SN.sitegetter_all(list_regions, clean)
             list_list_sites.append(list_sites)
 
-        # check that all lists are same
-        for i, sites1 in enumerate(list_list_sites):
-            for ii, sites2 in enumerate(list_list_sites):
-                if ii>i:
-                    if set(sites1)!=set(sites2):
-                        print(len(sites1), sites1)
-                        print(len(sites2), sites2)
-                        assert False
+        if how_combine=="assert_identical":
+            # check that all lists are same
+            for i, sites1 in enumerate(list_list_sites):
+                for ii, sites2 in enumerate(list_list_sites):
+                    if ii>i:
+                        if set(sites1)!=set(sites2):
+                            print(len(sites1), sites1)
+                            print(len(sites2), sites2)
+                            assert False
 
-        return list_list_sites[0]
+            return list_list_sites[0]
+        elif how_combine=="intersect":
+            # get the intersection
+            sites_intersect = list_list_sites[0]
+            for sites_this in list_list_sites[1:]:
+                sites_intersect = [s for s in sites_intersect if s in sites_this]
+            return sites_intersect
+        elif how_combine=="union":
+            assert False, "code it"
+        else:
+            print(how_combine)
+            assert False
 
     def print_summary_sessions(self):
         """ Helper to print summary of n trial and sites for each sn
