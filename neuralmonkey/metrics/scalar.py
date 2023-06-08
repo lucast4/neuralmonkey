@@ -1243,47 +1243,49 @@ class MetricsScalar(object):
         RETURNS:
         - frmat, 
         - times
-        """
+        """ 
+        from neuralmonkey.utils.frmat import dfthis_to_frmat
+        return dfthis_to_frmat(dfthis, self.TimesFrSm, fr_ver, time_bin_size)
+    
+        # frmat = np.concatenate(dfthis[fr_ver].tolist(), axis=0)    
+        # times = self.TimesFrSm
 
-        frmat = np.concatenate(dfthis[fr_ver].tolist(), axis=0)    
-        times = self.TimesFrSm
+        # if time_bin_size:
 
-        if time_bin_size:
+        #     MINDUR = time_bin_size/4;
+        #     # MINDUR = 0.05
 
-            MINDUR = time_bin_size/4;
-            # MINDUR = 0.05
+        #     binedges = np.arange(times[0], times[-1]+time_bin_size, time_bin_size)
+        #     inds_bin = np.digitize(times, binedges)
+        #     inds_bin_unique = np.sort(np.unique(inds_bin)) 
 
-            binedges = np.arange(times[0], times[-1]+time_bin_size, time_bin_size)
-            inds_bin = np.digitize(times, binedges)
-            inds_bin_unique = np.sort(np.unique(inds_bin))
-
-            list_t =[]
-            list_frvec = []
-            for binid in inds_bin_unique:
-                indsthis = inds_bin==binid
+        #     list_t =[]
+        #     list_frvec = []
+        #     for binid in inds_bin_unique:
+        #         indsthis = inds_bin==binid
                 
-                if sum(indsthis)==0:
-                    continue
+        #         if sum(indsthis)==0:
+        #             continue
                     
-                timesthis = times[indsthis]
-                dur = max(timesthis) - min(timesthis)
-                if dur<MINDUR:
-                    # print("Skipping bin: ", binid, dur)
-                    continue
-                frmatthis = frmat[:, indsthis]
+        #         timesthis = times[indsthis]
+        #         dur = max(timesthis) - min(timesthis)
+        #         if dur<MINDUR:
+        #             # print("Skipping bin: ", binid, dur)
+        #             continue
+        #         frmatthis = frmat[:, indsthis]
                 
-                t = np.mean(timesthis)
-                frvec = np.mean(frmatthis, axis=1)
+        #         t = np.mean(timesthis)
+        #         frvec = np.mean(frmatthis, axis=1)
                 
-                list_t.append(t)
-                list_frvec.append(frvec.T)
+        #         list_t.append(t)
+        #         list_frvec.append(frvec.T)
                 
                 
-            # concat
-            times = np.stack(list_t) # (nbins, )s
-            frmat = np.stack(list_frvec, axis=1) # (ndat, nbins)
+        #     # concat
+        #     times = np.stack(list_t) # (nbins, )s
+        #     frmat = np.stack(list_frvec, axis=1) # (ndat, nbins)
         
-        return frmat, times
+        # return frmat, times
 
     def _dataextract_frvec_single_timebin_frmat(self, frmat, times, tget):
         """ Extract the fr (from smoothed fr) at this specific time bin.

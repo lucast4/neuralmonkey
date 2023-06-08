@@ -46,9 +46,8 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
 
     PRE_DUR_CALC = None # None, since below uses diff ones for each event.
     POST_DUR_CALC = None
-    globals_nmin = 7
+    globals_nmin = 5
     globals_lenient_allow_data_if_has_n_levels = 2
-
 
     ################## SUPERVISION LEVELS TO KEEP
     ################# OPTIONALLY KEEP ONLY SPECIFIC "FULL" SUPERVISION NAMES
@@ -151,22 +150,36 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
     elif which_level=="trial" and ANALY_VER=="seqcontext":
 
         LIST_VAR = [
-            "seqc_nstrokes_beh",
-            "seqc_0_shape",
-            "seqc_0_loc",
+            "seqc_2_shape",
+            "seqc_2_loc",
+            "seqc_2_loc_shape",
+
             "seqc_1_shape",
             "seqc_1_loc",
+            "seqc_1_loc_shape",
+
+            "seqc_0_shape",
+            "seqc_0_loc",
+
+            "seqc_nstrokes_beh",
             "seqc_nstrokes_beh",
             "seqc_nstrokes_beh",
             # "seqc_2_shape",
             # "seqc_2_loc",
             ]
         LIST_VARS_CONJUNCTION = [
+            ["seqc_0_loc_shape", "seqc_1_loc_shape", "seqc_2_loc"], 
+            ["seqc_0_loc_shape", "seqc_1_loc_shape", "seqc_2_shape"], 
+            ["seqc_0_loc_shape", "seqc_1_loc_shape"], 
+
+            ["seqc_0_shape", "seqc_0_loc", "seqc_1_loc"], 
+            ["seqc_0_shape", "seqc_0_loc", "seqc_1_shape"],
             ["seqc_0_shape", "seqc_0_loc"],
+
             ["seqc_0_loc"],
             ["seqc_0_shape"],
-            ["seqc_0_shape", "seqc_0_loc", "seqc_1_loc"],
-            ["seqc_0_shape", "seqc_0_loc", "seqc_1_shape"],
+
+            ["seqc_0_shape", "seqc_0_loc"],
             ["seqc_0_shape", "seqc_0_loc", "seqc_1_shape", "seqc_1_loc"],
             ["seqc_0_shape", "seqc_0_loc", "seqc_1_shape", "seqc_1_loc", "seqc_2_shape", "seqc_2_loc"],
             # ["seqc_0_shape", "seqc_0_loc", "seqc_1_shape", "seqc_1_loc"],
@@ -177,10 +190,25 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
         # list_pre_dur = [-0.6, 0.05, -0.6, -0.1, 0.05, 0.05]
         # list_post_dur = [-0.05, 0.6, -0.05, 0.6, 0.6, 0.6]
 
-        list_events = ["03_samp",   "03_samp", "04_go_cue",  "05_first_raise",   "06_on_strokeidx_0", "08_doneb", "09_post", "10_reward_all"]
-        list_pre_dur = [-0.6,       0.05,      -0.6,        -0.6,               -0.25, -0.5, 0.05, 0.05]
-        list_post_dur = [-0.04,     0.6,       -0.04,       -0.05,              0.35, 0.3, 0.6, 0.6]
+        # list_events = ["03_samp",   "03_samp", "04_go_cue",  "05_first_raise",   "06_on_strokeidx_0", "08_doneb", "09_post", "10_reward_all"]
+        # list_pre_dur = [-0.6,       0.05,      -0.6,        -0.6,               -0.25, -0.5, 0.05, 0.05]
+        # list_post_dur = [-0.04,     0.6,       -0.04,       -0.05,              0.35, 0.3, 0.6, 0.6]
     
+        WINDOWS_DEFAULT = [
+            ('03_samp', -0.6, -0.04),
+            ('03_samp', 0.04, 0.24),
+            ('03_samp', 0.26, 0.6),
+            ('04_go_cue', -0.6, -0.04),
+            ('05_first_raise', -0.6, -0.05),
+            # ('06_on_strokeidx_0', -0.25, 0.35),
+            ('06_on_strokeidx_0', -0.45, -0.05),
+            ('06_on_strokeidx_0', -0.05, 0.35),
+            ('08_doneb', -0.5, 0.3),
+            ('09_post', 0.05, 0.6),
+            ('10_reward_all', 0.05, 0.6)]
+        list_events = [x[0] for x in WINDOWS_DEFAULT]
+        list_pre_dur = [x[1] for x in WINDOWS_DEFAULT]
+        list_post_dur = [x[2] for x in WINDOWS_DEFAULT]
 
     elif which_level=="trial" and ANALY_VER in ["rulesw", "ruleswERROR", "ruleswALLDATA"]:
         # Rule switching.
