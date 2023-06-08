@@ -141,7 +141,7 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
         assert len(dataset_beh_expt)>1, "if skip, then make this None"
 
     # 1) Find the raw beh data (filedata)
-    beh_session, exptname, _ = session_map_from_rec_to_ml2(animal, DATE, rec_session)
+    beh_session, exptname, _ = session_map_from_rec_to_ml2(animal, DATE, rec_session) 
 
     # # Assume that the beh sessions increment in order, matching the neural sessions
     # sessdict = mkl.getSessionsList(animal, datelist=[DATE])
@@ -185,7 +185,8 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
         ALLOW_RETRY=False
 
     try:
-        SN = Session(DATE, beh_expt_list, beh_sess_list, beh_trial_map_list, 
+        SN = Session(DATE, beh_expt_list, beh_sess_list, beh_trial_map_list,
+            animal =animal,  
             rec_session = rec_session, dataset_beh_expt=dataset_beh_expt, 
             extract_spiketrain_elephant=extract_spiketrain_elephant,
             do_all_copy_to_local=do_all_copy_to_local, DEBUG_TIMING=DEBUG_TIMING,
@@ -201,6 +202,7 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
             print("beh sessions: ", beh_expt_list, beh_sess_list)
             print("beh_trial_map_list: ", beh_trial_map_list)
             SN = Session(DATE, beh_expt_list, beh_sess_list, beh_trial_map_list, 
+                animal =animal,  
                 rec_session = rec_session, dataset_beh_expt=dataset_beh_expt, 
                 extract_spiketrain_elephant=extract_spiketrain_elephant,
                 do_all_copy_to_local=do_all_copy_to_local, DEBUG_TIMING=DEBUG_TIMING, 
@@ -883,6 +885,11 @@ class Session(object):
             # Didn't find spikes, return None
             return None
 
+        if self.Animal=="Pancho":
+            metadata_units = f"{PATH_NEURALMONKEY}/metadat/units"
+        else:
+            metadata_units = f"{PATH_NEURALMONKEY}/metadat/units_{self.Animal}"
+
         pathdict = {
             "raws":paththis,
             "tank":f"{paththis}/{fnparts['filename_final_noext']}",
@@ -897,7 +904,7 @@ class Session(object):
             "events_local":f"{pathbase_local}/events_photodiode.pkl",
             "mapper_st2dat_local":f"{pathbase_local}/mapper_st2dat.pkl",
             "figs_local":f"{pathbase_local}/figs",
-            "metadata_units":f"{PATH_NEURALMONKEY}/metadat/units",
+            "metadata_units":metadata_units,
             "cached_dir":f"{pathbase_local}/cached",
             }
 
@@ -4251,14 +4258,24 @@ class Session(object):
 
                 elif event=="fixcue":
                     # fixation cue visible.
-                    # out = self.behcode_get_stream_crossings_in_window(trial, 103, t_pre=0.015, t_post = 0.16, whichstream="pd2", 
-                    #                         ploton=plot_beh_code_stream, cross_dir_to_take="down", assert_single_crossing_per_behcode_instance=True,
-                    #                         assert_single_crossing_this_trial = True,
-                    #                         assert_expected_direction_first_crossing = None)
-                    out = self.behcode_get_stream_crossings_in_window(trial, event, t_pre=0.015, t_post = 0.16, whichstream="pd2", 
-                                            ploton=plot_beh_code_stream, cross_dir_to_take="down", assert_single_crossing_per_behcode_instance=True,
-                                            assert_single_crossing_this_trial = True,
-                                            assert_expected_direction_first_crossing = None)
+                    try:
+                        out = self.behcode_get_stream_crossings_in_window(trial, event, t_pre=0.015, t_post = 0.16, whichstream="pd2", 
+                                                ploton=plot_beh_code_stream, cross_dir_to_take="down", assert_single_crossing_per_behcode_instance=True,
+                                                assert_single_crossing_this_trial = True,
+                                                assert_expected_direction_first_crossing = None)
+                    except AssertionError as err:
+                        # shorter post dur, because overlaps the subsequent cue2 (i.e,, fixtouch). This happens even if not using cue2, by 
+                        # defualt it is constructed. So, error is when subject presses fixation quickly
+                        try:
+                            out = self.behcode_get_stream_crossings_in_window(trial, event, t_pre=0.015, t_post = 0.115, whichstream="pd2", 
+                                                    ploton=plot_beh_code_stream, cross_dir_to_take="down", assert_single_crossing_per_behcode_instance=True,
+                                                    assert_single_crossing_this_trial = True,
+                                                    assert_expected_direction_first_crossing = None)
+                        except AssertionError as err:
+                            out = self.behcode_get_stream_crossings_in_window(trial, event, t_pre=0.015, t_post = 0.07, whichstream="pd2", 
+                                                    ploton=plot_beh_code_stream, cross_dir_to_take="down", assert_single_crossing_per_behcode_instance=True,
+                                                    assert_single_crossing_this_trial = True,
+                                                    assert_expected_direction_first_crossing = None)
                     times = _extract_times(out)
 
                 elif event in ["fixtch", "fix_touch"]:

@@ -206,13 +206,17 @@ if __name__=="__main__":
     import sys
 
     date = sys.argv[1]
+    if len(sys.argv)>2:
+        animal = sys.argv[2]
+    else:
+        animal = "Pancho"
 
     # ============== PARAMS
     for rec_session in range(10):
         # go thru many, if doesnt exist will not do it.
         # rec_session = 1 # assumes one-to-one mapping between neural and beh sessions.
-        print("Running:", sys.argv, "session: ", rec_session)
-        load_and_preprocess_single_session(date, rec_session)
+        print("Running:", sys.argv, "session: ", rec_session, "Animal:", animal)
+        load_and_preprocess_single_session(date, rec_session, animal)
         plt.close("all")
 
     # # ============== PARAMS
