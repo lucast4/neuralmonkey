@@ -1,11 +1,13 @@
-# mapping from rec session (int) to beh session (int).
+# N_rec_session >= n_beh_session.
+
+# Mapping from rec session (int) to beh session (int).
 # e.g, if [2,3], mean rec session 0 maps to beh session 2 (1-indexed)
 # and rec ession 1 to beh sess 3.
 
 220526: [2]
 220716: [1, 3]
 220717: [2]
-220719: [2]
+# 220719: [2]
 220728: [1, 1] # 2 neural, one beh.. 
 220729: [1, 1] # 2 neural, one beh.. 
 # 220805: [1, 1] # 2 neural, one beh..  [WRONG] was actually 2 beh and 2 rec sessions, matched, but removing the first one (both neurla and beh, 23 trials each), not much trials.

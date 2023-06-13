@@ -141,7 +141,7 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
         assert len(dataset_beh_expt)>1, "if skip, then make this None"
 
     # 1) Find the raw beh data (filedata)
-    beh_session, exptname, _ = session_map_from_rec_to_ml2(animal, DATE, rec_session) 
+    beh_sess_list, beh_expt_list, _, beh_trial_map_list = session_map_from_rec_to_ml2(animal, DATE, rec_session) 
 
     # # Assume that the beh sessions increment in order, matching the neural sessions
     # sessdict = mkl.getSessionsList(animal, datelist=[DATE])
@@ -157,19 +157,20 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
     # print("Beh Sessions that exist on this date: ", DATE, sessdict)
     # print("taking this one :", beh_session)
 
-    # beh_session = rec_session+1 # 1-indexing.
     if False:
-        # get all sessions
-        beh_expt_list = [sess_expt[1] for sess_expt in sessdict[DATE]]
-        beh_sess_list = [sess_expt[0] for sess_expt in sessdict[DATE]]
-    else:
-        # Get the single session assued to map onto this neural.
-        # beh_expt_list = [sess_expt[1] for sess_expt in sessdict[DATE] if sess_expt[0]==beh_session]
-        # print("Found these beh expt names: ", beh_expt_list)
-        # assert(len(beh_expt_list))==1, "must be error, multiple sessions with same session num"
-        beh_expt_list = [exptname]
-        beh_sess_list = [beh_session]
-        beh_trial_map_list = [(1, 0)]
+        # beh_session = rec_session+1 # 1-indexing.
+        if False:
+            # get all sessions
+            beh_expt_list = [sess_expt[1] for sess_expt in sessdict[DATE]]
+            beh_sess_list = [sess_expt[0] for sess_expt in sessdict[DATE]]
+        else:
+            # Get the single session assued to map onto this neural.
+            # beh_expt_list = [sess_expt[1] for sess_expt in sessdict[DATE] if sess_expt[0]==beh_session]
+            # print("Found these beh expt names: ", beh_expt_list)
+            # assert(len(beh_expt_list))==1, "must be error, multiple sessions with same session num"
+            beh_expt_list = [exptname]
+            beh_sess_list = [beh_session]
+            beh_trial_map_list = [(1, 0)]
 
     print("------------------------------")
     print("Loading this neural session:", rec_session)
@@ -177,12 +178,30 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
     print("Loading these beh sessions:",beh_sess_list)
     print("Using this beh_trial_map_list:", beh_trial_map_list)
 
-    ALLOW_RETRY=True
-    # Hard code sessions where multiple sec sessions to a single beh session, this leads to
-    # error where the rec sessions doesnt know which beh trial to start at.
-    if int(DATE)==221024 and rec_session==1:
-        beh_trial_map_list = [(667, 0)]
+    if beh_trial_map_list == [(1, 0)]:
+        # Defualt
+        ALLOW_RETRY=True
+    else:
+        # since you want to be able to fail, since to debug this.
         ALLOW_RETRY=False
+
+    # # Hard code sessions where multiple sec sessions to a single beh session, this leads to
+    # # error where the rec sessions doesnt know which beh trial to start at.
+    # if animal=="Pancho" and int(DATE)==221024 and rec_session==1:
+    #     # two rec sessions, one beh session
+    #     beh_trial_map_list = [(667, 0)]
+    #     ALLOW_RETRY=False
+    # elif animal=="Pancho" and int(DATE)==220719:
+    #     # one rec session, two beh sessions
+    #     beh_trial_map_list = [(1,0), (1,45)]
+    #     ALLOW_RETRY=False
+    #     beh_expt_list = ["priminvar3e", "priminvar3e"]
+    #     beh_sess_list = [1,2]
+
+    #     print(beh_expt_list)
+    #     print(beh_sess_list)
+    #     print(sessdict[DATE])
+    #     assert False
 
     try:
         SN = Session(DATE, beh_expt_list, beh_sess_list, beh_trial_map_list,
@@ -292,6 +311,9 @@ class Session(object):
         else:
             assert False
 
+        # print(beh_expt_list, beh_sess_list, beh_trial_map_list)
+        assert len(beh_expt_list) == len(beh_sess_list)
+        assert len(beh_expt_list) == len(beh_trial_map_list), "these all equal the num beh sessions that have data relevant for this neural session"
 
         if DEBUG_TIMING:
             ts = makeTimeStamp()
@@ -754,7 +776,7 @@ class Session(object):
         for s in sites:
             rs, chan = self.convert_site_to_rschan(s)
             spk = self.load_spike_waveforms_(rs, chan) # (nspk, ntimebins), e.g., (1000,30)
-
+ 
             if plot_spike_waveform:
                 fig, ax = plt.subplots(1,1)
                 self.plot_spike_waveform(ax, spk)
@@ -897,6 +919,9 @@ class Session(object):
             least desired version. Returns None if doesnt find. 
             """
             from pythonlib.tools.expttools import load_yaml_config
+            from pythonlib.tools.expttools import count_n_files_in_dir
+
+            NCHANS = 512
 
             # First is saved path, the one where already got spikes from?
             oldpath = None
@@ -915,12 +940,16 @@ class Session(object):
                 return oldpath
 
             # Second, if have not yet extracted spikes.
-            for suffix in ["-4", "-4.5", "", "-3.5"]: 
+            for suffix in ["-4", "-3.5", "-4.5", ""]: 
                 path_maybe = f"{paththis}/spikes_tdt_quick{suffix}"
                 # if os.path.exists(path_maybe):
+
                 if checkIfDirExistsAndHasFiles(path_maybe)[0]:
-                    print("FOund this path for spikes: ", path_maybe)
-                    return path_maybe
+                    # count how many files
+                    nfiles, list_files = count_n_files_in_dir(path_maybe, "png")
+                    if nfiles>=NCHANS:
+                        print("FOund this path for spikes: ", path_maybe)
+                        return path_maybe
 
             # Didn't find spikes, return None
             return None
@@ -971,8 +1000,6 @@ class Session(object):
                 print("=======")
                 self.print_summarize_expt_params()
                 raise err
-
-
             self.BehFdList.append(fd)
 
         # Try to automatically determine trial map list
@@ -2579,6 +2606,7 @@ class Session(object):
         """ Return the fd and trial linked to this tdt trial
         """
         fd_setnum, fd_trialnum = self._beh_get_fdnum_trial(trialtdt)
+        assert len(self.BehFdList)>fd_setnum, "probably didnt load all beh data. see beh_trial_map_list.py"
         fd = self.BehFdList[fd_setnum]
         if fd is None or fd_trialnum is None:
             print("ERrory in beh_get_fd_trial: ", self.Date, self.ExptSynapse, trialtdt)
@@ -6061,7 +6089,7 @@ class Session(object):
             
 
             self.plotmod_overlay_trial_events_mult(ax, list_trials, list_align_time,
-                ylabel_trials, xmin, xmax)
+                ylabel_trials, xmin=xmin, xmax=xmax)
         
             if site is not None:
                 ax.set_title(self.sitegetter_summarytext(site)) 
@@ -6244,6 +6272,12 @@ class Session(object):
 
         assert len(list_align_time)==len(list_trials)
 
+        # subsample trials to label
+        if ylabel_trials is None or ylabel_trials==True:
+            ylabel_trials = list_trials
+        else:
+            assert len(ylabel_trials)==len(list_trials)
+
         for i, (yval, trial, alignto_time) in enumerate(zip(list_yvals, list_trials, list_align_time)):
 
             # - overlay beh things
@@ -6268,13 +6302,6 @@ class Session(object):
                                                 YLIM=[yval-0.4, yval-0.3], which_events=["strokes"], alpha=ALPHA_STROKES,
                                                 xmin = xmin, xmax =xmax)
         
-        # subsample trials to label
-        if ylabel_trials is None:
-            ylabel_trials = list_trials
-        elif ylabel_trials==True:
-            ylabel_trials = list_trials
-        else:
-            assert len(ylabel_trials)==len(list_trials)
 
         # if len(ylabel_trials)>20:
         #     n = len(ylabel_trials)
