@@ -1,0 +1,9 @@
+# Union, across sessions
+# -- These usually the same across sessions
+
+sites_garbage: [18, 26, 36, 78, 80, 100, 135, 264, 323, 350, 383, 401, 474]
+
+# less, since also doing spike heght/
+sites_low_fr: []
+
+done_garbage: true

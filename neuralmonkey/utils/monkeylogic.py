@@ -46,7 +46,8 @@ def _load_sessions_corrupted():
     return load_yaml_config(path)
 
 def _load_session_mapper(animal, date = None):
-    """ Load a dict (metadat) mapping from session (neural) to beh.
+    """ Load a dict (metadat) mapping from session (neural) to beh,
+    across all data for this date.
     PARAMS:
     - date, if None, returns the dict. if date is int (YYMMDD), returns its
     map (if doesnt exist, then returns None)
@@ -141,6 +142,9 @@ def session_map_from_rec_to_ml2(animal, date, rec_session):
     of all mistakes/variations, misalignemnets between rec and beh.
     Looks in metadata for hand-entered mapping. if doesnt find that,
     then uses rec_session+1.
+    DEALS WITH THE FOLLOWING SITUATIONS:
+    1. same num beh and rec sessions, but they are not 0, 1, 2, ...
+    2. one rec, multiple beh
     PARAMS:
     - date, int or str, YYMMDD.
     - rec_session, int, (0-indexed)
@@ -150,7 +154,7 @@ def session_map_from_rec_to_ml2(animal, date, rec_session):
     - beh_expt_list, list of ml22 expt names.
     --- sessdict, dict for this day holding all sessions (beh), including those that 
     you might not acutally use (ignroed)
-    - if doesnt exist:
+    - if this rec session doesnt exist:
     --- None
     """
     from neuralmonkey.metadat.session_mappings.beh_trial_map_list import load_beh_trial_map_list
@@ -165,36 +169,43 @@ def session_map_from_rec_to_ml2(animal, date, rec_session):
     # confirm that each sess num (beh) only occurs once
     tmp = [x[0] for x in sessdict[date]]
     assert len(tmp)==len(list(set(tmp))), f"PRoblem: a sess index (beh) occurs multiple times {sessdict}"
+
+    # Load possible mapping modifications (trial to trial mapping)
     beh_trial_map_list = load_beh_trial_map_list(animal=animal, DATE=date, rec_session=rec_session)
 
-    if beh_trial_map_list == [(1, 0)]: # Default, no hand coded mods.
+    if isinstance(beh_trial_map_list, str) and beh_trial_map_list=="IGNORE":
+        # Then you told yoursefl: skip this. 
+        return None
+    elif beh_trial_map_list is None: # Default, no hand coded mods.
         #### ONE REC SESSION - ONE BEH SESSION
         # Prune sessdict that that it only keeps the beh sessions that are used.
         assert list(sessdict.keys()) == [date]
         if session_map is not None:
+            # Then you want to take multiple specific beh sessions (hand-entered session).
             sessdict[date] = [sess_expt for sess_expt in sessdict[date] if sess_expt[0] in session_map]
-
-            # then use hand-entered session
             if rec_session+1 > len(session_map):
+                # Then
                 return None
             beh_session = session_map[rec_session]
             print("Beh Sessions hand netered (mapping: rec sess --> beh sess): ", session_map)
         else:
-
             # Then use rec_session+1 (indexing into the beh sessions that exist.)
             if rec_session+1 > len(sessdict[date]):
                 return None
 
             # Second, pull out this session.
             beh_session = sessdict[date][rec_session][0]
-            print("Beh Sessions that exist on this date: ", sessdict)
+
+        print("Beh Sessions that exist on this date: ", sessdict)
 
         # Convert to list
         beh_sess_list = [beh_session]
         beh_expt_list = [sessdict[date][rec_session][1]]
-
+        beh_trial_map_list = [(1, 0)]
     else:
         #### ONE REC SESSION - MULTIPLE BEH SESSIONS
+        # Also, you are guaranteed this rec sessions exists, so dont check if it exists
+
         # then splitting neural sess to mult beh sessions.
         # e.g.,:
             # session_map: None
@@ -207,22 +218,10 @@ def session_map_from_rec_to_ml2(animal, date, rec_session):
             print("sessdict:", sessdict)
             print("beh_trial_map_list:", beh_trial_map_list)
             assert False, "prob too many beh sessions exist. I don't have a solution yet other than to delete the mkl .pkl files. Really what you want is database of rec-->(mult ml2 sessions), and then use that in session_map_from_rec_to_ml2_ntrials_mapping to auto get it"
-
+        
         # Take the number of desired beh sessions.
         beh_sess_list = [x[0] for x in sessdict[date]]
         beh_expt_list = [x[1] for x in sessdict[date]]
-    # print("HERE:")
-    # print(beh_sess_list)
-    # print(beh_expt_list)
-    # assert False
-
-    # print("taking this beh session:", beh_session)
-    # beh_expt_list = [sess_expt[1] for sess_expt in sessdict[date] if sess_expt[0]==beh_session]
-    # if len(beh_expt_list)!=1:
-    #     print(beh_expt_list)
-    #     print(sessdict, date)
-    #     assert False, "multiple expts in this folder?"
-    # exptname = beh_expt_list[0]
 
     # return beh_session, exptname, sessdict
     return beh_sess_list, beh_expt_list, sessdict, beh_trial_map_list
