@@ -11,7 +11,7 @@ from ..utils import monkeylogic as mkl
 import pickle
 import os
 from pythonlib.tools.expttools import checkIfDirExistsAndHasFiles
-from pythonlib.tools.exceptions import NotEnoughDataException
+from pythonlib.tools.exceptions import NotEnoughDataException, DataMisalignError
 
 from pythonlib.globals import PATH_NEURALMONKEY, PATH_DATA_NEURAL_RAW, PATH_DATA_NEURAL_PREPROCESSED
 # PATH_NEURALMONKEY = "/data1/code/python/neuralmonkey/neuralmonkey"
@@ -211,7 +211,7 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
             do_all_copy_to_local=do_all_copy_to_local, DEBUG_TIMING=DEBUG_TIMING,
             MINIMAL_LOADING= MINIMAL_LOADING, BAREBONES_LOADING=BAREBONES_LOADING,
             units_metadat_fail_if_no_exist=units_metadat_fail_if_no_exist)
-    except AssertionError as err:
+    except DataMisalignError as err:
         if ALLOW_RETRY:
             print("FAILED loading session:", DATE, rec_session)
             print("Possible that this one session maps to multiple beh sessions. try loading it automatically.")
@@ -229,6 +229,8 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
                 units_metadat_fail_if_no_exist=units_metadat_fail_if_no_exist)
         else:
             raise err
+    except Exception as err:
+        raise err
 
     # if not MINIMAL_LOADING and RESAVE_CACHE:
     #     # Save cached
@@ -464,11 +466,14 @@ class Session(object):
             print("== Done")
 
             # Check trial mapping between tdt and ml2
-            self._beh_prune_trial_number()
-            self._beh_validate_trial_number()
-            self._beh_validate_trial_mapping(ploton=True, do_update_of_mapper=True, 
-                fail_if_not_aligned=False)
-            
+            try:
+                self._beh_prune_trial_number()
+                self._beh_validate_trial_number()
+                self._beh_validate_trial_mapping(ploton=True, do_update_of_mapper=True, 
+                    fail_if_not_aligned=False)
+            except AssertionError as err:
+                raise DataMisalignError
+
             if DEBUG_TIMING:
                 ts = makeTimeStamp()
                 print("@@@@ DEBUG TIMING, COMPLETED", "self._beh_validate_trial_mapping()", ts)
@@ -672,17 +677,44 @@ class Session(object):
         if self._LOAD_VERSION == "MINIMAL_LOADING":
             # Make sure that events are increasing, and if trial is cut short, then none of the events after the time
             # of cutting exist
+            DO_SAVE = False
+
+            def _raise_error(trial, tmp, err):
+                print("Trial, ", trial)
+                print(tmp)
+                self.print_summarize_expt_params()
+                print("timings are not possible. bug.")
+
+                print("This trialcode:")
+                print(self.datasetbeh_trial_to_trialcode(trial))
+                raise err
+
+
             for trial in self.get_trials_list(True):                
                 tmp = self.events_get_times_as_array(trial, ["fixcue", "fixtch", "samp", "go", "first_raise", "doneb", "post"])
                 
                 try:
                     _check_increasing_up_to_nans(tmp)
+
+                except AssertionError as err:
+                    # try recomputing all the event times
+                    self.events_get_time_using_photodiode_and_save(list_trial = [trial], do_save=False)
+                    
+                    # check again
+                    tmp = self.events_get_times_as_array(trial, ["fixcue", "fixtch", "samp", "go", "first_raise", "doneb", "post"])
+                    
+                    try:
+                        _check_increasing_up_to_nans(tmp)
+                    except Exception as err:
+                        _raise_error(trial, tmp, err)
+
+                    DO_SAVE = True
+
                 except Exception as err:
-                    print("Trial, ", trial)
-                    print(tmp)
-                    self.print_summarize_expt_params()
-                    print("timings are not possible. bug.")
-                    raise err
+                    _raise_error(trial, tmp, err)
+
+            if DO_SAVE:
+                self._savelocal_events()
 
     def _check_preprocess_status(self):
         """ Check the status of preprocessing, which is these steps in
@@ -1858,36 +1890,6 @@ class Session(object):
         if self.DatAll is None:
             self.DatAll = DatRaw
         else:
-            # OLD VERSION - checkign if gotten before runing. this takes a whiel
-            # for d in DatRaw:
-            #     # Don't inlcude it if it is already extracted
-            #     # if getting raw, then will overwrite if it was gotten but without raw.
-            #     d_old = self.datall_slice_single(d["rs"], d["chan"], d["trial0"])
-            #     if d_old is None:
-            #         # then doestn exist, append
-            #         self.DatAll.append(d)
-                    
-            #         # save the index
-            #         index = len(self.DatAll)
-            #         site = self.convert_rschan_to_site(d["rs"], d["chan"])
-            #         trial = d["trial0"]
-            #         if (site, trial) not in self._MapperSiteTrial2DatAllInd[(site, trial)]:
-            #             self._MapperSiteTrial2DatAllInd[(site, trial)] = index
-            #         else:
-            #             assert self._MapperSiteTrial2DatAllInd[(site, trial)] == index
-
-            #     elif len(d_old["raw"])==0 and get_raw:
-            #         # Then previous didnt have raw, so overwrite it
-            #         self.datall_replace_single(d["rs"], d["chan"], d["trial0"], Dnew=d)
-            #     else:
-            #         # skip
-            #         pass
-
-            #     # if not self.datall_this_exists(d["rs"], d["chan"], d["trial0"],
-            #     #     also_check_if_has_raw_data=get_raw):
-            #     #     # then append
-            #     #     self.DatAll.append(d)
-
             for d in DatRaw:
                 site = self.convert_rschan_to_site(d["rs"], d["chan"])
                 trial = d["trial0"]
@@ -1920,7 +1922,7 @@ class Session(object):
         t = 348
         alignto = "first_raise"
         sn = MS.SessionsList[0]
-        sn.events_get_time_using_photodiode(t, list_events=[alignto], overwrite=True, plot_beh_code_stream=True)
+        sn.events_get_time_using_photodiode(t, list_events=[alignto], do_reextract_even_if_saved=True, plot_beh_code_stream=True)
 
     ####################### DATALL operations
     def datall_cleanup_add_things(self, only_generate_dataframe=False):
@@ -4148,18 +4150,23 @@ class Session(object):
             times_ordered_flat, events_ordered_flat, eventinds_ordered_flat, time_events_flat_first_unsorted
 
 
-    def events_get_time_using_photodiode_and_save(self):
+    def events_get_time_using_photodiode_and_save(self, list_trial=None, do_save=True):
         """ Extract and save for all trials. using all events. GOod for preprocessing.
         """
 
         list_events = self.events_default_list_events()
 
-        for trial in self.get_trials_list(True, True):
+        if list_trial is None:
+            list_trial = self.get_trials_list(True, True)
+        
+        for trial in list_trial:
             # Extract (it skips extraction if already exists)
-            self.events_get_time_using_photodiode(trial, list_events)
-
+            tmp = self.events_get_time_using_photodiode(trial, list_events, 
+                do_reextract_even_if_saved=True)
+ 
         # save
-        self._savelocal_events()
+        if do_save:
+            self._savelocal_events()
 
 
     def _loadlocal_events(self):
@@ -4249,11 +4256,10 @@ class Session(object):
         else:
             return out, reason
 
-
     def events_get_time_using_photodiode(self, trial, 
         list_events = ("stim_onset", "go", "first_raise", "on_stroke_1"),
-        overwrite=False, plot_beh_code_stream = False,
-        do_reextract= False):
+        do_reextract_even_if_saved=False, plot_beh_code_stream = False,
+        do_reextract_if_not_in_saved= False):
         """
         [GOOD] Get dict of times of important events. Uses variety of methods, including
         (i) photodiode (ii) motor behavior, (iii) beh codes, wherever appropriate.
@@ -4261,7 +4267,9 @@ class Session(object):
         PARAMS:
         - list_events, list of str, each a label for an event. only gets those in this list.
         - force_single_output, if True, then asserts that ther eis one and only one crossing.
-        - do_reextract, bool, if True, then tries to reextract if doesnt find this event..useful 
+        - do_reextract_even_if_saved, then is like do_reextract_if_not_in_saved, but always do_extract, even if
+        it already exists.
+        - do_reextract_if_not_in_saved, bool, if True, then tries to reextract if doesnt find this event..useful 
         because some events data are pre-saved, and new code might be better at extracting it.
         RETURNS:
         - then returns a single dict, keys, are the list_events, each a list of times. THis is empty
@@ -4298,6 +4306,12 @@ class Session(object):
             """ Returns times, list of scalars. Empty list if no times found.
             """
             # 1) Skip this, if no fixation success
+
+
+            if event in ["fixtch", "fix_touch", "first_raise"]:
+                if len(self.BehFdList)==0: # MINIMAIL loading...
+                    self.load_behavior()
+
             if not self.beh_fixation_success(trial) and event in list_events_skip_if_no_fixation:
                 times = []
             else:
@@ -4471,7 +4485,7 @@ class Session(object):
                                         assert_single_crossing_this_trial = False,
                                         assert_expected_direction_first_crossing = "down",
                                         take_first_behcode_instance=True,
-                                        take_first_crossing_for_each_behcode=True) 
+                                        take_first_crossing_for_each_behcode=True)  
                         times = _extract_times(out)
 
                         if len(times)==0:
@@ -4697,7 +4711,7 @@ class Session(object):
         dict_events = {}
         for event in list_events:
 
-            if overwrite:
+            if do_reextract_even_if_saved:
                 # then recompute times.
                 RECOMPUTE = True
             else:
@@ -4710,22 +4724,11 @@ class Session(object):
                 else:
                     # You cached result and found it., could still be []
                     # If you want to retry, e.g., if previous cached was innacurate.
-                    if len(times)==0 and do_reextract:
+                    if len(times)==0 and do_reextract_if_not_in_saved:
                         print("Trying to reextract (trial, event):", trial, event)
                         times = self.events_get_time_using_photodiode(trial, 
-                            list_events=[event], overwrite=True)[event]
+                            list_events=[event], do_reextract_even_if_saved=True)[event]
                     RECOMPUTE = False
-
-            # key = (trial, event)
-            # if not overwrite and key in self.EventsTimeUsingPhd.keys():
-            #     times=  self.EventsTimeUsingPhd[(trial, event)]
-            #     if len(times)==0:
-            #         # if its empty, try to recompute it.. (e.g., it is a saved version, and now code is updated..)
-            #         RECOMPUTE = True
-            #     else:
-            #         RECOMPUTE = False
-            # else:
-            #     RECOMPUTE = True
 
             if RECOMPUTE:
                 try:
@@ -4735,18 +4738,11 @@ class Session(object):
                     print("trial, event:", trial, event)
                     self.print_summarize_expt_params()
                     raise err
+                # Always save if do recompute
                 self.EventsTimeUsingPhd[(trial, event)] = times
 
             # Store for output
             dict_events[event] = times
-
-        # if any events didnt get anythjing, try to reextract
-        # if do_reextract:
-        #     for ev, times in dict_events.items():
-        #         if len(times)==0 and RECOMPUTE==False:
-        #             print("Trying to reextract (trial, event):", trial, ev)
-        #             dict_events[ev] = self.events_get_time_using_photodiode(trial, 
-        #                 list_events=[ev], overwrite=True)[ev]
 
         return dict_events
 
@@ -4803,6 +4799,11 @@ class Session(object):
         RETURNS:
         - list_events, list of strings. 
         """
+
+        dict_events_bounds, _ = self.eventsanaly_helper_pre_postdur_for_analysis(
+            just_get_list_events=True)
+
+
         if include_stroke_endpoints:
             list_events = ["fixcue", "fixtch", "samp", "go", 
                 "first_raise", "on_stroke_1", "seqon", 
@@ -4812,6 +4813,37 @@ class Session(object):
             list_events = ["fixcue", "fixtch", "samp", "go", 
                 "first_raise", "seqon", "doneb", 
                 "post", "reward_all"]
+
+        # # Using full name, so is compatible with eventsanaly_helper_pre_postdur_for_analysis
+        # if include_stroke_endpoints:
+        #     list_events = ["fixcue", "fix_touch", "samp", "go_cue", 
+        #         "first_raise", "on_stroke_1", "seqon", 
+        #         "off_stroke_last", "doneb", 
+        #         "post", "reward_all"]
+        # else:
+        #     list_events = ["fixcue", "fix_touch", "samp", "go_cue", 
+        #         "first_raise", "seqon", "doneb", 
+        #         "post", "reward_all"]
+ 
+        #  dict_events_bounds = {
+        #     "fixcue":[-0.6, 0.6], # onset of fixation cue
+        #     "fix_touch":[-0.6, 0.6], # button-touch
+        #     "rulecue2":[-0.6, 0.6], # 
+        #     "samp":[-0.6, 0.6], # image response
+        #     "go_cue":[-0.6, 0.6], # movement onset.
+        #     "first_raise":[-0.6, 0.6], # image response
+        #     "on_strokeidx_0":[-0.6, 0.6], # image response
+        #     "off_stroke_last":[-0.6, 0.6], # image response
+        #     "doneb":[-0.6, 0.6], # image response    
+        #     "post":[-0.6, 0.6], # image response    
+        #     "reward_all":[-0.6, 0.6], # image response    
+        # }
+
+
+        # include anything in dict
+        for x in dict_events_bounds.keys():
+            if x not in list_events:
+                list_events.append(x)
         return list_events
 
     def eventsdataframe_sanity_check(self, DEBUG=False):
@@ -5480,15 +5512,10 @@ class Session(object):
                 pa = pa._slice_by_chan(sites)
      
                 # slice to time window
-                # if len(time_align)==0:
-                #     # Try reextracting, could be updated code solved this.
-                #     self.events_get_time_using_photodiode(tr, list_events=[alignto], overwrite=True)
-                #     # try eagain                
-                #     time_align = self.events_get_time_using_photodiode(tr, list_events=[alignto])[alignto]
                 if len(time_align)==0:
                     # now its relaly fucked.
                     # run this to make the stream plot
-                    self.events_get_time_using_photodiode(tr, list_events=[alignto], overwrite=True, plot_beh_code_stream=True)
+                    self.events_get_time_using_photodiode(tr, list_events=[alignto], do_reextract_even_if_saved=True, plot_beh_code_stream=True)
                     print(sites)
                     print(tr)
                     print(alignto)
@@ -6517,9 +6544,9 @@ class Session(object):
 
         if window_delta_pixels is None:
             if self.Animal=="Pancho":
-                window_delta_pixels = 38.5
+                window_delta_pixels = 45 # changed to 45 on 6/15/23, since was missing some.
             elif self.Animal == "Diego":
-                window_delta_pixels = 45
+                window_delta_pixels = 48
 
         # 1) is touching within fix params?
         fd, t = self.beh_get_fd_trial(trial)
