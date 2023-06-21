@@ -46,7 +46,7 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
 
     PRE_DUR_CALC = None # None, since below uses diff ones for each event.
     POST_DUR_CALC = None
-    globals_nmin = 5
+    globals_nmin = 7
     globals_lenient_allow_data_if_has_n_levels = 2
 
     ################## SUPERVISION LEVELS TO KEEP
@@ -149,42 +149,92 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
 
     elif which_level=="trial" and ANALY_VER=="seqcontext":
 
-        LIST_VAR = [
-            "seqc_2_shape",
-            "seqc_2_loc",
-            "seqc_2_loc_shape",
+        if False:
+            # Older, separating shape and location. This takes too long?
+            LIST_VAR = [
+                "seqc_2_shape",
+                "seqc_2_loc",
+                "seqc_2_loc_shape",
 
-            "seqc_1_shape",
-            "seqc_1_loc",
-            "seqc_1_loc_shape",
+                "seqc_1_shape",
+                "seqc_1_loc",
+                "seqc_1_loc_shape",
 
-            "seqc_0_shape",
-            "seqc_0_loc",
+                "seqc_0_shape",
+                "seqc_0_loc",
 
-            "seqc_nstrokes_beh",
-            "seqc_nstrokes_beh",
-            "seqc_nstrokes_beh",
-            # "seqc_2_shape",
-            # "seqc_2_loc",
-            ]
-        LIST_VARS_CONJUNCTION = [
-            ["seqc_0_loc_shape", "seqc_1_loc_shape", "seqc_2_loc"], 
-            ["seqc_0_loc_shape", "seqc_1_loc_shape", "seqc_2_shape"], 
-            ["seqc_0_loc_shape", "seqc_1_loc_shape"], 
+                "seqc_nstrokes_beh",
+                "seqc_nstrokes_beh",
+                "seqc_nstrokes_beh",
+                ]
+            LIST_VARS_CONJUNCTION = [
+                ["seqc_0_loc_shape", "seqc_1_loc_shape", "seqc_2_loc"], 
+                ["seqc_0_loc_shape", "seqc_1_loc_shape", "seqc_2_shape"], 
+                ["seqc_0_loc_shape", "seqc_1_loc_shape"], 
 
-            ["seqc_0_shape", "seqc_0_loc", "seqc_1_loc"], 
-            ["seqc_0_shape", "seqc_0_loc", "seqc_1_shape"],
-            ["seqc_0_shape", "seqc_0_loc"],
+                ["seqc_0_shape", "seqc_0_loc", "seqc_1_loc"], 
+                ["seqc_0_shape", "seqc_0_loc", "seqc_1_shape"],
+                ["seqc_0_shape", "seqc_0_loc"],
 
-            ["seqc_0_loc"],
-            ["seqc_0_shape"],
+                ["seqc_0_loc"],
+                ["seqc_0_shape"],
 
-            ["seqc_0_shape", "seqc_0_loc"],
-            ["seqc_0_shape", "seqc_0_loc", "seqc_1_shape", "seqc_1_loc"],
-            ["seqc_0_shape", "seqc_0_loc", "seqc_1_shape", "seqc_1_loc", "seqc_2_shape", "seqc_2_loc"],
-            # ["seqc_0_shape", "seqc_0_loc", "seqc_1_shape", "seqc_1_loc"],
-            # ["seqc_0_shape", "seqc_0_loc", "seqc_1_shape", "seqc_1_loc"],
-        ]           
+                ["seqc_0_shape", "seqc_0_loc"],
+                ["seqc_0_shape", "seqc_0_loc", "seqc_1_shape", "seqc_1_loc"],
+                ["seqc_0_shape", "seqc_0_loc", "seqc_1_shape", "seqc_1_loc", "seqc_2_shape", "seqc_2_loc"],
+            ]           
+        else:
+
+            LIST_VAR = [
+
+                # "seqc_3_loc_shape", # same n strokes, just diff sequence
+                # "seqc_3_loc_shape", #  
+                # "seqc_3_loc_shape", # same shape config
+
+                "seqc_3_loc_shape", # DIFF SHAPE/LOC
+                "seqc_3_loc_shape", # DIFF SHAPE/LOC, same stim entirely
+                "seqc_3_shape", # DIFF SHAPE, same loc
+                "seqc_3_loc", # DIFF LOC, same shape
+
+                "seqc_2_loc_shape", # DIFF SHAPE/LOC
+                "seqc_2_loc_shape", # DIFF SHAPE/LOC, same stim entirely
+                "seqc_2_shape", # DIFF SHAPE, same loc
+                "seqc_2_loc", # DIFF LOC, same shape
+
+                "seqc_1_loc_shape", # DIFF SHAPE/LOC
+                "seqc_1_loc_shape", # DIFF SHAPE/LOC, same stim entirely
+                "seqc_1_shape", # DIFF SHAPE, same loc
+                "seqc_1_loc", # DIFF LOC, same shape
+
+                "seqc_nstrokes_beh", # DIFF N STROKES, same seq/loc sequence
+                "seqc_nstrokes_beh",
+                "seqc_nstrokes_beh",
+                ]
+            LIST_VARS_CONJUNCTION = [
+
+                # ["seqc_nstrokes_beh", "seqc_0_loc_shape", "seqc_1_loc_shape", "seqc_2_loc_shape"], 
+                # ["taskconfig_loc", "seqc_0_loc_shape", "seqc_1_loc_shape", "seqc_2_loc_shape"],
+                # ["taskconfig_shp", "seqc_0_loc_shape", "seqc_1_loc_shape", "seqc_2_loc_shape"],
+                
+                ["seqc_nstrokes_beh", "seqc_0_loc_shape", "seqc_1_loc_shape", "seqc_2_loc_shape"], 
+                ["taskconfig_shploc", "seqc_0_loc_shape", "seqc_1_loc_shape", "seqc_2_loc_shape"],
+                ["seqc_nstrokes_beh", "seqc_0_loc_shape", "seqc_1_loc_shape", "seqc_2_loc_shape", "seqc_3_loc"], 
+                ["seqc_nstrokes_beh", "seqc_0_loc_shape", "seqc_1_loc_shape", "seqc_2_loc_shape", "seqc_3_shape"], 
+
+                ["seqc_nstrokes_beh", "seqc_0_loc_shape", "seqc_1_loc_shape"], 
+                ["taskconfig_shploc", "seqc_0_loc_shape", "seqc_1_loc_shape"],
+                ["seqc_nstrokes_beh", "seqc_0_loc_shape", "seqc_1_loc_shape", "seqc_2_loc"], 
+                ["seqc_nstrokes_beh", "seqc_0_loc_shape", "seqc_1_loc_shape", "seqc_2_shape"], 
+
+                ["seqc_nstrokes_beh", "seqc_0_loc_shape"], 
+                ["taskconfig_shploc", "seqc_0_loc_shape"],
+                ["seqc_nstrokes_beh", "seqc_0_loc_shape", "seqc_1_loc"], 
+                ["seqc_nstrokes_beh", "seqc_0_loc_shape", "seqc_1_shape"], 
+
+                ["seqc_0_loc_shape"], # diff n strokes.
+                ["seqc_0_loc_shape", "seqc_1_loc_shape"],
+                ["seqc_0_loc_shape", "seqc_1_loc_shape", "seqc_2_loc_shape"],
+            ]           
 
         # list_events = ["03_samp", "03_samp", "05_first_raise", "06_on_strokeidx_0", "09_post", "10_reward_all"]
         # list_pre_dur = [-0.6, 0.05, -0.6, -0.1, 0.05, 0.05]
@@ -466,12 +516,6 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
             list_post_dur = [x[2] for x in WINDOWS_DEFAULT]
 
     ####################### CLEAN UP VARS
-    print("Got these LIST_VAR and LIST_VARS_CONJUNCTION:")
-    print(LIST_VAR)
-    print(LIST_VARS_CONJUNCTION)
-    assert len(LIST_VAR)==len(LIST_VARS_CONJUNCTION)
-    assert len(LIST_VAR)>0
-
     if ONLY_ESSENTIAL_VARS or (ANALY_VER in ["ruleswERROR"]): 
         # just test epoch, for error trials
         LIST_VAR = LIST_VAR[:2]
@@ -495,12 +539,18 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
     preprocess_steps_append.append("beh_strokes_at_least_one")
 
     # Remove aborts
-    if ANALY_VER in ["ruleswERROR", "ruleswALLDATA"]:
-        # error trials
+    if False:
+        if ANALY_VER in ["ruleswERROR", "ruleswALLDATA"]:
+            # error trials
+            remove_aborts = False
+        else:        
+            # correct trials
+            remove_aborts = True
+    else:
+        # Never remove aborts. Instead already pruning based on things like one to one, or correct
+        # sequence. This so includes cases where complete but abort on the last stroke simply for 
+        # shape quality.
         remove_aborts = False
-    else:        
-        # correct trials
-        remove_aborts = True
 
 
     ## If you have success as a variable then you cannot prune to only keep success...
@@ -513,6 +563,22 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
             return True
         return False
 
+
+    ##### Auto decide what to extract based on vars
+    LIST_VAR_ALL = [x for x in LIST_VAR]
+    for vars_conj in LIST_VARS_CONJUNCTION:
+        LIST_VAR_ALL.extend(vars_conj)
+
+    # --
+    DO_EXTRACT_TASKCONFIG = False
+    if "taskconfig_loc" in LIST_VAR_ALL or "taskconfig_shp" in LIST_VAR_ALL or "taskconfig_shploc" in LIST_VAR_ALL:
+        DO_EXTRACT_TASKCONFIG = True
+    
+    print("Got these LIST_VAR and LIST_VARS_CONJUNCTION:")
+    print(LIST_VAR)
+    print(LIST_VARS_CONJUNCTION)
+    assert len(LIST_VAR)==len(LIST_VARS_CONJUNCTION)
+    assert len(LIST_VAR)>0
 
     params = {
         "LIST_VAR":LIST_VAR,
@@ -534,7 +600,8 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
         "preprocess_steps_append":preprocess_steps_append,
         "remove_aborts":remove_aborts,
         "DO_SCORE_SEQUENCE_VER":DO_SCORE_SEQUENCE_VER,
-        "list_superv_keep_full":list_superv_keep_full
+        "list_superv_keep_full":list_superv_keep_full,
+        "DO_EXTRACT_TASKCONFIG":DO_EXTRACT_TASKCONFIG
     }
 
     assert len(list_events) == len(list_pre_dur)
@@ -703,19 +770,20 @@ def params_getter_extraction(animal, DATE, which_level, ANALY_VER):
     # assert False
 
     # make sure all vars that you will use for plots are included in extraction
-    params_plots = params_getter_plots(animal, DATE, which_level, ANALY_VER)
-    for var in params_plots["LIST_VAR"]:
-        if var not in list_features_modulation_append:
-            print(var)
-            print(list_features_modulation_append)
-            assert False, "need to extract this feature"
-    for lv in params_plots["LIST_VARS_CONJUNCTION"]:
-        for var in lv:
+    if False: # STOPPED, since I always reextract during plotting...
+        params_plots = params_getter_plots(animal, DATE, which_level, ANALY_VER)
+        for var in params_plots["LIST_VAR"]:
             if var not in list_features_modulation_append:
-                print(lv)
                 print(var)
                 print(list_features_modulation_append)
                 assert False, "need to extract this feature"
+        for lv in params_plots["LIST_VARS_CONJUNCTION"]:
+            for var in lv:
+                if var not in list_features_modulation_append:
+                    print(lv)
+                    print(var)
+                    print(list_features_modulation_append)
+                    assert False, "need to extract this feature"
 
     params = {
         "PRE_DUR":PRE_DUR,
@@ -740,3 +808,110 @@ def params_getter_extraction(animal, DATE, which_level, ANALY_VER):
         }
 
     return params
+
+
+def dataset_apply_params(ListD, animal, DATE, which_level, ANALY_VER, anova_interaction=False):
+    """Preprocess dataset in all ways, including pruning, appending/modifying columns, etc.
+    PARAMS:
+    - ListD, list of Datasets. will operate on each, then concatenate.
+    RETURNS:
+    - Dall, concated datasets, processed but not yet trial-pruned
+    - dataset_pruned_for_trial_analysis, same, but trial-pruend. this is final.
+    - TRIALCODES_KEEP, lsit of unique trialcodes in dataset_pruned_for_trial_analysis
+    - params, dict, params for ploting
+    - params_extraction,. dict params for extafcvtion data.
+    """
+    from pythonlib.dataset.analy_dlist import concatDatasets
+    from neuralmonkey.classes.snippets import _dataset_extract_prune_general, _dataset_extract_prune_general_dataset
+
+    ################################### LOAD PARAMS
+    params = params_getter_plots(animal, DATE, which_level, ANALY_VER, 
+        anova_interaction=anova_interaction)
+    params_extraction = params_getter_extraction(animal, DATE, which_level, ANALY_VER)
+
+
+    ################# BEH DATASET
+    # First, concatenate all D.
+    list_dataset = []
+    for i, D in enumerate(ListD):
+        # if which_level=="trial":
+        # use the dataset here, since it is not saved
+        # D = sn.Datasetbeh
+        # else:
+        #     # use the dataset linked to DS, since it is saved
+        #     D = SP.DSmult[i].Dataset
+        #     assert len(D.Dat)==len(sn.Datasetbeh.Dat), "a sanity check. desnt have to be, but I am curious why it is not..."
+
+        # THINGs that must be done by each individual D
+        D.behclass_preprocess_wrapper()
+
+        # Second, do preprocessing to concatted D
+        if params_extraction["DO_SCORE_SEQUENCE_VER"]=="parses":
+            D.grammar_successbinary_score_parses()
+        elif params_extraction["DO_SCORE_SEQUENCE_VER"]=="matlab":
+            D.grammar_successbinary_score_matlab()
+        else:
+            # dont score
+            assert params_extraction["DO_SCORE_SEQUENCE_VER"] is None
+
+        if params_extraction["taskgroup_reassign_simple_neural"]:
+            # do here, so the new taskgroup can be used as a feature.
+            D.taskgroup_reassign_ignoring_whether_is_probe(CLASSIFY_PROBE_DETAILED=False)                
+            print("Resulting taskgroup/probe combo, after taskgroup_reassign_simple_neural...")
+            D.grouping_print_n_samples(["taskgroup", "probe"])
+
+        if params_extraction["DO_CHARSEQ_VER"] is not None:
+            D.sequence_char_taskclass_assign_char_seq(ver=params_extraction["DO_CHARSEQ_VER"])
+
+        list_dataset.append(D.copy())
+    # concat the datasets 
+    Dall = concatDatasets(list_dataset)
+
+    ################ DO SAME THING AS IN EXTRACTION (these dont fail, when use concatted)
+    if params_extraction["DO_EXTRACT_CONTEXT"]:
+        Dall.seqcontext_preprocess()
+
+    for this in params_extraction["list_epoch_merge"]:
+        # D.supervision_epochs_merge_these(["rndstr", "AnBmTR|1", "TR|1"], "rank|1")
+        Dall.supervision_epochs_merge_these(this[0], this[1], key=params_extraction["epoch_merge_key"],
+            assert_list_epochs_exist=False)
+
+
+    if params_extraction["EXTRACT_EPOCHSETS"]:
+        Dall.epochset_extract_common_epoch_sets(
+            trial_label=params_extraction["EXTRACT_EPOCHSETS_trial_label"],
+            n_max_epochs=params_extraction["EXTRACT_EPOCHSETS_n_max_epochs"],
+            merge_sets_with_only_single_epoch=params_extraction["EXTRACT_EPOCHSETS_merge_sets"],
+            merge_sets_with_only_single_epoch_name = ("LEFTOVER",))
+
+    if params_extraction["DO_EXTRACT_EPOCHKIND"]:
+        Dall.supervision_epochs_extract_epochkind()
+
+    if params["DO_EXTRACT_TASKCONFIG"]:
+        Dall.taskclass_shapes_loc_configuration_assign_column()
+        
+    # Sanity check that didn't remove too much data.
+    if False:
+        if "wrong_sequencing_binary_score" not in params["preprocess_steps_append"]:
+            # Skip if is error trials.
+            npre = len(D.Dat)
+            npost = len(dat_pruned.Dat)
+            if npost/npre<0.25 and len(sn.Datasetbeh.Dat)>200: # ie ignore this if it is a small session...
+                print(params)
+                print("THis has no wrong_sequencing_binary_score: ",  params['preprocess_steps_append'])
+                assert False, "dataset pruning removed >0.75 of data. Are you sure correct? Maybe removing a supervisiuon stage that is actually important?"
+    
+    ###### PRUNE DATASET TO GET SUBSET TRIALCODES
+    # Only keep subset these trialcodes
+    dataset_pruned_for_trial_analysis = _dataset_extract_prune_general_dataset(Dall, 
+        list_superv_keep=params["list_superv_keep"], 
+        preprocess_steps_append=params["preprocess_steps_append"],
+        remove_aborts=params["remove_aborts"],
+        list_superv_keep_full=params["list_superv_keep_full"], 
+        )    
+    TRIALCODES_KEEP = dataset_pruned_for_trial_analysis.Dat["trialcode"].tolist()
+
+    return Dall, dataset_pruned_for_trial_analysis, TRIALCODES_KEEP, params, params_extraction
+
+
+
