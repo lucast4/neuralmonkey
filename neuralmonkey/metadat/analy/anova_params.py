@@ -206,6 +206,10 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
                 "seqc_1_shape", # DIFF SHAPE, same loc
                 "seqc_1_loc", # DIFF LOC, same shape
 
+                "seqc_0_loc_shape", # DIFF SHAPE/LOC, same stim entirely
+                "seqc_0_loc", # DIFF SHAPE/LOC, same stim entirely
+                "seqc_0_shape", # DIFF SHAPE/LOC, same stim entirely
+
                 "seqc_nstrokes_beh", # DIFF N STROKES, same seq/loc sequence
                 "seqc_nstrokes_beh",
                 "seqc_nstrokes_beh",
@@ -230,6 +234,10 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
                 ["taskconfig_shploc", "seqc_0_loc_shape"],
                 ["seqc_nstrokes_beh", "seqc_0_loc_shape", "seqc_1_loc"], 
                 ["seqc_nstrokes_beh", "seqc_0_loc_shape", "seqc_1_shape"], 
+
+                ["taskconfig_shploc"],
+                ["taskconfig_shploc", "seqc_0_shape"],
+                ["taskconfig_shploc", "seqc_0_loc"],
 
                 ["seqc_0_loc_shape"], # diff n strokes.
                 ["seqc_0_loc_shape", "seqc_1_loc_shape"],
@@ -915,3 +923,96 @@ def dataset_apply_params(ListD, animal, DATE, which_level, ANALY_VER, anova_inte
 
 
 
+def conjunctions_print_plot_all(ListD, SAVEDIR, ANALY_VER, which_level="trial"):
+    """
+    Wrapper for all printing and plotting (saving) related to conjuicntions of varaibles that matter for PIG>
+    Think of these as the conjucntiosn that care about for neural analysis. Here help assess each beahvior quickly.
+    PARAMS:
+    - ListD, lsit of Datasets
+    - ANALY_VER, string code for which analysis. e.g., ANALY_VER = "singleprim"
+    - which_level, string, what data? e.g. {"stroke", "trial"}
+    RETURNS:
+    - saves figures in f"{SAVEDIR}/conjunctions"
+    """
+    # from neuralmonkey.metadat.analy.anova_params import dataset_apply_params, params_getter_plots
+    from pythonlib.tools.expttools import writeStringsToFile
+    from pythonlib.tools.pandastools import grouping_plot_n_samples_conjunction_heatmap
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import os
+    from pythonlib.tools.plottools import savefig
+
+    sdir = f"{SAVEDIR}/conjunctions"
+    os.makedirs(sdir, exist_ok=True)
+
+    # ListD = [D]
+    list_animals = []
+    list_dates = []
+    for D in ListD:
+        assert len(D.animals())==1
+        animal = D.animals()[0]
+        _dates = D.Dat["date"].unique()
+        assert len(_dates)==1
+        DATE = int(_dates[0])
+
+        list_animals.append(animal)
+        list_dates.append(DATE)
+    assert len(set(list_animals))==1
+    assert len(set(list_dates))==1
+    animal = list_animals[0]
+    DATE = list_dates[0]
+
+    ### Prep dataset, and extract params
+    Dall, Dpruned, TRIALCODES_KEEP, params, params_extraction = dataset_apply_params(ListD, 
+        animal, DATE, which_level, ANALY_VER)
+
+    ### Print and plot all conjucntions
+    LIST_VAR = params["LIST_VAR"]
+    LIST_VARS_CONJUNCTION = params["LIST_VARS_CONJUNCTION"]           
+    list_n = []
+    for var, vars_others in zip(LIST_VAR, LIST_VARS_CONJUNCTION):
+        
+        print(var, "vs", vars_others)
+        
+        # All data
+        path = f"{sdir}/{var}|vs|{'-'.join(vars_others)}.txt"
+        plot_counts_heatmap_savedir = f"{sdir}/heatmap-{var}|vs|{'-'.join(vars_others)}.pdf"
+        Dpruned.grouping_conjunctions_print_variables_save(var, vars_others, path, n_min=0, 
+                                                          plot_counts_heatmap_savedir=plot_counts_heatmap_savedir)
+        # Passing nmin
+        path = f"{sdir}/goodPassNmin-{var}|vs|{'-'.join(vars_others)}.txt"
+        plot_counts_heatmap_savedir = f"{sdir}/goodPassNmin-heatmap-{var}|vs|{'-'.join(vars_others)}.pdf"
+        dfout, dict_dfs = Dpruned.grouping_conjunctions_print_variables_save(var, vars_others, path, n_min=params["globals_nmin"], 
+                                                          plot_counts_heatmap_savedir=plot_counts_heatmap_savedir)
+        plt.close("all")
+        
+        # Count
+        list_n.append(len(dict_dfs))
+        
+    ### Print summary across conjucntions
+    strings = []
+    strings.append("n good levels of othervar | var |vs| othervars")
+    for var, vars_others, n in zip(LIST_VAR, LIST_VARS_CONJUNCTION, list_n):
+        s = f"{n} -- {var}|vs|{'-'.join(vars_others)}"
+        strings.append(s)
+    path = f"{sdir}/summary_n_levels_of_othervar_with_min_data.txt"
+    writeStringsToFile(path, strings)  
+
+    ### STROKE LEVEL - heatmaps of (shape, location) vs. index
+    from pythonlib.dataset.dataset_strokes import DatStrokes
+    DS = DatStrokes(Dpruned)
+    for task_kind in ["prims_single", "prims_on_grid"]:
+        dfthis = DS.Dat[DS.Dat["task_kind"]==task_kind]
+        
+        if len(dfthis)>0:
+            fig = grouping_plot_n_samples_conjunction_heatmap(dfthis, var1="shape", var2="gridloc", vars_others=["stroke_index"])
+            path = f"{sdir}/STROKELEVEL-conjunctions_shape_gridloc-task_kind_{task_kind}.pdf"
+            savefig(fig, path)
+
+            # Dissociate stroke index from remaining num strokes.
+            fig = grouping_plot_n_samples_conjunction_heatmap(dfthis, var1="stroke_index", 
+                                                              var2="stroke_index_fromlast", vars_others=["shape", "gridloc"])
+            path = f"{sdir}/STROKELEVEL-conjunctions_stroke_index-task_kind_{task_kind}.pdf"
+            savefig(fig, path)
+
+            plt.close("all")
