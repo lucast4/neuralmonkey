@@ -68,44 +68,46 @@ if __name__=="__main__":
         ###################################
         D = sn.Datasetbeh
 
-        if params["DO_SCORE_SEQUENCE_VER"]=="parses":
-            D.grammar_successbinary_score_parses()
-        elif params["DO_SCORE_SEQUENCE_VER"]=="matlab":
-            D.grammar_successbinary_score_matlab()
-        else:
-            # dont score
-            assert params["DO_SCORE_SEQUENCE_VER"] is None
+        if False:
+                # Do all these before plotting... not here.
+            if params["DO_SCORE_SEQUENCE_VER"]=="parses":
+                D.grammar_successbinary_score_parses()
+            elif params["DO_SCORE_SEQUENCE_VER"]=="matlab":
+                D.grammar_successbinary_score_matlab()
+            else:
+                # dont score
+                assert params["DO_SCORE_SEQUENCE_VER"] is None
 
-        ######################## 
-        D.behclass_preprocess_wrapper()
-        if params["DO_EXTRACT_CONTEXT"]:
-            D.seqcontext_preprocess()
+            ######################## 
+            D.behclass_preprocess_wrapper()
+            if params["DO_EXTRACT_CONTEXT"]:
+                D.seqcontext_preprocess()
 
-        if params["taskgroup_reassign_simple_neural"]:
-            # do here, so the new taskgroup can be used as a feature.
-            D.taskgroup_reassign_ignoring_whether_is_probe(CLASSIFY_PROBE_DETAILED=False)                
-            print("Resulting taskgroup/probe combo, after taskgroup_reassign_simple_neural...")
-            D.grouping_print_n_samples(["taskgroup", "probe"])
+            if params["taskgroup_reassign_simple_neural"]:
+                # do here, so the new taskgroup can be used as a feature.
+                D.taskgroup_reassign_ignoring_whether_is_probe(CLASSIFY_PROBE_DETAILED=False)                
+                print("Resulting taskgroup/probe combo, after taskgroup_reassign_simple_neural...")
+                D.grouping_print_n_samples(["taskgroup", "probe"])
+                    
+            # Merge epochs (i.e., rename them)
+            for this in params["list_epoch_merge"]:
+                D.supervision_epochs_merge_these(this[0], this[1], key=params["epoch_merge_key"],
+                    assert_list_epochs_exist=False)
+
+            # Assign each row of D a char_seq
+            if params["DO_CHARSEQ_VER"] is not None:
+                D.sequence_char_taskclass_assign_char_seq(ver=params["DO_CHARSEQ_VER"])
+
+            # Extract epochsets
+            if params["EXTRACT_EPOCHSETS"]:
+                D.epochset_extract_common_epoch_sets(
+                    trial_label=params["EXTRACT_EPOCHSETS_trial_label"],
+                    n_max_epochs=params["EXTRACT_EPOCHSETS_n_max_epochs"],
+                    merge_sets_with_only_single_epoch=params["EXTRACT_EPOCHSETS_merge_sets"],
+                    merge_sets_with_only_single_epoch_name = ("LEFTOVER",))
                 
-        # Merge epochs (i.e., rename them)
-        for this in params["list_epoch_merge"]:
-            D.supervision_epochs_merge_these(this[0], this[1], key=params["epoch_merge_key"],
-                assert_list_epochs_exist=False)
-
-        # Assign each row of D a char_seq
-        if params["DO_CHARSEQ_VER"] is not None:
-            D.sequence_char_taskclass_assign_char_seq(ver=params["DO_CHARSEQ_VER"])
-
-        # Extract epochsets
-        if params["EXTRACT_EPOCHSETS"]:
-            D.epochset_extract_common_epoch_sets(
-                trial_label=params["EXTRACT_EPOCHSETS_trial_label"],
-                n_max_epochs=params["EXTRACT_EPOCHSETS_n_max_epochs"],
-                merge_sets_with_only_single_epoch=params["EXTRACT_EPOCHSETS_merge_sets"],
-                merge_sets_with_only_single_epoch_name = ("LEFTOVER",))
-            
-        if params["DO_EXTRACT_EPOCHKIND"]:
-            D.supervision_epochs_extract_epochkind()
+            if params["DO_EXTRACT_EPOCHKIND"]:
+                D.supervision_epochs_extract_epochkind()
 
         ##############################
         # if DEBUG:
@@ -134,18 +136,35 @@ if __name__=="__main__":
                 preprocess_steps_append=params["preprocess_steps_append"],
                 remove_aborts=True)    
         else:
+            # THIS DOES NOTHIGN. just copies dataset and does sanity_gridloc_identical
             preprocess_steps_append = ["sanity_gridloc_identical"]
             dataset_pruned_for_trial_analysis = _dataset_extract_prune_general(sn, 
                 list_superv_keep="all", 
                 preprocess_steps_append=preprocess_steps_append,
                 remove_aborts=False)    
+            assert sn.Datasetbeh.Dat["trialcode"].tolist()==dataset_pruned_for_trial_analysis.Dat["trialcode"].tolist(), "shold not modify for snuippets extraction"
 
         if DEBUG:
             sn._DEBUG_PRUNE_SITES = True
             dataset_pruned_for_trial_analysis.subsampleTrials(10, 1)
 
         from neuralmonkey.classes.snippets import Snippets, extraction_helper
-        SP = extraction_helper(sn, which_level, params["list_features_modulation_append"], 
+        
+        if True:
+            # do this only before making plots
+            list_features_modulation_append = None
+        else:
+            list_features_modulation_append = params["list_features_modulation_append"]
+
+        # DEbugging, was missing a trialcode.
+        # print("HASDSADASDASD")
+        # TC = "230613-1-308"
+        # print(sum(dataset_pruned_for_trial_analysis.Dat["trialcode"]==TC))
+        # print(len(dataset_pruned_for_trial_analysis.Dat["trialcode"].tolist()), dataset_pruned_for_trial_analysis.Dat["trialcode"].tolist())
+        # print(len(sn.Datasetbeh.Dat["trialcode"].tolist()), sn.Datasetbeh.Dat["trialcode"].tolist())
+        # dataset_pruned_for_trial_analysis.Dat = dataset_pruned_for_trial_analysis.Dat[dataset_pruned_for_trial_analysis.Dat["trialcode"]==TC]
+
+        SP = extraction_helper(sn, which_level, list_features_modulation_append, 
                                dataset_pruned_for_trial_analysis=dataset_pruned_for_trial_analysis, 
                                NEW_VERSION=True, 
                                PRE_DUR = params["PRE_DUR"], POST_DUR = params["POST_DUR"],
@@ -160,23 +179,3 @@ if __name__=="__main__":
         del D
         del dataset_pruned_for_trial_analysis
         gc.collect()
-
-
-        # if PLOT:
-        #     ######## PLOTS
-        #     var = "epoch"
-        #     vars_conjuction = ['taskgroup'] # list of str, vars to take conjunction over
-        #     # PRE_DUR_CALC = -0.25
-        #     # POST_DUR_CALC = 0.25
-        #     PRE_DUR_CALC = None
-        #     POST_DUR_CALC = None
-        #     score_ver='fracmod_smfr_minshuff'
-        #     # score_ver='r2smfr_zscore'
-        #     list_events = ["00_fix_touch", "01_samp", "03_first_raise"]
-        #     list_pre_dur = [-0.5, 0.05, -0.1]
-        #     list_post_dur = [-0, 0.6, 0.5]
-
-        #     SP.modulationgood_compute_plot_ALL(var, vars_conjuction, score_ver, SAVEDIR=SAVEDIR, 
-        #                                        PRE_DUR_CALC=PRE_DUR_CALC, 
-        #                                        POST_DUR_CALC=POST_DUR_CALC,
-        #                                       list_events=list_events, list_pre_dur=list_pre_dur, list_post_dur=list_post_dur)
