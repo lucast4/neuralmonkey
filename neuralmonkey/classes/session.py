@@ -11,7 +11,7 @@ from ..utils import monkeylogic as mkl
 import pickle
 import os
 from pythonlib.tools.expttools import checkIfDirExistsAndHasFiles
-from pythonlib.tools.exceptions import NotEnoughDataException, DataMisalignError
+from pythonlib.tools.exceptions import NotEnoughDataException
 from pythonlib.tools.expttools import checkIfDirExistsAndHasFiles
 from pythonlib.globals import PATH_NEURALMONKEY, PATH_DATA_NEURAL_RAW, PATH_DATA_NEURAL_PREPROCESSED
 # PATH_NEURALMONKEY = "/data1/code/python/neuralmonkey/neuralmonkey"
