@@ -12,6 +12,7 @@ import pickle
 import os
 from pythonlib.tools.expttools import checkIfDirExistsAndHasFiles
 from pythonlib.tools.exceptions import NotEnoughDataException, DataMisalignError
+from pythonlib.tools.expttools import checkIfDirExistsAndHasFiles
 
 from pythonlib.globals import PATH_NEURALMONKEY, PATH_DATA_NEURAL_RAW, PATH_DATA_NEURAL_PREPROCESSED
 # PATH_NEURALMONKEY = "/data1/code/python/neuralmonkey/neuralmonkey"
@@ -122,7 +123,9 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
     expt="*", do_all_copy_to_local=False,
     extract_spiketrain_elephant=False, DEBUG_TIMING=False,
     MINIMAL_LOADING = False, BAREBONES_LOADING=False,
-    units_metadat_fail_if_no_exist=False):
+    ACTUALLY_BAREBONES_LOADING = False,
+    units_metadat_fail_if_no_exist=False,
+    do_if_spikes_incomplete="ignore"):
     """ Load a single recording session.
     PARAMS:
     - DATE, str, "yymmdd"
@@ -141,7 +144,10 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
         assert len(dataset_beh_expt)>1, "if skip, then make this None"
 
     # 1) Find the raw beh data (filedata)
-    beh_sess_list, beh_expt_list, _, beh_trial_map_list = session_map_from_rec_to_ml2(animal, DATE, rec_session) 
+    if ACTUALLY_BAREBONES_LOADING:
+        beh_sess_list, beh_expt_list, beh_trial_map_list = None, None, None
+    else:
+        beh_sess_list, beh_expt_list, _, beh_trial_map_list = session_map_from_rec_to_ml2(animal, DATE, rec_session) 
 
     # # Assume that the beh sessions increment in order, matching the neural sessions
     # sessdict = mkl.getSessionsList(animal, datelist=[DATE])
@@ -172,11 +178,12 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
             beh_sess_list = [beh_session]
             beh_trial_map_list = [(1, 0)]
 
-    print("------------------------------")
-    print("Loading this neural session:", rec_session)
-    print("Loading these beh expts:", beh_expt_list)
-    print("Loading these beh sessions:",beh_sess_list)
-    print("Using this beh_trial_map_list:", beh_trial_map_list)
+    if not ACTUALLY_BAREBONES_LOADING:
+        print("------------------------------")
+        print("Loading this neural session:", rec_session)
+        print("Loading these beh expts:", beh_expt_list)
+        print("Loading these beh sessions:",beh_sess_list)
+        print("Using this beh_trial_map_list:", beh_trial_map_list)
 
     if beh_trial_map_list == [(1, 0)]:
         # Defualt
@@ -210,7 +217,9 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
             extract_spiketrain_elephant=extract_spiketrain_elephant,
             do_all_copy_to_local=do_all_copy_to_local, DEBUG_TIMING=DEBUG_TIMING,
             MINIMAL_LOADING= MINIMAL_LOADING, BAREBONES_LOADING=BAREBONES_LOADING,
-            units_metadat_fail_if_no_exist=units_metadat_fail_if_no_exist)
+            units_metadat_fail_if_no_exist=units_metadat_fail_if_no_exist,
+            do_if_spikes_incomplete=do_if_spikes_incomplete,
+            ACTUALLY_BAREBONES_LOADING=ACTUALLY_BAREBONES_LOADING)
     except DataMisalignError as err:
         if ALLOW_RETRY:
             print("FAILED loading session:", DATE, rec_session)
@@ -226,7 +235,9 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
                 extract_spiketrain_elephant=extract_spiketrain_elephant,
                 do_all_copy_to_local=do_all_copy_to_local, DEBUG_TIMING=DEBUG_TIMING, 
                 MINIMAL_LOADING= MINIMAL_LOADING,
-                units_metadat_fail_if_no_exist=units_metadat_fail_if_no_exist)
+                units_metadat_fail_if_no_exist=units_metadat_fail_if_no_exist,
+                do_if_spikes_incomplete=do_if_spikes_incomplete,
+                ACTUALLY_BAREBONES_LOADING=ACTUALLY_BAREBONES_LOADING)
         else:
             raise err
     except Exception as err:
@@ -265,7 +276,9 @@ class Session(object):
             do_sanity_checks=False, do_sanity_checks_rawdupl=False,
             dataset_beh_expt= None, DEBUG_TIMING=False,
             MINIMAL_LOADING = False, BAREBONES_LOADING=False,
-            units_metadat_fail_if_no_exist=False):
+            ACTUALLY_BAREBONES_LOADING = False,
+            units_metadat_fail_if_no_exist=False,
+            do_if_spikes_incomplete="ignore"):
         """
         PARAMS:
         - datestr, string, YYMMDD, e.g, "220609"
@@ -286,6 +299,7 @@ class Session(object):
         - do_all_copy_to_local, bool, if True, then does various things (once) which can take a while, but will
         speed up loading in future. even if this False, will do this for spikes and tdt tank
         Loading version:
+        - ACTUALLY_BAREBONES_LOADING, make an instance just for the methods. Not even metadata.
         - BAREBONES_LOADING, just the metadata, like paths, trials, and sites. This cant do 
         analyses, use just for checking metadata. Doesn't require any preprocessing already don.
         - MINIMAL_LOADING, the final state, after have completed all preprocessing. This requires
@@ -297,14 +311,16 @@ class Session(object):
         """
         from pythonlib.tools.expttools import makeTimeStamp
 
-        if BAREBONES_LOADING:
-            assert MINIMAL_LOADING == False, "must do one or the other"
-        if MINIMAL_LOADING:
-            assert BAREBONES_LOADING == False, "must do one or the other"
-        FULL_LOADING = (MINIMAL_LOADING==False) and (BAREBONES_LOADING==False)
-        assert sum([(BAREBONES_LOADING==True), (MINIMAL_LOADING==True), (FULL_LOADING==True)])==1
+        # if BAREBONES_LOADING:
+        #     assert MINIMAL_LOADING == False, "must do one or the other"
+        # if MINIMAL_LOADING:
+        #     assert BAREBONES_LOADING == False, "must do one or the other"
+        FULL_LOADING = (MINIMAL_LOADING==False) and (BAREBONES_LOADING==False) and (ACTUALLY_BAREBONES_LOADING==False)
+        assert sum([(ACTUALLY_BAREBONES_LOADING==True), (BAREBONES_LOADING==True), (MINIMAL_LOADING==True), (FULL_LOADING==True)])==1, "must do one or the other"
 
-        if BAREBONES_LOADING:
+        if ACTUALLY_BAREBONES_LOADING:
+            self._LOAD_VERSION = "ACTUALLY_BAREBONES_LOADING"
+        elif BAREBONES_LOADING:
             self._LOAD_VERSION = "BAREBONES_LOADING"
         elif MINIMAL_LOADING:
             self._LOAD_VERSION = "MINIMAL_LOADING"
@@ -312,10 +328,6 @@ class Session(object):
             self._LOAD_VERSION = "FULL_LOADING"
         else:
             assert False
-
-        # print(beh_expt_list, beh_sess_list, beh_trial_map_list)
-        assert len(beh_expt_list) == len(beh_sess_list)
-        assert len(beh_expt_list) == len(beh_trial_map_list), "these all equal the num beh sessions that have data relevant for this neural session"
 
         if DEBUG_TIMING:
             ts = makeTimeStamp()
@@ -374,18 +386,30 @@ class Session(object):
         # Debug mode?
         self._DEBUG_PRUNE_SITES = False
 
-        # Immediately fail for these exceptions
-        if self.Animal=="Pancho" and int(self.Date)==230124:
-            assert False, "WS8 out of space -- Lost about 100min in middle of day."
+        # INitialize empty data
+        self.EventsTimeUsingPhd = {}
+
+        if ACTUALLY_BAREBONES_LOADING:
+            return
 
         # Initialize paths
-        self._initialize_paths()
+        self._initialize_paths(do_if_spikes_incomplete=do_if_spikes_incomplete)
+
         print("== PATHS for this expt: ")
         for k, v in self.Paths.items():
             print(k, ' -- ' , v)
         if DEBUG_TIMING:
             ts = makeTimeStamp()
             print("@@@@ DEBUG TIMING, COMPLETED", "self._initialize_paths()", ts)
+
+
+        # print(beh_expt_list, beh_sess_list, beh_trial_map_list)
+        assert len(beh_expt_list) == len(beh_sess_list)
+        assert len(beh_expt_list) == len(beh_trial_map_list), "these all equal the num beh sessions that have data relevant for this neural session"
+
+        # Immediately fail for these exceptions
+        if self.Animal=="Pancho" and int(self.Date)==230124:
+            assert False, "WS8 out of space -- Lost about 100min in middle of day."
 
 
         # Metadat about good sites, etc. Run this first before other things.
@@ -523,98 +547,6 @@ class Session(object):
             # Load beh dataset
             print("RUNNIGN datasetbeh_load_helper")
             self.datasetbeh_load_helper(dataset_beh_expt)            
-
-        # if not BAREBONES_LOADING:
-        #     # Load event timing data
-        #     print("== Trying to load events data") 
-        #     succ = self._loadlocal_events() # Load all spike times
-        #     if MINIMAL_LOADING:
-        #         assert succ==True, "must have already saved local events."
-        #     if DEBUG_TIMING:
-        #         ts = makeTimeStamp()
-        #         print("@@@@ DEBUG TIMING, COMPLETED", "self._loadlocal_events()", ts)
-        #     print("== Done")
-
-        #     if not MINIMAL_LOADING:
-                
-        #         # Load spikes. THIS IS ONLY USED TO EXTRACT FURTHER DATA. not needed if already
-        #         print("== Loading spike times")
-        #         self.load_spike_times() # Load all spike times
-        #         if DEBUG_TIMING:
-        #             ts = makeTimeStamp()
-        #             print("@@@@ DEBUG TIMING, COMPLETED", "self.load_spike_times()", ts)
-        #         print("== Done")
-
-        #         # Load beh 
-        #         print("== Loading ml2 behavior")
-        #         self.load_behavior()
-        #         if DEBUG_TIMING:
-        #             ts = makeTimeStamp()
-        #             print("@@@@ DEBUG TIMING, COMPLETED", "self.load_behavior()", ts)
-        #         print("== Done")
-
-        #         # Check trial mapping between tdt and ml2
-        #         self._beh_validate_trial_number()
-        #         self._beh_validate_trial_mapping(ploton=True, do_update_of_mapper=True, 
-        #             fail_if_not_aligned=False)
-        #         if DEBUG_TIMING:
-        #             ts = makeTimeStamp()
-        #             print("@@@@ DEBUG TIMING, COMPLETED", "self._beh_validate_trial_mapping()", ts)
-        #             print("@@@@ DEBUG TIMING, COMPLETED", "self._beh_validate_trial_number()", ts)
-
-        #         if do_all_copy_to_local:
-        #             # Copy spike waveforms saved during tdt thresholding and extraction
-        #             self.load_and_save_spike_waveform_images()
-        #             if DEBUG_TIMING:
-        #                 ts = makeTimeStamp()
-        #                 print("@@@@ DEBUG TIMING, COMPLETED", "load_and_save_spike_waveform_images()", ts)
-
-        #         if False:
-        #             # Skip for now, need to fix:
-        #             # at this line, gets error that list index out of range: FLOOR = x["valminmax"][0]
-        #             if do_sanity_checks:
-        #                 self.plot_behcode_photodiode_sanity_check()
-
-        #         if do_sanity_checks_rawdupl:
-        #             # Load raw and dupl and compare them (sanity check)
-        #             print("RUNNIGN plot_raw_dupl_sanity_check")
-        #             self.plot_raw_dupl_sanity_check()
-        #             if DEBUG_TIMING:
-        #                 ts = makeTimeStamp()
-        #                 print("@@@@ DEBUG TIMING, COMPLETED", "self.plot_raw_dupl_sanity_check()", ts)
-
-        #         # Precompute mappers (quick)
-        #         print("RUNNIGN _generate_mappers_quickly_datasetbeh")
-        #         self._generate_mappers_quickly_datasetbeh()
-        #         if DEBUG_TIMING:
-        #             ts = makeTimeStamp()
-        #             print("@@@@ DEBUG TIMING, COMPLETED", "self._generate_mappers_quickly_datasetbeh()", ts)
-
-        #         # Extract raw and spikes
-        #         print("RUNNIGN extract_raw_and_spikes_helper")
-        #         self.extract_raw_and_spikes_helper()
-
-        #         # Extract 
-        #         # Get spike trains for all trials.
-        #         if extract_spiketrain_elephant:
-        #             print("RUNNIGN spiketrain_as_elephant_batch")
-        #             self.spiketrain_as_elephant_batch()
-        #             if DEBUG_TIMING:
-        #                 ts = makeTimeStamp()
-        #                 print("@@@@ DEBUG TIMING, COMPLETED", "self.spiketrain_as_elephant_batch()", ts)
-
-        #         # Load beh dataset
-        #         print("RUNNIGN datasetbeh_load_helper")
-        #         self.datasetbeh_load_helper(dataset_beh_expt)
-        #     else:
-        #         assert do_all_copy_to_local == False
-        #         assert do_sanity_checks_rawdupl == False
-        #         assert extract_spiketrain_elephant == False
-
-        #         # Load previously cached.
-        #         print("** MINIMAL_LOADING, therefore loading previuosly cached data")
-        #         self._savelocalcached_load()
-
 
         # Various cleanups
         self._cleanup()
@@ -778,7 +710,6 @@ class Session(object):
             if fail_if_no_exist:
                 assert False, "make the file first."
 
-
         self._sitesdirty_update()
 
     def sitesdirty_filter_by_spike_magnitude(self, 
@@ -872,7 +803,7 @@ class Session(object):
         for kind in dirty_kinds:
             if kind=="sites_low_spk_magn" and "sites_low_spk_magn" not in self.SitesMetadata.keys():
                 # Then extract it
-                self.sitesdirty_filter_by_spike_magnitude()
+                self.sitesdirty_filter_by_spike_magnitude() 
                 sites = self.SitesMetadata[kind]
                 sites_dirty.extend(sites)
             elif kind in self.SitesMetadata.keys():
@@ -899,7 +830,13 @@ class Session(object):
 
 
     # def _initialize_params(self):
-    def _initialize_paths(self):
+    def _initialize_paths(self, do_if_spikes_incomplete="ignore"):
+        """
+        Initalize paths to data, including searching for raw data
+        PARAMS:
+        - do_if_spikes_incomplete, str, what to do if do not find complete set of 
+        sorted spike data.
+        """
 
         # 1) find all recordings for this date
         from pythonlib.tools.expttools import findPath, deconstruct_filename
@@ -914,7 +851,6 @@ class Session(object):
         # assert len(paths)==1, 'not yhet coded for combining sessions'
         if len(paths)==0:
             print("***^^*")
-            print(paths)
             print(self.RecSession)
             print(self.RecPathBase, path_hierarchy)
             print(self.Animal, self.Date)
@@ -982,7 +918,7 @@ class Session(object):
                     if nfiles>=NCHANS:
                         print("FOund this path for spikes: ", path_maybe)
                         return path_maybe
-
+            
             # Didn't find spikes, return None
             return None
 
@@ -1012,6 +948,56 @@ class Session(object):
         self.Paths = pathdict
         self.PathRaw = pathdict["raws"]
         self.PathTank = pathdict["tank"]
+
+        # First, check if you have all spikes laready extracted, if not, then 
+        # reextract
+        def _missing_spikes():
+            """ Returns True if any channel is missing spikes... bsaed on filenames in spikes folder."""
+            for site in self.sitegetter_all(clean=False):
+                if self._spikes_check_file_exists_tdt(site)==False:
+                    print("++ MISSING THIS SITE's SPIKE DATA:", site)
+                    return True
+            return False
+
+        if self.Paths['spikes'] is None or _missing_spikes():
+            # Then do not have complete set...
+            if do_if_spikes_incomplete=="fail":
+                print("------ spikes not gotten...")
+                print("self.Paths['spikes']", self.Paths['spikes'])
+                print(_missing_spikes())
+                self.print_summarize_expt_params()
+                assert False, "Missing some spikes!!!"
+            elif do_if_spikes_incomplete=="extract_quick_tdt":
+                # Reextract it using quick thresholding (tdt)
+                print("-- Extracting spikes thresholded (TDT)!! (becuase did not find spikes data...)")
+                from neuralmonkey.utils.matlab import spikes_extract_quick_tdt
+                try:
+                    spikes_extract_quick_tdt(self.Animal, self.Date)
+                    print("-- Successfully completed spikes extraction!!")
+                except Exception as err:
+                    self.print_summarize_expt_params()
+                    print(err)
+                    assert False
+                    
+                # CHeck again is you are missing spikes
+                if _missing_spikes():
+                    print("** STILL MISSING SPIKES! Probably havent transfered all sev file sto server??")
+                    self.print_summarize_expt_params()
+                    assert False
+
+                # Now try reinitializing paths
+                self.Paths = {}
+                self.PathRaw = {}
+                self.PathTank = {}
+                self._initialize_paths(do_if_spikes_incomplete="fail")
+
+            elif do_if_spikes_incomplete=="ignore":
+                # Is ok. do nothing
+                pass
+            else:
+                print(do_if_spikes_incomplete)
+                self.print_summarize_expt_params()
+                assert False
 
     ####################### EXTRACT RAW DATA (AND STORE)
     def load_behavior(self):
@@ -1177,9 +1163,19 @@ class Session(object):
         with open(self.Paths["tank_local"], "wb") as f:
             pickle.dump(self.DatTank, f)
 
+    def _spikes_check_file_exists_tdt(self, site):
+        """ Returns True if the tdt spike thresholding has been done
+        """
+        
+        if self.Paths['spikes'] is None:
+            return False
+
+        rs, chan = self.convert_site_to_rschan(site)
+        fn = f"{self.Paths['spikes']}/RSn{rs}-{chan}.mat"
+        return os.path.exists(fn)
 
     def _load_spike_times(self, rs, chan, ver="spikes_tdt_quick", 
-            return_none_if_fail=True):
+            return_none_if_fail=True, actually_return_none_if_fail=False):
         """ Load specific site inforamtion
         """
         """ Return spike times, pre-extracted elsewhere (matlab)
@@ -1200,16 +1196,20 @@ class Session(object):
                 mat_dict = sio.loadmat(fn)
                 return mat_dict["spiketimes"]
             except zlib.error as err:
-                print("[scipy error] Skipping spike times for (rs, chan): ", rs, chan)
-                self.print_summarize_expt_params()
-                raise
-                # return None
+                if actually_return_none_if_fail:
+                    return None
+                else:
+                    print("[scipy error] Skipping spike times for (rs, chan): ", rs, chan)
+                    self.print_summarize_expt_params()
+                    raise
             except Exception as err:
-                print(err)
-                print("[_load_spike_times] Failed for this rs, chan: ",  rs, chan)
-                self.print_summarize_expt_params()
-                raise
-                # assert False
+                if actually_return_none_if_fail:
+                    return None
+                else:
+                    print(err)
+                    print("[_load_spike_times] Failed for this rs, chan: ",  rs, chan)
+                    self.print_summarize_expt_params()
+                    raise
         else:
             mat_dict = sio.loadmat(fn)
             return mat_dict["spiketimes"]
@@ -1284,7 +1284,7 @@ class Session(object):
                     with open(paththis, "wb") as f:
                         pickle.dump(this, f)
                        
-    def _savelocalcached_check_done(self):
+    def _savelocalcached_check_done(self, datslice_quick_check=False): 
         """
         Check if all things done for saving local cached data. Returns True if all things have been saved
         """
@@ -1300,8 +1300,8 @@ class Session(object):
             if _check_this(x)==False:
                 return False
 
-        if self._savelocalcached_checksaved_datslice()==False:
-            return False
+        if self._savelocalcached_checksaved_datslice(datslice_quick_check=datslice_quick_check)==False:
+            return False 
 
         return True
 
@@ -1372,32 +1372,37 @@ class Session(object):
                     # 3. Doesnt exist, return None.
                     return None
 
-    def _savelocalcached_checksaved_datslice(self):
+    def _savelocalcached_checksaved_datslice(self, datslice_quick_check=False):
         """ Returns bool, whether all trials/sites have their
         data extraacted. Doesnt check that the files are not corrupted..
         NOTE: this is more general. checks whether oyu have completed caching
         """
 
-        # First, check that you have cached trials. If not, 
-        if not os.path.exists(f"{self.Paths['cached_dir']}/trials_list.pkl"):
-            return False
+        if datslice_quick_check:
+            # Then just check that the directory exists and is not empty
+            path = f"{self.Paths['cached_dir']}/datall_site_trial"
+            return checkIfDirExistsAndHasFiles(path)
         else:
-            # load the trials
-            import pickle
-            path = f"{self.Paths['cached_dir']}/trials_list.pkl"
-            with open(path, "rb") as f:
-                self._CachedTrialsList = pickle.load(f)
+            # First, check that you have cached trials. If not, 
+            if not os.path.exists(f"{self.Paths['cached_dir']}/trials_list.pkl"):
+                return False
+            else:
+                # load the trials
+                import pickle
+                path = f"{self.Paths['cached_dir']}/trials_list.pkl"
+                with open(path, "rb") as f:
+                    self._CachedTrialsList = pickle.load(f)
 
 
-        trials = self.get_trials_list(SAVELOCALCACHED_TRIALS_FIXATION_SUCCESS)
-        sites = self.sitegetter_all(clean=True)
+            trials = self.get_trials_list(SAVELOCALCACHED_TRIALS_FIXATION_SUCCESS)
+            sites = self.sitegetter_all(clean=True) 
 
-        for t in trials:
-            for s in sites:
-                exists = self._savelocalcached_loadextract_datslice(t, s, only_check_if_exists=True)
-                if not exists:
-                    return False
-        return True
+            for t in trials:
+                for s in sites:
+                    exists = self._savelocalcached_loadextract_datslice(t, s, only_check_if_exists=True)
+                    if not exists:
+                        return False
+            return True
 
 
     def load_spike_times(self):
@@ -1600,6 +1605,7 @@ class Session(object):
             import scipy.io as sio
 
             if self.Paths['spikes'] is None:
+                print("+++++++++++++++=")
                 print(self.Paths)
                 self.print_summarize_expt_params()
                 assert False
@@ -2514,7 +2520,8 @@ class Session(object):
                 _summarize()
                 fig = _doplot()
                 fig.savefig(f"{self.Paths['figs_local']}/DEBUG.pdf")
-                print("** SAVED DEBUG FIGURE  to /self.Paths['figs_local']/DEBUG.pdf")
+                print("** SAVED DEBUG FIGURE  to here:")
+                print(f"{self.Paths['figs_local']}/DEBUG.pdf")
                 self.print_summarize_expt_params()
                 assert False, "variation says they are aligned... (but lagshift doesnt)"
         else:
@@ -3295,7 +3302,8 @@ class Session(object):
             return times
 
     def _behcode_extract_times(self, code, trial0=None, 
-            first_instance_only=False, shorthand=False, refrac_period=0.01):
+            first_instance_only=False, shorthand=False, refrac_period=0.01,
+            exclude_times_before_trial_onset=True):
         """ [ALL BEHCODE EXTRACTION GOES THRU THIS] 
         Extract the times that this code occured, in sec, as recorded by TDT 
         _NOT_ as recorded in ml2. these are almost identical. These are the "correct" values
@@ -3308,6 +3316,8 @@ class Session(object):
         - first_instance_only, bool, if True, then only returns the first time
         it occurs.
         - refrac_period, removes codes which occur close in time to previuos code.
+        - exclude_times_before_trial_onset, bool, if True, keeps only times >0, i.e,
+        ignroes the 1sec (default) padding before onset of each trial.
         RETURNS:
         - np array of times
         """    
@@ -3317,13 +3327,17 @@ class Session(object):
         else:
             codenum = code
 
-        timesall, codes = self.extract_data_tank_epocs("behcode")
+        timesall, codes = self.extract_data_tank_epocs("behcode") 
         inds = codes==codenum
         times = timesall[inds]
+
         
         if trial0 is not None:
-            times = self.extract_windowed_data_bytrial(times, trial0)[0]
+            times = self.extract_windowed_data_bytrial(times, trial0)[0] 
         
+        if exclude_times_before_trial_onset:
+            times = times[times>0]
+
         if first_instance_only:
             if len(times)>1:
                 times = times[0:1] # stay as an array
@@ -3374,7 +3388,8 @@ class Session(object):
         refrac_period_between_events=0.01,
         take_first_behcode_instance=False, 
         take_first_crossing_for_each_behcode=False,
-        allow_no_crossing_per_behcode_instance_if=None):
+        allow_no_crossing_per_behcode_instance_if=None,
+        exclude_times_before_trial_onset=True):
         """ 
         Good code for extracting times of crossings of timestamp signals (e..g, photodiode) aligned to 
         behc odes. Many options for assertions or taking specific kidns of signals. 
@@ -3397,6 +3412,8 @@ class Session(object):
         - allow_no_crossing_per_behcode_instance_if, string, mnethod to allow excpets for cases when
         dont find stream crossings, but expected to sometimes not find, therefore allow to except. If None, then
         don't allow excptions.
+        - exclude_times_before_trial_onset, bool, if True, keeps only times >0, i.e,
+        ignroes the 1sec (default) padding before onset of each trial.
         RETURNS:
         - list of dict, where each dict holds array of times for a single instance of this behcode.
         """
@@ -3407,16 +3424,16 @@ class Session(object):
         # 1) Extract the stream siganl
         if whichstream=="touch_binary":
             times, vals = self.beh_extract_touching_binary(trial)
-            vals_sm = vals
+            vals_sm = vals.copy()
         elif whichstream=="touch_in_fixsquare_binary":
             times, vals = self.beh_extract_touch_in_fixation_square(trial)
-            vals_sm = vals
+            vals_sm = vals.copy()
         elif whichstream=="touch_done_button":
             times, vals = self.beh_extract_touch_in_done_button(trial)
-            vals_sm = vals
+            vals_sm = vals.copy()
         elif whichstream=="reward":
             times, vals = self.extract_reward_stream(trial)
-            vals_sm = vals
+            vals_sm = vals.copy()
         else:
             times, vals, fs = self.extract_data_tank_streams(whichstream, trial)
             # 2) Smooth if desired
@@ -3427,9 +3444,17 @@ class Session(object):
                 ax.plot(times, vals, '-k');
                 ax.plot(times, vals_sm, '-r');
 
-        # print(times, vals, vals_sm)
-        # assert
 
+        # Exclude times <0
+        if exclude_times_before_trial_onset:
+            _indskeep = times>=0
+            times = times[_indskeep]
+            vals = vals[_indskeep]
+            vals_sm = vals_sm[_indskeep]
+
+        # print("HERE!!!")
+        # print(times)
+        # print(vals)
         # 3) Tresholding: Get min and max values. Threshold is in betweem them.
         valminmax_global = np.percentile(vals, [0.01, 99.99])
         valmid_global = np.mean(valminmax_global)
@@ -3466,8 +3491,6 @@ class Session(object):
 
             # In some cases this is a binary signal, and yoh have window with no change.
             if valminmax[0]==valminmax[1]:
-                # assert False "fix valminmax is same valuye throughotu."
-                # DEFAULT:
                 out.append({
                     "timecrosses":np.array([]),
                     "valcrosses":np.array([]),
@@ -3476,15 +3499,22 @@ class Session(object):
                     "threshold":np.nan,
                     })
             else:
-                # does this local window have sufficient difference between min and max? if not, then
+                # does this local window have sufficient difference between min and max (compared to the 
+                # global range of this signal) if not, then
                 # assume there is no crossing.
+
                 MIN_RATIO = 0.125
+                if True:
+                    # This means that if ratio is less than MIN_RATIO, fail.
+                    MIN_FRAC_PTS_CLOSE_TO_EXTREMES = 1.01
+                else:
+                    # this means only fail if frac_pts close to extrems is is less than this
+                    # Allow small window, assuming values are not close to the cetner...
+                    MIN_FRAC_PTS_CLOSE_TO_EXTREMES = 0.4
                 ratio_minmax = (valminmax[1] - valminmax[0])/(valminmax_global[1] - valminmax_global[0]) 
-                # asdasd
-                # print(ratio_minmax, MIN_RATIO)
+
                 if ratio_minmax<MIN_RATIO:
-                    
-                    # might be bad. check that most vals are close to extremes. if so, then ok
+                    # might be bad. check that most vals are close to extremes. if so, then ok                    
                     vals_frac_of_range = (valsthis - valminmax[0])/(valminmax[1] - valminmax[0])
                     if np.any(np.isnan(vals_frac_of_range)):
                         print("-------")
@@ -3498,10 +3528,15 @@ class Session(object):
                         plt.xlabel('red = time aligned to event')
                         self.print_summarize_expt_params()
                         assert False, "failed to find crossing for this instance."
+                    # n_high = np.sum(vals_frac_of_range > 0.75)
+                    # n_low = np.sum(vals_frac_of_range < 0.25)
+                    # frac_high_or_low = (n_high + n_low)/len(vals_frac_of_range)
+
                     vals_frac_of_range_abs = np.abs(vals_frac_of_range - 0.5)
                     frac_pts_close_to_extremes = np.sum(vals_frac_of_range_abs>0.25)/len(vals_frac_of_range_abs)
                     
-                    if frac_pts_close_to_extremes<0.40:
+                    # print(ratio_minmax, valminmax_global, valminmax, frac_pts_close_to_extremes, n_high, n_low, len(vals_frac_of_range), frac_high_or_low, ratio_minmax, "ASDASDASDSA")
+                    if frac_pts_close_to_extremes<MIN_FRAC_PTS_CLOSE_TO_EXTREMES:
                         # THen this is not a good window. no crosings 
                         if assert_single_crossing_per_behcode_instance:
                             if allow_no_crossing_per_behcode_instance_if is None:
@@ -3554,7 +3589,7 @@ class Session(object):
                     else:
                         # OK, collect crossings
                         threshold = np.mean(valminmax)
-                        try:
+                        try: 
                             TCROSS, VCROSS = get_threshold_crossings(
                                 timesthis, valsthis, threshold, cross_dir_to_take=cross_dir_to_take, 
                                 expected_direction_of_first_crossing=assert_expected_direction_first_crossing, 
@@ -4154,7 +4189,7 @@ class Session(object):
         """ Extract and save for all trials. using all events. GOod for preprocessing.
         """
 
-        list_events = self.events_default_list_events()
+        list_events = self.events_default_list_events(include_events_from_dict=True)
 
         if list_trial is None:
             list_trial = self.get_trials_list(True, True)
@@ -4350,10 +4385,32 @@ class Session(object):
                                                     assert_single_crossing_this_trial = True,
                                                     assert_expected_direction_first_crossing = None)
                         except AssertionError as err:
-                            out = self.behcode_get_stream_crossings_in_window(trial, event, t_pre=0.015, t_post = 0.07, whichstream="pd2", 
-                                                    ploton=plot_beh_code_stream, cross_dir_to_take="down", assert_single_crossing_per_behcode_instance=True,
-                                                    assert_single_crossing_this_trial = True,
-                                                    assert_expected_direction_first_crossing = None)
+                            # Last resort, make the window small and shift it gradually.
+    
+                            # start forward in time, then go backwards this way get the entire
+                            # ie.. a 100ms window starting at (0, 0.1), then sliding back until (-0.1, 0), where neg means
+                            # before the code.
+                            LIST_TPRE = list(np.linspace(0, 0.1, 50)) 
+                            WINDSIZE = 0.1
+                            # trace (i.e. shift back until you lost the later dip in pd)
+                            SM_WIN = 0.005 # if fix cue and rule2 are too close, then smoothing makes them hard to separate...
+                            for t_pre in LIST_TPRE:
+                                try:
+                                    t_post = -t_pre + WINDSIZE
+                                    out = self.behcode_get_stream_crossings_in_window(trial, event, t_pre=t_pre, t_post = t_post, whichstream="pd2", 
+                                                            ploton=plot_beh_code_stream, cross_dir_to_take="down", assert_single_crossing_per_behcode_instance=True,
+                                                            assert_single_crossing_this_trial = True,
+                                                            assert_expected_direction_first_crossing = None,
+                                                            smooth_win = SM_WIN)
+                                    # Got here, this means success!
+                                    break  
+                                except AssertionError as err:
+                                    if t_pre == LIST_TPRE[-1]:
+                                        # Then you exhaustred all t_pre. fail
+                                        raise err
+                                    else:
+                                        # Keep trying
+                                        continue
                     times = _extract_times(out)
 
                 elif event in ["fixtch", "fix_touch"]:
@@ -4408,13 +4465,27 @@ class Session(object):
                         # sometimes rulecue is shown too quickly relative to fixation cue, e.g.,, becuase subject
                         # presses quickly in anticiation. Then the predur might have a contamination. solve this by
                         # shortening predur
-                        out = self.behcode_get_stream_crossings_in_window(trial, 132, t_pre=0.01, t_post = 0.2, whichstream="pd2", 
-                                              ploton=plot_beh_code_stream, cross_dir_to_take="down", 
-                                              assert_single_crossing_per_behcode_instance=True,
-                                                assert_single_crossing_this_trial = False,
-                                                  assert_expected_direction_first_crossing = "down",
-                                                  refrac_period_between_events=0.05)          
 
+                        LIST_TPRE = list(np.linspace(0.045, -0.1, 50))
+                        SM_WIN = 0.005 # if fix cue and rule2 are too close, then smoothing makes them hard to separate...
+                        for t_pre in LIST_TPRE:
+                            try:
+                                out = self.behcode_get_stream_crossings_in_window(trial, 132, t_pre=t_pre, t_post = 0.2, whichstream="pd2", 
+                                                      ploton=plot_beh_code_stream, cross_dir_to_take="down", 
+                                                      assert_single_crossing_per_behcode_instance=True,
+                                                        assert_single_crossing_this_trial = False,
+                                                          assert_expected_direction_first_crossing = "down",
+                                                          refrac_period_between_events=0.05,
+                                                          smooth_win = SM_WIN)        
+                                # Got here, this means success!
+                                break  
+                            except AssertionError as err:
+                                if t_pre == LIST_TPRE[-1]:
+                                    # Then you exhaustred all t_pre. fail
+                                    raise err
+                                else:
+                                    # Keep trying
+                                    continue
 
                     times = _extract_times(out)
 
@@ -4574,12 +4645,13 @@ class Session(object):
 
                     # behcode = 62
                     behcode = "doneb"
+                    t_post = 0.05 # touch is always before the code, so this can be low ...
+ 
+                    # LIST_TPRE = [0.5, 1.5, ]
+                    # First try with really short pre window. This useful espeicalytl if this is short trial and fixation is close
+                    # in space to done button. then will get offset of fixation... and will fail.
                     try:
-                        # NOte: tpre very large because seomtimes he touches but isnt correctly registered.
-                        # out = self.behcode_get_stream_crossings_in_window(trial, behcode, t_pre=2.5, t_post = 1, 
-
-                        # ade the t_pre shoerter (was 2.5) so that does not coincide with fixation, which is now at same location.
-                        out = self.behcode_get_stream_crossings_in_window(trial, behcode, t_pre=1.5, t_post = 1, 
+                        out = self.behcode_get_stream_crossings_in_window(trial, behcode, t_pre=0.5, t_post = t_post, 
                                                 whichstream="touch_done_button", 
                                                 ploton=plot_beh_code_stream, cross_dir_to_take="up", assert_single_crossing_per_behcode_instance=False,
                                                 assert_single_crossing_this_trial = False,
@@ -4589,32 +4661,77 @@ class Session(object):
                                                 refrac_period_between_events=0.05)  
                         times = _extract_times(out)
                     except AssertionError as err:
-                        # try expanding the window
+                        try:
+                            # NOte: tpre very large because seomtimes he touches but isnt correctly registered.
+                            # out = self.behcode_get_stream_crossings_in_window(trial, behcode, t_pre=2.5, t_post = 1, 
 
-                        assert len(self._behcode_extract_times("doneb", trial, shorthand=True))<2, "then doent want to expand window"
-                        # NOte: tpre very large because seomtimes he touches but isnt correctly registered.
-                        out = self.behcode_get_stream_crossings_in_window(trial, behcode, t_pre=12, t_post = 2, 
-                                                whichstream="touch_done_button", 
-                                                ploton=plot_beh_code_stream, cross_dir_to_take="up", assert_single_crossing_per_behcode_instance=False,
-                                                assert_single_crossing_this_trial = False,
-                                                assert_expected_direction_first_crossing = "up",
-                                                take_first_behcode_instance=True,
-                                                take_first_crossing_for_each_behcode=False,
-                                                refrac_period_between_events=0.05) 
-                        times = _extract_times(out)
+                            # ade the t_pre shoerter (was 2.5) so that does not coincide with fixation, which is now at same location.
+                            out = self.behcode_get_stream_crossings_in_window(trial, behcode, t_pre=1.5, t_post = t_post, 
+                                                    whichstream="touch_done_button", 
+                                                    ploton=plot_beh_code_stream, cross_dir_to_take="up", assert_single_crossing_per_behcode_instance=False,
+                                                    assert_single_crossing_this_trial = False,
+                                                    assert_expected_direction_first_crossing = "up",
+                                                    take_first_behcode_instance=True,
+                                                    take_first_crossing_for_each_behcode=True,
+                                                    refrac_period_between_events=0.05)  
+                            times = _extract_times(out)
+                        except AssertionError as err:
+                            # try expanding the window
+                            # NOte: tpre very large because seomtimes he touches but isnt correctly registered.
 
-                        # take the first time that is following the go cue
-                        times_go = self.events_get_time_using_photodiode(trial, list_events=["go"]) # {'go': [3.3162100494546394]}
-                        # if len(times_go["go"])>0:
-                        tgo = times_go["go"][0]
-                        # print(type(tgo))
-                        # print(times)
-                        # print(times_go)
-                        times = [t for t in times if t > tgo]
-                        # print(times)
-                        # assert False
-                        # else:
+                            assert len(self._behcode_extract_times("doneb", trial, shorthand=True))<2, "then doent want to expand window"
 
+                            # keep tpost constant. expand back in time tpre back until the end of the last stroke.
+                            LIST_TPRE = list(np.linspace(1.5, 12, 50)) 
+                            for t_pre in LIST_TPRE:
+                                try:
+                                    out = self.behcode_get_stream_crossings_in_window(trial, behcode, t_pre=t_pre, t_post = t_post, 
+                                                            whichstream="touch_done_button", 
+                                                            ploton=plot_beh_code_stream, cross_dir_to_take="up", assert_single_crossing_per_behcode_instance=False,
+                                                            assert_single_crossing_this_trial = False,
+                                                            assert_expected_direction_first_crossing = "up",
+                                                            take_first_behcode_instance=True,
+                                                            take_first_crossing_for_each_behcode=False,
+                                                            refrac_period_between_events=0.05) 
+                                    # Got here, this means success!
+                                    break  
+                                except AssertionError as err:
+                                    if t_pre == LIST_TPRE[-1]:
+                                        # Then you exhaustred all t_pre. fail
+                                        raise err
+                                    else:
+                                        # Keep trying
+                                        continue
+                            # out = self.behcode_get_stream_crossings_in_window(trial, behcode, t_pre=12, t_post = 2, 
+                            #                         whichstream="touch_done_button", 
+                            #                         ploton=plot_beh_code_stream, cross_dir_to_take="up", assert_single_crossing_per_behcode_instance=False,
+                            #                         assert_single_crossing_this_trial = False,
+                            #                         assert_expected_direction_first_crossing = "up",
+                            #                         take_first_behcode_instance=True,
+                            #                         take_first_crossing_for_each_behcode=False,
+                            #                         refrac_period_between_events=0.05) 
+                            times = _extract_times(out)
+
+                            ### take the first time that is following the last stroke offset, or go cue
+                            offs = self.strokes_extract_ons_offs(trial)[1]
+                            if len(offs)>0:
+                                tmin = offs[-1]
+                            else:
+                                # no strokes. take go cue
+                                tmin = self.events_get_time_helper("go", trial)[0]
+                                # times_go = self.events_get_time_using_photodiode(trial, list_events=["go"]) # {'go': [3.3162100494546394]}
+                                # print(tmin, times_go)
+                                # assert False
+
+                            # # if len(times_go["go"])>0:
+                            #     tgo = times_go["go"][0]
+                            # print(type(tgo))
+                            # print(times)
+                            # print(times_go)
+                            times = [t for t in times if t > tmin]
+                            # print(times)
+                            # assert False
+                            # else:
 
                     times = times[0:1] # take the first time, sometimes can go in and out of squiare
 
@@ -4789,7 +4906,8 @@ class Session(object):
 
         return times
 
-    def events_default_list_events(self, include_stroke_endpoints=True):
+    def events_default_list_events(self, include_stroke_endpoints=True,
+            include_events_from_dict=False):
         """
         Return canocnialy events that make up a trial, these all have accurate timing
         (e.g., photodiode).
@@ -4800,17 +4918,15 @@ class Session(object):
         - list_events, list of strings. 
         """
 
-        dict_events_bounds, _ = self.eventsanaly_helper_pre_postdur_for_analysis(
-            just_get_list_events=True)
 
 
         if include_stroke_endpoints:
-            list_events = ["fixcue", "fixtch", "samp", "go", 
+            list_events = ["fixcue", "fixtch", "rulecue2", "samp", "go", 
                 "first_raise", "on_stroke_1", "seqon", 
                 "off_stroke_last", "doneb", 
                 "post", "reward_all"]
         else:
-            list_events = ["fixcue", "fixtch", "samp", "go", 
+            list_events = ["fixcue", "fixtch", "rulecue2", "samp", "go", 
                 "first_raise", "seqon", "doneb", 
                 "post", "reward_all"]
 
@@ -4841,9 +4957,13 @@ class Session(object):
 
 
         # include anything in dict
-        for x in dict_events_bounds.keys():
-            if x not in list_events:
-                list_events.append(x)
+        if include_events_from_dict:
+            dict_events_bounds, _ = self.eventsanaly_helper_pre_postdur_for_analysis(
+                just_get_list_events=True)
+            for x in dict_events_bounds.keys():
+                if x not in list_events:
+                    list_events.append(x)
+
         return list_events
 
     def eventsdataframe_sanity_check(self, DEBUG=False):
@@ -6431,8 +6551,11 @@ class Session(object):
                 for t in dict_events[ev]:
                     times_codes = np.append(times_codes, t)
                     names_codes.append(ev)
-                    colors_codes.append(color_map[ev])
-            
+                    if ev in color_map:
+                        colors_codes.append(color_map[ev])
+                    else:
+                        # use a default color
+                        colors_codes.append("r")            
 
 
         ###### 3) Also include times of strokes
