@@ -48,15 +48,21 @@ touch preprocess_log.txt
 # datelist=( 221023 )
 # datelist=( 221024 )
 # datelist=( 221113 )
-datelist=( 220608 220610 220606 220609 )
+# datelist=( 220608 220610 220606 220609 )
+
+# # 230612 - getting all the single prim expts
+# datelist=( 220606 220718 220719 220724 220918 221217 221218 221220 230103 230104 )
+# # datelist=( 220719 220724 220918 221217 221218 221220 230103 230104 )
+# # 230612_2
+# # datelist=( 220719 )
 
 
-for date1 in "${datelist[@]}"
-do
-    echo ${date1}
-    # python -m neuralmonkey.scripts.load_and_save_locally ${date1} 2>>&1 | tee preprocess_log.txt
-    python -m neuralmonkey.scripts.load_and_save_locally ${date1} |& tee -a preprocess_log.txt
-done
+# for date1 in "${datelist[@]}"
+# do
+#     echo ${date1}
+#     # python -m neuralmonkey.scripts.load_and_save_locally ${date1} 2>>&1 | tee preprocess_log.txt
+#     python -m neuralmonkey.scripts.load_and_save_locally ${date1} |& tee -a preprocess_log.txt
+# done
 
 
 
@@ -199,14 +205,18 @@ done
 # d=220526 # first date to check.
 # date2=230403 # the final date to check
 
-# # 230525
+# 230525
 # d=220526 # first date to check.
 # date2=230403 # the final date to check
 
-# date1=$d
-# until [[ ${date1} > ${date2} ]]; do
-#   echo ${date1}
-#   # python -m neuralmonkey.scripts.load_and_save_locally ${date1} 2>>&1 | tee preprocess_log.txt
-#   python -m neuralmonkey.scripts.load_and_save_locally ${date1} |& tee -a preprocess_log.txt
-#   date1=$(date +%y%m%d -d "${date1} + 1 day")
-# done
+# 230621
+d=230612 # first date to check.
+date2=230621 # the final date to check
+
+date1=$d
+until [[ ${date1} > ${date2} ]]; do
+  echo ${date1}
+  # python -m neuralmonkey.scripts.load_and_save_locally ${date1} 2>>&1 | tee preprocess_log.txt
+  python -m neuralmonkey.scripts.load_and_save_locally ${date1} |& tee -a preprocess_log.txt
+  date1=$(date +%y%m%d -d "${date1} + 1 day")
+done

@@ -71,7 +71,7 @@ def load_and_preprocess_single_session(date, rec_session, animal = "Pancho"):
 
     # 1) extract
     SN = load_session_helper(date, dataset_beh_expt, rec_session, animal, expt,  
-        BAREBONES_LOADING = True)
+        BAREBONES_LOADING = True, do_if_spikes_incomplete="extract_quick_tdt")
 
     check_dict = SN._check_preprocess_status()
     exists_1 = check_dict["exists_1"]

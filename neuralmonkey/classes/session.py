@@ -6787,7 +6787,8 @@ class Session(object):
         return times, touching
 
     def beh_extract_eye_good(self, trial, apply_empirical_offset=False,
-        CHECK_TDT_ML2_MATCH=False, THRESH=5, PLOT=False):
+        CHECK_TDT_ML2_MATCH=False, THRESH=5, PLOT=False, return_all=False,
+        SM_WIN = 0.01):
         """
         Get eye track data in units of pixels (matching strokes), by using
         voltage saved in TDT, but doing projective transform using the T
@@ -6907,7 +6908,17 @@ class Session(object):
             ax.plot(times_tdt, vals_tdt_calibrated, label="tdt_calib")
             ax.legend()
 
-        return times_tdt, vals_tdt_calibrated
+        if return_all:
+            # smooth the trace
+            from pythonlib.tools.stroketools import strokesInterpolate2, smoothStrokes            
+            strokes_tdt = [np.concatenate([vals_tdt_calibrated, times_tdt[:,None]], axis=1)]
+            strokes_tdt = smoothStrokes(strokes_tdt, fs_tdt, SM_WIN)
+            vals_tdt_calibrated_sm = strokes_tdt[0][:,:2]
+            times_tdt_sm = strokes_tdt[0][:,2]
+            assert np.all(times_tdt_sm==times_tdt)
+            return times_tdt, vals_tdt_calibrated, fs_tdt, vals_tdt_calibrated_sm
+        else:
+            return times_tdt, vals_tdt_calibrated
 
      
 
