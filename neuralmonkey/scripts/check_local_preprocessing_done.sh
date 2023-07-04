@@ -2,7 +2,7 @@
 
 shopt -s expand_aliases
 
-BASEDIR="/data3/recordings/Pancho"
+BASEDIR="/gorilla3/neural_preprocess/recordings/Pancho"
 animal="Pancho"
 alias echo="echo -e"
 

@@ -57,13 +57,13 @@ if __name__=="__main__":
 
         if SKIP_EXTRACTION:
             print("** SKIPPING EXTRACTION, since was able to load snippets, for: ")
-            print("(animal, DATE, which_level, ANALY_VER, session)")
-            print(animal, DATE, which_level, ANALY_VER, session)
+            print("(animal, DATE, which_level, session)")
+            print(animal, DATE, which_level, session)
             continue
         else:
             print("** NOT SKIPPING EXTRACTION, since was not able to load snippets, for: ")
-            print("(animal, DATE, which_level, ANALY_VER, session)")
-            print(animal, DATE, which_level, ANALY_VER, session)
+            print("(animal, DATE, which_level, session)")
+            print(animal, DATE, which_level, session)
 
         ###################################
         D = sn.Datasetbeh

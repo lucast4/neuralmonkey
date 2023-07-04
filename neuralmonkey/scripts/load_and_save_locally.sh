@@ -8,7 +8,8 @@
 
 
 # Mount server
-server_mount
+# server_mount
+freiwald_mount
 
 touch preprocess_log.txt
 

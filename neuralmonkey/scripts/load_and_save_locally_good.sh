@@ -10,13 +10,19 @@
 # date2=230621 # the final date to check
 
 # Mount server
-server_mount
+# server_mount
+# freiwald_mount
+
 animal=$1
 d=$2
 date2=$3
-logfile=/gorilla1/code/neuralmonkey/neuralmonkey/logs/log_preprocess_${animal}_${d}_${date2}.txt
 date1=$d
+
+# logfile=/gorilla1/code/neuralmonkey/neuralmonkey/logs/log_preprocess_${animal}_${d}_${date2}.txt
+# touch ${logfile}
+
 until [[ ${date1} > ${date2} ]]; do
+  logfile=/gorilla1/code/neuralmonkey/neuralmonkey/logs/log_preprocess_good_${animal}_${date1}.txt
   touch ${logfile}
   echo ${date1}
   echo ${logfile}
