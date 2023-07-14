@@ -39,13 +39,14 @@ touch preprocess_log.txt
 # datelist=( 220715 )
 
 # 230508
-datelist=( 221020 )
+datelist=( 221220 )
+animal="Pancho"
 
 for date1 in "${datelist[@]}"
 do
     echo ${date1}
     # python -m neuralmonkey.scripts.load_and_save_locally ${date1} 2>>&1 | tee preprocess_log.txt
-    python -m neuralmonkey.scripts.load_and_save_locally ${date1} |& tee -a preprocess_log.txt
+    python -m neuralmonkey.scripts.load_and_save_locally ${date1} $animal |& tee -a preprocess_log.txt
     date1=$(date +%y%m%d -d "${date1} + 1 day")
 done
 
