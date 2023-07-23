@@ -4,7 +4,7 @@
 ONLY_ESSENTIAL_VARS = False # then just the first var, assuemd to be most important, for quick analys
 
 ##################
-LIST_ANALYSES = ["rulesw", "ruleswALLDATA", "ruleswERROR", "seqcontext", "singleprim"] # repo of possible analses, 
+LIST_ANALYSES = ["rulesw", "ruleswALLDATA", "ruleswERROR", "singleprimvar", "seqcontextvar", "seqcontext", "singleprim"] # repo of possible analses, 
 
 # def exptlist_getter(self):
 
@@ -26,11 +26,16 @@ def _params_score_sequence_ver(animal, DATE, ANALY_VER):
             221031, 221102, 221107, 221112, 221113, 221114, 221118, 221119, 221121, 221125]:
             # determenistic (single solution)
             DO_SCORE_SEQUENCE_VER = "matlab"
+        elif animal=="Diego" and DATE in [230701, 230702, 230703, 230704, 230705, 230706, 230707, 230713, 230717, 230719]:
+            # A single correct sequence
+            DO_SCORE_SEQUENCE_VER = "matlab"
         else:
             print(animal, DATE)
             assert False
-    else:
+    elif ANALY_VER in ["singleprimvar", "seqcontext", "singleprim", "seqcontextvar"]:
         DO_SCORE_SEQUENCE_VER = None
+    else:
+        assert False
     return DO_SCORE_SEQUENCE_VER
 
 def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=False):
@@ -48,6 +53,7 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
     POST_DUR_CALC = None
     globals_nmin = 7
     globals_lenient_allow_data_if_has_n_levels = 2
+    VARS_GROUP_PLOT = []
 
     ################## SUPERVISION LEVELS TO KEEP
     ################# OPTIONALLY KEEP ONLY SPECIFIC "FULL" SUPERVISION NAMES
@@ -55,9 +61,10 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
         # This day has "randomseq-sequence mask"... (rare)
         # Therefore want to keep sequence mask
         # (An epoch is random sequence using sequence mask)
-        list_superv_keep_full = ["mask|0.5|0||0|none",
-                                  "off|1.0|0||0|none",
-                                  "off|1.0|0||0|none"]
+        assert False, "check this days supervision_stage_new, make sure the 1111 is correct."
+        list_superv_keep_full = ["mask|0.5|0|1111||0|none",
+                                  "off|1.0|0|1111||0|none",
+                                  "off|1.0|0|1111}|0|none"]
         list_superv_keep = "all" # None means just keep all cases that are "no supervision"
     else:
         # Prune so is just "no supervision" (i.e., list_superv_keep is None)
@@ -191,28 +198,29 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
                 # "seqc_3_loc_shape", #  
                 # "seqc_3_loc_shape", # same shape config
 
-                "seqc_3_loc_shape", # DIFF SHAPE/LOC
                 "seqc_3_loc_shape", # DIFF SHAPE/LOC, same stim entirely
                 "seqc_3_shape", # DIFF SHAPE, same loc
                 "seqc_3_loc", # DIFF LOC, same shape
 
-                "seqc_2_loc_shape", # DIFF SHAPE/LOC
                 "seqc_2_loc_shape", # DIFF SHAPE/LOC, same stim entirely
                 "seqc_2_shape", # DIFF SHAPE, same loc
                 "seqc_2_loc", # DIFF LOC, same shape
-
-                "seqc_1_loc_shape", # DIFF SHAPE/LOC
-                "seqc_1_loc_shape", # DIFF SHAPE/LOC, same stim entirely
-                "seqc_1_shape", # DIFF SHAPE, same loc
-                "seqc_1_loc", # DIFF LOC, same shape
 
                 "seqc_0_loc_shape", # DIFF SHAPE/LOC, same stim entirely
                 "seqc_0_loc", # DIFF SHAPE/LOC, same stim entirely
                 "seqc_0_shape", # DIFF SHAPE/LOC, same stim entirely
 
+                "seqc_1_loc_shape", # DIFF SHAPE/LOC, same stim entirely
+                "seqc_1_shape", # DIFF SHAPE, same loc
+                "seqc_1_loc", # DIFF LOC, same shape
+
                 "seqc_nstrokes_beh", # DIFF N STROKES, same seq/loc sequence
                 "seqc_nstrokes_beh",
                 "seqc_nstrokes_beh",
+
+                "seqc_3_loc_shape", # DIFF SHAPE/LOC
+                "seqc_2_loc_shape", # DIFF SHAPE/LOC
+                "seqc_1_loc_shape", # DIFF SHAPE/LOC
                 ]
             LIST_VARS_CONJUNCTION = [
 
@@ -220,28 +228,29 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
                 # ["taskconfig_loc", "seqc_0_loc_shape", "seqc_1_loc_shape", "seqc_2_loc_shape"],
                 # ["taskconfig_shp", "seqc_0_loc_shape", "seqc_1_loc_shape", "seqc_2_loc_shape"],
                 
-                ["seqc_nstrokes_beh", "seqc_0_loc_shape", "seqc_1_loc_shape", "seqc_2_loc_shape"], 
                 ["taskconfig_shploc", "seqc_0_loc_shape", "seqc_1_loc_shape", "seqc_2_loc_shape"],
                 ["seqc_nstrokes_beh", "seqc_0_loc_shape", "seqc_1_loc_shape", "seqc_2_loc_shape", "seqc_3_loc"], 
                 ["seqc_nstrokes_beh", "seqc_0_loc_shape", "seqc_1_loc_shape", "seqc_2_loc_shape", "seqc_3_shape"], 
 
-                ["seqc_nstrokes_beh", "seqc_0_loc_shape", "seqc_1_loc_shape"], 
                 ["taskconfig_shploc", "seqc_0_loc_shape", "seqc_1_loc_shape"],
                 ["seqc_nstrokes_beh", "seqc_0_loc_shape", "seqc_1_loc_shape", "seqc_2_loc"], 
                 ["seqc_nstrokes_beh", "seqc_0_loc_shape", "seqc_1_loc_shape", "seqc_2_shape"], 
-
-                ["seqc_nstrokes_beh", "seqc_0_loc_shape"], 
-                ["taskconfig_shploc", "seqc_0_loc_shape"],
-                ["seqc_nstrokes_beh", "seqc_0_loc_shape", "seqc_1_loc"], 
-                ["seqc_nstrokes_beh", "seqc_0_loc_shape", "seqc_1_shape"], 
 
                 ["taskconfig_shploc"],
                 ["taskconfig_shploc", "seqc_0_shape"],
                 ["taskconfig_shploc", "seqc_0_loc"],
 
+                ["taskconfig_shploc", "seqc_0_loc_shape"],
+                ["seqc_nstrokes_beh", "seqc_0_loc_shape", "seqc_1_loc"], 
+                ["seqc_nstrokes_beh", "seqc_0_loc_shape", "seqc_1_shape"], 
+
                 ["seqc_0_loc_shape"], # diff n strokes.
                 ["seqc_0_loc_shape", "seqc_1_loc_shape"],
                 ["seqc_0_loc_shape", "seqc_1_loc_shape", "seqc_2_loc_shape"],
+                
+                ["seqc_nstrokes_beh", "seqc_0_loc_shape", "seqc_1_loc_shape", "seqc_2_loc_shape"], 
+                ["seqc_nstrokes_beh", "seqc_0_loc_shape", "seqc_1_loc_shape"], 
+                ["seqc_nstrokes_beh", "seqc_0_loc_shape"], 
             ]           
 
         # list_events = ["03_samp", "03_samp", "05_first_raise", "06_on_strokeidx_0", "09_post", "10_reward_all"]
@@ -391,23 +400,23 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
             # Everything else, especially trial by trial,
             LIST_VAR = [
                 "epoch",
-                "character",
+                "epoch", # abstract rule?
+                "character", # visually repsonsive?
                 "seqc_0_loc",
                 "seqc_0_shape",
-                "seqc_1_loc_shape",
-                "seqc_1_loc_shape",
                 "epoch",
-                "epoch", # abstract rule?
+                "seqc_1_loc_shape",
+                "seqc_1_loc_shape",
             ]
             LIST_VARS_CONJUNCTION = [
                 ["epochset"],
+                ["epochset", "character"],
                 ["epoch", "epochset"],
                 ["epoch", "seqc_0_shape"],
                 ["epoch", "seqc_0_loc"],
+                ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
                 ["epoch"],
                 ["epoch", "seqc_0_loc_shape"],
-                ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
-                ["epochset", "character"],
             ]
 
         #### EVENTS
@@ -430,7 +439,7 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
                 ('09_post', 0.05, 0.6),
                 ('10_reward_all', 0.05, 0.6)]
 
-        elif DATE in [221002, 221014, 221020, 221021, 221023, 221024]:
+        elif DATE in [221002, 221014, 221020, 221021, 221023, 221024] or DATE in [230701, 230702, 230703, 230704, 230705, 230706, 230707, 230713, 230717, 230719]:
             # fixcue[colored] --> fixtouch --> image[colored] --> go...
             # list_events = ["00_fixcue", "00_fixcue", "03_samp",       "03_samp", "04_go_cue",   "05_first_raise", "06_on_strokeidx_0", "08_doneb", "09_post", "10_reward_all"]
             # list_pre_dur = [-0.6, 0.05,              -0.6,       0.05,           -0.6,    -0.6, -0.1, -0.5, 0.05, 0.05]
@@ -523,6 +532,45 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
             list_pre_dur = [x[1] for x in WINDOWS_DEFAULT]
             list_post_dur = [x[2] for x in WINDOWS_DEFAULT]
 
+    elif which_level=="trial" and ANALY_VER in ["seqcontextvar", "singleprimvar"]:
+        # NOTE: for seqcontextvar this is temporary, ideal;ly consider entie sequence context, not just first prim.
+        LIST_VAR = [
+            "seqc_0_shape", # Controlled: exact same tasks (defined by shape/loc) across epochs
+            "seqc_0_loc",
+
+            "seqc_0_shape", # Less well controlled, tasks not identical acorss epihcs. but useful for analysis before onset of stim
+            "seqc_0_loc",
+        ]
+        LIST_VARS_CONJUNCTION = [
+            ["epochset", "epoch", "seqc_0_loc"],
+            ["epochset", "epoch", "seqc_0_shape"],
+
+            ["epoch", "seqc_0_loc"],
+            ["epoch", "seqc_0_shape"],
+        ]
+
+        WINDOWS_DEFAULT = [
+            ('03_samp', -0.6, -0.04),
+            ('03_samp', 0.04, 0.24),
+            ('03_samp', 0.26, 0.6),
+            ('04_go_cue', -0.6, -0.04),
+            ('05_first_raise', -0.6, -0.05),
+            ('06_on_strokeidx_0', -0.45, -0.05),
+            ('06_on_strokeidx_0', -0.05, 0.35),
+            ('08_doneb', -0.5, 0.3),
+            ('09_post', 0.05, 0.6),
+            ('10_reward_all', 0.05, 0.6)]
+        list_events = [x[0] for x in WINDOWS_DEFAULT]
+        list_pre_dur = [x[1] for x in WINDOWS_DEFAULT]
+        list_post_dur = [x[2] for x in WINDOWS_DEFAULT]
+
+        VARS_GROUP_PLOT = [
+            ["epochset", "epoch"]
+        ]
+    else:
+        print(which_level, ANALY_VER)
+        assert False
+
     ####################### CLEAN UP VARS
     if ONLY_ESSENTIAL_VARS or (ANALY_VER in ["ruleswERROR"]): 
         # just test epoch, for error trials
@@ -540,7 +588,7 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
     elif ANALY_VER in ["ruleswERROR"]:
         # error trials
         preprocess_steps_append = ["remove_repeated_trials", "wrong_sequencing_binary_score"]
-    elif ANALY_VER in ["seqcontext", "singleprim"]:
+    elif ANALY_VER in ["seqcontext", "singleprim", "singleprimvar", "seqcontextvar"]:
         preprocess_steps_append = ["remove_repeated_trials", "one_to_one_beh_task_strokes"]
     else:
         assert False
@@ -560,7 +608,6 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
         # shape quality.
         remove_aborts = False
 
-
     ## If you have success as a variable then you cannot prune to only keep success...
     def _vars_including_success_binary(var, vars_others):
         """ Return True if any var or other var cares about performance succes...
@@ -571,16 +618,18 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
             return True
         return False
 
-
     ##### Auto decide what to extract based on vars
     LIST_VAR_ALL = [x for x in LIST_VAR]
     for vars_conj in LIST_VARS_CONJUNCTION:
         LIST_VAR_ALL.extend(vars_conj)
 
-    # --
+    #### AUTO EXTRACT BASED ON WHAT VARS ARE EXTRACTED
     DO_EXTRACT_TASKCONFIG = False
     if "taskconfig_loc" in LIST_VAR_ALL or "taskconfig_shp" in LIST_VAR_ALL or "taskconfig_shploc" in LIST_VAR_ALL:
         DO_EXTRACT_TASKCONFIG = True
+    if ANALY_VER=="seqcontextvar":
+        DO_EXTRACT_TASKCONFIG = True
+
     
     print("Got these LIST_VAR and LIST_VARS_CONJUNCTION:")
     print(LIST_VAR)
@@ -609,7 +658,8 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
         "remove_aborts":remove_aborts,
         "DO_SCORE_SEQUENCE_VER":DO_SCORE_SEQUENCE_VER,
         "list_superv_keep_full":list_superv_keep_full,
-        "DO_EXTRACT_TASKCONFIG":DO_EXTRACT_TASKCONFIG
+        "DO_EXTRACT_TASKCONFIG":DO_EXTRACT_TASKCONFIG,
+        "VARS_GROUP_PLOT":VARS_GROUP_PLOT
     }
 
     assert len(list_events) == len(list_pre_dur)
@@ -632,16 +682,16 @@ def params_getter_extraction(animal, DATE, which_level, ANALY_VER):
     # to error when try to concat into frmat (e.,gm in SP.save_v2)
 
     ################ SCORE PERFORMANCE?
-    DO_SCORE_SEQUENCE_VER = _params_score_sequence_ver(animal, DATE, ANALY_VER)
+    DO_SCORE_SEQUENCE_VER = _params_score_sequence_ver(animal, DATE, ANALY_VER) 
 
     ############### Reassign name to "taskgroup", siimplifying things, especialyl good
     # for grid sequence tasks with different probes, want to merge them for larger N.
     if ANALY_VER in ["ruleswERROR", "rulesw", "ruleswALLDATA"]:
         taskgroup_reassign_simple_neural = True
-        DO_EXTRACT_EPOCHKIND = True
+        # DO_EXTRACT_EPOCHKIND = True
     else:
         taskgroup_reassign_simple_neural = False
-        DO_EXTRACT_EPOCHKIND = False
+        # DO_EXTRACT_EPOCHKIND = False
 
     ################ SEQUENCE CONTEXT?
     DO_EXTRACT_CONTEXT = True    
@@ -674,6 +724,7 @@ def params_getter_extraction(animal, DATE, which_level, ANALY_VER):
         # designed the color supervision mask (so it is rare). ie.. 
         # in single epoch mixing random + structured sequence. merge those since
         # the subject doesnt know.
+        assert False, "include the color strokes binary in the supev string - check this day for how to type it."
         _epochs_to_merge = [("AnBmTR", "mask|0||0"), ("TR", "mask|0||0"), ("rndstr", "mask|0||0")]
         _new_epoch_name = "rank_mask"
         list_epoch_merge = [
@@ -723,10 +774,25 @@ def params_getter_extraction(animal, DATE, which_level, ANALY_VER):
 
     ############ rules will generally need to use this.
     if ANALY_VER in ["ruleswERROR", "rulesw", "ruleswALLDATA"]:
+        # Label each trial based on its conjunction of character and correct beh sequence.
         DO_CHARSEQ_VER = "task_matlab"
         EXTRACT_EPOCHSETS = True
         EXTRACT_EPOCHSETS_trial_label = "char_seq"
         EXTRACT_EPOCHSETS_n_max_epochs = 3
+        EXTRACT_EPOCHSETS_merge_sets = True
+    elif ANALY_VER in ["singleprimvar"]:
+        # Label each trial based on its (shape/loc).
+        DO_CHARSEQ_VER = None
+        EXTRACT_EPOCHSETS = True
+        EXTRACT_EPOCHSETS_trial_label = "seqc_0_loc_shape"
+        EXTRACT_EPOCHSETS_n_max_epochs = 10 # make this higher, since these are usually clean expts.
+        EXTRACT_EPOCHSETS_merge_sets = True
+    elif ANALY_VER in ["seqcontextvar"]:
+        # Label each trial based on its (task config).
+        DO_CHARSEQ_VER = None
+        EXTRACT_EPOCHSETS = True
+        EXTRACT_EPOCHSETS_trial_label = "taskconfig_shploc"
+        EXTRACT_EPOCHSETS_n_max_epochs = 10 # make this higher, since these are usually clean expts.
         EXTRACT_EPOCHSETS_merge_sets = True
     else:
         DO_CHARSEQ_VER = None
@@ -737,7 +803,7 @@ def params_getter_extraction(animal, DATE, which_level, ANALY_VER):
 
     ################ FEATURES TO EXTRACT
     if which_level=="trial":
-        if ANALY_VER in ["ruleswALLDATA", "ruleswERROR", "rulesw", "seqcontext", "singleprim"]:
+        if ANALY_VER in ["ruleswALLDATA", "ruleswERROR", "rulesw", "seqcontext", "singleprim", "singleprimvar", "seqcontextvar"]:
             list_features_modulation_append = ["probe", "taskgroup", "character", "trialcode", "epoch",
                                                 "epoch_superv",  
                                                 "task_kind", "supervision_stage_concise"]
@@ -765,6 +831,18 @@ def params_getter_extraction(animal, DATE, which_level, ANALY_VER):
         print(which_level)
         assert False, "typo?"                                               
 
+    ######### FINALLY, FLIP SOME "DO_" FLAGS BASD ONW HAT VAR YOU WANT.
+    params_plots = params_getter_plots(animal, DATE, which_level, ANALY_VER)
+    ##### Auto decide what to extract based on vars (AUTO EXTRACT BASED ON WHAT VARS ARE EXTRACTED)
+    LIST_VAR_ALL = [x for x in params_plots["LIST_VAR"]]
+    for vars_conj in params_plots["LIST_VARS_CONJUNCTION"]:
+        LIST_VAR_ALL.extend(vars_conj)
+    if "epochkind" in LIST_VAR_ALL:
+        DO_EXTRACT_EPOCHKIND = True
+    else:
+        DO_EXTRACT_EPOCHKIND = False
+
+    ###### Feature to get, based on flags.
     if DO_CHARSEQ_VER:
         list_features_modulation_append.append("char_seq")                                        
     if EXTRACT_EPOCHSETS:
@@ -774,8 +852,6 @@ def params_getter_extraction(animal, DATE, which_level, ANALY_VER):
     if DO_EXTRACT_EPOCHKIND:
         list_features_modulation_append.append("epochkind")                         
 
-    # print(list_features_modulation_append)
-    # assert False
 
     # make sure all vars that you will use for plots are included in extraction
     if False: # STOPPED, since I always reextract during plotting...
@@ -821,7 +897,8 @@ def params_getter_extraction(animal, DATE, which_level, ANALY_VER):
 def dataset_apply_params(ListD, animal, DATE, which_level, ANALY_VER, anova_interaction=False):
     """Preprocess dataset in all ways, including pruning, appending/modifying columns, etc.
     PARAMS:
-    - ListD, list of Datasets. will operate on each, then concatenate.
+    - ListD, list of Datasets. will operate onb
+    ## each, then concatenate.
     RETURNS:
     - Dall, concated datasets, processed but not yet trial-pruned
     - dataset_pruned_for_trial_analysis, same, but trial-pruend. this is final.
@@ -855,9 +932,9 @@ def dataset_apply_params(ListD, animal, DATE, which_level, ANALY_VER, anova_inte
 
         # Second, do preprocessing to concatted D
         if params_extraction["DO_SCORE_SEQUENCE_VER"]=="parses":
-            D.grammar_successbinary_score_parses()
+            D.grammarparses_successbinary_score()
         elif params_extraction["DO_SCORE_SEQUENCE_VER"]=="matlab":
-            D.grammar_successbinary_score_matlab()
+            D.grammarmatlab_successbinary_score()
         else:
             # dont score
             assert params_extraction["DO_SCORE_SEQUENCE_VER"] is None
@@ -879,6 +956,9 @@ def dataset_apply_params(ListD, animal, DATE, which_level, ANALY_VER, anova_inte
     if params_extraction["DO_EXTRACT_CONTEXT"]:
         Dall.seqcontext_preprocess()
 
+    if params["DO_EXTRACT_TASKCONFIG"]:
+        Dall.taskclass_shapes_loc_configuration_assign_column()
+
     for this in params_extraction["list_epoch_merge"]:
         # D.supervision_epochs_merge_these(["rndstr", "AnBmTR|1", "TR|1"], "rank|1")
         Dall.supervision_epochs_merge_these(this[0], this[1], key=params_extraction["epoch_merge_key"],
@@ -886,17 +966,22 @@ def dataset_apply_params(ListD, animal, DATE, which_level, ANALY_VER, anova_inte
 
 
     if params_extraction["EXTRACT_EPOCHSETS"]:
-        Dall.epochset_extract_common_epoch_sets(
-            trial_label=params_extraction["EXTRACT_EPOCHSETS_trial_label"],
-            n_max_epochs=params_extraction["EXTRACT_EPOCHSETS_n_max_epochs"],
-            merge_sets_with_only_single_epoch=params_extraction["EXTRACT_EPOCHSETS_merge_sets"],
-            merge_sets_with_only_single_epoch_name = ("LEFTOVER",))
+        if params_extraction["EXTRACT_EPOCHSETS_trial_label"] == "char_seq":
+            # This useful to separate into cases with same first stroke, and also chars present across contexts,
+            # separating out single prims if they exist into their own epochset.
+            versions_ordered = ["char", "same_beh_first_stroke", "same_beh"]
+            Dall.epochset_apply_sequence_wrapper(versions_ordered=versions_ordered)
+        else:
+            # Only apply epochset extraction once.
+            Dall.epochset_extract_common_epoch_sets(
+                trial_label=params_extraction["EXTRACT_EPOCHSETS_trial_label"],  
+                n_max_epochs=params_extraction["EXTRACT_EPOCHSETS_n_max_epochs"],
+                merge_sets_with_only_single_epoch=params_extraction["EXTRACT_EPOCHSETS_merge_sets"],
+                merge_sets_with_only_single_epoch_name = ("LEFTOVER",))
 
     if params_extraction["DO_EXTRACT_EPOCHKIND"]:
         Dall.supervision_epochs_extract_epochkind()
 
-    if params["DO_EXTRACT_TASKCONFIG"]:
-        Dall.taskclass_shapes_loc_configuration_assign_column()
         
     # Sanity check that didn't remove too much data.
     if False:
@@ -963,7 +1048,7 @@ def conjunctions_print_plot_all(ListD, SAVEDIR, ANALY_VER, which_level="trial"):
     DATE = list_dates[0]
 
     ### Prep dataset, and extract params
-    Dall, Dpruned, TRIALCODES_KEEP, params, params_extraction = dataset_apply_params(ListD, 
+    _, Dpruned, TRIALCODES_KEEP, params, params_extraction = dataset_apply_params(ListD, 
         animal, DATE, which_level, ANALY_VER)
 
     ### Print and plot all conjucntions

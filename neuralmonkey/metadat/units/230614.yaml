@@ -1,0 +1,6 @@
+# Union, across sessions
+# -- These usually the same across sessions
+
+sites_garbage: [18, 26, 72, 75, 91, 271, 497]
+
+done_garbage: true
