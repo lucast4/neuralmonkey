@@ -2,7 +2,7 @@
 
 ANALY_VER="singleprimvar"
 
-sleep 2h
+# sleep 2h
 
 # PANCHO
 datelist=(230612 230613)

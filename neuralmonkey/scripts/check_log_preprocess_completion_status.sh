@@ -2,5 +2,5 @@
 animal=Pancho
 cd ../
 # python -m utils.directory ${animal}
-python -m utils.directory Pancho
-python -m utils.directory Diego
+python -m utils.directory Pancho preprocess
+python -m utils.directory Diego preprocess

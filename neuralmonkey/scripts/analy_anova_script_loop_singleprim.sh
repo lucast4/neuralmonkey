@@ -8,8 +8,11 @@
 # datelist=(220606 220608 220609 220610 220718 220719 220724 220918 221217 221218 221220 230103 230104) # the ones added 6/13/23, to get all days.
 # animal="Pancho"
 
+sleep 4h
+
 ## DIEGO
-datelist=(230603 230613 230614 230615 230616 230617 230618 230619 230621) # all
+# datelist=(230603 230613 230614 230615 230616 230617 230618 230619 230621) # all
+datelist=(230613 230621) # all
 animal="Diego"
 ANALY_VER="singleprim"
 which_level="trial"

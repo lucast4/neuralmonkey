@@ -4,17 +4,18 @@ from neuralmonkey.scripts.load_and_save_locally import load_and_preprocess_singl
 import neuralmonkey.utils.monkeylogic as mkl
 from neuralmonkey.classes.session import load_session_helper, load_mult_session_helper
 import os
-
-
-assert False, "replabe below with function that preprocesses Dataset"
+from neuralmonkey.metadat.analy.anova_params import dataset_apply_params
 
 which_level="trial"    
 ANALY_VER = "singleprim"
-# animal = "Pancho"
-# LIST_DATE = [220606, 220608, 220609, 220610, 220718, 220719, 220724, 220918, 
-#     221217, 221218, 221220, 230103, 230104]
+
 animal = "Diego"
-LIST_DATE = [230603]
+LIST_DATE = [230615, 230619, 230621, 230614, 230616, 230618]
+
+# animal = "Pancho"
+# LIST_DATE =  [220606, 220608, 220609, 220610, 220718, 220719, 220724, 220918, 
+#     221217, 221218, 221220, 230103, 230104]
+
 for DATE in LIST_DATE:
 
     # %matplotlib inline
@@ -31,84 +32,12 @@ for DATE in LIST_DATE:
     #     SAVEDIR = "/gorilla1/analyses/recordings/main/anova/bytrial"
     SP, SAVEDIR_ALL = load_and_concat_mult_snippets(MS, which_level=which_level)
 
+    ListD = [sn.Datasetbeh for sn in MS.SessionsList]
+    Dall, dataset_pruned_for_trial_analysis, TRIALCODES_KEEP, params, params_extraction = \
+        dataset_apply_params(ListD, animal, DATE, which_level, ANALY_VER)
+    SP.DfScalar = SP.DfScalar[SP.DfScalar["trialcode"].isin(TRIALCODES_KEEP)].reset_index(drop=True)            
 
-    # ANALY_VER = "rulesw"
-    anova_interaction = False
-    from neuralmonkey.metadat.analy.anova_params import params_getter_plots, params_getter_extraction
-    from pythonlib.dataset.analy_dlist import concatDatasets
-    from neuralmonkey.classes.snippets import _dataset_extract_prune_general, _dataset_extract_prune_general_dataset
-    params = params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=anova_interaction)
-    params_extraction = params_getter_extraction(animal, DATE, which_level, ANALY_VER)
-
-    #### COPIED From analy_anova_plot
-    list_dataset = []
-    for i, sn in enumerate(MS.SessionsList):
-        # if which_level=="trial":
-        # use the dataset here, since it is not saved
-        D = sn.Datasetbeh
-        # else:
-        #     # use the dataset linked to DS, since it is saved
-        #     D = SP.DSmult[i].Dataset
-        #     assert len(D.Dat)==len(sn.Datasetbeh.Dat), "a sanity check. desnt have to be, but I am curious why it is not..."
-
-        # THINGs that must be done by each individual D
-        D.behclass_preprocess_wrapper()
-
-        # Second, do preprocessing to concatted D
-        if params_extraction["DO_SCORE_SEQUENCE_VER"]=="parses":
-            D.grammar_successbinary_score_parses()
-        elif params_extraction["DO_SCORE_SEQUENCE_VER"]=="matlab":
-            D.grammar_successbinary_score_matlab()
-        else:
-            # dont score
-            assert params_extraction["DO_SCORE_SEQUENCE_VER"] is None
-
-        if params_extraction["taskgroup_reassign_simple_neural"]:
-            # do here, so the new taskgroup can be used as a feature.
-            D.taskgroup_reassign_ignoring_whether_is_probe(CLASSIFY_PROBE_DETAILED=False)                
-            print("Resulting taskgroup/probe combo, after taskgroup_reassign_simple_neural...")
-            D.grouping_print_n_samples(["taskgroup", "probe"])
-
-        if params_extraction["DO_CHARSEQ_VER"] is not None:
-            D.sequence_char_taskclass_assign_char_seq(ver=params_extraction["DO_CHARSEQ_VER"])
-
-        list_dataset.append(D.copy())
-    # concat the datasets 
-    Dall = concatDatasets(list_dataset)
-
-    ################ DO SAME THING AS IN EXTRACTION (these dont fail, when use concatted)
-    if params_extraction["DO_EXTRACT_CONTEXT"]:
-        Dall.seqcontext_preprocess()
-
-    for this in params_extraction["list_epoch_merge"]:
-        # D.supervision_epochs_merge_these(["rndstr", "AnBmTR|1", "TR|1"], "rank|1")
-        Dall.supervision_epochs_merge_these(this[0], this[1], key=params_extraction["epoch_merge_key"],
-            assert_list_epochs_exist=False)
-
-
-    if params_extraction["EXTRACT_EPOCHSETS"]:
-        Dall.epochset_extract_common_epoch_sets(
-            trial_label=params_extraction["EXTRACT_EPOCHSETS_trial_label"],
-            n_max_epochs=params_extraction["EXTRACT_EPOCHSETS_n_max_epochs"],
-            merge_sets_with_only_single_epoch=params_extraction["EXTRACT_EPOCHSETS_merge_sets"],
-            merge_sets_with_only_single_epoch_name = ("LEFTOVER",))
-
-    if params_extraction["DO_EXTRACT_EPOCHKIND"]:
-        Dall.supervision_epochs_extract_epochkind()
-
-    # Sanity check that didn't remove too much data.
-    if False:
-        if "wrong_sequencing_binary_score" not in params["preprocess_steps_append"]:
-            # Skip if is error trials.
-            npre = len(D.Dat)
-            npost = len(dat_pruned.Dat)
-            if npost/npre<0.25 and len(sn.Datasetbeh.Dat)>200: # ie ignore this if it is a small session...
-                print(params)
-                print("THis has no wrong_sequencing_binary_score: ",  params['preprocess_steps_append'])
-                assert False, "dataset pruning removed >0.75 of data. Are you sure correct? Maybe removing a supervisiuon stage that is actually important?"
-
-
-    ####################### REEXTRACT VARIABLES
+    ####################### REEXTRACT VARIABLES into SP.DfScalar
     list_var_reextract = []
     for var, vars_conjuction in zip(params["LIST_VAR"], params["LIST_VARS_CONJUNCTION"]):
         list_var_reextract.append(var)
@@ -122,23 +51,24 @@ for DATE in LIST_DATE:
     if which_level=="trial":
         # First collect all variables that you might need (before deleting dataset).
         # By default, recompute them, since concatting datasets might change some variables.
-        def _reextract_var(SP, varthis):
-            """ Repopulate SP.DfScalar[varthis] with the new values in
-            dataset.
-            Modifies SP in place
-            """
-            from pythonlib.tools.pandastools import slice_by_row_label
 
-            trialcodesthis = SP.DfScalar["trialcode"].tolist()
+        # def _reextract_var(SP, varthis):
+        #     """ Repopulate SP.DfScalar[varthis] with the new values in
+        #     dataset.
+        #     Modifies SP in place
+        #     """
+        #     from pythonlib.tools.pandastools import slice_by_row_label
+            
+        #     trialcodesthis = SP.DfScalar["trialcode"].tolist()
 
-            # Get the sliced dataframe
-            dfslice = slice_by_row_label(Dall.Dat, "trialcode", trialcodesthis,
-                reset_index=True, assert_exactly_one_each=True)
+        #     # Get the sliced dataframe
+        #     dfslice = slice_by_row_label(Dall.Dat, "trialcode", trialcodesthis,
+        #         reset_index=True, assert_exactly_one_each=True)
 
-            # Assign the values to SP
-            print("Updating this column of SP.DfScalar with Dataset beh:")
-            print(varthis)
-            SP.DfScalar[varthis] = dfslice[varthis].tolist()
+        #     # Assign the values to SP
+        #     print("Updating this column of SP.DfScalar with Dataset beh:")
+        #     print(varthis)
+        #     SP.DfScalar[varthis] = dfslice[varthis].tolist()
 
         # vars_already_extracted =[]
         for var in list_var_reextract:
@@ -152,7 +82,8 @@ for DATE in LIST_DATE:
             #     if v not in SP.DfScalar.columns:
             #         valuesthis = _reextract_var(SP, v)
             #         SP.DfScalar[v] = valuesthis
-            _reextract_var(SP, var)
+            SP.datasetbeh_append_column(var, Dataset=Dall) 
+            # _reextract_var(SP, var)
 
         # For deletion code later, make dummys
         list_ds_dat = None
@@ -161,7 +92,7 @@ for DATE in LIST_DATE:
         dfstrokes_slice = None
 
     elif which_level=="stroke":
-
+            
         # For each DS (session) extract the column from Dall
         list_ds_dat = []
         for DS in SP.DSmult:
@@ -222,16 +153,7 @@ for DATE in LIST_DATE:
         print(which_level)
         assert False
 
-    ###### PRUNE DATASET TO GET SUBSET TRIALCODES
-    # Only keep subset these trialcodes
-    dataset_pruned_for_trial_analysis = _dataset_extract_prune_general_dataset(Dall, 
-        list_superv_keep=params["list_superv_keep"], 
-        preprocess_steps_append=params["preprocess_steps_append"],
-        remove_aborts=params["remove_aborts"],
-        list_superv_keep_full=params["list_superv_keep_full"], 
-        )    
 
-    TRIALCODES_KEEP = dataset_pruned_for_trial_analysis.Dat["trialcode"].tolist()
 
     ###### SANITY CHECK, the type of each item for each var, must be the same across levels.
     # or else errors, e.g., seaborn fails.
@@ -250,15 +172,9 @@ for DATE in LIST_DATE:
                 print([type(x) for x in tmp])
                 print(v)
                 assert False, "levels are not all same type..."
-    # Keep only the good trialcodes
 
 
-    SP.DfScalar = SP.DfScalar[SP.DfScalar["trialcode"].isin(TRIALCODES_KEEP)].reset_index(drop=True)            
-
-
-
-
-
+    #############################
     SP.datamod_append_unique_indexdatapt()
     SP.DfScalar = SP.datamod_append_bregion(SP.DfScalar)
 
