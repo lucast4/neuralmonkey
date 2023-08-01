@@ -13,7 +13,7 @@ SAVEDIR_SNIPPETS_STROKE = "/gorilla1/analyses/recordings/main/anova/bystroke" # 
 # SAVEDIR_SNIPPETS_STROKE = "/gorilla1/analyses/recordings/main/chunks_modulation" # for snippets
 SAVEDIR_SNIPPETS_TRIAL = "/gorilla1/analyses/recordings/main/anova/bytrial" # for snippets
 
-LIST_SUPERV_NOT_TRAINING = ["off|0||0", "off|1|solid|0", "off|1|rank|0"]
+# LIST_SUPERV_NOT_TRAINING = ["off|0||0", "off|1|solid|0", "off|1|rank|0"] # Dont use this. use D.preprocessGood(no supervision) insetead
 
 # import warnings
 # warnings.filterwarnings("error")
@@ -1777,6 +1777,7 @@ class Snippets(object):
                     # is ok, do not prune supervision stage
                     pass
                 else:
+                    assert False, "use D.preprocessGood(params=[no_supervision]) instead"
                     indskeep = self.DfScalar["supervision_stage_concise"].isin(LIST_SUPERV_NOT_TRAINING)
                     if all(indskeep):
                         # do nothing, all are already in "not training"
@@ -6454,18 +6455,21 @@ def _dataset_extract_prune_general_dataset(D, list_superv_keep = None,
     else:
         if list_superv_keep is None:
             print("############ TAKING ONLY NO SUPERVISION TRIALS")
-            list_superv_keep = LIST_SUPERV_NOT_TRAINING
+            # list_superv_keep = LIST_SUPERV_NOT_TRAINING
+
+            Dcopy.preprocessGood(params=["no_supervision"])
         else:
             print("############ TAKING ONLY THESE SUPERVISION TRIALS:")
             print(list_superv_keep)
             assert isinstance(list_superv_keep, list)
 
-        # Only during no-supervision blocks
-        print("--BEFORE REMOVE; existing supervision_stage_concise:")
-        print(Dcopy.Dat["supervision_stage_concise"].value_counts())
-        Dcopy.filterPandas({"supervision_stage_concise":list_superv_keep}, "modify")
-        print("--AFTER REMOVE; existing supervision_stage_concise:")
-        print(Dcopy.Dat["supervision_stage_concise"].value_counts())
+            # Only during no-supervision blocks
+            print("--BEFORE REMOVE; existing supervision_stage_concise:")
+            print(Dcopy.Dat["supervision_stage_concise"].value_counts())
+            print("Keeping only these supervision values: ", list_superv_keep)
+            Dcopy.filterPandas({"supervision_stage_concise":list_superv_keep}, "modify")
+            print("--AFTER REMOVE; existing supervision_stage_concise:")
+            print(Dcopy.Dat["supervision_stage_concise"].value_counts())
         
         print("Dataset final len:", len(Dcopy.Dat))
 
@@ -6662,6 +6666,7 @@ def _dataset_extract_prune_rulesw(sn, same_beh_only,
     print("Dataset len:", len(D.Dat))
 
     print("############ TAKING ONLY NO SUPERVISION TRIALS")
+    assert False, "use D.preprocessGood(no superivsion) insetad"
     LIST_NO_SUPERV = LIST_SUPERV_NOT_TRAINING
     # Only during no-supervision blocks
     print(D.Dat["supervision_stage_concise"].value_counts())

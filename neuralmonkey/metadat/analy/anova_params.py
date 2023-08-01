@@ -997,7 +997,7 @@ def dataset_apply_params(ListD, animal, DATE, which_level, ANALY_VER, anova_inte
     ###### PRUNE DATASET TO GET SUBSET TRIALCODES
     # Only keep subset these trialcodes
     dataset_pruned_for_trial_analysis = _dataset_extract_prune_general_dataset(Dall, 
-        list_superv_keep=params["list_superv_keep"], 
+        list_superv_keep=params["list_superv_keep"],  
         preprocess_steps_append=params["preprocess_steps_append"],
         remove_aborts=params["remove_aborts"],
         list_superv_keep_full=params["list_superv_keep_full"], 
@@ -1050,7 +1050,8 @@ def conjunctions_print_plot_all(ListD, SAVEDIR, ANALY_VER, which_level="trial"):
     ### Prep dataset, and extract params
     _, Dpruned, TRIALCODES_KEEP, params, params_extraction = dataset_apply_params(ListD, 
         animal, DATE, which_level, ANALY_VER)
-
+    assert len(Dpruned.Dat)>0
+    
     ### Print and plot all conjucntions
     LIST_VAR = params["LIST_VAR"]
     LIST_VARS_CONJUNCTION = params["LIST_VARS_CONJUNCTION"]           
