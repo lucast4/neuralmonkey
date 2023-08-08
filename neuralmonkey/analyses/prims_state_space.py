@@ -271,12 +271,12 @@ def plotall_state_space(PA, DF, MS, REGIONS, VARNAME_SUBPLOT_LEVELS,
         ######################
         # - extract data grouped by conjuction of all bars.
         LEVEL_EXPANDED = expand_level_to_length_of_DATAPLOT_GROUPING_VARS(LEVEL, SUBPLOT_CATS, DATAPLOT_GROUPING_VARS)
-        # print("HERE")
-        # print(DATAPLOT_GROUPING_VARS)
-        # print(LEVEL)
-        # print(LEVEL_EXPANDED)
-        # print(SUBPLOT_CATS)
-        # assert False
+        print("HERE")
+        print(DATAPLOT_GROUPING_VARS)
+        print(LEVEL)
+        print(LEVEL_EXPANDED)
+        print(SUBPLOT_CATS)
+        assert False
 
 
         # Slice to only the specific groups that go on this subplot

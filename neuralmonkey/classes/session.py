@@ -365,6 +365,7 @@ class Session(object):
 
         # Behavior (Dataset Class) stuff
         self.DatasetbehExptname = dataset_beh_expt
+        self.Datasetbeh = None
 
         # For caching mapping from (site, trial) to index in self.DatAll
         self._MapperSiteTrial2DatAllInd = {}
@@ -549,6 +550,8 @@ class Session(object):
 
         # Various cleanups
         self._cleanup()
+        self._datasetbeh_cleanup()
+
         if DEBUG_TIMING:
             ts = makeTimeStamp()
             print("@@@@ DEBUG TIMING, COMPLETED", "self._cleanup()", ts)
@@ -559,6 +562,21 @@ class Session(object):
 
 
     ####################### PREPROCESS THINGS
+    def _datasetbeh_cleanup(self):
+        """ To run, useful since sometimes (MINIMAL LOADING) loads the cached dataset, which 
+        might have older version of data
+        """
+        if self.Datasetbeh is not None:
+            # Important, to reset all tokens, some which mgith be incompleted, using
+            # old code, e.g., gridloc_local
+            self.Datasetbeh.behclass_preprocess_wrapper()
+
+            # sanity check that every neuiral trial has a dataset trial
+            trials = self.get_trials_list(True)
+            for t in trials:
+                # print(t, sn.datasetbeh_trial_to_datidx(t))
+                assert self.datasetbeh_trial_to_datidx(t) is not None
+
     def _cleanup(self):
         """ Various things to run at end of each initialization
         - Sanity checks, etc. SHould be quick.
@@ -919,6 +937,7 @@ class Session(object):
                         return path_maybe
             
             # Didn't find spikes, return None
+            print("DIdnt find spikes directory")
             return None
 
         if self.Animal=="Pancho":
@@ -977,12 +996,12 @@ class Session(object):
                     self.print_summarize_expt_params()
                     print(err)
                     assert False
-                    
-                # CHeck again is you are missing spikes
-                if _missing_spikes():
-                    print("** STILL MISSING SPIKES! Probably havent transfered all sev file sto server??")
-                    self.print_summarize_expt_params()
-                    assert False
+                
+                # # CHeck again is you are missing spikes
+                # if _missing_spikes():
+                #     print("** STILL MISSING SPIKES! Probably havent transfered all sev file sto server??")
+                #     self.print_summarize_expt_params()
+                #     assert False
 
                 # Now try reinitializing paths
                 self.Paths = {}
@@ -1167,6 +1186,7 @@ class Session(object):
         """
         
         if self.Paths['spikes'] is None:
+            print("self.Paths['spikes'] is None")
             return False
 
         rs, chan = self.convert_site_to_rschan(site)
@@ -4465,11 +4485,11 @@ class Session(object):
                         # presses quickly in anticiation. Then the predur might have a contamination. solve this by
                         # shortening predur
 
-                        LIST_TPRE = list(np.linspace(0.045, -0.1, 50))
+                        LIST_TPRE = list(np.linspace(0.045, -0.15, 50))
                         SM_WIN = 0.005 # if fix cue and rule2 are too close, then smoothing makes them hard to separate...
                         for t_pre in LIST_TPRE:
                             try:
-                                out = self.behcode_get_stream_crossings_in_window(trial, 132, t_pre=t_pre, t_post = 0.2, whichstream="pd2", 
+                                out = self.behcode_get_stream_crossings_in_window(trial, 132, t_pre=t_pre, t_post = 0.22, whichstream="pd2", 
                                                       ploton=plot_beh_code_stream, cross_dir_to_take="down", 
                                                       assert_single_crossing_per_behcode_instance=True,
                                                         assert_single_crossing_this_trial = False,
@@ -4743,11 +4763,16 @@ class Session(object):
                     # First, try very loose with both
                     # behcode = 73
                     behcode = "post"
-                    out1 = self.behcode_get_stream_crossings_in_window(trial, behcode, t_pre=0.2, t_post = 0.4, whichstream="pd2", 
-                      ploton=plot_beh_code_stream, cross_dir_to_take="down", assert_single_crossing_per_behcode_instance=False,
-                        assert_single_crossing_this_trial = False,
-                         assert_expected_direction_first_crossing = "down",
-                         take_first_crossing_for_each_behcode=True)
+                    try:
+                        out1 = self.behcode_get_stream_crossings_in_window(trial, behcode, t_pre=0.2, t_post = 0.4, whichstream="pd2", 
+                          ploton=plot_beh_code_stream, cross_dir_to_take="down", assert_single_crossing_per_behcode_instance=False,
+                            assert_single_crossing_this_trial = False,
+                             assert_expected_direction_first_crossing = "down",
+                             take_first_crossing_for_each_behcode=True)
+                    except AssertionError:
+                        # This can happen if the trial ends early, which make the pd go up too early, in which case the
+                        # first crossing may ne up.
+                        out1 = []
                     out2 = self.behcode_get_stream_crossings_in_window(trial, 46, t_pre=0.2, t_post = 0.4, whichstream="pd1", 
                               ploton=plot_beh_code_stream, cross_dir_to_take="up", assert_single_crossing_per_behcode_instance=False,
                                 assert_single_crossing_this_trial = False,
@@ -4771,11 +4796,15 @@ class Session(object):
 
                     if BAD:
                         # Try first, then second
-                        out = self.behcode_get_stream_crossings_in_window(trial, behcode, t_pre=0.2, t_post = 0.35, whichstream="pd2", 
-                          ploton=plot_beh_code_stream, cross_dir_to_take="down", assert_single_crossing_per_behcode_instance=False,
-                            assert_single_crossing_this_trial = False,
-                             assert_expected_direction_first_crossing = "down",
-                             take_first_crossing_for_each_behcode=True)
+                        try:
+                            out = self.behcode_get_stream_crossings_in_window(trial, behcode, t_pre=0.2, t_post = 0.35, whichstream="pd2", 
+                              ploton=plot_beh_code_stream, cross_dir_to_take="down", assert_single_crossing_per_behcode_instance=False,
+                                assert_single_crossing_this_trial = False,
+                                 assert_expected_direction_first_crossing = "down",
+                                 take_first_crossing_for_each_behcode=True)
+                        except AssertionError as err:
+                            # See note above. this is same logic
+                            out = []
                         if len(out)==0:
                             out = self.behcode_get_stream_crossings_in_window(trial, 46, t_pre=0.2, t_post = 0.35, whichstream="pd1", 
                                   ploton=plot_beh_code_stream, cross_dir_to_take="up", assert_single_crossing_per_behcode_instance=True,
@@ -5035,6 +5064,12 @@ class Session(object):
                     elif ev=="seqon":
                         # TODO: check that this is NOT a sequence mask trial.
                         pass
+                    elif ev=="rulecue2":
+                        # is ok if not find, since if the behcode (132) does exist, then
+                        # is is asserted that this pd blip is found. so lack of finding 
+                        # means that 132 didnt exist in this trial..
+                        # TODO: confirm that 132 doesnt exist.
+                        pass
                     elif ev in ["fixcue", "fixtch", "samp", "go", "first_raise", "post"]:
                         # this is a problem, not expected to miss this
                         log_this(log_events_missing_unexplained, ev, trial)
@@ -5248,7 +5283,9 @@ class Session(object):
 
         # Input labels
         if df_label_trials is not None:
-            assert df_label_cols_get is not None
+            if len(df_label_cols_get)==0:
+                df_label_cols_get = ["trialcode"] # need to be not empyt or else doswnsdtream daifls.
+            assert df_label_cols_get is not None and len(df_label_cols_get)>0
             PA.labels_features_input_from_dataframe(df_label_trials, df_label_cols_get, dim="trials")
 
         return PA
@@ -6668,7 +6705,7 @@ class Session(object):
             if self.Animal=="Pancho":
                 window_delta_pixels = 45 # changed to 45 on 6/15/23, since was missing some.
             elif self.Animal == "Diego":
-                window_delta_pixels = 48
+                window_delta_pixels = 52
 
         # 1) is touching within fix params?
         fd, t = self.beh_get_fd_trial(trial)
