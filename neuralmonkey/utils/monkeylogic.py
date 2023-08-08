@@ -226,5 +226,3 @@ def session_map_from_rec_to_ml2(animal, date, rec_session):
     # return beh_session, exptname, sessdict
     return beh_sess_list, beh_expt_list, sessdict, beh_trial_map_list
 
-
-

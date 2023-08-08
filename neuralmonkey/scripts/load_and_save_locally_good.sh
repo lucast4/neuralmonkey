@@ -13,6 +13,8 @@
 # server_mount
 # freiwald_mount
 
+git_pull_all
+
 animal=$1
 d=$2
 date2=$3
