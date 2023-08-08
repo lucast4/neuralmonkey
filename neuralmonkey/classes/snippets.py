@@ -13,7 +13,8 @@ SAVEDIR_SNIPPETS_STROKE = "/gorilla1/analyses/recordings/main/anova/bystroke" # 
 # SAVEDIR_SNIPPETS_STROKE = "/gorilla1/analyses/recordings/main/chunks_modulation" # for snippets
 SAVEDIR_SNIPPETS_TRIAL = "/gorilla1/analyses/recordings/main/anova/bytrial" # for snippets
 
-LIST_SUPERV_NOT_TRAINING = ["off|0||0", "off|1|solid|0", "off|1|rank|0"]
+# LIST_SUPERV_NOT_TRAINING = ["off|0||0", "off|1|solid|0", "off|1|rank|0"]
+
 
 # import warnings
 # warnings.filterwarnings("error")
@@ -186,8 +187,6 @@ def load_and_concat_mult_snippets(MS, which_level, SITES_COMBINE_METHODS = "inte
     # Save all the sp.
     
     return SPall, SAVEDIR_ALL
-
-
 
 
 class Snippets(object):
@@ -1847,10 +1846,10 @@ class Snippets(object):
             writeDictToYaml(params_to_save, path)
 
         ################# LOAD DF_VAR
-        df_var, list_eventwindow_event = self.modulationgood_load_or_compute(
+        df_var, list_eventwindow_event, RELOAD_DFVAR_SUCCESSFUL, RECOMPUTED = self.modulationgood_load_or_compute(
             "df_var", sdir_base, var, vars_conjuction, score_ver, get_z_score)
 
-        df_fr_levels, _ = self.modulationgood_load_or_compute(
+        df_fr_levels, _, RELOAD_DFVAR_SUCCESSFUL, RECOMPUTED = self.modulationgood_load_or_compute(
             "df_fr_levels", sdir_base, var, vars_conjuction, None, None)
 
         ################# save again
@@ -1892,8 +1891,8 @@ class Snippets(object):
             plt.close("all")
 
         ################### MAIN PLOTS OF MODULATION
-        if len(df_var)>0:
-
+        # Only do plots if did recomputed
+        if RECOMPUTED and len(df_var)>0:
             # How many ways anova?
             if sum(df_var["val_kind"]=="val_others")>0 and sum(df_var["val_kind"]=="val_interaction")>0:
                 # two way anova
@@ -1975,7 +1974,7 @@ class Snippets(object):
                 plt.close("all")           
 
             ########### SEPARATE PLOT FOR EACH EVENT
-            events_already_done = []
+            # events_already_done = []
             for event_window, event in list_eventwindow_event:
                 print("** Making plots for this event_window: ")
                 print(event_window)
@@ -1987,10 +1986,12 @@ class Snippets(object):
                 df_var_this = df_var[df_var["event"]==event_window]
 
                 if len(df_var_this)==0:
+                    print("SKipping this event, since no data... ", event_window)
                     print(len(df_var))
                     print(df_var["event"].value_counts())
                     print(event_window, event)
-                    assert False
+                    # assert False
+                    continue
                     
                 ####### SUmmary plot of anova
                 if PLOT_EACH_EVENT:
@@ -2017,26 +2018,46 @@ class Snippets(object):
                     nmin = self.ParamsGlobals["n_min_trials_per_level"]
                     grouping_print_n_samples(df, [var] + vars_conjuction, nmin, spath, True)
 
-                ##### Plot rasters
-                if PLOT_RASTERS:
-                    # (Only do once for each event)
-                    sdir_rasters = f"{SAVEDIR}/{ANALY_VER}/var_by_varsother/VAR_{var}-OV_{'_'.join(vars_conjuction)}/rasters/{event}"
-                    os.makedirs(sdir_rasters, exist_ok=True)
+                # ##### Plot rasters
+                # if PLOT_RASTERS:
+                #     # (Only do once for each event)
+                #     sdir_rasters = f"{SAVEDIR}/{ANALY_VER}/var_by_varsother/VAR_{var}-OV_{'_'.join(vars_conjuction)}/rasters/{event}"
+                #     os.makedirs(sdir_rasters, exist_ok=True)
 
-                    # from pythonlib.tools.expttools import checkIfDirExistsAndHasFiles
-                    # exists, hasfiles = checkIfDirExistsAndHasFiles(sdir_rasters)
-                    # if not hasfiles:
+                #     # from pythonlib.tools.expttools import checkIfDirExistsAndHasFiles
+                #     # exists, hasfiles = checkIfDirExistsAndHasFiles(sdir_rasters)
+                #     # if not hasfiles:
                     
-                    print("** Plotting raster + sm fr:", sdir_rasters)
-                    ##### Plot raster + sm fr
-                    # Plot rasters for each site
-                    for site in self.Sites:
-                        path = f"{sdir_rasters}/{sn.sitegetter_summarytext(site)}.png"
-                        if not os.path.exists(path):
-                            fig, axes = self.plotgood_rasters_smfr_each_level_combined(site, var, vars_conjuction, 
-                                event=event)
-                            fig.savefig(path)
-                            plt.close("all")
+                #     print("** Plotting raster + sm fr:", sdir_rasters)
+                #     ##### Plot raster + sm fr
+                #     # Plot rasters for each site
+                #     for site in self.Sites:
+                #         path = f"{sdir_rasters}/{sn.sitegetter_summarytext(site)}.png"
+                #         if not os.path.exists(path):
+                #             fig, axes = self.plotgood_rasters_smfr_each_level_combined(site, var, vars_conjuction, 
+                #                 event=event)
+                #             fig.savefig(path)
+                #             plt.close("all")
+        else:
+            print("********* SKIPPING PLOTTING OF DF_VAR (since did not recompute df_var")
+            
+        ##### Plot rasters
+        if PLOT_RASTERS:
+            for event_window, event in list_eventwindow_event:
+                # (Only do once for each event)
+                sdir_rasters = f"{SAVEDIR}/{ANALY_VER}/var_by_varsother/VAR_{var}-OV_{'_'.join(vars_conjuction)}/rasters/{event}"
+                os.makedirs(sdir_rasters, exist_ok=True)
+
+                print("** Plotting raster + sm fr:", sdir_rasters)
+                ##### Plot raster + sm fr
+                # Plot rasters for each site
+                for site in self.Sites:
+                    path = f"{sdir_rasters}/{sn.sitegetter_summarytext(site)}.png"
+                    if not os.path.exists(path):
+                        fig, axes = self.plotgood_rasters_smfr_each_level_combined(site, var, vars_conjuction, 
+                            event=event)
+                        fig.savefig(path)
+                        plt.close("all")
 
         else:
             print("!!SKIPPING PLOTS!! not enough data") 
@@ -2107,6 +2128,11 @@ class Snippets(object):
             DFTHIS = res[IDX]
             list_eventwindow_event = res[3]
 
+            if len(DFTHIS)>0:
+                RECOMPUTED=True
+            else:
+                RECOMPUTED = False
+
             if RELOAD_DFVAR_SUCCESSFUL:
                 # Then you want to merge
                 print("... Merging pre-saved and new df!")
@@ -2126,6 +2152,7 @@ class Snippets(object):
 
         except NotEnoughDataException as err:
             print("--NotEnoughDataException [modulationgood_compute_wrapper] during: ", var, vars_conjuction, score_ver)
+            RECOMPUTED = False
             if RELOAD_DFVAR_SUCCESSFUL:
                 print("This is ok, since you already have pre-saved df loaded... continuing with loaded...")
                 DFTHIS = DFTHIS_SAVED
@@ -2147,7 +2174,8 @@ class Snippets(object):
         DFTHIS = DFTHIS.reset_index(drop=True)
         # list_events_window = sorted(DFTHIS["event"].unique().tolist()) 
 
-        if RESAVE_AND_MOVE_OLD_PLOTS:
+        if RESAVE_AND_MOVE_OLD_PLOTS and RECOMPUTED==True:
+
             ##### Move old plots
             if RELOAD_DFVAR_SUCCESSFUL:
                 ######### MOVE OLD DF_VAR AND OLD PLOTS
@@ -2165,7 +2193,6 @@ class Snippets(object):
                     print(f"Moving {it} to {path_new}")
                     shutil.move(it, path_new)
                 print("All files moved... ready to remake plots!!")
-
 
             ############ Save df_var
             path = f"{sdir_base}/{FNAME}.pkl"
@@ -2199,7 +2226,7 @@ class Snippets(object):
                 params_path = f"{sdir_base}/Params.yaml"
                 self.ParamsDictDfvar["Params"] = load_yaml_config(params_path)
 
-        return DFTHIS, list_eventwindow_event
+        return DFTHIS, list_eventwindow_event, RELOAD_DFVAR_SUCCESSFUL, RECOMPUTED
 
 
     def modulationgood_compute_wrapper(self, var, vars_conjuction=None, list_site=None, 
@@ -3669,7 +3696,7 @@ class Snippets(object):
         for lev_others, dfsub in dict_dfs.items():
             print("Plotting .. ", lev_others)
             
-            trialcodes = dfsub["trialcode"].tolist()
+            trialcodes = sorted(dfsub["trialcode"].unique().tolist())
 
             # pick n random
             if len(trialcodes)>nplot:
@@ -4221,7 +4248,7 @@ class Snippets(object):
         print("Plotting ...")
         # Compare across events
         fig = sns.catplot(data=df_var_chan, x="event", y="val", hue="val_kind",
-                          col="bregion", row="var", kind="point", ci=68, aspect=1, height=3,
+                          col="bregion", row="var", kind="point", ci=68, aspect=1, height=5,
                           order=events_sorted);
         for ax in fig.axes.flatten():
             ax.axhline(0, color="k")
@@ -4229,7 +4256,7 @@ class Snippets(object):
         fig.savefig(f"{savedir}/1_lines_modulation_kinds.pdf")
 
         fig = sns.catplot(data=df_var_chan, x="event", y="val", hue="val_kind",
-                          col="bregion", row="var", aspect=1, height=3, jitter=True, 
+                          col="bregion", row="var", aspect=1, height=5, jitter=True, 
                           alpha=0.25, order=events_sorted);
         rotateLabel(fig)
         for ax in fig.axes.flatten():
@@ -4257,14 +4284,16 @@ class Snippets(object):
             rotateLabel(fig)
             fig.savefig(f"{savedir}/2_bars_feature_vs_valkind.pdf")
 
-        # Compare across events
-        fig = sns.catplot(data=df_var_chan, x="event", y="val", hue="var",
-                          col="bregion", row="val_kind", kind="point", ci=68, aspect=1, 
-                          height=3, order=events_sorted);
-        rotateLabel(fig)
-        for ax in fig.axes.flatten():
-            ax.axhline(0, color="k")        
-        fig.savefig(f"{savedir}/3_lines_valkinds.pdf")
+        if False:
+            # Is usually identical to 1_...
+            # Compare across events
+            fig = sns.catplot(data=df_var_chan, x="event", y="val", hue="var",
+                              col="bregion", row="val_kind", kind="point", ci=68, aspect=1, 
+                              height=5, order=events_sorted);
+            rotateLabel(fig)
+            for ax in fig.axes.flatten():
+                ax.axhline(0, color="k")        
+            fig.savefig(f"{savedir}/3_lines_valkinds.pdf")
 
         from pythonlib.tools.snstools import plotgood_lineplot
         for val_kind in df_var_chan["val_kind"].unique():
@@ -5669,14 +5698,15 @@ class Snippets(object):
         # else:
         #     map_idx_to_level = None
         #     map_level_to_idx = {lev:lev for lev in levdat.keys()}
-        map_level_to_idx = {lev:lev for lev in levdat.keys()}
-        max_title_len = max([len(str(lov)) for lov in levdat.keys()])
-        if max_title_len>50:
-            FONTSIZE = 4
-        else:
-            FONTSIZE = 6
 
         if len(levdat)>0:
+            map_level_to_idx = {lev:lev for lev in levdat.keys()}
+            max_title_len = max([len(str(lov)) for lov in levdat.keys()])
+            if max_title_len>50:
+                FONTSIZE = 4
+            else:
+                FONTSIZE = 6
+                
             ntrials = np.mean([len(v) for k, v in levdat.items()])
             ncols = len(levdat)
             xmin, xmax = self._plotgood_rasters_extract_xmin_xmax()
@@ -5701,7 +5731,7 @@ class Snippets(object):
             levels_of_varsothers = list(levdat.keys())
             self._plotgood_smoothfr_average_each_level(site, var, vars_others, event=event,
                                                      plot_these_levels_of_varsothers=levels_of_varsothers,
-                                                     plot_on_these_axes=axes) 
+                                                     plot_on_these_axes=axes)  
 
             # make sure x axes is same for raster and sm fr
             for i in range(ncols):
@@ -6447,27 +6477,33 @@ def _dataset_extract_prune_general_dataset(D, list_superv_keep = None,
         Dcopy.filterPandas({"aborted":[False]}, "modify")
         print("Len, after remove aborts:", len(Dcopy.Dat))
 
+    print("--BEFORE REMOVE; existing supervision_stage_concise:")
+    print(Dcopy.Dat["supervision_stage_concise"].value_counts())
     if list_superv_keep == "all":
         # Then don't prune based on superv
         print("############ NOT PRUNING SUPERVISION TRIALS")
         pass
+    elif list_superv_keep is None:
+        print("############ TAKING ONLY NO SUPERVISION TRIALS")
+        # list_superv_keep = LIST_SUPERV_NOT_TRAINING
+        Dcopy.preprocessGood(params=["no_supervision"])
     else:
-        if list_superv_keep is None:
-            print("############ TAKING ONLY NO SUPERVISION TRIALS")
-            list_superv_keep = LIST_SUPERV_NOT_TRAINING
-        else:
-            print("############ TAKING ONLY THESE SUPERVISION TRIALS:")
-            print(list_superv_keep)
-            assert isinstance(list_superv_keep, list)
-
-        # Only during no-supervision blocks
-        print("--BEFORE REMOVE; existing supervision_stage_concise:")
-        print(Dcopy.Dat["supervision_stage_concise"].value_counts())
+        print("############ TAKING ONLY THESE SUPERVISION TRIALS:")
+        print(list_superv_keep)
+        assert isinstance(list_superv_keep, list)
         Dcopy.filterPandas({"supervision_stage_concise":list_superv_keep}, "modify")
-        print("--AFTER REMOVE; existing supervision_stage_concise:")
-        print(Dcopy.Dat["supervision_stage_concise"].value_counts())
+
+    print("--AFTER REMOVE; existing supervision_stage_concise:")
+    print(Dcopy.Dat["supervision_stage_concise"].value_counts())
+
+        # # Only during no-supervision blocks
+        # print("--BEFORE REMOVE; existing supervision_stage_concise:")
+        # print(Dcopy.Dat["supervision_stage_concise"].value_counts())
+        # Dcopy.filterPandas({"supervision_stage_concise":list_superv_keep}, "modify")
+        # print("--AFTER REMOVE; existing supervision_stage_concise:")
+        # print(Dcopy.Dat["supervision_stage_concise"].value_counts())
         
-        print("Dataset final len:", len(Dcopy.Dat))
+    print("Dataset final len:", len(Dcopy.Dat))
 
     if list_superv_keep_full is not None:
         print("--BEFORE REMOVE; existing supervision_stage_new:")
@@ -6492,45 +6528,6 @@ def _dataset_extract_prune_general(sn, list_superv_keep = None,
         preprocess_steps_append=preprocess_steps_append, remove_aborts=remove_aborts,
         list_superv_keep_full=list_superv_keep_full)
 
-    # print("Starting length of D.Dat:", len(Dcopy.Dat))
-    # # Remove if aborted
-    # if remove_aborts:
-    #     Dcopy.filterPandas({"aborted":[False]}, "modify")
-    #     print("Len, after remove aborts:", len(Dcopy.Dat))
-
-    # if list_superv_keep == "all":
-    #     # Then don't prune based on superv
-    #     print("############ NOT PRUNING SUPERVISION TRIALS")
-    #     pass
-    # else:
-    #     if list_superv_keep is None:
-    #         print("############ TAKING ONLY NO SUPERVISION TRIALS")
-    #         list_superv_keep = LIST_SUPERV_NOT_TRAINING
-    #     else:
-    #         print("############ TAKING ONLY THESE SUPERVISION TRIALS:")
-    #         print(list_superv_keep)
-    #         assert isinstance(list_superv_keep, list)
-
-    #     # Only during no-supervision blocks
-    #     print("--BEFORE REMOVE; existing supervision_stage_concise:")
-    #     print(Dcopy.Dat["supervision_stage_concise"].value_counts())
-    #     Dcopy.filterPandas({"supervision_stage_concise":list_superv_keep}, "modify")
-    #     print("--AFTER REMOVE; existing supervision_stage_concise:")
-    #     print(Dcopy.Dat["supervision_stage_concise"].value_counts())
-        
-    #     print("Dataset final len:", len(Dcopy.Dat))
-
-    # if list_superv_keep_full is not None:
-    #     print("--BEFORE REMOVE; existing supervision_stage_new:")
-    #     print(Dcopy.Dat["supervision_stage_new"].value_counts())
-    #     Dcopy.filterPandas({"supervision_stage_new":list_superv_keep_full}, "modify")
-    #     print(Dcopy.Dat["supervision_stage_new"].value_counts())
-
-    # if preprocess_steps_append is not None:
-    #     Dcopy.preprocessGood(params=preprocess_steps_append)
-
-    # return Dcopy
-
 def _dataset_extract_prune_sequence(sn, n_strok_max = 2):
     """ Prep beh dataset before extracting snippets.
     Add columns that are necessary and
@@ -6539,16 +6536,6 @@ def _dataset_extract_prune_sequence(sn, n_strok_max = 2):
     assert False, "Use the general version"
     import pandas as pd
     D = sn.Datasetbeh
-
-#     # 1) Convert to dataset strokes (task variant)
-#     from pythonlib.dataset.dataset_strokes import DatStrokes
-#     # DSbeh = DatStrokes(D, version="beh")
-#     DStask = DatStrokes(D, version="task") 
-
-#     # 1) only prims in grid
-#     DStask.dataset_append_column("supervision_stage_concise")
-#     filtdict = {"task_kind":["prims_on_grid"], "supervision_stage_concise":["off|1|solid|0"]}
-#     DStask.filter_dataframe(filtdict, True)
 
 
     # Method 1 - level of trial
@@ -6618,6 +6605,7 @@ def _dataset_extract_prune_rulesw(sn, same_beh_only,
     matching motor beh, etc.
     """
 
+    assert False, "use GENERAL"
     if first_stroke_same_only:
         assert same_beh_only==False, "this will throw out cases with same first stroke, but nto all strokes same."
     D = sn.Datasetbeh.copy()
@@ -6662,6 +6650,7 @@ def _dataset_extract_prune_rulesw(sn, same_beh_only,
     print("Dataset len:", len(D.Dat))
 
     print("############ TAKING ONLY NO SUPERVISION TRIALS")
+    assert False, "replace this withD.preprocessGood"
     LIST_NO_SUPERV = LIST_SUPERV_NOT_TRAINING
     # Only during no-supervision blocks
     print(D.Dat["supervision_stage_concise"].value_counts())
