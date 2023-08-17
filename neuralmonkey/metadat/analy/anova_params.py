@@ -1,5 +1,9 @@
 """ Holds params for anava analysis for each date
 """
+import os
+import matplotlib.pyplot as plt
+import numpy as np
+from pythonlib.tools.expttools import writeStringsToFile
 
 ONLY_ESSENTIAL_VARS = False # then just the first var, assuemd to be most important, for quick analys
 
@@ -26,7 +30,7 @@ def _params_score_sequence_ver(animal, DATE, ANALY_VER):
             221031, 221102, 221107, 221112, 221113, 221114, 221118, 221119, 221121, 221125]:
             # determenistic (single solution)
             DO_SCORE_SEQUENCE_VER = "matlab"
-        elif animal=="Diego" and DATE in [230701, 230702, 230703, 230704, 230705, 230706, 230707, 230713, 230717, 230719]:
+        elif animal=="Diego" and DATE in [230701, 230702, 230703, 230704, 230705, 230706, 230707, 230713, 230717, 230719, 230802]:
             # A single correct sequence
             DO_SCORE_SEQUENCE_VER = "matlab"
         else:
@@ -439,7 +443,7 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
                 ('09_post', 0.05, 0.6),
                 ('10_reward_all', 0.05, 0.6)]
 
-        elif DATE in [221002, 221014, 221020, 221021, 221023, 221024] or DATE in [230701, 230702, 230703, 230704, 230705, 230706, 230707, 230713, 230717, 230719]:
+        elif DATE in [221002, 221014, 221020, 221021, 221023, 221024] or DATE in [230701, 230702, 230703, 230704, 230705, 230706, 230707, 230713, 230717, 230719, 230802]:
             # fixcue[colored] --> fixtouch --> image[colored] --> go...
             # list_events = ["00_fixcue", "00_fixcue", "03_samp",       "03_samp", "04_go_cue",   "05_first_raise", "06_on_strokeidx_0", "08_doneb", "09_post", "10_reward_all"]
             # list_pre_dur = [-0.6, 0.05,              -0.6,       0.05,           -0.6,    -0.6, -0.1, -0.5, 0.05, 0.05]
@@ -1020,7 +1024,6 @@ def conjunctions_print_plot_all(ListD, SAVEDIR, ANALY_VER, which_level="trial"):
     - saves figures in f"{SAVEDIR}/conjunctions"
     """
     # from neuralmonkey.metadat.analy.anova_params import dataset_apply_params, params_getter_plots
-    from pythonlib.tools.expttools import writeStringsToFile
     from pythonlib.tools.pandastools import grouping_plot_n_samples_conjunction_heatmap
     import matplotlib.pyplot as plt
     import numpy as np
@@ -1054,35 +1057,38 @@ def conjunctions_print_plot_all(ListD, SAVEDIR, ANALY_VER, which_level="trial"):
     
     ### Print and plot all conjucntions
     LIST_VAR = params["LIST_VAR"]
-    LIST_VARS_CONJUNCTION = params["LIST_VARS_CONJUNCTION"]           
-    list_n = []
-    for var, vars_others in zip(LIST_VAR, LIST_VARS_CONJUNCTION):
+    LIST_VARS_CONJUNCTION = params["LIST_VARS_CONJUNCTION"]         
+
+    _conjunctions_print_plot_all(Dpruned.Dat, LIST_VAR, LIST_VARS_CONJUNCTION, sdir, 
+        params["globals_nmin"], Dpruned)  
+    # list_n = []
+    # for var, vars_others in zip(LIST_VAR, LIST_VARS_CONJUNCTION):
         
-        print(var, "vs", vars_others)
+    #     print(var, "vs", vars_others)
         
-        # All data
-        path = f"{sdir}/{var}|vs|{'-'.join(vars_others)}.txt"
-        plot_counts_heatmap_savedir = f"{sdir}/heatmap-{var}|vs|{'-'.join(vars_others)}.pdf"
-        Dpruned.grouping_conjunctions_print_variables_save(var, vars_others, path, n_min=0, 
-                                                          plot_counts_heatmap_savedir=plot_counts_heatmap_savedir)
-        # Passing nmin
-        path = f"{sdir}/goodPassNmin-{var}|vs|{'-'.join(vars_others)}.txt"
-        plot_counts_heatmap_savedir = f"{sdir}/goodPassNmin-heatmap-{var}|vs|{'-'.join(vars_others)}.pdf"
-        dfout, dict_dfs = Dpruned.grouping_conjunctions_print_variables_save(var, vars_others, path, n_min=params["globals_nmin"], 
-                                                          plot_counts_heatmap_savedir=plot_counts_heatmap_savedir)
-        plt.close("all")
+    #     # All data
+    #     path = f"{sdir}/{var}|vs|{'-'.join(vars_others)}.txt"
+    #     plot_counts_heatmap_savedir = f"{sdir}/heatmap-{var}|vs|{'-'.join(vars_others)}.pdf"
+    #     Dpruned.grouping_conjunctions_print_variables_save(var, vars_others, path, n_min=0, 
+    #                                                       plot_counts_heatmap_savedir=plot_counts_heatmap_savedir)
+    #     # Passing nmin
+    #     path = f"{sdir}/goodPassNmin-{var}|vs|{'-'.join(vars_others)}.txt"
+    #     plot_counts_heatmap_savedir = f"{sdir}/goodPassNmin-heatmap-{var}|vs|{'-'.join(vars_others)}.pdf"
+    #     dfout, dict_dfs = Dpruned.grouping_conjunctions_print_variables_save(var, vars_others, path, n_min=params["globals_nmin"], 
+    #                                                       plot_counts_heatmap_savedir=plot_counts_heatmap_savedir)
+    #     plt.close("all")
         
-        # Count
-        list_n.append(len(dict_dfs))
+    #     # Count
+    #     list_n.append(len(dict_dfs))
         
-    ### Print summary across conjucntions
-    strings = []
-    strings.append("n good levels of othervar | var |vs| othervars")
-    for var, vars_others, n in zip(LIST_VAR, LIST_VARS_CONJUNCTION, list_n):
-        s = f"{n} -- {var}|vs|{'-'.join(vars_others)}"
-        strings.append(s)
-    path = f"{sdir}/summary_n_levels_of_othervar_with_min_data.txt"
-    writeStringsToFile(path, strings)  
+    # ### Print summary across conjucntions
+    # strings = []
+    # strings.append("n good levels of othervar | var |vs| othervars")
+    # for var, vars_others, n in zip(LIST_VAR, LIST_VARS_CONJUNCTION, list_n):
+    #     s = f"{n} -- {var}|vs|{'-'.join(vars_others)}"
+    #     strings.append(s)
+    # path = f"{sdir}/summary_n_levels_of_othervar_with_min_data.txt"
+    # writeStringsToFile(path, strings)  
 
     ### STROKE LEVEL - heatmaps of (shape, location) vs. index
     from pythonlib.dataset.dataset_strokes import DatStrokes
@@ -1102,3 +1108,75 @@ def conjunctions_print_plot_all(ListD, SAVEDIR, ANALY_VER, which_level="trial"):
             savefig(fig, path)
 
             plt.close("all")
+
+def _conjunctions_print_plot_all(DF, LIST_VAR, LIST_VARS_CONJUNCTION, sdir, 
+        N_MIN, Dplotter):
+    """ Low-level code to plot and print info for var conjucntions
+    PARAMS:
+    - LIST_VAR, list of str
+    - LIST_VARS_CONJUNCTION, list of list of str, len outer list matches LIST_VAR,
+    - N_MIN, min n data for a given level of var, for defining that as "enough" or "good" data.
+    - Dplotter, dataset, for plotting methods, won't use its data.
+    """
+
+    os.makedirs(sdir, exist_ok=True)
+    # N_MIN = params["globals_nmin"]
+
+    list_n = []
+    for var, vars_others in zip(LIST_VAR, LIST_VARS_CONJUNCTION):
+
+        print(var, "vs", vars_others)
+
+        # All data
+        path = f"{sdir}/{var}|vs|{'-'.join(vars_others)}.txt"
+        plot_counts_heatmap_savedir = f"{sdir}/heatmap-{var}|vs|{'-'.join(vars_others)}.pdf"
+        Dplotter.grouping_conjunctions_print_variables_save(var, vars_others, path, n_min=0, 
+                                                          plot_counts_heatmap_savedir=plot_counts_heatmap_savedir,
+                                                          DF = DF)
+        
+
+        # Passing nmin
+        path = f"{sdir}/goodPassNmin-{var}|vs|{'-'.join(vars_others)}.txt"
+        plot_counts_heatmap_savedir = f"{sdir}/goodPassNmin-heatmap-{var}|vs|{'-'.join(vars_others)}.pdf"
+        dfout, dict_dfs = Dplotter.grouping_conjunctions_print_variables_save(var, vars_others, path, n_min=N_MIN, 
+                                                          plot_counts_heatmap_savedir=plot_counts_heatmap_savedir,
+                                                            DF = DF)
+        plt.close("all")
+
+        # Count
+        list_n.append(len(dict_dfs))
+
+    ### Print summary across conjucntions
+    strings = []
+    strings.append("n good levels of othervar | var |vs| othervars")
+    for var, vars_others, n in zip(LIST_VAR, LIST_VARS_CONJUNCTION, list_n):
+        s = f"{n} -- {var}|vs|{'-'.join(vars_others)}"
+        strings.append(s)
+    path = f"{sdir}/summary_n_levels_of_othervar_with_min_data.txt"
+    writeStringsToFile(path, strings)  
+
+    if False:
+        #### IN PROGRESS - NOT NEEDED. This should be outside reall,y and implemented
+        # by passing in strokes dataset.
+        ### Two variables each subplot. Subplots a third variable.
+        fig = grouping_plot_n_samples_conjunction_heatmap(dfthis, var1="shape", var2="gridloc", vars_others=["stroke_index"])
+        path = f"{sdir}/STROKELEVEL-conjunctions_shape_gridloc-task_kind_{task_kind}.pdf"
+        savefig(fig, path)
+
+
+        ####### OLD
+        for task_kind in ["prims_single", "prims_on_grid"]:
+            dfthis = DS.Dat[DS.Dat["task_kind"]==task_kind]
+
+            if len(dfthis)>0:
+                fig = grouping_plot_n_samples_conjunction_heatmap(dfthis, var1="shape", var2="gridloc", vars_others=["stroke_index"])
+                path = f"{sdir}/STROKELEVEL-conjunctions_shape_gridloc-task_kind_{task_kind}.pdf"
+                savefig(fig, path)
+
+                # Dissociate stroke index from remaining num strokes.
+                fig = grouping_plot_n_samples_conjunction_heatmap(dfthis, var1="stroke_index", 
+                                                                  var2="stroke_index_fromlast", vars_others=["shape", "gridloc"])
+                path = f"{sdir}/STROKELEVEL-conjunctions_stroke_index-task_kind_{task_kind}.pdf"
+                savefig(fig, path)
+
+                plt.close("all")    
