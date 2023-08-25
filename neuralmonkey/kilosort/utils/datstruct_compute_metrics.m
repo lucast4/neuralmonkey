@@ -34,7 +34,7 @@ for i=1:length(DATSTRUCT)
     
     st = DATSTRUCT(i).times_sec_all;
     [Q, R, isi_violation_pct] = refractoriness_compute(st);
-    
+
     % 1) remove outliers [SKIP]
     % 5) align (use xcorr?) [check 2-2-182]
     [snr_final, snr_new, peak_to_trough, waveforms_running_std, snr_old, ...

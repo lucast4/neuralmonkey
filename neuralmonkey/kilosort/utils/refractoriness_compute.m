@@ -9,6 +9,12 @@ function [Q, R, isi_violation_pct] = refractoriness_compute(st, ploton)
 	[K, Qi, Q00, Q01, rir] = ccg(st, st, 500, dt);
 	Q = min(Qi/(max(Q00, Q01))); % normalize the central cross-correlogram bin by its shoulders OR by its mean firing rate
 	R = min(rir); % R is the estimated probability that any of the center bins are refractory, and kicks in when there are very few spikes
+    % RETURNS:
+    % - K, (2*nbins), cross-correlogram, counts.
+    % - Qi, (10 lags around center,) prob of spike within close lag (increasing lag).
+    % - Q00, prob of spike in shoulder (one side)
+    % - Q01, prob of spike in shoulder (other side).
+    % - Ri, like Qi, but model-based, for use when not enough spikes.
 
 	% Do it the dumb version for comparison
 	threshold = 0.0015; % second, to call it a violatioin.
