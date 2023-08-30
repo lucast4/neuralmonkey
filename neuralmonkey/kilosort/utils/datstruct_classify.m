@@ -40,6 +40,9 @@ inds_noise = list_snr<=MIN_SNR;
 % 2.1) Noise (artifact)
 inds_artifact1 = list_sharpiness>THRESH_ARTIFACT_SHARP;
 inds_artifact2 = list_sharpiness>THRESH_ARTIFACT_SHARP_LOW & list_isi>THRESH_ARTIFACT_ISI;
+inds_artifact2 = list_refract > 20 | isinf(list_refract);
+list_sharpiness>THRESH_ARTIFACT_SHARP_LOW & list_isi>THRESH_ARTIFACT_ISI;
+
 inds_artifact = inds_artifact1 | inds_artifact2;
 
 % 3) mu

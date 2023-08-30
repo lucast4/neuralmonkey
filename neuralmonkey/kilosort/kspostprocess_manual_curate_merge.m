@@ -67,39 +67,48 @@ clear tmp
 savedir = [SAVEDIR_FINAL '/waveform_gridplots_GUI'];
 
 DATSTRUCT_MOD = DATSTRUCT;
+STRUCT_CLICKINFO = []; % To collect clickInfos
 
-% STEPS:
-
+% STEPS
 %%% (1) noise, add those that are MU
 figpath = 'noise-sorted_by_snr';
 instructions = struct('left', 'to_mua', 'right', 'cancel');
 assert_current_label = 'noise';
 [DATSTRUCT_MOD, clickInfo] = gui_waveforms_load_figs(DATSTRUCT_MOD, figpath, ...
     savedir, instructions, assert_current_label);
+STRUCT_CLICKINFO = [STRUCT_CLICKINFO struct('figpath', figpath, 'clickInfo', {clickInfo})];
 
 %%% (2) MU, remove those that are noise
 figpath = 'MU-sorted_by_snr';
 instructions = struct('left', 'to_noise', 'right', 'cancel');
 assert_current_label = 'mua';
-
 [DATSTRUCT_MOD, clickInfo] = gui_waveforms_load_figs(DATSTRUCT_MOD, figpath, ...
     savedir, instructions, assert_current_label);
+STRUCT_CLICKINFO = [STRUCT_CLICKINFO struct('figpath', figpath, 'clickInfo', {clickInfo})];
 
 % 2. SU, remove that that are MU.
 figpath = 'SU-sorted_by_snr';
 instructions = struct('left', 'to_mua', 'right', 'to_artifact');
 assert_current_label = 'su';
-
 [DATSTRUCT_MOD, clickInfo] = gui_waveforms_load_figs(DATSTRUCT_MOD, figpath, ...
     savedir, instructions, assert_current_label);
+STRUCT_CLICKINFO = [STRUCT_CLICKINFO struct('figpath', figpath, 'clickInfo', {clickInfo})];
 
 % 3. artifact, keep those that are SU.
 figpath = 'artifact-sorted_by_sharpiness';
 instructions = struct('left', 'to_su', 'right', 'to_mua');
 assert_current_label = 'artifact';
-
 [DATSTRUCT_MOD, clickInfo] = gui_waveforms_load_figs(DATSTRUCT_MOD, figpath, ...
     savedir, instructions, assert_current_label);
+STRUCT_CLICKINFO = [STRUCT_CLICKINFO struct('figpath', figpath, 'clickInfo', {clickInfo})];
+
+% [OPTIONALLY] run this if you want top remove all MU
+figpath = 'MU-ALL';
+instructions = struct('left', 'to_noise', 'right', 'cancel');
+assert_current_label = 'mua';
+[DATSTRUCT_MOD, clickInfo] = gui_waveforms_load_figs(DATSTRUCT_MOD, figpath, ...
+    savedir, instructions, assert_current_label);
+STRUCT_CLICKINFO = [STRUCT_CLICKINFO struct('figpath', figpath, 'clickInfo', {clickInfo})];
 
 %% print differences
 disp(' ');
@@ -137,14 +146,17 @@ DATSTRUCT_MERGED = datstruct_merge(DATSTRUCT, [], LIST_MERGE_SU, ...
 %% FINAL CLEANING OF MERGED DATA
 %% Rerun double spike counter on DATSTRUCT_FINAL.
 
-% 5. rerun spikes double count (really just for merged  MU since for SU is
-% done above).
+% 5. rerun spikes double count (really just for merged MU vs, each other, and
+% SU vs. merged MU. For SU vs. SU pairs, already done above).
 DRYRUN = false;
 DATSTRUCT_MERGED = datstruct_remove_double_counted(DATSTRUCT_MERGED, indpeak, npre, npost, DRYRUN);
 
 %% FINALLY, save final clean results.
 SAVEDIR_FINAL_CLEAN = [SAVEDIR_FINAL '/CLEAN_AFTER_MERGE'];
 mkdir(SAVEDIR_FINAL_CLEAN);
+
+save([SAVEDIR_FINAL_CLEAN '/LIST_MERGE_SU.mat'], 'LIST_MERGE_SU');
+save([SAVEDIR_FINAL_CLEAN '/STRUCT_CLICKINFO.mat'], 'STRUCT_CLICKINFO');
 
 %% Recompute metrics after merging, useful for making figures
 DOPLOT = false;
@@ -172,7 +184,8 @@ datstruct_save(DATSTRUCT, SAVEDIR_FINAL, 'CLEAN');
 % save([SAVEDIR_FINAL '/DATSTRUCT_CLEAN.mat'], 'DATSTRUCT');
 
 %% Save final waveforms
+plot_decision_boundaries = false;
 datstruct_plot_waveforms_all(DATSTRUCT_MERGED, SAVEDIR_FINAL_CLEAN, THRESH_SU_SNR, ...
     THRESH_SU_ISI, THRESH_ARTIFACT_SHARP, THRESH_ARTIFACT_SHARP_LOW, ...
-    THRESH_ARTIFACT_ISI, MIN_SNR);
+    THRESH_ARTIFACT_ISI, MIN_SNR, plot_decision_boundaries);
 end

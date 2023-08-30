@@ -13,7 +13,7 @@ LIST_MERGE_SU = {}; % cell of 2-arays
 for chan = list_chan_global
     inds = [DATSTRUCT.chan_global]==chan & strcmp({DATSTRUCT.label_final}, 'su');
     good = sum(inds)>1;
-
+    
     disp([chan sum(inds)]);
     
     if good
@@ -33,7 +33,7 @@ for chan = list_chan_global
             ind = idxs(i);
             
             subplot(length(idxs)+1, length(idxs), ct); hold on;
-
+            
             wf = DATSTRUCT(ind).waveforms;
             
             sharp = DATSTRUCT(ind).sharpiness;
@@ -49,7 +49,7 @@ for chan = list_chan_global
             else
                 idx = ind;
             end
-
+            
             plot_waveforms_singleplot(wf, 100);
             % n = min(100, size(wf,1));
             % plot(wf(1:n,:)');
@@ -97,35 +97,40 @@ for chan = list_chan_global
                 %     if Q12<.25 && R<.05 % if both metrics are below threshold.
                 
                 % ----------------------
-                subplot(length(idxs)+1, length(idxs), ct); hold on;
-                title([num2str(i1) ' - ' num2str(i2)]);
+                if true
+                    subplot(length(idxs)+1, length(idxs), ct); hold on;
+                    title([num2str(i1) ' - ' num2str(i2)]);
+                    
+                    plot(K);
+                    line(xlim, [0 0]);
+                    ylabel('K');
+                    xlabel('lag (ms)');
+                    ct = ct+1;
+                    
+                    % Plot the colors.
+                    col1 = pcols{i};
+                    col2 = pcols{j};
+                    plot(0, 1, 'o', 'color', col1);
+                    plot(1, 1, 'o', 'color', col2);
+                end
                 
-                plot(K)
-                ylabel('K');
-                xlabel('lag (ms)');
-                ct = ct+1;
-                
-                % Plot the colors.
-                col1 = pcols{i};
-                col2 = pcols{j};
-                plot(0, 1, 'o', 'color', col1);
-                plot(1, 1, 'o', 'color', col2);
-                
-                
-                subplot(length(idxs)+1, length(idxs), ct); hold on;
-                title([num2str(i1) ' - ' num2str(i2)]);
-                
-                plot(1:length(Qi), Qi/(max(Q00, Q01)));
-                line([1, length(Qi)], [0 0]);
-                ylabel('Q');
-                xlabel('lag (ms)');
-                ct = ct+1;
-                
-                % Plot the colors.
-                col1 = pcols{i};
-                col2 = pcols{j};
-                plot(0, 1, 'o', 'color', col1);
-                plot(1, 1, 'o', 'color', col2);
+                if false
+                    % NOt that useful, since it excludes timepoint 0
+                    subplot(length(idxs)+1, length(idxs), ct); hold on;
+                    title([num2str(i1) ' - ' num2str(i2)]);
+                    
+                    plot(1:length(Qi), Qi/(max(Q00, Q01)));
+                    line([1, length(Qi)], [0 0]);
+                    ylabel('Q');
+                    xlabel('lag (ms)');
+                    ct = ct+1;
+                    
+                    % Plot the colors.
+                    col1 = pcols{i};
+                    col2 = pcols{j};
+                    plot(0, 1, 'o', 'color', col1);
+                    plot(1, 1, 'o', 'color', col2);
+                end
                 
                 % Chekc if there is double cotning of spikes.
                 
@@ -154,14 +159,14 @@ for chan = list_chan_global
             text(t_centers(1), st_counts(1), num2str(ix), 'color', col, 'fontsize', 15);
             
         end
-            ct = ct+1;
+        ct = ct+1;
         YLIM = ylim;
         ylim([0, YLIM(2)]);
         
         subplot(length(idxs)+1, length(idxs), ct); hold on;
         xlabel('idx1 - idx2 - concatted');
         ylabel('frac spks dbl cnted');
-%         xlabel('binned time');
+        %         xlabel('binned time');
         for i=1:length(idxs)
             for j=i+1:length(idxs)
                 
@@ -179,10 +184,10 @@ for chan = list_chan_global
                 %             if Q<.2 && R<.05 % if both refractory criteria are met
                 %     if Q12<.25 && R<.05 % if both metrics are below threshold.
                 
-                % Double count rate 
+                % Double count rate
                 [~, ~, ~, ...
                     frac_spikes_double_counted_1] = datstruct_remove_double_counted_inner(s1);
-
+                
                 [~, ~, ~, ...
                     frac_spikes_double_counted_2] = datstruct_remove_double_counted_inner(s1);
                 
