@@ -103,7 +103,7 @@ for RSN = LIST_RSN
                 continue
             end
             ind1 = strfind(fname, '-');
-%             ind2 = strfind(fname, '.mat');
+            %             ind2 = strfind(fname, '.mat');
             
             clust = str2num(fname(7:ind1-1));
             var = fname(ind1+1:end-4);
