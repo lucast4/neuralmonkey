@@ -386,7 +386,7 @@ if false
     YLIM = [-4500, 2000];
     map_figsubplot_to_index = plot_waveforms_sorted_by(DATSTRUCT, values, values_sort, ...
         path_noext, exclude_labels, false, MAKE_GUI, YLIM, INDICES_PLOT, 3, 5);
-end
+end 
 
 %% save a note to mark done.
 tmp = [];
