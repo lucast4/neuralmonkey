@@ -1,13 +1,13 @@
 function DATSTRUCT_FINAL = datstruct_merge(DATSTRUCT, SAVEDIR_FINAL, ...
     LIST_MERGE_SU, indpeak, npre, npost, THRESH_SU_SNR, ...
     THRESH_SU_ISI, THRESH_ARTIFACT_SHARP, THRESH_ARTIFACT_SHARP_LOW, ...
-    THRESH_ARTIFACT_ISI, MIN_SNR)
+    THRESH_ARTIFACT_ISI, MIN_SNR, FORCE_START_AS_SU)
 %% MERGE MU and split SU.
 % DOes reclassify of SU after merging (either mu or su
 
 if ~exist('LIST_MERGE_SU', 'var'); LIST_MERGE_SU = []; end
 if ~exist('SAVEDIR_FINAL', 'var'); SAVEDIR_FINAL = []; end
-
+if ~exist('FORCE_START_AS_SU', 'var'); FORCE_START_AS_SU = false; end
 list_chans_global = 1:512;
 su_pairs_should_be_merged = {};
 
@@ -85,14 +85,20 @@ if ~isempty(LIST_MERGE_SU)
         inds_merge = LIST_MERGE_SU{i};
         
         % sanity check
-        assert(length(unique(inds_merge)) == length(inds_merge));
-        for j=1:length(inds_merge)
-            assert(strcmp(DATSTRUCT(inds_merge(j)).label_final, 'su'));
+        assert(length(unique(inds_merge)) == length(inds_merge), 'cant repeat indices...');
+        if FORCE_START_AS_SU
+            for j=1:length(inds_merge)
+                if ~strcmp(DATSTRUCT(inds_merge(j)).label_final, 'su')
+                    disp(DATSTRUCT(inds_merge(j)));
+                    disp(inds_merge(j));
+                    disp(inds_merge);                
+                    assert(false, 'not all indices are SU')
+                end
+            end
         end
 
         disp('merging these..')
         disp(inds_merge);
-        
         
         % do merge
         ds = datstruct_merge_inner(DATSTRUCT(inds_merge));

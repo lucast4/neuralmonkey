@@ -9,9 +9,26 @@ PATH_TO_SPIKES_CODE = '/gorilla1/code/spikes';
 PATH_TO_NPY_CODE = '/gorilla1/code/npy-matlab';
 PATH_TO_KILOSORT_CODE = '/gorilla1/code/kilosort-2.5';
 
-LOADDIR_BASE = '/lemur2/kilosort_data'; % location of kilosorted data
-SAVEDIR_LOCAL = '/lemur2/kilosort_temp'; % fast ssd
-SAVEDIR_FINAL_SERVER =  '/mnt/Freiwald/kgupta/neural_data/postprocess'; % final, so all machines can access.
+% LOADDIR_BASE = '/lemur2/kilosort_data'; % location of kilosorted data
+% SAVEDIR_LOCAL = '/lemur2/kilosort_temp'; % fast ssd
+[~, MACHINE] = system('hostname');
+MACHINE = MACHINE(1:end-1); % weird character at end for gorilla.
+switch MACHINE
+    case 'lucast4-MS-7B98' % gorilla
+        SAVEDIR_FINAL_SERVER =  '/mnt/Freiwald_kgupta/kgupta/neural_data/postprocess'; % final, so all machines can access.
+        LOADDIR_BASE = '/mnt/Freiwald_kgupta/kgupta/neural_data'; % location of kilosorted data
+        SAVEDIR_LOCAL = '/gorilla4/neural_preprocess_kilosort'; % fast ssd
+    case 'lemur'
+        SAVEDIR_FINAL_SERVER =  '/mnt/Freiwald/kgupta/neural_data/postprocess'; % final, so all machines can access.
+        LOADDIR_BASE = '/lemur2/kilosort_data'; % location of kilosorted data
+        SAVEDIR_LOCAL = '/lemur2/kilosort_temp'; % fast ssd
+    otherwise
+        disp(['MACHINE: ' MACHINE])
+        disp([MACHINE(1)])
+        disp([MACHINE(end)])
+        assert(false,'add it here');
+%         SAVEDIR_FINAL_SERVER =  '/mnt/Freiwald/kgupta/neural_data/postprocess'; % final, so all machines can access.
+end
 
 % LOADDIR_BASE = '/mnt/Freiwald/kgupta/neural_data'; % location of kilosorted data
 % SAVEDIR_LOCAL = '/gorilla4/neural_preprocess_kilosort'; % fast ssd
@@ -48,8 +65,8 @@ addpath(genpath(PATH_TO_SPIKES_CODE));
 addpath(genpath(PATH_TO_NPY_CODE));
 addpath(genpath([PATH_TO_KILOSORT_CODE '/postProcess']));
 
-SAVEDIR_BASE = SAVEDIR_LOCAL;
-SAVEDIR_BASE_DATE = [SAVEDIR_BASE '/' ANIMAL '/' num2str(DATE)];
+% SAVEDIR_BASE = SAVEDIR_LOCAL;
+% SAVEDIR_BASE_DATE = [SAVEDIR_BASE '/' ANIMAL '/' num2str(DATE)];
 
 SAVEDIR_FINAL_BASE = SAVEDIR_FINAL_SERVER;
 SAVEDIR_FINAL = [SAVEDIR_FINAL_BASE '/final_clusters/' ANIMAL '/' num2str(DATE)];

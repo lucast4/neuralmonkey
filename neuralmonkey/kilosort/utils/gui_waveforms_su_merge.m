@@ -14,7 +14,7 @@ for chan = list_chan_global
     inds = [DATSTRUCT.chan_global]==chan & strcmp({DATSTRUCT.label_final}, 'su');
     good = sum(inds)>1;
     
-    disp([chan sum(inds)]);
+%     disp([chan sum(inds)]);
     
     if good
         idxs = find(inds);
@@ -210,26 +210,35 @@ for chan = list_chan_global
         % Ask user if want to merge
         merge = 'dummy';
         while ~isempty(merge)
-            merge = input('Want to merge any SU? Type them as array (e..g, [29 49], no quotes. If not, then ENTER');
-            
             try
+                merge = input('Want to merge any SU? Type them as array (e..g, [29 49], no quotes. If not, then ENTER');
                 if isempty(merge)
                     % then nothing to merge.
                 else
                     if length(merge)==1
-                        disp('typo? try again ...')
+                        disp('TYPO? only 1 index ...')
                         disp(merge)
                     elseif length(unique(merge))==1
-                        disp('typo? try again ...')
+                        disp('TYPO? only 1 unique index. ...')
                         disp(merge)
                     else
-                        disp(['... Merging these indices: ' num2str(merge)]);
-                        LIST_MERGE_SU{end+1} = merge;
+                        % make sure you inputed indices that exist in the current fig.
+                        ok = true;
+                        for i=1:length(merge)
+                            if ~ismember(merge(i), idxs)
+                                disp('TYPO? index doesnt exist in figure')
+                                ok = false
+                            end
+                        end
+                        if ok
+                            disp(['... Merging these indices: ' num2str(merge)]);
+                            LIST_MERGE_SU{end+1} = merge;
+                        end
                     end
                 end
             catch error
-                disp('Error in input (try again):');
-                disp(merge);
+                disp('CAUGHT ERROR in input (try again):');
+                % disp(merge);
                 merge = 'dummy';
             end
         end

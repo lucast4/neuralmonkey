@@ -9,17 +9,6 @@ function [DATSTRUCT, clickInfo] = gui_waveforms_load_figs(DATSTRUCT, figpath, sa
     % - clickInfo, cell array of info for each click. NOTE: this will also be int he base wqorkspace.
     % RUN: - clean storage
 
-    % Warn user starting a new curation.
-    figure; hold on;
-    text(1,1, 'DONE! starting new curation. ENTER to continue, "x" to skip..')
-    xlim([0.8, 8])
-    ylim([0.5 1.5])
-    tmp = input('DONE! starting new curation. ENTER to continue, "x" to skip', 's');
-    if strcmp(tmp, 'x') | strcmp(tmp, 'X') 
-        disp('...SKIPPING! as requested');
-        return
-    end
-    close all;
 
     clickInfo = {};
     assignin('base', 'clickInfo', clickInfo);
@@ -34,6 +23,18 @@ function [DATSTRUCT, clickInfo] = gui_waveforms_load_figs(DATSTRUCT, figpath, sa
     end
     disp('- (most recent click overrides all prev)');
     disp('------------------------');
+    
+    % Warn user starting a new curation.
+    figure; hold on;
+    text(1,1, 'DONE! starting new curation. ENTER to continue, "x" to skip..')
+    xlim([0.8, 8])
+    ylim([0.5 1.5])
+    tmp = input('DONE! starting new curation. ENTER to continue, "x" to skip', 's');
+    if strcmp(tmp, 'x') | strcmp(tmp, 'X') 
+        disp('...SKIPPING! as requested');
+        return
+    end
+    close all;
 
     % - open each figure
     path_noext = [savedir '/' figpath '*.fig'];
