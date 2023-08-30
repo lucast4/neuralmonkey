@@ -10,9 +10,10 @@ function kspostprocess_metrics_and_label(ANIMAL, DATE)
 PATH_TO_SPIKES_CODE = '/gorilla1/code/spikes';
 PATH_TO_NPY_CODE = '/gorilla1/code/npy-matlab';
 PATH_TO_KILOSORT_CODE = '/gorilla1/code/kilosort-2.5';
-LOADDIR_BASE = '/mnt/Freiwald/kgupta/neural_data'; % location of kilosorted data
-SAVEDIR_LOCAL = '/gorilla4/neural_preprocess_kilosort'; % fast ssd
-SAVEDIR_FINAL_SERVER =  '/mnt/Freiwald/ltian/neural_data/preprocessing/kilosort_postprocess'; % final, so all machines can access.
+
+LOADDIR_BASE = '/lemur2/kilosort_data'; % location of kilosorted data
+SAVEDIR_LOCAL = '/lemur2/kilosort_temp'; % fast ssd
+SAVEDIR_FINAL_SERVER =  '/mnt/Freiwald/kgupta/neural_data/postprocess'; % final, so all machines can access.
 
 %% old params
 
@@ -57,6 +58,11 @@ SAVEDIR_FINAL = [SAVEDIR_FINAL_BASE '/final_clusters/' ANIMAL '/' num2str(DATE)]
     THRESH_ARTIFACT_SHARP, THRESH_ARTIFACT_SHARP_LOW, THRESH_ARTIFACT_ISI, ...
     MIN_SNR] = quickscript_config_load();
 
+%% Chek that prev step done
+
+path =[SAVEDIR_FINAL '/DONE_kspostprocess_extract.mat'];
+assert(exist(path, 'file')==2, ['Did not complete prev step, ' path]);
+
 %% Get LIST_BATCH automatically.
 % e.g, LIST_BATCH = 1:4, meaning you have rsn2_batch1...4 and rsn3_batch1...4
 
@@ -97,13 +103,14 @@ for RSN = LIST_RSN
         
         % Load each cluster
         files = dir(SAVEDIR);
+        list_clust_loaded = [];
         for i=1:length(files)
             fname = files(i).name; % clust_9-wf.mat
             if length(fname)<3
                 continue
             end
             ind1 = strfind(fname, '-');
-%             ind2 = strfind(fname, '.mat');
+            %             ind2 = strfind(fname, '.mat');
             
             clust = str2num(fname(7:ind1-1));
             var = fname(ind1+1:end-4);
@@ -117,6 +124,24 @@ for RSN = LIST_RSN
             
             DATSTRUCT = [DATSTRUCT, ...
                 struct('clustnum', clust, 'var', var, 'dat', dat.(var), 'batch', BATCH, 'RSn', RSN)];
+            
+            list_clust_loaded(end+1) = clust;
+        end
+        
+        % CHECK previous step was done...
+        % sanity checxk that got all clusters. (i.e., did not crash during saving.)
+        path = [SAVEDIR_BASE_DATE '/RSn' num2str(RSN) '_batch' num2str(BATCH) '/list_clust.mat'];
+        tmp = load(path);
+        list_clust_exist = sort(unique(tmp.list_clust))';
+        list_clust_loaded = sort(unique(list_clust_loaded));
+        a = all(ismember(list_clust_loaded, list_clust_exist));
+        b = all(ismember(list_clust_exist, list_clust_loaded));
+        if ~a | ~b
+            disp(list_clust_loaded);
+            disp(list_clust_exist);
+            assert(false, 'BAD! missing clusters');
+        else
+            disp('GOOD! loaded all clusters');
         end
     end
 end
@@ -213,7 +238,7 @@ DATSTRUCT = datstruct_remove_double_counted(DATSTRUCT, indpeak, npre, npost, DRY
 %% Assign metrics and save plots of waveforms along with snr
 DOPLOT = true; % Might takes a while...
 DATSTRUCT = datstruct_compute_metrics(DATSTRUCT, DOPLOT, ...
-    indpeak, npre, npost);
+    indpeak, npre, npost, SAVEDIR_FINAL);
 
 %% ASSIGNING SU
 % 1) if bipolar, then not SU.
@@ -352,7 +377,10 @@ map_figsubplot_to_index = plot_waveforms_sorted_by(DATSTRUCT, values, values_sor
     path_noext, exclude_labels, false, MAKE_GUI, YLIM, INDICES_PLOT, 3, 5);
 
 
+%% save a note to mark done.
 
+tmp = [];
+save([SAVEDIR_FINAL '/DONE_kspostprocess_metrics_and_label.mat'], 'tmp');
 
 %% #######################################
 %% ################ SCRATCH

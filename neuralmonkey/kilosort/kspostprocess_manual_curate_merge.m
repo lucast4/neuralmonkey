@@ -8,9 +8,14 @@ function kspostprocess_manual_curate_merge(ANIMAL, DATE)
 PATH_TO_SPIKES_CODE = '/gorilla1/code/spikes';
 PATH_TO_NPY_CODE = '/gorilla1/code/npy-matlab';
 PATH_TO_KILOSORT_CODE = '/gorilla1/code/kilosort-2.5';
+
+LOADDIR_BASE = '/lemur2/kilosort_data'; % location of kilosorted data
+SAVEDIR_LOCAL = '/lemur2/kilosort_temp'; % fast ssd
+SAVEDIR_FINAL_SERVER =  '/mnt/Freiwald/kgupta/neural_data/postprocess'; % final, so all machines can access.
+
 % LOADDIR_BASE = '/mnt/Freiwald/kgupta/neural_data'; % location of kilosorted data
-SAVEDIR_LOCAL = '/gorilla4/neural_preprocess_kilosort'; % fast ssd
-SAVEDIR_FINAL_SERVER =  '/mnt/Freiwald/ltian/neural_data/preprocessing/kilosort_postprocess'; % final, so all machines can access.
+% SAVEDIR_LOCAL = '/gorilla4/neural_preprocess_kilosort'; % fast ssd
+% SAVEDIR_FINAL_SERVER =  '/mnt/Freiwald/ltian/neural_data/preprocessing/kilosort_postprocess'; % final, so all machines can access.
 
 %% old params
 
@@ -54,6 +59,12 @@ SAVEDIR_FINAL = [SAVEDIR_FINAL_BASE '/final_clusters/' ANIMAL '/' num2str(DATE)]
 [indpeak, wind_spike, npre, npost, THRESH_SU_SNR, THRESH_SU_ISI, ...
     THRESH_ARTIFACT_SHARP, THRESH_ARTIFACT_SHARP_LOW, THRESH_ARTIFACT_ISI, ...
     MIN_SNR] = quickscript_config_load();
+
+
+%% Chek that prev step done
+
+path =[SAVEDIR_FINAL '/DONE_kspostprocess_metrics_and_label.mat'];
+assert(exist(path, 'file')==2, ['Did not complete prev step, ' path]);
 
 %% Load datstruct, with metrics already computed (ther ouptut of quickscript_spikes)
 

@@ -13,7 +13,7 @@ if ~exist('MAKE_GUI', 'var'); MAKE_GUI = false; end
 if ~exist('YLIM', 'var'); YLIM = []; end
 if ~exist('INDICES_PLOT', 'var'); INDICES_PLOT = []; end
 if ~exist('ROWS', 'var'); ROWS = 3; end
-if ~exist('COLS', 'var'); COLS = 7; end
+if ~exist('COLS', 'var'); COLS = 6; end
 
 % if MAKE_GUI
 %     close_plots=false;

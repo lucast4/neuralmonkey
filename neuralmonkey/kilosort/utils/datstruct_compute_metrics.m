@@ -1,5 +1,5 @@
 function DATSTRUCT = datstruct_compute_metrics(DATSTRUCT, DOPLOT, ...
-    indpeak, npre, npost)
+    indpeak, npre, npost, savedir)
 
 % ================ CHANGE THIS
 if ~exist('DOPLOT', 'var'); DOPLOT = false; end
@@ -7,7 +7,7 @@ if ~exist('DOPLOT', 'var'); DOPLOT = false; end
 % =========== OTHER STUFF.
 if DOPLOT
     % close all;
-    savedir = [SAVEDIR_BASE_DATE '/clust_chan_mappings_figures/raw_and_snr'];
+    savedir = [savedir '/clust_chan_mappings_figures/raw_and_snr'];
     mkdir(savedir);
 end
 % indpeak = -gwfparams.wfWin(1);

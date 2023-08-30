@@ -23,9 +23,6 @@ LOADDIR_BASE = '/lemur2/kilosort_data'; % location of kilosorted data
 SAVEDIR_LOCAL = '/lemur2/kilosort_temp'; % fast ssd
 SAVEDIR_FINAL_SERVER =  '/mnt/Freiwald/kgupta/neural_data/postprocess'; % final, so all machines can access.
 
-% LOADDIR_BASE = '/mnt/Freiwald/kgupta/neural_data'; % location of kilosorted data
-% SAVEDIR_LOCAL = '/gorilla4/neural_preprocess_kilosort'; % fast ssd
-% SAVEDIR_FINAL_SERVER =  '/mnt/Freiwald/ltian/neural_data/preprocessing/kilosort_postprocess'; % final, so all machines can access.
 
 %% old params
 % DATE = 220715;
@@ -100,8 +97,7 @@ disp(LIST_BATCH)
 
 %% Check that ks completed
 
-path = [LOADDIR_BASE '/' ANIMAL '/' num2str(DATE) '/KS_done.txt'];
-assert(exist(path, 'file')==2, ['Did not complete prev step, ' path]);
+SAVEDIR_BASE_DATE '/' KS_done
 
 %% SAVE SPIKE WAVEFORMS ACROSS BATCHES
 for RSN = LIST_RSN
