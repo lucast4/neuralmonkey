@@ -319,7 +319,16 @@ close all;
 path_noext = [savedir '/MU-sorted_by_snr'];
 values = [DATSTRUCT.snr_final];
 exclude_labels = {'su', 'noise', 'artifact'};
-values_sort = [MIN_SNR-0.5, MIN_SNR+0.75];
+values_sort = [MIN_SNR-0.5, MIN_SNR+1];
+YLIM = [-2200 1000];
+map_figsubplot_to_index = plot_waveforms_sorted_by(DATSTRUCT, values, values_sort, ...
+    path_noext, exclude_labels, false, MAKE_GUI, YLIM);
+
+close all;
+path_noext = [savedir '/MU-ALL'];
+values = [DATSTRUCT.snr_final];
+exclude_labels = {'su', 'noise', 'artifact'};
+values_sort = [MIN_SNR-0.5, MIN_SNR+100000];
 YLIM = [-2200 1000];
 map_figsubplot_to_index = plot_waveforms_sorted_by(DATSTRUCT, values, values_sort, ...
     path_noext, exclude_labels, false, MAKE_GUI, YLIM);
@@ -367,18 +376,19 @@ for chan = list_chan_global
         INDICES_PLOT = [INDICES_PLOT, inds];
     end
 end
-close all;
-path_noext = [savedir '/SU-sorted_by_changlobal'];
-values = [DATSTRUCT.chan_global];
-exclude_labels = {'noise', 'mua', 'artifact'};
-values_sort = [];
-YLIM = [-4500, 2000];
-map_figsubplot_to_index = plot_waveforms_sorted_by(DATSTRUCT, values, values_sort, ...
-    path_noext, exclude_labels, false, MAKE_GUI, YLIM, INDICES_PLOT, 3, 5);
 
+if false
+    close all;
+    path_noext = [savedir '/SU-sorted_by_changlobal'];
+    values = [DATSTRUCT.chan_global];
+    exclude_labels = {'noise', 'mua', 'artifact'};
+    values_sort = [];
+    YLIM = [-4500, 2000];
+    map_figsubplot_to_index = plot_waveforms_sorted_by(DATSTRUCT, values, values_sort, ...
+        path_noext, exclude_labels, false, MAKE_GUI, YLIM, INDICES_PLOT, 3, 5);
+end
 
 %% save a note to mark done.
-
 tmp = [];
 save([SAVEDIR_FINAL '/DONE_kspostprocess_metrics_and_label.mat'], 'tmp');
 
@@ -419,19 +429,19 @@ if false
     
     % disp('----');
     % [double_count_rate, double_count_rate_relbase, rate_far_rel_base, ...
-    % 	frac_spikes_double_counted] = datstruct_remove_double_counted_inner(s1)
+    %   frac_spikes_double_counted] = datstruct_remove_double_counted_inner(s1)
     %
     % disp('----');
     % [double_count_rate, double_count_rate_relbase, rate_far_rel_base, ...
-    % 	frac_spikes_double_counted] = datstruct_remove_double_counted_inner(s2)
+    %   frac_spikes_double_counted] = datstruct_remove_double_counted_inner(s2)
     % %
     % % [double_count_rate, double_count_rate_relbase, rate_far_rel_base, ...
-    % % 	frac_spikes_double_counted] = datstruct_remove_double_counted_inner(s1)
+    % %     frac_spikes_double_counted] = datstruct_remove_double_counted_inner(s1)
     %
     % disp('----');
     % s12 = sort([s1; s2]);
     % [double_count_rate, double_count_rate_relbase, rate_far_rel_base, ...
-    % 	frac_spikes_double_counted] = datstruct_remove_double_counted_inner(s12)
+    %   frac_spikes_double_counted] = datstruct_remove_double_counted_inner(s12)
     
     disp('----');
     [double_count_rate, ~, ~, ...
@@ -442,7 +452,7 @@ if false
         frac_spikes_double_counted] = datstruct_remove_double_counted_inner(s2)
     %
     % [double_count_rate, double_count_rate_relbase, rate_far_rel_base, ...
-    % 	frac_spikes_double_counted] = datstruct_remove_double_counted_inner(s1)
+    %   frac_spikes_double_counted] = datstruct_remove_double_counted_inner(s1)
     
     disp('----');
     s12 = sort([s1; s2]);

@@ -14,7 +14,8 @@ su_pairs_should_be_merged = {};
 DATSTRUCT_FINAL = [];
 for cg = list_chans_global
     
-    %%%%%%%%%%%% Get all SU
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    %%%%%%%%%%%% Get all SU. keep each, without merging.
     inds = [DATSTRUCT.chan_global]==cg & [DATSTRUCT.label_final_int]==2;
     datstruct = DATSTRUCT(inds);
     
@@ -55,6 +56,7 @@ for cg = list_chans_global
         DATSTRUCT_FINAL = [DATSTRUCT_FINAL, datstruct_this];
     end
     
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     %%%%%%%%%%%% Get all MU
     inds = [DATSTRUCT.chan_global]==cg & [DATSTRUCT.label_final_int]==1;
     datstruct = DATSTRUCT(inds);
@@ -139,8 +141,8 @@ if ~isempty(LIST_MERGE_SU)
     list_inds_remove_from_DATSTRUCT_FINAL = [];
     for i=1:length(LIST_MERGE_SU)
         inds_merge = LIST_MERGE_SU{i};
-        inds_remove = find(ismember([DATSTRUCT_FINAL.index], LIST_MERGE_SU{i}));
-        assert(length(inds_remove)==length(LIST_MERGE_SU{i}))
+        inds_remove = find(ismember([DATSTRUCT_FINAL.index], inds_merge));
+        assert(length(inds_remove)==length(inds_merge))
         list_inds_remove_from_DATSTRUCT_FINAL = [list_inds_remove_from_DATSTRUCT_FINAL, ...
             inds_remove];
     end

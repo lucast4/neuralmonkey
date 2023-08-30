@@ -13,7 +13,7 @@ function [indpeak, wind_spike, npre, npost, THRESH_SU_SNR, THRESH_SU_ISI, ...
     % For classifying
     THRESH_SU_SNR = 5;
     THRESH_SU_ISI = 0.02;
-    THRESH_ARTIFACT_SHARP = 20;
+    THRESH_ARTIFACT_SHARP = 16;
     THRESH_ARTIFACT_SHARP_LOW = 10;
     THRESH_ARTIFACT_ISI = 0.12;
     MIN_SNR = 2.25;
