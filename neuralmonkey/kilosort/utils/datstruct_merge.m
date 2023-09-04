@@ -166,5 +166,4 @@ end
 disp('This many indep clusters:');
 disp(length(DATSTRUCT_FINAL));
 
-
 end

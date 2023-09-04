@@ -1,7 +1,8 @@
-function kspostprocess_manual_curate_merge(ANIMAL, DATE)
+function kspostprocess_manual_curate_merge(ANIMAL, DATE, SKIP_LOADING_DATSTRUCT)
 % given data that has been kilosorted, and extracred using quickscript_spikes_extract
 % run this to curate and autoamticlaly label data.
 
+if ~exist('SKIP_LOADING_DATSTRUCT', 'var'); SKIP_LOADING_DATSTRUCT = false; end
 
 %% MODIFY PARAMS
 
@@ -27,7 +28,7 @@ switch MACHINE
         disp([MACHINE(1)])
         disp([MACHINE(end)])
         assert(false,'add it here');
-%         SAVEDIR_FINAL_SERVER =  '/mnt/Freiwald/kgupta/neural_data/postprocess'; % final, so all machines can access.
+        %         SAVEDIR_FINAL_SERVER =  '/mnt/Freiwald/kgupta/neural_data/postprocess'; % final, so all machines can access.
 end
 
 % LOADDIR_BASE = '/mnt/Freiwald/kgupta/neural_data'; % location of kilosorted data
@@ -83,11 +84,20 @@ SAVEDIR_FINAL = [SAVEDIR_FINAL_BASE '/final_clusters/' ANIMAL '/' num2str(DATE)]
 path =[SAVEDIR_FINAL '/DONE_kspostprocess_metrics_and_label.mat'];
 assert(exist(path, 'file')==2, ['Did not complete prev step, ' path]);
 
+%% OUTPUT OF CLEAN
+SAVEDIR_FINAL_CLEAN = [SAVEDIR_FINAL '/CLEAN_AFTER_MERGE'];
+mkdir(SAVEDIR_FINAL_CLEAN);
+
+
 %% Load datstruct, with metrics already computed (ther ouptut of quickscript_spikes)
 
-tmp = load([SAVEDIR_FINAL '/DATSTRUCT.mat']);
-DATSTRUCT = tmp.DATSTRUCT;
-clear tmp
+if SKIP_LOADING_DATSTRUCT
+    DATSTRUCT = [];
+else
+    tmp = load([SAVEDIR_FINAL '/DATSTRUCT.mat']);
+    DATSTRUCT = tmp.DATSTRUCT;
+    clear tmp
+end
 
 %% [LOAD GUI] and manually curate
 
@@ -138,82 +148,82 @@ assert_current_label = 'mua';
     savedir, instructions, assert_current_label);
 STRUCT_CLICKINFO = [STRUCT_CLICKINFO struct('figpath', figpath, 'clickInfo', {clickInfo})];
 
-%% print differences
-disp(' ');
-disp('You made these changes by clicking the GUI:');
-disp('(Index: label_old --> label_new)');
-for i=1:length(DATSTRUCT)
-    if ~strcmp(DATSTRUCT(i).label_final, DATSTRUCT_MOD(i).label_final)
-        disp([num2str(i) ': ' DATSTRUCT(i).label_final ' -> ' DATSTRUCT_MOD(i).label_final]);
-    end
-end
-
-%% update label final int to match the string label.
-DATSTRUCT_MOD = datstruct_mod_update_label_int(DATSTRUCT_MOD);
-
-%% UPDATE DATSTRUCT
-DATSTRUCT = DATSTRUCT_MOD;
-clear DATSTRUCT_MOD
-
-%% MERGE SUs... For each chan with multiple SUs, make a single figure;
-% - DO THIS USING DATSTRUCT_FINAL, since aftre merging might want to run
-% again. This only applies to SU.
-
-% [DATSTRUCT_FINAL, LIST_MERGE_SU] = gui_waveforms_su_merge(DATSTRUCT_FINAL);
-[~, LIST_MERGE_SU] = gui_waveforms_su_merge(DATSTRUCT);
-
-
-%% Merge everything, including the SU
-close all;
-
-DATSTRUCT_MERGED = datstruct_merge(DATSTRUCT, [], LIST_MERGE_SU, ...
-    indpeak, npre, npost, THRESH_SU_SNR, ...
-    THRESH_SU_ISI, THRESH_ARTIFACT_SHARP, THRESH_ARTIFACT_SHARP_LOW, ...
-    THRESH_ARTIFACT_ISI, MIN_SNR);
-
-%% FINAL CLEANING OF MERGED DATA
-%% Rerun double spike counter on DATSTRUCT_FINAL.
-
-% 5. rerun spikes double count (really just for merged MU vs, each other, and
-% SU vs. merged MU. For SU vs. SU pairs, already done above).
-DRYRUN = false;
-DATSTRUCT_MERGED = datstruct_remove_double_counted(DATSTRUCT_MERGED, indpeak, npre, npost, DRYRUN);
-
 %% FINALLY, save final clean results.
-SAVEDIR_FINAL_CLEAN = [SAVEDIR_FINAL '/CLEAN_AFTER_MERGE'];
-mkdir(SAVEDIR_FINAL_CLEAN);
+paththis = [SAVEDIR_FINAL_CLEAN '/STRUCT_CLICKINFO.mat'];
+save(paththis, 'STRUCT_CLICKINFO');
+disp('** Saved STRUCT_CLICKINFO to:');
+disp(paththis);
 
-save([SAVEDIR_FINAL_CLEAN '/LIST_MERGE_SU.mat'], 'LIST_MERGE_SU');
-save([SAVEDIR_FINAL_CLEAN '/STRUCT_CLICKINFO.mat'], 'STRUCT_CLICKINFO');
-
-%% Recompute metrics after merging, useful for making figures
-DOPLOT = false;
-DATSTRUCT_MERGED = datstruct_compute_metrics(DATSTRUCT_MERGED, DOPLOT, ...
-    indpeak, npre, npost);
-
-%% Plots
-% Before merging (but after correct labels)
-savethis = [SAVEDIR_FINAL '/CLEAN_BEFORE_MERGE'];
-mkdir(savethis);
-datstruct_plot_summary(DATSTRUCT, savethis);
-datstruct_plot_summary_premerge(DATSTRUCT, savethis);
-
-% After merging
-datstruct_plot_summary(DATSTRUCT_MERGED, SAVEDIR_FINAL_CLEAN);
-
-%% #############################
-%% DONE!
-
-% Save DatStruct
-% SAVE FINAL for this day
-datstruct_save(DATSTRUCT_MERGED, SAVEDIR_FINAL, 'CLEAN_MERGED');
-datstruct_save(DATSTRUCT, SAVEDIR_FINAL, 'CLEAN');
-% save([SAVEDIR_FINAL '/DATSTRUCT_CLEAN_MERGED.mat'], 'DATSTRUCT_MERGED');
-% save([SAVEDIR_FINAL '/DATSTRUCT_CLEAN.mat'], 'DATSTRUCT');
-
-%% Save final waveforms
-plot_decision_boundaries = false;
-datstruct_plot_waveforms_all(DATSTRUCT_MERGED, SAVEDIR_FINAL_CLEAN, THRESH_SU_SNR, ...
-    THRESH_SU_ISI, THRESH_ARTIFACT_SHARP, THRESH_ARTIFACT_SHARP_LOW, ...
-    THRESH_ARTIFACT_ISI, MIN_SNR, plot_decision_boundaries);
+%% print differences
+if ~SKIP_LOADING_DATSTRUCT
+    disp(' ');
+    disp('You made these changes by clicking the GUI:');
+    disp('(Index: label_old --> label_new)');
+    for i=1:length(DATSTRUCT)
+        if ~strcmp(DATSTRUCT(i).label_final, DATSTRUCT_MOD(i).label_final)
+            disp([num2str(i) ': ' DATSTRUCT(i).label_final ' -> ' DATSTRUCT_MOD(i).label_final]);
+        end
+    end
+    
+    %% update label final int to match the string label.
+    DATSTRUCT_MOD = datstruct_mod_update_label_int(DATSTRUCT_MOD);
+    
+    %% UPDATE DATSTRUCT
+    DATSTRUCT = DATSTRUCT_MOD;
+    clear DATSTRUCT_MOD
+    
+    %% MERGE SUs... For each chan with multiple SUs, make a single figure;
+    % - DO THIS USING DATSTRUCT_FINAL, since aftre merging might want to run
+    % again. This only applies to SU.
+    SKIP_MANUAL_CURATION = false;
+    savepath_noext = [];
+    [~, LIST_MERGE_SU] = gui_waveforms_su_merge(DATSTRUCT, [], SKIP_MANUAL_CURATION);
+    save([SAVEDIR_FINAL_CLEAN '/LIST_MERGE_SU.mat'], 'LIST_MERGE_SU');
+    
+    %% Merge everything, including the SU
+    close all;
+    DATSTRUCT_MERGED = datstruct_merge(DATSTRUCT, [], LIST_MERGE_SU, ...
+        indpeak, npre, npost, THRESH_SU_SNR, ...
+        THRESH_SU_ISI, THRESH_ARTIFACT_SHARP, THRESH_ARTIFACT_SHARP_LOW, ...
+        THRESH_ARTIFACT_ISI, MIN_SNR);
+    
+    %% FINAL CLEANING OF MERGED DATA
+    %% Rerun double spike counter on DATSTRUCT_FINAL.
+    
+    % 5. rerun spikes double count (really just for merged MU vs, each other, and
+    % SU vs. merged MU. For SU vs. SU pairs, already done above).
+    DRYRUN = false;
+    DATSTRUCT_MERGED = datstruct_remove_double_counted(DATSTRUCT_MERGED, indpeak, npre, npost, DRYRUN);
+    
+    %% Recompute metrics after merging, useful for making figures
+    DOPLOT = false;
+    DATSTRUCT_MERGED = datstruct_compute_metrics(DATSTRUCT_MERGED, DOPLOT, ...
+        indpeak, npre, npost);
+    
+    %% Plots
+    % Before merging (but after correct labels)
+    savethis = [SAVEDIR_FINAL '/CLEAN_BEFORE_MERGE'];
+    mkdir(savethis);
+    datstruct_plot_summary(DATSTRUCT, savethis);
+    datstruct_plot_summary_premerge(DATSTRUCT, savethis);
+    
+    % After merging
+    datstruct_plot_summary(DATSTRUCT_MERGED, SAVEDIR_FINAL_CLEAN);
+    
+    %% #############################
+    %% DONE!
+    
+    % Save DatStruct
+    % SAVE FINAL for this day
+    datstruct_save(DATSTRUCT_MERGED, SAVEDIR_FINAL, 'CLEAN_MERGED');
+    datstruct_save(DATSTRUCT, SAVEDIR_FINAL, 'CLEAN');
+    % save([SAVEDIR_FINAL '/DATSTRUCT_CLEAN_MERGED.mat'], 'DATSTRUCT_MERGED');
+    % save([SAVEDIR_FINAL '/DATSTRUCT_CLEAN.mat'], 'DATSTRUCT');
+    
+    %% Save final waveforms
+    plot_decision_boundaries = false;
+    datstruct_plot_waveforms_all(DATSTRUCT_MERGED, SAVEDIR_FINAL_CLEAN, THRESH_SU_SNR, ...
+        THRESH_SU_ISI, THRESH_ARTIFACT_SHARP, THRESH_ARTIFACT_SHARP_LOW, ...
+        THRESH_ARTIFACT_ISI, MIN_SNR, plot_decision_boundaries);
+end
 end
