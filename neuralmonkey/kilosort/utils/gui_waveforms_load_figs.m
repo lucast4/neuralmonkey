@@ -71,53 +71,55 @@ function [DATSTRUCT, clickInfo] = gui_waveforms_load_figs(DATSTRUCT, figpath, sa
     % Return the clickInfo
     clickInfo = evalin('base', 'clickInfo');
 
-    %% Interpret clickInfo and return modified DATSTRUCT
-    % collect mods, in order so most recent click wins.
-    indexmods = cell(1, length(DATSTRUCT));
-    for i=1:length(clickInfo)
-        idx = clickInfo{i}{1};
-        but = clickInfo{i}{2};
-        disp([num2str(idx) ' -- ' but]);
-        indexmods{idx} = instructions.(but);
-    end
+    if ~isempty(DATSTRUCT)
 
-    % Update DATSTRUCT
-    for ind = 1:length(indexmods)
-        if isempty(indexmods{ind})
-            continue
+        %% Interpret clickInfo and return modified DATSTRUCT
+        % collect mods, in order so most recent click wins.
+        indexmods = cell(1, length(DATSTRUCT));
+        for i=1:length(clickInfo)
+            idx = clickInfo{i}{1};
+            but = clickInfo{i}{2};
+            disp([num2str(idx) ' -- ' but]);
+            indexmods{idx} = instructions.(but);
         end
-        % sanity check that you are modifiying it from the correct starting label.
-        label_old = DATSTRUCT(ind).label_final;
-        switch indexmods{ind}
-            case 'to_noise'
-                % make this a noise cluster
-                label_new = 'noise';
-                do_change = true;
-            case 'to_mua'
-                label_new = 'mua';
-                do_change = true;
-            case 'to_su'
-                label_new = 'su';
-                do_change = true;
-            case 'to_artifact'
-                label_new = 'artifact';
-                do_change = true;
-            case 'cancel'
-                % do nothing. 
-                do_change = false;
-            otherwise
-                assert(false);
-        end
-        if do_change
-            if ~strcmp(label_old, assert_current_label)
-                disp(label_old);
-                disp(assert_current_label);
-                disp(ind)
-                assert(false);
+
+        % Update DATSTRUCT
+        for ind = 1:length(indexmods)
+            if isempty(indexmods{ind})
+                continue
             end
-            DATSTRUCT(ind).label_final = label_new;
-            disp(['idx ' num2str(ind) ' - Changed from ' label_old ' to ' label_new]);
+            % sanity check that you are modifiying it from the correct starting label.
+            label_old = DATSTRUCT(ind).label_final;
+            switch indexmods{ind}
+                case 'to_noise'
+                    % make this a noise cluster
+                    label_new = 'noise';
+                    do_change = true;
+                case 'to_mua'
+                    label_new = 'mua';
+                    do_change = true;
+                case 'to_su'
+                    label_new = 'su';
+                    do_change = true;
+                case 'to_artifact'
+                    label_new = 'artifact';
+                    do_change = true;
+                case 'cancel'
+                    % do nothing. 
+                    do_change = false;
+                otherwise
+                    assert(false);
+            end
+            if do_change
+                if ~strcmp(label_old, assert_current_label)
+                    disp(label_old);
+                    disp(assert_current_label);
+                    disp(ind)
+                    assert(false);
+                end
+                DATSTRUCT(ind).label_final = label_new;
+                disp(['idx ' num2str(ind) ' - Changed from ' label_old ' to ' label_new]);
+            end
         end
     end
-
 end
