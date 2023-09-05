@@ -16,12 +16,16 @@ MACHINE = MACHINE(1:end-1); % weird character at end for gorilla.
 switch MACHINE
     case 'lucast4-MS-7B98' % gorilla
         SAVEDIR_FINAL_SERVER =  '/mnt/Freiwald_kgupta/kgupta/neural_data/postprocess'; % final, so all machines can access.
-        LOADDIR_BASE = '/mnt/Freiwald_kgupta/kgupta/neural_data'; % location of kilosorted data
-        SAVEDIR_LOCAL = '/gorilla4/neural_preprocess_kilosort'; % fast ssd
+%         LOADDIR_BASE = '/mnt/Freiwald_kgupta/kgupta/neural_data'; % location of kilosorted data
+%         SAVEDIR_LOCAL = '/gorilla4/neural_preprocess_kilosort'; % fast ssd
     case 'lemur'
         SAVEDIR_FINAL_SERVER =  '/mnt/Freiwald/kgupta/neural_data/postprocess'; % final, so all machines can access.
-        LOADDIR_BASE = '/lemur2/kilosort_data'; % location of kilosorted data
-        SAVEDIR_LOCAL = '/lemur2/kilosort_temp'; % fast ssd
+%         LOADDIR_BASE = '/lemur2/kilosort_data'; % location of kilosorted data
+%         SAVEDIR_LOCAL = '/lemur2/kilosort_temp'; % fast ssd
+    case 'LAPTOP-5ROGVGP5' % rig laptop
+        SAVEDIR_FINAL_SERVER =  'y:/emmy_data01/kgupta/neural_data/postprocess'; % final, so all machines can access.
+%         LOADDIR_BASE = '/lemur2/kilosort_data'; % location of kilosorted data
+%         SAVEDIR_LOCAL = '/lemur2/kilosort_temp'; % fast ssd        
     otherwise
         disp(['MACHINE: ' MACHINE])
         disp([MACHINE(1)])
@@ -85,6 +89,7 @@ assert(exist(path, 'file')==2, ['Did not complete prev step, ' path]);
 
 %% Load datstruct, with metrics already computed (ther ouptut of quickscript_spikes)
 
+disp('Loading DATSTRUCT, might take a while...');
 tmp = load([SAVEDIR_FINAL '/DATSTRUCT.mat']);
 DATSTRUCT = tmp.DATSTRUCT;
 clear tmp
@@ -98,6 +103,7 @@ DATSTRUCT_MOD = DATSTRUCT;
 STRUCT_CLICKINFO = []; % To collect clickInfos
 
 % STEPS
+
 %%% (1) noise, add those that are MU
 figpath = 'noise-sorted_by_snr';
 instructions = struct('left', 'to_mua', 'right', 'cancel');
