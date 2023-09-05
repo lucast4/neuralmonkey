@@ -139,35 +139,35 @@ assert_current_label = 'noise';
 
 %%% (2) MU, remove those that are noise
 figpath = 'MU-sorted_by_snr';
-instructions = struct('left', 'to_noise', 'right', 'to_su');
+instructions = struct('left', 'to_noise', 'right', 'cancel');
 assert_current_label = 'mua';
-[DATSTRUCT_MOD, STRUCT_CLICKINFO] = load_and_curate_single(DATSTRUCT_MOD, STRUCT_CLICKINFO,  ...
-    figpath, instructions, assert_current_label, ...
-    SAVEDIR_FINAL, SAVEDIR_FINAL_CLEAN);
+[DATSTRUCT_MOD, clickInfo] = gui_waveforms_load_figs(DATSTRUCT_MOD, figpath, ...
+    savedir, instructions, assert_current_label);
+STRUCT_CLICKINFO = [STRUCT_CLICKINFO struct('figpath', figpath, 'clickInfo', {clickInfo})];
 
 % 2. SU, remove that that are MU.
 figpath = 'SU-sorted_by_snr';
 instructions = struct('left', 'to_mua', 'right', 'to_artifact');
 assert_current_label = 'su';
-[DATSTRUCT_MOD, STRUCT_CLICKINFO] = load_and_curate_single(DATSTRUCT_MOD, STRUCT_CLICKINFO,  ...
-    figpath, instructions, assert_current_label, ...
-    SAVEDIR_FINAL, SAVEDIR_FINAL_CLEAN);
+[DATSTRUCT_MOD, clickInfo] = gui_waveforms_load_figs(DATSTRUCT_MOD, figpath, ...
+    savedir, instructions, assert_current_label);
+STRUCT_CLICKINFO = [STRUCT_CLICKINFO struct('figpath', figpath, 'clickInfo', {clickInfo})];
 
 % 3. artifact, keep those that are SU.
 figpath = 'artifact-sorted_by_sharpiness';
 instructions = struct('left', 'to_su', 'right', 'to_mua');
 assert_current_label = 'artifact';
-[DATSTRUCT_MOD, STRUCT_CLICKINFO] = load_and_curate_single(DATSTRUCT_MOD, STRUCT_CLICKINFO,  ...
-    figpath, instructions, assert_current_label, ...
-    SAVEDIR_FINAL, SAVEDIR_FINAL_CLEAN);
+[DATSTRUCT_MOD, clickInfo] = gui_waveforms_load_figs(DATSTRUCT_MOD, figpath, ...
+    savedir, instructions, assert_current_label);
+STRUCT_CLICKINFO = [STRUCT_CLICKINFO struct('figpath', figpath, 'clickInfo', {clickInfo})];
 
 % [OPTIONALLY] run this if you want top remove all MU
 figpath = 'MU-ALL';
 instructions = struct('left', 'to_noise', 'right', 'cancel');
 assert_current_label = 'mua';
-[DATSTRUCT_MOD, STRUCT_CLICKINFO] = load_and_curate_single(DATSTRUCT_MOD, STRUCT_CLICKINFO,  ...
-    figpath, instructions, assert_current_label, ...
-    SAVEDIR_FINAL, SAVEDIR_FINAL_CLEAN);
+[DATSTRUCT_MOD, clickInfo] = gui_waveforms_load_figs(DATSTRUCT_MOD, figpath, ...
+    savedir, instructions, assert_current_label);
+STRUCT_CLICKINFO = [STRUCT_CLICKINFO struct('figpath', figpath, 'clickInfo', {clickInfo})];
 
 %% FINALLY, save final clean results.
 paththis = [SAVEDIR_FINAL_CLEAN '/STRUCT_CLICKINFO.mat'];
@@ -257,11 +257,11 @@ savedir = [SAVEDIR_FINAL '/waveform_gridplots_GUI'];
 paththis = [SAVEDIR_FINAL_CLEAN '/clickInfo-' figpath '.mat'];
 % - check if already done
 disp(['!! You are doing: ' figpath]);
+disp('
 if exist(paththis, 'file')
-%     disp(1);
     DO = input(['Found saved clickInfo for ' figpath '. ** Type y to redo. anything else to skip'], 's');
 else
-%     disp(2);
+    asfafaf
     DO = input('Type n to skip...', 's');
     if ~strcmp(DO, 'n')
         DO = 'y';
