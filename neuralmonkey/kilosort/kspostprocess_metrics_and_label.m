@@ -402,6 +402,13 @@ if false
         path_noext, exclude_labels, false, MAKE_GUI, YLIM, INDICES_PLOT, 3, 5);
 end 
 
+% SU merge - for each channel, one figure with all SUs.
+SKIP_MANUAL_CURATION = true;
+SKIP_PLOTTING = false;
+savepath_noext = [savedir '/SUmerge'];
+[~, ~] = gui_waveforms_su_merge(DATSTRUCT, savepath_noext, ...
+    SKIP_MANUAL_CURATION, SKIP_PLOTTING);
+
 %% save a note to mark done.
 tmp = [];
 save([SAVEDIR_FINAL '/DONE_kspostprocess_metrics_and_label.mat'], 'tmp');

@@ -175,6 +175,17 @@ save(paththis, 'STRUCT_CLICKINFO');
 disp('** Saved STRUCT_CLICKINFO to:');
 disp(paththis);
 
+
+%% If you previously saved SU_merge gui figs, then load them.
+
+SKIP_MANUAL_CURATION = false;
+SKIP_PLOTTING = true;
+savepath_noext = [savedir '/SUmerge'];
+[~, LIST_MERGE_SU] = gui_waveforms_su_merge(DATSTRUCT, savepath_noext, ...
+    SKIP_MANUAL_CURATION, SKIP_PLOTTING);
+save([SAVEDIR_FINAL_CLEAN '/LIST_MERGE_SU.mat'], 'LIST_MERGE_SU');
+
+
 %% print differences
 if ~SKIP_LOADING_DATSTRUCT
     disp(' ');
