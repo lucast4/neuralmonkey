@@ -9,6 +9,12 @@ function [DATSTRUCT, LIST_MERGE_SU] = gui_waveforms_su_merge(DATSTRUCT, ...
 if ~exist('SKIP_PLOTTING', 'var'); SKIP_PLOTTING = false; end
 if ~exist('SKIP_MANUAL_CURATION', 'var'); SKIP_MANUAL_CURATION = false; end
 
+a = SKIP_MANUAL_CURATION==0 & SKIP_PLOTTING==0; % Generate plots and curate.
+b = SKIP_MANUAL_CURATION==1 & SKIP_PLOTTING==0; % Generate figures, but no curation.
+c = SKIP_MANUAL_CURATION==0 & SKIP_PLOTTING==1; % Load already saved figures, and do manual curation. (If figures don't exist, is OK, just continues).
+
+assert(a | b | c);
+
 MAKE_GUI = true;
 
 %%
@@ -16,6 +22,7 @@ MAKE_GUI = true;
 list_chan_global = unique([DATSTRUCT.chan_global]);
 % INDICES_PLOT = [];
 LIST_MERGE_SU = {}; % cell of 2-arays
+
 for chan = list_chan_global
     
     if ~SKIP_PLOTTING
@@ -114,7 +121,7 @@ for chan = list_chan_global
                         subplot(nrows, ncols, ct); hold on;
                         title([num2str(i1) ' - ' num2str(i2)]);
                         
-%                         t = 1:length(K);
+                        %                         t = 1:length(K);
                         t = 350:650;
                         K = K(t);
                         plot(K);
@@ -237,10 +244,13 @@ for chan = list_chan_global
             end
         end
     else
-        % If skip plotting, then you must load
-        assert(~isempty(savepath_noext))
+        % If skip plotting, then you must load previously saved plots. If
+        % cant find, then continues.
+        if isempty(savepath_noext)
+            continue
+        end
         paththis = [savepath_noext '-' num2str(chan) '.fig'];
-        if exist(paththis)
+        if exist(paththis, 'file')
             disp(paththis);
             openfig(paththis);
             
@@ -249,6 +259,8 @@ for chan = list_chan_global
             tmp = load(paththis);
             idxs = tmp.idxs;
         else
+            disp('Skipping - could not find this file:');
+            disp(paththis);
             continue % to next chan
         end
     end

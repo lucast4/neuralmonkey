@@ -79,6 +79,13 @@ SAVEDIR_FINAL = [SAVEDIR_FINAL_BASE '/final_clusters/' ANIMAL '/' num2str(DATE)]
 mkdir(SAVEDIR_FINAL);
 
 
+%% skip if already done
+
+if exist([SAVEDIR_FINAL '/DONE_kspostprocess_extract.mat'], 'file')
+    return
+end
+
+
 %% load globals params
 [indpeak, wind_spike, npre, npost, THRESH_SU_SNR, THRESH_SU_ISI, ...
     THRESH_ARTIFACT_SHARP, THRESH_ARTIFACT_SHARP_LOW, THRESH_ARTIFACT_ISI, ...
