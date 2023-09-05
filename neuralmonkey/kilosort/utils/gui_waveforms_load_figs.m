@@ -25,14 +25,16 @@ function [DATSTRUCT, clickInfo] = gui_waveforms_load_figs(DATSTRUCT, figpath, sa
     disp('------------------------');
     
     % Warn user starting a new curation.
-    figure; hold on;
-    text(1,1, 'DONE! starting new curation. ENTER to continue, "x" to skip..')
-    xlim([0.8, 8])
-    ylim([0.5 1.5])
-    tmp = input('DONE! starting new curation. ENTER to continue, "x" to skip', 's');
-    if strcmp(tmp, 'x') | strcmp(tmp, 'X') 
-        disp('...SKIPPING! as requested');
-        return
+    if false % since is already asking if want to skip outside this function.
+        figure; hold on;
+        text(1,1, 'DONE! starting new curation. ENTER to continue, "x" to skip..')
+        xlim([0.8, 8])
+        ylim([0.5 1.5])
+        tmp = input('DONE! starting new curation. ENTER to continue, "x" to skip', 's');
+        if strcmp(tmp, 'x') | strcmp(tmp, 'X') 
+            disp('...SKIPPING! as requested');
+            return
+        end
     end
     close all;
 
