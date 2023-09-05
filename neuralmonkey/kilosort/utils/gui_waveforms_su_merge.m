@@ -19,7 +19,8 @@ MAKE_GUI = true;
 
 %%
 
-list_chan_global = unique([DATSTRUCT.chan_global]);
+list_chan_global = 1:512;
+% list_chan_global = unique([DATSTRUCT.chan_global]);
 % INDICES_PLOT = [];
 LIST_MERGE_SU = {}; % cell of 2-arays
 
