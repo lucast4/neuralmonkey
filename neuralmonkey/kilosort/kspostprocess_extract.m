@@ -19,7 +19,8 @@ PATH_TO_SPIKES_CODE = '/gorilla1/code/spikes';
 PATH_TO_NPY_CODE = '/gorilla1/code/npy-matlab';
 PATH_TO_KILOSORT_CODE = '/gorilla1/code/kilosort-2.5';
 
-MACHINE = system('hostname');
+[~, MACHINE] = system('hostname');
+MACHINE = MACHINE(1:end-1); % weird character at end for gorilla.
 switch MACHINE
     case 'lucast4-MS-7B98' % gorilla
         SAVEDIR_FINAL_SERVER =  '/mnt/Freiwald_kgupta/kgupta/neural_data/postprocess'; % final, so all machines can access.
@@ -30,7 +31,9 @@ switch MACHINE
         LOADDIR_BASE = '/lemur2/kilosort_data'; % location of kilosorted data
         SAVEDIR_LOCAL = '/lemur2/kilosort_temp'; % fast ssd
     otherwise
-        disp(MACHINE)
+        disp(['MACHINE: ' MACHINE])
+        disp([MACHINE(1)])
+        disp([MACHINE(end)])
         assert(false,'add it here');
 %         SAVEDIR_FINAL_SERVER =  '/mnt/Freiwald/kgupta/neural_data/postprocess'; % final, so all machines can access.
 end

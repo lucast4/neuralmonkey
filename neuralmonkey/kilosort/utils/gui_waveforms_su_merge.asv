@@ -26,10 +26,6 @@ for chan = list_chan_global
         if good
             idxs = find(inds);
             
-            nplots = length(idxs) + nchoosek(length(idxs), 2) + 1 + 1;
-            ncols = ceil(sqrt(nplots));
-            nrows = ncols;
-            
             % plot
             disp([chan, DATSTRUCT(inds).index])
             
@@ -44,7 +40,7 @@ for chan = list_chan_global
             for i=1:length(idxs)
                 ind = idxs(i);
                 
-                subplot(nrows, ncols, ct); hold on;
+                subplot(length(idxs), length(idxs)+1, ct); hold on;
                 
                 wf = DATSTRUCT(ind).waveforms;
                 
@@ -111,14 +107,11 @@ for chan = list_chan_global
                     
                     % ----------------------
                     if true
-                        subplot(nrows, ncols, ct); hold on;
+                        subplot(length(idxs), length(idxs)+1, ct); hold on;
                         title([num2str(i1) ' - ' num2str(i2)]);
                         
-%                         t = 1:length(K);
-                        t = 350:650;
-                        K = K(t);
                         plot(K);
-                        line([0 length(t)], [0 0]);
+                        line(xlim, [0 0]);
                         ylabel('K');
                         xlabel('lag (ms)');
                         ct = ct+1;
@@ -132,7 +125,7 @@ for chan = list_chan_global
                     
                     if false
                         % NOt that useful, since it excludes timepoint 0
-                        subplot(nrows, ncols, ct); hold on;
+                        subplot(length(idxs), length(idxs)+1, ct); hold on;
                         title([num2str(i1) ' - ' num2str(i2)]);
                         
                         plot(1:length(Qi), Qi/(max(Q00, Q01)));
@@ -159,7 +152,7 @@ for chan = list_chan_global
             end
             
             % 1) scatter plot of time stamps
-            subplot(nrows, ncols, ct); hold on;
+            subplot(length(idxs), length(idxs)+1, ct); hold on;
             ylabel('count (n spikes');
             xlabel('binned time');
             for i=1:length(idxs)
@@ -179,7 +172,7 @@ for chan = list_chan_global
             YLIM = ylim;
             ylim([0, YLIM(2)]);
             
-            subplot(nrows, ncols, ct); hold on;
+            subplot(length(idxs), length(idxs)+1, ct); hold on;
             xlabel('idx1 - idx2 - concatted');
             ylabel('frac spks dbl cnted');
             %         xlabel('binned time');
@@ -233,7 +226,7 @@ for chan = list_chan_global
                 
                 % save the indices
                 paththis = [savepath_noext '-' num2str(chan) '-idxs.mat'];
-                save(paththis, 'idxs');
+                save(paththis, 'idxs');                
             end
         end
     else
@@ -246,8 +239,8 @@ for chan = list_chan_global
             
             % load the idsx
             paththis = [savepath_noext '-' num2str(chan) '-idxs.mat'];
-            tmp = load(paththis);
-            idxs = tmp.idxs;
+            tmp = load(paththis, 'idxs');                
+
         else
             continue % to next chan
         end
@@ -257,7 +250,7 @@ for chan = list_chan_global
     if ~SKIP_MANUAL_CURATION
         merge = 'dummy';
         while ~isempty(merge)
-            try
+%             try
                 merge = input('Want to merge any SU? Type them as array (e..g, [29 49], no quotes. If not, then ENTER');
                 if isempty(merge)
                     disp('Empty...')
@@ -284,13 +277,11 @@ for chan = list_chan_global
                         end
                     end
                 end
-            catch error
-                disp('You typed this:');
-                disp(merge);
-                disp('CAUGHT ERROR in input (try again):');
-                % disp(merge);
-                merge = 'dummy';
-            end
+%             catch error
+%                 disp('CAUGHT ERROR in input (try again):');
+%                 % disp(merge);
+%                 merge = 'dummy';
+%             end
         end
     end
     
