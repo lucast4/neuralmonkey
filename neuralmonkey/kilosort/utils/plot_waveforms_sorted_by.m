@@ -83,7 +83,7 @@ for i=1:length(indsort)
         subplotcols, fignums_alreadyused, hfigs, figcount, ...
         INVISIBLE);
 
-    datstruct_plot_waveforms_single(DATSTRUCT, idx, NPLOT)
+    datstruct_plot_waveforms_single(DATSTRUCT, ind, NPLOT)
     % if ~isfield(DATSTRUCT, 'waveforms_aligned')
     %     % then use not-aligned
     %     wf = DATSTRUCT(ind).waveforms;

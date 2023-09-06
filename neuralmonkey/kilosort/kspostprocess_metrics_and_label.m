@@ -1,9 +1,10 @@
-function kspostprocess_metrics_and_label(ANIMAL, DATE)
+function kspostprocess_metrics_and_label(ANIMAL, DATE, SKIP_RAW_PLOTS_EACH_CLUST)
 % given data that has been kilosorted, and extracred using quickscript_spikes_extract
 % run this to curate and autoamticlaly label data.
 % Runs metrics, labels each cluster, then saves plots and guis that can
 % load later to manually curate + merge into final clusters.
 
+if ~exist('SKIP_RAW_PLOTS_EACH_CLUST', 'var'); SKIP_RAW_PLOTS_EACH_CLUST=false; end
 
 %% MODIFY PARAMS
 
@@ -249,7 +250,7 @@ DATSTRUCT = datstruct_remove_double_counted(DATSTRUCT, indpeak, npre, npost, DRY
 % datstruct_remove_double_counted(DATSTRUCT(1354), indpeak, npre, npost, DRYRUN);
 
 %% Assign metrics and save plots of waveforms along with snr
-DOPLOT = true; % Might takes a while...
+DOPLOT = ~SKIP_RAW_PLOTS_EACH_CLUST; % Might takes a while...
 DATSTRUCT = datstruct_compute_metrics(DATSTRUCT, DOPLOT, ...
     indpeak, npre, npost, SAVEDIR_FINAL);
 
