@@ -358,7 +358,7 @@ exclude_labels = {'noise', 'mua', 'artifact'};
 values_sort = [];
 YLIM = [-4000, 1500];
 map_figsubplot_to_index = plot_waveforms_sorted_by(DATSTRUCT, values, values_sort, ...
-    path_noext, exclude_labels, false, MAKE_GUI, YLIM);
+    path_noext, exclude_labels, false, MAKE_GUI, YLIM, [], 3, 4);
 
 % % MU-SU boundary
 % close all;
