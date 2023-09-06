@@ -41,14 +41,14 @@ for i=1:length(DATSTRUCT)
         peak_to_trough_old, waveforms_running_std_old, waveforms_aligned] = ...
         snr_compute_wrapper(waveforms, indpeak, npre, npost);
     
-    if snr_new > snr_old
-        % Then shifting improved things. saved the aligned wf
-        DATSTRUCT(i).waveforms_aligned = waveforms_aligned;
-        DATSTRUCT(i).use_aligned_wf = true;
-    else
-        DATSTRUCT(i).waveforms_aligned = [];
-        DATSTRUCT(i).use_aligned_wf = false;
-    end
+    % if snr_new > snr_old
+    %     % Then shifting improved things. saved the aligned wf
+    %     DATSTRUCT(i).waveforms_aligned = waveforms_aligned;
+    %     DATSTRUCT(i).use_aligned_wf = true;
+    % else
+    %     DATSTRUCT(i).waveforms_aligned = [];
+    %     DATSTRUCT(i).use_aligned_wf = false;
+    % end
 
     % Is this combo of pos and negative? if so then compute snr separately
     % then average
@@ -74,6 +74,8 @@ for i=1:length(DATSTRUCT)
     DATSTRUCT(i).Q = Q;
     DATSTRUCT(i).isi_violation_pct = isi_violation_pct;
     DATSTRUCT(i).snr_final = snr_final;
+    DATSTRUCT(i).snr_aligned = snr_new;
+    DATSTRUCT(i).snr_not_aligned = snr_old;
     DATSTRUCT(i).isbimod = isbimod;
     
     if DOPLOT
