@@ -11,7 +11,7 @@ if ~isfield(DATSTRUCT, 'snr_aligned')
     wf = DATSTRUCT(idx).waveforms;
 else
     snr_improvement = DATSTRUCT(idx).snr_aligned / DATSTRUCT(idx).snr_not_aligned;
-    if snr_improvement>1.25
+    if snr_improvement>1.33
         % then use aligned
         wf = DATSTRUCT(idx).waveforms;
         ispos = is_positive_waveform(wf);

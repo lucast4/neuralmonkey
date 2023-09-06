@@ -6,7 +6,7 @@ function [snr_final, snr_new, peak_to_trough, waveforms_running_std, snr_old, pe
 
     [~, ~, ~, ~, ~, ~, ...
         ~, ~, ~, ...
-        ~, SNR_VER] = quickscript_config_load()
+        ~, SNR_VER] = quickscript_config_load();
     
     % remove any wf that are nan
     indsgood = ~isnan(waveforms(:,1));
