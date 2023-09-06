@@ -323,7 +323,11 @@ close all;
 path_noext = [savedir '/noise-sorted_by_snr'];
 values = [DATSTRUCT.snr_final];
 exclude_labels = {'su', 'mua', 'artifact'};
-values_sort = [MIN_SNR-0.75, MIN_SNR+0.6];
+if MIN_SNR>3.5
+    values_sort = [MIN_SNR-0.9, MIN_SNR+0.6];
+else
+    values_sort = [MIN_SNR-0.65, MIN_SNR+0.6];
+end
 % values_sort = [1.75, MIN_SNR+0.1];
 YLIM = [-2200 1000];
 map_figsubplot_to_index = plot_waveforms_sorted_by(DATSTRUCT, values, values_sort, ...
