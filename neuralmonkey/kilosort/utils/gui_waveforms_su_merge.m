@@ -1,4 +1,4 @@
-function [DATSTRUCT, LIST_MERGE_SU] = gui_waveforms_su_merge(DATSTRUCT, ...
+function [DATSTRUCT, LIST_MERGE_SU, LIST_NOTES] = gui_waveforms_su_merge(DATSTRUCT, ...
     savepath_noext, SKIP_MANUAL_CURATION, SKIP_PLOTTING)
 %% PARAMS
 % - savepath_noext, leave empty to skip plotting.
@@ -23,7 +23,7 @@ list_chan_global = 1:512;
 % list_chan_global = unique([DATSTRUCT.chan_global]);
 % INDICES_PLOT = [];
 LIST_MERGE_SU = {}; % cell of 2-arays
-
+LIST_NOTES = {}; 
 for chan = list_chan_global
     
     if ~SKIP_PLOTTING
@@ -55,7 +55,8 @@ for chan = list_chan_global
                 subplot(nrows, ncols, ct); hold on;
                 
                 wf = DATSTRUCT(ind).waveforms;
-                
+                st = DATSTRUCT(ind).times_sec_all;
+
                 sharp = DATSTRUCT(ind).sharpiness;
                 snr = DATSTRUCT(ind).snr_final;
                 isi = DATSTRUCT(ind).isi_violation_pct;
@@ -75,7 +76,7 @@ for chan = list_chan_global
                 % n = min(100, size(wf,1));
                 % plot(wf(1:n,:)');
                 ylabel(['isi' num2str(isi, '%0.2f') '-sh' num2str(sharp, '%0.1f')]);
-                xlabel(['idx' num2str(idx)  '-cl' num2str(clust)]);
+                xlabel(['chg' num2str(chan_global)  '-cl' num2str(clust) '[n=' num2str(length(st)) ']']);
                 if ~isempty(YLIM)
                     ylim(YLIM);
                 end
@@ -94,7 +95,8 @@ for chan = list_chan_global
                         assert(false);
                 end
                 
-                title(['chg' num2str(chan_global) '-snr' num2str(snr, '%0.2f') '-Q' num2str(Q, '%0.2f')], 'color', pcols{i});
+                % title(['chg' num2str(chan_global) '-snr' num2str(snr, '%0.2f') '-Q' num2str(Q, '%0.2f')], 'color', pcols{i});
+                title(['idx' num2str(idx) '-snr' num2str(snr, '%0.2f') '-Q' num2str(Q, '%0.2f')], 'color', pcols{i});
                 ct = ct+1;
                 
             end
@@ -181,7 +183,6 @@ for chan = list_chan_global
                 %            plot(st, amps, 'x');
                 plot(t_centers, st_counts, '-o', 'color', col);
                 text(t_centers(1), st_counts(1), num2str(ix), 'color', col, 'fontsize', 15);
-                
             end
             ct = ct+1;
             YLIM = ylim;
@@ -271,29 +272,44 @@ for chan = list_chan_global
         merge = 'dummy';
         while ~isempty(merge)
             try
-                merge = input('Want to merge any SU? Type them as array (e..g, [29 49], no quotes. If not, then ENTER');
+                merge = input('Options: (i) 0: merge all, (ii) inds to merge (eg [29 49]), (iii) take note, input string (IN SINGLE QUOTES), (iv) ENTER to continue');
                 if isempty(merge)
                     disp('Empty...')
                     % then nothing to merge.
                 else
-                    if length(merge)==1
-                        disp('TYPO? only 1 index ...')
-                        disp(merge)
-                    elseif length(unique(merge))==1
-                        disp('TYPO? only 1 unique index. ...')
-                        disp(merge)
+                    if ischar(merge)
+                        % Then this is a note.
+                        ts = lt_get_timestamp_good();
+                        s = [ts ' ++ chan ' num2str(chan) ' ++ idxs ' num2str(idxs) ' ++ string ' merge];
+                        disp(['INPUTED NOTE: ' s]);
+                        LIST_NOTES{end+1} = s;
                     else
-                        % make sure you inputed indices that exist in the current fig.
-                        ok = true;
-                        for i=1:length(merge)
-                            if ~ismember(merge(i), idxs)
-                                disp('TYPO? index doesnt exist in figure')
-                                ok = false;
-                            end
+                        % Then these are indices.
+                        if merge==0
+                            % then take all
+                            disp('key=0 --> taking all indices!');
+                            merge = idxs;
                         end
-                        if ok
-                            disp(['... Merging these indices: ' num2str(merge)]);
-                            LIST_MERGE_SU{end+1} = merge;
+
+                        if length(merge)==1
+                            disp('TYPO? only 1 index ...')
+                            disp(merge)
+                        elseif length(unique(merge))==1
+                            disp('TYPO? only 1 unique index. ...')
+                            disp(merge)
+                        else
+                            % make sure you inputed indices that exist in the current fig.
+                            ok = true;
+                            for i=1:length(merge)
+                                if ~ismember(merge(i), idxs)
+                                    disp('TYPO? index doesnt exist in figure')
+                                    ok = false;
+                                end
+                            end
+                            if ok
+                                disp(['... Merging these indices: ' num2str(merge)]);
+                                LIST_MERGE_SU{end+1} = merge;
+                            end
                         end
                     end
                 end

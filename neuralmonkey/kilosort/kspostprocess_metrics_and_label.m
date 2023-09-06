@@ -106,7 +106,6 @@ disp(LIST_BATCH)
 
 %% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% LOAD PRE-SAVED DATA ACROSS BATCHES
-
 DATSTRUCT = [];
 for RSN = LIST_RSN
     for BATCH = LIST_BATCH
@@ -406,7 +405,7 @@ end
 SKIP_MANUAL_CURATION = true;
 SKIP_PLOTTING = false;
 savepath_noext = [savedir '/SUmerge'];
-[~, ~] = gui_waveforms_su_merge(DATSTRUCT, savepath_noext, ...
+gui_waveforms_su_merge(DATSTRUCT, savepath_noext, ...
     SKIP_MANUAL_CURATION, SKIP_PLOTTING);
 
 %% save a note to mark done.

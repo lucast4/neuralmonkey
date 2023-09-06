@@ -19,7 +19,7 @@ if ~exist('COLS', 'var'); COLS = 6; end
 %     close_plots=false;
 % end
 
-NPLOT = 80;
+NPLOT = 90;
 
 if close_plots
     INVISIBLE = true;
@@ -64,18 +64,10 @@ for i=1:length(indsort)
     if ismember(label_final, exclude_labels)
         continue
     end
-    
-    wf = DATSTRUCT(ind).waveforms;
-
     val = values_sort(ind);
     if val<value_range(1) | val>value_range(2)
         continue
     end
-    
-    % % skip if is noise
-    % if strcmp(DATSTRUCT(ind).label_final, 'noise')
-    %     continue
-    % end
     
     sharp = DATSTRUCT(ind).sharpiness;
     snr = DATSTRUCT(ind).snr_final;
@@ -91,8 +83,18 @@ for i=1:length(indsort)
         subplotcols, fignums_alreadyused, hfigs, figcount, ...
         INVISIBLE);
 
-    plot_waveforms_singleplot(wf, NPLOT);
-    
+    datstruct_plot_waveforms_single(DATSTRUCT, idx, NPLOT)
+    % if ~isfield(DATSTRUCT, 'waveforms_aligned')
+    %     % then use not-aligned
+    %     wf = DATSTRUCT(ind).waveforms;
+    % elseif isempty(DATSTRUCT(i).waveforms_aligned)
+    %     % then use not-aligned
+    %     wf = DATSTRUCT(ind).waveforms;
+    % else
+    %     % Use algined
+    %     wf = DATSTRUCT(ind).waveforms_aligned;
+    % end
+    % plot_waveforms_singleplot(wf, NPLOT);
     ylabel(['isi' num2str(isi, '%0.2f') '-sh' num2str(sharp, '%0.1f')]);
     xlabel(['idx' num2str(ind)  '-cl' num2str(clust)]);
     if ~isempty(YLIM)

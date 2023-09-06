@@ -41,6 +41,15 @@ for i=1:length(DATSTRUCT)
         peak_to_trough_old, waveforms_running_std_old, waveforms_aligned] = ...
         snr_compute_wrapper(waveforms, indpeak, npre, npost);
     
+    if snr_new > snr_old
+        % Then shifting improved things. saved the aligned wf
+        DATSTRUCT(i).waveforms_aligned = waveforms_aligned;
+        DATSTRUCT(i).use_aligned_wf = true;
+    else
+        DATSTRUCT(i).waveforms_aligned = [];
+        DATSTRUCT(i).use_aligned_wf = false;
+    end
+
     % Is this combo of pos and negative? if so then compute snr separately
     % then average
     [isbimod, waveforms_pos, waveforms_neg] = is_bimodal_waveform(waveforms, indpeak);

@@ -181,9 +181,14 @@ disp(paththis);
 SKIP_MANUAL_CURATION = false;
 SKIP_PLOTTING = true;
 savepath_noext = [savedir '/SUmerge'];
-[~, LIST_MERGE_SU] = gui_waveforms_su_merge(DATSTRUCT, savepath_noext, ...
+[~, LIST_MERGE_SU, LIST_NOTES] = gui_waveforms_su_merge(DATSTRUCT, savepath_noext, ...
     SKIP_MANUAL_CURATION, SKIP_PLOTTING);
 save([SAVEDIR_FINAL_CLEAN '/LIST_MERGE_SU.mat'], 'LIST_MERGE_SU');
+notefile = [SAVEDIR_FINAL_CLEAN '/MERGE_SU_LIST_NOTES.txt'];
+for i=1:length(LIST_NOTES)
+    s = LIST_NOTES{i};
+    writematrix(s,notefile,'WriteMode','append');
+end
 
 
 %% print differences
@@ -209,9 +214,14 @@ if ~SKIP_LOADING_DATSTRUCT
     % again. This only applies to SU.
     SKIP_MANUAL_CURATION = false;
     savepath_noext = [];
-    [~, LIST_MERGE_SU] = gui_waveforms_su_merge(DATSTRUCT, [], SKIP_MANUAL_CURATION);
+    [~, LIST_MERGE_SU, LIST_NOTES] = gui_waveforms_su_merge(DATSTRUCT, [], SKIP_MANUAL_CURATION);
     save([SAVEDIR_FINAL_CLEAN '/LIST_MERGE_SU.mat'], 'LIST_MERGE_SU');
-    
+    notefile = [SAVEDIR_FINAL_CLEAN '/MERGE_SU_LIST_NOTES.txt'];
+    for i=1:length(LIST_NOTES)
+        s = LIST_NOTES{i};
+        writematrix(s,notefile,'WriteMode','append');
+    end
+
     %% Merge everything, including the SU
     close all;
     DATSTRUCT_MERGED = datstruct_merge(DATSTRUCT, [], LIST_MERGE_SU, ...

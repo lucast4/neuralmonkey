@@ -47,6 +47,13 @@ function [DATSTRUCT, clickInfo] = gui_waveforms_load_figs(DATSTRUCT, figpath, sa
         openfig(path);
         key = [];
         while isempty(key)
+            clickInfo = evalin('base', 'clickInfo');
+            disp('... clicks up to now (most recent last)');
+            for j=1:length(clickInfo)
+                disp([clickInfo{j}{1} clickInfo{j}{2}]);
+            end
+            clear clickInfo
+            
             disp('Type "x" and press ENTER to undo previous (subplot color will remain)')
             key = input('Type nothing and press ENTER to close figure and open next...', 's');
 
