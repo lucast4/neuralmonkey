@@ -112,6 +112,7 @@ for i=1:length(indsort)
             pcol = 'm';
         otherwise
             disp(ind);
+            disp(label_final);
             assert(false);
     end
     

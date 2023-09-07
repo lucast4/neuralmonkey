@@ -1,4 +1,4 @@
-function DATSTRUCT_FINAL = datstruct_merge(DATSTRUCT, SAVEDIR_FINAL, ...
+function [DATSTRUCT_FINAL, LIST_MERGE_SU_FINAL_LABEL] = datstruct_merge(DATSTRUCT, SAVEDIR_FINAL, ...
     LIST_MERGE_SU, indpeak, npre, npost, THRESH_SU_SNR, ...
     THRESH_SU_ISI, THRESH_ARTIFACT_SHARP, THRESH_ARTIFACT_SHARP_LOW, ...
     THRESH_ARTIFACT_ISI, MIN_SNR, FORCE_START_AS_SU)
@@ -53,7 +53,15 @@ for cg = list_chans_global
         datstruct_this = rmfield(datstruct_this, 'isbimod');
         datstruct_this.clust_before_merge = nan;
         datstruct_this.index_before_merge = nan;
-        DATSTRUCT_FINAL = [DATSTRUCT_FINAL, datstruct_this];
+
+        try
+            DATSTRUCT_FINAL = [DATSTRUCT_FINAL, datstruct_this];
+        catch err
+            disp('Probably a field exists which has not been included in datstruct_merge_inner()');
+            disp(DATSTRUCT_FINAL);
+            disp(datstruct_this);
+            assert(false);
+        end            
     end
     
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -67,8 +75,7 @@ for cg = list_chans_global
         %         DATSTRUCT_FINAL = [DATSTRUCT_FINAL, rmfield(datstruct, 'wf')];
     else
         % merge them
-        datstruct_this = datstruct_merge_inner(datstruct);
-        
+        datstruct_this = datstruct_merge_inner(datstruct, 'mua');
         % Keep
         DATSTRUCT_FINAL = [DATSTRUCT_FINAL, datstruct_this];
     end
@@ -78,12 +85,13 @@ end
 if ~isempty(LIST_MERGE_SU)
     % 1) Create the merge.
     list_ds_append = [];
+    LIST_MERGE_SU_FINAL_LABEL = {}; % to collect, to output, to save as text file.
     for i=1:length(LIST_MERGE_SU)
         disp('++++++++++++++++++++++++++++++++++++++++++++++');
         %     ind1 = LIST_MERGE_SU{i}(1);
         %     ind2 = LIST_MERGE_SU{i}(2);
         inds_merge = LIST_MERGE_SU{i};
-        
+                
         % sanity check
         assert(length(unique(inds_merge)) == length(inds_merge), 'cant repeat indices...');
         if FORCE_START_AS_SU
@@ -101,14 +109,16 @@ if ~isempty(LIST_MERGE_SU)
         disp(inds_merge);
         
         % do merge
-        ds = datstruct_merge_inner(DATSTRUCT(inds_merge));
+        ds = datstruct_merge_inner(DATSTRUCT(inds_merge), 'su');
         
-        % check if the merged is still su
+        % REmove double counted
         [ds, did_remove] = datstruct_remove_double_counted(ds, indpeak, npre, npost, false);
         
         if did_remove
             disp(['Merged cluster removed double spikes']);
         end
+        
+        % Recompute metrics.
         DOPLOT = false;
         ds = datstruct_compute_metrics(ds, DOPLOT, ...
             indpeak, npre, npost);
@@ -117,12 +127,13 @@ if ~isempty(LIST_MERGE_SU)
         ds.label_final = [];
         ds.label_final_int = [];
         
-        ds = datstruct_classify(ds, THRESH_SU_SNR, ...
-            THRESH_SU_ISI, THRESH_ARTIFACT_SHARP, THRESH_ARTIFACT_SHARP_LOW, ...
-            THRESH_ARTIFACT_ISI, MIN_SNR);
+        % check if the merged is still su
+        ds = datstruct_classify(ds);
         
         disp(ds);
         disp(['Merged cluster is classified as: ' ds.label_final]);
+        
+        LIST_MERGE_SU_FINAL_LABEL{end+1} = {inds_merge, ds.label_final};
         
         % Plot combined waveforms
         n = size(ds.waveforms, 1);
@@ -161,9 +172,14 @@ if ~isempty(LIST_MERGE_SU)
     disp('Appending this many ds to DATSTRUCT_FINAL:')
     disp(length(list_ds_append));
     DATSTRUCT_FINAL = [DATSTRUCT_FINAL, list_ds_append];
+else
+    LIST_MERGE_SU_FINAL_LABEL = {};
 end
 
 disp('This many indep clusters:');
 disp(length(DATSTRUCT_FINAL));
+
+%% Update int labels to match the string label.
+DATSTRUCT_FINAL = datstruct_mod_update_label_int(DATSTRUCT_FINAL);
 
 end

@@ -163,7 +163,7 @@ assert_current_label = 'artifact';
 
 % [OPTIONALLY] run this if you want top remove all MU
 figpath = 'MU-ALL';
-instructions = struct('left', 'to_noise', 'right', 'cancel');
+instructions = struct('left', 'to_noise', 'right', 'to_su');
 assert_current_label = 'mua';
 [DATSTRUCT_MOD, STRUCT_CLICKINFO] = load_and_curate_single(DATSTRUCT_MOD, STRUCT_CLICKINFO,  ...
     figpath, instructions, assert_current_label, ...

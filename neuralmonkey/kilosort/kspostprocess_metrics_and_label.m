@@ -275,9 +275,7 @@ DATSTRUCT = datstruct_compute_metrics(DATSTRUCT, DOPLOT, ...
 % THRESH_ARTIFACT_ISI = 0.12;
 % MIN_SNR = 2.25;
 
-DATSTRUCT = datstruct_classify(DATSTRUCT, THRESH_SU_SNR, ...
-    THRESH_SU_ISI, THRESH_ARTIFACT_SHARP, THRESH_ARTIFACT_SHARP_LOW, ...
-    THRESH_ARTIFACT_ISI, MIN_SNR);
+DATSTRUCT = datstruct_classify(DATSTRUCT);
 
 % %%
 % DATSTRUCT_FINAL = datstruct_merge(DATSTRUCT, SAVEDIR_FINAL, ...
@@ -301,6 +299,9 @@ datstruct_save(DATSTRUCT, SAVEDIR_FINAL, '');
 %% Make summary figures
 close all;
 datstruct_plot_summary(DATSTRUCT, SAVEDIR_FINAL);
+
+% plot scatter
+datstruct_plot_summary_premerge(DATSTRUCT, SAVEDIR_FINAL);
 
 %% ###################################
 %% ############## PLOT WAVEFORMS ORDERED BY METRICS.

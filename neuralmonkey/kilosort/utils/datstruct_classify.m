@@ -1,6 +1,4 @@
-function DATSTRUCT = datstruct_classify(DATSTRUCT, THRESH_SU_SNR, ...
-    THRESH_SU_ISI, THRESH_ARTIFACT_SHARP, THRESH_ARTIFACT_SHARP_LOW, ...
-    THRESH_ARTIFACT_ISI, MIN_SNR)
+function DATSTRUCT = datstruct_classify(DATSTRUCT)
 
 %% ASSIGNING SU
 % 1) if bipolar, then not SU.
@@ -16,6 +14,12 @@ function DATSTRUCT = datstruct_classify(DATSTRUCT, THRESH_SU_SNR, ...
 % - Q<0.05;
 % - isiviolations (frac)<0.03
 
+
+[~, ~, ~, ~, THRESH_SU_SNR, THRESH_SU_ISI, ...
+    THRESH_ARTIFACT_SHARP, THRESH_ARTIFACT_SHARP_LOW, THRESH_ARTIFACT_ISI, ...
+    MIN_SNR, SNR_VER, THRESH_SU_SNR_LOWER, THRESH_SU_SNR_HIGHEST] = quickscript_config_load();
+
+
 % EXTRACT
 list_isi = [DATSTRUCT.isi_violation_pct];
 list_refract = [DATSTRUCT.Q];
@@ -28,10 +32,23 @@ list_sharpiness = [DATSTRUCT.sharpiness];
 % THRESH_ARTIFACT_SHARP_LOW = 10;
 % THRESH_ARTIFACT_ISI = 0.12;
 
-% 1) SU
+% 0) SU (very high snr)
+inds_good_isi = list_isi<0.05;
+inds_good_snr = list_snr>THRESH_SU_SNR_HIGHEST;
+inds_su_0 = inds_good_isi & inds_good_snr;
+
+% 1) SU (high snr)
 inds_good_isi = list_isi<THRESH_SU_ISI | list_refract<0.05;
 inds_good_snr = list_snr>THRESH_SU_SNR;
-inds_su = inds_good_isi & inds_good_snr;
+inds_su_1 = inds_good_isi & inds_good_snr;
+
+% 2) SU (lower snr, but more stringent isi)
+inds_good_isi = list_isi<0.01 & list_refract<0.02;
+inds_good_snr = list_snr>THRESH_SU_SNR_LOWER;
+inds_su_2 = inds_good_isi & inds_good_snr;
+
+% combine SU
+inds_su = inds_su_0 | inds_su_1 | inds_su_2;
 
 % 2) Noise (low snr)
 % MIN_SNR = 2.25;

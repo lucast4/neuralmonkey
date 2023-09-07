@@ -108,12 +108,12 @@ for i=1:length(DATSTRUCT)
         plot([0, length(waveforms_running_std)], [peak_to_trough, peak_to_trough]);
         line(xlim, [0 0]);
         
-        fname = [savedir '/' 'rs_' num2str(rs) '-ba_' num2str(batch) '-ch_' num2str(chan) '-cl_' num2str(clust ) '-idx_' num2str(i) '-snr_' num2str(snr_final) '-Q_' num2str(Q) '-shrp_' num2str(sharpiness) '.png'];
+        fname = [savedir '/' 'rs_' num2str(rs) '-ba_' num2str(batch) '-ch_' num2str(chan) '-cl_' num2str(clust ) '-idx_' num2str(i) '-snr_' num2str(snr_final) '-Q_' num2str(Q) '-isi_' num2str(isi_violation_pct) '-shrp_' num2str(sharpiness) '.png'];
         disp(fname)
         saveas(gcf, fname);
         
         % Also save with snr at front, for easy sorting.
-        fname = [savedir '/' 'snr_' num2str(snr_final) '-rs_' num2str(rs) '-ba_' num2str(batch) '-ch_' num2str(chan) '-cl_' num2str(clust ) '-idx_' num2str(i) '-Q_' num2str(Q) '-shrp_' num2str(sharpiness) '.png'];
+        fname = [savedir '/' 'snr_' num2str(snr_final) '-rs_' num2str(rs) '-ba_' num2str(batch) '-ch_' num2str(chan) '-cl_' num2str(clust ) '-idx_' num2str(i) '-Q_' num2str(Q) '-isi_' num2str(isi_violation_pct) '-shrp_' num2str(sharpiness) '.png'];
         disp(fname)
         saveas(gcf, fname);
         
