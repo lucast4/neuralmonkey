@@ -1,6 +1,12 @@
 function datstruct_plot_summary_premerge(DATSTRUCT, SAVEDIR_FINAL)
 %% Final plots, at level of clusters (i.e, not yet merged to level of channels).
 
+if isempty(SAVEDIR_FINAL)
+    VISIBLE = 'on';
+else
+    VISIBLE = 'off';
+end
+
 %% [FINAL PLOTS] Plot distributions over all clusts
 % close all;
 
@@ -43,7 +49,7 @@ for j=1:2
         end
         
         % and metric vs. ISI
-        FigH = figure('Position', get(0, 'Screensize')); hold on;
+        FigH = figure('Position', get(0, 'Screensize'), 'visible', VISIBLE); hold on;
         xlabel(suff);
         ylabel('snr');
         title([suff2 ': red:good, b:mua, k=noise']);

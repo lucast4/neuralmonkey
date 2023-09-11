@@ -3,8 +3,14 @@ function datstruct_plot_summary(DATSTRUCT, SAVEDIR_FINAL)
 
 if ~exist('SAVEDIR_FINAL', 'var'); SAVEDIR_FINAL= []; end
 
+if isempty(SAVEDIR_FINAL)
+    VISIBLE = 'on';
+else
+    VISIBLE = 'off';
+end
+
 %% for each unique rs-batch-chan, count it
-FigH = figure('Position', get(0, 'Screensize')); hold on;
+FigH = figure('Position', get(0, 'Screensize'), 'visible', VISIBLE); hold on;
 xlabel('chan_global');
 ylabel('-1 noclust, 0 noise, 1 mu, 2 su');
 title('final clust labels');
@@ -109,7 +115,7 @@ xs{end+1} = 'N clust (noise)';
 
 % disp(['This many independent clusters: ' num2str(sum(list_n_independent_clusters))]);
 
-figure; hold on;
+FigH = figure('visible', VISIBLE); hold on;
 plot(1:length(tmp), tmp, '-ok');
 for i=1:length(tmp)
     text(i, tmp(i), num2str(tmp(i)), 'color', 'r', 'fontsize', 12);
