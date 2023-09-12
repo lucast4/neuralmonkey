@@ -54,7 +54,7 @@ SAVEDIR_FINAL = [SAVEDIR_FINAL_BASE '/final_clusters/' ANIMAL '/' num2str(DATE)]
 SAVEDIR_FINAL_CLEAN = [SAVEDIR_FINAL '/CLEAN_AFTER_MERGE'];
 
 %% Load datstruct, with metrics already computed (ther ouptut of quickscript_spikes)
-
+disp('Loading DATSTRUCT, may take a while....');
 tmp = load([SAVEDIR_FINAL '/DATSTRUCT.mat']);
 DATSTRUCT = tmp.DATSTRUCT;
 clear tmp

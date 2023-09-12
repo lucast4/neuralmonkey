@@ -129,12 +129,9 @@ for chan = list_chan_global
                 
             end
         end
-        %         assert(false);
         path = [savedir '/su_vs_mu-chan_' num2str(chan) '.png'];
         disp(['Saving ...' path]);
         saveas(gcf, path);
-        
-        assert(false);
     end
 end
 end
