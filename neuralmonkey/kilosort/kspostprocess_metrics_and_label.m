@@ -75,7 +75,7 @@ SAVEDIR_FINAL = [SAVEDIR_FINAL_BASE '/final_clusters/' ANIMAL '/' num2str(DATE)]
 
 %% Chek that prev step done
 
-path =[SAVEDIR_FINAL '/DONE_kspostprocess_extract.mat'];
+path =[SAVEDIR_BASE_DATE '/DONE_kspostprocess_extract.mat'];
 assert(exist(path, 'file')==2, ['Did not complete prev step, ' path]);
 
 %% Get LIST_BATCH automatically.

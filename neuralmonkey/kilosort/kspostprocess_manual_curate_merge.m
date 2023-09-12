@@ -3,6 +3,7 @@ function kspostprocess_manual_curate_merge(ANIMAL, DATE, SKIP_LOADING_DATSTRUCT)
 % run this to curate and autoamticlaly label data.
 
 if ~exist('SKIP_LOADING_DATSTRUCT', 'var'); SKIP_LOADING_DATSTRUCT = false; end
+assert(SKIP_LOADING_DATSTRUCT==false, 'too much coded now assuming this...');
 
 %% MODIFY PARAMS
 

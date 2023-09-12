@@ -81,7 +81,7 @@ mkdir(SAVEDIR_FINAL);
 
 %% skip if already done
 
-if exist([SAVEDIR_FINAL '/DONE_kspostprocess_extract.mat'], 'file')
+if exist([SAVEDIR_BASE_DATE '/DONE_kspostprocess_extract.mat'], 'file')
     return
 end
 
@@ -262,7 +262,7 @@ end
 %% save a note to mark done.
 
 tmp = [];
-save([SAVEDIR_FINAL '/DONE_kspostprocess_extract.mat'], 'tmp');
+save([SAVEDIR_BASE_DATE '/DONE_kspostprocess_extract.mat'], 'tmp');
 
 
 end
