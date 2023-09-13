@@ -3,7 +3,7 @@ function kspostprocess_manual_curate_merge(ANIMAL, DATE, SKIP_LOADING_DATSTRUCT)
 % run this to curate and autoamticlaly label data.
 
 if ~exist('SKIP_LOADING_DATSTRUCT', 'var'); SKIP_LOADING_DATSTRUCT = false; end
-assert(SKIP_LOADING_DATSTRUCT==false, 'too much coded now assuming this...');
+assert(SKIP_LOADING_DATSTRUCT==true, 'too much coded now assuming this...');
 
 %% MODIFY PARAMS
 
@@ -222,7 +222,7 @@ if ~SKIP_LOADING_DATSTRUCT
         s = LIST_NOTES{i};
         writematrix(s,notefile,'WriteMode','append');
     end
-
+    
     %% Merge everything, including the SU
     close all;
     DATSTRUCT_MERGED = datstruct_merge(DATSTRUCT, [], LIST_MERGE_SU, ...
@@ -280,10 +280,10 @@ paththis = [SAVEDIR_FINAL_CLEAN '/clickInfo-' figpath '.mat'];
 % - check if already done
 disp(['!! You are doing: ' figpath]);
 if exist(paththis, 'file')
-%     disp(1);
+    %     disp(1);
     DO = input(['Found saved clickInfo for ' figpath '. ** Type y to redo. anything else to skip'], 's');
 else
-%     disp(2);
+    %     disp(2);
     DO = input('Type n to skip...', 's');
     if ~strcmp(DO, 'n')
         DO = 'y';

@@ -77,6 +77,8 @@ for i=1:length(list_figs)
     close all;
 end
 
+clickInfo = evalin('base', 'clickInfo');
+
 % Return the clickInfo
 if ~isempty(DATSTRUCT)
     clickInfo = evalin('base', 'clickInfo');
