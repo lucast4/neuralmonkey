@@ -1,6 +1,6 @@
 clear all; close all; 
 ANIMAL = 'Pancho';
-DATE = 220918;
+DATE = 230622;
 
 %%
 SKIP_LOADING_DATSTRUCT = true;
@@ -8,5 +8,5 @@ SKIP_LOADING_DATSTRUCT = true;
 kspostprocess_manual_curate_merge(ANIMAL, DATE, SKIP_LOADING_DATSTRUCT);
 
 %% after curating, now load datstruct and finalize.
-clear all; close all
+%clear all; close all
 kspostprocess_finalize_after_manual(ANIMAL, DATE)

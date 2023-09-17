@@ -23,6 +23,8 @@ switch MACHINE
         SAVEDIR_FINAL_SERVER =  'y:/emmy_data01/kgupta/neural_data/postprocess'; % final, so all machines can access.
         %         LOADDIR_BASE = '/lemur2/kilosort_data'; % location of kilosorted data
         %         SAVEDIR_LOCAL = '/lemur2/kilosort_temp'; % fast ssd
+    case 'ltbonobo'
+        SAVEDIR_FINAL_SERVER = '/home/kgg/mnt/Freiwald/kgupta/neural_data/postprocess';
     otherwise
         disp(['MACHINE: ' MACHINE])
         disp([MACHINE(1)])
