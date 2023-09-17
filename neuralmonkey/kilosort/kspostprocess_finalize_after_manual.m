@@ -132,13 +132,25 @@ disp(' ');
 disp('You made these changes by clicking the GUI:');
 disp('(Index: label_old --> label_new)');
 writematrix('(Index: label_old --> label_new)',notefile,'WriteMode','append');
+
+struct_inds_changed = struct;
+
 for i=1:length(DATSTRUCT)
     if ~strcmp(DATSTRUCT(i).label_final, DATSTRUCT_MOD(i).label_final)
         s = [num2str(i) ': ' DATSTRUCT(i).label_final ' -> ' DATSTRUCT_MOD(i).label_final];
         disp(s);
         writematrix(s,notefile,'WriteMode','append');
+        
+        % Collect indices
+        f = [DATSTRUCT(i).label_final '_' DATSTRUCT_MOD(i).label_final];
+        if isfield(struct_inds_changed, f)
+            struct_inds_changed.(f) = [struct_inds_changed.(f), i];
+        else
+            struct_inds_changed.(f) = [i];
+        end
     end
 end
+
 
 %% If you previously saved SU_merge gui figs, then load them.
 load([SAVEDIR_FINAL_CLEAN '/LIST_MERGE_SU.mat'], 'LIST_MERGE_SU');
@@ -256,6 +268,25 @@ datstruct_plot_summary_premerge(DATSTRUCT, savethis);
 datstruct_plot_summary(DATSTRUCT_MERGED, SAVEDIR_FINAL_CLEAN);
 
 %% #############################
+%% Plot waveforms of all clusters with changed identities.
+
+disp('Plotting waveforms: the ones changed by hand ... ');
+
+flist = fieldnames(struct_inds_changed);
+for i=1:length(flist)
+    
+    f = flist{i};
+    savethis = [SAVEDIR_FINAL '/CLEAN_BEFORE_MERGE/curated_changes_waveforms/' f];
+    mkdir(savethis);
+    disp(savethis);
+    inds= struct_inds_changed.(f);
+    plot_decision_boundaries = false;
+    datstruct_this = DATSTRUCT(inds);
+    datstruct_plot_waveforms_all(datstruct_this, savethis, THRESH_SU_SNR, ...
+        THRESH_SU_ISI, THRESH_ARTIFACT_SHARP, THRESH_ARTIFACT_SHARP_LOW, ...
+        THRESH_ARTIFACT_ISI, MIN_SNR, plot_decision_boundaries);
+end
+
 %% DONE!
 
 % Save DatStruct
@@ -270,6 +301,9 @@ datstruct_save(DATSTRUCT, SAVEDIR_FINAL, 'CLEAN');
 savedir = [SAVEDIR_FINAL_CLEAN '/actually_merged_su_vs_mu'];
 mkdir(savedir);
 datstruct_plot_chan_su_vs_mu(DATSTRUCT_MERGED, savedir);
+
+
+
 
 %% Save final waveforms
 plot_decision_boundaries = false;

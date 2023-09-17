@@ -86,6 +86,14 @@ exclude_labels = {'noise', 'mua', 'su'};
 plot_waveforms_sorted_by(DATSTRUCT, values, [], ...
     path_noext, exclude_labels);
 
+if ~SKIP_NOISE
+    path_noext = [savedir '/noise-sorted_by_changlobal'];
+    values = [DATSTRUCT.chan_global];
+    exclude_labels = {'mua', 'su', 'artifact'};
+    plot_waveforms_sorted_by(DATSTRUCT, values, [], ...
+        path_noext, exclude_labels);
+end
+
 %% SANITY, all should be GOOD.
 
 % Plot all that are good labels, yet not labeled good.
