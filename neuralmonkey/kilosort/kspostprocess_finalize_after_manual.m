@@ -269,6 +269,7 @@ datstruct_plot_summary(DATSTRUCT_MERGED, SAVEDIR_FINAL_CLEAN);
 %% Plot waveforms of all clusters with changed identities.
 
 disp('Plotting waveforms: the ones changed by hand ... ');
+SKIP_NOISE = false;
 
 flist = fieldnames(struct_inds_changed);
 for i=1:length(flist)
@@ -282,7 +283,8 @@ for i=1:length(flist)
     datstruct_this = DATSTRUCT(inds);
     datstruct_plot_waveforms_all(datstruct_this, savethis, THRESH_SU_SNR, ...
         THRESH_SU_ISI, THRESH_ARTIFACT_SHARP, THRESH_ARTIFACT_SHARP_LOW, ...
-        THRESH_ARTIFACT_ISI, MIN_SNR, plot_decision_boundaries);
+        THRESH_ARTIFACT_ISI, MIN_SNR, plot_decision_boundaries, ...
+        SKIP_NOISE);
 end
 
 %% DONE!

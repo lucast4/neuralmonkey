@@ -1,9 +1,9 @@
 function datstruct_plot_waveforms_all(DATSTRUCT, SAVEDIR_FINAL, THRESH_SU_SNR, ...
     THRESH_SU_ISI, THRESH_ARTIFACT_SHARP, THRESH_ARTIFACT_SHARP_LOW, ...
-    THRESH_ARTIFACT_ISI, MIN_SNR, plot_decision_boundaries)
+    THRESH_ARTIFACT_ISI, MIN_SNR, plot_decision_boundaries, SKIP_NOISE)
 
 if ~exist('plot_decision_boundaries', 'var'); plot_decision_boundaries = true; end
-
+if ~exist('SKIP_NOISE', 'var'); SKIP_NOISE = true; end
 % Make final plots of all waveforms
 
 %% Plot waveforms at decision boundaries
