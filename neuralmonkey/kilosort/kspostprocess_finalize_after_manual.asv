@@ -266,25 +266,6 @@ datstruct_plot_summary_premerge(DATSTRUCT, savethis);
 datstruct_plot_summary(DATSTRUCT_MERGED, SAVEDIR_FINAL_CLEAN);
 
 %% #############################
-%% Plot waveforms of all clusters with changed identities.
-
-disp('Plotting waveforms: the ones changed by hand ... ');
-
-flist = fieldnames(struct_inds_changed);
-for i=1:length(flist)
-    
-    f = flist{i};
-    savethis = [SAVEDIR_FINAL '/CLEAN_BEFORE_MERGE/curated_changes_waveforms/' f];
-    mkdir(savethis);
-    disp(savethis);
-    inds= struct_inds_changed.(f);
-    plot_decision_boundaries = false;
-    datstruct_this = DATSTRUCT(inds);
-    datstruct_plot_waveforms_all(datstruct_this, savethis, THRESH_SU_SNR, ...
-        THRESH_SU_ISI, THRESH_ARTIFACT_SHARP, THRESH_ARTIFACT_SHARP_LOW, ...
-        THRESH_ARTIFACT_ISI, MIN_SNR, plot_decision_boundaries);
-end
-
 %% DONE!
 
 % Save DatStruct
@@ -301,6 +282,17 @@ mkdir(savedir);
 datstruct_plot_chan_su_vs_mu(DATSTRUCT_MERGED, savedir);
 
 
+%% Plot waveforms of all clusters with changed identities.
+
+flist = fieldnames(struct_inds_changed);
+for i=1:length(flist)
+    f = flist{i};
+    inds= struct_inds_changed.(f);
+    plot_decision_boundaries = false;
+    datstruct_plot_waveforms_all(DATSTRUCT_MERGED, SAVEDIR_FINAL_CLEAN, THRESH_SU_SNR, ...
+        THRESH_SU_ISI, THRESH_ARTIFACT_SHARP, THRESH_ARTIFACT_SHARP_LOW, ...
+        THRESH_ARTIFACT_ISI, MIN_SNR, plot_decision_boundaries);
+end
 
 
 %% Save final waveforms

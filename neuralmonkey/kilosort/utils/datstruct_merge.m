@@ -167,7 +167,11 @@ if ~isempty(LIST_MERGE_SU)
     % 3) First remove, then append
     disp('Rwemovingn these inds from DATSTRUCT_FINAL:')
     disp(list_inds_remove_from_DATSTRUCT_FINAL);
-    DATSTRUCT_FINAL(inds_remove) = [];
+%     disp(length(DATSTRUCT_FINAL))
+%     disp(DATSTRUCT_FINAL(65));
+%     disp({DATSTRUCT_FINAL(inds_remove).label_final});
+    DATSTRUCT_FINAL(list_inds_remove_from_DATSTRUCT_FINAL) = [];
+%     disp(length(DATSTRUCT_FINAL))   
     
     disp('Appending this many ds to DATSTRUCT_FINAL:')
     disp(length(list_ds_append));
