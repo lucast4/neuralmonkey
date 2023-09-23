@@ -43,7 +43,8 @@ inds_good_snr = list_snr>THRESH_SU_SNR;
 inds_su_1 = inds_good_isi & inds_good_snr;
 
 % 2) SU (lower snr, but more stringent isi)
-inds_good_isi = list_isi<0.01 & list_refract<0.02;
+% inds_good_isi = list_isi<0.01 & list_refract<0.02;
+inds_good_isi = list_isi<0.01 & list_refract<0.1; % 9/16/23 - more lenient
 inds_good_snr = list_snr>THRESH_SU_SNR_LOWER;
 inds_su_2 = inds_good_isi & inds_good_snr;
 
@@ -57,10 +58,9 @@ inds_noise = list_snr<=MIN_SNR;
 % 2.1) Noise (artifact)
 inds_artifact1 = list_sharpiness>THRESH_ARTIFACT_SHARP;
 inds_artifact2 = list_sharpiness>THRESH_ARTIFACT_SHARP_LOW & list_isi>THRESH_ARTIFACT_ISI;
-inds_artifact2 = list_refract > 20 | isinf(list_refract);
-list_sharpiness>THRESH_ARTIFACT_SHARP_LOW & list_isi>THRESH_ARTIFACT_ISI;
-
-inds_artifact = inds_artifact1 | inds_artifact2;
+inds_artifact3 = list_refract > 20 | isinf(list_refract);
+% list_sharpiness>THRESH_ARTIFACT_SHARP_LOW & list_isi>THRESH_ARTIFACT_ISI;
+inds_artifact = inds_artifact1 | inds_artifact2 | inds_artifact3;
 
 % 3) mu
 inds_mu = ~inds_su & ~inds_noise;

@@ -23,7 +23,9 @@ function [indpeak, wind_spike, npre, npost, THRESH_SU_SNR, THRESH_SU_ISI, ...
         THRESH_SU_SNR = 8;
         THRESH_SU_SNR_LOWER = 7;
         THRESH_SU_SNR_HIGHEST = 10;
-        MIN_SNR = 4.2;
+%         MIN_SNR = 4.1;
+        % MIN_SNR = 4.2; % 9/17/23 - updated, to get more MU.
+        MIN_SNR = 4.0; % 9/22/23 - updated, I think I did accidentally on 9/17
     end
 
     THRESH_SU_ISI = 0.02;
