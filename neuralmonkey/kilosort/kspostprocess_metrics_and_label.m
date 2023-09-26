@@ -21,7 +21,8 @@ switch MACHINE
         SAVEDIR_LOCAL = '/gorilla4/neural_preprocess_kilosort'; % fast ssd
     case 'lemur'
         SAVEDIR_FINAL_SERVER =  '/mnt/Freiwald/kgupta/neural_data/postprocess'; % final, so all machines can access.
-        LOADDIR_BASE = '/lemur2/kilosort_data'; % location of kilosorted data
+        % also change in kspostprocess_extract
+        LOADDIR_BASE = '/home/kgg/Desktop/kilosort_data'; % location of kilosorteedd data
         SAVEDIR_LOCAL = '/lemur2/kilosort_temp'; % fast ssd
     otherwise
         disp(['MACHINE: ' MACHINE])
