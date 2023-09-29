@@ -2258,7 +2258,6 @@ class Snippets(object):
         import numpy as np
         from pythonlib.tools.pandastools import grouping_print_n_samples
 
-        # var = "chunk_rank"
         # Want to use entier data for this site? or do separately for each level of a given
         # conjunction variable.
         if vars_conjuction is None:
@@ -2587,158 +2586,6 @@ class Snippets(object):
             #  ('03_first_raise_-100_to_500', '03_first_raise')]#
 
         return DF_VAR, DF_FR, DF_FR_LEVELS, list_eventwindow_event
-
-    # def modulationgood_compute_wrapper(self, var, vars_conjuction=None, list_site=None, 
-    #         score_ver="r2smfr_minshuff", get_z_score=False, list_events=None):
-    #     """ Good, flexible helper to compute modulation of all kinds and all ways of slicing 
-    #     the dataset. 
-    #     PARAMS;
-    #     - n_min, min n trials required for each level of var. if faisl, then skips this datset 
-    #     entirely (i.e., the level of vars_conjuction, or this site)
-    #     - lenient_allow_data_if_has_n_levels, eitehr None (ignore) or int, how many
-    #     levels of var you need to get >n_min datapts, in order to keep this level of vars_conj./
-    #     See within for detials.
-    #     """
-    #     from pythonlib.tools.pandastools import append_col_with_grp_index
-    #     import numpy as np
-
-    #     # var = "chunk_rank"
-
-    #     # Want to use entier data for this site? or do separately for each level of a given
-    #     # conjunction variable.
-    #     if vars_conjuction is None:
-    #         # then place a dummy variable so that entire thing is one level
-    #         vars_conjuction = ["dummy_var"]
-    #         assert "dummy_var" not in self.DfScalar.columns
-    #         self.DfScalar["dummy_var"] = "IGNORE"
-    #         # vars_conjuction = ['gridloc', 'chunk_within_rank'] # list of str, vars to take conjunction over
-
-    #     if list_site is None:
-    #         list_site = self.Sites
-
-    #     if list_events is not None:
-    #         list_events = self.Params["list_events_uniqnames"]
-
-    #     sn, _ = self._session_extract_sn_and_trial()
-
-    #     # Collect data for each site
-    #     OUT = []
-    #     for site in list_site:
-    #         if site%20==0:
-    #             print("site :", site)
-    #         region = sn.sitegetter_map_site_to_region(site)
-    #         # Clean up dataset
-    #         dfthis, _, levels_var = self.dataextract_as_df_conjunction_vars(var, 
-    #             vars_conjuction, site)
-            
-    #         # print(dfthis)
-    #         # print(levels_var)
-    #         # print(dfthis["vars_others"].unique().tolist())
-    #         # assert False            
-    #         if len(dfthis)==0:
-    #             # then no level of vars_conjuction had enough data across all levels of var.
-    #             continue
-
-    #         # for each level of vars_conj, compute modulation
-    #         levels_others = dfthis["vars_others"].unique().tolist()
-
-    #         for lev in levels_others:
-                
-    #             assert len(lev)==len(vars_conjuction)
-                
-    #             # get data
-    #             dfthisthis = dfthis[dfthis["vars_others"]==lev] # specific df (lev_other)
-    #             assert len(dfthisthis)>0
-
-    #             if score_ver in ["fr_chan_level"]:
-    #                 assert False, "in progress... just need to modify MS to take in var and levels."
-    #                 # Then is a single score for each level of var
-    #                 MS = self._dataextract_as_metrics_scalar(dfthisthis, var, event=event)
-    #                 tmp = MS.calc_fr_across_levels()
-    #                 print(tmp)
-    #                 assert False
-
-    #                 # frates = _calc_fr_across_levels(dfthisthis, var, levels_var)["all_data"]
-                    
-    #                 for lv, fr in zip(levels_var, frates):
-    #                     OUT.append({
-    #                         "chan":site,
-    #                         "var":var,
-    #                         "lev_in_var":lv,                            
-    #                         "var_others":tuple(vars_conjuction),
-    #                         "lev_in_var_others":lev,
-    #                         "event":ev,
-    #                         "val_kind":"modulation_subgroups",
-    #                         "val_method":score_ver,
-    #                         "val":score,
-    #                         "bregion":region
-    #                     })
-    #                     # also save columns for each var in vars_others
-    #                     for l, v in zip(lev, vars_conjuction):
-    #                         OUT[-1][v] = l
-    #             else:
-    #                 # if score_ver in ["r2smfr_zscore", "r2smfr_minshuff", "fracmod_smfr_minshuff"]:
-    #                 # Then is a single score per (chan, event, var)
-    #                 # compute modulation
-    #                 # - one value for each var.
-    #                 MS = self._dataextract_as_metrics_scalar(dfthisthis, var) 
-
-    #                 # print(1, len(dfthisthis))
-    #                 # print(2, len(MS.Data))
-    #                 # print(3, var)
-    #                 # print(MS.Data[var].unique)
-    #                 # assert False
-    #                 try:
-    #                     eventscores = MS.modulationgood_wrapper_(var, version=score_ver, 
-    #                         return_as_score_zscore_tuple=get_z_score)
-    #                 except Exception as err:
-    #                     print("HERE")
-    #                     print(MS.Data)
-    #                     print("HERE")
-    #                     print(site, lev)
-    #                     print("HERE")
-    #                     print(len(MS.Data))
-    #                     print("HERE")
-    #                     print(MS.Data[var])
-    #                     raise err
-                    
-    #                 for ev in list_events:
-    #                     score = eventscores[ev]
-
-    #                     if get_z_score:
-    #                         score, zscore = score
-    #                     else:
-    #                         zscore = np.nan
-
-    #                     # save
-    #                     OUT.append({
-    #                         "chan":site,
-    #                         "var":var,
-    #                         "var_others":tuple(vars_conjuction),
-    #                         "lev_in_var_others":lev,
-    #                         "event":ev,
-    #                         "val_kind":"modulation_subgroups",
-    #                         "val_method":score_ver,
-    #                         "val":score,
-    #                         "val_zscore":zscore,
-    #                         "bregion":region,
-    #                         "n_datapts":len(MS.Data)
-    #                     })
-
-    #                     # also save columns for each var in vars_others
-    #                     for l, v in zip(lev, vars_conjuction):
-    #                         OUT[-1][v] = l
-
-    #             # else:
-    #             #     print(score_ver)
-    #             #     assert False
-
-    #     df_var = pd.DataFrame(OUT)
-
-    #     if "dummy_var" in self.DfScalar:
-    #         del self.DfScalar["dummy_var"]
-
-    #     return df_var
 
     def modulationgood_aggregate_df(self, df_var, aggmethod="weighted_avg"):
         """ Wrapper for methods for aggregating data, using so there's single datapt
@@ -6417,6 +6264,9 @@ def datasetstrokes_extract(D, strokes_only_keep_single=False, tasks_only_keep_th
 
     """
 
+    if list_features is None:
+        list_features = []
+        
     # 1. Extract all strokes, as bag of strokes.
     from pythonlib.dataset.dataset_strokes import DatStrokes
     DS = DatStrokes(D)
