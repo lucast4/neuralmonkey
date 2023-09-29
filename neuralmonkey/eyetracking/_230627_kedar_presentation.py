@@ -35,6 +35,8 @@ def plotTrialTaskImage(sn, trial, ax=None):
 def plotTrialDrawnStrokes(sn, trial, ax=None):
     # get list of strokes and times
     strk = sn.strokes_extract(trial, peanuts_only=True) # NOTE: peanuts_only=True pulls out only drawing strokes (e.g. not fixation etc)
+        
+    print(strk)
     
     # if no specified ax, then default to overlaying onto task image
     if ax==None:
@@ -470,7 +472,7 @@ def plotSkeletonForTrial(sn, trial, start_event, end_event, ax=None, keep_fixati
     from pythonlib.tools.plottools import makeColors
     
     # get fixations
-    fixations = getFixationsMatchedToTaskStrokes(sn, trial, start_event, end_event, keep_fixations_off_shape)
+    fixations = getFixationsMatchedToTaskStrokes(sn, trial, start_event, end_event, keep_fixations_off_shape) 
     # get fixation centroids
     f_centroids = np.array([f.centroid for f in fixations])
     x = [f_centroids[i][0] for i in range(len(f_centroids))]
@@ -506,11 +508,15 @@ def plotSkeletonsForTrialList(sn, trials, start_event, end_event, keep_fixations
         assert False
 
     if subplot==True:
-        fig, axes = plt.subplots(n_trials, 1, figsize=(10, 3*n_trials))
+        # fig, axes = plt.subplots(n_trials, 1, figsize=(10, 3*n_trials))
+        ncols = 5
+        nrows = int(np.ceil(n_trials/ncols))
+        fig, axes = plt.subplots(nrows, ncols, figsize=(3*ncols, 3*nrows))
 
         for i in range(n_trials):
             t = trials[i]
-            plotSkeletonForTrial(sn, t, start_event, end_event, axes[i], keep_fixations_off_shape)
+            ax = axes.flatten()[i]
+            plotSkeletonForTrial(sn, t, start_event, end_event, ax, keep_fixations_off_shape)
 
         return fig, axes
     else:
@@ -569,7 +575,7 @@ def makeSkeletonPNGS(sn):
 
 # return a dict with {loc: #fixations_on_loc},...for all locs
 # also returns FIRST fixation
-def getNumFixationsAndFirstOnEachLocForTrial(sn, trial, start_event, end_event, keep_fixations_off_shape=False):
+def getNumFixationsAndFirstOnEachLocForTrial(sn, D, DS, trial, start_event, end_event, keep_fixations_off_shape=False):
     # get all fixations
     fixations = getFixationsMatchedToTaskStrokes(sn, trial, start_event, end_event, keep_fixations_off_shape)
     # get all locations
@@ -597,5 +603,13 @@ def getBehStrokeLocSequenceForTrial(sn, trial):
     return sequence
 
 
+def locations_fixations_extract(sn, trial, start_event, end_event):
+    """
+    REturns list of 2-tuples, gridlocations, in temporal order
+    of fixations, exlcuding large excursions from strokes
+    """
+    list_fixations = getFixationsMatchedToTaskStrokes(sn, trial, start_event, end_event)
+    list_gridloc = [F.task_stroke.token["gridloc"] for F in list_fixations]
+    return list_gridloc
 
 
