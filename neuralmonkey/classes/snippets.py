@@ -224,7 +224,6 @@ class Snippets(object):
         NOTE: see extraction_helper() for notes on params.
         """
 
-        assert trials_prune_just_those_including_events==True, "this on by defualt. if turn off, then change line below in SN.get_trials_list"
 
         self.DfScalar = None
         self.DfScalarBeforeRemoveSuperv = None
@@ -319,6 +318,7 @@ class Snippets(object):
             # trials = SN.get_trials_list(True, True, only_if_in_dataset=True, 
             #     dataset_input=dataset_pruned_for_trial_analysis,
             #     events_that_must_include = list_events)
+            assert trials_prune_just_those_including_events==True, "this on by defualt. if turn off, then change line below in SN.get_trials_list"
             events_that_must_include = ["fix_touch", "on_strokeidx_0"]
             trials = SN.get_trials_list(True, True, only_if_in_dataset=True, 
                 dataset_input=dataset_pruned_for_trial_analysis,
@@ -351,6 +351,58 @@ class Snippets(object):
             else:
                 ListPA, list_events_uniqnames = self.extract_snippets_trials(trials, sites_keep, list_events, list_pre_dur, list_post_dur,
                     list_features_extraction)
+
+        elif which_level == "flex":
+            # Flexible, based on event markers (abstract, or timestamp, can work).
+
+            # Sanity checks
+            assert len(list_events)>0, "must have events to align to"
+            assert len(list_features_extraction)==0, "better to label each datapt with faeture AFTER extraction."
+            assert len(list_features_get_conjunction)==0, "better to label each datapt with faeture AFTER extraction."
+            assert strokes_only_keep_single==False, "leave this False, it is not relevant for flex"
+            assert tasks_only_keep_these is None, "not yet coded"
+            assert prune_feature_levels_min_n_trials is None, "not yet coded"
+            assert trials_prune_just_those_including_events ==False, "not yet coded"
+            # assert dataset_pruned_for_trial_analysis is None, "not yet coded"
+            assert NEW_VERSION==True
+
+            assert len(list_pre_dur)==1, "not yet coded for diff pre_due for each event"
+            assert len(list_post_dur)==1
+            pre_dur = list_pre_dur[0]
+            post_dur = list_post_dur[0]
+
+            # # Each datapt matches a single stroke
+            # DS = datasetstrokes_extract(dataset_pruned_for_trial_analysis, 
+            #     strokes_only_keep_single, tasks_only_keep_these, 
+            #     None,  
+            #     list_features_extraction)
+            if trials_prune_just_those_including_events:
+                events_that_must_include =  list_events
+            else:
+                events_that_must_include = None
+            trials = SN.get_trials_list(True, True, only_if_in_dataset=True, 
+                dataset_input=dataset_pruned_for_trial_analysis,
+                events_that_must_include = events_that_must_include)
+            print("\n == extracting these trials: ", trials)
+
+            # print("Extracting, SN.snippets_extract_bystroke...")
+            # for var in list_features_extraction:
+            #     if (var not in SN.Datasetbeh.Dat.columns) and (var not in DS.Dat.columns):
+            #         print(var)
+            #         print(SN.Datasetbeh.Dat.columns)
+            #         print(DS.Dat.columns)
+            #         assert False, "get this feature"
+
+            DfScalar = SN.snippets_extract_by_event_flexible(sites_keep, trials,
+                list_events, pre_dur, post_dur, 
+                features_to_get_extra=None, fr_which_version="sqrt", DEBUG=False)
+            ListPA = None
+            DS = None
+
+            # Fill in dummy variables
+            # list_events = ["stroke"]
+            list_events_uniqnames = SN.events_rename_with_ordered_index(list_events)
+            # e.g, ['00_go', '01_doneb', '02_reward_all']
         else:
             assert False
 
@@ -494,8 +546,8 @@ class Snippets(object):
         assert len(ListPA)==1
         return ListPA
 
-    def extract_snippets_trials(self, trials, sites_keep, list_events, list_pre_dur, list_post_dur,
-            list_features_extraction):
+    def extract_snippets_trials(self, trials, sites_keep, list_events, 
+            list_pre_dur, list_post_dur, list_features_extraction):
         """
         Each snippet is a single trial x event. 
         This only keeps trials that have each event in the list of events

@@ -385,6 +385,7 @@ class Session(object):
 
         # Debug mode?
         self._DEBUG_PRUNE_SITES = False
+        self._DEBUG_PRUNE_TRIALS = False
 
         # INitialize empty data
         self.EventsTimeUsingPhd = {}
@@ -5031,6 +5032,28 @@ class Session(object):
 
         return list_events
 
+    def events_rename_with_ordered_index(self, list_events):
+        """
+        ev --> 01_ev... returned in input order
+        """
+
+        list_events_uniqnames = []
+        for i, event in enumerate(list_events):
+            
+            # give event a unique name
+            # Version 2, with indices
+    #         event_unique_name = f"{i}_{event[:3]}_{event[-1]}"
+            if i<10:
+                idx_str = f"0{i}"
+            else:
+                idx_str = f"{i}"
+            event_unique_name = f"{idx_str}_{event}"
+            list_events_uniqnames.append(event_unique_name)
+
+        return list_events_uniqnames
+
+
+
     def eventsdataframe_sanity_check(self, DEBUG=False):
         """
         Sanityc check of timing of extracted events (accurate timing). Extract
@@ -5590,6 +5613,67 @@ class Session(object):
 
 
     ###################### SMOOTHED FR
+    def smoothedfr_extract_timewindow_bytimes(self, trials, times, 
+        sites, pre_dur=-0.1, post_dur=0.1,
+        fail_if_times_outside_existing=True):
+        """ [GOOD, FLEXIBLE] Extract smoothed fr dataset for these trials and times.
+        PARAMS:
+        - trials, list of trials in sn.
+        - times, list of times(in sec), one for each trial in trials. will extract aligned
+        to these times.
+        RETURNS:
+        - PopAnal, where PA.X[:, i, :] is the dim of len(trials):
+        """
+        from quantities import s
+        from .population import PopAnal
+        from neuralmonkey.classes.population import concatenate_popanals
+        
+        assert isinstance(pre_dur, (float, int))
+        assert isinstance(pre_dur, (float, int))
+        assert len(trials)==len(times)
+
+        list_xslices = []
+        # 1) extract each trials' PA. Use the slicing tool in PA to extract snippet
+        for tr, time_align in zip(trials, times):
+
+            # extract popanal
+            pa, sampling_period = self.popanal_generate_save_trial(tr, return_sampling_period=True)   
+
+            # slice to desired channels
+            pa = pa._slice_by_chan(sites) 
+            
+            # Extract snip
+            t1 = time_align + pre_dur
+            t2 = time_align + post_dur
+            pa = pa._slice_by_time_window(t1, t2, return_as_popanal=True,
+                fail_if_times_outside_existing=fail_if_times_outside_existing,
+                subtract_this_from_times=time_align)
+            
+            # save this slice
+            list_xslices.append(pa)
+
+        # 2) Concatenate all PA into a single PA
+        if not fail_if_times_outside_existing:
+            assert False, "fix this!! if pre_dur extends before first time, then this is incorrect. Should do what?"
+        
+        # Replace all times with this time relative to alignement.
+        for pa in list_xslices:
+            # sampling period, to acocunt for random variation in alignment across snips.
+            TIMES = (pa.Times - pa.Times[0]) + pre_dur + sampling_period/2 # times all as [-predur, ..., postdur]
+            pa.Times = TIMES
+
+        # then concat
+        PAall = concatenate_popanals(list_xslices, "trials", 
+            assert_otherdims_have_same_values=True, 
+            assert_otherdims_restrict_to_these=("chans", "times"),
+            all_pa_inherit_times_of_pa_at_this_index=0)
+
+        # Sanity checks
+        assert PAall.Chans ==sites
+        assert PAall.X.shape[1] == len(trials)
+
+        return PAall
+
     def smoothedfr_extract_timewindow_bystroke(self, trials, strokeids, 
         sites, pre_dur=-0.1, post_dur=0.1,
         fail_if_times_outside_existing=True):
@@ -5951,6 +6035,13 @@ class Session(object):
             if nrand < len(trials):
                 import random
                 trials = sorted(random.sample(trials, nrand))
+
+        if self._DEBUG_PRUNE_TRIALS:
+            # Return 20
+            n = 20
+            from pythonlib.tools.listtools import random_inds_uniformly_distributed
+            trials = random_inds_uniformly_distributed(trials, 20, return_original_values=True)
+            # trials = trials[:10]
 
         return trials
 
@@ -7767,6 +7858,96 @@ class Session(object):
 
 
     ##################### SNIPPETS
+    def snippets_extract_by_event_flexible(self, sites, trials,
+        list_events, 
+        pre_dur= -0.4, post_dur= 0.4, features_to_get_extra=None, 
+        fr_which_version="sqrt", DEBUG=False):
+        """ Helper to extract snippets in flexible way, saligend to each event.
+        PARAMS:
+        - sites, list of ints to extract.
+        - list_events, list of string code names of events. if mult per trials, gets all
+        of them
+        - features_to_get_extra, list of str, features to extract from DS. fails if these dont
+        already exist in DS.
+        - SANITY_CHECK, if True, checks alignment across diff columns of df during extraction, no mistakes.
+        RETURNS:
+        - dataframe, each row a (chan, event).
+        """
+
+        import pandas as pd
+        from pythonlib.tools.pandastools import applyFunctionToAllRows
+
+        OUT = []
+        trials_all = []
+        times_all = []
+        
+        if DEBUG:
+            print("  trial - event - event_time")
+
+        for trial_neural in trials:
+            for event in list_events:
+                list_times = self.events_get_time_helper(event, trial_neural)
+                for event_time in list_times:
+
+                    if DEBUG:
+                        print(trial_neural, ' - ', event, ' - ' , event_time)
+
+                    trials_all.append(trial_neural)
+                    times_all.append(event_time)
+
+                    for s in sites:
+
+                        # get spiketimes
+                        spike_times = self._snippets_extract_single_snip(s, trial_neural, 
+                            event_time, pre_dur, post_dur)
+
+                        # save it
+                        tc = self.datasetbeh_trial_to_trialcode(trial_neural)
+                        OUT.append({
+                            "trialcode":tc,
+                            "chan":s,
+                            "event_aligned":event,
+                            "spike_times":spike_times,
+                            "trial_neural":trial_neural,
+                            "event_time":event_time
+                        })
+
+                
+        # Get smoothed fr. this is MUCH faster than computing above.
+        print("Extracting smoothed FR for all data...")
+        fail_if_times_outside_existing = True
+        pa = self.smoothedfr_extract_timewindow_bytimes(trials_all, times_all, sites, 
+            pre_dur=pre_dur, post_dur=post_dur, 
+            fail_if_times_outside_existing=fail_if_times_outside_existing) 
+
+        if DEBUG:
+            print(pa.X.shape) # (chans, trials, tbins)
+            print(pa.Trials)
+            print(pa.Chans) 
+            print(len(trials_all))
+            assert False
+
+        # deal out time to each site and trial.
+        print("Inserting smoothed FR into dataset...")
+        ct = 0
+        for i in range(len(trials_all)):
+            for j in range(len(sites)):
+                fr_sm = pa.X[j, i, :]
+                fr_sm_times = pa.Times
+                OUT[ct]["fr_sm"] = fr_sm[None, :]
+                OUT[ct]["fr_sm_times"] = fr_sm_times[None, :]
+
+                # sanity check
+                assert OUT[ct]["chan"] == sites[j]
+                assert OUT[ct]["trial_neural"] == trials_all[i]
+                assert OUT[ct]["event_time"] == times_all[i]
+
+                ct+=1
+        # ----
+        df = pd.DataFrame(OUT)
+
+        return df
+
     def snippets_extract_bystroke(self, sites, DS, pre_dur= -0.4, post_dur= 0.4,
         features_to_get_extra=None, fr_which_version="sqrt", SANITY_CHECK=False):
         """ Helper to extract snippets in flexible way, saligend to each stroke onset.
