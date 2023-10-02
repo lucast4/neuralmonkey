@@ -24,6 +24,12 @@ switch MACHINE
         % also change in kspostprocess_extract
         LOADDIR_BASE = '/home/kgg/Desktop/kilosort_data'; % location of kilosorteedd data
         SAVEDIR_LOCAL = '/lemur2/kilosort_temp'; % fast ssd
+        
+        HACK = false;
+        if HACK
+            LOADDIR_BASE = '/mnt/Freiwald/kgupta/neural_data';
+        end
+        
     otherwise
         disp(['MACHINE: ' MACHINE])
         disp([MACHINE(1)])
