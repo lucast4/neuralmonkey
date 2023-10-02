@@ -385,6 +385,7 @@ class Session(object):
 
         # Debug mode?
         self._DEBUG_PRUNE_SITES = False
+        self._DEBUG_PRUNE_TRIALS = False
 
         # INitialize empty data
         self.EventsTimeUsingPhd = {}
@@ -567,9 +568,11 @@ class Session(object):
         might have older version of data
         """
         if self.Datasetbeh is not None:
+            self.Datasetbeh._cleanup_reloading_saved_state()
+
             # Important, to reset all tokens, some which mgith be incompleted, using
             # old code, e.g., gridloc_local
-            self.Datasetbeh.behclass_preprocess_wrapper()
+            self.Datasetbeh.behclass_preprocess_wrapper(skip_if_exists=False)
 
             # sanity check that every neuiral trial has a dataset trial
             trials = self.get_trials_list(True)
@@ -1196,9 +1199,9 @@ class Session(object):
     def _load_spike_times(self, rs, chan, ver="spikes_tdt_quick", 
             return_none_if_fail=True, actually_return_none_if_fail=False):
         """ Load specific site inforamtion
-        """
-        """ Return spike times, pre-extracted elsewhere (matlab)
-        in secs
+        Return spike times, pre-extracted elsewhere (matlab)
+        RETURNS:
+        - spike times, array (nspikes, ) in sec.
         """
         import scipy.io as sio
         import scipy
@@ -1233,6 +1236,7 @@ class Session(object):
             mat_dict = sio.loadmat(fn)
             return mat_dict["spiketimes"]
 
+    
 
     def _savelocalcached_extract(self):
         """
@@ -1758,8 +1762,6 @@ class Session(object):
         times, vals = convert_discrete_events_to_time_series(t0, tend, 
             ontimes, offtimes, fs, ploton=ploton, clamp_onset_to_this=clamp_onset_to_this)
 
-
-
         return times, vals
 
 
@@ -1769,6 +1771,8 @@ class Session(object):
         - which, string name, will be mapped to the specific key in data
         - crosstime, whether to use "onset", "offset", or "mean" times
         - trial0, int, optional trial to slice data (will recompute the 0 rel trial onset).
+        RETURNS
+        - times, vals or None, None if doesnt exist, and is allowed to pass.
         """
         
         keynames = {
@@ -1781,14 +1785,22 @@ class Session(object):
             "behcode":"SMa1" if "SMa1" in self.DatTank["epocs"].keys() else "Bode",
             "strobe":"S_ML",
         }
+
         key = keynames[which]
+        
+        keys_which_might_be_missing = ["Tff_"]
         if key not in self.DatTank["epocs"].keys():
-            print("********* failing extract_data_tank_epocs")
-            print(self.DatTank["epocs"].keys())
-            print(key)
-            print(which)
-            print(trial0)
-            assert False
+            if key in keys_which_might_be_missing:
+                # If is expected to be missing sometimes (bug in Synapse,,,)
+                # This means there was no data (e.g., loose BNC).
+                return None, None   
+            else:
+                print("********* failing extract_data_tank_epocs")
+                print(self.DatTank["epocs"].keys())
+                print(key)
+                print(which)
+                print(trial0)
+                assert False
         dat = self.DatTank["epocs"][key]
         
         # Force using onset or offset
@@ -3338,7 +3350,7 @@ class Session(object):
         - exclude_times_before_trial_onset, bool, if True, keeps only times >0, i.e,
         ignroes the 1sec (default) padding before onset of each trial.
         RETURNS:
-        - np array of times
+        - np array of times. empty array if doesnt exist.
         """    
 
         if isinstance(code, str):
@@ -3347,10 +3359,12 @@ class Session(object):
             codenum = code
 
         timesall, codes = self.extract_data_tank_epocs("behcode") 
+        if timesall is None:
+            return np.array([])
+
         inds = codes==codenum
         times = timesall[inds]
 
-        
         if trial0 is not None:
             times = self.extract_windowed_data_bytrial(times, trial0)[0] 
         
@@ -4434,40 +4448,52 @@ class Session(object):
 
                 elif event in ["fixtch", "fix_touch"]:
                     behcode = "fixtch" 
+
                     try:
-                        # onset of touch of fixation cue, based on detection of finger on screen.
-                        # NOTE: if fails, likely t_pre should be even larger (since could touch but fail to trigger the eventcode for some time)
-                        # out = self.behcode_get_stream_crossings_in_window(trial, 16, t_pre=0.15, t_post = 0.25, whichstream="touch_in_fixsquare_binary", 
-                        #                                           ploton=plot_beh_code_stream, cross_dir_to_take="up", assert_single_crossing_per_behcode_instance=True,
-                        #                                             assert_single_crossing_this_trial = True,
-                        #                                              assert_expected_direction_first_crossing = "up")              
-                        out = self.behcode_get_stream_crossings_in_window(trial, behcode, t_pre=0.15, t_post = 0.25, whichstream="touch_in_fixsquare_binary", 
-                                                                  ploton=plot_beh_code_stream, cross_dir_to_take="up", assert_single_crossing_per_behcode_instance=True,
-                                                                    assert_single_crossing_this_trial = True,
-                                                                      assert_expected_direction_first_crossing = "up",
-                                                                      refrac_period_between_events=0.05)              
-                    except AssertionError as err:
-                        # Try with larger window
-                        assert len(self._behcode_extract_times(behcode, trial, shorthand=True))<2, "then doent want to expand window"
+                        try:
+                            # onset of touch of fixation cue, based on detection of finger on screen.
+                            # NOTE: if fails, likely t_pre should be even larger (since could touch but fail to trigger the eventcode for some time)
+                            # out = self.behcode_get_stream_crossings_in_window(trial, 16, t_pre=0.15, t_post = 0.25, whichstream="touch_in_fixsquare_binary", 
+                            #                                           ploton=plot_beh_code_stream, cross_dir_to_take="up", assert_single_crossing_per_behcode_instance=True,
+                            #                                             assert_single_crossing_this_trial = True,
+                            #                                              assert_expected_direction_first_crossing = "up")              
+                            out = self.behcode_get_stream_crossings_in_window(trial, behcode, t_pre=0.15, t_post = 0.25, whichstream="touch_in_fixsquare_binary", 
+                                                                      ploton=plot_beh_code_stream, cross_dir_to_take="up", assert_single_crossing_per_behcode_instance=True,
+                                                                        assert_single_crossing_this_trial = True,
+                                                                          assert_expected_direction_first_crossing = "up",
+                                                                          refrac_period_between_events=0.05)              
+                        except AssertionError as err:
+                            # Try with larger window
+                            assert len(self._behcode_extract_times(behcode, trial, shorthand=True))<2, "then doent want to expand window"
 
-                        out = self.behcode_get_stream_crossings_in_window(trial, behcode, t_pre=0.5, t_post = 1, whichstream="touch_in_fixsquare_binary", 
-                                                                  ploton=plot_beh_code_stream, cross_dir_to_take="up", assert_single_crossing_per_behcode_instance=True,
-                                                                    assert_single_crossing_this_trial = True,
-                                                                     assert_expected_direction_first_crossing = "up",
-                                                                     refrac_period_between_events=0.05)              
+                            out = self.behcode_get_stream_crossings_in_window(trial, behcode, t_pre=0.5, t_post = 1, whichstream="touch_in_fixsquare_binary", 
+                                                                      ploton=plot_beh_code_stream, cross_dir_to_take="up", assert_single_crossing_per_behcode_instance=True,
+                                                                        assert_single_crossing_this_trial = True,
+                                                                         assert_expected_direction_first_crossing = "up",
+                                                                         refrac_period_between_events=0.05)              
 
-                    times = _extract_times(out)
+                        times = _extract_times(out)
 
-                    # take the first time
-                    times = times[:1]
-                    
-                    # sometimes fixtch will be before presntation of fixcue (e.g., if subject touchees in anticiation).
-                    # Make fixtch same (slightly later) than fixcue, or else this might lead to errors later.
-                    time_fixcue = self.events_get_time_using_photodiode(trial, list_events=["fixcue"])["fixcue"]
-                    if len(times)>0:
-                        assert len(time_fixcue)==1, "weird..."
-                        if times[0]<time_fixcue:
-                            times[0] = time_fixcue[0] + 0.001 # 1 ms after
+                        # take the first time
+                        times = times[:1]
+                        
+                        # sometimes fixtch will be before presntation of fixcue (e.g., if subject touchees in anticiation).
+                        # Make fixtch same (slightly later) than fixcue, or else this might lead to errors later.
+                        time_fixcue = self.events_get_time_helper("fixcue", trial, assert_one=True)
+                        if len(times)>0:
+                            assert len(time_fixcue)==1, "weird..."
+                            if times[0]<time_fixcue:
+                                times[0] = time_fixcue[0] + 0.001 # 1 ms after
+
+                    except Exception as err:
+                        # Special case: already touching fixation before it even shows up. this happens for pancho around 7/2023 
+                        # onwards. Deal by defining the fixtch to be time of fixcue onset, with idea that this is when he sees
+                        # his touch hit the cue...
+                        if self.beh_check_touching_fixation_square_during_onset(trial):
+                            times = self.events_get_time_helper("fixcue", trial, assert_one=True)
+                            times[0] = times[0]+0.001 # see above.
+                        else:
+                            assert False, "not sure why..."
 
                 elif event in ["rulecue2"]:
                     # rule cue that switches on between fix touch and samp. Exists only on some days, but it one-to-one linked
@@ -4845,8 +4871,8 @@ class Session(object):
                                                                 allow_no_crossing_per_behcode_instance_if=None)                
                     times = _extract_times(out)
                 else:
-                    print(event)
-                    assert False, "This event doesnt exist!!"
+                    print(event, "This event doesnt exist!!")
+                    raise NotEnoughDataException
                     
                 assert times is not None
             return times
@@ -4892,11 +4918,13 @@ class Session(object):
         return dict_events
 
 
-    def events_get_time_helper(self, event, trial):
-        """ Return the time in trial for this event
+    def events_get_time_helper(self, event, trial, assert_one=False):
+        """ [GOOD] Return the time in trial for this event. Tries to use
+        photodiode... Only tries other moethods if this event doesnt exist for pd.
         PARAMS:
         - event, either string or tuple.
         - eventkind, string, if None, then tries to find it automatically.
+        - assert_one, then asserts exactly one time found.
         RETURNS:
         - list of numbers, one for each detection of this even in this trial, sorted.
         """
@@ -4904,7 +4932,7 @@ class Session(object):
         try:
             # Better version using photodiode or motor
             times = self.events_get_time_using_photodiode(trial, [event])[event] 
-        except:
+        except NotEnoughDataException as err:
             if isinstance(event, tuple):
                 eventkind = event[0]            
                 if eventkind=="strokes":
@@ -4921,17 +4949,27 @@ class Session(object):
                 else:
                     print(eventkind)
                     assert False
+                times = [alignto_time]
             elif isinstance(event, str):
                 # THis is behcode shorthand
                 code = self.behcode_convert(codename=event, shorthand=True)
-                alignto_time = self._behcode_extract_times(code, trial, first_instance_only=True)
+                # try pd again
+                try:
+                    times = self.events_get_time_using_photodiode(trial, [code])[code] 
+                except NotEnoughDataException as err:
+                    # Get the behcode time.
+                    alignto_time = self._behcode_extract_times(code, trial, first_instance_only=True)
+                    times = [alignto_time]
             elif isinstance(event, int):
                 # Then is behcode
                 alignto_time = self._behcode_extract_times(event, trial, first_instance_only=True)
+                times = [alignto_time]
             else:
                 assert False
-            times = [alignto_time]
 
+        if assert_one:
+            assert len(times)==1
+            
         return times
 
     def events_default_list_events(self, include_stroke_endpoints=True,
@@ -4993,6 +5031,28 @@ class Session(object):
                     list_events.append(x)
 
         return list_events
+
+    def events_rename_with_ordered_index(self, list_events):
+        """
+        ev --> 01_ev... returned in input order
+        """
+
+        list_events_uniqnames = []
+        for i, event in enumerate(list_events):
+            
+            # give event a unique name
+            # Version 2, with indices
+    #         event_unique_name = f"{i}_{event[:3]}_{event[-1]}"
+            if i<10:
+                idx_str = f"0{i}"
+            else:
+                idx_str = f"{i}"
+            event_unique_name = f"{idx_str}_{event}"
+            list_events_uniqnames.append(event_unique_name)
+
+        return list_events_uniqnames
+
+
 
     def eventsdataframe_sanity_check(self, DEBUG=False):
         """
@@ -5553,6 +5613,67 @@ class Session(object):
 
 
     ###################### SMOOTHED FR
+    def smoothedfr_extract_timewindow_bytimes(self, trials, times, 
+        sites, pre_dur=-0.1, post_dur=0.1,
+        fail_if_times_outside_existing=True):
+        """ [GOOD, FLEXIBLE] Extract smoothed fr dataset for these trials and times.
+        PARAMS:
+        - trials, list of trials in sn.
+        - times, list of times(in sec), one for each trial in trials. will extract aligned
+        to these times.
+        RETURNS:
+        - PopAnal, where PA.X[:, i, :] is the dim of len(trials):
+        """
+        from quantities import s
+        from .population import PopAnal
+        from neuralmonkey.classes.population import concatenate_popanals
+        
+        assert isinstance(pre_dur, (float, int))
+        assert isinstance(pre_dur, (float, int))
+        assert len(trials)==len(times)
+
+        list_xslices = []
+        # 1) extract each trials' PA. Use the slicing tool in PA to extract snippet
+        for tr, time_align in zip(trials, times):
+
+            # extract popanal
+            pa, sampling_period = self.popanal_generate_save_trial(tr, return_sampling_period=True)   
+
+            # slice to desired channels
+            pa = pa._slice_by_chan(sites) 
+            
+            # Extract snip
+            t1 = time_align + pre_dur
+            t2 = time_align + post_dur
+            pa = pa._slice_by_time_window(t1, t2, return_as_popanal=True,
+                fail_if_times_outside_existing=fail_if_times_outside_existing,
+                subtract_this_from_times=time_align)
+            
+            # save this slice
+            list_xslices.append(pa)
+
+        # 2) Concatenate all PA into a single PA
+        if not fail_if_times_outside_existing:
+            assert False, "fix this!! if pre_dur extends before first time, then this is incorrect. Should do what?"
+        
+        # Replace all times with this time relative to alignement.
+        for pa in list_xslices:
+            # sampling period, to acocunt for random variation in alignment across snips.
+            TIMES = (pa.Times - pa.Times[0]) + pre_dur + sampling_period/2 # times all as [-predur, ..., postdur]
+            pa.Times = TIMES
+
+        # then concat
+        PAall = concatenate_popanals(list_xslices, "trials", 
+            assert_otherdims_have_same_values=True, 
+            assert_otherdims_restrict_to_these=("chans", "times"),
+            all_pa_inherit_times_of_pa_at_this_index=0)
+
+        # Sanity checks
+        assert PAall.Chans ==sites
+        assert PAall.X.shape[1] == len(trials)
+
+        return PAall
+
     def smoothedfr_extract_timewindow_bystroke(self, trials, strokeids, 
         sites, pre_dur=-0.1, post_dur=0.1,
         fail_if_times_outside_existing=True):
@@ -5914,6 +6035,13 @@ class Session(object):
             if nrand < len(trials):
                 import random
                 trials = sorted(random.sample(trials, nrand))
+
+        if self._DEBUG_PRUNE_TRIALS:
+            # Return 20
+            n = 20
+            from pythonlib.tools.listtools import random_inds_uniformly_distributed
+            trials = random_inds_uniformly_distributed(trials, 20, return_original_values=True)
+            # trials = trials[:10]
 
         return trials
 
@@ -6689,6 +6817,31 @@ class Session(object):
         strokes = self.strokes_extract(trialtdt, peanuts_only=strokes_only)
         plotDatStrokes(strokes, ax, clean_ordered_ordinal=True, number_from_zero=True)
 
+    def beh_check_touching_fixation_square_during_onset(self, trial, PRE=0.1, POST=0.1):
+        """ Returns True if finger was on fixation square when it turned on,
+        with pre and post time considered. Uses pd time for fixcue onset.
+        PARAMS:
+        - PRE, POST, finger must be on cue before and after its onset.
+        (PRE 0.1 means before cue onset).
+        """
+
+        # Get time of fixation cue onset
+        tmp = self.events_get_time_helper("fixcue", trial)
+        assert len(tmp)==1
+        time_fixcue = tmp[0]
+
+        # Get times of touch of fixation
+        times, touch = self.beh_extract_touch_in_fixation_square(trial, ploton=False)
+
+        # if touch within fixation spans this time, then he was touching before onset of fixation cue
+        # idx_mid = np.argmin(np.abs(times - time_fixcue)) 
+        idx_first = np.argmin(np.abs(times - (time_fixcue-PRE))) 
+        idx_last = np.argmin(np.abs(times - (time_fixcue+POST))) 
+
+        touching_fixcue_during_fixcue_on = np.all(touch[idx_first:idx_last])
+
+        return touching_fixcue_during_fixcue_on
+
     def beh_extract_touch_in_fixation_square(self, trial, window_delta_pixels = None,
         ploton=False):
         """ Return binary wherther is touching fixation
@@ -6703,7 +6856,8 @@ class Session(object):
 
         if window_delta_pixels is None:
             if self.Animal=="Pancho":
-                window_delta_pixels = 45 # changed to 45 on 6/15/23, since was missing some.
+                # window_delta_pixels = 45 # changed to 45 on 6/15/23, since was missing some.
+                window_delta_pixels = 52 # changed to 52 on 9/22/23, because now allowing him to hold finger on screen
             elif self.Animal == "Diego":
                 window_delta_pixels = 52
 
@@ -7048,10 +7202,11 @@ class Session(object):
         ax.set_title("epocs")
         for i, pl in enumerate(list_epocs):
             times, vals = self.extract_data_tank_epocs(pl, trial0=trial)
-            ax.plot(times, np.ones(times.shape)+i, 'x', label=pl)
-            if pl=="behcode":
-                for t, b in zip(times, vals):
-                    ax.text(t, 1+i+np.random.rand(), int(b))
+            if times is not None:
+                ax.plot(times, np.ones(times.shape)+i, 'x', label=pl)
+                if pl=="behcode":
+                    for t, b in zip(times, vals):
+                        ax.text(t, 1+i+np.random.rand(), int(b))
         ax.legend()
         if overlay_trial_events:
             self.plotmod_overlay_trial_events(ax, trial)
@@ -7703,6 +7858,96 @@ class Session(object):
 
 
     ##################### SNIPPETS
+    def snippets_extract_by_event_flexible(self, sites, trials,
+        list_events, 
+        pre_dur= -0.4, post_dur= 0.4, features_to_get_extra=None, 
+        fr_which_version="sqrt", DEBUG=False):
+        """ Helper to extract snippets in flexible way, saligend to each event.
+        PARAMS:
+        - sites, list of ints to extract.
+        - list_events, list of string code names of events. if mult per trials, gets all
+        of them
+        - features_to_get_extra, list of str, features to extract from DS. fails if these dont
+        already exist in DS.
+        - SANITY_CHECK, if True, checks alignment across diff columns of df during extraction, no mistakes.
+        RETURNS:
+        - dataframe, each row a (chan, event).
+        """
+
+        import pandas as pd
+        from pythonlib.tools.pandastools import applyFunctionToAllRows
+
+        OUT = []
+        trials_all = []
+        times_all = []
+        
+        if DEBUG:
+            print("  trial - event - event_time")
+
+        for trial_neural in trials:
+            for event in list_events:
+                list_times = self.events_get_time_helper(event, trial_neural)
+                for event_time in list_times:
+
+                    if DEBUG:
+                        print(trial_neural, ' - ', event, ' - ' , event_time)
+
+                    trials_all.append(trial_neural)
+                    times_all.append(event_time)
+
+                    for s in sites:
+
+                        # get spiketimes
+                        spike_times = self._snippets_extract_single_snip(s, trial_neural, 
+                            event_time, pre_dur, post_dur)
+
+                        # save it
+                        tc = self.datasetbeh_trial_to_trialcode(trial_neural)
+                        OUT.append({
+                            "trialcode":tc,
+                            "chan":s,
+                            "event_aligned":event,
+                            "spike_times":spike_times,
+                            "trial_neural":trial_neural,
+                            "event_time":event_time
+                        })
+
+                
+        # Get smoothed fr. this is MUCH faster than computing above.
+        print("Extracting smoothed FR for all data...")
+        fail_if_times_outside_existing = True
+        pa = self.smoothedfr_extract_timewindow_bytimes(trials_all, times_all, sites, 
+            pre_dur=pre_dur, post_dur=post_dur, 
+            fail_if_times_outside_existing=fail_if_times_outside_existing) 
+
+        if DEBUG:
+            print(pa.X.shape) # (chans, trials, tbins)
+            print(pa.Trials)
+            print(pa.Chans) 
+            print(len(trials_all))
+            assert False
+
+        # deal out time to each site and trial.
+        print("Inserting smoothed FR into dataset...")
+        ct = 0
+        for i in range(len(trials_all)):
+            for j in range(len(sites)):
+                fr_sm = pa.X[j, i, :]
+                fr_sm_times = pa.Times
+                OUT[ct]["fr_sm"] = fr_sm[None, :]
+                OUT[ct]["fr_sm_times"] = fr_sm_times[None, :]
+
+                # sanity check
+                assert OUT[ct]["chan"] == sites[j]
+                assert OUT[ct]["trial_neural"] == trials_all[i]
+                assert OUT[ct]["event_time"] == times_all[i]
+
+                ct+=1
+        # ----
+        df = pd.DataFrame(OUT)
+
+        return df
+
     def snippets_extract_bystroke(self, sites, DS, pre_dur= -0.4, post_dur= 0.4,
         features_to_get_extra=None, fr_which_version="sqrt", SANITY_CHECK=False):
         """ Helper to extract snippets in flexible way, saligend to each stroke onset.
@@ -8070,3 +8315,10 @@ class Session(object):
         print("BehExptSess: ", self.BehSessList)
         if self.Paths is not None:
             print("final_dir_name: ", self.Paths["final_dir_name"])
+
+
+#####################################################################
+assert REGIONS_IN_ORDER == ["M1_m", "M1_l", "PMv_l", "PMv_m",
+                "PMd_p", "PMd_a", "dlPFC_p", "dlPFC_a", 
+                "vlPFC_p", "vlPFC_a", "FP_p", "FP_a", 
+                "SMA_p", "SMA_a", "preSMA_p", "preSMA_a"] # to avoid accidental changes to REGIONS_IN_ORDER

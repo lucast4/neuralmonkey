@@ -76,6 +76,7 @@ def check_log_preprocess_completion_status(animal, DEST_DIR= f"{PATH_NEURALMONKE
         # List of sessiosn for this date
         list_dir_sessions = glob.glob(f"{dirthis}/*")
         # print(dirthis)
+        print(dirthis)
         date = int(fileparts(dirthis)[-2])
         
         # count and check sessions
