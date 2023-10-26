@@ -4416,7 +4416,7 @@ class Session(object):
                             out = self.behcode_get_stream_crossings_in_window(trial, event, t_pre=0.015, t_post = 0.115, whichstream="pd2", 
                                                     ploton=plot_beh_code_stream, cross_dir_to_take="down", assert_single_crossing_per_behcode_instance=True,
                                                     assert_single_crossing_this_trial = True,
-                                                    assert_expected_direction_first_crossing = None)
+                                                    assert_expected_direction_first_crossing = None) 
                         except AssertionError as err:
                             # Last resort, make the window small and shift it gradually.
     
@@ -4552,7 +4552,7 @@ class Session(object):
                                                                   ploton=plot_beh_code_stream, assert_single_crossing_per_behcode_instance=True, 
                                                                   assert_single_crossing_this_trial = assert_single_crossing_this_trial) 
                         times = _extract_times(out)
-                        times_behcode = self.behcode_extract_times_semantic(behcode, trial)
+                        times_behcode = self.behcode_extract_times_semantic(behcode, trial) 
 
                     except AssertionError as err:
                         # on certain days, this pd was bad. therefore extract the photodiode time + padding.
@@ -6040,7 +6040,7 @@ class Session(object):
             # Return 20
             n = 20
             from pythonlib.tools.listtools import random_inds_uniformly_distributed
-            trials = random_inds_uniformly_distributed(trials, 20, return_original_values=True)
+            trials = random_inds_uniformly_distributed(trials, n, return_original_values=True)
             # trials = trials[:10]
 
         return trials
@@ -7884,9 +7884,16 @@ class Session(object):
         if DEBUG:
             print("  trial - event - event_time")
 
-        for trial_neural in trials:
-            for event in list_events:
+        for i_e, event in enumerate(list_events):
+            if i_e<10:
+                idx_str = f"0{i_e}"
+            else:
+                idx_str = f"{i_e}"
+            event_unique_name = f"{idx_str}_{event}"
+            for trial_neural in trials:
                 list_times = self.events_get_time_helper(event, trial_neural)
+
+
                 for event_time in list_times:
 
                     if DEBUG:
@@ -7906,6 +7913,7 @@ class Session(object):
                         OUT.append({
                             "trialcode":tc,
                             "chan":s,
+                            "event_unique_name":event_unique_name,
                             "event_aligned":event,
                             "spike_times":spike_times,
                             "trial_neural":trial_neural,

@@ -271,7 +271,8 @@ def _kernel_compute_scores_pos_and_neg(df_modtime_wide, kernel, weights, respons
 
 
 
-def plot_overview(df_modtime, SAVEDIR, response = "r2_time_minusmean"):
+def plot_overview(df_modtime, SAVEDIR, response = "r2_time_minusmean",
+    PLOT_KERNELS=True):
     """ Helkper for the overall plots to look at event encoding
     """
     
@@ -318,150 +319,154 @@ def plot_overview(df_modtime, SAVEDIR, response = "r2_time_minusmean"):
         rotateLabel(fig)
         fig.savefig(f"{sdir}/scattersummary-region_by_event-score_{val_name}.pdf")
 
+        plt.close("all")
+
     ######### Compute kernels
-    for row_norm in [False, True]:
-        sdir_kernel = f"{sdir}/kernels-norm_by_rows_{row_norm}"
-        os.makedirs(sdir_kernel, exist_ok=True)
- 
-        # list_ev_var = df_modtime["event_var_level"].unique().tolist()
-        df_kernels, df_modtime_wide, df_modtime_wide_normrowsubtr, dict_kernels = kernel_compute(
-            df_modtime, response=response, sdir=sdir_kernel, normalize_by_row=row_norm)
+    if PLOT_KERNELS:
+        for row_norm in [False, True]:
+            sdir_kernel = f"{sdir}/kernels-norm_by_rows_{row_norm}"
+            os.makedirs(sdir_kernel, exist_ok=True)
+     
+            # list_ev_var = df_modtime["event_var_level"].unique().tolist()
+            df_kernels, df_modtime_wide, df_modtime_wide_normrowsubtr, dict_kernels = kernel_compute(
+                df_modtime, response=response, sdir=sdir_kernel, normalize_by_row=row_norm)
 
-        ####### Plots
-        fig = sns.catplot(data=df_kernels, x="kernel_score", y="region", col="kernel", col_wrap=3, aspect=1, alpha=0.35,
-                     sharex=False)
-        for ax in fig.axes.flatten():
-            ax.axvline(0, color="k")
-            
-        fig.savefig(f"{sdir_kernel}/kernel_scores-scatter.pdf")
-
-
-        fig = sns.catplot(data=df_kernels, x="kernel_score", y="region", col="kernel", col_wrap=3, aspect=1,
-                         kind="bar", ci=68, sharex=False)
-        for ax in fig.axes.flatten():
-            ax.axvline(0, color="k")
-        fig.savefig(f"{sdir_kernel}/kernel_scores-bar.pdf")        
-
-        plt.close("all")
-
-        from neuralmonkey.neuralplots.brainschematic import plot_scalar_values, plot_df
-        sdirthis = f"{sdir_kernel}/brain_schematic"
-        os.makedirs(sdirthis, exist_ok=True)
-
-        # plot_scalar_values(regions, scores, diverge=False)
-        plot_df(df_kernels, valname="kernel_score", subplot_var="kernel", savedir=sdirthis, diverge=False)
-        plt.close("all")
+            ####### Plots
+            fig = sns.catplot(data=df_kernels, x="kernel_score", y="region", col="kernel", col_wrap=3, aspect=1, alpha=0.35,
+                         sharex=False)
+            for ax in fig.axes.flatten():
+                ax.axvline(0, color="k")
+                
+            fig.savefig(f"{sdir_kernel}/kernel_scores-scatter.pdf")
 
 
-        for kernel in dict_kernels.keys():
-            dfthis = df_kernels[df_kernels["kernel"]==kernel].reset_index(drop=True)
-            
-            sdirthis = f"{sdir_kernel}/brain_schematic-kernel_{kernel}"
-            os.makedirs(sdirthis, exist_ok=True)
-            
-            plot_df(dfthis, valname="kernel_score", savedir=sdirthis, diverge=True)
+            fig = sns.catplot(data=df_kernels, x="kernel_score", y="region", col="kernel", col_wrap=3, aspect=1,
+                             kind="bar", ci=68, sharex=False)
+            for ax in fig.axes.flatten():
+                ax.axvline(0, color="k")
+            fig.savefig(f"{sdir_kernel}/kernel_scores-bar.pdf")        
 
             plt.close("all")
 
-        ############### PIARWISE PLOTS]
-        sdirthis = f"{sdir_kernel}/kernel_all_pairwise"
-        os.makedirs(sdirthis, exist_ok=True)        
-        overlay_mean = False
-        regions = df_modtime_wide_normrowsubtr["region"].tolist()
-        text_to_plot = df_modtime_wide_normrowsubtr["site"].tolist()
+            from neuralmonkey.neuralplots.brainschematic import plot_scalar_values, plot_df
+            sdirthis = f"{sdir_kernel}/brain_schematic"
+            os.makedirs(sdirthis, exist_ok=True)
 
-        for i, (kernel, weights) in enumerate(dict_kernels.items()):
-            col_positive = [k for k, w in zip(kernel, weights) if w>0]
-            col_negative = [k for k, w in zip(kernel, weights) if w<0]
-            
-            
-            for colp in col_positive:
-                for coln in col_negative:
-            
-                    keys = [f"{response}-{colp}", f"{response}-{coln}"]
+            # plot_scalar_values(regions, scores, diverge=False)
+            plot_df(df_kernels, valname="kernel_score", subplot_var="kernel", savedir=sdirthis, diverge=False)
+            plt.close("all")
 
-                    X = df_modtime_wide_normrowsubtr.loc[:, keys].to_numpy()
 
-                    for plot_text_over_examples in [True, False]:
-                        fig, axes = plotScatterOverlay(X, labels=regions, alpha=0.5, ver="separate", downsample_auto=False, SIZE=3, 
-                                           overlay_mean=overlay_mean, plot_text_over_examples=plot_text_over_examples, text_to_plot=text_to_plot)
-                        # label
-                        axes[0][0].set_xlabel(keys[0])
-                        axes[0][0].set_ylabel(keys[1])
-
-                        # cross lines
-                        for ax in axes.flatten():
-                            ax.axhline(0, alpha=0.25)
-                            ax.axvline(0, alpha=0.25)
-
-                        # save
-                        fig.savefig(f"{sdirthis}/kernel_{i}-scatter-{keys[0]}-vs-{keys[1]}-text_{plot_text_over_examples}.pdf")
-
-                        plt.close("all") 
-            
-            #### Compute scatter of negative vs. positive (i..e, first aggregate 
-            # the features before plotting)
-            kernel_pos = []
-            weights_pos = []
-            kernel_neg = []
-            weights_neg = []
-            
-            for k, w in zip(kernel, weights):
-                if w>0:
-                    kernel_pos.append(k)
-                    weights_pos.append(w)
-                elif w<0:
-                    kernel_neg.append(k)
-                    weights_neg.append(w)
-                else:
-                    assert False
+            for kernel in dict_kernels.keys():
+                dfthis = df_kernels[df_kernels["kernel"]==kernel].reset_index(drop=True)
                 
-            # get scores
-            scores_pos = _kernel_compute_scores(df_modtime_wide_normrowsubtr, kernel_pos, weights_pos, response)
-            scores_neg = _kernel_compute_scores(df_modtime_wide_normrowsubtr, kernel_neg, weights_neg, response)
+                sdirthis = f"{sdir_kernel}/brain_schematic-kernel_{kernel}"
+                os.makedirs(sdirthis, exist_ok=True)
+                
+                plot_df(dfthis, valname="kernel_score", savedir=sdirthis, diverge=True)
 
-            # Flip sign of scores_neg, since the more negative they are, the more strongly they are present..
-            scores_neg = -scores_neg
+                plt.close("all")
 
-            # plot
-            X = np.stack((scores_pos, scores_neg), axis=1)
-            assert X.shape[0] == len(regions)
+            ############### PIARWISE PLOTS]
+            sdirthis = f"{sdir_kernel}/kernel_all_pairwise"
+            os.makedirs(sdirthis, exist_ok=True)        
+            overlay_mean = False
+            regions = df_modtime_wide_normrowsubtr["region"].tolist()
+            text_to_plot = df_modtime_wide_normrowsubtr["site"].tolist()
+
+            for i, (kernel, weights) in enumerate(dict_kernels.items()):
+                col_positive = [k for k, w in zip(kernel, weights) if w>0]
+                col_negative = [k for k, w in zip(kernel, weights) if w<0]
+                
+                
+                for colp in col_positive:
+                    for coln in col_negative:
+                
+                        keys = [f"{response}-{colp}", f"{response}-{coln}"]
+
+                        X = df_modtime_wide_normrowsubtr.loc[:, keys].to_numpy()
+
+                        for plot_text_over_examples in [True, False]:
+                            fig, axes = plotScatterOverlay(X, labels=regions, alpha=0.5, ver="separate", downsample_auto=False, SIZE=3, 
+                                               overlay_mean=overlay_mean, plot_text_over_examples=plot_text_over_examples, text_to_plot=text_to_plot)
+                            # label
+                            axes[0][0].set_xlabel(keys[0])
+                            axes[0][0].set_ylabel(keys[1])
+
+                            # cross lines
+                            for ax in axes.flatten():
+                                ax.axhline(0, alpha=0.25)
+                                ax.axvline(0, alpha=0.25)
+
+                            # save
+                            fig.savefig(f"{sdirthis}/kernel_{i}-scatter-{keys[0]}-vs-{keys[1]}-text_{plot_text_over_examples}.pdf")
+
+                            plt.close("all") 
+                
+                #### Compute scatter of negative vs. positive (i..e, first aggregate 
+                # the features before plotting)
+                kernel_pos = []
+                weights_pos = []
+                kernel_neg = []
+                weights_neg = []
+                
+                for k, w in zip(kernel, weights):
+                    if w>0:
+                        kernel_pos.append(k)
+                        weights_pos.append(w)
+                    elif w<0:
+                        kernel_neg.append(k)
+                        weights_neg.append(w)
+                    else:
+                        assert False
                     
-            for plot_text_over_examples in [True, False]:
+                # get scores
+                scores_pos = _kernel_compute_scores(df_modtime_wide_normrowsubtr, kernel_pos, weights_pos, response)
+                scores_neg = _kernel_compute_scores(df_modtime_wide_normrowsubtr, kernel_neg, weights_neg, response)
 
-                fig, axes = plotScatterOverlay(X, labels=regions, alpha=0.5, ver="separate", downsample_auto=False, SIZE=3, 
-                                   overlay_mean=overlay_mean, plot_text_over_examples=plot_text_over_examples, text_to_plot=text_to_plot)
-                # label
-                axes[0][0].set_xlabel("positive features")
-                axes[0][0].set_ylabel("negative features")
+                # Flip sign of scores_neg, since the more negative they are, the more strongly they are present..
+                scores_neg = -scores_neg
 
-                # cross lines
-                for ax in axes.flatten():
-                    ax.axhline(0, alpha=0.25)
-                    ax.axvline(0, alpha=0.25)
+                # plot
+                X = np.stack((scores_pos, scores_neg), axis=1)
+                assert X.shape[0] == len(regions)
+                        
+                for plot_text_over_examples in [True, False]:
 
-                # save
-                fig.savefig(f"{sdirthis}/kernel_{i}-scatter-neg_vs_pos_features-text_{plot_text_over_examples}.pdf")
-                plt.close("all") 
+                    fig, axes = plotScatterOverlay(X, labels=regions, alpha=0.5, ver="separate", downsample_auto=False, SIZE=3, 
+                                       overlay_mean=overlay_mean, plot_text_over_examples=plot_text_over_examples, text_to_plot=text_to_plot)
+                    # label
+                    axes[0][0].set_xlabel("positive features")
+                    axes[0][0].set_ylabel("negative features")
 
-        ##### SUMMARIZE across kernels, for each brain region, its kernels.
-        sdirthis = f"{sdir_kernel}/kernel_summary_each_region"
-        os.makedirs(sdirthis, exist_ok=True)
-        
-        # 1) bar plots
-        fig = sns.catplot(data=df_kernels, x="kernel_id", y="kernel_score", col="region", col_wrap=4, kind="bar", ci=68)
-        fig.savefig(f"{sdirthis}/bar_each_region.pdf")
+                    # cross lines
+                    for ax in axes.flatten():
+                        ax.axhline(0, alpha=0.25)
+                        ax.axvline(0, alpha=0.25)
 
-        # 2) heatmap
-        fig, ax = plt.subplots(1,1)
-        convert_to_2d_dataframe(df=df_kernels, col1="region", col2="kernel_id", plot_heatmap=True, agg_method="mean",
-                               val_name="kernel_score", diverge=True, annotate_heatmap=False, ax=ax);
-        fig.savefig(f"{sdirthis}/heatmap_each_region-diverge.pdf")
+                    # save
+                    fig.savefig(f"{sdirthis}/kernel_{i}-scatter-neg_vs_pos_features-text_{plot_text_over_examples}.pdf")
+                    plt.close("all") 
 
-        fig, ax = plt.subplots(1,1)
-        convert_to_2d_dataframe(df=df_kernels, col1="region", col2="kernel_id", plot_heatmap=True, agg_method="mean",
-                               val_name="kernel_score", diverge=False, annotate_heatmap=False, ax=ax);
-        fig.savefig(f"{sdirthis}/heatmap_each_region.pdf")
+            ##### SUMMARIZE across kernels, for each brain region, its kernels.
+            sdirthis = f"{sdir_kernel}/kernel_summary_each_region"
+            os.makedirs(sdirthis, exist_ok=True)
+            
+            # 1) bar plots
+            fig = sns.catplot(data=df_kernels, x="kernel_id", y="kernel_score", col="region", col_wrap=4, kind="bar", ci=68)
+            fig.savefig(f"{sdirthis}/bar_each_region.pdf")
 
+            # 2) heatmap
+            fig, ax = plt.subplots(1,1)
+            convert_to_2d_dataframe(df=df_kernels, col1="region", col2="kernel_id", plot_heatmap=True, agg_method="mean",
+                                   val_name="kernel_score", diverge=True, annotate_heatmap=False, ax=ax);
+            fig.savefig(f"{sdirthis}/heatmap_each_region-diverge.pdf")
+
+            fig, ax = plt.subplots(1,1)
+            convert_to_2d_dataframe(df=df_kernels, col1="region", col2="kernel_id", plot_heatmap=True, agg_method="mean",
+                                   val_name="kernel_score", diverge=False, annotate_heatmap=False, ax=ax);
+            fig.savefig(f"{sdirthis}/heatmap_each_region.pdf")
+
+            plt.close("all")
 
 

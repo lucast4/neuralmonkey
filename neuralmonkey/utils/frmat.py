@@ -1,7 +1,7 @@
 import numpy as np
 
 def dfthis_to_frmat(dfthis, times=None, fr_ver="fr_sm", time_bin_size=None,
-        output_dim=2):
+        output_dim=2, return_as_zscore=False):
     """ convert dataframe, column name fr_ver, each itme is array
     of fr across time (1, ntimes), to frmat
     PARAMS:
@@ -15,10 +15,10 @@ def dfthis_to_frmat(dfthis, times=None, fr_ver="fr_sm", time_bin_size=None,
     """
 
     frmat = np.concatenate(dfthis[fr_ver].tolist(), axis=0)    
+    if times is None:
+        times = dfthis.iloc[0]["fr_sm_times"].squeeze()
 
     if time_bin_size:
-        if times is None:
-            times = dfthis.iloc[0]["fr_sm_times"].squeeze()
 
         MINDUR = time_bin_size/4;
         # MINDUR = 0.05
@@ -60,6 +60,24 @@ def dfthis_to_frmat(dfthis, times=None, fr_ver="fr_sm", time_bin_size=None,
         times = np.stack(list_t) # (nbins, )s
         frmat = np.stack(list_frvec, axis=1) # (ndat, nbins)
         # print("--", frmat.shape)
+
+    if return_as_zscore:
+        def _frmat_convert_zscore(frmat):
+            """ convert to a single zscore trace, using the grand mean and std.
+            Returns same shape as input
+            """
+            m = np.mean(frmat[:], keepdims=True)
+            s = np.std(frmat[:], keepdims=True)
+
+            return (frmat - m)/s
+        shin = frmat.shape
+        frmat = _frmat_convert_zscore(frmat)
+        shout = frmat.shape
+        if not shin==shout:
+            print(shin)
+            print(shout)
+            assert False
+
     if output_dim==3:
         frmat = frmat[:, None, :]
     else:
