@@ -100,6 +100,7 @@ def plot_df(df, valname, subplot_var, savedir = None, savesuffix="",
     have.
     """
     from pythonlib.tools.pandastools import convert_to_2d_dataframe
+    from pythonlib.globals import PATH_NEURALMONKEY
     map_bregion_to_location = mapper_bregion_to_location()
 
     if "region" in df.columns:
@@ -185,7 +186,8 @@ def plot_df(df, valname, subplot_var, savedir = None, savesuffix="",
         
         # 1) load a cartoon image of brain
     #     image_name = "/home/lucast4/Downloads/thumbnail_image001.png"
-        image_name = "/gorilla3/Dropbox/SCIENCE/FREIWALD_LAB/DATA/brain_drawing_template.jpg"
+        # image_name = "/gorilla3/Dropbox/SCIENCE/FREIWALD_LAB/DATA/brain_drawing_template.jpg"
+        image_name = f"{PATH_NEURALMONKEY}/neuralplots/images/brain_drawing_template.jpg"
         im = plt.imread(image_name)
         im = im[:330, 130:]
         ax.imshow(im)

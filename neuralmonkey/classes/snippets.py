@@ -8,6 +8,7 @@ import seaborn as sns
 from pythonlib.tools.exceptions import NotEnoughDataException
 import pickle
 from pythonlib.tools.plottools import savefig
+from pythonlib.tools.snstools import rotateLabel
 
 SAVEDIR_SNIPPETS_STROKE = "/gorilla1/analyses/recordings/main/anova/bystroke" # for snippets
 # SAVEDIR_SNIPPETS_STROKE = "/gorilla1/analyses/recordings/main/chunks_modulation" # for snippets
@@ -398,11 +399,15 @@ class Snippets(object):
                 features_to_get_extra=None, fr_which_version="sqrt", DEBUG=False)
             ListPA = None
             DS = None
-
             # Fill in dummy variables
             # list_events = ["stroke"]
             list_events_uniqnames = SN.events_rename_with_ordered_index(list_events)
             # e.g, ['00_go', '01_doneb', '02_reward_all']
+
+            # Replace events_aligned with the num_event.
+            # THis is assumed for many of codes downstream.
+            DfScalar["event"] = DfScalar["event_aligned"] # "go"
+            DfScalar["event_aligned"] = DfScalar["event_unique_name"]  # "00_go"
         else:
             assert False
 
@@ -435,7 +440,7 @@ class Snippets(object):
             "fr_which_version":fr_which_version
         }
         self.globals_initialize() 
-        
+
         # Genreate scalars
         if NEW_VERSION:
             self.DfScalar = DfScalar
@@ -443,7 +448,6 @@ class Snippets(object):
             self.DfScalar = self.datamod_compute_fr_scalar(self.DfScalar)
             # SKIP, not using it. can compute on fly.
             self.DfScalar["fr_sm_sqrt"] = self.DfScalar["fr_sm"]**0.5
-
         else:
             if False:
                 # Old version 
@@ -472,7 +476,7 @@ class Snippets(object):
 
         print(f"** Generated Snippets, (ver {which_level}). Final length of SP.DfScalar: {len(self.DfScalar)}")
          
-        self.DfScalar["event"] = self.DfScalar["event_aligned"]
+        # self.DfScalar["event"] = self.DfScalar["event_aligned"]
 
         self.pascal_remove_outliers()
 
@@ -713,6 +717,7 @@ class Snippets(object):
         """
 
         # Get for this event
+
         list_events_uniqnames = self.Params["list_events_uniqnames"]
         i_event = list_events_uniqnames.index(event_uniq)
         pa = self.ListPA[i_event]
@@ -1355,15 +1360,28 @@ class Snippets(object):
         if DFTHIS is None:
             DFTHIS = self.DfScalar
 
+        if site is not None:
+            assert site in DFTHIS["chan"], "This channel doesnt exist!!"
+        
+        if event is not None:
+            if event in DFTHIS["event"]:
+                event_col = "event"
+            elif event in DFTHIS["event_aligned"]:
+                event_col = "event_aligned"
+            else:
+                print(event)
+                print(DFTHIS)
+                assert False, "This event doesnt exist!!"
+
         # 1) extract for this site.
         if site is None and event is None:
             dfthis = DFTHIS
         elif event is None:
             dfthis = DFTHIS[(DFTHIS["chan"] == site)]
         elif site is None:
-            dfthis = DFTHIS[(DFTHIS["event"] == event)]
+            dfthis = DFTHIS[(DFTHIS[event_col] == event)]
         else:
-            dfthis = DFTHIS[(DFTHIS["chan"] == site) & (DFTHIS["event"] == event)]
+            dfthis = DFTHIS[(DFTHIS["chan"] == site) & (DFTHIS[event_col] == event)]
         dfthis = dfthis.reset_index(drop=True)
 
         # Use all unique levels in entire dataset, across all sublevels.
@@ -1434,6 +1452,7 @@ class Snippets(object):
     def dataextract_as_frmat(self, chan, event=None, var=None, var_level=None, 
         fr_ver="fr_sm", return_as_zscore=False):
         """ 
+        [GOOD]
         Extract frmat from self.DfScalar, stacking all instances of this event, and
         (optionally) only this level for this var.
         PARAMS
@@ -1442,33 +1461,36 @@ class Snippets(object):
         - var, var_level, either both None (ignore var), or string and value.
         RETURNS:
         - frmat, (ntrials, ntime)
+        - times, (ntimes, )
+        - dict, holding useful dat for formatitng plots.
         """
         
+        from neuralmonkey.utils.frmat import dfthis_to_frmat
+
         assert (var_level==None) == (var==None)
         
-        if event is None and var is None:
-            dfthis = self.DfScalar[(self.DfScalar["chan"]==chan)]
-        elif event is None:
-            dfthis = self.DfScalar[(self.DfScalar["chan"]==chan) & (self.DfScalar[var]==var_level)]   
-        elif var is None:
-            dfthis = self.DfScalar[(self.DfScalar["chan"]==chan) & (self.DfScalar["event_aligned"]==event)]    
-        else:
-            dfthis = self.DfScalar[(self.DfScalar["chan"]==chan) & (self.DfScalar["event_aligned"]==event) & (self.DfScalar[var]==var_level)]   
-            
-        frmat = np.concatenate(dfthis[fr_ver].tolist(), axis=0)    
-            
-        if return_as_zscore:
-            def _frmat_convert_zscore(frmat):
-                """ convert to a single zscore trace, using the grand mean and std.
-                Returns same shape as input
-                """
-                m = np.mean(frmat[:], keepdims=True)
-                s = np.std(frmat[:], keepdims=True)
+        dfthis = self.dataextract_as_df_good(chan, event, var, var_level)
+        # if event is None and var is None:
+        #     dfthis = self.DfScalar[(self.DfScalar["chan"]==chan)]
+        # elif event is None:
+        #     dfthis = self.DfScalar[(self.DfScalar["chan"]==chan) & (self.DfScalar[var]==var_level)]   
+        # elif var is None:
+        #     dfthis = self.DfScalar[(self.DfScalar["chan"]==chan) & (self.DfScalar["event_aligned"]==event)]    
+        # else:
+        #     dfthis = self.DfScalar[(self.DfScalar["chan"]==chan) & (self.DfScalar["event_aligned"]==event) & (self.DfScalar[var]==var_level)]   
 
-                return (frmat - m)/s
-            frmat = _frmat_convert_zscore(frmat)
+        frmat, times = dfthis_to_frmat(dfthis, fr_ver=fr_ver, return_as_zscore=return_as_zscore)    
 
-        return frmat 
+        # Also return useful things for plotting
+        ind_aligned_to_event = np.argmin(np.abs(times))
+        xticks = [0, ind_aligned_to_event, len(times)-1]
+        xtick_labels = [f"{times[i]:.3f}" for i in xticks]
+        dict_plot_vals = {
+            "ind_aligned_to_event":ind_aligned_to_event,
+            "xticks":xticks,
+            "xtick_labels":xtick_labels
+        }
+        return frmat, times, dict_plot_vals
 
 
     def _dataextract_as_metrics_scalar(self, dfthis, var=None):
@@ -1743,6 +1765,102 @@ class Snippets(object):
 
         return df_fr, df_fr_levels
 
+    def modulationgood_plot_WRAPPER(self, df_var, df_fr, df_fr_levels, 
+            list_eventwindow_event, var, vars_conjuction, 
+            sdir_base, N_WAYS=1, PLOT_EACH_CHAN=False, PLOT_EACH_EVENT=False):
+        """
+        Overview of modulation by variable, conditioned on other variables, already
+        extacted. 
+        See its use in 
+        """
+        ####### SUmmary plot of anova
+        sdir = f"{sdir_base}/modulation"
+        os.makedirs(sdir, exist_ok=True)
+        print(sdir)
+
+        print("** Plotting summarystats")
+        self.modulationgood_plot_summarystats(df_var, None, None, savedir=sdir) 
+        plt.close("all") 
+
+        ######## 1b) heatmap
+        print("** Plotting heatmaps")
+        sdir = f"{sdir_base}/modulation_heatmap"
+        os.makedirs(sdir, exist_ok=True)
+        print(sdir)
+        self.modulationgood_plot_brainschematic(df_var, sdir) 
+
+        ######## if this is two-way anomva, then also plot after adding up main and interactino
+        if N_WAYS==2:
+            # print("** Plotting heatmaps")
+            # sdir = f"{sdir_base}/modulation_2anova"
+            # os.makedirs(sdir, exist_ok=True)
+            # print(sdir)                
+            self.modulationgood_plot_twoway_summary(df_var, sdir_base) 
+
+        ######### Plot moduulation for each chans
+        sdir = f"{sdir_base}/each_chan_summary"
+        os.makedirs(sdir, exist_ok=True)
+        fig = sns.catplot(data=df_var, x="chan", y="val", row="event", hue="bregion", aspect=10, kind="point")
+        rotateLabel(fig)
+        for ax in fig.axes.flatten():
+            ax.axhline(0)
+        fig.savefig(f"{sdir}/allchans_modulation.pdf")
+        plt.close("all")
+
+        ######### Plot moduulation for each chans
+        if PLOT_EACH_CHAN:
+            print("** Plotting modulation each chan")
+            sdir = f"{sdir_base}/each_chan"
+            os.makedirs(sdir, exist_ok=True)
+            self.modulationgood_plot_each_chan(df_var, var, vars_conjuction, sdir)
+            plt.close("all")           
+
+        ########### SEPARATE PLOT FOR EACH EVENT
+        # events_already_done = []
+        for event_window, event in list_eventwindow_event:
+            print("** Making plots for this event_window: ")
+            print(event_window)
+
+            sdir_base_this = f"{sdir_base}/EACH_EVENT/{event_window}"
+            os.makedirs(sdir_base_this, exist_ok=True)
+            print(f"Saving this event, {event_window}, to {sdir_base_this}")
+
+            df_var_this = df_var[df_var["event"]==event_window]
+
+            if len(df_var_this)==0:
+                print("SKipping this event, since no data... ", event_window)
+                print(len(df_var))
+                print(df_var["event"].value_counts())
+                print(event_window, event)
+                # assert False
+                continue
+                
+            ####### SUmmary plot of anova
+            if PLOT_EACH_EVENT:
+                if get_z_score:
+                    sdir = f"{sdir_base_this}/modulation_v2"
+                    os.makedirs(sdir, exist_ok=True)
+                    print(sdir)
+
+                    print("** Plotting summarystats")
+                    self.modulationgood_plot_summarystats_v2(df_var_this, savedir=sdir) 
+                    plt.close("all")
+                
+            ############## PRINT INFO
+            spath = f"{sdir_base_this}/variable_conjunctions-actually_used.txt"
+            _, dict_levs, levels_var = self.dataextract_as_df_conjunction_vars(var, 
+                vars_conjuction, site=self.Sites[0], event=event,
+                PRINT_AND_SAVE_TO=spath)
+
+            if False:
+                # incorrectly includes all levels. fix if want to keep this
+                df = self.DfScalar[(self.DfScalar["chan"] == self.Sites[0])]
+                spath = f"{sdir_base_this}/variable_conjunctions-all_possible.txt"
+                from pythonlib.tools.pandastools import grouping_print_n_samples
+                nmin = self.ParamsGlobals["n_min_trials_per_level"]
+                grouping_print_n_samples(df, [var] + vars_conjuction, nmin, spath, True)
+
+
     def modulationgood_compute_plot_ALL(self, var, vars_conjuction, 
         score_ver='r2smfr_minshuff', SAVEDIR="/tmp", 
         PRE_DUR_CALC = None, POST_DUR_CALC= None,
@@ -1976,39 +2094,10 @@ class Snippets(object):
             writeDictToYaml(paramstmp, path)
             self.ParamsDfvar = paramstmp
 
-            ####### SUmmary plot of anova
-            sdir = f"{sdir_base}/modulation"
-            os.makedirs(sdir, exist_ok=True)
-            print(sdir)
-
-            print("** Plotting summarystats")
-            self.modulationgood_plot_summarystats(df_var, None, None, savedir=sdir) 
-            plt.close("all") 
-
-            ######## 1b) heatmap
-            print("** Plotting heatmaps")
-            sdir = f"{sdir_base}/modulation_heatmap"
-            os.makedirs(sdir, exist_ok=True)
-            print(sdir)
-            self.modulationgood_plot_brainschematic(df_var, sdir) 
-
-            ######## if this is two-way anomva, then also plot after adding up main and interactino
-            if N_WAYS==2:
-                # print("** Plotting heatmaps")
-                # sdir = f"{sdir_base}/modulation_2anova"
-                # os.makedirs(sdir, exist_ok=True)
-                # print(sdir)                
-                self.modulationgood_plot_twoway_summary(df_var, sdir_base) 
-
-            ######### Plot moduulation for each chans
-            sdir = f"{sdir_base}/each_chan_summary"
-            os.makedirs(sdir, exist_ok=True)
-            fig = sns.catplot(data=df_var, x="chan", y="val", row="event", hue="bregion", aspect=10, kind="point")
-            rotateLabel(fig)
-            for ax in fig.axes.flatten():
-                ax.axhline(0)
-            fig.savefig(f"{sdir}/allchans_modulation.pdf")
-            plt.close("all")
+            ############## SUMMARY PLOTS OF ANOVA
+            self.modulationgood_plot_WRAPPER(df_var, df_fr, df_fr_levels, 
+                list_eventwindow_event, var, vars_conjuction, 
+                sdir_base, N_WAYS, PLOT_EACH_CHAN, PLOT_EACH_EVENT)
 
             ##### Plot example strokes extracted. Group them by levels of var
             # if self.DS is not None:
@@ -2017,79 +2106,6 @@ class Snippets(object):
             os.makedirs(sdir, exist_ok=True)
             self.modulationgood_plot_drawings_variables(var, vars_conjuction, sdir)
 
-            ######### Plot moduulation for each chans
-            if PLOT_EACH_CHAN:
-                print("** Plotting modulation each chan")
-                sdir = f"{sdir_base}/each_chan"
-                os.makedirs(sdir, exist_ok=True)
-                self.modulationgood_plot_each_chan(df_var, var, vars_conjuction, sdir)
-                plt.close("all")           
-
-            ########### SEPARATE PLOT FOR EACH EVENT
-            # events_already_done = []
-            for event_window, event in list_eventwindow_event:
-                print("** Making plots for this event_window: ")
-                print(event_window)
-
-                sdir_base_this = f"{sdir_base}/EACH_EVENT/{event_window}"
-                os.makedirs(sdir_base_this, exist_ok=True)
-                print(f"Saving this event, {event_window}, to {sdir_base_this}")
-
-                df_var_this = df_var[df_var["event"]==event_window]
-
-                if len(df_var_this)==0:
-                    print("SKipping this event, since no data... ", event_window)
-                    print(len(df_var))
-                    print(df_var["event"].value_counts())
-                    print(event_window, event)
-                    # assert False
-                    continue
-                    
-                ####### SUmmary plot of anova
-                if PLOT_EACH_EVENT:
-                    if get_z_score:
-                        sdir = f"{sdir_base_this}/modulation_v2"
-                        os.makedirs(sdir, exist_ok=True)
-                        print(sdir)
-
-                        print("** Plotting summarystats")
-                        self.modulationgood_plot_summarystats_v2(df_var_this, savedir=sdir) 
-                        plt.close("all")
-                    
-                ############## PRINT INFO
-                spath = f"{sdir_base_this}/variable_conjunctions-actually_used.txt"
-                _, dict_levs, levels_var = self.dataextract_as_df_conjunction_vars(var, 
-                    vars_conjuction, site=self.Sites[0], event=event,
-                    PRINT_AND_SAVE_TO=spath)
-
-                if False:
-                    # incorrectly includes all levels. fix if want to keep this
-                    df = self.DfScalar[(self.DfScalar["chan"] == self.Sites[0])]
-                    spath = f"{sdir_base_this}/variable_conjunctions-all_possible.txt"
-                    from pythonlib.tools.pandastools import grouping_print_n_samples
-                    nmin = self.ParamsGlobals["n_min_trials_per_level"]
-                    grouping_print_n_samples(df, [var] + vars_conjuction, nmin, spath, True)
-
-                # ##### Plot rasters
-                # if PLOT_RASTERS:
-                #     # (Only do once for each event)
-                #     sdir_rasters = f"{SAVEDIR}/{ANALY_VER}/var_by_varsother/VAR_{var}-OV_{'_'.join(vars_conjuction)}/rasters/{event}"
-                #     os.makedirs(sdir_rasters, exist_ok=True)
-
-                #     # from pythonlib.tools.expttools import checkIfDirExistsAndHasFiles
-                #     # exists, hasfiles = checkIfDirExistsAndHasFiles(sdir_rasters)
-                #     # if not hasfiles:
-                    
-                #     print("** Plotting raster + sm fr:", sdir_rasters)
-                #     ##### Plot raster + sm fr
-                #     # Plot rasters for each site
-                #     for site in self.Sites:
-                #         path = f"{sdir_rasters}/{sn.sitegetter_summarytext(site)}.png"
-                #         if not os.path.exists(path):
-                #             fig, axes = self.plotgood_rasters_smfr_each_level_combined(site, var, vars_conjuction, 
-                #                 event=event)
-                #             fig.savefig(path)
-                #             plt.close("all")
         else:
             print("********* SKIPPING PLOTTING OF DF_VAR (since did not recompute df_var")
             
@@ -2312,12 +2328,16 @@ class Snippets(object):
 
         # Want to use entier data for this site? or do separately for each level of a given
         # conjunction variable.
-        if vars_conjuction is None:
-            # then place a dummy variable so that entire thing is one level
-            vars_conjuction = ["dummy_var"]
-            assert "dummy_var" not in self.DfScalar.columns
-            self.DfScalar["dummy_var"] = "IGNORE"
-            # vars_conjuction = ['gridloc', 'chunk_within_rank'] # list of str, vars to take conjunction over
+        if True:
+            # nio need to do. its done auto in dataextract_as_df_conjunction_vars
+            if vars_conjuction is None:
+                # then place a dummy variable so that entire thing is one level
+                vars_conjuction = ["dummy_var"]
+                # delete it
+                # self.DfScalar = self.DfScalar.drop("dummy_var", axis=1)
+                # assert "dummy_var" not in self.DfScalar.columns
+                self.DfScalar["dummy_var"] = "dummy"
+                # vars_conjuction = ['gridloc', 'chunk_within_rank'] # list of str, vars to take conjunction over
 
         ##### First, skip everything if there is not enough data
         list_grp = ["chan", "event", var]
@@ -2405,15 +2425,25 @@ class Snippets(object):
                 continue
 
             _saved_counts = False
+            sites_exist = self.DfScalar["chan"].tolist()
             for site in list_site:
+
+                if site not in sites_exist:
+                    continue
+
                 if site%20==0:
                     print("site :", site)
                 region = sn.sitegetter_map_site_to_region(site)
                 
                 # Clean up dataset
+                # print(var)
+                # print(vars_conjuction)
+                # print(site)
+                # print(event)
                 dfthis, levs_df, levels_var = self.dataextract_as_df_conjunction_vars(var, 
                     vars_conjuction, site, event=event, DEBUG_CONJUNCTIONS=DEBUG_CONJUNCTIONS)
-                    
+                # print(len(dfthis))                
+                # assert False
                 if len(dfthis)==0:
                     print("SKIPPING ", event, site)
                     continue
@@ -2618,8 +2648,10 @@ class Snippets(object):
             DF_VAR = None
 
         ################### CLEANUP
-        if "dummy_var" in self.DfScalar:
-            del self.DfScalar["dummy_var"]
+        if False:
+            # Keep it, if no conjucntion vars inputed, dummy_var is required.
+            if "dummy_var" in self.DfScalar:
+                del self.DfScalar["dummy_var"]
 
         # Melt, if this is anova with multiple levels. such that "val_kind" holds var, other, and interaction.
         if False: # Becuase this was failing. cant get uniqque values for numericals
@@ -3228,7 +3260,6 @@ class Snippets(object):
         from pythonlib.tools.pandastools import append_col_with_grp_index
         from pythonlib.tools.plottools import makeColors
         import seaborn as sns
-        from pythonlib.tools.snstools import rotateLabel
 
         def _find_varhue_varcol(var_x, vars_exist, 
                                 variables_ordered_increasing_effect = None):
@@ -3556,7 +3587,8 @@ class Snippets(object):
             plotfunc = lambda var, vars_conjuction, sdir, nplot: self._modulationgood_plot_drawings_variables_bytrial(var, vars_conjuction, sdir, nplot)
         elif self.Params["which_level"]=="stroke":
             plotfunc = lambda var, vars_conjuction, sdir, nplot: self._modulationgood_plot_drawings_variables(var, vars_conjuction, sdir, nplot)
-        else:
+        else: 
+            #plotfunc = lambda var, vars_conjuction, sdir, nplot: self._modulationgood_plot_drawings_variables_bytrial(var, vars_conjuction, sdir, nplot)
             assert False
 
         # First, is this trial or stroke level.
@@ -4914,37 +4946,137 @@ class Snippets(object):
 
 
     ########################################
-    def plotwrapper_heatmap_smfr(self, which_var = "event_aligned", sdir=None):
-        """ Plot smoothed, average FR in heatmap, one figure for each region,
-        one subplot for each event, and each unit a row in this subplot
+    # def plotwrapper_heatmap_smfr(self, which_var = "event_aligned", sdir=None):
+    #     """ Plot smoothed, average FR in heatmap, one figure for each region,
+    #     one subplot for each event, and each unit a row in this subplot
+    #     """
+
+    #     sn = self.SN
+    #     list_event_aligned = self.DfScalar[which_var].unique().tolist()
+
+    #     if which_var!="event_aligned":
+    #         event0 = self.Params["list_events_uniqnames"][0]
+    #         assert len(self.Params["list_events_uniqnames"])==1, "multipoel events ,not sure what to use for timing..."
+
+    #     # if which_var=="event_aligned":
+    #     #     list_event_aligned = self.Params["list_events_uniqnames"]
+    #     # else:
+    #     #     list_event_aligned = self.Params["map_var_to_levels"][which_var]
+    #     #     event0 = self.Params["list_events_uniqnames"][0]
+    #     #     assert len(self.Params["list_events_uniqnames"])==1, "multipoel events ,not sure what to use for timing..."
+
+
+    #     ZSCORE = True
+    #     list_regions = sn.sitegetter_get_brainregion_list()
+    #     zlims = [-2, 2]
+    #     # zlims = [None, None]
+
+    #     for region in list_regions:
+    #         print("Plotting...", region)
+    #         sites_this = [s for s in self.Sites if s in sn.sitegetter_map_region_to_sites(region)]
+
+    #         # 1) extract smoothed FR for each  unit, for each event
+    #         fig, axes = plt.subplots(1, len(list_event_aligned), sharex=False, sharey=True, figsize=(len(list_event_aligned)*4, 8))
+            
+    #         # 2) Collect all fr mat
+    #         List_fr_mat = []
+    #         for i, (event, ax) in enumerate(zip(list_event_aligned, axes.flatten())):
+                            
+    #             # extract matrix of mean fr (site x time)
+    #             list_frmean = []
+    #             for site in sites_this:
+    #                 frmat, frmat_times, dict_plot_vals = self.dataextract_as_frmat(site, var=which_var, 
+    #                     var_level=event, return_as_zscore=ZSCORE) 
+    #                 frmean = np.mean(frmat, 0)
+    #                 list_frmean.append(frmean)
+
+    #             frmat_site_by_time = np.stack(list_frmean)
+
+    #             # sort (only for first index)
+    #             if i==0:
+    #                 frmat_site_by_time, sites_this = self.frmat_sort_by_time_of_max_fr(frmat_site_by_time, 
+    #                     sites_this)
+
+    #             # normalize firing rates (use percent change from first time bin)
+    #             if False:
+    #                 frmedian = np.median(frmat_site_by_time, axis=1, keepdims=True)
+    #                 frmat_site_by_time = (frmat_site_by_time - frmedian)/frmedian
+
+    #             List_fr_mat.append(frmat_site_by_time)
+
+    #         # Figure out zlim
+    #         zmax = np.max(np.abs([x.max() for x in List_fr_mat] + [x.min() for x in List_fr_mat]))
+    #         if zmax>1.8:
+    #             zmax = 1.8
+            
+    #         for event, frmat_site_by_time, ax in zip(list_event_aligned, List_fr_mat, axes.flatten()):
+    #             # if which_var=="event_aligned":
+    #             #     times, ind_0, xticks, xticklabels = self.event_extract_time_labels(event)
+    #             # else:
+    #             #     times, ind_0, xticks, xticklabels = self.event_extract_time_labels(event0)
+
+    #             # plot as 2d heat map
+    #             from pythonlib.tools.snstools import heatmap_mat
+    #         #         sns.heatmap(frmat_site_by_time, ax=ax, )
+    #             _, ax, _ = heatmap_mat(frmat_site_by_time, annotate_heatmap=False, ax=ax, diverge=True, zlims=[-zmax, zmax]);
+
+    #             # Set y and x ticks
+    #             ax.set_yticks([i+0.5 for i in range(len(sites_this))], labels=sites_this)
+    #             ax.set_xticks(dict_plot_vals["xticks"], labels=dict_plot_vals["xtick_labels"])
+    #             ax.axvline(dict_plot_vals["ind_aligned_to_event"])
+    #             ax.set_title(event)
+
+    #         fig.savefig(f"{sdir}/zscored-{region}.pdf")
+            
+            
+    #         # plot the means
+    #         fig, axes = plt.subplots(1, len(list_event_aligned), sharex=False, sharey=True, figsize=(len(list_event_aligned)*3, 3))
+    #         from neuralmonkey.neuralplots.population import plotNeurTimecourse, plot_smoothed_fr
+
+    #         for event, frmat_site_by_time, ax in zip(list_event_aligned, List_fr_mat, axes.flatten()):
+    #             plot_smoothed_fr(frmat_site_by_time, frmat_times, ax=ax)
+    #             ax.axvline(dict_plot_vals["ind_aligned_to_event"])
+    #             ax.set_title(event)
+                    
+    #         if sdir:
+    #             fig.savefig(f"{sdir}/zscored-{region}-mean.pdf")
+            
+    #         assert False
+    #         plt.close("all")        
+
+    def plotgood_heatmap_smfr(self, which_var = "event_aligned", sdir=None,
+        ZSCORE = True):
+        """ [Good]
+        Plot heatmaps of fr aligned to each event (column) for all units (rows),
+        z-scored (to allow comparison across sites) across trials.
+        Also plot the mean for each area (same represntation).
+        One figure for each region,
+        PARAMS;
+        - which_var, str, defines the columns
+
         """
+        from neuralmonkey.neuralplots.population import plotNeurTimecourse, plot_smoothed_fr
+        from pythonlib.tools.snstools import heatmap_mat
 
-        sn = self.SN
-        list_event_aligned = self.DfScalar[which_var].unique().tolist()
-
-        if which_var!="event_aligned":
-            event0 = self.Params["list_events_uniqnames"][0]
-            assert len(self.Params["list_events_uniqnames"])==1, "multipoel events ,not sure what to use for timing..."
-
-        # if which_var=="event_aligned":
-        #     list_event_aligned = self.Params["list_events_uniqnames"]
+        # if ZSCORE:
+        #     zlims = [-2, 2]
         # else:
-        #     list_event_aligned = self.Params["map_var_to_levels"][which_var]
-        #     event0 = self.Params["list_events_uniqnames"][0]
-        #     assert len(self.Params["list_events_uniqnames"])==1, "multipoel events ,not sure what to use for timing..."
+        #     zlims = [None, None]
 
-
-        ZSCORE = True
-        list_regions = sn.sitegetter_get_brainregion_list()
-        zlims = [-2, 2]
-        # zlims = [None, None]
-
+        ## Get the events (columns)
+        list_event_aligned = self.DfScalar[which_var].unique().tolist()
+        if which_var!="event_aligned":
+            assert len(self.Params["list_events_uniqnames"])==1, "multipoel events ,not sure what to use for timing..."
+            event0 = self.Params["list_events_uniqnames"][0]
+        
+        ## Iter over each region
+        list_regions = self.SN.sitegetter_get_brainregion_list()
         for region in list_regions:
             print("Plotting...", region)
-            sites_this = [s for s in self.Sites if s in sn.sitegetter_map_region_to_sites(region)]
+            sites_this = [s for s in self.Sites if s in self.SN.sitegetter_map_region_to_sites(region)]
 
             # 1) extract smoothed FR for each  unit, for each event
-            fig, axes = plt.subplots(1, len(list_event_aligned), sharex=False, sharey=True, figsize=(len(list_event_aligned)*4, 8))
+            fig, axes = plt.subplots(1, len(list_event_aligned), sharex=False, sharey=True, figsize=(len(list_event_aligned)*4, 8), squeeze=False)
             
             # 2) Collect all fr mat
             List_fr_mat = []
@@ -4953,11 +5085,10 @@ class Snippets(object):
                 # extract matrix of mean fr (site x time)
                 list_frmean = []
                 for site in sites_this:
-                    frmat = self.dataextract_as_frmat(site, var=which_var, 
+                    frmat, frmat_times, dict_plot_vals = self.dataextract_as_frmat(site, var=which_var, 
                         var_level=event, return_as_zscore=ZSCORE) 
                     frmean = np.mean(frmat, 0)
                     list_frmean.append(frmean)
-
                 frmat_site_by_time = np.stack(list_frmean)
 
                 # sort (only for first index)
@@ -4973,46 +5104,40 @@ class Snippets(object):
                 List_fr_mat.append(frmat_site_by_time)
 
             # Figure out zlim
-            zmax = np.max(np.abs([x.max() for x in List_fr_mat] + [x.min() for x in List_fr_mat]))
-            if zmax>1.8:
-                zmax = 1.8
+            if ZSCORE:
+                zmax = np.max(np.abs([x.max() for x in List_fr_mat] + [x.min() for x in List_fr_mat]))
+                if zmax>1.8:
+                    zmax = 1.8
+                zlims = [-zmax, zmax]
+            else:
+                zlims = [None, None]
             
+            ## Plot for each event
             for event, frmat_site_by_time, ax in zip(list_event_aligned, List_fr_mat, axes.flatten()):
-                if which_var=="event_aligned":
-                    times, ind_0, xticks, xticklabels = self.event_extract_time_labels(event)
-                else:
-                    times, ind_0, xticks, xticklabels = self.event_extract_time_labels(event0)
+                # if which_var=="event_aligned":
+                #     times, ind_0, xticks, xticklabels = self.event_extract_time_labels(event)
+                # else:
+                #     times, ind_0, xticks, xticklabels = self.event_extract_time_labels(event0)
 
                 # plot as 2d heat map
-                from pythonlib.tools.snstools import heatmap_mat
             #         sns.heatmap(frmat_site_by_time, ax=ax, )
-                _, ax, _ = heatmap_mat(frmat_site_by_time, annotate_heatmap=False, ax=ax, diverge=True, zlims=[-zmax, zmax]);
+                _, ax, _ = heatmap_mat(frmat_site_by_time, annotate_heatmap=False, ax=ax, diverge=True, zlims=zlims);
 
                 # Set y and x ticks
                 ax.set_yticks([i+0.5 for i in range(len(sites_this))], labels=sites_this)
-                ax.set_xticks(xticks, labels=xticklabels)
-                ax.axvline(ind_0)
-                
+                ax.set_xticks(dict_plot_vals["xticks"], labels=dict_plot_vals["xtick_labels"])
+                ax.axvline(dict_plot_vals["ind_aligned_to_event"])
                 ax.set_title(event)
+            savefig(fig, f"{sdir}/zscored_{ZSCORE}-{region}.pdf")
             
-            fig.savefig(f"{sdir}/zscored-{region}.pdf")
-            
-            # plot the means
-            fig, axes = plt.subplots(1, len(list_event_aligned), sharex=False, sharey=True, figsize=(len(list_event_aligned)*3, 3))
-            from neuralmonkey.neuralplots.population import plotNeurTimecourse, plot_smoothed_fr
+            ## plot the means
+            fig, axes = plt.subplots(1, len(list_event_aligned), sharex=False, sharey=True, figsize=(len(list_event_aligned)*3, 3), squeeze=False)
 
             for event, frmat_site_by_time, ax in zip(list_event_aligned, List_fr_mat, axes.flatten()):
-                if which_var=="event_aligned":
-                    times, ind_0, xticks, xticklabels = self.event_extract_time_labels(event)
-                else:
-                    times, ind_0, xticks, xticklabels = self.event_extract_time_labels(event0)
-
-                plot_smoothed_fr(frmat_site_by_time, times, ax=ax)
-                ax.axvline(times[ind_0])
+                plot_smoothed_fr(frmat_site_by_time, frmat_times, ax=ax)
+                ax.axvline(0)
                 ax.set_title(event)
-                    
-            if sdir:
-                fig.savefig(f"{sdir}/zscored-{region}-mean.pdf")
+            savefig(fig, f"{sdir}/zscored_{ZSCORE}-{region}-mean.pdf")
             
             plt.close("all")        
 
@@ -5253,11 +5378,14 @@ class Snippets(object):
         ncols = 1
         nrows = 1
         sn, _ = self._session_extract_sn_and_trial()
-        fig, ax, kwargs = sn._plot_raster_create_figure_blank(dur, len(dfthis), nrows, ncols)
+        fig, axes, kwargs = sn._plot_raster_create_figure_blank(dur, len(dfthis), nrows, ncols)
         # fig, ax = plt.subplots(figsize=(11,4))
-        sn._plot_raster_line_mult(ax, list_spiketimes, ylabel_trials=trials)
+        ax = axes[0][0]
+        sn._plot_raster_line_mult(ax, list_spiketimes, ylabel_trials=trials,
+            xmin=xmin, xmax=xmax)
         sn.plotmod_overlay_trial_events_mult(ax, trials, event_times, xmin=xmin, xmax=xmax)
 
+        return fig, axes
 
     def _plotgood_rasters_split_by_feature_levels(self, ax, dfthis, var, event=None, 
         levels_var=None, xmin=None, xmax=None):
@@ -5557,6 +5685,13 @@ class Snippets(object):
                     ax.set_ylabel(event_orig)
         return fig, axes
 
+    def plotgood_rasters(self, site, event=None):
+        """ Plot a single raster for this site and event
+        """
+        dfthis = self.dataextract_as_df_good(chan=site, event=event)
+        fig, axes = self._plotgood_rasters(dfthis, xmin=None, xmax=None)
+        return fig, axes
+
     def plotgood_rasters_smfr_each_level_combined(self, site, var, 
                 vars_others=None, event=None):
         """ [Good], plot in a single figure both rasters (top row) and sm fr (bottom), aligned.
@@ -5813,7 +5948,7 @@ class Snippets(object):
     def event_extract_pre_post_dur(self, event):
         """
         PARAMS:
-        - event, unique string name (prefix num)
+        - event, unique string name (prefix num), e.g, 00_go', or '01_doneb
         RETURNS:
         - pre_dur, num
         - post_dur, num
@@ -5823,7 +5958,17 @@ class Snippets(object):
         list_pre_dur = self.Params["list_pre_dur"]
         list_post_dur = self.Params["list_post_dur"]
 
-        ind = list_events_uniqnames.index(event)
+        if event not in list_events_uniqnames:
+            # Then probably doesnt have numerical prefix. THe following is correct
+            tmp = [i for i, x in enumerate(self.Params["_list_events"]) if x==event]
+            if len(tmp)!=1:
+                print(event)
+                print(self.Params)
+                print(tmp)
+                assert False
+            ind = tmp[0]
+        else:
+            ind = list_events_uniqnames.index(event)
 
         return list_pre_dur[ind], list_post_dur[ind]
 

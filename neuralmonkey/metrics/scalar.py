@@ -1123,13 +1123,13 @@ class MetricsScalar(object):
         
         res = []
         dict_zscores_per_ndat = {}
-        frmat_all = self.dataextract_as_frmat(site, event=None)
+        frmat_all, _ = self.dataextract_as_frmat(site, event=None)
 
         # first, determine the sample size for each event.
         # use the min sample size for all data (taking bootstraps if needed).
         list_n = []
         for event in list_event:
-            frmat = self.dataextract_as_frmat(site, event) 
+            frmat, times = self.dataextract_as_frmat(site, event) 
             n = frmat.shape[0]
             if n<n_min_trials:
                 continue
@@ -1137,7 +1137,7 @@ class MetricsScalar(object):
         nmin = min(list_n)
         for event in list_event:
                 
-            frmat = self.dataextract_as_frmat(site, event) 
+            frmat, times = self.dataextract_as_frmat(site, event) 
             
             # minimum size data
             if frmat.shape[0]<n_min_trials:
