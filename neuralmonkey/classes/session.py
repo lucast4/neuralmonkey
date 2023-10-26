@@ -4917,6 +4917,48 @@ class Session(object):
 
         return dict_events
 
+    # load saccade onset times (231027_eyetracking_neural_exploration.ipynb)
+    def events_get_saccade_clusterfix_results(self, trial, on_or_off=True):
+        # load this trial's saccade times
+        trialcode = self.datasetbeh_trial_to_trialcode(trial)
+        directory_for_clusterfix = "/home/kgg/Desktop/neuralmonkey/neuralmonkey/eyetracking"
+
+        # load the .csv file for this trialcode, containing saccade onsets
+        if on_or_off:
+            fname = f"{directory_for_clusterfix}/{self.Animal}-{self.Date}-0-test2/{trialcode}-saccade-onsets.csv"
+        else:
+            fname = f"{directory_for_clusterfix}/{self.Animal}-{self.Date}-0-test2/{trialcode}-saccade-offsets.csv"
+
+        import pandas as pd 
+        data = pd.read_csv(fname, sep=',').values
+        data = [item[0] for item in data]
+        #print(data)
+
+        #import csv
+        #with open (fname, newline='') as csvfile:
+            #data = list(csv.reader(csvfile, delimiter=","))
+            #reader = csv.reader(csvfile, delimiter=',')
+            #for row in reader:
+            #    print(', '.join(row))
+        # first, find the "trial" in the saved name, by loading the mapper:
+        # all_trialnums
+        # all_trialcodes
+
+        # trial_load = None
+        # for t, tc in zip(all_trialnums, all_trialcodes):
+        #     if tc==trialcode:
+        #         trial_load = t
+        #         break
+        # assert trial_load is not Noen
+
+
+        # fname = f"{directory_for_clusterrfix}/{sn.Animal}-{sn.Date}-{trialcode}.mat"
+
+
+        # return etiher the on or off times depending on on_or_off
+        print(data)
+        return data
+
 
     def events_get_time_helper(self, event, trial, assert_one=False):
         """ [GOOD] Return the time in trial for this event. Tries to use
@@ -4929,47 +4971,50 @@ class Session(object):
         - list of numbers, one for each detection of this even in this trial, sorted.
         """
 
-        try:
-            # Better version using photodiode or motor
-            times = self.events_get_time_using_photodiode(trial, [event])[event] 
-        except NotEnoughDataException as err:
-            if isinstance(event, tuple):
-                eventkind = event[0]            
-                if eventkind=="strokes":
-                    # event = (strokes, 1, "on")
-                    strokenum = event[1] # 0, 1, .. -1
-                    timepoint = event[2] # on, off
-                    ons, offs = self.strokes_extract_ons_offs(trial)
-                    if timepoint=="on":
-                        alignto_time = ons[strokenum]
-                    elif timepoint=="off":
-                        alignto_time = offs[strokenum]
+        if event in ["saccon", "saccoff"]:
+            times = self.events_get_saccade_clusterfix_results(trial, event)
+        else:
+            try:
+                # Better version using photodiode or motor
+                times = self.events_get_time_using_photodiode(trial, [event])[event] 
+            except NotEnoughDataException as err:
+                if isinstance(event, tuple):
+                    eventkind = event[0]            
+                    if eventkind=="strokes":
+                        # event = (strokes, 1, "on")
+                        strokenum = event[1] # 0, 1, .. -1
+                        timepoint = event[2] # on, off
+                        ons, offs = self.strokes_extract_ons_offs(trial)
+                        if timepoint=="on":
+                            alignto_time = ons[strokenum]
+                        elif timepoint=="off":
+                            alignto_time = offs[strokenum]
+                        else:
+                            assert False
                     else:
+                        print(eventkind)
                         assert False
-                else:
-                    print(eventkind)
-                    assert False
-                times = [alignto_time]
-            elif isinstance(event, str):
-                # THis is behcode shorthand
-                code = self.behcode_convert(codename=event, shorthand=True)
-                # try pd again
-                try:
-                    times = self.events_get_time_using_photodiode(trial, [code])[code] 
-                except NotEnoughDataException as err:
-                    # Get the behcode time.
-                    alignto_time = self._behcode_extract_times(code, trial, first_instance_only=True)
                     times = [alignto_time]
-            elif isinstance(event, int):
-                # Then is behcode
-                alignto_time = self._behcode_extract_times(event, trial, first_instance_only=True)
-                times = [alignto_time]
-            else:
-                assert False
+                elif isinstance(event, str):
+                    # THis is behcode shorthand
+                    code = self.behcode_convert(codename=event, shorthand=True)
+                    # try pd again
+                    try:
+                        times = self.events_get_time_using_photodiode(trial, [code])[code] 
+                    except NotEnoughDataException as err:
+                        # Get the behcode time.
+                        alignto_time = self._behcode_extract_times(code, trial, first_instance_only=True)
+                        times = [alignto_time]
+                elif isinstance(event, int):
+                    # Then is behcode
+                    alignto_time = self._behcode_extract_times(event, trial, first_instance_only=True)
+                    times = [alignto_time]
+                else:
+                    assert False
 
-        if assert_one:
-            assert len(times)==1
-            
+            if assert_one:
+                assert len(times)==1
+                
         return times
 
     def events_default_list_events(self, include_stroke_endpoints=True,
