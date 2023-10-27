@@ -1095,7 +1095,7 @@ class Snippets(object):
             pa = self._dataextract_as_popanal_singlesite(dfthis, [site], list_cols=list_cols)
             dict_lev_pa[lev_other] = pa
 
-        return dict_lev_pa, levels_var
+        return dict_lev_pa, levels_var 
 
     def dataextract_as_df_good(self, chan=None, event=None, var=None, var_level=None, 
             dfthis=None, list_chan=None, pre_dur=None, post_dur=None):
@@ -5189,6 +5189,22 @@ class Snippets(object):
 
         return fig, axes
 
+    def _plotgood_smoothfr(self, site, event=None, ax=None):
+        """ 
+        """
+
+        assert ax is not None, "not yet coded."
+
+        # Extract data
+        dfthis = self.dataextract_as_df_good(site, event)
+
+        # Get event boundaries
+        tmp = self._plotgood_rasters_extract_xmin_xmax()
+        event_bounds = [tmp[0], 0., tmp[1]]
+
+        pathis = self._dataextract_as_popanal_singlesite(dfthis, [site])
+        pathis.plotwrapper_smoothed_fr(ax=ax, plot_indiv=False, plot_summary=True)
+
 
     def _plotgood_smoothfr_average_each_level(self, site, var, vars_others=None,
         event=None, plot_these_levels_of_varsothers=None, plot_on_these_axes=None):
@@ -5363,7 +5379,8 @@ class Snippets(object):
             xmax = self.Params["list_post_dur"][0]
         return xmin, xmax
 
-    def _plotgood_rasters(self, dfthis, xmin=None, xmax=None):
+    def _plotgood_rasters(self, dfthis, xmin=None, xmax=None, 
+            ax=None):
         """Plot rasters for all trials of this dataframe
         """
         if self.SNmult is not None:
@@ -5373,19 +5390,22 @@ class Snippets(object):
         event_times = dfthis["event_time"].tolist()
         # include_text = False
 
-        xmin, xmax = self._plotgood_rasters_extract_xmin_xmax(xmin, xmax)
-        dur = xmax-xmin
-        ncols = 1
-        nrows = 1
         sn, _ = self._session_extract_sn_and_trial()
-        fig, axes, kwargs = sn._plot_raster_create_figure_blank(dur, len(dfthis), nrows, ncols)
-        # fig, ax = plt.subplots(figsize=(11,4))
-        ax = axes[0][0]
+        xmin, xmax = self._plotgood_rasters_extract_xmin_xmax(xmin, xmax)
+        if ax is None:
+            dur = xmax-xmin
+            ncols = 1
+            nrows = 1
+            fig, axes, kwargs = sn._plot_raster_create_figure_blank(dur, len(dfthis), nrows, ncols)
+            # fig, ax = plt.subplots(figsize=(11,4))
+            ax = axes[0][0]
+        else:
+            fig = None
         sn._plot_raster_line_mult(ax, list_spiketimes, ylabel_trials=trials,
             xmin=xmin, xmax=xmax)
         sn.plotmod_overlay_trial_events_mult(ax, trials, event_times, xmin=xmin, xmax=xmax)
 
-        return fig, axes
+        return fig, ax
 
     def _plotgood_rasters_split_by_feature_levels(self, ax, dfthis, var, event=None, 
         levels_var=None, xmin=None, xmax=None):
@@ -5685,12 +5705,84 @@ class Snippets(object):
                     ax.set_ylabel(event_orig)
         return fig, axes
 
-    def plotgood_rasters(self, site, event=None):
+    def plotgood_rasters(self, site, event=None, ax=None):
         """ Plot a single raster for this site and event
         """
         dfthis = self.dataextract_as_df_good(chan=site, event=event)
-        fig, axes = self._plotgood_rasters(dfthis, xmin=None, xmax=None)
-        return fig, axes
+        fig, ax = self._plotgood_rasters(dfthis, xmin=None, xmax=None, ax=ax)
+        return fig, ax
+
+    def plotgood_rasters_smfr_combined(self, site, event=None):
+        """
+        """
+        
+
+
+        # # PREPARE plot
+        # # Extract data, just to see many subplots to make.
+        # _, levdat, levels_var = self.dataextract_as_df_conjunction_vars(var, 
+        #         vars_others, site, event=event)
+
+        # # if the other_level names are too long, shorten and use that 
+        # # if max([len(lov) for lov in levdat.keys()])>MAX_TITLE_LENGTH:
+        # #     # replace with indices and redo
+        # #     from pythonlib.tools.listtools import map_categoricalvar_to_indices
+        # #     map_idx_to_level, map_level_to_idx = map_categoricalvar_to_indices(list(levdat.keys()))
+        # # else:
+        # #     map_idx_to_level = None
+        # #     map_level_to_idx = {lev:lev for lev in levdat.keys()}
+
+        # if len(levdat)>0:
+        #     map_level_to_idx = {lev:lev for lev in levdat.keys()}
+        #     max_title_len = max([len(str(lov)) for lov in levdat.keys()])
+        #     if max_title_len>50:
+        #         FONTSIZE = 4
+        #     else:
+        #         FONTSIZE = 6
+        ncols = 1
+        dfthis = self.dataextract_as_df_good(site, event)
+        ntrials = len(dfthis)
+        xmin, xmax = self._plotgood_rasters_extract_xmin_xmax()
+        dur = xmax-xmin
+        print(dur)
+        nrows = 2
+        sn, _ = self._session_extract_sn_and_trial()
+        fig, axesall, kwargs = sn._plot_raster_create_figure_blank(dur, ntrials, nrows, ncols, 
+                                                                       reduce_height_for_sm_fr=True)
+
+        # fig, axesall = plt.subplots(2,1)
+
+        # 1) Plot the rasters ont he top row.
+        # axes = axesall[0]
+        ax = axesall.flatten()[0]
+        self.plotgood_rasters(site, event, ax)    
+        # # Make sure is readable even if is long name.
+        # ax.set_title(map_level_to_idx[lev_other], fontsize=FONTSIZE, wrap=True)
+        # ax.set_ylabel(map_level_to_idx[lev_other], fontsize=FONTSIZE, wrap=True)
+        # assert False
+        ax.axvline(0, color="m") 
+        
+
+        # 2) Plot the sm fr on the lower row
+        ax = axesall.flatten()[1]
+        self._plotgood_smoothfr(site, event, ax=ax)
+        ax.axvline(0, color="m") 
+
+        # self._plotgood_smoothfr_average_each_level(site, var, vars_others, event=event,
+        #                                          plot_these_levels_of_varsothers=levels_of_varsothers,
+        #                                          plot_on_these_axes=axes)  
+        # make sure x axes is same for raster and sm fr
+        for i in range(ncols):
+            ax1 = axesall[0][i]
+            ax2 = axesall[1][i]
+            ax2.set_xlim(ax1.get_xlim())
+
+        # frates, floor at 0
+        for i in range(ncols):
+            ax2 = axesall[1][i]
+            ax2.set_ylim(0)
+
+        return fig, axesall
 
     def plotgood_rasters_smfr_each_level_combined(self, site, var, 
                 vars_others=None, event=None):
@@ -5778,9 +5870,9 @@ class Snippets(object):
                 ax2 = axesall[1][i]
                 ax2.set_ylim(0)
         else:
-            fig, axes = plt.subplots()
+            fig, axesall = plt.subplots()
 
-        return fig, axes
+        return fig, axesall
 
 
     def plot_rasters_smfr_each_level_combined(self, site, var, 
