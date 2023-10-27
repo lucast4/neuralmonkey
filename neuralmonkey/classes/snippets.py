@@ -1364,9 +1364,9 @@ class Snippets(object):
             assert site in DFTHIS["chan"], "This channel doesnt exist!!"
         
         if event is not None:
-            if event in DFTHIS["event"]:
+            if event in DFTHIS["event"].tolist():
                 event_col = "event"
-            elif event in DFTHIS["event_aligned"]:
+            elif event in DFTHIS["event_aligned"].tolist():
                 event_col = "event_aligned"
             else:
                 print(event)
@@ -5363,7 +5363,7 @@ class Snippets(object):
             xmax = self.Params["list_post_dur"][0]
         return xmin, xmax
 
-    def _plotgood_rasters(self, dfthis, xmin=None, xmax=None):
+    def _plotgood_rasters(self, dfthis, xmin=None, xmax=None, overlay_strokes=True, overlay_events=True):
         """Plot rasters for all trials of this dataframe
         """
         if self.SNmult is not None:
@@ -5383,7 +5383,9 @@ class Snippets(object):
         ax = axes[0][0]
         sn._plot_raster_line_mult(ax, list_spiketimes, ylabel_trials=trials,
             xmin=xmin, xmax=xmax)
-        sn.plotmod_overlay_trial_events_mult(ax, trials, event_times, xmin=xmin, xmax=xmax)
+        if overlay_events:
+            sn.plotmod_overlay_trial_events_mult(ax, trials, event_times, xmin=xmin, xmax=xmax, 
+                overlay_strokes=overlay_strokes)
 
         return fig, axes
 
@@ -5685,11 +5687,12 @@ class Snippets(object):
                     ax.set_ylabel(event_orig)
         return fig, axes
 
-    def plotgood_rasters(self, site, event=None):
+    def plotgood_rasters(self, site, event=None, overlay_strokes=True, overlay_events=True):
         """ Plot a single raster for this site and event
         """
         dfthis = self.dataextract_as_df_good(chan=site, event=event)
-        fig, axes = self._plotgood_rasters(dfthis, xmin=None, xmax=None)
+        fig, axes = self._plotgood_rasters(dfthis, xmin=None, xmax=None, 
+            overlay_strokes=overlay_strokes, overlay_events=overlay_events)
         return fig, axes
 
     def plotgood_rasters_smfr_each_level_combined(self, site, var, 
