@@ -2,23 +2,15 @@
 # then change so it's independent of session, uses XY data
 
 from neuralmonkey.classes.session import load_mult_session_helper
+from pythonlib.tools.stroketools import strokesInterpolate2
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy.io
 import random
 import math
+import os
 
-################################################
-### Extract a specific session ###
-################################################
-def __main__():
-	# preprocessed datasets: Diego-230603 (ok), Pancho-221020 (ok), Diego-230626 (primsingrid), Diego-230616 (26 singleprims)
-	date = 230616
-	animal = "Diego"
-	session = 0
-
-	MS = load_mult_session_helper(date, animal)
-	sn = MS.SessionsList[session]
 
 ################################################
 ### Plot a single trial's stimulus/behavior ###
@@ -188,9 +180,10 @@ def plotSmCalibEyeXYOverTaskImage(sn, trial):
 # returns smoothed and transformed x,y data for a session/trialnum
 def getEyeXYSmoothedAndTransformed(sn, trialnum, PLOT=True):
     # get TRANSFORMED xy-coordinates (used calibration matrix to map to screen)
-    times = sn.beh_extract_eye_good(trialnum)[0]
-    x_aff = sn.beh_extract_eye_good(trialnum)[1][:,0]
-    y_aff = sn.beh_extract_eye_good(trialnum)[1][:,1]
+    st = sn.beh_extract_eye_good(trialnum)
+    times = st[0]
+    x_aff = st[1][:,0]
+    y_aff = st[1][:,1]
 
     # SMOOTH DATA
     from pythonlib.pythonlib.tools.timeseriestools import smoothDat
@@ -613,3 +606,105 @@ def locations_fixations_extract(sn, trial, start_event, end_event):
     return list_gridloc
 
 
+# return mask array of whether within bounding box
+def _getXYWithinBoundingBoxMask(x, y, minx, miny, maxx, maxy):
+    assert(len(x) == len(y), "xy must be same length")
+    xn = np.array(x)
+    yn = np.array(y)
+    result = ((xn >= minx) & (xn <= maxx) & (yn >= miny) & (yn <= maxy))
+    print(result)
+    return result
+
+
+################ to run main ######################
+
+################################################
+### Extract a specific session ###
+################################################
+def __main__():
+    # preprocessed datasets: Diego-230603 (ok), Pancho-221020 (ok), Diego-230626 (primsingrid), Diego-230616 (26 singleprims)
+    date = 230616
+    animal = "Diego"
+    session = 0
+
+    # print(os.getcwd())
+
+    # get session info
+    MS = load_mult_session_helper(date, animal)
+    sn = MS.SessionsList[session]
+    success_trials = getSuccessfulTrialNums(sn)
+
+    # mkdir for animal-date-session
+    dirn = animal + "3-" + str(date) + "-" + str(session)
+    os.mkdir(dirn)
+    os.chdir(dirn)
+
+    tnums = []
+
+    # get bounding box
+    # RETURNS:
+    #- in format [[-x, -y], [+x, +y]]. does not save in self
+    bounding_box = sn.Datasetbeh.recomputeSketchpadEdgesAll(strokes_ver="strokes_task")
+
+    # loop thru trials and save xy data
+    #for trial in success_trials:
+    for trial in [136]:
+        # get sampling rate
+        times_x, vals_x, fs_x = sn.extract_data_tank_streams("eyex", trial, ploton=False)
+
+        # get XY smoothed / transformed on eye calibration matrix
+        x,y,times = getEyeXYSmoothedAndTransformed(sn, trial, False)
+
+        # get times of start, end of drawing (we will subsample between these windows to reduce noise)
+        start_time, end_time = _getTimeWindowOfEvents(sn, trial, "go", "doneb") # "go", "doneb"
+        
+        
+        print("start_time", start_time)
+        print("end_time", end_time)
+
+        # NOTE: sometimes end_time is blank, because of trials where he times out... will just skip for now
+        if end_time:
+            tnums.append(trial)
+        else:
+            continue
+
+        # prune x, y, times using bounding box and fixation button
+        fixation_pos = sn.Datasetbeh.sketchpad_fixation_button_position(136)
+        # stretch bounding box to include fixation button
+        minx = min(bounding_box[0][0], fixation_pos[0])
+        miny = min(bounding_box[0][0], fixation_pos[1])
+        maxx = max(bounding_box[0][1], fixation_pos[0])
+        maxy = max(bounding_box[0][1], fixation_pos[1])
+        bounding_inds = _getXYWithinBoundingBoxMask(x, y, minx, miny, maxx, maxy)
+
+        new_times = times[bounding_inds]
+        new_x = x[bounding_inds]
+        new_y = y[bounding_inds]
+
+        # prune data beyond start, end times
+        times_np = np.array(new_times)
+        inds = (times_np >= start_time) & (times_np <= end_time)
+
+        # make Nx3 np.array
+        stroke = [np.array([new_x[inds], new_y[inds], new_times[inds]]).T] # dummy stroke list
+
+        # resample using integer sampling rate
+        fs_new = 200
+        stroke_intp = strokesInterpolate2(stroke, ["fsnew", fs_new, fs_x])
+        stroke_k = stroke_intp[0]
+
+        # pull out times, x, y
+        x_k = stroke_k[:,0]
+        y_k = stroke_k[:,1]
+        times_k = stroke_k[:,2]
+
+        # save data to be loaded into MATLAB
+        fname = "trial" + str(trial) + ".mat"
+        scipy.io.savemat(fname, dict(x=x_k, y=y_k, times=times_k, fs_hz=fs_new))
+
+
+    # save trial numbers for later use in MATLAB
+    ###scipy.io.savemat("all_trialnums.mat", dict(trialnums=tnums))
+
+if __name__ == "__main__":
+    __main__()

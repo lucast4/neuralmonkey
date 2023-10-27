@@ -1364,9 +1364,9 @@ class Snippets(object):
             assert site in DFTHIS["chan"], "This channel doesnt exist!!"
         
         if event is not None:
-            if event in DFTHIS["event"]:
+            if event in DFTHIS["event"].tolist():
                 event_col = "event"
-            elif event in DFTHIS["event_aligned"]:
+            elif event in DFTHIS["event_aligned"].tolist():
                 event_col = "event_aligned"
             else:
                 print(event)
@@ -5379,7 +5379,7 @@ class Snippets(object):
             xmax = self.Params["list_post_dur"][0]
         return xmin, xmax
 
-    def _plotgood_rasters(self, dfthis, xmin=None, xmax=None, 
+    def _plotgood_rasters(self, dfthis, xmin=None, xmax=None, overlay_strokes=True, overlay_events=True,
             ax=None):
         """Plot rasters for all trials of this dataframe
         """
@@ -5403,7 +5403,9 @@ class Snippets(object):
             fig = None
         sn._plot_raster_line_mult(ax, list_spiketimes, ylabel_trials=trials,
             xmin=xmin, xmax=xmax)
-        sn.plotmod_overlay_trial_events_mult(ax, trials, event_times, xmin=xmin, xmax=xmax)
+        if overlay_events:
+            sn.plotmod_overlay_trial_events_mult(ax, trials, event_times, xmin=xmin, xmax=xmax, 
+                overlay_strokes=overlay_strokes)
 
         return fig, ax
 
@@ -5744,7 +5746,6 @@ class Snippets(object):
         ntrials = len(dfthis)
         xmin, xmax = self._plotgood_rasters_extract_xmin_xmax()
         dur = xmax-xmin
-        print(dur)
         nrows = 2
         sn, _ = self._session_extract_sn_and_trial()
         fig, axesall, kwargs = sn._plot_raster_create_figure_blank(dur, ntrials, nrows, ncols, 
