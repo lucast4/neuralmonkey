@@ -4,6 +4,8 @@
 from pythonlib.globals import PATH_NEURALMONKEY, PATH_DATA_NEURAL_RAW, PATH_DATA_NEURAL_PREPROCESSED
 from pythonlib.tools.expttools import writeStringsToFile, makeTimeStamp
 
+from neuralmonkey.classes.session import LOCAL_LOADING_MODE, LOCAL_PATH_PREPROCESSED_DATA
+
 def find_rec_session_paths(animal, date):
     """
     """
@@ -13,7 +15,12 @@ def find_rec_session_paths(animal, date):
         [animal],
         [date]
     ]
-    paths = findPath(PATH_DATA_NEURAL_RAW, path_hierarchy, sort_by="name")
+
+
+    if LOCAL_LOADING_MODE:
+        paths = findPath(LOCAL_PATH_PREPROCESSED_DATA, path_hierarchy, sort_by="name")
+    else:    
+        paths = findPath(PATH_DATA_NEURAL_RAW, path_hierarchy, sort_by="name")
 
     # REmove paths that say "IGNORE"
     paths = [p for p in paths if "IGNORE" not in p]

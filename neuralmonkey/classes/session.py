@@ -16,8 +16,8 @@ from pythonlib.tools.expttools import checkIfDirExistsAndHasFiles
 from pythonlib.globals import PATH_NEURALMONKEY, PATH_DATA_NEURAL_RAW, PATH_DATA_NEURAL_PREPROCESSED
 # PATH_NEURALMONKEY = "/data1/code/python/neuralmonkey/neuralmonkey"
 
-LOCAL_LOADING_MODE = False
-LOCAL_PATH_PREPROCESSED_DATA = "/gorilla1/neural_preprocess/recordings"
+LOCAL_LOADING_MODE = True
+LOCAL_PATH_PREPROCESSED_DATA = f"{PATH_DATA_NEURAL_PREPROCESSED}/recordings"
 if LOCAL_LOADING_MODE:
     # debugging code.
     PATH_DATA_NEURAL_RAW = "/tmp"
@@ -115,7 +115,6 @@ def load_mult_session_helper(DATE, animal, dataset_beh_expt=None, expt = "*",
             units_metadat_fail_if_no_exist=units_metadat_fail_if_no_exist)
         SNlist.append(SN)
         print("Extracted successfully for session: ", rec_session)
-
     assert len(SNlist)>0, "did not find any neural sessions..."
 
     # Combine into all sessions
@@ -148,7 +147,7 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
         assert len(dataset_beh_expt)>1, "if skip, then make this None"
 
     # 1) Find the raw beh data (filedata)
-    if ACTUALLY_BAREBONES_LOADING:
+    if ACTUALLY_BAREBONES_LOADING or LOCAL_LOADING_MODE:
         beh_sess_list, beh_expt_list, beh_trial_map_list = None, None, None
     else:
         beh_sess_list, beh_expt_list, _, beh_trial_map_list = session_map_from_rec_to_ml2(animal, DATE, rec_session) 
@@ -213,7 +212,6 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
     #     print(beh_sess_list)
     #     print(sessdict[DATE])
     #     assert False
-
     try:
         SN = Session(DATE, beh_expt_list, beh_sess_list, beh_trial_map_list,
             animal =animal,  
@@ -408,10 +406,10 @@ class Session(object):
             ts = makeTimeStamp()
             print("@@@@ DEBUG TIMING, COMPLETED", "self._initialize_paths()", ts)
 
-
-        # print(beh_expt_list, beh_sess_list, beh_trial_map_list)
-        assert len(beh_expt_list) == len(beh_sess_list)
-        assert len(beh_expt_list) == len(beh_trial_map_list), "these all equal the num beh sessions that have data relevant for this neural session"
+        if not LOCAL_LOADING_MODE:
+            # print(beh_expt_list, beh_sess_list, beh_trial_map_list)
+            assert len(beh_expt_list) == len(beh_sess_list)
+            assert len(beh_expt_list) == len(beh_trial_map_list), "these all equal the num beh sessions that have data relevant for this neural session"
 
         # Immediately fail for these exceptions
         if self.Animal=="Pancho" and int(self.Date)==230124:
