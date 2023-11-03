@@ -920,8 +920,35 @@ class Session(object):
             pathdict = load_yaml_config(f"{pathbase_local}/paths.yaml")
             pathdict["cached_dir"] = cached_dir
             self.Paths = pathdict
-            self.PathRaw = pathdict["raws"]
-            self.PathTank = pathdict["tank"]
+
+            # Update paths with local directory
+            paths_updated = {}
+            # keys_to_remove = ["raws", "tank", "spikes"]
+            for k, v in self.Paths.items():
+                print(k, "---", v)
+                if "/mnt" in v:
+                    # Then this is a server path. remove it
+                    continue
+                else:
+                    # Keep it. decide if to Replace string in path
+                    s1 = "/gorilla1/neural_preprocess/recordings/"
+                    ind1 = v.find(s1)
+
+                    s2 = "/home/lucast4/code/neuralmonkey/neuralmonkey/"
+                    ind2 = v.find(s2)
+                    if ind1>-1:
+                        v_new = f"{LOCAL_PATH_PREPROCESSED_DATA}/{v[ind1+len(s1):]}"
+                    elif ind2>-1:
+                        v_new = f"{PATH_NEURALMONKEY}/{v[ind2+len(s2):]}"
+                    else:
+                        # this is not a path to change
+                        v_new = v
+                    paths_updated[k] = v_new
+
+            print("LOCAL LOADING - updated self.Paths:")
+            for k, v in paths_updated.items():
+                print(k, " ==== ", v)
+
         else:
             def _get_spikes_raw_path():
                 """ checks to find path to folder holding spikes data, in order of most to 
@@ -1285,14 +1312,16 @@ class Session(object):
             self._CachedTouchData[trial] = self.beh_extract_touch_data(trial)
 
 
-    def _savelocalcached_save(self, save_dataset_beh=True, save_datslices=True):
+    def _savelocalcached_save(self, save_dataset_beh=True, save_datslices=True,
+            ONLY_EXTRA_STUFF=False):
         """
         Save to disk all cached data in self._Cached... This saves quickly.
         """
 
         # ONLY ALLOWED to do this if this was not using MINIMAL loading. Otherwise not sure
         # if did correct sanity checks (which si only possible wihtout minimal locading)
-        assert self._LOAD_VERSION == "FULL_LOADING"
+        if not ONLY_EXTRA_STUFF:
+            assert self._LOAD_VERSION == "FULL_LOADING"
         # assert self._MINIMAL_LOADING == False
         # assert self._BAREBONES_LOADING == False
 
@@ -1304,29 +1333,35 @@ class Session(object):
             with open(path, "wb") as f:
                 pickle.dump(this, f)
 
-        _save_this(self._CachedTrialOnset, "trial_onsets")
-        _save_this(self._CachedTouchData, "touch_data")
-        _save_this(self._CachedStrokes, "strokes")
-        _save_this(self._CachedStrokesPeanutsOnly, "strokes_peanutsonly")
-        _save_this(self._CachedStrokesTask, "strokes_task")
-        _save_this(self._CachedTrialsList, "trials_list")
+        _save_this(self.BehTrialMapListGood, "BehTrialMapListGood")
+        _save_this(self.BehTrialMapList, "BehTrialMapList")
+        _save_this(self.BehSessList, "BehSessList")
+        _save_this(self._MapperTrialcode2TrialToTrial, "_MapperTrialcode2TrialToTrial")
 
-        if save_dataset_beh:
-            self.Datasetbeh.save(pathdir)
+        if not ONLY_EXTRA_STUFF:
+            _save_this(self._CachedTrialOnset, "trial_onsets")
+            _save_this(self._CachedTouchData, "touch_data")
+            _save_this(self._CachedStrokes, "strokes")
+            _save_this(self._CachedStrokesPeanutsOnly, "strokes_peanutsonly")
+            _save_this(self._CachedStrokesTask, "strokes_task")
+            _save_this(self._CachedTrialsList, "trials_list")
 
-        if save_datslices:
-            list_trials = self.get_trials_list(SAVELOCALCACHED_TRIALS_FIXATION_SUCCESS)
-            # list_trials = self.get_trials_list(False)
-            path = f"{pathdir}/datall_site_trial"
-            os.makedirs(path, exist_ok=True)
-            for trial in list_trials:
-                if trial%20==0:
-                    print("trial:", trial)
-                for site in self.sitegetter_all(clean=False):
-                    this = self.datall_slice_single_bysite(site, trial)
-                    paththis = f"{path}/datslice_trial{trial}_site{site}.pkl"
-                    with open(paththis, "wb") as f:
-                        pickle.dump(this, f)
+            if save_dataset_beh:
+                self.Datasetbeh.save(pathdir)
+
+            if save_datslices:
+                list_trials = self.get_trials_list(SAVELOCALCACHED_TRIALS_FIXATION_SUCCESS)
+                # list_trials = self.get_trials_list(False)
+                path = f"{pathdir}/datall_site_trial"
+                os.makedirs(path, exist_ok=True)
+                for trial in list_trials:
+                    if trial%20==0:
+                        print("trial:", trial)
+                    for site in self.sitegetter_all(clean=False):
+                        this = self.datall_slice_single_bysite(site, trial)
+                        paththis = f"{path}/datslice_trial{trial}_site{site}.pkl"
+                        with open(paththis, "wb") as f:
+                            pickle.dump(this, f)
                        
     def _savelocalcached_check_done(self, datslice_quick_check=False): 
         """
@@ -1370,6 +1405,15 @@ class Session(object):
         self._CachedStrokesPeanutsOnly = _load_this("strokes_peanutsonly")
         self._CachedStrokesTask = _load_this("strokes_task")
         self._CachedTouchData = _load_this("touch_data")
+
+        try:
+            self.BehTrialMapListGood = _load_this("BehTrialMapListGood")
+            self.BehTrialMapList = _load_this("BehTrialMapList")
+            self.BehSessList = _load_this("BehSessList")
+            self._MapperTrialcode2TrialToTrial = _load_this("_MapperTrialcode2TrialToTrial")
+        except FileNotFoundError as err:
+            # just skip this. old data, didnt save tehse caches.
+            pass
 
         paththis = f"{pathdir}/dataset_beh.pkl"
         with open(paththis, "rb") as f:
@@ -7856,7 +7900,7 @@ class Session(object):
         """
         date = self.Date
         index_sess, trial_ml = self._beh_get_fdnum_trial(trial)
-        session_ml = self.BehSessList[index_sess]
+        session_ml = self.BehSessList[index_sess] 
 
         trialcode = f"{date}-{session_ml}-{trial_ml}"
         return trialcode
