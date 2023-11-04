@@ -948,6 +948,7 @@ class Session(object):
             print("LOCAL LOADING - updated self.Paths:")
             for k, v in paths_updated.items():
                 print(k, " ==== ", v)
+            self.Paths = paths_updated
 
         else:
             def _get_spikes_raw_path():
