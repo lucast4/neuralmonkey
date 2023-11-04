@@ -16,7 +16,7 @@ from pythonlib.tools.expttools import checkIfDirExistsAndHasFiles
 from pythonlib.globals import PATH_NEURALMONKEY, PATH_DATA_NEURAL_RAW, PATH_DATA_NEURAL_PREPROCESSED
 # PATH_NEURALMONKEY = "/data1/code/python/neuralmonkey/neuralmonkey"
 
-LOCAL_LOADING_MODE = True
+LOCAL_LOADING_MODE = False
 LOCAL_PATH_PREPROCESSED_DATA = f"{PATH_DATA_NEURAL_PREPROCESSED}/recordings"
 if LOCAL_LOADING_MODE:
     # debugging code.
