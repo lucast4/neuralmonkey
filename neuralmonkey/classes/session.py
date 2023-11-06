@@ -16,8 +16,13 @@ from pythonlib.tools.expttools import checkIfDirExistsAndHasFiles
 from pythonlib.globals import PATH_NEURALMONKEY, PATH_DATA_NEURAL_RAW, PATH_DATA_NEURAL_PREPROCESSED
 # PATH_NEURALMONKEY = "/data1/code/python/neuralmonkey/neuralmonkey"
 
-
-assert os.path.exists(PATH_DATA_NEURAL_RAW), "might have to mount servr?"
+LOCAL_LOADING_MODE = False
+LOCAL_PATH_PREPROCESSED_DATA = f"{PATH_DATA_NEURAL_PREPROCESSED}/recordings"
+if LOCAL_LOADING_MODE:
+    # debugging code.
+    PATH_DATA_NEURAL_RAW = "/tmp"
+else:
+    assert os.path.exists(PATH_DATA_NEURAL_RAW), "might have to mount servr?"
 
 REGIONS_IN_ORDER = ["M1_m", "M1_l", "PMv_l", "PMv_m",
                 "PMd_p", "PMd_a", "dlPFC_p", "dlPFC_a", 
@@ -110,7 +115,6 @@ def load_mult_session_helper(DATE, animal, dataset_beh_expt=None, expt = "*",
             units_metadat_fail_if_no_exist=units_metadat_fail_if_no_exist)
         SNlist.append(SN)
         print("Extracted successfully for session: ", rec_session)
-
     assert len(SNlist)>0, "did not find any neural sessions..."
 
     # Combine into all sessions
@@ -143,7 +147,7 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
         assert len(dataset_beh_expt)>1, "if skip, then make this None"
 
     # 1) Find the raw beh data (filedata)
-    if ACTUALLY_BAREBONES_LOADING:
+    if ACTUALLY_BAREBONES_LOADING or LOCAL_LOADING_MODE:
         beh_sess_list, beh_expt_list, beh_trial_map_list = None, None, None
     else:
         beh_sess_list, beh_expt_list, _, beh_trial_map_list = session_map_from_rec_to_ml2(animal, DATE, rec_session) 
@@ -208,7 +212,6 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
     #     print(beh_sess_list)
     #     print(sessdict[DATE])
     #     assert False
-
     try:
         SN = Session(DATE, beh_expt_list, beh_sess_list, beh_trial_map_list,
             animal =animal,  
@@ -403,10 +406,10 @@ class Session(object):
             ts = makeTimeStamp()
             print("@@@@ DEBUG TIMING, COMPLETED", "self._initialize_paths()", ts)
 
-
-        # print(beh_expt_list, beh_sess_list, beh_trial_map_list)
-        assert len(beh_expt_list) == len(beh_sess_list)
-        assert len(beh_expt_list) == len(beh_trial_map_list), "these all equal the num beh sessions that have data relevant for this neural session"
+        if not LOCAL_LOADING_MODE:
+            # print(beh_expt_list, beh_sess_list, beh_trial_map_list)
+            assert len(beh_expt_list) == len(beh_sess_list)
+            assert len(beh_expt_list) == len(beh_trial_map_list), "these all equal the num beh sessions that have data relevant for this neural session"
 
         # Immediately fail for these exceptions
         if self.Animal=="Pancho" and int(self.Date)==230124:
@@ -815,8 +818,13 @@ class Session(object):
         if dirty_kinds is None:
             # dirty_kinds = ("sites_garbage", "sites_low_fr",  # before 2/13/23
             #     "sites_error_spikes", "sites_low_spk_magn")
-            dirty_kinds = ("sites_garbage", 
-                "sites_error_spikes", "sites_low_spk_magn")
+            if LOCAL_LOADING_MODE:
+                # cant access server for spike magnitude info
+                dirty_kinds = ("sites_garbage", 
+                    "sites_error_spikes")
+            else:
+                dirty_kinds = ("sites_garbage", 
+                    "sites_error_spikes", "sites_low_spk_magn")
 
         sites_dirty = []
         print("updating self.SitesDirty with: ", dirty_kinds)
@@ -864,7 +872,10 @@ class Session(object):
             [self.Animal],
             [self.Date]
         ]
-        paths = findPath(self.RecPathBase, path_hierarchy)
+        if LOCAL_LOADING_MODE:
+            paths = findPath(LOCAL_PATH_PREPROCESSED_DATA, path_hierarchy)
+        else:
+            paths = findPath(self.RecPathBase, path_hierarchy)
 
         # REmove paths that say "IGNORE"
         paths = [p for p in paths if "IGNORE" not in p]
@@ -902,123 +913,161 @@ class Session(object):
         cached_dir = f"{pathbase_local}/cached"
         os.makedirs(cached_dir, exist_ok=True)
 
-        def _get_spikes_raw_path():
-            """ checks to find path to folder holding spikes data, in order of most to 
-            least desired version. Returns None if doesnt find. 
-            """
+        ####### LOAD PRESAVED PATHS
+        if LOCAL_LOADING_MODE:
             from pythonlib.tools.expttools import load_yaml_config
-            from pythonlib.tools.expttools import count_n_files_in_dir
+            pathbase_local = f"{self.RecPathBaseLocal}/{self.Animal}/{self.Date}/{final_dir_name}"
+            pathdict = load_yaml_config(f"{pathbase_local}/paths.yaml")
+            pathdict["cached_dir"] = cached_dir
+            self.Paths = pathdict
 
-            NCHANS = 512
-
-            # First is saved path, the one where already got spikes from?
-            oldpath = None
-            if os.path.exists(f"{pathbase_local}/data_spikes.pkl"):
-                # Then load old paths to raw spikes
-                path_paths = f"{pathbase_local}/paths.yaml"
-
-                if os.path.exists(path_paths):
-                    paths_old = load_yaml_config(path_paths)
-                    oldpath = paths_old["spikes"]
+            # Update paths with local directory
+            paths_updated = {}
+            # keys_to_remove = ["raws", "tank", "spikes"]
+            for k, v in self.Paths.items():
+                print(k, "---", v)
+                if "/mnt" in v:
+                    # Then this is a server path. remove it
+                    continue
                 else:
-                    print("then is old version, before saved paths every time save spikes") 
-                    # Return the old version, which was 5.5 (blank)
-                    oldpath = f"{paththis}/spikes_tdt_quick"
-            if oldpath is not None:
-                return oldpath
+                    # Keep it. decide if to Replace string in path
+                    s1 = "/gorilla1/neural_preprocess/recordings/"
+                    ind1 = v.find(s1)
 
-            # Second, if have not yet extracted spikes.
-            for suffix in ["-4", "-3.5", "-4.5", ""]: 
-                path_maybe = f"{paththis}/spikes_tdt_quick{suffix}"
-                # if os.path.exists(path_maybe):
+                    s2 = "/home/lucast4/code/neuralmonkey/neuralmonkey/"
+                    ind2 = v.find(s2)
+                    if ind1>-1:
+                        v_new = f"{LOCAL_PATH_PREPROCESSED_DATA}/{v[ind1+len(s1):]}"
+                    elif ind2>-1:
+                        v_new = f"{PATH_NEURALMONKEY}/{v[ind2+len(s2):]}"
+                    else:
+                        # this is not a path to change
+                        v_new = v
+                    paths_updated[k] = v_new
 
-                if checkIfDirExistsAndHasFiles(path_maybe)[0]:
-                    # count how many files
-                    nfiles, list_files = count_n_files_in_dir(path_maybe, "png")
-                    if nfiles>=NCHANS:
-                        print("FOund this path for spikes: ", path_maybe)
-                        return path_maybe
-            
-            # Didn't find spikes, return None
-            print("DIdnt find spikes directory")
-            return None
+            print("LOCAL LOADING - updated self.Paths:")
+            for k, v in paths_updated.items():
+                print(k, " ==== ", v)
+            self.Paths = paths_updated
 
-        if self.Animal=="Pancho":
-            metadata_units = f"{PATH_NEURALMONKEY}/metadat/units"
         else:
-            metadata_units = f"{PATH_NEURALMONKEY}/metadat/units_{self.Animal}"
+            def _get_spikes_raw_path():
+                """ checks to find path to folder holding spikes data, in order of most to 
+                least desired version. Returns None if doesnt find. 
+                """
+                from pythonlib.tools.expttools import load_yaml_config
+                from pythonlib.tools.expttools import count_n_files_in_dir
 
-        pathdict = {
-            "raws":paththis,
-            "tank":f"{paththis}/{fnparts['filename_final_noext']}",
-            # "spikes":f"{paththis}/spikes_tdt_quick",
-            "spikes":_get_spikes_raw_path(),
-            "final_dir_name":final_dir_name,
-            "time":fnparts["filename_components_hyphened"][2],
-            "pathbase_local":pathbase_local,
-            "tank_local":f"{pathbase_local}/data_tank.pkl",
-            "spikes_local":f"{pathbase_local}/data_spikes.pkl",
-            "datall_local":f"{pathbase_local}/data_datall.pkl",
-            "events_local":f"{pathbase_local}/events_photodiode.pkl",
-            "mapper_st2dat_local":f"{pathbase_local}/mapper_st2dat.pkl",
-            "figs_local":f"{pathbase_local}/figs",
-            "metadata_units":metadata_units,
-            "cached_dir":f"{pathbase_local}/cached",
-            }
+                NCHANS = 512
 
-        self.Paths = pathdict
-        self.PathRaw = pathdict["raws"]
-        self.PathTank = pathdict["tank"]
+                # First is saved path, the one where already got spikes from?
+                oldpath = None
+                if os.path.exists(f"{pathbase_local}/data_spikes.pkl"):
+                    # Then load old paths to raw spikes
+                    path_paths = f"{pathbase_local}/paths.yaml"
 
-        # First, check if you have all spikes laready extracted, if not, then 
-        # reextract
-        def _missing_spikes():
-            """ Returns True if any channel is missing spikes... bsaed on filenames in spikes folder."""
-            for site in self.sitegetter_all(clean=False):
-                if self._spikes_check_file_exists_tdt(site)==False:
-                    print("++ MISSING THIS SITE's SPIKE DATA:", site)
-                    return True
-            return False
+                    if os.path.exists(path_paths):
+                        paths_old = load_yaml_config(path_paths)
+                        oldpath = paths_old["spikes"]
+                    else:
+                        print("then is old version, before saved paths every time save spikes") 
+                        # Return the old version, which was 5.5 (blank)
+                        oldpath = f"{paththis}/spikes_tdt_quick"
+                if oldpath is not None:
+                    return oldpath
 
-        if self.Paths['spikes'] is None or _missing_spikes():
-            # Then do not have complete set...
-            if do_if_spikes_incomplete=="fail":
-                print("------ spikes not gotten...")
-                print("self.Paths['spikes']", self.Paths['spikes'])
-                print(_missing_spikes())
-                self.print_summarize_expt_params()
-                assert False, "Missing some spikes!!!"
-            elif do_if_spikes_incomplete=="extract_quick_tdt":
-                # Reextract it using quick thresholding (tdt)
-                print("-- Extracting spikes thresholded (TDT)!! (becuase did not find spikes data...)")
-                from neuralmonkey.utils.matlab import spikes_extract_quick_tdt
-                try:
-                    spikes_extract_quick_tdt(self.Animal, self.Date)
-                    print("-- Successfully completed spikes extraction!!")
-                except Exception as err:
-                    self.print_summarize_expt_params()
-                    print(err)
-                    assert False
+                # Second, if have not yet extracted spikes.
+                for suffix in ["-4", "-3.5", "-4.5", ""]: 
+                    path_maybe = f"{paththis}/spikes_tdt_quick{suffix}"
+                    # if os.path.exists(path_maybe):
+
+                    if checkIfDirExistsAndHasFiles(path_maybe)[0]:
+                        # count how many files
+                        nfiles, list_files = count_n_files_in_dir(path_maybe, "png")
+                        if nfiles>=NCHANS:
+                            print("FOund this path for spikes: ", path_maybe)
+                            return path_maybe
                 
-                # # CHeck again is you are missing spikes
-                # if _missing_spikes():
-                #     print("** STILL MISSING SPIKES! Probably havent transfered all sev file sto server??")
-                #     self.print_summarize_expt_params()
-                #     assert False
+                # Didn't find spikes, return None
+                print("DIdnt find spikes directory")
+                return None
 
-                # Now try reinitializing paths
-                self.Paths = {}
-                self.PathRaw = {}
-                self.PathTank = {}
-                self._initialize_paths(do_if_spikes_incomplete="fail")
-
-            elif do_if_spikes_incomplete=="ignore":
-                # Is ok. do nothing
-                pass
+            if self.Animal=="Pancho":
+                metadata_units = f"{PATH_NEURALMONKEY}/metadat/units"
             else:
-                print(do_if_spikes_incomplete)
-                self.print_summarize_expt_params()
-                assert False
+                metadata_units = f"{PATH_NEURALMONKEY}/metadat/units_{self.Animal}"
+
+            pathdict = {
+                "raws":paththis,
+                "tank":f"{paththis}/{fnparts['filename_final_noext']}",
+                # "spikes":f"{paththis}/spikes_tdt_quick",
+                "spikes":_get_spikes_raw_path(),
+                "final_dir_name":final_dir_name,
+                "time":fnparts["filename_components_hyphened"][2],
+                "pathbase_local":pathbase_local,
+                "tank_local":f"{pathbase_local}/data_tank.pkl",
+                "spikes_local":f"{pathbase_local}/data_spikes.pkl",
+                "datall_local":f"{pathbase_local}/data_datall.pkl",
+                "events_local":f"{pathbase_local}/events_photodiode.pkl",
+                "mapper_st2dat_local":f"{pathbase_local}/mapper_st2dat.pkl",
+                "figs_local":f"{pathbase_local}/figs",
+                "metadata_units":metadata_units,
+                "cached_dir":f"{pathbase_local}/cached",
+                }
+
+            self.Paths = pathdict
+            self.PathRaw = pathdict["raws"]
+            self.PathTank = pathdict["tank"]
+
+            # First, check if you have all spikes laready extracted, if not, then 
+            # reextract
+            def _missing_spikes():
+                """ Returns True if any channel is missing spikes... bsaed on filenames in spikes folder."""
+                for site in self.sitegetter_all(clean=False):
+                    if self._spikes_check_file_exists_tdt(site)==False: 
+                        print("++ MISSING THIS SITE's SPIKE DATA:", site)
+                        return True
+                return False
+
+            if self.Paths['spikes'] is None or _missing_spikes():
+                # Then do not have complete set...
+                if do_if_spikes_incomplete=="fail":
+                    print("------ spikes not gotten...")
+                    print("self.Paths['spikes']", self.Paths['spikes'])
+                    print(_missing_spikes())
+                    self.print_summarize_expt_params()
+                    assert False, "Missing some spikes!!!"
+                elif do_if_spikes_incomplete=="extract_quick_tdt":
+                    # Reextract it using quick thresholding (tdt)
+                    print("-- Extracting spikes thresholded (TDT)!! (becuase did not find spikes data...)")
+                    from neuralmonkey.utils.matlab import spikes_extract_quick_tdt
+                    try:
+                        spikes_extract_quick_tdt(self.Animal, self.Date)
+                        print("-- Successfully completed spikes extraction!!")
+                    except Exception as err:
+                        self.print_summarize_expt_params()
+                        print(err)
+                        assert False
+                    
+                    # # CHeck again is you are missing spikes
+                    # if _missing_spikes():
+                    #     print("** STILL MISSING SPIKES! Probably havent transfered all sev file sto server??")
+                    #     self.print_summarize_expt_params()
+                    #     assert False
+
+                    # Now try reinitializing paths
+                    self.Paths = {}
+                    self.PathRaw = {}
+                    self.PathTank = {}
+                    self._initialize_paths(do_if_spikes_incomplete="fail")
+
+                elif do_if_spikes_incomplete=="ignore":
+                    # Is ok. do nothing
+                    pass
+                else:
+                    print(do_if_spikes_incomplete)
+                    self.print_summarize_expt_params()
+                    assert False
 
     ####################### EXTRACT RAW DATA (AND STORE)
     def load_behavior(self):
@@ -1264,14 +1313,16 @@ class Session(object):
             self._CachedTouchData[trial] = self.beh_extract_touch_data(trial)
 
 
-    def _savelocalcached_save(self, save_dataset_beh=True, save_datslices=True):
+    def _savelocalcached_save(self, save_dataset_beh=True, save_datslices=True,
+            ONLY_EXTRA_STUFF=False):
         """
         Save to disk all cached data in self._Cached... This saves quickly.
         """
 
         # ONLY ALLOWED to do this if this was not using MINIMAL loading. Otherwise not sure
         # if did correct sanity checks (which si only possible wihtout minimal locading)
-        assert self._LOAD_VERSION == "FULL_LOADING"
+        if not ONLY_EXTRA_STUFF:
+            assert self._LOAD_VERSION == "FULL_LOADING"
         # assert self._MINIMAL_LOADING == False
         # assert self._BAREBONES_LOADING == False
 
@@ -1283,29 +1334,35 @@ class Session(object):
             with open(path, "wb") as f:
                 pickle.dump(this, f)
 
-        _save_this(self._CachedTrialOnset, "trial_onsets")
-        _save_this(self._CachedTouchData, "touch_data")
-        _save_this(self._CachedStrokes, "strokes")
-        _save_this(self._CachedStrokesPeanutsOnly, "strokes_peanutsonly")
-        _save_this(self._CachedStrokesTask, "strokes_task")
-        _save_this(self._CachedTrialsList, "trials_list")
+        _save_this(self.BehTrialMapListGood, "BehTrialMapListGood")
+        _save_this(self.BehTrialMapList, "BehTrialMapList")
+        _save_this(self.BehSessList, "BehSessList")
+        _save_this(self._MapperTrialcode2TrialToTrial, "_MapperTrialcode2TrialToTrial")
 
-        if save_dataset_beh:
-            self.Datasetbeh.save(pathdir)
+        if not ONLY_EXTRA_STUFF:
+            _save_this(self._CachedTrialOnset, "trial_onsets")
+            _save_this(self._CachedTouchData, "touch_data")
+            _save_this(self._CachedStrokes, "strokes")
+            _save_this(self._CachedStrokesPeanutsOnly, "strokes_peanutsonly")
+            _save_this(self._CachedStrokesTask, "strokes_task")
+            _save_this(self._CachedTrialsList, "trials_list")
 
-        if save_datslices:
-            list_trials = self.get_trials_list(SAVELOCALCACHED_TRIALS_FIXATION_SUCCESS)
-            # list_trials = self.get_trials_list(False)
-            path = f"{pathdir}/datall_site_trial"
-            os.makedirs(path, exist_ok=True)
-            for trial in list_trials:
-                if trial%20==0:
-                    print("trial:", trial)
-                for site in self.sitegetter_all(clean=False):
-                    this = self.datall_slice_single_bysite(site, trial)
-                    paththis = f"{path}/datslice_trial{trial}_site{site}.pkl"
-                    with open(paththis, "wb") as f:
-                        pickle.dump(this, f)
+            if save_dataset_beh:
+                self.Datasetbeh.save(pathdir)
+
+            if save_datslices:
+                list_trials = self.get_trials_list(SAVELOCALCACHED_TRIALS_FIXATION_SUCCESS)
+                # list_trials = self.get_trials_list(False)
+                path = f"{pathdir}/datall_site_trial"
+                os.makedirs(path, exist_ok=True)
+                for trial in list_trials:
+                    if trial%20==0:
+                        print("trial:", trial)
+                    for site in self.sitegetter_all(clean=False):
+                        this = self.datall_slice_single_bysite(site, trial)
+                        paththis = f"{path}/datslice_trial{trial}_site{site}.pkl"
+                        with open(paththis, "wb") as f:
+                            pickle.dump(this, f)
                        
     def _savelocalcached_check_done(self, datslice_quick_check=False): 
         """
@@ -1349,6 +1406,15 @@ class Session(object):
         self._CachedStrokesPeanutsOnly = _load_this("strokes_peanutsonly")
         self._CachedStrokesTask = _load_this("strokes_task")
         self._CachedTouchData = _load_this("touch_data")
+
+        try:
+            self.BehTrialMapListGood = _load_this("BehTrialMapListGood")
+            self.BehTrialMapList = _load_this("BehTrialMapList")
+            self.BehSessList = _load_this("BehSessList")
+            self._MapperTrialcode2TrialToTrial = _load_this("_MapperTrialcode2TrialToTrial")
+        except FileNotFoundError as err:
+            # just skip this. old data, didnt save tehse caches.
+            pass
 
         paththis = f"{pathdir}/dataset_beh.pkl"
         with open(paththis, "rb") as f:
@@ -7928,7 +7994,7 @@ class Session(object):
         """
         date = self.Date
         index_sess, trial_ml = self._beh_get_fdnum_trial(trial)
-        session_ml = self.BehSessList[index_sess]
+        session_ml = self.BehSessList[index_sess] 
 
         trialcode = f"{date}-{session_ml}-{trial_ml}"
         return trialcode
