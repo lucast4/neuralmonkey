@@ -4917,17 +4917,71 @@ class Session(object):
 
         return dict_events
 
+    # load fixation onset times (231027_eyetracking_neural_exploration.ipynb)
+    def events_get_fixation_times_clusterfix_results(self, trial, on_or_off=True, DEBUG_PLOT=False):
+        # load this trial's saccade times
+        trialcode = self.datasetbeh_trial_to_trialcode(trial)
+        directory_for_clusterfix = "/home/kgg/Desktop/neuralmonkey/neuralmonkey/eyetracking"
+
+        # load the .csv file for this trialcode, containing fixation onsets
+        if on_or_off:
+            fname = f"{directory_for_clusterfix}/{self.Animal}-{self.Date}-{self.RecSession}/{trialcode}-fixation-onsets.csv"
+        else:
+            fname = f"{directory_for_clusterfix}/{self.Animal}-{self.Date}-{self.RecSession}/{trialcode}-fixation-offsets.csv"
+
+
+        import pandas as pd 
+        data = pd.read_csv(fname, sep=',').values
+        data = [item[0] for item in data]
+        #print(data)
+
+        # fname = f"{directory_for_clusterrfix}/{sn.Animal}-{sn.Date}-{trialcode}.mat"
+
+
+        # return etiher the on or off times depending on on_or_off
+        print(data)
+
+        if DEBUG_PLOT:
+            times_clfix = self.events_get_fixation_times_clusterfix_results(trial)
+            times_tdt, vals_tdt_calibrated = self.beh_extract_eye_good(trial)
+
+            fig, ax = plt.subplots(figsize=(10,3))
+            ax.plot(times_tdt, vals_tdt_calibrated[:,0], label="x")
+            ax.plot(times_tdt, vals_tdt_calibrated[:,1], label="y")
+            self.plotmod_overlay_trial_events(ax, trial)
+            for t in times_clfix:
+                ax.axvline(t, color="r")
+
+        return data
+
+
+    # load fixation onset times (231027_eyetracking_neural_exploration.ipynb)
+    def events_get_fixation_centroids_clusterfix_results(self, trial):
+        # load this trial's fixation centroids
+        trialcode = self.datasetbeh_trial_to_trialcode(trial)
+        directory_for_clusterfix = "/home/kgg/Desktop/neuralmonkey/neuralmonkey/eyetracking"
+
+        # load the .csv file for this trialcode, containing fixation centroids
+        fname = f"{directory_for_clusterfix}/{self.Animal}-{self.Date}-{self.RecSession}/{trialcode}-fixation-centroids.csv"
+
+
+        import pandas as pd 
+        data = pd.read_csv(fname, sep=',').values
+        data = [item for item in data]
+        return data
+
+
     # load saccade onset times (231027_eyetracking_neural_exploration.ipynb)
-    def events_get_saccade_clusterfix_results(self, trial, on_or_off=True):
+    def events_get_saccade_times_clusterfix_results(self, trial, on_or_off=True, DEBUG_PLOT=False):
         # load this trial's saccade times
         trialcode = self.datasetbeh_trial_to_trialcode(trial)
         directory_for_clusterfix = "/home/kgg/Desktop/neuralmonkey/neuralmonkey/eyetracking"
 
         # load the .csv file for this trialcode, containing saccade onsets
-        if on_or_off:
-            fname = f"{directory_for_clusterfix}/{self.Animal}-{self.Date}-0-test2/{trialcode}-saccade-onsets.csv"
+        if on_or_off: #TODO change
+            fname = f"{directory_for_clusterfix}/{self.Animal}-{self.Date}-{self.RecSession}/{trialcode}-saccade-onsets.csv"
         else:
-            fname = f"{directory_for_clusterfix}/{self.Animal}-{self.Date}-0-test2/{trialcode}-saccade-offsets.csv"
+            fname = f"{directory_for_clusterfix}/{self.Animal}-{self.Date}-{self.RecSession}/{trialcode}-saccade-offsets.csv"
 
         import pandas as pd 
         data = pd.read_csv(fname, sep=',').values
@@ -4957,6 +5011,18 @@ class Session(object):
 
         # return etiher the on or off times depending on on_or_off
         print(data)
+
+        if DEBUG_PLOT:
+            times_clfix = self.events_get_saccade_times_clusterfix_results(trial)
+            times_tdt, vals_tdt_calibrated = self.beh_extract_eye_good(trial)
+
+            fig, ax = plt.subplots(figsize=(10,3))
+            ax.plot(times_tdt, vals_tdt_calibrated[:,0], label="x")
+            ax.plot(times_tdt, vals_tdt_calibrated[:,1], label="y")
+            self.plotmod_overlay_trial_events(ax, trial)
+            for t in times_clfix:
+                ax.axvline(t, color="r")
+
         return data
 
 
@@ -4972,7 +5038,9 @@ class Session(object):
         """
 
         if event in ["saccon", "saccoff"]:
-            times = self.events_get_saccade_clusterfix_results(trial, event)
+            times = self.events_get_saccade_times_clusterfix_results(trial)
+        elif event in ["fixon"]:
+            times = self.events_get_fixation_times_clusterfix_results(trial)
         else:
             try:
                 # Better version using photodiode or motor
@@ -5016,6 +5084,24 @@ class Session(object):
                 assert len(times)==1
                 
         return times
+
+    def events_get_feature_helper(self, event, trial):
+        """ [GOOD] Return the name of a feature, plus a list of feature values, in trial for this event.
+        PARAMS:
+        - event, either string or tuple.
+        - trial, number
+        RETURNS:
+        - feat_name, name of feature column
+        - list_featvals, list of feature values within column titled {feat_name}
+        """
+
+        if event in ["fixon"]:
+            feat_name = "fixation-centroid"
+            list_featvals = self.events_get_fixation_centroids_clusterfix_results(trial)
+        else:
+            assert False
+                
+        return feat_name, list_featvals
 
     def events_default_list_events(self, include_stroke_endpoints=True,
             include_events_from_dict=False):
@@ -6651,13 +6737,13 @@ class Session(object):
                                             include_text=include_text, text_yshift = -0.5, alpha=ALPHA_MARKERS,
                                             xmin = xmin, xmax =xmax
                                             )
-            # overlay_strokes = False
+            # @KGG hack 231026 - appears to be a bug with plotting strokes, so turned off.
+            overlay_strokes = False
             if overlay_strokes:
                 ALPHA_STROKES = 0.8*ALPHA_MARKERS
                 self.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, 
                                                 YLIM=[yval-0.4, yval-0.3], which_events=["strokes"], alpha=ALPHA_STROKES,
                                                 xmin = xmin, xmax =xmax)
-        
 
         # if len(ylabel_trials)>20:
         #     n = len(ylabel_trials)
@@ -6811,9 +6897,16 @@ class Session(object):
         if strokes_patches and "strokes" in which_events:
             from matplotlib.patches import Rectangle
             ons, offs = self.strokes_extract_ons_offs(trial0)
+            # print("--------")
+            # print("ons", ons)
+            # print("offs", offs)
             if alignto_time:
                 ons = [o - alignto_time for o in ons]
                 offs = [o - alignto_time for o in offs]
+            # print("alignto_time", alignto_time)
+            # print("ons", ons)
+            # print("offs", offs)
+            # print(YLIM)
 
             for on, of in zip(ons, offs):
                 if only_on_edge:
@@ -7937,35 +8030,69 @@ class Session(object):
             event_unique_name = f"{idx_str}_{event}"
             for trial_neural in trials:
                 list_times = self.events_get_time_helper(event, trial_neural)
-
-
-                for event_time in list_times:
-
-                    if DEBUG:
-                        print(trial_neural, ' - ', event, ' - ' , event_time)
-
-                    trials_all.append(trial_neural)
-                    times_all.append(event_time)
-
-                    for s in sites:
-
-                        # get spiketimes
-                        spike_times = self._snippets_extract_single_snip(s, trial_neural, 
-                            event_time, pre_dur, post_dur)
-
-                        # save it
-                        tc = self.datasetbeh_trial_to_trialcode(trial_neural)
-                        OUT.append({
-                            "trialcode":tc,
-                            "chan":s,
-                            "event_unique_name":event_unique_name,
-                            "event_aligned":event,
-                            "spike_times":spike_times,
-                            "trial_neural":trial_neural,
-                            "event_time":event_time
-                        })
-
                 
+                #### extracts featurename and featurevals FOR certain custom events (e.g. saccades, fixations)
+                if event in ["fixon"]:
+                    # get feature name and list of values
+                    feat_name, list_featvals = self.events_get_feature_helper(event, trial_neural)
+
+                    # make sure there is one value per event time
+                    assert len(list_times)==len(list_featvals)
+
+                    # add entry to dataframe
+                    for event_time, featval in zip(list_times, list_featvals):
+
+                        if DEBUG:
+                            print(trial_neural, ' - ', event, ' - ' , event_time)
+
+                        trials_all.append(trial_neural)
+                        times_all.append(event_time)
+
+                        for s in sites:
+
+                            # get spiketimes
+                            spike_times = self._snippets_extract_single_snip(s, trial_neural, 
+                                event_time, pre_dur, post_dur)
+
+                            # save it
+                            tc = self.datasetbeh_trial_to_trialcode(trial_neural)
+                            OUT.append({
+                                "trialcode":tc,
+                                "chan":s,
+                                "event_unique_name":event_unique_name,
+                                "event_aligned":event,
+                                "spike_times":spike_times,
+                                "trial_neural":trial_neural,
+                                "event_time":event_time,
+                                feat_name:featval
+                            })
+                else:
+                    for event_time in list_times:
+
+                        if DEBUG:
+                            print(trial_neural, ' - ', event, ' - ' , event_time)
+
+                        trials_all.append(trial_neural)
+                        times_all.append(event_time)
+
+                        for s in sites:
+
+                            # get spiketimes
+                            spike_times = self._snippets_extract_single_snip(s, trial_neural, 
+                                event_time, pre_dur, post_dur)
+
+                            # save it
+                            tc = self.datasetbeh_trial_to_trialcode(trial_neural)
+                            OUT.append({
+                                "trialcode":tc,
+                                "chan":s,
+                                "event_unique_name":event_unique_name,
+                                "event_aligned":event,
+                                "spike_times":spike_times,
+                                "trial_neural":trial_neural,
+                                "event_time":event_time,
+                            })
+
         # Get smoothed fr. this is MUCH faster than computing above.
         print("Extracting smoothed FR for all data...")
         fail_if_times_outside_existing = True
