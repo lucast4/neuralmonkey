@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import os
+from pythonlib.tools.plottools import savefig
 
 def preprocess_and_plot(MS, SAVEDIR, session = 0, DEBUG=False):
     """
@@ -291,7 +292,7 @@ def plot_overview(df_modtime, SAVEDIR, response = "r2_time_minusmean",
             convert_to_2d_dataframe(df_modtime, col1="region", col2="event_var_level", plot_heatmap=True, 
                                     agg_method="mean", val_name=val_name, annotate_heatmap=False, ax=ax, 
                                    norm_method=norm_method);
-            fig.savefig(f"{sdir}/heatmapsummary-region_by_event-norm_{norm_method}-score_{val_name}.pdf")
+            savefig(fig, f"{sdir}/heatmapsummary-region_by_event-norm_{norm_method}-score_{val_name}.pdf")
                 
             # 2) Plot each site. Only do this if site_region exists (i.e. combined datasets removes this
             # which is good, since too much data to plot)
@@ -301,7 +302,7 @@ def plot_overview(df_modtime, SAVEDIR, response = "r2_time_minusmean",
                                         agg_method="mean", val_name=val_name, annotate_heatmap=False, ax=ax, 
                                        norm_method=norm_method, dosort_colnames=False,
                                        list_cat_2 = None);        
-                fig.savefig(f"{sdir}/heatmapunits-region_by_event-norm_{norm_method}-score_{val_name}.pdf")    
+                savefig(fig, f"{sdir}/heatmapunits-region_by_event-norm_{norm_method}-score_{val_name}.pdf")    
             
             plt.close("all")
 
@@ -310,14 +311,14 @@ def plot_overview(df_modtime, SAVEDIR, response = "r2_time_minusmean",
 
         fig = sns.catplot(data=df_modtime, x="event_var_level", y=val_name, col="region", col_wrap=4, kind="bar", ci=68)
         rotateLabel(fig)
-        fig.savefig(f"{sdir}/barsummary-region_by_event-score_{val_name}.pdf")
+        savefig(fig, f"{sdir}/barsummary-region_by_event-score_{val_name}.pdf")
 
         fig = sns.catplot(data=df_modtime, x="event_var_level", y=val_name, col="region", col_wrap=4,
                          alpha=0.25, jitter=True)
         for ax in fig.axes.flatten():
             ax.axhline(0, color="k", alpha=0.2)
         rotateLabel(fig)
-        fig.savefig(f"{sdir}/scattersummary-region_by_event-score_{val_name}.pdf")
+        savefig(fig, f"{sdir}/scattersummary-region_by_event-score_{val_name}.pdf")
 
         plt.close("all")
 
@@ -337,14 +338,14 @@ def plot_overview(df_modtime, SAVEDIR, response = "r2_time_minusmean",
             for ax in fig.axes.flatten():
                 ax.axvline(0, color="k")
                 
-            fig.savefig(f"{sdir_kernel}/kernel_scores-scatter.pdf")
+            savefig(fig, f"{sdir_kernel}/kernel_scores-scatter.pdf")
 
 
             fig = sns.catplot(data=df_kernels, x="kernel_score", y="region", col="kernel", col_wrap=3, aspect=1,
                              kind="bar", ci=68, sharex=False)
             for ax in fig.axes.flatten():
                 ax.axvline(0, color="k")
-            fig.savefig(f"{sdir_kernel}/kernel_scores-bar.pdf")        
+            savefig(fig, f"{sdir_kernel}/kernel_scores-bar.pdf")        
 
             plt.close("all")
 
@@ -399,7 +400,7 @@ def plot_overview(df_modtime, SAVEDIR, response = "r2_time_minusmean",
                                 ax.axvline(0, alpha=0.25)
 
                             # save
-                            fig.savefig(f"{sdirthis}/kernel_{i}-scatter-{keys[0]}-vs-{keys[1]}-text_{plot_text_over_examples}.pdf")
+                            savefig(fig, f"{sdirthis}/kernel_{i}-scatter-{keys[0]}-vs-{keys[1]}-text_{plot_text_over_examples}.pdf")
 
                             plt.close("all") 
                 

@@ -75,6 +75,8 @@ def plot_overview(df_modtime, SP, SAVEDIR, response = "r2_time_minusmean"):
     sdir = f"{SAVEDIR}/brain_schematic"
     os.makedirs(sdir, exist_ok=True)
     plot_df(df_modtime, "r2_time_minusmean", None, savedir=sdir)
+    plot_df(df_modtime, "r2_time", None, savedir=sdir)
+    plot_df(df_modtime, "r2_time_zscored", None, savedir=sdir)
 
     # 3) z-scored heatmaps of activity
     sdir = f"{SAVEDIR}/heatmaps_smfr"
