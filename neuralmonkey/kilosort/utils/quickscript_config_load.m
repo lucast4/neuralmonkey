@@ -20,12 +20,16 @@ function [indpeak, wind_spike, npre, npost, THRESH_SU_SNR, THRESH_SU_ISI, ...
     else
         % - Using MEAN version of snr compute
         SNR_VER = 'mean';
-        THRESH_SU_SNR = 8;
-        THRESH_SU_SNR_LOWER = 7;
-        THRESH_SU_SNR_HIGHEST = 10;
+        % THRESH_SU_SNR = 8;
+        THRESH_SU_SNR = 7.9; % 11/12/23 , more leneient
+        % THRESH_SU_SNR_LOWER = 7;
+        THRESH_SU_SNR_LOWER = 6.9; % 11/12/23 , more leneient
+        % THRESH_SU_SNR_HIGHEST = 10;
+        THRESH_SU_SNR_HIGHEST = 9.6; % 11/12/23 , more leneient.
 %         MIN_SNR = 4.1;
         % MIN_SNR = 4.2; % 9/17/23 - updated, to get more MU.
-        MIN_SNR = 4.025; % 9/22/23 - updated, I think I did accidentally on 9/17
+        % MIN_SNR = 4.025; % 9/22/23 - updated, I think I did accidentally on 9/17
+        MIN_SNR = 3.9; % 11/12/23 - updated to be more lenient
     end
 
     THRESH_SU_ISI = 0.02;

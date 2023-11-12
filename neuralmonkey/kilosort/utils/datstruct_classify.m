@@ -38,13 +38,14 @@ inds_good_snr = list_snr>THRESH_SU_SNR_HIGHEST;
 inds_su_0 = inds_good_isi & inds_good_snr;
 
 % 1) SU (high snr)
-inds_good_isi = list_isi<THRESH_SU_ISI | list_refract<0.05;
+% inds_good_isi = list_isi<THRESH_SU_ISI | list_refract<0.05;
+inds_good_isi = list_isi<THRESH_SU_ISI | list_refract<0.2; % 11/12/23 - more lenient, to match below.
 inds_good_snr = list_snr>THRESH_SU_SNR;
 inds_su_1 = inds_good_isi & inds_good_snr;
 
 % 2) SU (lower snr, but more stringent isi)
 % inds_good_isi = list_isi<0.01 & list_refract<0.02;
-inds_good_isi = list_isi<0.01 & list_refract<0.1; % 9/16/23 - more lenient
+inds_good_isi = list_isi<0.01 & list_refract<0.125; % 9/16/23 - more lenient
 inds_good_snr = list_snr>THRESH_SU_SNR_LOWER;
 inds_su_2 = inds_good_isi & inds_good_snr;
 

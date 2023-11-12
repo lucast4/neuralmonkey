@@ -67,8 +67,6 @@ for chan = list_chan_global
             
             
             plot_waveforms_singleplot(wf, 100);
-            % n = min(100, size(wf,1));
-            % plot(wf(1:n,:)');
             ylabel(['isi' num2str(isi, '%0.2f') '-sh' num2str(sharp, '%0.1f')]);
             xlabel(['chg' num2str(chan_global)  '-cl' num2str(clust) '[n=' num2str(length(st)) ']']);
             if ~isempty(YLIM)

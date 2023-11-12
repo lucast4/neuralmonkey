@@ -1,7 +1,14 @@
-function plot_waveforms_singleplot(wf, n)
-% Plot on gcf these waveforms,
+function plot_waveforms_singleplot(wf, n, remove_outliers)
+% Plot on gcf these waveforms, without any preprocessing 
+% except remove outlier.
 % PARAMS
 % - wf, (ntrials, timebins)
+
+if ~exist('remove_outliers', 'var'); remove_outliers=true; end
+
+if remove_outliers
+	[wf] = waveforms_remove_outliers(wf, false);
+end
 
 XLIM = [0 50];
 
