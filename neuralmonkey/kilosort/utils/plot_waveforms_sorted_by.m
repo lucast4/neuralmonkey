@@ -73,6 +73,7 @@ for i=1:length(indsort)
     snr = DATSTRUCT(ind).snr_final;
     isi = DATSTRUCT(ind).isi_violation_pct;
     Q = DATSTRUCT(ind).Q;
+    idxold = DATSTRUCT(ind).index;
     chan_global = DATSTRUCT(ind).chan_global;
     clust = DATSTRUCT(ind).clust;
     
@@ -96,7 +97,7 @@ for i=1:length(indsort)
     % end
     % plot_waveforms_singleplot(wf, NPLOT);
     ylabel(['isi' num2str(isi, '%0.2f') '-sh' num2str(sharp, '%0.1f')]);
-    xlabel(['idx' num2str(ind)  '-cl' num2str(clust)]);
+    xlabel(['idx' num2str(ind) '-idxold' num2str(idxold)  '-cl' num2str(clust)]);
     if ~isempty(YLIM)
         ylim(YLIM);
     end

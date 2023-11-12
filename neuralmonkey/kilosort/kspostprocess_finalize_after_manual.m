@@ -151,6 +151,34 @@ for i=1:length(DATSTRUCT)
     end
 end
 
+%% [Apply changes to labels entered by hand] Already finalized, you check for mistakes.
+savepath = [SAVEDIR_FINAL_CLEAN '/MANUALCHANGES_TO_LABEL.mat'];
+if exist(savepath, 'file')
+    tmp = load(savepath);
+    MANUALCHANGES_TO_LABEL = tmp.MANUALCHANGES_TO_LABEL;
+    
+    disp('--------- APPLYING MANUAL CHANGES (i.e., round 2 of finalize)');
+    % apply manual changes
+    for i=1:length(MANUALCHANGES_TO_LABEL)
+        
+        idx = MANUALCHANGES_TO_LABEL{i}{1}; % into DATSTRUCT or DATSTRUCT_CLEAN
+        label_from = MANUALCHANGES_TO_LABEL{i}{2};
+        label_to = MANUALCHANGES_TO_LABEL{i}{3};
+        
+        % convert to new label
+        assert(strcmp(DATSTRUCT_MOD(idx).label_final, label_from));
+        DATSTRUCT_MOD(idx).label_final = label_to;
+        
+        disp([num2str(idx), ' from ' label_from, ' to ', label_to]);
+    end
+    
+    % update label final int to match the string label.
+    DATSTRUCT_MOD = datstruct_mod_update_label_int(DATSTRUCT_MOD);
+else
+    % IGNore this!! you dont want tot hcange any manual labels.
+    
+end
+
 
 %% If you previously saved SU_merge gui figs, then load them.
 load([SAVEDIR_FINAL_CLEAN '/LIST_MERGE_SU.mat'], 'LIST_MERGE_SU');
@@ -288,6 +316,9 @@ for i=1:length(flist)
         THRESH_ARTIFACT_ISI, MIN_SNR, plot_decision_boundaries, ...
         SKIP_NOISE);
 end
+
+% Make sure to save the indices.
+save([SAVEDIR_FINAL '/struct_inds_changed.mat'], 'struct_inds_changed');
 
 %% DONE!
 
