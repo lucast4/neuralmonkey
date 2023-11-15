@@ -15,6 +15,7 @@ from pythonlib.tools.exceptions import NotEnoughDataException, DataMisalignError
 from pythonlib.tools.expttools import checkIfDirExistsAndHasFiles
 from pythonlib.globals import PATH_NEURALMONKEY, PATH_DATA_NEURAL_RAW, PATH_DATA_NEURAL_PREPROCESSED
 # PATH_NEURALMONKEY = "/data1/code/python/neuralmonkey/neuralmonkey"
+import pandas as pd
 
 LOCAL_LOADING_MODE = False
 LOCAL_PATH_PREPROCESSED_DATA = f"{PATH_DATA_NEURAL_PREPROCESSED}/recordings"
@@ -32,6 +33,9 @@ REGIONS_IN_ORDER = ["M1_m", "M1_l", "PMv_l", "PMv_m",
 # SMFR_SIGMA = 0.025
 SMFR_SIGMA = 0.040 # 4/29/23
 SMFR_TIMEBIN = 0.01
+
+PRE_DUR_TRIAL = 1.
+POST_DUR_TRIAL = 1.
 
 BEH_CODES = {
         9:"start",
@@ -85,7 +89,8 @@ SAVELOCALCACHED_TRIALS_FIXATION_SUCCESS = True
 
 def load_mult_session_helper(DATE, animal, dataset_beh_expt=None, expt = "*", 
     MINIMAL_LOADING=True,
-    units_metadat_fail_if_no_exist=False):
+    units_metadat_fail_if_no_exist=False,
+    spikes_version="tdt"):
     """ Hacky, iterates over range(10) sessions, concatenations into a single MultSessions
     for this date.
     """
@@ -112,7 +117,8 @@ def load_mult_session_helper(DATE, animal, dataset_beh_expt=None, expt = "*",
 
         SN = load_session_helper(DATE, dataset_beh_expt, rec_session, animal, expt,
             MINIMAL_LOADING=MINIMAL_LOADING,
-            units_metadat_fail_if_no_exist=units_metadat_fail_if_no_exist)
+            units_metadat_fail_if_no_exist=units_metadat_fail_if_no_exist,
+            spikes_version=spikes_version)
         SNlist.append(SN)
         print("Extracted successfully for session: ", rec_session)
     assert len(SNlist)>0, "did not find any neural sessions..."
@@ -128,7 +134,8 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
     MINIMAL_LOADING = False, BAREBONES_LOADING=False,
     ACTUALLY_BAREBONES_LOADING = False,
     units_metadat_fail_if_no_exist=False,
-    do_if_spikes_incomplete="ignore"):
+    do_if_spikes_incomplete="ignore",
+    spikes_version="tdt"):
     """ Load a single recording session.
     PARAMS:
     - DATE, str, "yymmdd"
@@ -221,7 +228,8 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
             MINIMAL_LOADING= MINIMAL_LOADING, BAREBONES_LOADING=BAREBONES_LOADING,
             units_metadat_fail_if_no_exist=units_metadat_fail_if_no_exist,
             do_if_spikes_incomplete=do_if_spikes_incomplete,
-            ACTUALLY_BAREBONES_LOADING=ACTUALLY_BAREBONES_LOADING)
+            ACTUALLY_BAREBONES_LOADING=ACTUALLY_BAREBONES_LOADING,
+            spikes_version=spikes_version)
     except DataMisalignError as err:
         if ALLOW_RETRY:
             print("FAILED loading session:", DATE, rec_session)
@@ -239,7 +247,8 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
                 MINIMAL_LOADING= MINIMAL_LOADING,
                 units_metadat_fail_if_no_exist=units_metadat_fail_if_no_exist,
                 do_if_spikes_incomplete=do_if_spikes_incomplete,
-                ACTUALLY_BAREBONES_LOADING=ACTUALLY_BAREBONES_LOADING)
+                ACTUALLY_BAREBONES_LOADING=ACTUALLY_BAREBONES_LOADING,
+                spikes_version=spikes_version)
         else:
             raise err
     except Exception as err:
@@ -280,7 +289,8 @@ class Session(object):
             MINIMAL_LOADING = False, BAREBONES_LOADING=False,
             ACTUALLY_BAREBONES_LOADING = False,
             units_metadat_fail_if_no_exist=False,
-            do_if_spikes_incomplete="ignore"):
+            do_if_spikes_incomplete="ignore",
+            spikes_version="tdt"):
         """
         PARAMS:
         - datestr, string, YYMMDD, e.g, "220609"
@@ -393,6 +403,10 @@ class Session(object):
         # INitialize empty data
         self.EventsTimeUsingPhd = {}
 
+        # spikes versino (initialize as tdt always)
+        self.SPIKES_VERSION = "tdt"
+        assert self.SPIKES_VERSION=="tdt", "should always start with this, as it indexes tdt channels"
+
         if ACTUALLY_BAREBONES_LOADING:
             return
 
@@ -414,7 +428,6 @@ class Session(object):
         # Immediately fail for these exceptions
         if self.Animal=="Pancho" and int(self.Date)==230124:
             assert False, "WS8 out of space -- Lost about 100min in middle of day."
-
 
         # Metadat about good sites, etc. Run this first before other things.
         assert sites_garbage is None, "use metadata instead"
@@ -440,6 +453,7 @@ class Session(object):
         # 1. get all onset and offset times
         self.TrialsOnset = self._behcode_extract_times(9)
         self.TrialsOffset = self._behcode_extract_times(18)
+        self._beh_prune_trial_offset_onset()
 
         # Sanity check: are you using the correct loading version?
         # Not allowed to do full loading if you already have gotten to final preprocessed state
@@ -563,6 +577,23 @@ class Session(object):
         # Initialize mappers
         self.MapSiteToRegionCombined = {}
         self.MapSiteToRegion = {}
+
+        # Extract spikes if needed/.
+        if spikes_version=="tdt":
+            # pass, no need to load
+            pass
+        elif spikes_version=="kilosort":
+            # Load 
+            self.spiketimes_ks_load()
+            self.spiketimes_ks_extract_alltrials()   
+        else:
+            print(spikes_version)
+            assert False, "Code it"         
+
+        # Switch to the spikesversion
+        # Do it here so that dont inadvertantly cache data for the wrong spikes version.
+        self.SPIKES_VERSION=spikes_version
+        self._SPIKES_VERSION_INPUTED = spikes_version
 
 
     ####################### PREPROCESS THINGS
@@ -1359,7 +1390,7 @@ class Session(object):
                     if trial%20==0:
                         print("trial:", trial)
                     for site in self.sitegetter_all(clean=False):
-                        this = self.datall_slice_single_bysite(site, trial)
+                        this = self.datall_TDT_KS_slice_single_bysite(site, trial)
                         paththis = f"{path}/datslice_trial{trial}_site{site}.pkl"
                         with open(paththis, "wb") as f:
                             pickle.dump(this, f)
@@ -1494,6 +1525,323 @@ class Session(object):
             return True
 
 
+    ########################################### KILOSORT LOADING OF SPIKETIMES
+    def ks_plot_compare_tdt_to_kilosort(self, sdir):
+        """
+        Compare spikes for clusters (ks) matcjhed to their sites (tdt).
+        Useful for sanity check of good clustering by ks.
+        """
+
+        assert self.SPIKES_VERSION=="kilosort"
+
+        ## Compare the tdt sites that were gotten 
+
+        # tdt spikes
+        # sn.SPIKES_VERSION="tdt"
+        list_sites_tdt = self.sitegetter_all(force_tdt_sites=True)
+
+        # any sites that have ks cluster but not kept in tdt?
+        list_sites_ks = []
+        for dat in self.DatSpikesSessByClust.values():
+            list_sites_ks.append(dat["site"])
+
+        list_sites_ks = sorted(set(list_sites_ks))
+        print(list_sites_ks)
+
+        print("KS sites not in tdt:")
+        print([s for s in list_sites_ks if s not in list_sites_tdt])
+        print(len([s for s in list_sites_ks if s not in list_sites_tdt]))
+
+        print("TDT sites not in ks:")
+        print([s for s in list_sites_tdt if s not in list_sites_ks])
+        print(len([s for s in list_sites_tdt if s not in list_sites_ks]))
+
+        ######## PLOT
+        list_sites_both = sorted(set(list_sites_tdt + list_sites_ks))
+        trials = self.get_trials_list(True)[::10]
+        for site_tdt in list_sites_both:
+            fig, axes = plt.subplots(4,1, figsize=(10, 18))
+            
+            # tdt
+            self.SPIKES_VERSION="tdt"
+            ax = axes.flatten()[0]
+            self.plot_raster_trials(ax, trials, site_tdt, alignto="go", xmin=-2, xmax=6, alpha_raster=0.5)
+            ax.set_ylabel("TDT")
+
+            # ks
+            self.SPIKES_VERSION="kilosort"
+            list_clust = self.ks_convert_sites_to_clusts([site_tdt])
+            for i, clust in enumerate(list_clust):
+                ax = axes.flatten()[i+1]
+                label = self.DatSpikesSessByClust[clust]["label_final"]
+                print(label)
+                self.plot_raster_trials(ax, trials, clust, alignto="go", xmin=-2, xmax=6, alpha_raster=0.5)
+                ax.set_ylabel(f"KILOSORT - {label}")
+            
+            fig.savefig(f"{sdir}/site_tdt_{site_tdt}.png")
+            assert False
+            plt.close("all")        
+
+
+    def ks_convert_sites_to_clusts(self, list_site, sort_by_clust=False):
+        """ Return list of clulster ids for this l ist of sites,
+        PARAMS;
+        - sort_by_clust. (so they lose ordering wrt sites)
+        """
+        clusts = []
+        for s in list_site:
+            clusts.extend(self._MapperKsortSiteToClustids[s])
+
+        if sort_by_clust:
+            clusts = sorted(clusts)
+        
+        return clusts
+
+    def spiketimes_ks_load(self, PRINT=False, SANITY=True):
+        """ Load all kilosort data fro this session. This is manually curated and
+        finalized (using kspostprocess module).
+        PARAMS;
+        RETURNS:
+        - stores in self.DatSpikesSessByClust, map from clust_id_global to dict of
+        data kept exactly as in the kilosort data
+        EXAMPLE:
+        - self.DatSpikesSessByClust[0]
+            {'GOOD': True,
+             'Q': array(0.00462743),
+             'RSn': array(2.),
+             'amps_wf': array([2007., 2508., 2333., 2115., 2234., 2455., 2319., 2419., 2362.,
+                    ..., 
+                    3017., 4075., 3250., 3849., 3075.]),
+             'batch': array(1.), # 1 -indexed
+             'chan': array(2.), # 1 -indexed (e..g, 1-64)
+             'chan_global': array(2.), # 1 -indexed (=site)
+             'clust': array(0.), # IGNORE
+             'clust_before_merge': array(nan),
+             'clust_group_id': array(2.),
+             'clust_group_name': 'good',
+             'index': array(1.),
+             'index_before_merge': array(nan),
+             'isbimod': False,
+             'isi_violation_pct': array(0.00018474),
+             'label_final': 'su',
+             'label_final_int': array(2.),
+             'sharpiness': array(6.45553999),
+             'snr_aligned': array(8.26876623),
+             'snr_final': array(8.61565813),
+             'snr_not_aligned': array(8.61565813),
+             'times_sec_all': array([6.67115588e-01, 3.08170784e+00, 3.08715552e+00, ...,
+                    1.02175754e+04, 1.02187145e+04, 1.02187212e+04]),
+             'times_sec_all_BEFORE_REMOVE_DOUBLE': None,
+             'waveforms': array([[ 358.,  182.,  -14., ..., -300.,  -56., -302.],
+                    [ 296.,  431.,  436., ..., -108., -334., -180.],
+                    ...,
+                    [ 187.,  139.,    3., ..., -154., -410., -271.],
+                    [  72.,   52.,  258., ..., -236., -586., -386.]])}
+        """
+
+        assert self.SPIKES_VERSION=="tdt", "if not, might have circular error, as assues that sites means tdt site"
+
+        import mat73
+        # import scipy.io as sio
+        # import scipy
+        # import zlib
+        BASEDIR = "/mnt/Freiwald/kgupta/neural_data/postprocess/final_clusters/"
+        clusters_final = f"{BASEDIR}/{self.Animal}/{self.Date}/DATSTRUCT_CLEAN_MERGED.mat"
+
+        ## Load all data
+        # DATSTRUCT = sio.loadmat(clusters_final)
+        res = mat73.loadmat(clusters_final, use_attrdict=True)
+        DATSTRUCT = res["DATSTRUCT"]
+
+        # Some metadata
+        nbatches = int(np.max(DATSTRUCT["batch"]))
+        chans_per_batch = 256/nbatches
+        # rs =3
+        # batch_1indexed = 4
+        # chan_within_batch_1indexed=64
+        # 256*(rs-2) + chans_per_batch*(batch_1indexed-1) + chan_within_batch_1indexed
+
+        ## Extract into format of dict[clustnum]
+        self.DatSpikesSessByClust = {}
+
+        # keys_extract = [k for k in DATSTRUCT.keys() if k not in ["chan_global", "clust"]]
+        keys_extract = DATSTRUCT.keys()
+        keys_exclude = ["GOOD", "clust", "clust_before_merge", "clust_group_id", "clust_group_name",  
+            'index', 'index_before_merge', 'times_sec_all_BEFORE_REMOVE_DOUBLE', 'waveforms',
+            'chan']
+        keys_convert_to_int = ["RSn", "batch", "chan", "chan_global", "label_final_int"]
+
+        # index by a global cluster id
+        clustid_glob = 0
+        for ind in range(len(DATSTRUCT["times_sec_all"])):
+            
+        #     print("-------------------------------------")
+        #     for k in DATSTRUCT.keys():
+        #         print(k, " -- ", DATSTRUCT[k][ind])
+            if PRINT:
+                print("-------------------------------------")
+                tmp = [DATSTRUCT[k][ind] for k in ["RSn", "batch", "chan", "chan_global", "clust", "label_final", "label_final_int"]]
+                print(tmp)
+                    
+            if False:
+                # new key:
+                site = int(DATSTRUCT["chan_global"][ind])
+                clust = int(DATSTRUCT["clust"][ind])
+                assert site == DATSTRUCT["chan_global"][ind]
+                assert clust == DATSTRUCT["clust"][ind]
+                key = (site, clust)
+            else:
+                key = clustid_glob
+            
+            self.DatSpikesSessByClust[key] = {}
+            for k in DATSTRUCT.keys():
+                if k not in keys_exclude:
+                    if k in keys_convert_to_int:
+                        self.DatSpikesSessByClust[key][k] = int(DATSTRUCT[k][ind])
+                    else:
+                        self.DatSpikesSessByClust[key][k] = DATSTRUCT[k][ind]
+
+
+            # Rename things to common scheme
+            self.DatSpikesSessByClust[key]["clust_id"] = clustid_glob
+            
+            self.DatSpikesSessByClust[key]["spike_times"] = self.DatSpikesSessByClust[key]["times_sec_all"]
+            del self.DatSpikesSessByClust[key]["times_sec_all"]
+
+            self.DatSpikesSessByClust[key]["site"] = self.DatSpikesSessByClust[key]["chan_global"]
+            del self.DatSpikesSessByClust[key]["chan_global"]
+
+            ## Sanity checks
+            chan_within_batch_1indexed = int(DATSTRUCT["chan"][ind])
+            rs = int(DATSTRUCT["RSn"][ind])
+            batch_1indexed = int(DATSTRUCT["batch"][ind])
+            
+            # convert to global chan
+            site = 256*(rs-2) + chans_per_batch*(batch_1indexed-1) + chan_within_batch_1indexed
+            chan_within_rs = chans_per_batch*(batch_1indexed-1) + chan_within_batch_1indexed
+
+            self.DatSpikesSessByClust[key]["chan_within_batch_1indexed"] = chan_within_batch_1indexed
+            self.DatSpikesSessByClust[key]["chan_within_rs"] = chan_within_rs
+            if SANITY:
+                
+                # saved global chan
+                site_saved = int(DATSTRUCT["chan_global"][ind])
+                # identity
+                assert site == site_saved
+                # (rs, chan) == site
+                assert self.convert_rschan_to_site(rs, chan_within_rs) == site
+            
+            # increment clustic
+            clustid_glob+=1
+
+    def spiketimes_ks_extract_alltrials(self, cluster_labels_keep=("su", "mua")):
+        """
+        Kilosort - Extract and save trial-windowed spike times for all clusters
+        PARAMS:
+        - cluster_labels_keep, if not None, then keeps only clusters that have lavel in this list.
+        RETURNS:
+        - self.DatSpikesSliceClustTrial, dict indexed by (clust, trial), returning
+        inner dict like this:"
+            {'spike_times': array([-0.95138138,  3.05266383,  7.61773822,  7.62076926,  7.65222654,
+                     7.70617087]),
+             'time_dur': 12.241269759999994,
+             'time_on': -1.0123358,
+             'time_off': 11.228933959999994,
+             'trial0': 0,
+             'pre_dur': 1.0,
+             'post_dur': 1.0,
+             'spiketrain': None,
+             'site': 2,
+             'clustnum_glob': 0}
+        - self._MapperKsortSiteToClustids, map from site(1-512) to list of clust ids
+        """
+        assert self.SPIKES_VERSION=="tdt", "if not, might have circular error, as assues that sites means tdt site"
+
+        # [Extraction] for each clust and trial, extract and save
+        list_clust = self.DatSpikesSessByClust.keys()
+        list_trial = self.get_trials_list(True)
+
+        DatSliceAll = {}
+        self._MapperKsortSiteToClustids = {}
+
+        for clust in list_clust:
+            print(clust)
+
+            # - all spikes for this sess
+            datthis = self.spiketimes_ks_slice_session(clust)
+                
+            if datthis["label_final"] not in cluster_labels_keep:
+                continue
+
+            # save map from site(1-512) to clustids
+            site = datthis["site"] 
+            if site in self._MapperKsortSiteToClustids.keys():
+                self._MapperKsortSiteToClustids[site].append(clust)
+            else:
+                self._MapperKsortSiteToClustids[site] = [clust]
+
+            for trial in list_trial:
+                
+                # Given a trial, extract slice
+                spike_times, time_dur, time_on, time_off = self._datspikes_slice_single(datthis["spike_times"], trial)
+                
+                # save this (trial, clust) combo
+                key = (clust, trial)
+                DatSliceAll[key] = {}                
+
+                DatSliceAll[key]["spike_times"] = spike_times 
+                DatSliceAll[key]["time_dur"] = time_dur
+                DatSliceAll[key]["time_on"] = time_on
+                DatSliceAll[key]["time_off"] = time_off 
+                DatSliceAll[key]["trial0"] = trial
+                DatSliceAll[key]["pre_dur"] = PRE_DUR_TRIAL
+                DatSliceAll[key]["post_dur"] = POST_DUR_TRIAL
+        #         datslice["time_range"] 
+                DatSliceAll[key]["spiketrain"] = None # to extract later
+                DatSliceAll[key]["site"] = datthis["site"]
+
+                # Cluster related infor
+                DatSliceAll[key]["clustnum_glob"] = clust
+                DatSliceAll[key]["label_final"] = datthis["label_final"]
+                DatSliceAll[key]["snr_final"] = datthis["snr_final"]
+                
+                # DatSliceAll.append(datslice)
+                
+        #         # save the index
+        #         index = len(DatSliceAll)-1
+        #         if (site, trial) not in self._MapperSiteTrial2DatAllInd.keys():
+        #             self._MapperSiteTrial2DatAllInd[(site, trial)] = index
+        #         else:
+        #             assert self._MapperSiteTrial2DatAllInd[(site, trial)] == index
+
+        self.DatSpikesSliceClustTrial = DatSliceAll
+
+        # Make sure all sites are represented in mapper, even if they dont have any clusters.
+        sites = self.sitegetter_all(clean=False)
+        mapper = {}
+        for s in sites:
+            if s in self._MapperKsortSiteToClustids.keys():
+                mapper[s] = self._MapperKsortSiteToClustids[s]
+            else:
+                mapper[s] = []
+        self._MapperKsortSiteToClustids = mapper
+
+
+    def spiketimes_ks_slice_session(self, clust_id=None, site=None):
+        """
+        RETURNS:
+        - an inner dict holding data for this clustid
+        """
+
+        if clust_id is None:
+            # then index by site
+            assert False, "code it"
+        else:
+            dat = self.DatSpikesSessByClust[clust_id]
+            assert dat["clust_id"] == clust_id
+            return dat
+
+    ########################################### TDT LOADING
     def load_spike_times(self):
         """ Load and strore all spike times (across all trials, and chans)
         Not yet aligned to trials, etc.
@@ -1580,16 +1928,16 @@ class Session(object):
         writeDictToYaml(self.Paths, f"{self.Paths['pathbase_local']}/paths.yaml")
 
 
-    def load_raw(self, rss, chans, trial0, pre_dur=1., post_dur = 1.,
+    def load_raw(self, rss, chans, trial0, pre_dur=PRE_DUR_TRIAL, post_dur = POST_DUR_TRIAL,
             get_raw=True):
         """ Get all raw data across channels for this trial
         PARAMS:
         - get_raw, bool( True), whether to actually load. if False, then makes teh
-        hodler but doesnt load.
+        hodler but doesnt load. 
         """
 
         TIME_ML2_TRIALON = self.ml2_get_trial_onset(trialtdt = trial0)
-        def extract_raw_(rs, chans, trial0, pre_dur=1., post_dur = 1.):
+        def extract_raw_(rs, chans, trial0):
             """ Extract raw data for this trial, across any number of chans,
             by default will get these chans for both RSs, 
             """
@@ -1677,7 +2025,7 @@ class Session(object):
         
         DatRaw = []
         for rs in rss:
-            datraw = extract_raw_(rs, chans, trial0, pre_dur, post_dur)
+            datraw = extract_raw_(rs, chans, trial0)
             DatRaw.extend(datraw)
         return DatRaw
 
@@ -1981,12 +2329,25 @@ class Session(object):
         
         # spikes (from pre-extracted spikes)
         for i, d in enumerate(DatRaw):
-    #         spike_times = datspikes_slice_single(d["rs"], d["chan"], d["time_range"])
             spike_times, time_dur, time_on, time_off = self.datspikes_slice_single(d["rs"], d["chan"], trial0=trialtdt)
             d["spike_times"] = spike_times 
             d["time_dur"] = time_dur
             d["time_on"] = time_on
-            d["time_off"] = time_off
+            d["time_off"] = time_off 
+
+
+        def _dat_replace_single(self, rs, chan, trial0, Dnew):
+            """ If this (rs, chan, trial0) exists, replace it with Dnew
+            MODIFIES:
+            - self.DatAll, at a single index
+            """
+
+            Dold, idx = self._datallTDT_slice_single(rs, chan, trial0, return_index=True)
+            if Dold is None:
+                # then doesnt exist, do mnothing
+                pass
+            else:
+                self.DatAll[idx] = Dnew
 
 
         # change name, since is both raw and spikes
@@ -1999,10 +2360,10 @@ class Session(object):
 
                 if (site, trial) in self._MapperSiteTrial2DatAllInd.keys():
                     # Then is already done
-                    d_old = self.datall_slice_single_bysite(site, trial)
+                    d_old = self.datall_TDT_KS_slice_single_bysite(site, trial)
                     if len(d_old["raw"])==0 and get_raw:
                         # Then previous didnt have raw, so overwrite it
-                        self.datall_replace_single(d["rs"], d["chan"], trial, Dnew=d)
+                        self._dat_replace_single(d["rs"], d["chan"], trial, Dnew=d)
                     else:
                         # skip, don't replace.
                         pass
@@ -2179,7 +2540,7 @@ class Session(object):
 
 
     def extract_windowed_data_bytrial(self, times, trial0, vals=None, 
-            recompute_time_rel_onset=True, pre_dur=1., post_dur=1.):
+            recompute_time_rel_onset=True, pre_dur=PRE_DUR_TRIAL, post_dur=POST_DUR_TRIAL): 
         """ Given generic data, window it by a given trial.
         Prune data (time, vals) to include only those with
         times within twind. Also changes times to be relative to trial onset (regardless of pre_dur
@@ -2204,7 +2565,7 @@ class Session(object):
 
         return times, vals, time_dur, time_on, time_off
 
-    def extract_timerange_trial(self, trial0, pre_dur=1., post_dur=1.):
+    def extract_timerange_trial(self, trial0, pre_dur=PRE_DUR_TRIAL, post_dur=POST_DUR_TRIAL):
         T1 = self.TrialsOnset[trial0]-pre_dur
         T2 = self.TrialsOffset[trial0]+post_dur
         return T1, T2
@@ -2219,47 +2580,46 @@ class Session(object):
         return time_on, time_off
 
     #################### DATALL
-    def datall_this_exists(self, rs, chan, trial0, also_check_if_has_raw_data=False):
-        """ returns True if this combo exist sin self.DatAll,
-        false otherwise
-        - also_check_if_has_raw_data, bool, if true, then to return True must also 
-        hvae raw data extracted
+    # def datall_this_exists(self, rs, chan, trial0, also_check_if_has_raw_data=False):
+    #     """ returns True if this combo exist sin self.DatAll,
+    #     false otherwise
+    #     - also_check_if_has_raw_data, bool, if true, then to return True must also 
+    #     hvae raw data extracted
+    #     """
+    #     assert False, "use datall_slice_single_bysite for kilosort"
+    #     D = self._datall_slice_single(rs, chan, trial0)
+    #     if D is None:
+    #         return False
+    #     if also_check_if_has_raw_data:
+    #         if len(D["raw"])==0:
+    #             return False
+    #         else:
+    #             return True
+    #     else:
+    #         return True
+
+
+
+    def datall_TDT_KS_slice_single_bysite(self, site_or_clust, trial0, return_index=False):
+        """ [KILOSORT OR TDT WORKS] 
+        This is the only place where spikes data are extracted for analysis!!!
+        Like datall_slice_single, but input site instead of (rs, chan)
         """
-        D = self.datall_slice_single(rs, chan, trial0)
-        if D is None:
-            return False
-        if also_check_if_has_raw_data:
-            if len(D["raw"])==0:
-                return False
-            else:
-                return True
+
+        assert self.SPIKES_VERSION == self._SPIKES_VERSION_INPUTED, "not allowed to change spikes version once you load! (Instead, load a new session with flag spikes_version changed"
+
+        if self.SPIKES_VERSION=="tdt":
+            rs, chan = self.convert_site_to_rschan(site_or_clust)
+            return self._datallTDT_slice_single(rs, chan, trial0, return_index)
+        elif self.SPIKES_VERSION=="kilosort":
+            key = (site_or_clust, trial0)
+            return self.DatSpikesSliceClustTrial[key]
         else:
-            return True
+            print(self.SPIKES_VERSION)
+            assert False, "Code it!"
 
-
-    def datall_replace_single(self, rs, chan, trial0, Dnew):
-        """ If this (rs, chan, trial0) exists, replace it with Dnew
-        MODIFIES:
-        - self.DatAll, at a single index
-        """
-
-        Dold, idx = self.datall_slice_single(rs, chan, trial0, return_index=True)
-        if Dold is None:
-            # then doesnt exist, do mnothing
-            pass
-        else:
-            self.DatAll[idx] = Dnew
-
-
-    def datall_slice_single_bysite(self, site, trial0, return_index=False):
-        """ Like datall_slice_single, but input site instead of (rs, chan)
-        """
-
-        rs, chan = self.convert_site_to_rschan(site)
-        return self.datall_slice_single(rs, chan, trial0, return_index)
-
-    def datall_slice_single(self, rs, chan, trial0, return_index=False, method="new"):
-        """ Slice a single chans data.
+    def _datallTDT_slice_single(self, rs, chan, trial0, return_index=False, method="new"):
+        """ [TDT] Slice a single chans data.
         PARAMS:
         - rs, chan, trial0, ints
         RETURNS:
@@ -2359,7 +2719,29 @@ class Session(object):
             
         return DatSpikesWindowed
         
+    def _datspikes_slice_single(self, spiketimes_sess, trial0=None, twind=None):
+        """ Slice a single chans spike times, 
+        optionally relative to a time window
+        PARAMS:
+        - spiketimes, (nspikes, ) array, in seconds, across entire session
+        - trial0, int, trial to reslice and reform time base to. 
+        - twind, (2,) array, time window to slice out.
+        NOTE: use trial0 if want time base to match up so that behcode 9 is 0 sec.
+        NOTE: can only pass in one of trial0 or twind
+        RETURNS:
+        spiketimes, time_dur, time_on, time_off
+        """
 
+        if twind is not None:
+            assert trial0 is None
+            spiketimes, _, time_dur, time_on, time_off = self.extract_windowed_data(spiketimes_sess, twind)
+        elif trial0 is not None:
+            assert twind is None
+            spiketimes, _, time_dur, time_on, time_off = self.extract_windowed_data_bytrial(spiketimes_sess, trial0)    
+        else:
+            assert False, "must be one or the other"
+        return spiketimes, time_dur, time_on, time_off
+                
     def datspikes_slice_single(self, rs, chan, trial0=None, twind=None):
         """ Slice a single chans spike times, 
         optionally relative to a time window
@@ -2379,28 +2761,84 @@ class Session(object):
 
                 if spiketimes is None:
                     print("****")
-                    print(self.convert_site_to_rschan(sitenum), trial)
                     print(self.print_summarize_expt_params())
                     assert False, "figure out why this is None. probably in loading (scipy error) and I used to replace errors with None. I should re-extract the spikes."
-                # optionally window it
-                if twind is not None:
-                    assert trial0 is None
-                    spiketimes, _, time_dur, time_on, time_off = self.extract_windowed_data(spiketimes, twind)
-                elif trial0 is not None:
-                    assert twind is None
-                    spiketimes, _, time_dur, time_on, time_off = self.extract_windowed_data_bytrial(spiketimes, trial0)    
-                else:
-                    assert False, "must be one or the other"
-                return spiketimes, time_dur, time_on, time_off
+                
+                return self._datspikes_slice_single(spiketimes, trial0, twind)
                 
         print(rs, chan)
         assert False, 'this combo of rs and chan doesnt exist in DatSpikes!'
         
+
     ####################### HELP CALC THINGS
     def dat_to_time(self, vals, fs):
         return dat_to_time(vals, fs)
 
     ####################### CONVERSIONS BETWEEN BEH AND NEURAKL
+    def _beh_prune_trial_offset_onset(self):
+        """
+        Prunes self.TrialsOffset or self.TrialsOnset to make sure they are
+        the same length. computes trial times to ensur eit makes sense.
+        """
+
+        if not len(self.TrialsOffset)==len(self.TrialsOnset):
+
+            offs = np.array(self.TrialsOffset)
+            ons = np.array(self.TrialsOnset)
+
+            if len(self.TrialsOnset)==len(self.TrialsOffset)-1:
+                # one extract offset...
+
+                diffs1 = offs[1:] - ons
+                mean1 = np.mean(diffs1)
+                std1 = np.std(diffs1)
+
+                diffs2 = offs[:-1] - ons
+                mean2 = np.mean(diffs2)
+                std2 = np.std(diffs2)
+
+                if mean1>0 and mean2<0:
+                    self.TrialsOffset = self.TrialsOffset[1:]
+                elif mean1<0 and mean2>0:
+                    self.TrialsOffset = self.TrialsOffset[:-1]
+                else:
+                    print(mean1, std1, mean2, std2)
+                    assert False
+
+            elif len(self.TrialsOnset)==len(self.TrialsOffset)+1:
+                # one extra onset...
+
+                diffs1 = offs - ons[1:]
+                mean1 = np.mean(diffs1)
+                std1 = np.std(diffs1)
+
+                diffs2 = offs - ons[:-1]
+                mean2 = np.mean(diffs2)
+                std2 = np.std(diffs2)
+
+                if mean1>0 and mean2<0:
+                    self.TrialsOnset = self.TrialsOnset[1:]
+                elif mean1<0 and mean2>0:
+                    self.TrialsOnset = self.TrialsOnset[:-1]
+                else:
+                    print(mean1, std1, mean2, std2)
+                    assert False
+            else:
+                print("-----")
+                print(len(self.TrialsOnset))
+                print(len(self.TrialsOffset))
+                print(len(self.TrialsOffset)+1)
+                print(len(self.TrialsOffset)==len(self.TrialsOffset)+1)
+                print(len(self.TrialsOffset)==len(self.TrialsOffset)-1)
+                print("-----")
+                print(self.TrialsOnset)
+                print(self.TrialsOffset)
+                print(len(trials_exist_in_ml2))
+                assert False, "what to do?"
+
+        assert len(self.TrialsOffset)==len(self.TrialsOnset)
+
+
     def _beh_prune_trial_number(self):
         """ perpocess, quick ways to prune the trials, based on comparison of neural and ml2_beh data
         to remove excess trials that will cause later.
@@ -2415,6 +2853,7 @@ class Session(object):
             self.TrialsOnset = self.TrialsOnset[:-1]
             # Clear cache
             self._CachedTrialsList = {}
+
 
     def _beh_validate_trial_number(self):
         """ Confirms that each neural trial has a corresponding mapping that exists in ml2 data.
@@ -2469,7 +2908,9 @@ class Session(object):
         ##### Get array of trial durations vs trial num
         # 1) tdt. this is including appended pre and post durs.
         # trials = self.get_trials_list(True) 
+        
         trials = self.get_trials_list(False, True) 
+
         def get_trial_dur(t):
             T1, T2 = self.extract_timerange_trial(t)
             return T2 - T1
@@ -2750,7 +3191,7 @@ class Session(object):
         and total units etc
         """
         sites_all =[]
-        for area, sites in self._sitegetter_generate_mapper_region_to_sites(clean=True).items():
+        for area, sites in self._sitegetterKS_generate_mapper_region_to_sites(clean=True).items():
             print(area, " : ", len(sites))
             sites_all.append(len(sites))
         print(" ------- ")
@@ -2776,10 +3217,10 @@ class Session(object):
         max_prev = 0
         print("region, nunits, --, min(sitenum), max(sitenum)")
         for regsum in regions_summary:
-            sites = self.sitegetter_map_region_to_sites(regsum)
+            sites = self.sitegetterKS_map_region_to_sites(regsum)
             print(regsum, len(sites), "----", min(sites), max(sites))
             min_this = min(sites)
-            assert min_this > max_prev
+            # assert min_this > max_prev
             max_prev = min_this
 
 
@@ -2787,29 +3228,38 @@ class Session(object):
         """ Return a string that useful for labeling
         """
 
-        info = self.sitegetter_thissite_info(site)
+        info = self.sitegetterKS_thissite_info(site)
+        clust = info["clust"]
+        site_tdt = info["site_tdt"]
         bregion = info["region"]
         rs = info["rs"]
         chan = info["chan"]
-        return f"{site}|{bregion}|{rs}-{chan}"
-
-    def sitegetter_brainregion_chan(self, region, chan):
-        """ Given a regin (e.g., M1_m) and chan (1-256) return its site (1-512)
-        """ 
-        assert False, "rewrite using sitegetter_map_region_to_site"
-        # which rs?
-        sites = self.sitegetter_brainregion(region)
-        if all([s<257 for s in sites]):
-            rs = 2
-        elif all([s<513 for s in sites]):
-            rs = 3
+        if self.SPIKES_VERSION=="tdt":
+            assert site==site_tdt
+            return f"{site_tdt}|{bregion}|{rs}-{chan}"
+        elif self.SPIKES_VERSION=="kilosort":
+            return f"s{site_tdt}|c{clust}|{bregion}|{rs}-{chan}"
         else:
-            print(sites, region)
             assert False
 
-        site = self.convert_rschan_to_site(rs, chan)
-        assert site in sites, "this site not in this brain region!!"
-        return site
+
+    # def sitegetter_brainregion_chan(self, region, chan):
+    #     """ Given a regin (e.g., M1_m) and chan (1-256) return its site (1-512)
+    #     """ 
+    #     assert False, "rewrite using sitegetter_map_region_to_site"
+    #     # which rs?
+    #     sites = self.sitegetter_brainregion(region)
+    #     if all([s<257 for s in sites]):
+    #         rs = 2
+    #     elif all([s<513 for s in sites]):
+    #         rs = 3
+    #     else:
+    #         print(sites, region)
+    #         assert False
+
+    #     site = self.convert_rschan_to_site(rs, chan)
+    #     assert site in sites, "this site not in this brain region!!"
+    #     return site
 
     def _sitegetter_map_site_to_physical_location_electrode(self, site):
         """ Get the location
@@ -2820,8 +3270,8 @@ class Session(object):
         assert False, "code it"
         assert False, "6/22/22 4B inserted upside down"
 
-    def _sitegetter_get_map_brainregion_to_site(self):
-        """ Retgurn dict mapping from regions to sites.
+    def _sitegettertdt_get_map_brainregion_to_site(self):
+        """ [TDT SITES] Retgurn dict mapping from regions to sites.
         Hard coded.
         RETURNS:
         - dict[region] = list of sites
@@ -2845,21 +3295,21 @@ class Session(object):
             dict_sites[name] = list(range(1+32*i, 1+32*(i+1)))
         return dict_sites
 
-    def _sitegetter_generate_mapper_region_to_sites(self, clean=True,
-        combine_into_larger_areas=False):
-        """ Generate dict mapping from region to sites, with added flexiblity of paras
+    def _sitegetterKS_generate_mapper_region_to_sites(self, clean=True,
+        combine_into_larger_areas=False, force_tdt_sites=False):
+        """ [KILISORT WORKS] Generate dict mapping from region to sites, with added flexiblity of paras
         PARAMS:
         - clean, bool, whether to remove bad sites
         - combine_into_larger_areas, bool,
         RETURNS:
-        - dict_sites[sitename] = list of ints.
+        - dict_sites[sitename] = list of ints (either sites or clusts, if using ks)
         """
 
         # Get default sites
-        dict_sites = self._sitegetter_get_map_brainregion_to_site()
+        dict_sites = self._sitegettertdt_get_map_brainregion_to_site()
 
         # Remove bad sites?
-        if clean:
+        if self.SPIKES_VERSION=="tdt" and clean:
             assert self.SitesDirty is not None, "you need to enter which are bad sites in SitesDirty"
             for k, v in dict_sites.items():
                 # remove any sites that are bad
@@ -2881,85 +3331,124 @@ class Session(object):
                 dict_sites_new[reg] = sites_this
             dict_sites = dict_sites_new
 
-        return dict_sites
+        ############ for KILOSORT? GET CLSUTERS
+        if self.SPIKES_VERSION=="tdt" or force_tdt_sites:
+            # Then you want map to sites (1-512)
+            # You already have it.
+            return dict_sites
+        elif self.SPIKES_VERSION=="kilosort":
+            # Then you want map to cluster_id
+
+            mapper_region_to_clustids = {}
+            for br, sites in dict_sites.items():
+                # Collect clust ids for this region
+                clusts = self.ks_convert_sites_to_clusts(sites)
+                mapper_region_to_clustids[br] = clusts
+
+            #     print("---", br)
+            #     print(dict_sites[br])
+            #     print(mapper_region_to_clustids[br])
+            # assert False
+            return mapper_region_to_clustids
+        else:
+            print(self.SPIKES_VERSION)
+            assert False, "code it"
+
+        # return dict_sites
 
     def sitegetter_get_brainregion_list(self, combine_into_larger_areas=False):
         """ Get list of str, names of all brain regions.
         """
-        dict_sites = self._sitegetter_generate_mapper_region_to_sites(clean=False,
-            combine_into_larger_areas=combine_into_larger_areas)
-        return list(dict_sites.keys())
+        if combine_into_larger_areas:
+            dict_sites = sorted(self._sitegetterKS_generate_mapper_region_to_sites(clean=False,
+                combine_into_larger_areas=True))
+            return list(dict_sites.keys())
+        else:
+            return REGIONS_IN_ORDER
 
-    def sitegetter_map_multregions_to_sites(self, list_region, clean=True):
-        """ Return lsit of sites,concatenated across regions in lisT_region
-        """
-        return sn.sitegetter_all(list_region, clean=clean)
-        # sites = []
-        # for region in list_region:
-        #     sites.extend(self.sitegetter_map_region_to_sites(region, clean))
-        # return sites
+    # def sitegetter_map_multregions_to_sites(self, list_region, clean=True):
+    #     """ Return lsit of sites,concatenated across regions in lisT_region
+    #     """
+    #     return self.sitegetter_all(list_region, clean=clean)
 
-    def sitegetter_map_region_to_sites(self, region, clean=True):
-        """ Given a region (string) map to a list of ints (sites)
+    def sitegetterKS_map_region_to_sites(self, region, clean=True,
+            force_tdt_sites=False):
+        """ [KILOSORT works] Given a region (string) map to a list of ints (sites)
+        RETURNS;
+        - list of ints, either sites or clusters (if using ks)
         """
-        mapper = self._sitegetter_generate_mapper_region_to_sites(clean, False)
+
+        mapper = self._sitegetterKS_generate_mapper_region_to_sites(clean, 
+            combine_into_larger_areas=False, force_tdt_sites=force_tdt_sites)
         if region not in mapper.keys():
-            mapper = self._sitegetter_generate_mapper_region_to_sites(clean, True)
-        sites = mapper[region]
+            mapper = self._sitegetterKS_generate_mapper_region_to_sites(clean, 
+                combine_into_larger_areas=True, force_tdt_sites=force_tdt_sites) 
+
+        sites_or_clusts = mapper[region]
 
         if self._DEBUG_PRUNE_SITES:
-            sites = [sites[0]]
+            sites_or_clusts = [sites_or_clusts[0]]
 
-        return sites
+        return sites_or_clusts
 
-        # if region in mapper.keys():
-        #     return mapper[region]
-        # else:
-        #     mapper = self._sitegetter_generate_mapper_region_to_sites(clean, True)
-        #     return mapper[region]
-
-
-    def sitegetter_map_site_to_region(self, site, region_combined=False):
-        """ REturn the regino (str) for this site (int, 1-512)
+    def sitegetterKS_map_site_to_region(self, site, region_combined=False):
+        """ [KILOSORT WORKS] REturn the regino (str) for this site (int, 1-512)
         PARAMS:
         - region_combined, bool, if true, then uses gross areas (e.g, M1) but
         if False, then uses specific area for each array (e.g., M1_l)
         """
 
-        if region_combined:
-            Mapper = self.MapSiteToRegionCombined
+        if False:
+            # This is dangerous, since site can be clust now (kilosort)
+            if region_combined:
+                Mapper = self.MapSiteToRegionCombined
+            else:
+                Mapper = self.MapSiteToRegion
         else:
-            Mapper = self.MapSiteToRegion
+            Mapper = []
 
         if len(Mapper)==0:
             # Generate it
-            dict_sites = self._sitegetter_generate_mapper_region_to_sites(
+            dict_sites = self._sitegetterKS_generate_mapper_region_to_sites(
                 clean=False, combine_into_larger_areas=region_combined) # clean=False, since maping from sites to reg.
             for bregion, slist in dict_sites.items():
                 for s in slist:
-                    Mapper[s] = bregion
+                    if s==site:
+                        return bregion
+            print(site)
+            assert False, "site doesnt exist"
+        #             Mapper[s] = bregion
+        # return Mapper[site]
 
-        return Mapper[site]
-        
-
-    def sitegetter_thissite_info(self, site, clean=False):
+    def sitegetterKS_thissite_info(self, site, clean=False):
         """ returns info for this site in a dict
         INCLUDES even dirty sites
         """
 
         # Get the brain region
-        dict_sites = self._sitegetter_generate_mapper_region_to_sites(clean=clean) 
-        regionthis = None
-        for bregion, sites in dict_sites.items():
-            if site in sites:
-                regionthis = bregion
-                break
-        assert regionthis is not None
+        regionthis = self.sitegetterKS_map_site_to_region(site)
+        # dict_sites = self._sitegetterKS_generate_mapper_region_to_sites(clean=clean) 
+        # regionthis = None
+        # for bregion, sites in dict_sites.items():
+        #     if site in sites:
+        #         regionthis = bregion
+        #         break
+        # assert regionthis is not None
 
         # Get the rs and chan
-        rs, chan = self.convert_site_to_rschan(site)
+        if self.SPIKES_VERSION=="tdt":
+            rs, chan = self.convert_site_to_rschan(site)
+            site_tdt = site
+            clust = None
+        elif self.SPIKES_VERSION=="kilosort":
+            clust = site
+            site_tdt, rs, chan = self.ks_convert_clust_to_site_rschan(clust)
+        else:
+            assert False
 
         return {
+            "site_tdt":site_tdt,
+            "clust":clust,
             "region":regionthis,
             "rs":rs,
             "chan":chan}
@@ -2974,6 +3463,7 @@ class Session(object):
         - sites_sorted, list of ints, sites sorted and (optiaolly) pruned to top n
         """
 
+        assert self.SPIKES_VERSION=="tdt", "confirm that this works evne for kilosort"
         if by=="fr":
             # Get fr for all sites
             frate_all = [self.sitestats_fr(s)["fr_mean"] for s in sites]
@@ -2993,8 +3483,9 @@ class Session(object):
 
         return sites_sorted
 
-    def sitegetter_all(self, list_regions=None, clean=True):
-        """ Get all sites, in order
+    def sitegetter_all(self, list_regions=None, clean=True,
+            force_tdt_sites=False):
+        """ [KILOSORT_WORKS] Get all sites, in order
         MNOTE: will be in order of list_regions
         PARAMS:
         - list_regions, get only these regions. leave None to get all. if None,
@@ -3002,75 +3493,76 @@ class Session(object):
         RETURNS:
         - list of sites
         """
+        
         if list_regions is None:
             list_regions = self.sitegetter_get_brainregion_list(combine_into_larger_areas=False)
 
         sites = []
         for region in list_regions:
-            sites_this = self.sitegetter_map_region_to_sites(region, clean=clean)
+            sites_this = self.sitegetterKS_map_region_to_sites(region, clean=clean, force_tdt_sites=force_tdt_sites)
             sites.extend(sites_this)
 
         return sites
 
-    def sitegetter_brainregion(self, region=None, clean=True):
-        """ Flexible mapping from region to site
-        PARAMS:
-        - region, Either string (specific region) or list of strings (concats the sites)
-        - clean, whether to remove garbage chanels
-        RETURNS:
-        - 
-        - out, depends on type of region
-        """
-        # Hard coded
-        # regions_in_order = ["M1_m", "M1_l", "PMv_l", "PMv_m",
-        #                     "PMd_p", "PMd_a", "dlPFC_p", "dlPFC_a", 
-        #                     "vlPFC_p", "vlPFC_a", "FP_p", "FP_a",
-        #                     "SMA_p", "SMA_a", "preSMA_p", "preSMA_a"]
-        # regions_in_order = ["M1_m", "M1_l", "PMv_l", "PMv_m",
-        #                     "PMd_p", "PMd_a", "SMA_p", "SMA_a", 
-        #                     "dlPFC_p", "dlPFC_a", "vlPFC_p", "vlPFC_a", 
-        #                     "preSMA_p", "preSMA_a", "FP_p", "FP_a"]
+    # def sitegetter_brainregion(self, region=None, clean=True):
+    #     """ Flexible mapping from region to site
+    #     PARAMS:
+    #     - region, Either string (specific region) or list of strings (concats the sites)
+    #     - clean, whether to remove garbage chanels
+    #     RETURNS:
+    #     - 
+    #     - out, depends on type of region
+    #     """
+    #     # Hard coded
+    #     # regions_in_order = ["M1_m", "M1_l", "PMv_l", "PMv_m",
+    #     #                     "PMd_p", "PMd_a", "dlPFC_p", "dlPFC_a", 
+    #     #                     "vlPFC_p", "vlPFC_a", "FP_p", "FP_a",
+    #     #                     "SMA_p", "SMA_a", "preSMA_p", "preSMA_a"]
+    #     # regions_in_order = ["M1_m", "M1_l", "PMv_l", "PMv_m",
+    #     #                     "PMd_p", "PMd_a", "SMA_p", "SMA_a", 
+    #     #                     "dlPFC_p", "dlPFC_a", "vlPFC_p", "vlPFC_a", 
+    #     #                     "preSMA_p", "preSMA_a", "FP_p", "FP_a"]
 
-        assert False, "new version"
+    #     assert False, "new version"
 
-        # do clean
-        if clean:
-            assert self.SitesDirty is not None, "you need to enter which are bad sites in SitesDirty"
-            for k, v in dict_sites.items():
-                # remove any sites that are bad
-                dict_sites[k] = [vv for vv in v if vv not in self.SitesDirty]
+    #     # do clean
+    #     if clean:
+    #         assert self.SitesDirty is not None, "you need to enter which are bad sites in SitesDirty"
+    #         for k, v in dict_sites.items():
+    #             # remove any sites that are bad
+    #             dict_sites[k] = [vv for vv in v if vv not in self.SitesDirty]
 
-        # Get sites
-        if region=="list_regions":
-            assert False, "_sitegetter_generate_mapper_region_to_sites"
-            return regions_in_order
-        elif region=="mapper" or region is None:
-            assert False, "_sitegetter_generate_mapper_region_to_sites"
-            return dict_sites
-        elif isinstance(region, int):
-            assert False, "why do this"
-            return dict_sites[regions_in_order[region]]
-        elif isinstance(region, list):
-            # then this is list of str
-            list_chans = []
-            for reg in region:
-                sites = self.sitegetter_map_region_to_sites(reg, clean=clean)
-                list_chans.extend(sites)
-            return list_chans
-        elif isinstance(region, str):
-            return self.sitegetter_map_region_to_sites(region)
-            # if region in dict_sites.keys():
-            #     # Then is one of the main regions
-            #     return dict_sites[region]
-            # else:
-            #     # Then could be a summary region
-            #     def _regions_in(summary_region):
-            #         """ get list of regions (e.g, ["dlPFC_a", 'dlPFC_p']) that are in this summary region (e.g., dlPFC)
-            #         """
-            #         return [reg for reg in regions_in_order if reg.find(summary_region)==0]
-            #     return self.sitegetter_all(list_regions=_regions_in(region), clean=clean)
-        else:
-            assert False
+    #     # Get sites
+    #     if region=="list_regions":
+    #         assert False, "_sitegetter_generate_mapper_region_to_sites"
+    #         return regions_in_order
+    #     elif region=="mapper" or region is None:
+    #         assert False, "_sitegetter_generate_mapper_region_to_sites"
+    #         return dict_sites
+    #     elif isinstance(region, int):
+    #         assert False, "why do this"
+    #         return dict_sites[regions_in_order[region]]
+    #     elif isinstance(region, list):
+    #         # then this is list of str
+    #         list_chans = []
+    #         for reg in region:
+    #             sites = self.sitegetterKS_map_region_to_sites(reg, clean=clean)
+    #             list_chans.extend(sites)
+    #         return list_chans
+    #     elif isinstance(region, str):
+    #         return self.sitegetterKS_map_region_to_sites(region)
+    #         # if region in dict_sites.keys():
+    #         #     # Then is one of the main regions
+    #         #     return dict_sites[region]
+    #         # else:
+    #         #     # Then could be a summary region
+    #         #     def _regions_in(summary_region):
+    #         #         """ get list of regions (e.g, ["dlPFC_a", 'dlPFC_p']) that are in this summary region (e.g., dlPFC)
+    #         #         """
+    #         #         return [reg for reg in regions_in_order if reg.find(summary_region)==0]
+    #         #     return self.sitegetter_all(list_regions=_regions_in(region), clean=clean)
+    #     else:
+    #         assert False
 
     def convert_rschan_to_site(self, rs, chan):
         """
@@ -3086,24 +3578,48 @@ class Session(object):
         else:
             assert False
 
-    def convert_site_to_rschan(self, sitenum):
-        """ Cnvert sites (1-512) to rs and chan
-        e.g., 512 --> (3, 256)
+    def ks_convert_clust_to_site_rschan(self, clust):
         """
-        if sitenum>256:
+        Kilosort - convert clustid to tdt information
+        RETURNS:
+        - site_tdt, rs, chan, all ints.
+        """
+        # map from clust to site
+        site_tdt = self.DatSpikesSessByClust[clust]["site"]
+        # site_tdt = self._MapperKsortClustToSite[clust]
+        rs, chan = self._convert_sitetdt_to_rschan(site_tdt)
+        return site_tdt, rs, chan
+
+    def _convert_sitetdt_to_rschan(self, sitetdt):
+        if sitetdt>256:
             rs = 3
-            chan = sitenum - 256
+            chan = sitetdt - 256
         else:
             rs = 2
-            chan = sitenum
+            chan = sitetdt
         return rs, chan
+
+    def convert_site_to_rschan(self, site_or_clust):
+        """ [KILOSORT WORKS] Cnvert either:
+        TDT sites (1-512) -or-
+        Kilosort clusters
+        to rs and chan
+        e.g., 512 --> (3, 256)
+        """
+        if self.SPIKES_VERSION=="tdt":
+            return self._convert_sitetdt_to_rschan(site_or_clust)
+        else:
+            site_tdt, rs, chan = self.ks_convert_clust_to_site_rschan(clust=site_or_clust)
+            return rs, chan
+
 
     ########################### Stats for each site
     def sitestats_fr_single(self, sitenum, trial):
         """ get fr (sp/s)
         - if fr doesnt exist in self.DatAll, then will add it to the dict.
         """
-        dat = self.datall_slice_single_bysite(sitenum, trial)
+        assert self.SPIKES_VERSION=="tdt"
+        dat = self.datall_TDT_KS_slice_single_bysite(sitenum, trial)
         if "fr" not in dat.keys():
             if dat["spike_times"] is None:
                 print("****")
@@ -3119,6 +3635,8 @@ class Session(object):
         """ gets fr across all trials. Only works if you have already extracted fr 
         into DatAll (and its dataframe)
         """
+        
+        assert self.SPIKES_VERSION=="tdt", "not codeede for anything else."
         list_fr = []
         
 
@@ -5395,7 +5913,8 @@ class Session(object):
 
 
 
-    def eventsdataframe_extract_timings(self, list_events=None, DEBUG=False):
+    def eventsdataframe_extract_timings(self, list_events=None, trials=None,
+            DEBUG=False):
         """
         Get a dataframe across all trials holding information about key timing of events.
         I used this for sanity checks (e.g., plotting events rasters across trials).
@@ -5407,10 +5926,12 @@ class Session(object):
         import pandas as pd
 
         DatEvents = [] # list of dicts.
-        if DEBUG:
-            trials = self.get_trials_list(True)[:20]
-        else:
+
+        if trials is None:
             trials = self.get_trials_list(True)
+
+        if DEBUG:
+            trials = trials[:20]
             
         if list_events is None:
             list_events = self.events_default_list_events()
@@ -5451,7 +5972,6 @@ class Session(object):
                 eventsdict["reward"] = outcome["rew_total"]
 
             eventsdict["trial"] = trialthis
-            
             eventsdict["time_events_flat_first_unsorted"] = time_events_flat_first_unsorted
             
             DatEvents.append(eventsdict)
@@ -5461,7 +5981,7 @@ class Session(object):
 
 
     ######################## SPIKE TRAIN STUFF
-    def _spiketrain_as_elephant(self, site, trial, save = True):
+    def _spiketrain_as_elephant(self, site, trial, cache = True):
         """ Get this site and trial as elephant (Neo) SpikeTrain object
         RETURNS:
         - st, a SpikeTrain object
@@ -5471,8 +5991,7 @@ class Session(object):
         from quantities import s
 
         # extract dat
-        rs, chan = self.convert_site_to_rschan(site)
-        dat = self.datall_slice_single(rs, chan, trial)
+        dat = self.datall_TDT_KS_slice_single_bysite(site, trial)
         assert dat is not None, "doesnt exist..."
 
         stimes = dat["spike_times"]
@@ -5482,8 +6001,8 @@ class Session(object):
             # Convert to spike train
             st = SpikeTrain(dat["spike_times"]*s, t_stop=dat["time_off"], t_start=dat["time_on"])
 
-        if save:
-            dat = self.datall_slice_single_bysite(site, trial)
+        if cache:
+            dat = self.datall_TDT_KS_slice_single_bysite(site, trial)
             dat["spiketrain"] = st
 
         return st
@@ -5496,13 +6015,11 @@ class Session(object):
 
         ADDED = False # track whether datall is updated.
 
-        if not hasattr(self, "DatAllDf"):
-            assert False, "need to first run extract_raw_and_spikes_helper to extract DatAllDf"
-        
-        if "spiketrain" in self.DatAllDf.columns and not np.any(self.DatAllDf["spiketrain"].isna()):
+        if hasattr(self, "DatAllDf") and "spiketrain" in self.DatAllDf.columns and not np.any(self.DatAllDf["spiketrain"].isna()):
             # then already gotten. skip
             pass
         else:
+            # Extract
             for i, Dat in enumerate(self.DatAll):
                 if "spiketrain" not in Dat.keys():
                     if i%500==0:
@@ -5520,6 +6037,32 @@ class Session(object):
         print("FINISHED - extracting spiketrain for all trials in self.DatAll")
         if ADDED and save:
             self._savelocal_datall()
+
+
+        # if not hasattr(self, "DatAllDf"):
+        #     assert False, "need to first run extract_raw_and_spikes_helper to extract DatAllDf"
+        
+        # if "spiketrain" in self.DatAllDf.columns and not np.any(self.DatAllDf["spiketrain"].isna()):
+        #     # then already gotten. skip
+        #     pass
+        # else:
+        #     for i, Dat in enumerate(self.DatAll):
+        #         if "spiketrain" not in Dat.keys():
+        #             if i%500==0:
+        #                 print("spiketrain_as_elephant_batch, datall index: ", i)
+        #             # if Dat["trial0"]%50==0:
+        #             #     print(Dat["trial0"])
+        #             if "site" in Dat.keys():
+        #                 site = Dat["site"]
+        #             else:
+        #                 site = self.convert_rschan_to_site(Dat["rs"], Dat["chan"])
+        #             st = self._spiketrain_as_elephant(site, Dat["trial0"])
+        #             Dat["spiketrain"] = st
+        #             ADDED = True
+
+        # print("FINISHED - extracting spiketrain for all trials in self.DatAll")
+        # if ADDED and save:
+        #     self._savelocal_datall()
 
     ####################### GENERATE POPANAL for a trial
     def _popanal_generate_from_raw(self, frate_mat, times, chans, df_label_trials=None,
@@ -5601,7 +6144,7 @@ class Session(object):
         pa.Xlabels["trials"] = pa.Xlabels["trials"].drop("dataset_trialcode", 1)
         
         print("Extracting dataset features into pa.Xlabel [chans]")
-        regions = [self.sitegetter_map_site_to_region(s, region_combined=use_combined_region) for s in sites]
+        regions = [self.sitegetterKS_map_site_to_region(s, region_combined=use_combined_region) for s in sites]
         pa.labels_input("regions_combined", regions, dim="chans")
 
         return pa
@@ -5720,7 +6263,7 @@ class Session(object):
         # 3) Input variables associated with each chan
         # - for each chan, map to bregion
         print("Extracting dataset features into pa.Xlabel [chans]")
-        regions = [self.sitegetter_map_site_to_region(s, region_combined=use_combined_region) for s in sites]
+        regions = [self.sitegetterKS_map_site_to_region(s, region_combined=use_combined_region) for s in sites]
         for pa in ListPA:
             pa.labels_input("regions_combined", regions, dim="chans")
 
@@ -5786,11 +6329,15 @@ class Session(object):
             list_sites = self.sitegetter_all(clean=clean_chans)
             list_spiketrain = []
             for site in list_sites:
-                dat = self.datall_slice_single_bysite(site, trial)
-                if "spiketrain" not in dat.keys():
+                dat = self.datall_TDT_KS_slice_single_bysite(site, trial)
+                if "spiketrain" not in dat.keys() or dat["spiketrain"] is None:
                     print("Generating spike train! (site, trial): ", site, trial)
-                    self._spiketrain_as_elephant(site, trial, save=True)
-                list_spiketrain.append(dat["spiketrain"])
+                    self._spiketrain_as_elephant(site, trial, cache=True)
+                st = dat["spiketrain"]
+                if st is None:
+                    print("Trial, site:", trial, site)
+                    assert False, "first generate spike trains.."
+                list_spiketrain.append(st)
                 
             # Convert spike train to smoothed FR
             frate = instantaneous_rate(list_spiketrain, sampling_period=sampling_period*s, 
@@ -6041,6 +6588,34 @@ class Session(object):
                 all_pa_inherit_times_of_pa_at_this_index=0)
  
         return PAall, trials_gotten
+
+    def smoothedfr_extract_trials(self, trials, sites=None):
+        """ Extract smoothed fr, where each datapt is a single trial (matrix over all sites).
+        Ignoreing trying to clip all trials to same length,
+        in a dataframe. First gets the PopAnal represntation, if not already gotten, so
+        might take a while first time its run
+        PARAMS:
+        - trials, list of ints,
+        - sites, list of ints
+        RETURNS:
+        - df, pandas dataframe with trial, fr (sites x times), times, as columns
+        """
+        import pandas as pd
+
+        if sites is None:
+            sites = self.sitegetter_all()
+
+        out = []
+        for t in trials:
+            pa = self.popanal_generate_save_trial(t) # pa.X --> (chans, 1, time)
+            # pathis = pa._slice_by_chan(sites) # slice to these sites
+            pathis = pa.slice_by_dim_values_wrapper("chans", sites)
+            out.append({
+                "trial":t,
+                "frmat":pathis.X.squeeze(), # (sites, times)
+                "times":pathis.Times # (times, )
+                })
+        return pd.DataFrame(out), sites
 
 
     def smoothedfr_extract(self, trials, sites):
@@ -6562,6 +7137,46 @@ class Session(object):
         if xmax is not None:
             ax.set_xlim(xmax=xmax)
 
+    def plot_raster_sites(self, ax, trial, list_sites=None, site_to_highlight=None,
+        overlay_trial_events=True):
+        """ Plot all sites onto a single axes, for this trial, aligned rasters
+        PARAMS;
+        - site_to_highlight, int, then will be diff color - if what want to link to
+        other example figures.
+        """
+
+        list_ylabel = []
+        cnt = 0
+        
+        if site_to_highlight is not None:
+            rsrand, chanrand = self.convert_site_to_rschan(site_to_highlight)
+        if list_sites is None:
+            list_sites = self.sitegetter_all()
+
+        for i, site in enumerate(list_sites):
+            d = self.datall_TDT_KS_slice_single_bysite(site, trial)
+            st = d["spike_times"]
+            assert st is not None, "corrupted file..., make this sitegarbage temporarily?"
+            pcol = "k"
+            if site_to_highlight is not None:
+                if site==site_to_highlight:
+                    # the random one plotted, color diff 
+                    pcol = 'r';
+            self._plot_raster_line(ax, st, yval=i, color=pcol, linelengths=1, alpha=0.5)
+
+            # collect for ylabel
+            rs, chan = self.convert_site_to_rschan(site)
+            list_ylabel.append(f"{site}|{rs}-{chan}")
+        ax.set_yticks(range(len(list_ylabel)))
+        ax.set_yticklabels(list_ylabel);
+        ax.set_xlabel('time rel. trial onset (sec)');
+        ax.set_ylabel('site');
+        ax.set_title(f"trial: {trial}| nsites: {len(list_sites)}")
+        if overlay_trial_events:
+            self.plotmod_overlay_trial_events(ax, trial)
+        XLIM = ax.get_xlim()
+        # - Overlay brain regions
+        self.plotmod_overlay_brainregions(ax, list_sites)
 
     def plot_raster_trials(self, ax, list_trials, site, alignto=None,
         raster_linelengths=0.9, alpha_raster = 0.9, overlay_trial_events=True,
@@ -6589,13 +7204,12 @@ class Session(object):
                 
                 # Rasters
                 # rs, chan = self.convert_site_to_rschan(site)
-                D = self.datall_slice_single_bysite(site, trial)
-                # D = self.datall_slice_single(rs, chan, trial0=trial)
+                D = self.datall_TDT_KS_slice_single_bysite(site, trial)
                 spikes = D["spike_times"]
+                # print(spikes)
                 self._plot_raster_line(ax, spikes, i, alignto_time=alignto_time, 
                     linelengths=raster_linelengths, alpha=alpha_raster)
             
-
             self.plotmod_overlay_trial_events_mult(ax, list_trials, list_align_time,
                 ylabel_trials, xmin=xmin, xmax=xmax)
         
@@ -6707,7 +7321,7 @@ class Session(object):
 
         XLIM = ax.get_xlim()
         # 1) plot horizonatl line on figure demarcatring transtion ebtwenn areas
-        list_regions = [self.sitegetter_thissite_info(site)["region"] for site in list_sites]
+        list_regions = [self.sitegetterKS_thissite_info(site)["region"] for site in list_sites]
         region_previous = None
         for i, region_this in enumerate(list_regions):
             if region_this==region_previous:
@@ -7355,46 +7969,6 @@ class Session(object):
         plotDatStrokes(strokestask, ax, clean_task=True)
         
     ###################### PLOTS (specific)
-    def plot_rasters_all(self, ax, trial, list_sites=None, site_to_highlight=None,
-        overlay_trial_events=True):
-        """ Plot all sites onto a single axes, for this trial, aligned rasters
-        PARAMS;
-        - site_to_highlight, int, then will be diff color - if what want to link to
-        other example figures.
-        """
-
-        list_ylabel = []
-        cnt = 0
-        
-        if site_to_highlight is not None:
-            rsrand, chanrand = self.convert_site_to_rschan(site_to_highlight)
-        if list_sites is None:
-            list_sites = self.sitegetter_all()
-
-        for i, site in enumerate(list_sites):
-            d = self.datall_slice_single_bysite(site, trial)
-            st = d["spike_times"]
-            assert st is not None, "corrupted file..., make this sitegarbage temporarily?"
-            pcol = "k"
-            if site_to_highlight is not None:
-                if site==site_to_highlight:
-                    # the random one plotted, color diff 
-                    pcol = 'r';
-            self._plot_raster_line(ax, st, yval=i, color=pcol, linelengths=1, alpha=0.5)
-
-            # collect for ylabel
-            rs, chan = self.convert_site_to_rschan(site)
-            list_ylabel.append(f"{site}|{rs}-{chan}")
-        ax.set_yticks(range(len(list_ylabel)))
-        ax.set_yticklabels(list_ylabel);
-        ax.set_xlabel('time rel. trial onset (sec)');
-        ax.set_ylabel('site');
-        ax.set_title(f"trial: {trial}| nsites: {len(list_sites)}")
-        if overlay_trial_events:
-            self.plotmod_overlay_trial_events(ax, trial)
-        XLIM = ax.get_xlim()
-        # - Overlay brain regions
-        self.plotmod_overlay_brainregions(ax, list_sites)
         
     def plot_epocs(self, ax, trial, list_epocs=("camframe", "camtrialon", "camtrialoff", 
         "rewon", "rewoff", "behcode"), overlay_trial_events=True, 
@@ -7547,17 +8121,18 @@ class Session(object):
         ax = axes.flatten()[5]
         site = random.choice(self.sitegetter_all())
         ax.set_title(f"ranbdom raw data: site{site}")
-        D = self.datall_slice_single_bysite(site, trialtdt)
+        D = self.datall_TDT_KS_slice_single_bysite(site, trialtdt)
         if D is not None:
-            t = D["tbins0"]
-            raw = D["raw"]
-            st = D["spike_times"]
-            if raw is not None:
-                ax.plot(t, raw)
-                # spikes
-                ax.plot(st, np.ones(st.shape), 'xr')
-                if overlay_trial_events:
-                    self.plotmod_overlay_trial_events(ax, trialtdt)
+            if "raw" in D.keys():
+                t = D["tbins0"]
+                raw = D["raw"]
+                st = D["spike_times"]
+                if raw is not None:
+                    ax.plot(t, raw)
+                    # spikes
+                    ax.plot(st, np.ones(st.shape), 'xr')
+                    if overlay_trial_events:
+                        self.plotmod_overlay_trial_events(ax, trialtdt)
         
         # Beh strokes (ml2)
         ax = axes.flatten()[6]
@@ -7567,7 +8142,7 @@ class Session(object):
 
         # -- Rasters
         ax = axes.flatten()[7]
-        self.plot_rasters_all(ax, trialtdt, list_sites, overlay_trial_events=overlay_trial_events)
+        self.plot_raster_sites(ax, trialtdt, list_sites, overlay_trial_events=overlay_trial_events)
         # ax.set_xlim(XLIM)
 
         # Another plot for the beh and image
@@ -7791,7 +8366,7 @@ class Session(object):
         # LIST_ALIGN_TO = ["go", "samp"]
         LIST_ALIGN_TO = ["go"]
         for s in sites:
-            bregion = self.sitegetter_thissite_info(s)["region"]
+            bregion = self.sitegetterKS_thissite_info(s)["region"]
             for ALIGNTO in LIST_ALIGN_TO:
                 print("generating fig", s, ALIGNTO)
                 # fig = self.plotwrapper_raster_multrials_onesite(trials, s, alignto =ALIGNTO,
@@ -7953,7 +8528,7 @@ class Session(object):
                     # Then extract
                     sites = [self.convert_rschan_to_site(rs, chan) for rs in rss]
                     self.extract_raw_and_spikes_helper(trials=[trial], sites=sites, get_raw=True)
-                raw = self.datall_slice_single(rs, chan, trial)
+                raw = self._datallTDT_slice_single(rs, chan, trial)
                 t = raw["tbins0"]
                 vals = raw["raw"]
 
@@ -8435,7 +9010,7 @@ class Session(object):
             pre_dur, post_dur):
         """ Extract a single snippet's spike times. aligned to event_time.
         """
-        dat = self.datall_slice_single_bysite(site, trial)
+        dat = self.datall_TDT_KS_slice_single_bysite(site, trial)
         spike_times = dat["spike_times"]
         time_on = dat["time_on"]
         time_off = dat["time_off"]
@@ -8501,7 +9076,8 @@ class Session(object):
         """ Return a dict of what has been extracted for this rs, chan, trial
         combo, in self.DatAll
         """
-        dat = self.datall_slice_single(rs, chan, trial)
+        assert False, "use datall_TDT_KS_slice_single_bysite so works for kilosort"
+        dat = self._datallTDT_slice_single(rs, chan, trial)
 
         outdict = {}
 
@@ -8562,6 +9138,109 @@ class Session(object):
         if self.Paths is not None:
             print("final_dir_name: ", self.Paths["final_dir_name"])
 
+
+    ########################### 
+    def export_to_dataframe(self, savedir, suffix):
+        """
+        """
+
+        sdir = f"{savedir}/{self.Animal}-{self.Date}"
+        os.makedirs(sdir, exist_ok=True)
+
+        trials = self.get_trials_list(True)
+
+        ## Extract smoothed fr for each trial
+        dfextract, sites = self.smoothedfr_extract_trials(trials)
+        assert dfextract["trial"].tolist()==trials
+        # sn.smoothedfr_extract(trials[:10], sites[:10])
+        # sn.smoothedfr_extract_timewindow
+        # sn.smoothedfr_extract_timewindow(trials[:10], sites[:10], "go", )
+
+        ## Channels/sites data
+        list_regions = []
+        for s in sites:
+            list_regions.append(self.sitegetterKS_thissite_info(s)["region"])
+        dfchannels = pd.DataFrame({
+            "frmat_row":range(len(sites)),
+            "channel_idxs":sites,
+            "channel_region":list_regions
+        })
+
+        ## Extract task events
+        events = self.events_default_list_events(include_stroke_endpoints=True, include_events_from_dict=True)
+        dfevents, list_events = self.eventsdataframe_extract_timings(events, trials=trials)
+        assert dfevents["trial"].tolist()==trials
+
+        if False:
+            # dont do. leads to variable column names...
+            dfextract = pd.merge(dfextract, dfevents, on="trial")
+
+        ## Strokes (beh and task image).
+        list_strokes_beh = []
+        for t in trials:
+            strokes = self.strokes_extract(t, peanuts_only=True)
+            list_strokes_beh.append(strokes)
+        dfextract["strokes_beh"] = list_strokes_beh
+
+        list_strokes_task = []
+        for t in trials:
+            strokes = self.strokes_task_extract(t)
+            list_strokes_task.append(strokes)
+        dfextract["strokes_task"] = list_strokes_task
+
+        ## Ad-hoc trial-level dat.
+        D = self.Datasetbeh
+
+        # - epoch
+        list_epoch = []
+        list_sess = []
+        # list_date = []
+        for t in trials:
+            idx = self.datasetbeh_trial_to_datidx(t)
+            list_epoch.append(D.Dat.iloc[idx]["epoch"])
+            list_sess.append(D.Dat.iloc[idx]["session"])
+            # list_date.append(D.Dat.iloc[idx]["date"])
+        dfextract["epoch"] = list_epoch
+        dfextract["session"] = list_sess
+
+        # - shape
+        # list_tok = []
+        list_shape = []
+        list_loc = []
+        for t in trials:
+            idx = self.datasetbeh_trial_to_datidx(t)
+            D.taskclass_tokens_extract_wrapper(idx)
+            tokens = D.taskclass_tokens_extract_wrapper(idx)
+            assert len(tokens)==1, "single prim, for Dan Dolnik"
+            tok = tokens[0]
+            # keys_keep = ["shape", "gridloc"]
+            # tok = {k:v for k,v in tok.items() if k in keys_keep}
+            # list_tok.append(tok)
+            list_shape.append(tok["shape"])
+            list_loc.append(tok["gridloc"])
+        dfextract["shape"] = list_shape
+        dfextract["gridloc"] = list_loc
+
+        ## Save
+        path = f"{sdir}/dfextract-{suffix}.pkl"
+        print("SAVING: ", path)
+        dfextract.to_pickle(path)
+
+        path = f"{sdir}/dfevents-{suffix}.pkl"
+        print("SAVING: ", path)
+        dfevents.to_pickle(path)
+
+        path = f"{sdir}/dfchannels-{suffix}.pkl"
+        print("SAVING: ", path)
+        dfchannels.to_pickle(path)
+
+        if False:
+            # dont need anymore, since have dfchannels        
+            # save map from bregion to site
+            path = f"{sdir}/map_bregion_to_site-{suffix}.pkl"
+            x =self._sitegettertdt_get_map_brainregion_to_site()
+            with open(path, "wb") as f:
+                pickle.dump(x, f)
 
 #####################################################################
 assert REGIONS_IN_ORDER == ["M1_m", "M1_l", "PMv_l", "PMv_m",
