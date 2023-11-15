@@ -126,16 +126,21 @@ if __name__=="__main__":
         list_ds_dat = []
         for DS in SP.DSmult:
 
+            # older code, didn't include.
+            DS.Dat["trialcode"] = DS.Dat["dataset_trialcode"]
+            
             # Update dataset
             DS.dataset_replace_dataset(Dall)
 
             # get fields from Dall
-            for var in list_var_reextract:
-                if var in DS.Dataset.Dat.columns:
-                    # 1) append a new column in DS that has the desired variable from Dataset
-                    DS.dataset_append_column(var)
-                else:
-                    print("SHOULD REGENERATE DS  with this var!!")
+            if var not in DS.Dat.columns:
+                for var in list_var_reextract:
+                    if var in DS.Dataset.Dat.columns:
+                        # 1) append a new column in DS that has the desired variable from Dataset
+                        DS.dataset_append_column(var)
+                    else:
+                        print(var)
+                        assert False, "SHOULD REGENERATE DS  with this var!!"
 
             # concat 
             list_ds_dat.append(DS.Dat)
