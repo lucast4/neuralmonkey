@@ -95,27 +95,37 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
         # Rule switching.
 
         LIST_VAR = [
+            "epoch", # 2) epoch encoidng
+            "epoch", #
+            "epoch", #
             "gridloc", # 1) state space expansion
             "shape_oriented",
-            "gridloc",
-            "epoch", # 2) epoch encoidng
+            # "gridloc", # 1) shape vs. loc
+            # "shape_oriented", #
             # "shape_oriented",
             # "gridloc",
             "shape_oriented", # 3) prim encoding.
+            "gridloc",
+            "shape_oriented",
             "gridloc",
             "stroke_index",
             # "character"
         ]
         LIST_VARS_CONJUNCTION = [
+            ["shape_oriented", "gridloc", "CTXT_locshape_prev", "CTXT_locshape_next"],
+            ["shape_oriented", "gridloc", "CTXT_loc_prev", "CTXT_shape_prev"],
+            ["epochset", "shape_oriented", "gridloc", "CTXT_loc_prev", "CTXT_shape_prev"],
             ["shape_oriented", "epochkind"], # this allows combining multiple "direction" epochs into a single epochkind (state space expansion).
-            ["gridloc", "epoch"], # removed stroke_index, since this is not dissociated from both location and shape (for a given rule).
-            ["shape_oriented", "epoch"], # removed stroke_index, since this is not dissociated from both location and shape (for a given rule).
-            ["epochset", "stroke_index"],
+            ["gridloc", "epochkind"], # this allows combining multiple "direction" epochs into a single epochkind (state space expansion).
+            # ["shape_oriented", "epoch"], # removed stroke_index, since this is not dissociated from both location and shape (for a given rule).
+            # ["gridloc", "epoch"], # removed stroke_index, since this is not dissociated from both location and shape (for a given rule).
             # ["gridloc", "epoch", "stroke_index"], # useful for comparison across areas
             # ["shape_oriented", "epoch", "stroke_index"], 
+            ["gridloc", "stroke_index", "CTXT_loc_prev", "CTXT_shape_prev"], # useful for comparison across areas
+            ["shape_oriented", "stroke_index", "CTXT_loc_prev", "CTXT_shape_prev"], # useful for comparison across areas
             ["gridloc", "epoch", "stroke_index", "CTXT_loc_prev", "CTXT_shape_prev"], # useful for comparison across areas
-            ["shape_oriented", "epoch", "stroke_index", "CTXT_loc_prev", "CTXT_shape_prev"], 
-            ["gridloc", "shape_oriented", "epoch"], 
+            ["shape_oriented", "epoch", "stroke_index", "CTXT_loc_prev", "CTXT_shape_prev"],
+            ["gridloc", "shape_oriented", "stroke_index", "epoch"],
             # ["epoch", "epochset", "stroke_index"],
         ]
 
@@ -904,7 +914,7 @@ def dataset_apply_params(ListD, animal, DATE, which_level, ANALY_VER, anova_inte
     - ListD, list of Datasets. will operate onb
     ## each, then concatenate.
     RETURNS:
-    - Dall, concated datasets, processed but not yet trial-pruned
+    - Dall, concated datasets, processed but not yet trial-pruned [COPY OF D]
     - dataset_pruned_for_trial_analysis, same, but trial-pruend. this is final.
     - TRIALCODES_KEEP, lsit of unique trialcodes in dataset_pruned_for_trial_analysis
     - params, dict, params for ploting
@@ -930,6 +940,9 @@ def dataset_apply_params(ListD, animal, DATE, which_level, ANALY_VER, anova_inte
         #     # use the dataset linked to DS, since it is saved
         #     D = SP.DSmult[i].Dataset
         #     assert len(D.Dat)==len(sn.Datasetbeh.Dat), "a sanity check. desnt have to be, but I am curious why it is not..."
+
+        # Becasue dataset can be locked, just replace it with copy
+        D = D.copy()
 
         # THINGs that must be done by each individual D
         D.behclass_preprocess_wrapper()
