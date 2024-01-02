@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from neuralmonkey.neuralplots.population import plotNeurHeat, plotNeurTimecourse, plotStateSpace
+from neuralmonkey.neuralplots.population import plotNeurHeat, plotNeurTimecourse
 
 
 class PopAnal():
@@ -75,7 +75,7 @@ class PopAnal():
             self.Times = np.arange(self.X.shape[2])
         else:
             # assert isinstance(times, list), "or something list-like? change code?"
-            self.Times = times
+            self.Times = np.array(times)
 
         if chans is None:
             self.Chans = range(self.X.shape[0])
@@ -178,7 +178,7 @@ class PopAnal():
         print(f"shape of self.Xsorted: {self.Xsorted.shape}")        
 
 
-    def centerAndStack(self, return_means=False):
+    def centerAndStack(self):
         """ convert to (nunits, -1), 
         and center each row.
         """
@@ -342,6 +342,7 @@ class PopAnal():
 
         assert "pca" in self.Saved, "need to first run self.pca()"
         nunits = X.shape[0]
+        assert nunits==self.X.shape[0]
         sh = list(X.shape) # save original shape.
 
         if Dimslist is not None:
@@ -587,7 +588,8 @@ class PopAnal():
         (is index, NOT the value itself)
         --- if dim == "times", then is [t1 t2], inclusive start and end times.
         RETURNS: 
-        - PopAnal object
+        - PopAnal object, 
+        - OR frmat array (chans, trials, times) if return_only_X==True
         """
 
         # convert to int
@@ -598,7 +600,7 @@ class PopAnal():
             assert not isinstance(inds[0], int), "num, not int"
             t1 = inds[0]
             t2 = inds[1]
-            pa = self._slice_by_time_window(t1, t2, True, True)
+            pa = self._slice_by_time_window(t1, t2, True, True) 
             if len(self.Xlabels["times"])>0:
                 # then slice it
                 assert False, "code it"
@@ -654,10 +656,19 @@ class PopAnal():
                 from pythonlib.tools.exceptions import NotEnoughDataException
                 raise NotEnoughDataException
 
+        if not isinstance(self.Times, list):
+            self.Times = np.array(self.Times)
         X = self.extract_activity(version=version)
         inds = (self.Times>=t1) & (self.Times<=t2)
         # print(sum(inds))
-        assert sum(inds)>0, "must give times that have data within them!!"
+
+        if sum(inds)==0:
+            print(inds)
+            print(self.Times)
+            print(t1, t2)
+            print("must give times that have data within them!!")
+            assert False
+            
         x_windowed = X[:, :, inds]
         times = np.array(self.Times[inds])
 
@@ -753,6 +764,30 @@ class PopAnal():
         assert False, "OBSOLETE. use agg_wrapper, it retains Xlabels"
         X = self.extract_activity(version=version)
         return np.mean(X, axis=1, keepdims=True)
+
+    def agg_by_time_windows(self, time_windows):
+        """ Take mean within multkple time windows, and use those as new time bins.
+        - time_windows_mean, list of 2-tuples, each a (pre_dur, post_dur), where negative
+        pre_dur means before. Converts fr from (nchans, times) to (nchans, len(times_windows_mean))        
+        RETURNS:
+        - frmat, shape  (nchans, ntrials, len(time_windows)), the first 2 dims retained from self.X,
+        the last dim being the time windowed data.
+        - times, array with times, each the mean time in the window, (ntimes, 1)
+        """
+
+        list_xthis = []
+        list_time_mean = []
+        for wind in time_windows:
+            # pathis = self.slice_by_dim_indices_wrapper("times", wind)
+            # xthis = pathis.X
+            xthis, times = self._slice_by_time_window(wind[0], wind[1])
+            xthis = np.mean(xthis, axis=2, keepdims=True)
+            list_xthis.append(xthis)
+            list_time_mean.append(np.mean(wind))
+
+        X = np.concatenate(list_xthis, axis=2) # (nchans, ntrials, len(time_windows))
+        times=np.array(list_time_mean)[:, None]
+        return X, times
 
     def agg_wrapper(self, along_dim, agg_method="mean", 
             rename_values_agged_dim=True):
@@ -850,11 +885,59 @@ class PopAnal():
         # pa = self.slice_by_dim_indices_wrapper(dim_str, inds)
         # return pa
 
+    def norm_subtract_mean_each_timepoint(self, dim="trials"):
+        """ at each timepoint, subtract the component of fr that 
+        is due to condition-invariant (time). i.e, decompose fr to
+        mean_scalar (for a neuron) + (mean at this timporint) +
+        noise.
+        RETURNS:
+        - PA, a copy of self, with normalized X.
+        """
+
+        print("TODO: first, subsample so that there are equal num trials across all levels of var.")
+        pamean = self.agg_wrapper(dim, "mean") # (chans, 1, times)
+        pameanscal = self.agg_wrapper("times", "mean") # (chans, trials, 1)
+
+        # 2) for each trial, subtract the mean timecourse for its level.
+        PA = self.copy()
+        PA.X = PA.X - pamean.X + pameanscal.X # i.e., subtract (meanscal + conditin_inv)
+        # and then add back (meanscal).
+
+        return PA
+
+    def norm_by_label_subtract_mean(self, dim_str, dim_variable):
+        """ Returns PA of same size as self, but subtracting the mean
+        fr for each level of dim_variable. I.e., gets the noise after taking
+        into account the level.
+        """
+
+        assert False, "copied from NB, where I did test, but not htested here."
+        # slice and split
+        list_pa, list_lev = PA.split_by_label("trials", var)
+
+        # for each lev, normalize it
+        for pa, lev in zip(list_pa, list_lev):
+            print(lev, pa.X.shape)
+            
+            df = pamean.Xlabels["trials"]
+            inds = df[df[var]==lev].index.tolist()
+            assert len(inds)==1
+            xmean = pamean.X[:, inds[0], :][:,None, :] # (nchans, 1, ntimes)
+            
+            # subtract the mean
+            pa.X = pa.X - xmean
+            
+
+        # concatenate 
+        from neuralmonkey.classes.population import concatenate_popanals
+        PAnorm = concatenate_popanals(list_pa, "trials")
+
+
     def split_by_label(self, dim_str, dim_variable):
         """ Splits self into multiple smaller PA, each with a single level for
         dim_variable. Uses dataframe self.Xlabels[dim_str].
         PARAMS:
-        - dim_str, e.g,., "trials"
+        - dim_str, which dim in self.X to check. e.g,., "trials"
         - dim_variable, string, e.g., "gridsize"
         RETURNS:
         - ListPA, e.g., each PA has only trials with a single level of gridsize
@@ -1247,10 +1330,10 @@ class PopAnal():
 
         # extract data
         if inds is not None:
-            if axis_for_inds=="site":
+            if axis_for_inds in ["site", "sites"]:
             #         idxs = [PA.Chans.index(site) for site in inds]
                 PAthis = self._slice_by_chan(inds, return_as_popanal=True)
-            elif axis_for_inds=="trial":
+            elif axis_for_inds in ["trial","trials"]:
                 PAthis = self._slice_by_trial(inds, return_as_popanal=True)
             else:
                 assert False
@@ -1356,7 +1439,61 @@ class PopAnal():
 
         return pathis.Xlabels["trials"]    
                     
+    ########################### STATE SPACE
+    def statespace_pca_plot_projection(self, frmat, ax, dims_pc=(0, 1), 
+        color_for_trajectory="k", alpha=0.2,
+        times=None, times_to_mark=None, times_to_mark_markers=None,
+        time_windows_mean=None, markersize=3, marker="o"):
+        """ plots data in frmat in the space defined by PApca, which holds pca space
+        computed from the data in PApca
+        PARAMS:
+        - PApca, PopAnal object
+        - frmat, array shape (chans, times), data to plot, chans must match chans
+        in PApca. len(times) can be 1.
+        - dims_pc, 2-integers, which pc dimensions to plot (x and y axes)
+        - times, array-like, len matches frmat.shape[1], used for placing markers
+        - times_to_mark, list of times, to place markers on them
+        - times_to_mark_markers, list of strings, markers to use. If None, then uses 
+        0,1, 2,.../
+        [OBS] If None, then uses the times (as strings)
+        """    
+        from neuralmonkey.population.dimreduction import plotStateSpace
 
+        assert len(dims_pc)==2
+        NDIM = max(dims_pc)+1
+        is_traj = frmat.shape[1]>1
+
+        if not is_traj:
+            times_to_mark = None
+            times_to_mark_inds = None
+
+        if times_to_mark is not None:
+            assert is_traj
+            assert times is not None
+            assert len(times)==frmat.shape[1]
+            if isinstance(times, list):
+                times = np.array(times)
+            # find indices matching these times
+            def _find_ind(t):
+                ind = np.argmin(np.abs(times - t))
+                return ind
+            times_to_mark_inds = [_find_ind(t) for t in times_to_mark]
+            if False: # is better to just use 0,1, ..
+                if times_to_mark_markers is None:
+                    # then use the times themselves
+                    times_to_mark_markers = [f"${t}$" for t in times_to_mark]
+        else:
+            times_to_mark_inds = None
+
+        X = self.reprojectInput(frmat, Ndim=NDIM)
+        x1, x2 = plotStateSpace(X, dims_neural=dims_pc, plotndim=len(dims_pc), ax=ax, 
+            color_for_trajectory=color_for_trajectory, is_traj=is_traj, alpha=alpha,
+            traj_mark_times_inds = times_to_mark_inds, 
+            traj_mark_times_markers = times_to_mark_markers,
+            markersize=markersize, marker=marker)
+        
+        # grid on, for easy comparisons
+        ax.grid()
 
 def extract_neural_snippets_aligned_to(MS, DS, 
     align_to = "go_cue", 
@@ -1453,9 +1590,15 @@ def extract_neural_snippets_aligned_to(MS, DS,
 
     return PAall
 
+    ####################################
+
+
 
 # Which dataset to use to construct PCA?
-def pca_make_space(PA, DF, trial_agg_method, trial_agg_grouping, time_agg_method=None, ploton=True):
+def pca_make_space(PA, DF, trial_agg_method, trial_agg_grouping, 
+    time_agg_method=None, 
+    norm_subtract_condition_invariant=False,
+    ploton=True):
     """ Prperocess data (e.g,, grouping by trial and time) and then
     Make a PopAnal object holding (i) data for PCA and (ii) the results of
     PCA.
@@ -1465,6 +1608,8 @@ def pca_make_space(PA, DF, trial_agg_method, trial_agg_grouping, time_agg_method
     The len(DF) must equal num trials in PA (asserts this)
     - trial_agg_grouping, list of str defining how to group trials, e.g,
     ["shape_oriented", "gridloc"]
+    - norm_subtract_condition_invariant, bool, if True, then at each timepoint subtracts
+    mean FR across trials
     RETURNS:
     - PApca, a popanal holding the data that went into PCA, and the results of PCA,
     and methods to project any new data to this space.
@@ -1492,7 +1637,11 @@ def pca_make_space(PA, DF, trial_agg_method, trial_agg_grouping, time_agg_method
     else:
         print(trial_agg_method)
         assert False
-        
+
+    # First, whether to subtract mean FR at each timepoint
+    if norm_subtract_condition_invariant:
+        PApca = PApca.norm_subtract_mean_each_timepoint()
+
     # second, whether to agg by time (optional). e..g, take mean over time
     if time_agg_method=="mean":
         PApca = PApca.agg_wrapper("times")
@@ -1500,6 +1649,7 @@ def pca_make_space(PA, DF, trial_agg_method, trial_agg_grouping, time_agg_method
     else:
         assert time_agg_method==None
 
+    print("Shape of data going into PCA (chans, trials, times):", PApca.X.shape)
     fig = PApca.pca("svd", ploton=ploton) 
     
     return PApca, fig

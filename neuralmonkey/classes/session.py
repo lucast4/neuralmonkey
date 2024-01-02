@@ -2381,7 +2381,7 @@ class Session(object):
         return self.DatAll
 
     ##################### DEBUGGING
-    def debug_event_photodiode_detection():
+    def debug_event_photodiode_detection(self):
         assert False, "just notes here"
         t = 348
         alignto = "first_raise"
@@ -2833,7 +2833,6 @@ class Session(object):
                 print("-----")
                 print(self.TrialsOnset)
                 print(self.TrialsOffset)
-                print(len(trials_exist_in_ml2))
                 assert False, "what to do?"
 
         assert len(self.TrialsOffset)==len(self.TrialsOnset)
@@ -4979,7 +4978,7 @@ class Session(object):
                                                 assert_single_crossing_this_trial = True,
                                                 assert_expected_direction_first_crossing = "up")
                         times = _extract_times(out)
-                    except AssertionError:
+                    except AssertionError as err:
                         if trial<20:
                             # then is early trial, when I know this sometimes fails.
                             times = _resort_to_behcode_time(event, 0.)

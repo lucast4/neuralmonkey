@@ -53,6 +53,7 @@ def plot_smoothed_fr(frmat, times=None, ax=None, summary_method="mean", error_ve
     PARAMS:
     - frmat, (ntrials, time)
     """
+
     if error_ver=="sem":
         from scipy import stats
         if summary_method=="mean":
@@ -135,60 +136,59 @@ def plotNeurTimecourseErrorbar(Xmean, Xerror, times=None, ax=None, color="k",
     return fig, ax
 
 
-def plotStateSpace(X, dim1=None, dim2=None, plotndim=2, ax=None, color=None):
-    """ general, for plotting state space, will work
-    with trajectories or pts (with variance plotted)
-    X, shape should always be (neurons, time), if is larger, then
-    will raise error. 
-    - dim1, 2, list of inds to take. if None, then will take auto (for dim1
-    takes first N depending on plotver) and dim2 takes all. length of dim1 should
-    match the plotndim.
-    - plotndim, [2, 3] whether 2d or 3d
-    """
-    assert False, "use the one in dimreduction"
-    assert False, "copied over from drawnn.notebooks_analy.analy_everythinguptonow_021021 Not sure if works here."
-    import seaborn as sns
+# def plotStateSpace(X, dim1=None, dim2=None, plotndim=2, ax=None, color=None):
+#     """ general, for plotting state space, will work
+#     with trajectories or pts (with variance plotted)
+#     X, shape should always be (neurons, time), if is larger, then
+#     will raise error. 
+#     - dim1, 2, list of inds to take. if None, then will take auto (for dim1
+#     takes first N depending on plotver) and dim2 takes all. length of dim1 should
+#     match the plotndim.
+#     - plotndim, [2, 3] whether 2d or 3d
+#     """
+#     assert False, "use the one in dimreduction"
+#     assert False, "copied over from drawnn.notebooks_analy.analy_everythinguptonow_021021 Not sure if works here."
     
-    if ax is None:
-        fig, ax = plt.subplots()
+#     if ax is None:
+#         fig, ax = plt.subplots()
         
-    # check that input X is correct shape
-    assert len(X.shape)<=2
+#     # check that input X is correct shape
+#     assert len(X.shape)<=2
     
-    # how many neural dimensions>?
-    if dim1 is not None:
-        assert len(dim1)==plotndim
-    else:
-        dim1 = np.arange(plotndim)
+#     # how many neural dimensions>?
+#     if dim1 is not None:
+#         assert len(dim1)==plotndim
+#     else:
+#         dim1 = np.arange(plotndim)
     
-    # how many time bins?
-    if dim2 is None:
-        dim2 = np.arange(X.shape[1])    
-    # PLOT
-    if plotndim==2:
-        x1 = X[dim1[0], dim2]
-        x2 = X[dim1[1], dim2]
-        ax.scatter(x1, x2, c=color)
-        ax.plot(x1, x2, '-', color=color)
-        if len(x1)>1:
-            ax.plot(x1[0], x2[0], "ok") # mark onset
-    elif plotndim==3:
-        assert False, not coded
-        # %matplotlib notebook
-        fig, axes = plt.subplots(1,2, figsize=(12,6))
-        from mpl_toolkits.mplot3d import Axes3D
+#     # how many time bins?
+#     if dim2 is None:
+#         dim2 = np.arange(X.shape[1])    
+#     # PLOT
+#     if plotndim==2:
+#         x1 = X[dim1[0], dim2]
+#         x2 = X[dim1[1], dim2]
+#         ax.scatter(x1, x2, c=color)
+#         ax.plot(x1, x2, '-', color=color)
+#         if len(x1)>1:
+#             ax.plot(x1[0], x2[0], "ok") # mark onset
+#     # elif plotndim==3:
+#     #     assert False, not coded
+#     #     # %matplotlib notebook
+#     #     fig, axes = plt.subplots(1,2, figsize=(12,6))
+#     #     from mpl_toolkits.mplot3d import Axes3D
     
-        # --- 1
-        ax = fig.add_subplot(121, projection='3d')
-        ax.scatter(Xsub[:,0], Xsub[:,1], Xsub[:,2], c=[x for x in Mod.A.calcNumStrokes()])
-        # --- 2
-        tasks_as_nums = mapStrToNum(Mod.Tasks["train_categories"])[1]
-        ax = fig.add_subplot(122, projection='3d')
-        ax.scatter(Xsub[:,0], Xsub[:,1], Xsub[:,2], c=tasks_as_nums)
+#     #     # --- 1
+#     #     ax = fig.add_subplot(121, projection='3d')
+#     #     ax.scatter(Xsub[:,0], Xsub[:,1], Xsub[:,2], c=[x for x in Mod.A.calcNumStrokes()])
+#     #     # --- 2
+#     #     tasks_as_nums = mapStrToNum(Mod.Tasks["train_categories"])[1]
+#     #     ax = fig.add_subplot(122, projection='3d')
+#     #     ax.scatter(Xsub[:,0], Xsub[:,1], Xsub[:,2], c=tasks_as_nums)
 
-    # fig, ax= plt.subplots()
-    # for b in [0,1]:
-    #     X = Xmean[:,:,b]
-    #     plotStateSpace(X, ax=ax)
+#     # fig, ax= plt.subplots()
+#     # for b in [0,1]:
+#     #     X = Xmean[:,:,b]
+#     #     plotStateSpace(X, ax=ax)
 
 
