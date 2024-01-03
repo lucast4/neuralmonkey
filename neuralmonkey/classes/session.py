@@ -400,6 +400,9 @@ class Session(object):
         self._DEBUG_PRUNE_SITES = False
         self._DEBUG_PRUNE_TRIALS = False
 
+        # Beh cached stuff
+        self._BehEyeAlignOffset = None
+
         # INitialize empty data
         self.EventsTimeUsingPhd = {}
 
@@ -6732,7 +6735,7 @@ class Session(object):
     def get_trials_list(self, only_if_ml2_fixation_success=False,
         only_if_has_valid_ml2_trial=True, only_if_in_dataset=False, 
         events_that_must_include=None,
-        dataset_input = None, nrand=None):
+        dataset_input = None, nrand=None, nsub_uniform=None):
         """
         Get list of ints, trials,
         PARAMS:
@@ -6806,6 +6809,11 @@ class Session(object):
             if nrand < len(trials):
                 import random
                 trials = sorted(random.sample(trials, nrand))
+
+        if nsub_uniform is not None:
+            if nsub_uniform < len(trials):
+                from pythonlib.tools.listtools import random_inds_uniformly_distributed
+                trials = random_inds_uniformly_distributed(trials, nsub_uniform, return_original_values=True)
 
         if self._DEBUG_PRUNE_TRIALS:
             # Return 20
@@ -7794,24 +7802,11 @@ class Session(object):
         # times, touching = mkl.getTrialsTouchingBinary(fd, trialml)
         return times, touching
 
-    def beh_extract_eye_good(self, trial, apply_empirical_offset=False,
-        CHECK_TDT_ML2_MATCH=False, THRESH=5, PLOT=False, return_all=False,
-        SM_WIN = 0.01):
-        """
-        Get eye track data in units of pixels (matching strokes), by using
-        voltage saved in TDT, but doing projective transform using the T
-        matrix saved in monkeylogic. Do this instaed of using saved ml2 values, 
-        becuase the latter does not extend over the entire trial.
-        PARAMS:
-        - apply_empirical_offset, bool, if True, then this helps the match between
-        ml2 and tdt. not sure why...
-        - CHECK_TDT_ML2_MATCH, bool, if true, then asserts that the diff between tdt and 
-        ml2 (after calibrating tdt) are below a threshold (pixel rms)
+    def _beh_extract_eye_raw(self, trial):
+        """ Extract just raw eye track signal
         RETURNS:
-        - times_tdt, (ntimes, ) array of times
-        - vals_tdt_calibrated, (ntimes, 2) array of x and y coords, pixels
+            - times_tdt, vals_tdt, fs_tdt, times_ml2, vals_ml2, fs_ml2
         """
-
         if len(self.BehFdList)==0:
             self.load_behavior()
 
@@ -7831,72 +7826,141 @@ class Session(object):
         vals_tdt = np.stack([vals_x, vals_y], axis=0).T # (times, 2)
         times_tdt = tx
 
-        # Apply empriical offset, which leads to better alignement between calibrated
-        # tdt data vs. saved ml2.
-        if apply_empirical_offset:
-            assert False, "not ready. this requires a  different offset for each session. should compute the offset by converting ml2 back to voltage"
-            vals_tdt = vals_tdt- [0.04,0.04] # Emprical offset...
+        return times_tdt, vals_tdt, fs_tdt, times_ml2, vals_ml2, fs_ml2, fd
 
-        # Try to transform using calibration matrix
+    def _beh_extract_eye_calibrate_raw(self, vals_tdt, fd):
+        """ Given raw TDT signal, calibrate to ml2, return as pixels.
+        RETURNS:
+            - vals_tdt_calibrated, (N,2)
+        """
         T = fd["MLConfig"]["EyeTransform"]["5"]["tdata"]["T"]
         tmp = np.ones((vals_tdt.shape[0], 1))
         vals_tdt_ones = np.concatenate([vals_tdt, tmp], axis=1)
         vals_tdt_calibrated = (T@vals_tdt_ones.T).T
-        # normalize by last column
         vals_tdt_calibrated = vals_tdt_calibrated/vals_tdt_calibrated[:, 2][:, None]
         vals_tdt_calibrated = vals_tdt_calibrated[:,:2] # remove last column of ones.
-        # print("RESULT:")
-        # print(vals_tdt_calibrated[:5])
-        # print(vals_tdt_calibrated.shape)
-
-        # COnvert from degress to pixels
         vals_tdt_calibrated = mkl.convertDeg2PixArray(fd, vals_tdt_calibrated)
+        return vals_tdt_calibrated
 
-        if CHECK_TDT_ML2_MATCH:
-            assert False, "not ready. this requires a  different offset for each session. should compute the offset by converting ml2 back to voltage"
-            # Sanity check that (i) tdt voltage transformed --> pix == (ii) monkeylogic saved.
-            # - interpolate to same time base
-            from pythonlib.tools.stroketools import strokesInterpolate2, smoothStrokes
+    def _beh_extract_eye_return_alignment_offset(self):
+        """
+        Compute offset that can use to align ey etracking data between ml2 and tdt. Offset
+        applies to raw voltage trace. Optimizes by minimizing distance in pixel space.
+        Does this over some n trials, then takes average.
+        Thjen does sanity check that this offset works, thru n random subset of trials.
+        :return:
+        - mean offset, (2,). Caches in self._BehEyeAlignOffset
+        """
 
-            strokes_tdt = [np.concatenate([vals_tdt_calibrated, times_tdt[:,None]], axis=1)]
-            strokes_tdt = smoothStrokes(strokes_tdt, fs_tdt, 0.05)
-            strokes_tdt = strokesInterpolate2(strokes_tdt, ["input_times", times_ml2], plot_outcome=PLOT)
-            vals_tdt_calibrated_atml2times_sm = strokes_tdt[0][:,:2]
+        if self._BehEyeAlignOffset is None:
+            from pythonlib.tools.stroketools import strokesInterpolate2
+            n = 16
+            trials = self.get_trials_list(True, nsub_uniform=n+1)[1:] # skip first sometimes is weird
+            print("trials:", trials)
+            list_x =[]
+            for t in trials:
+                times_tdt, vals_tdt, fs_tdt, times_ml2, vals_ml2, fs_ml2, fd = self._beh_extract_eye_raw(t)
+                times_tdt_raw = times_tdt[:,None]
 
-            # smooth the ml2 version
-            strokes_ml2 = [np.concatenate([vals_ml2, times_ml2[:,None]], axis=1)]
-            strokes_ml2 = smoothStrokes(strokes_ml2, fs_ml2, 0.05)
-            vals_ml2_sm = strokes_ml2[0][:,:2]
+                def F(xs):
+                    assert len(xs)==2
+                    vals_tdt_offset = vals_tdt+xs
 
-            diff_ml2_tdt_rms = np.sum((vals_tdt_calibrated_atml2times_sm - vals_ml2_sm)**2, axis=1)**0.5
-            try:
-                diff_floor = np.percentile(diff_ml2_tdt_rms[int(fs_ml2/2):-int(fs_ml2/2)], [10]) # skip the firs tand last 500 samp, which is usualyl one sec
-            except Exception as err:
-                diff_floor = np.percentile(diff_ml2_tdt_rms, [10])[0] # skip the firs tand last 500 samp, which is usualyl one sec
-            print("This is 10th percentile of rms diff between ml2 and tdt pix values.. lower the better")
-            print(diff_floor)
+                    # calibrate to ml2 (pix)
+                    vals_tdt_calibrated = self._beh_extract_eye_calibrate_raw(vals_tdt_offset, fd)
 
-            if PLOT:
-                fig, axes = plt.subplots(1,2)
+                    # interpolate to times of ml2
+                    strokes_tdt_raw = [np.concatenate([vals_tdt_calibrated, times_tdt_raw], axis=1)]
+                    strokes_tdt = strokesInterpolate2(strokes_tdt_raw, ["input_times", times_ml2], plot_outcome=False)
+                    vals_tdt_calibrated_atml2times = strokes_tdt[0][:,:2]
 
-                ax = axes.flatten()[0]
-                ax.plot(times_ml2, vals_ml2_sm, label="ml2")
-                ax.plot(times_ml2, vals_tdt_calibrated_atml2times_sm, label="tdt_calib_interp_to_ml2_times")
-                ax.legend()
+                    # distance from actual ml2.
+                    d1 = np.mean((vals_ml2[:,0] - vals_tdt_calibrated_atml2times[:,0])**2)
+                    d2 = np.mean((vals_ml2[:,1] - vals_tdt_calibrated_atml2times[:,1])**2)
 
-                ax = axes.flatten()[1]
-                ax.plot(times_ml2, diff_ml2_tdt_rms, label="diff_ml2_tdt_rms")
-                ax.legend()
-                
-            if diff_floor>THRESH:
-                print(diff_floor, THRESH)
-                assert False, "empriclaly, this is too high..."
+                    return d1 + d2
 
+                from scipy.optimize import minimize
+                res = minimize(F, [0,0])
+                # print(res)
+                list_x.append(res.x)
+
+            # Take average across trials
+            offsets = np.stack(list_x, axis=0) # (n,2)
+            self._BehEyeAlignOffset = np.median(offsets, axis=0)
+            assert np.all(np.abs(self._BehEyeAlignOffset)<0.08), "this seems high..."
+
+            # Quickly run sanity check over subset of trials, to check this is good.
+            apply_empirical_offset = True
+            PLOT = False
+            CHECK_TDT_ML2_MATCH = True
+            trials_test = self.get_trials_list(True, nsub_uniform=50)[1:]
+            for trial in trials_test:
+                times_tdt, vals_tdt_calibrated = self.beh_extract_eye_good(trial,
+                                                                           CHECK_TDT_ML2_MATCH=True,
+                                                                           apply_empirical_offset=True)
+            print("GOOD! passed sanity check")
+
+        return self._BehEyeAlignOffset
+
+
+    def beh_extract_eye_good(self, trial, apply_empirical_offset=True,
+        CHECK_TDT_ML2_MATCH=False, THRESH=5, PLOT=False, return_all=False,
+        SM_WIN = 0.01):
+        """
+        Get eye track data in units of pixels (matching strokes), by using
+        voltage saved in TDT, but doing projective transform using the T
+        matrix saved in monkeylogic. Do this instaed of using saved ml2 values, 
+        becuase the latter does not extend over the entire trial.
+        PARAMS:
+        - apply_empirical_offset, bool, if True, then this helps the match between
+        ml2 and tdt. not sure why...
+        - CHECK_TDT_ML2_MATCH, bool, if true, then asserts that the diff between tdt and 
+        ml2 (after calibrating tdt) are below a threshold (pixel rms). This takes more time,
+        so I only run once when checking the extracted offset.
+        RETURNS:
+        - times_tdt, (ntimes, ) array of times
+        - vals_tdt_calibrated, (ntimes, 2) array of x and y coords, pixels
+        NOTES:
+        - First trial (0) can have slight offset between ml2 and neural. I measured 10ms (earlier for neural
+        on 230603, Diego.
+        """
+
+        times_tdt, vals_tdt, fs_tdt, times_ml2, vals_ml2, fs_ml2, fd = self._beh_extract_eye_raw(trial)
+
+        # Apply empriical offset, which leads to better alignement between calibrated
+        # tdt data vs. saved ml2.
+        if apply_empirical_offset:
+            if False:
+                # assert False, "not ready. this requires a  different offset for each session. should compute the offset by converting ml2 back to voltage"
+                # vals_tdt = vals_tdt- [0.04,0.04] # Emprical offset...
+                offset = [-0.04,-0.04] # Emprical offset...
+            else:
+                # Find it by optimization
+                offset = self._beh_extract_eye_return_alignment_offset()
+            vals_tdt = vals_tdt + offset
+
+        # Try to transform using calibration matrix
+        vals_tdt_calibrated = self._beh_extract_eye_calibrate_raw(vals_tdt, fd)
+
+        # T = fd["MLConfig"]["EyeTransform"]["5"]["tdata"]["T"]
+        # tmp = np.ones((vals_tdt.shape[0], 1))
+        # vals_tdt_ones = np.concatenate([vals_tdt, tmp], axis=1)
+        # vals_tdt_calibrated = (T@vals_tdt_ones.T).T
+        # # normalize by last column
+        # vals_tdt_calibrated = vals_tdt_calibrated/vals_tdt_calibrated[:, 2][:, None]
+        # vals_tdt_calibrated = vals_tdt_calibrated[:,:2] # remove last column of ones.
+        # # print("RESULT:")
+        # # print(vals_tdt_calibrated[:5])
+        # # print(vals_tdt_calibrated.shape)
+        #
+        # # COnvert from degress to pixels
+        # vals_tdt_calibrated = mkl.convertDeg2PixArray(fd, vals_tdt_calibrated)
 
         # plot
         if PLOT:
             # Plot and overlay
-            fig, axes = plt.subplots(3,2, figsize=(8,12))
+            fig, axes = plt.subplots(4,1, figsize=(15,20))
 
             ax = axes.flatten()[0]
             ax.plot(times_ml2, vals_ml2, label="ml2")
@@ -7916,6 +7980,69 @@ class Session(object):
             ax.plot(times_tdt, vals_tdt_calibrated, label="tdt_calib")
             ax.legend()
 
+        if CHECK_TDT_ML2_MATCH:
+            # assert False, "not ready. this requires a  different offset for each session. should compute the offset by converting ml2 back to voltage"
+            # Sanity check that (i) tdt voltage transformed --> pix == (ii) monkeylogic saved.
+            # - interpolate to same time base
+            from pythonlib.tools.stroketools import strokesInterpolate2, smoothStrokes
+
+            times_tdt_raw = times_tdt[:,None]
+            strokes_tdt_raw = [np.concatenate([vals_tdt_calibrated, times_tdt_raw], axis=1)]
+            strokes_tdt = smoothStrokes(strokes_tdt_raw, fs_tdt, 0.05)
+            strokes_tdt = strokesInterpolate2(strokes_tdt, ["input_times", times_ml2], plot_outcome=PLOT)
+            vals_tdt_calibrated_atml2times_sm = strokes_tdt[0][:,:2]
+
+            # smooth the ml2 version
+            strokes_ml2_raw = [np.concatenate([vals_ml2, times_ml2[:,None]], axis=1)]
+            strokes_ml2 = smoothStrokes(strokes_ml2_raw, fs_ml2, 0.05)
+            vals_ml2_sm = strokes_ml2[0][:,:2]
+
+            diff_ml2_tdt_rms = np.sum((vals_tdt_calibrated_atml2times_sm - vals_ml2_sm)**2, axis=1)**0.5
+            try:
+                diff_floor = np.percentile(diff_ml2_tdt_rms[int(fs_ml2/2):-int(fs_ml2/2)], [10]) # skip the firs tand last 500 samp, which is usualyl one sec
+            except Exception as err:
+                diff_floor = np.percentile(diff_ml2_tdt_rms, [10])[0] # skip the firs tand last 500 samp, which is usualyl one sec
+            print("This is 10th percentile of rms diff between ml2 and tdt pix values.. lower the better")
+            print(diff_floor)
+
+            # Compute offest
+            # from pythonlib.tools.nptools import optimize_offset_to_align_tdt_ml2
+            # print("offsets")
+            # for i in [0,1]:
+            #     offset = optimize_offset_to_align_tdt_ml2(vals_tdt_calibrated_atml2times_sm[:,i],
+            #                                      vals_ml2_sm[:,i])
+            #     print(i, offset)
+            # # add the offsets
+
+            if PLOT:
+                fig, axes = plt.subplots(4,1, figsize=(20,12))
+
+                ax = axes.flatten()[0]
+                ax.plot(times_ml2, vals_ml2_sm, label="ml2")
+                ax.plot(times_ml2, vals_tdt_calibrated_atml2times_sm, label="tdt_calib_interp_to_ml2_times")
+                ax.legend()
+
+
+                ax = axes.flatten()[1]
+                ax.plot(times_ml2, diff_ml2_tdt_rms, label="diff_ml2_tdt_rms")
+                ax.legend()
+
+                # ZOOM IN
+                ax = axes.flatten()[2]
+                inds_ = range(1800, 2000)
+                ax.plot(times_ml2[inds_], vals_ml2_sm[inds_], label="ml2")
+                ax.plot(times_ml2[inds_], vals_tdt_calibrated_atml2times_sm[inds_], label="tdt_calib_interp_to_ml2_times")
+                ax.legend()
+
+                ax = axes.flatten()[3]
+                ax.plot(times_ml2, vals_ml2, label="ml2_nosm")
+                ax.plot(times_tdt_raw, vals_tdt_calibrated, label="tdt_calib_nosm_nointerp")
+                ax.legend()
+
+            if diff_floor>THRESH:
+                print(diff_floor, THRESH)
+                assert False, "empriclaly, this is too high..."
+
         if return_all:
             # smooth the trace
             from pythonlib.tools.stroketools import strokesInterpolate2, smoothStrokes            
@@ -7928,7 +8055,6 @@ class Session(object):
         else:
             return times_tdt, vals_tdt_calibrated
 
-     
 
     def strokes_task_extract(self, trial):
         """ Extract the strokes for this task
