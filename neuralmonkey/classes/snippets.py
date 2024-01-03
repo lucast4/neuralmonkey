@@ -277,16 +277,24 @@ class Snippets(object):
             assert len(list_events)==0, "event is stroke. you made a mistake (old code, site anova?)"
             assert len(list_pre_dur)==1
             assert len(list_post_dur)==1
+            events_that_must_include = None
 
             pre_dur = list_pre_dur[0]
             post_dur = list_post_dur[0]
 
             # Each datapt matches a single stroke
-            DS = datasetstrokes_extract(dataset_pruned_for_trial_analysis, 
-                strokes_only_keep_single, tasks_only_keep_these, 
-                None,  
+            DS = datasetstrokes_extract(dataset_pruned_for_trial_analysis,
+                strokes_only_keep_single, tasks_only_keep_these,
+                None,
                 list_features_extraction)
-            trials = None
+
+            # Filter the trials
+            trials = SN.get_trials_list(True, True, only_if_in_dataset=True,
+                dataset_input=dataset_pruned_for_trial_analysis,
+                events_that_must_include = events_that_must_include)
+            print("\n == extracting these trials: ", trials)
+            trialcodes = [SN.datasetbeh_trial_to_trialcode(t) for t in trials]
+            DS.Dat = DS.Dat[DS.Dat["trialcode"].isin(trialcodes)].reset_index(drop=True)
 
             print("Extracting, SN.snippets_extract_bystroke...")
             for var in list_features_extraction:
@@ -308,8 +316,14 @@ class Snippets(object):
 
 
             # Fill in dummy variables
-            list_events = ["stroke"]
-            list_events_uniqnames = ["00_stroke"]
+            # list_events = ["stroke"]
+            # list_events_uniqnames = ["00_stroke"]
+
+            DfScalar["event"] = "stroke"
+            # NOTE: DfScalar["event_aligned"] will be "00_stroke"
+
+            list_events = DfScalar["event"].unique().tolist()
+            list_events_uniqnames = DfScalar["event_aligned"].unique().tolist()
 
         elif which_level=="trial":
             # Each datapt is a single trial
@@ -321,7 +335,7 @@ class Snippets(object):
             #     events_that_must_include = list_events)
             assert trials_prune_just_those_including_events==True, "this on by defualt. if turn off, then change line below in SN.get_trials_list"
             events_that_must_include = ["fix_touch", "on_strokeidx_0"]
-            trials = SN.get_trials_list(True, True, only_if_in_dataset=True, 
+            trials = SN.get_trials_list(True, True, only_if_in_dataset=True,
                 dataset_input=dataset_pruned_for_trial_analysis,
                 events_that_must_include = events_that_must_include)
             print("\n == extracting these trials: ", trials)
@@ -372,11 +386,6 @@ class Snippets(object):
             pre_dur = list_pre_dur[0]
             post_dur = list_post_dur[0]
 
-            # # Each datapt matches a single stroke
-            # DS = datasetstrokes_extract(dataset_pruned_for_trial_analysis, 
-            #     strokes_only_keep_single, tasks_only_keep_these, 
-            #     None,  
-            #     list_features_extraction)
             if trials_prune_just_those_including_events:
                 events_that_must_include =  list_events
             else:
@@ -1293,24 +1302,24 @@ class Snippets(object):
         #     dict_var_othervar_df = {}
 
         #     assert False, "make sure dataextract_as_df_conjunction_vars is efficient if vars are 0."
-        #     _, dict_othervar_df, _ = self.dataextract_as_df_conjunction_vars(var, vars_others, 
+        #     _, dict_othervar_df, _ = self.dataextract_as_df_conjunction_vars(var, vars_others,
         #         DFTHIS=dfdat, OVERWRITE_n_min=0, OVERWRITE_lenient_n=0)
         #     for levother, df in dict_othervar_df.items():
         #         dict_var_df, _ = extract_with_levels_of_var(df, var, levels=levels_var)
-                
+
         #         for lev, _df in dict_var_df.items():
         #             key = (levother, lev)
         #             dict_var_othervar_df[key] = _df
-                
+
         # for k, v in dict_var_othervar_df.items():
-        #     print(k, len(v))    
+        #     print(k, len(v))
 
         # # Make a dict holding each df that you want to plot a different color
         # DICT_DF_DAT = dict_lev_df
 
         # print("each df to plot (diff color):")
         # for k, v in DICT_DF_DAT.items():
-        #     print(k, len(v))    
+        #     print(k, len(v))
 
 
     def dataextract_as_df_conjunction_vars(self, var, vars_others=None, site=None,
@@ -1351,6 +1360,9 @@ class Snippets(object):
         - dict, lev:df
         - levels_var, list of str, levels of var.
         """
+
+        assert site in self.DfScalar["chan"].unique().tolist()
+
         from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars
         import numpy as np
 
@@ -1430,6 +1442,7 @@ class Snippets(object):
         if exclude_othervar_levels_missing_any_var_level:
             lenient_allow_data_if_has_n_levels = None
 
+        # print("n_min, lenient_allow_data_if_has_n_levels:", n_min, lenient_allow_data_if_has_n_levels)
         dfthis, dict_lev_df = extract_with_levels_of_conjunction_vars(dfthis, var, 
             vars_others, levels_var, n_min, 
             lenient_allow_data_if_has_n_levels=lenient_allow_data_if_has_n_levels,
@@ -5214,7 +5227,8 @@ class Snippets(object):
 
 
     def _plotgood_smoothfr_average_each_level(self, site, var, vars_others=None,
-        event=None, plot_these_levels_of_varsothers=None, plot_on_these_axes=None):
+        event=None, plot_these_levels_of_varsothers=None, plot_on_these_axes=None,
+                                              leave_subplot_empty_if_no_data=False):
         """ Low-level plot, each subplot is a single level of var-Others,
         and within each, plot eachlevel for var.
         Figure is a single level of (site, event)
@@ -5222,6 +5236,8 @@ class Snippets(object):
         - plot_these_levels_of_varsothers, list of values, which will each be a subplot.
         also defines the order of subplots. skips any values that dont exist.
         - plot_on_these_axes, list of axes to plot on.
+        - leave_subplot_empty_if_no_data, if True, maintains one to one mapping between axes and
+        plot_these_levels_of_varsothers, even if a subplot needs to be empty to do so.
         """
 
         # Extract data
@@ -5230,8 +5246,11 @@ class Snippets(object):
 
         # Prune to data you want.
         if plot_these_levels_of_varsothers:
-            # dict_lev_pa = {k:v for k, v in dict_lev_pa.items() if k in plot_these_levels_of_varsothers}
-            dict_lev_pa = {k:dict_lev_pa[k] for k in plot_these_levels_of_varsothers if k in dict_lev_pa.keys()}
+            if leave_subplot_empty_if_no_data:
+                dict_lev_pa = {k:(dict_lev_pa[k] if k in dict_lev_pa.keys() else None) for k in plot_these_levels_of_varsothers}
+            else:
+                # dict_lev_pa = {k:v for k, v in dict_lev_pa.items() if k in plot_these_levels_of_varsothers}
+                dict_lev_pa = {k:dict_lev_pa[k] for k in plot_these_levels_of_varsothers if k in dict_lev_pa.keys()}
 
         # Get event boundaries
         tmp = self._plotgood_rasters_extract_xmin_xmax()
@@ -5240,7 +5259,8 @@ class Snippets(object):
         # get common levels of var (for assiging each its own color)
         levels_var_exist = []
         for pa in dict_lev_pa.values():
-            levels_var_exist.extend(pa.Xlabels["trials"][var].unique().tolist())
+            if pa is not None:
+                levels_var_exist.extend(pa.Xlabels["trials"][var].unique().tolist())
         levels_var_exist = sort_mixed_type(set(levels_var_exist))[::-1] # to match the rasters
 
         # get common y axis.
@@ -5257,7 +5277,6 @@ class Snippets(object):
             print(ymaxes)
             YMAX = max(ymaxes)
 
-        # if plot_these_levels_of_varsothers is None:
         if plot_on_these_axes is None:
             # Generate axes
             ncols = 4
@@ -5277,17 +5296,22 @@ class Snippets(object):
             share_axes(axes, "y")
 
         # Make plots
+        _legend_added = False
         for ax, (lev_other, pathis) in zip(axes.flatten(), dict_lev_pa.items()):
-
-            # plot 
-            ADD_LEGEND = not len(levels_var_exist)>12
-            pathis.plotwrapper_smoothed_fr_split_by_label("trials", var, ax, 
-                event_bounds=event_bounds, legend_levels=levels_var_exist,
-                add_legend=ADD_LEGEND);
-        #     self._plotgood_rasters_split_by_feature_levels(ax, dfthis, var, xmin=xmin, xmax=xmax)
-            ax.set_title(lev_other, fontsize=6, wrap=True)
-            # ax.set_ylim([0, 1.2*YMAX])
-            ax.axvline(0, color="m")
+            if pathis is not None:
+                # plot
+                if _legend_added==False:
+                    ADD_LEGEND = not len(levels_var_exist)>12
+                    _legend_added=True
+                else:
+                    ADD_LEGEND = False
+                pathis.plotwrapper_smoothed_fr_split_by_label("trials", var, ax,
+                    event_bounds=event_bounds, legend_levels=levels_var_exist,
+                    add_legend=ADD_LEGEND)
+            #     self._plotgood_rasters_split_by_feature_levels(ax, dfthis, var, xmin=xmin, xmax=xmax)
+                ax.set_title(lev_other, fontsize=6, wrap=True)
+                # ax.set_ylim([0, 1.2*YMAX])
+                ax.axvline(0, color="m")
 
         return fig, axes
 
@@ -5715,7 +5739,7 @@ class Snippets(object):
         return fig, axes
 
     def plotgood_rasters(self, site, event=None, ax=None):
-        """ Plot a single raster for this site and event
+        """ Plot a single raster plot for this site and event, not split by any variables.
         """
         dfthis = self.dataextract_as_df_good(chan=site, event=event)
         fig, ax = self._plotgood_rasters(dfthis, xmin=None, xmax=None, ax=ax)
@@ -5723,9 +5747,9 @@ class Snippets(object):
 
     def plotgood_rasters_smfr_combined(self, site, event=None):
         """
+        Basic plot, rasters and smoothed FR for this site, across all datapts,
+        without splitting by any var.
         """
-        
-
 
         # # PREPARE plot
         # # Extract data, just to see many subplots to make.
@@ -5878,10 +5902,99 @@ class Snippets(object):
                 ax2 = axesall[1][i]
                 ax2.set_ylim(0)
         else:
-            fig, axesall = plt.subplots()
+            fig, axesall = plt.subplots(2,1)
+            axesall.flatten()[0].set_title("Not enough data!")
 
         return fig, axesall
 
+    def plotgood_smfr_each_level_subplot_grid_by_vars(self, site, var, var_other_1,
+                                                 var_other_2, PLOT_VER="raster", 
+                                                      event=None):
+        """
+        Plot modulation by one variable (var) split into subplots organized in grid,
+        where rows (var_other_1) and columns (var_other_2) are variables.
+        Two plot versions, switched by PLOT_VER
+        PARAMS:
+        - PLOT_VER, either "raster" or "smfr"
+        """
+        from pythonlib.tools.listtools import sort_mixed_type
+        from pythonlib.tools.plottools import share_axes
+
+        # PREPARE plot
+        # Extract data, just to see many subplots to make.
+        vars_others = [var_other_1, var_other_2]
+        _, levdat, levels_var = self.dataextract_as_df_conjunction_vars(var,
+                vars_others, site, event=event)
+        levels_othervar = list(levdat.keys())
+        levels_othervar_1 = sort_mixed_type(set([x[0] for x in levels_othervar]))
+        levels_othervar_2 = sort_mixed_type(set([x[1] for x in levels_othervar]))
+
+        # Differences, raster vs. smfr
+        if PLOT_VER=="smfr":
+            force_scale_height = 0.7
+            reduce_height_for_sm_fr = True
+            sharey = True
+        elif PLOT_VER=="raster":
+            force_scale_height = None
+            reduce_height_for_sm_fr = False
+            sharey = False
+
+        if len(levdat)>0:
+            map_level_to_idx = {lev:lev for lev in levdat.keys()}
+            max_title_len = max([len(str(lov)) for lov in levdat.keys()])
+            if max_title_len>50:
+                FONTSIZE = 4
+            else:
+                FONTSIZE = 6
+
+            ntrials = np.mean([len(v) for k, v in levdat.items()])
+            xmin, xmax = self._plotgood_rasters_extract_xmin_xmax()
+            dur = xmax-xmin
+            nrows = len(levels_othervar_1)
+            ncols = len(levels_othervar_2)
+            sn, _ = self._session_extract_sn_and_trial()
+            fig, axesall, kwargs = sn._plot_raster_create_figure_blank(dur, ntrials, nrows, ncols,
+                                                                           reduce_height_for_sm_fr=reduce_height_for_sm_fr,
+                                                                            sharey=sharey, 
+                                                                       force_scale_height=force_scale_height)
+            # Go thru each row
+            for i, lev1 in enumerate(levels_othervar_1):
+                axes = axesall[i]
+
+                vars_others = [var_other_1, var_other_2]
+                levels_of_varsothers = [(lev1, lev2) for lev2 in levels_othervar_2]
+
+                if PLOT_VER=="smfr":
+                    # Smoothed fr.
+                    self._plotgood_smoothfr_average_each_level(site, var, vars_others, event=event,
+                                                             plot_these_levels_of_varsothers=levels_of_varsothers,
+                                                             plot_on_these_axes=axes, leave_subplot_empty_if_no_data=True)
+                    for ax in axes.flatten():
+                        ax.set_ylim(0)
+                elif PLOT_VER == "raster":
+                    # Rasters
+                    for ax, lev_other in zip(axes.flatten(), levels_of_varsothers):
+                        if lev_other in levdat.keys():
+                            dfthis = levdat[lev_other]
+                            self._plotgood_rasters_split_by_feature_levels(ax, dfthis, var, event=event,
+                                xmin=xmin, xmax=xmax)
+                            # Make sure is readable even if is long name.
+                            ax.set_title(map_level_to_idx[lev_other], fontsize=FONTSIZE, wrap=True)
+                            ax.set_ylabel(map_level_to_idx[lev_other], fontsize=FONTSIZE, wrap=True)
+                            ax.axvline(0, color="m")
+                else:
+                    print(PLOT_VER)
+                    assert False
+
+            # all axes shared
+            share_axes(axesall, which="x")
+            if sharey:
+                share_axes(axesall, which="y")
+        else:
+            fig, axesall = plt.subplots(2,1)
+            axesall.flatten()[0].set_title("Not enough data!")
+
+        return fig, axesall
 
     def plot_rasters_smfr_each_level_combined(self, site, var, 
         list_events_uniqnames = None, orient="vert",
@@ -6603,7 +6716,6 @@ def datasetstrokes_extract(D, strokes_only_keep_single=False, tasks_only_keep_th
 
     # Extract timing inforamtion (e.g., stroek onsets, offsets)
     DS.timing_extract_basic()
-
 
     # list_features = ["task_kind", "gridsize", "shape_oriented", "gridloc"]
     for key in list_features:

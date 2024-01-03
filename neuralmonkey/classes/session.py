@@ -402,6 +402,7 @@ class Session(object):
 
         # Beh cached stuff
         self._BehEyeAlignOffset = None
+        self._IGNORE_SANITY_CHECKS = False
 
         # INitialize empty data
         self.EventsTimeUsingPhd = {}
@@ -591,7 +592,7 @@ class Session(object):
             self.spiketimes_ks_extract_alltrials()   
         else:
             print(spikes_version)
-            assert False, "Code it"         
+            assert False, "Code it"
 
         # Switch to the spikesversion
         # Do it here so that dont inadvertantly cache data for the wrong spikes version.
@@ -1537,54 +1538,63 @@ class Session(object):
 
         assert self.SPIKES_VERSION=="kilosort"
 
-        ## Compare the tdt sites that were gotten 
+        try:
+            self._IGNORE_SANITY_CHECKS = True
 
-        # tdt spikes
-        # sn.SPIKES_VERSION="tdt"
-        list_sites_tdt = self.sitegetter_all(force_tdt_sites=True)
+            ## Compare the tdt sites that were gotten
 
-        # any sites that have ks cluster but not kept in tdt?
-        list_sites_ks = []
-        for dat in self.DatSpikesSessByClust.values():
-            list_sites_ks.append(dat["site"])
+            # tdt spikes
+            # sn.SPIKES_VERSION="tdt"
+            list_sites_tdt = self.sitegetter_all(force_tdt_sites=True)
 
-        list_sites_ks = sorted(set(list_sites_ks))
-        print(list_sites_ks)
+            # any sites that have ks cluster but not kept in tdt?
+            list_sites_ks = []
+            for dat in self.DatSpikesSessByClust.values():
+                list_sites_ks.append(dat["site"])
 
-        print("KS sites not in tdt:")
-        print([s for s in list_sites_ks if s not in list_sites_tdt])
-        print(len([s for s in list_sites_ks if s not in list_sites_tdt]))
+            list_sites_ks = sorted(set(list_sites_ks))
+            print("Sites (KS):", list_sites_ks)
 
-        print("TDT sites not in ks:")
-        print([s for s in list_sites_tdt if s not in list_sites_ks])
-        print(len([s for s in list_sites_tdt if s not in list_sites_ks]))
+            print("KS sites not in tdt:")
+            print([s for s in list_sites_ks if s not in list_sites_tdt])
+            print(len([s for s in list_sites_ks if s not in list_sites_tdt]))
 
-        ######## PLOT
-        list_sites_both = sorted(set(list_sites_tdt + list_sites_ks))
-        trials = self.get_trials_list(True)[::10]
-        for site_tdt in list_sites_both:
-            fig, axes = plt.subplots(4,1, figsize=(10, 18))
-            
-            # tdt
-            self.SPIKES_VERSION="tdt"
-            ax = axes.flatten()[0]
-            self.plot_raster_trials(ax, trials, site_tdt, alignto="go", xmin=-2, xmax=6, alpha_raster=0.5)
-            ax.set_ylabel("TDT")
+            print("TDT sites not in ks:")
+            print([s for s in list_sites_tdt if s not in list_sites_ks])
+            print(len([s for s in list_sites_tdt if s not in list_sites_ks]))
 
-            # ks
-            self.SPIKES_VERSION="kilosort"
-            list_clust = self.ks_convert_sites_to_clusts([site_tdt])
-            for i, clust in enumerate(list_clust):
-                ax = axes.flatten()[i+1]
-                label = self.DatSpikesSessByClust[clust]["label_final"]
-                print(label)
-                self.plot_raster_trials(ax, trials, clust, alignto="go", xmin=-2, xmax=6, alpha_raster=0.5)
-                ax.set_ylabel(f"KILOSORT - {label}")
-            
-            fig.savefig(f"{sdir}/site_tdt_{site_tdt}.png")
-            assert False
-            plt.close("all")        
+            ######## PLOT
+            list_sites_both = sorted(set(list_sites_tdt + list_sites_ks))
+            trials = self.get_trials_list(True)[::10]
+            for site_tdt in list_sites_both:
+                fig, axes = plt.subplots(4,1, figsize=(10, 18))
 
+                # tdt
+                self.SPIKES_VERSION="tdt"
+                ax = axes.flatten()[0]
+                self.plot_raster_trials(ax, trials, site_tdt, alignto="go", xmin=-2, xmax=6, alpha_raster=0.5)
+                ax.set_ylabel("TDT")
+
+                # ks
+                self.SPIKES_VERSION="kilosort"
+                list_clust = self.ks_convert_sites_to_clusts([site_tdt])
+                for i, clust in enumerate(list_clust):
+                    ax = axes.flatten()[i+1]
+                    label = self.DatSpikesSessByClust[clust]["label_final"]
+                    print(label)
+                    self.plot_raster_trials(ax, trials, clust, alignto="go", xmin=-2, xmax=6, alpha_raster=0.5)
+                    ax.set_ylabel(f"KILOSORT - {label}")
+
+                fig.savefig(f"{sdir}/site_tdt_{site_tdt}.png")
+                plt.close("all")
+
+        except Exception as err:
+            self._IGNORE_SANITY_CHECKS = False
+            self.SPIKES_VERSION = "kilosort"
+            raise err
+
+        self._IGNORE_SANITY_CHECKS = False
+        self.SPIKES_VERSION = "kilosort"
 
     def ks_convert_sites_to_clusts(self, list_site, sort_by_clust=False):
         """ Return list of clulster ids for this l ist of sites,
@@ -2603,13 +2613,15 @@ class Session(object):
 
 
 
-    def datall_TDT_KS_slice_single_bysite(self, site_or_clust, trial0, return_index=False):
+    def datall_TDT_KS_slice_single_bysite(self, site_or_clust, trial0, return_index=False,
+                                          IGNORE_SANITY_CHECKS = False):
         """ [KILOSORT OR TDT WORKS] 
         This is the only place where spikes data are extracted for analysis!!!
         Like datall_slice_single, but input site instead of (rs, chan)
         """
 
-        assert self.SPIKES_VERSION == self._SPIKES_VERSION_INPUTED, "not allowed to change spikes version once you load! (Instead, load a new session with flag spikes_version changed"
+        if not self._IGNORE_SANITY_CHECKS:
+            assert self.SPIKES_VERSION == self._SPIKES_VERSION_INPUTED, "not allowed to change spikes version once you load! (Instead, load a new session with flag spikes_version changed"
 
         if self.SPIKES_VERSION=="tdt":
             rs, chan = self.convert_site_to_rschan(site_or_clust)
@@ -3188,6 +3200,13 @@ class Session(object):
 
 
     ######################## BRAIN STUFF
+    def sitegetter_print_summarytext_each_unit(self):
+        """ for each site, print a line (string) that summarizes
+        it.
+        """
+        for i, site in enumerate(self.sitegetter_all()):
+            print(i, " -- ", self.sitegetter_summarytext(site))
+
     def sitegetter_print_summary_nunits_by_region(self):
         """ Prints num units (clean) per region
         and total units etc
@@ -7216,16 +7235,18 @@ class Session(object):
                 # print(spikes)
                 self._plot_raster_line(ax, spikes, i, alignto_time=alignto_time, 
                     linelengths=raster_linelengths, alpha=alpha_raster)
-            
-            self.plotmod_overlay_trial_events_mult(ax, list_trials, list_align_time,
-                ylabel_trials, xmin=xmin, xmax=xmax)
+
+            if overlay_trial_events:
+                self.plotmod_overlay_trial_events_mult(ax, list_trials, list_align_time,
+                    ylabel_trials, xmin=xmin, xmax=xmax, overlay_strokes=overlay_strokes)
         
             if site is not None:
                 ax.set_title(self.sitegetter_summarytext(site)) 
 
 
     def _plot_raster_create_figure_blank(self, duration, n_raster_lines, n_subplot_rows=1,
-            nsubplot_cols=1, reduce_height_for_sm_fr=False, sharex=True):
+            nsubplot_cols=1, reduce_height_for_sm_fr=False, sharex=True, sharey=False,
+                                         force_scale_height=None):
         """ Helper to genreate figure with correct size, based on duration and num rows
         RETURNS:
         - fig,
@@ -7269,12 +7290,15 @@ class Session(object):
         if np.isnan(width):
             width = 1
 
+        if force_scale_height:
+            height = force_scale_height*height
+
         if False:
             print(n_raster_lines, height_cell, n_subplot_rows)
             print(duration, width_cell)
             print(width, height, aspect)
             # assert False
-        fig, axes = plt.subplots(n_subplot_rows, nsubplot_cols, sharex=sharex, 
+        fig, axes = plt.subplots(n_subplot_rows, nsubplot_cols, sharex=sharex, sharey=sharey,
             figsize = (width, height), squeeze=False)
 
         kwargs = {
@@ -7425,7 +7449,7 @@ class Session(object):
                                             xmin = xmin, xmax =xmax
                                             )
             # @KGG hack 231026 - appears to be a bug with plotting strokes, so turned off.
-            overlay_strokes = False
+            # overlay_strokes = True
             if overlay_strokes:
                 ALPHA_STROKES = 0.8*ALPHA_MARKERS
                 self.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, 
@@ -8151,6 +8175,8 @@ class Session(object):
 
         if site is None:
             assert plot_rasters==False
+        else:
+            assert isinstance(site, int)
 
         if list_trials is None:
             list_trials = self.get_trials_list(True)
@@ -9366,6 +9392,26 @@ class Session(object):
             x =self._sitegettertdt_get_map_brainregion_to_site()
             with open(path, "wb") as f:
                 pickle.dump(x, f)
+
+    def debug_mode_switch_to(self, sites=True, trials=True):
+        """ Seitch debug mode to variable passed in.
+        Takes care of clearing variables that have state (memoized)
+        Debug mode this prunes sites and trials, so analyses runs faster
+        """
+    
+        if trials==True and self._DEBUG_PRUNE_TRIALS==False:
+            # Turn on debug mode
+            self._DEBUG_PRUNE_TRIALS=True
+        elif trials==False and self._DEBUG_PRUNE_TRIALS==True:
+            self._DEBUG_PRUNE_TRIALS=False
+            # clear cached population data, since this is using subset of trials.
+            self.PopAnalDict = {}
+
+        if sites==True and self._DEBUG_PRUNE_SITES==False:
+            self._DEBUG_PRUNE_SITES=True
+        elif sites==True and self._DEBUG_PRUNE_SITES==False:
+            self._DEBUG_PRUNE_SITES=True
+
 
 #####################################################################
 assert REGIONS_IN_ORDER == ["M1_m", "M1_l", "PMv_l", "PMv_m",
