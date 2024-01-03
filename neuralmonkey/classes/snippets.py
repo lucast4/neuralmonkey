@@ -207,7 +207,8 @@ class Snippets(object):
         trials_prune_just_those_including_events=True,
         fr_which_version="sqrt",
         NEW_VERSION=True,
-        SKIP_DATA_EXTRACTION =False
+        SKIP_DATA_EXTRACTION =False,
+        fail_if_times_outside_existing=True
         ):
         """ Initialize a dataset
         PARAMS:
@@ -241,6 +242,9 @@ class Snippets(object):
         # To cache sanity checks.
         self._SanityFrSmTimesIdentical = None
 
+        if fail_if_times_outside_existing==False:
+            assert which_level=="flex", "only coded for this level... just add it below."
+            
         if SKIP_DATA_EXTRACTION:
             # Then useful if tyou want to load old data.
             return
@@ -396,7 +400,8 @@ class Snippets(object):
 
             DfScalar = SN.snippets_extract_by_event_flexible(sites_keep, trials,
                 list_events, pre_dur, post_dur, 
-                features_to_get_extra=None, fr_which_version="sqrt", DEBUG=False)
+                features_to_get_extra=None, fr_which_version="sqrt", DEBUG=False,
+                fail_if_times_outside_existing=fail_if_times_outside_existing)
             ListPA = None
             DS = None
             # Fill in dummy variables

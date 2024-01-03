@@ -5505,7 +5505,7 @@ class Session(object):
     def events_get_fixation_times_clusterfix_results(self, trial, on_or_off=True, DEBUG_PLOT=False):
         # load this trial's saccade times
         trialcode = self.datasetbeh_trial_to_trialcode(trial)
-        directory_for_clusterfix = "/home/kgg/Desktop/neuralmonkey/neuralmonkey/eyetracking"
+        directory_for_clusterfix = "/home/kgg/Desktop/eyetracking_analyses"
 
         # load the .csv file for this trialcode, containing fixation onsets
         if on_or_off:
@@ -5523,7 +5523,7 @@ class Session(object):
 
 
         # return etiher the on or off times depending on on_or_off
-        print(data)
+        # print(data)
 
         if DEBUG_PLOT:
             times_clfix = self.events_get_fixation_times_clusterfix_results(trial)
@@ -5543,7 +5543,7 @@ class Session(object):
     def events_get_fixation_centroids_clusterfix_results(self, trial):
         # load this trial's fixation centroids
         trialcode = self.datasetbeh_trial_to_trialcode(trial)
-        directory_for_clusterfix = "/home/kgg/Desktop/neuralmonkey/neuralmonkey/eyetracking"
+        directory_for_clusterfix = "/home/kgg/Desktop/eyetracking_analyses"
 
         # load the .csv file for this trialcode, containing fixation centroids
         fname = f"{directory_for_clusterfix}/{self.Animal}-{self.Date}-{self.RecSession}/{trialcode}-fixation-centroids.csv"
@@ -5559,7 +5559,7 @@ class Session(object):
     def events_get_saccade_times_clusterfix_results(self, trial, on_or_off=True, DEBUG_PLOT=False):
         # load this trial's saccade times
         trialcode = self.datasetbeh_trial_to_trialcode(trial)
-        directory_for_clusterfix = "/home/kgg/Desktop/neuralmonkey/neuralmonkey/eyetracking"
+        directory_for_clusterfix = "/home/kgg/Desktop/eyetracking_analyses"
 
         # load the .csv file for this trialcode, containing saccade onsets
         if on_or_off: #TODO change
@@ -6359,12 +6359,15 @@ class Session(object):
     ###################### SMOOTHED FR
     def smoothedfr_extract_timewindow_bytimes(self, trials, times, 
         sites, pre_dur=-0.1, post_dur=0.1,
-        fail_if_times_outside_existing=True):
+        fail_if_times_outside_existing=True,
+        idx_trialtime_all=None): 
         """ [GOOD, FLEXIBLE] Extract smoothed fr dataset for these trials and times.
         PARAMS:
         - trials, list of trials in sn.
         - times, list of times(in sec), one for each trial in trials. will extract aligned
         to these times.
+        - fail_if_times_outside_existing, bool, if False, then skips trials that are too close to 
+        trial edge to extract complete data given the pre_dur andpost_dur you want.
         RETURNS:
         - PopAnal, where PA.X[:, i, :] is the dim of len(trials):
         """
@@ -6376,9 +6379,15 @@ class Session(object):
         assert isinstance(pre_dur, (float, int))
         assert len(trials)==len(times)
 
+        if idx_trialtime_all is None:
+            idx_trialtime_all = range(len(trials)) # useful for tracking if throw out data.
+
         list_xslices = []
         # 1) extract each trials' PA. Use the slicing tool in PA to extract snippet
-        for tr, time_align in zip(trials, times):
+        list_trials_actual = []
+        list_times_actual = []
+        list_idx_trialtime_actual = []
+        for tr, time_align, idx in zip(trials, times, idx_trialtime_all):
 
             # extract popanal
             pa, sampling_period = self.popanal_generate_save_trial(tr, return_sampling_period=True)   
@@ -6392,13 +6401,24 @@ class Session(object):
             pa = pa._slice_by_time_window(t1, t2, return_as_popanal=True,
                 fail_if_times_outside_existing=fail_if_times_outside_existing,
                 subtract_this_from_times=time_align)
+
+            if pa is None:
+                # Then skip this
+                assert fail_if_times_outside_existing==False, "how else coudl you have gotten None?"
+                # print(t1, t2)
+                # print(tr, time_align)
+                continue
             
             # save this slice
             list_xslices.append(pa)
+            list_trials_actual.append(tr)
+            list_times_actual.append(time_align)
+            list_idx_trialtime_actual.append(idx)
 
         # 2) Concatenate all PA into a single PA
-        if not fail_if_times_outside_existing:
-            assert False, "fix this!! if pre_dur extends before first time, then this is incorrect. Should do what?"
+        # This error is obsolete. Now these datapts are just thrown out entirely.
+        # if not fail_if_times_outside_existing:
+        #     assert False, "fix this!! if pre_dur extends before first time, then this is incorrect. Should do what?"
         
         # Replace all times with this time relative to alignement.
         for pa in list_xslices:
@@ -6414,9 +6434,9 @@ class Session(object):
 
         # Sanity checks
         assert PAall.Chans ==sites
-        assert PAall.X.shape[1] == len(trials)
+        assert PAall.X.shape[1] == len(list_trials_actual)
 
-        return PAall
+        return PAall, list_trials_actual, list_times_actual, list_idx_trialtime_actual
 
     def smoothedfr_extract_timewindow_bystroke(self, trials, strokeids, 
         sites, pre_dur=-0.1, post_dur=0.1,
@@ -8640,7 +8660,8 @@ class Session(object):
     def snippets_extract_by_event_flexible(self, sites, trials,
         list_events, 
         pre_dur= -0.4, post_dur= 0.4, features_to_get_extra=None, 
-        fr_which_version="sqrt", DEBUG=False):
+        fr_which_version="sqrt", DEBUG=False,
+        fail_if_times_outside_existing=True):
         """ Helper to extract snippets in flexible way, saligend to each event.
         PARAMS:
         - sites, list of ints to extract.
@@ -8659,7 +8680,8 @@ class Session(object):
         OUT = []
         trials_all = []
         times_all = []
-        
+        idx_trialtime_all = []
+        idx_trialtime=0
         if DEBUG:
             print("  trial - event - event_time")
 
@@ -8670,7 +8692,7 @@ class Session(object):
                 idx_str = f"{i_e}"
             event_unique_name = f"{idx_str}_{event}"
             for trial_neural in trials:
-                list_times = self.events_get_time_helper(event, trial_neural)
+                list_times = sorted(self.events_get_time_helper(event, trial_neural))
                 
                 #### extracts featurename and featurevals FOR certain custom events (e.g. saccades, fixations)
                 if event in ["fixon"]:
@@ -8681,13 +8703,14 @@ class Session(object):
                     assert len(list_times)==len(list_featvals)
 
                     # add entry to dataframe
-                    for event_time, featval in zip(list_times, list_featvals):
+                    for trial_ind, (event_time, featval) in enumerate(zip(list_times, list_featvals)):
 
                         if DEBUG:
                             print(trial_neural, ' - ', event, ' - ' , event_time)
 
                         trials_all.append(trial_neural)
                         times_all.append(event_time)
+                        idx_trialtime_all.append(idx_trialtime)
 
                         for s in sites:
 
@@ -8705,8 +8728,12 @@ class Session(object):
                                 "spike_times":spike_times,
                                 "trial_neural":trial_neural,
                                 "event_time":event_time,
-                                feat_name:featval
+                                feat_name:featval,
+                                "idx_trialtime":idx_trialtime,
+                                "event_idx_within_trial":trial_ind
                             })
+                        # increment index
+                        idx_trialtime+=1
                 else:
                     for event_time in list_times:
 
@@ -8715,6 +8742,7 @@ class Session(object):
 
                         trials_all.append(trial_neural)
                         times_all.append(event_time)
+                        idx_trialtime_all.append(idx_trialtime)
 
                         for s in sites:
 
@@ -8732,14 +8760,22 @@ class Session(object):
                                 "spike_times":spike_times,
                                 "trial_neural":trial_neural,
                                 "event_time":event_time,
+                                "idx_trialtime":idx_trialtime
                             })
+                        # increment index
+                        idx_trialtime+=1
+
 
         # Get smoothed fr. this is MUCH faster than computing above.
         print("Extracting smoothed FR for all data...")
-        fail_if_times_outside_existing = True
-        pa = self.smoothedfr_extract_timewindow_bytimes(trials_all, times_all, sites, 
+        # fail_if_times_outside_existing = True
+        pa, trials_all, times_all, idx_trialtime_all = self.smoothedfr_extract_timewindow_bytimes(trials_all, times_all, sites, 
             pre_dur=pre_dur, post_dur=post_dur, 
-            fail_if_times_outside_existing=fail_if_times_outside_existing) 
+            fail_if_times_outside_existing=fail_if_times_outside_existing,
+            idx_trialtime_all=idx_trialtime_all) 
+
+        # Prune OUT to just those trials that have full data...
+        OUT = [O for O in OUT if O["idx_trialtime"] in idx_trialtime_all]
 
         if DEBUG:
             print(pa.X.shape) # (chans, trials, tbins)
@@ -8749,6 +8785,9 @@ class Session(object):
             assert False
 
         # deal out time to each site and trial.
+        assert len(trials_all)==pa.X.shape[1]
+        assert len(sites)==pa.X.shape[0]
+
         print("Inserting smoothed FR into dataset...")
         ct = 0
         for i in range(len(trials_all)):
@@ -8762,6 +8801,7 @@ class Session(object):
                 assert OUT[ct]["chan"] == sites[j]
                 assert OUT[ct]["trial_neural"] == trials_all[i]
                 assert OUT[ct]["event_time"] == times_all[i]
+                assert OUT[ct]["idx_trialtime"] == idx_trialtime_all[i]
 
                 ct+=1
         # ----
