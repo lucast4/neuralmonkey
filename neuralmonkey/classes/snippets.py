@@ -179,7 +179,7 @@ def load_and_concat_mult_snippets(MS, which_level, SITES_COMBINE_METHODS = "inte
         # print("items: ", len(items[0]), len(items[1]), SITES_COMBINE_METHODS, ":", len(items_combine))
 
     # In data, keep only the sites in self.Sites
-    SPall.DfScalar = SPall.DfScalar[SPall.DfScalar["chan"].isin(SPall.Sites)]
+    SPall.DfScalar = SPall.DfScalar[SPall.DfScalar["chan"].isin(SPall.Sites)].reset_index(drop=True)
 
     # Remove columns from DfScalar that are ambiguous
     # TODO...
@@ -1654,7 +1654,7 @@ class Snippets(object):
         """
         sn, _ = self._session_extract_sn_and_trial()
         def F(x):
-            region = sn.sitegetter_map_site_to_region(x["chan"])
+            region = sn.sitegetterKS_map_site_to_region(x["chan"])
             return region
         return applyFunctionToAllRows(df, F, "bregion")
 
@@ -1779,6 +1779,10 @@ class Snippets(object):
         See its use in 
         """
         ####### SUmmary plot of anova
+
+        assert df_fr is None, "not used"
+        assert df_fr_levels is None, "not used"
+
         sdir = f"{sdir_base}/modulation"
         os.makedirs(sdir, exist_ok=True)
         print(sdir)
@@ -2020,6 +2024,18 @@ class Snippets(object):
             path = f"{sdir_base}/params_to_save.yaml"
             writeDictToYaml(params_to_save, path)
 
+        if False:
+            # Skip this, slows things down, including the plots.
+            # OBSOLETE!!
+            print("** Computing fr quick...")
+            df_fr, df_fr_levels = self.modulationgood_compute_fr_quick(var)
+            # df_fr = df_fr[df_fr["event_aligned"] == event]
+            # df_fr_levels = df_fr_levels[df_fr_levels["event_aligned"] == event]
+            assert len(df_fr)>0
+            assert len(df_fr_levels)>0
+        else:
+            df_fr = None
+
         ################# LOAD DF_VAR
         df_var, list_eventwindow_event, RELOAD_DFVAR_SUCCESSFUL, RECOMPUTED = self.modulationgood_load_or_compute(
             "df_var", sdir_base, var, vars_conjuction, score_ver, get_z_score)
@@ -2030,18 +2046,9 @@ class Snippets(object):
         ################# save again
         path = f"{sdir_base}/ParamsGlobals.yaml"
         writeDictToYaml(self.ParamsGlobals, path)
-        
-        list_events_window = sorted(df_var["event"].unique().tolist()) 
 
-        if False:
-            # Skip this, slows things down, including the plots.
-            # OBSOLETE!!
-            print("** Computing fr quick...")
-            df_fr, df_fr_levels = self.modulationgood_compute_fr_quick(var) 
-            # df_fr = df_fr[df_fr["event_aligned"] == event]
-            # df_fr_levels = df_fr_levels[df_fr_levels["event_aligned"] == event]
-            assert len(df_fr)>0
-            assert len(df_fr_levels)>0
+        list_events_window = sorted(df_var["event"].unique().tolist())
+
 
         # Save df_var
         if False:
@@ -2100,7 +2107,7 @@ class Snippets(object):
             self.ParamsDfvar = paramstmp
 
             ############## SUMMARY PLOTS OF ANOVA
-            self.modulationgood_plot_WRAPPER(df_var, df_fr, df_fr_levels, 
+            self.modulationgood_plot_WRAPPER(df_var, None, None,
                 list_eventwindow_event, var, vars_conjuction, 
                 sdir_base, N_WAYS, PLOT_EACH_CHAN, PLOT_EACH_EVENT)
 
@@ -2438,7 +2445,7 @@ class Snippets(object):
 
                 if site%20==0:
                     print("site :", site)
-                region = sn.sitegetter_map_site_to_region(site)
+                region = sn.sitegetterKS_map_site_to_region(site)
                 
                 # Clean up dataset
                 # print(var)
@@ -6099,7 +6106,7 @@ class Snippets(object):
         from pythonlib.tools.pandastools import grouping_get_inner_items
         this = grouping_get_inner_items(self.DfScalar, "chan", "session_idx")
         print(this)
-        for site in SPall.Sites:
+        for site in self.Sites:
             print(site, ":", this[site])
             assert False, "in progress"
             # TODO: check that this[site] is identical to unqiue list of sites
