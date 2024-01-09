@@ -1931,7 +1931,7 @@ class Snippets(object):
         print(var)
         print(vars_conjuction)
 
-        assert(np.all(np.diff(self.DfScalar.Index)==1)), "do reset index"
+        assert(np.all(np.diff(self.DfScalar.index)==1)), "do reset index"
 
         assert isinstance(vars_conjuction, list)
 
