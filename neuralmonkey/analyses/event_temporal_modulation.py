@@ -31,10 +31,10 @@ def preprocess_and_plot(MS, SAVEDIR, session = 0, DEBUG=False):
     # 1) Concatenate dfscalars
     # (generate a common column, using goruping)
     grouping_variables = ["event_aligned"]
-    df1 = SP_trial.dataextract_as_df(grouping_variables, "event_var_level")
+    df1 = SP_trial.dataextract_as_df_OLD(grouping_variables, "event_var_level")
 
     grouping_variables = ["stroke_index_semantic"]
-    df2 = SP_stroke.dataextract_as_df(grouping_variables, "event_var_level")
+    df2 = SP_stroke.dataextract_as_df_OLD(grouping_variables, "event_var_level")
     df2["event_var_level"] = "stroke-" + df2["event_var_level"]
 
     list_site_good = [site for site in SP_trial.Sites if site in SP_stroke.Sites]    
@@ -94,7 +94,7 @@ def preprocess_and_plot(MS, SAVEDIR, session = 0, DEBUG=False):
     df_modtime = applyFunctionToAllRows(df_modtime, F, newcolname="site_region")
 
     def F(x):
-        return SP_trial.SN.sitegetter_map_site_to_region(x["site"])
+        return SP_trial.SN.sitegetterKS_map_site_to_region(x["site"])
     df_modtime = applyFunctionToAllRows(df_modtime, F, newcolname="region")
 
 
@@ -221,12 +221,15 @@ def kernel_compute(df_modtime, response="r2_time_minusmean", sdir=None, normaliz
 
     return df_kernels, df_modtime_wide, df_modtime_wide_normrowsubtr, dict_kernels
 
-def _kernel_compute_scores(df_modtime_wide, kernel, weights, response="r2_time_minusmean"):
-    """ 
-    Compure scores (single vector) for this kernal and associated weights.
+def _kernel_compute_scores(df_modtime_wide, kernel, weights,
+                           # response="r2_time_minusmean"):
+                           response=None, normalize_weights=True):
+    """
+    Compure scores (single vector) for this kernal and associated weights. Autoamtically
+    normalizes weights so that sum is 1
     PARAMS:
     - df_modtime_wide, where columns include the items in kernel
-    - kernel, list-like, where each picks out a column
+    - kernel, list-like, where each picks out a column. doesnt have to include all columns.
     - weights, list-like of weigghts, one for each k in kernel.
     RETURNS:
     - scores, array of size num rows of df_modtime_wide, for each row gets its
@@ -234,7 +237,15 @@ def _kernel_compute_scores(df_modtime_wide, kernel, weights, response="r2_time_m
     """
     # get dot product
     assert len(weights)==len(kernel)
-    columns = [f"{response}-{k}" for k in kernel]
+    if response is not None:
+        columns = [f"{response}-{k}" for k in kernel]
+    else:
+        columns = kernel
+    if normalize_weights:
+        weights = weights/np.sum(np.abs(weights), keepdims=True)
+
+    print(weights)
+
     xmat = df_modtime_wide.loc[:, columns].to_numpy()
     scores = np.matmul(xmat, weights)
     return scores
@@ -349,12 +360,12 @@ def plot_overview(df_modtime, SAVEDIR, response = "r2_time_minusmean",
 
             plt.close("all")
 
-            from neuralmonkey.neuralplots.brainschematic import plot_scalar_values, plot_df
+            from neuralmonkey.neuralplots.brainschematic import plot_scalar_values, plot_df_from_longform
             sdirthis = f"{sdir_kernel}/brain_schematic"
             os.makedirs(sdirthis, exist_ok=True)
 
             # plot_scalar_values(regions, scores, diverge=False)
-            plot_df(df_kernels, valname="kernel_score", subplot_var="kernel", savedir=sdirthis, diverge=False)
+            plot_df_from_longform(df_kernels, valname="kernel_score", subplot_var="kernel", savedir=sdirthis, diverge=False)
             plt.close("all")
 
 
@@ -364,7 +375,7 @@ def plot_overview(df_modtime, SAVEDIR, response = "r2_time_minusmean",
                 sdirthis = f"{sdir_kernel}/brain_schematic-kernel_{kernel}"
                 os.makedirs(sdirthis, exist_ok=True)
                 
-                plot_df(dfthis, valname="kernel_score", savedir=sdirthis, diverge=True)
+                plot_df_from_longform(dfthis, valname="kernel_score", savedir=sdirthis, diverge=True)
 
                 plt.close("all")
 

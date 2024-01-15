@@ -181,7 +181,7 @@ for DATE in LIST_DATE:
 
     ##################
 
-    from neuralmonkey.analyses.state_space_good import _compute_PCA_space
+    from neuralmonkey.analyses.state_space_good import preprocess_pca
     # pca_trial_agg_grouping = "epoch"
     # list_vars = ["seqc_0_shape", "seqc_0_loc"]
     # list_vars_others = [
@@ -230,8 +230,8 @@ for DATE in LIST_DATE:
         from pythonlib.tools.expttools import writeDictToYaml
         writeDictToYaml(params_pca_space, f"{SAVEDIR}/params_pca_space.yaml")
 
-        DF_PA_SPACES = _compute_PCA_space(SP, pca_trial_agg_grouping, list_event_window=list_event_window,
-                          pca_norm_subtract_condition_invariant=pca_norm_subtract_condition_invariant)
+        DF_PA_SPACES = preprocess_pca(SP, pca_trial_agg_grouping, list_event_window=list_event_window,
+                                      pca_norm_subtract_condition_invariant=pca_norm_subtract_condition_invariant)
 
         # Save 
         import pickle

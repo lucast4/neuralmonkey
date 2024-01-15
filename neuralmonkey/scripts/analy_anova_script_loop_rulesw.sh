@@ -24,7 +24,8 @@
 
 animal=Diego
 # datelist=( 230701 230702 230704 230706 )
-datelist=( 230703 230705 230707 230713 230717 230719 )
+# datelist=( 230703 230705 230707 230713 230717 230719 ) # dirshape
+datelist=( 230802 ) # dirgrammar4
 
 ANALY_VER="rulesw"
 # ANALY_VER="ruleswALLDATA"
