@@ -131,7 +131,13 @@ def plotNeurTimecourseErrorbar(Xmean, Xerror, times=None, ax=None, color="k",
         t = np.arange(len(X))
     else:
         t = times
-    shadedErrorBar(t, Xmean, yerr=Xerror, ax=ax, color=color, alpha_fill=alpha_fill)
+    npts = len(t)
+    if npts>1:
+        # Then plot curve
+        shadedErrorBar(t, Xmean, yerr=Xerror, ax=ax, color=color, alpha_fill=alpha_fill)
+    else:
+        # Plot point
+        ax.errorbar(t, Xmean, Xerror, linestyle="", marker="o", color=color, alpha=alpha_fill)
 
     return fig, ax
 

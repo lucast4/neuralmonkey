@@ -260,6 +260,65 @@ class PopAnal():
         
         return fig
 
+
+    def pca_make_space(self, trial_agg_method, trial_agg_grouping,
+        time_agg_method=None,
+        norm_subtract_condition_invariant=False,
+        ploton=True):
+        """ Prperocess data (e.g,, grouping by trial and time) and then
+        Make a PopAnal object holding (i) data for PCA and (ii) the results of
+        PCA.
+        PARAMS:
+        - PA, popanal object, holds all data.
+        - DF, dataframe, with one column for each categorical variable you care about (in DATAPLOT_GROUPING_VARS).
+        The len(DF) must equal num trials in PA (asserts this)
+        - trial_agg_grouping, list of str defining how to group trials, e.g,
+        ["shape_oriented", "gridloc"]
+        - norm_subtract_condition_invariant, bool, if True, then at each timepoint subtracts
+        mean FR across trials
+        RETURNS:
+        - PApca, a popanal holding the data that went into PCA, and the results of PCA,
+        and methods to project any new data to this space.
+        """
+
+        # assert DF==None, "instead, put this in self.Xlabels"
+
+        # First, decide whether to take mean over some way of grouping trials
+        if trial_agg_method==None:
+            # Then dont aggregate by trials
+            PApca = self.copy()
+        elif trial_agg_method=="grouptrials":
+            # Then take mean over trials, after grouping, so shape
+            # output is (nchans, ngrps, time), where ngrps < ntrials
+            DF = self.Xlabels["trials"]
+            if False:
+                groupdict = grouping_append_and_return_inner_items(DF, trial_agg_grouping)
+                # groupdict = DS.grouping_append_and_return_inner_items(trial_agg_grouping)
+                PApca = self.agg_by_trialgrouping(groupdict)
+            else:
+                # Better, since it retains Xlabels
+                PApca = self.slice_and_agg_wrapper("trials", trial_agg_grouping)
+        else:
+            print(trial_agg_method)
+            assert False
+
+        # First, whether to subtract mean FR at each timepoint
+        if norm_subtract_condition_invariant:
+            PApca = PApca.norm_subtract_mean_each_timepoint()
+
+        # second, whether to agg by time (optional). e..g, take mean over time
+        if time_agg_method=="mean":
+            PApca = PApca.agg_wrapper("times")
+            # PApca = PApca.mean_over_time(return_as_popanal=True)
+        else:
+            assert time_agg_method==None
+
+        print("Shape of data going into PCA (chans, trials, times):", PApca.X.shape)
+        fig = PApca.pca("svd", ploton=ploton)
+
+        return PApca, fig
+
+
     # def reproject1(self, Ndim=3):
     #     """ reprojects neural pop onto subspace.
     #     uses axes defined by ver. check if saved if 
@@ -553,41 +612,51 @@ class PopAnal():
 
     ####################### SLICING
     def slice_by_dim_values_wrapper(self, dim, values):
-        """ Slice based on values (not indices)
+        """ Slice based on values (not indices), works for dim =
+        times, trials, or chans.
         PARAMS:
         - dim, str (see slice_by_dim_indices_wrapper)
         - values, list of values into self.Trials or Chans (depending on dim).
         Asserts that self.Trials or Chans doesnt contain any Nones
+        -- if dim=="times", then values are the min and max of the window
         """
-        # 1) Map the values to indices
-        # dim, dim_str = self.help_get_dimensions(dim)
-        indices = self.index_find_these_values(dim, values)
+        if dim in ["chans", "trials"]:
+            # 1) Map the values to indices
+            # dim, dim_str = self.help_get_dimensions(dim)
+            indices = self.index_find_these_values(dim, values)
+        elif dim=="times":
+            # values are [t1, t2]
+            assert len(values)==2
+            assert values[1]>values[0]
+            indices = self.index_find_these_values(dim, values)
+            assert len(indices)==2
+        else:
+            assert False
+
         # 2) Call indices version
         return self.slice_by_dim_indices_wrapper(dim, indices)
 
-
-    def slice_time_by_indices(self, ind1, ind2):
-        """ This is actually doing what slice_by_dim_indices_wrapper is supposed to do
-        for time, gets indices in time dimension, inclusive of ind1 and ind2. i.e 
-        is like ind1:ind2 (inclusive). Can use -1 for last index, etc.
-        RETURNS:
-        - PopAnal
-        """
-
-        # convert from indices to times
-        time_wind = [self.Times[ind1], self.Times[ind2]]
-        return self.slice_by_dim_indices_wrapper("times", time_wind)
+    # def slice_time_by_indices(self, ind1, ind2):
+    #     """ This is actually doing what slice_by_dim_indices_wrapper is supposed to do
+    #     for time, gets indices in time dimension, inclusive of ind1 and ind2. i.e
+    #     is like ind1:ind2 (inclusive). Can use -1 for last index, etc.
+    #     RETURNS:
+    #     - PopAnal
+    #     """
+    #
+    #     # convert from indices to times
+    #     time_wind = [self.Times[ind1], self.Times[ind2]]
+    #     return self.slice_by_dim_indices_wrapper("times", time_wind)
 
     def slice_by_dim_indices_wrapper(self, dim, inds):
         """ Helper that is standard across the three dims (trials, times, chans),
         to use indices (i.e., not chans, but indices into chans)
         PARAMS:
         - dim, either int or str
-        - inds:
-        --- if dim in {chans, trials,}, then is indices into self.Chans or self.Trials.
-        (is index, NOT the value itself)
-        --- if dim == "times", then is [t1 t2], inclusive start and end times.
-        RETURNS: 
+        - inds: indices into self.Chans or self.Trials, or self.Times.
+        (is index, NOT the value itself). if dim=="times", then inds must be len 2,
+        the start and ending times, for window, inclusive.
+        RETURNS:
         - PopAnal object, 
         - OR frmat array (chans, trials, times) if return_only_X==True
         """
@@ -597,16 +666,26 @@ class PopAnal():
 
         if dim_str=="times":
             assert len(inds)==2
-            assert not isinstance(inds[0], int), "num, not int"
-            t1 = inds[0]
-            t2 = inds[1]
-            pa = self._slice_by_time_window(t1, t2, True, True) 
+            t1 = self.Times[inds[0]]
+            t2 = self.Times[inds[1]]
+            pa = self._slice_by_time_window(t1, t2, True, True)
             if len(self.Xlabels["times"])>0:
                 # then slice it
                 assert False, "code it"
                 # dfnew = self.Xlabels["trials"].iloc[inds].reset_index(True)
             else:
                 dfnew = self.Xlabels["times"].copy()
+
+            # assert not isinstance(inds[0], int), "num, not int"
+            # t1 = inds[0]
+            # t2 = inds[1]
+            # pa = self._slice_by_time_window(t1, t2, True, True)
+            # if len(self.Xlabels["times"])>0:
+            #     # then slice it
+            #     assert False, "code it"
+            #     # dfnew = self.Xlabels["trials"].iloc[inds].reset_index(True)
+            # else:
+            #     dfnew = self.Xlabels["times"].copy()
         elif dim_str=="chans":
             pa = self._slice_by_chan(inds, return_as_popanal=True, 
                 chan_inputed_row_index=True)
@@ -640,7 +719,7 @@ class PopAnal():
         """ Slice population by time window, where
         time is based on self.Times
         PARAMS;
-        - t1, t2, start and end time for slicing
+        - t1, t2, start and end time for slicing, inclusive
         - fail_if_times_outside_existing, bool, if True, then self.Times must have times
         before t1 and after t2 (i.e., t1 and t2 are within range of data), otherwise raoises
         NotEnoughDataException. if False, returns None.
@@ -743,12 +822,12 @@ class PopAnal():
             return X
 
     def copy(self):
-        """ Returns a copy. 
-        Actually does this by slicing by trial, but entering all chans...
-        So will not copy all attributes...
+        """ Returns a copy.
         """
-        trials = range(self.X.shape[1])
-        return self._slice_by_trial(trials, return_as_popanal=True)
+        # trials = range(self.X.shape[1])
+        inds = list(range(len(self.Chans)))
+        return self.slice_by_dim_indices_wrapper("chans", inds)
+        # return self._slice_by_trial(trials, return_as_popanal=True)
 
     def mean_over_time(self, version="raw", return_as_popanal=False):
         """ Return X, but mean over time,
@@ -786,7 +865,11 @@ class PopAnal():
         for wind in time_windows:
             # pathis = self.slice_by_dim_indices_wrapper("times", wind)
             # xthis = pathis.X
-            xthis, times = self._slice_by_time_window(wind[0], wind[1])
+            pathis = self.slice_by_dim_values_wrapper("times", wind)
+            xthis = pathis.X
+            # times = pathis.Times
+            # assert False, "replace with wrapper for slicing by time"
+            # xthis, times = self._slice_by_time_window(wind[0], wind[1])
             xthis = np.mean(xthis, axis=2, keepdims=True)
             list_xthis.append(xthis)
             list_time_mean.append(np.mean(wind))
@@ -866,40 +949,65 @@ class PopAnal():
 
     def slice_by_labels(self, dim_str, dim_variable, list_values):
         """
-        SLice, filtering to keep if value is in list_values (filtering)
+        SLice to return PA that is subset, where you
+        filtering to keep if value is in list_values (filtering).
         PARAMS: 
         - dim_str, string name in {trials, chans, ...}
         - dim_variable, name of column in self.Xlabels[dim_str]
         - list_values, list of vales, will keep indices only those with values in list_values
-        """
-        from pythonlib.tools.pandastools import filterPandas
-        dfthis = self.Xlabels[dim_str]
-        inds = filterPandas(dfthis, {dim_variable:list_values}, return_indices=True)
-        pa = self.slice_by_dim_indices_wrapper(dim_str, inds)
-        return pa
-
-    def slice_by_label(self, dim_str, dim_variable, dim_value):
-        """
         EG:
         - dim_str = "trials"
         - dim_variable = "epoch"
         - dim_value = "L|0"
         """
-        return self.slice_by_labels(dim_str, dim_variable, [dim_value])
-        # dfthis = self.Xlabels[dim_str]
-        # inds = dfthis[dfthis[dim_variable]==dim_value].index.tolist()
-        # pa = self.slice_by_dim_indices_wrapper(dim_str, inds)
-        # return pa
+        from pythonlib.tools.pandastools import filterPandas
+
+        assert isinstance(list_values, list)
+
+        if True:
+            dfthis = self.Xlabels[dim_str]
+            inds = dfthis[dfthis[dim_variable].isin(list_values)].index.tolist()
+            # print(len(inds))
+            # print(len(self.Xlabels[dim_str]))
+        else:
+            dfthis = self.Xlabels[dim_str]
+            inds = filterPandas(dfthis, {dim_variable:list_values}, return_indices=True)
+        pa = self.slice_by_dim_indices_wrapper(dim_str, inds)
+        return pa
+
+    # def slice_by_label(self, dim_str, dim_variable, dim_value):
+    #     """
+    #
+    #     """
+    #     return self.slice_by_labels(dim_str, dim_variable, [dim_value])
+    #     # dfthis = self.Xlabels[dim_str]
+    #     # inds = dfthis[dfthis[dim_variable]==dim_value].index.tolist()
+    #     # pa = self.slice_by_dim_indices_wrapper(dim_str, inds)
+    #     # return pa
+
+    def norm_subtract_trial_mean_each_timepoint(self, dim="trials"):
+        """ Take mean over one of the dims, and return data subtracting
+        that out. e..g, if dim=="trials", for each (chan, timepoint), subtract the mean
+        across all trials within that (chan, timepoint).
+        RETURNS:
+        - PA, a copy of self, with normalized X.
+        """
+        pamean = self.agg_wrapper(dim, "mean") # (chans, 1, times)
+        PA = self.copy()
+        PA.X = PA.X - pamean.X
+        return PA
 
     def norm_subtract_mean_each_timepoint(self, dim="trials"):
         """ at each timepoint, subtract the component of fr that 
-        is due to condition-invariant (time). i.e, decompose fr to
+        is due to condition-invariant (time), while leaving intact
+        the different mean fr for each chan x trial.
+        i.e, decompose fr to
         mean_scalar (for a neuron) + (mean at this timporint) +
         noise.
         RETURNS:
         - PA, a copy of self, with normalized X.
         """
-
+        assert dim=="trials", "not sure makes sense otherwise."
         print("TODO: first, subsample so that there are equal num trials across all levels of var.")
         pamean = self.agg_wrapper(dim, "mean") # (chans, 1, times)
         pameanscal = self.agg_wrapper("times", "mean") # (chans, trials, 1)
@@ -1007,9 +1115,10 @@ class PopAnal():
 
 
     def slice_and_agg_wrapper(self, along_dim, grouping_variables, grouping_values=None,
-            agg_method = "mean"):
+            agg_method = "mean", return_group_dict=False):
         """ Flexibly aggregate neural data along any of the three dimensions, using
-        any variable, etc.
+        any variable, etc. Returns PA where each level of the grouping
+        variable is a single "trial" (after averaging over all trials with that level).
         PARAMS:
         - along_dim, eitehr int {0,1,2} or str {'chans', 'trials', 'times'}, euivalent, and
         ordered as such. which diemsions to agg (will collapse this dim)
@@ -1046,7 +1155,7 @@ class PopAnal():
 
             # slice
             pathis = self.slice_by_dim_indices_wrapper(dim=along_dim, inds=inds)
-            
+
             # agg
             pathis = pathis.agg_wrapper(along_dim=along_dim, agg_method=agg_method)
 
@@ -1071,7 +1180,10 @@ class PopAnal():
         dflab = pd.DataFrame(dat)
         pa_all.Xlabels[along_dim_str] = dflab
 
-        return pa_all
+        if return_group_dict:
+            return pa_all, groupdict
+        else:
+            return pa_all
 
     def agg_by_trialgrouping(self, groupdict, version="raw", return_as_popanal=True):
         """ aggreagate so that trials dimension is reduced,
@@ -1252,6 +1364,13 @@ class PopAnal():
         """
         return self.Trials.index(trial)
 
+    def index_find_this_time(self, time):
+        """ Given time (sec) find index into self.X[:, :, index] that is
+        closest to this time, in absolute terms
+        """
+        ind = np.argmin(np.abs(self.Times - time))
+        return ind
+
     def index_find_these_values(self, dim, values):
         """ return the indices into self.Trials or self.Chans for these values
         PARAMS;
@@ -1266,6 +1385,8 @@ class PopAnal():
             return [self.index_find_this_trial(x) for x in values]
         elif dim_str == "chans":
             return [self.index_find_this_chan(x) for x in values]
+        elif dim_str == "times":
+            return [self.index_find_this_time(x) for x in values]
         else:
             print(dim)
             assert False
@@ -1336,20 +1457,22 @@ class PopAnal():
 
         # extract data
         if inds is not None:
-            if axis_for_inds in ["site", "sites"]:
-            #         idxs = [PA.Chans.index(site) for site in inds]
-                PAthis = self._slice_by_chan(inds, return_as_popanal=True)
-            elif axis_for_inds in ["trial","trials"]:
-                PAthis = self._slice_by_trial(inds, return_as_popanal=True)
-            else:
-                assert False
+            PAthis = self.slice_by_dim_values_wrapper(axis_for_inds, inds)
+            # if axis_for_inds in ["site", "sites"]:
+            # #         idxs = [PA.Chans.index(site) for site in inds]
+            #     PAthis = self._slice_by_chan(inds, return_as_popanal=True)
+            # elif axis_for_inds in ["trial","trials"]:
+            #     PAthis = self._slice_by_trial(inds, return_as_popanal=True)
+            # else:
+            #     assert False
         else:
             PAthis = self
         X = PAthis.X
         times = PAthis.Times
 
         # Reshape to (nsamp, times)
-        X = X.reshape(X.shape[0] * X.shape[1], X.shape[2]) 
+        X = X.reshape(X.shape[0] * X.shape[1], X.shape[2])
+        n_time_bins = X.shape[1]
 
         # 1) Plot indiividual traces?
         if plot_indiv:
@@ -1372,7 +1495,7 @@ class PopAnal():
                 Xsem = stats.sem(X, axis=0)
             else:
                 assert error_ver is None, "not coded"
-            
+
             fig2, ax2 = plotNeurTimecourseErrorbar(Xmean, Xerror=Xsem, times=times,ax=ax, color=pcol_summary)
         else:
             fig2, ax2 = None, None
@@ -1388,7 +1511,8 @@ class PopAnal():
     def plotwrapper_smoothed_fr_split_by_label(self, dim_str, dim_variable, ax=None,
                                               plot_indiv=False, plot_summary=True,
                                               event_bounds=[None, None, None], 
-                                              add_legend=True, legend_levels=None):
+                                              add_legend=True, legend_levels=None,
+                                               chan=None):
         """ Plot separate smoothed fr traces, overlaid on single plot, each a different
         level of an inputted variable
         PARAMS:
@@ -1402,8 +1526,14 @@ class PopAnal():
         """
         from pythonlib.tools.plottools import makeColors
 
+        if chan is not None:
+            # Then pull out specific PA that is just this chan
+            PA = self.slice_by_dim_values_wrapper("chans", [chan])
+        else:
+            PA = self
+
         # Split into each pa for each level
-        list_pa, list_levels_matching_pa = self.split_by_label(dim_str, dim_variable) 
+        list_pa, list_levels_matching_pa = PA.split_by_label(dim_str, dim_variable)
         
         # make dict mapping from level to col
         if legend_levels is None:
@@ -1501,351 +1631,6 @@ class PopAnal():
         # grid on, for easy comparisons
         ax.grid()
 
-def extract_neural_snippets_aligned_to(MS, DS, 
-    align_to = "go_cue", 
-    t1_relonset = -0.4, t2_rel = 0):
-    """ Extract neural data, snippets, aligned to strokes, currently taking
-    alignment times relative to trial events, so only really makes sense for 
-    single-stroke trials, or for aligning to strokes directly
-    PARAMS:
-    - MS, MultSession
-    - DS, DatStrokes
-    - align_to, str, what to align snips to 
-    RETURNS:
-    - PAall, PopAnal for all snippets
-    (Also modifies DS, adding column: neural_pop_slice)
-    """
-
-    # For each stroke in DS, get its neural snippet
-
-    # # --- PARAMS
-    # align_to = "go_cue"
-    # # align_to = "on_stroke_1"
-    # t1_relonset = -0.4
-    # # t2_ver = "onset"
-    # t2_rel = 0
-
-    assert False, "use popanal_generate_alldata_bystroke instead (it collects all features into PopAnal"
-    list_xslices = []
-
-    ParamsDict = {}
-    ParamsDict["align_to"] = align_to
-    ParamsDict["t1_relonset"] = t1_relonset
-    # ParamsDict["t2_ver"] = t2_ver 
-    ParamsDict["t2_rel"] = t2_rel 
-
-    for ind in range(len(DS.Dat)):
-        
-        if ind%200==0:
-            print("index strokes: ", ind)
-
-        # --- BEH
-        trialcode = DS.Dat.iloc[ind]["dataset_trialcode"]
-        indstrok = DS.Dat.iloc[ind]["stroke_index"]
-        
-        # --- NEURAL
-        # Find the trial in neural data
-        SNthis, trial_neural = MS.index_convert(trialcode)[:2]
-        trial_neural2 = SNthis.datasetbeh_trialcode_to_trial(trialcode)
-        assert trial_neural==trial_neural2
-        del trial_neural2
-        
-        # get strokes ons and offs
-        if align_to=="stroke_onset":
-            # Then align to onset of stroke that is in DS
-            # Sanity check (confirm that timing for neural is same as timing saved in dataset)
-            ons, offs = SNthis.strokes_extract_ons_offs(trial_neural)
-            timeon_neural = ons[indstrok]
-            timeoff_neural = offs[indstrok]    
-            timeon = DS.Dat.iloc[ind]["time_onset"]
-            timeoff = DS.Dat.iloc[ind]["time_offset"]
-            assert np.isclose(timeon, timeon_neural)
-            assert np.isclose(timeoff, timeoff_neural)
-            time_align = timeon
-        else:
-            # Align to timing of things in trials
-            time_align = SNthis.events_get_time_all(trial_neural, list_events=[align_to])[align_to]
-        
-        
-        # --- POPANAL
-        # Extract the neural snippet
-        t1 = time_align + t1_relonset
-        t2 = time_align + t2_rel
-        PA = SNthis.popanal_generate_save_trial(trial_neural, print_shape_confirmation=False, 
-                                            clean_chans=True, overwrite=True)
-        PAslice = PA._slice_by_time_window(t1, t2, return_as_popanal=True)
-        
-        # save this slice
-        list_xslices.append(PAslice)
-
-    # Save into DS
-    DS.Dat["neural_pop_slice"] = list_xslices    
-
-    ##### Combine all strokes into a single PA (consider them "trials")
-
-    from quantities import s
-    from neuralmonkey.classes.population import PopAnal
-
-    list_PAslice = DS.Dat["neural_pop_slice"].tolist()
-    CHANS = list_PAslice[0].Chans
-    TIMES = (list_PAslice[0].Times - list_PAslice[0].Times[0]) + t1_relonset*s # times all as [-predur, ..., postdur]
-
-    # get list of np arrays
-    Xall = np.concatenate([pa.X for pa in list_PAslice], axis=1)
-    PAall = PopAnal(Xall, TIMES, CHANS)
-
-    return PAall
-
-    ####################################
-
-
-
-# Which dataset to use to construct PCA?
-def pca_make_space(PA, DF, trial_agg_method, trial_agg_grouping, 
-    time_agg_method=None, 
-    norm_subtract_condition_invariant=False,
-    ploton=True):
-    """ Prperocess data (e.g,, grouping by trial and time) and then
-    Make a PopAnal object holding (i) data for PCA and (ii) the results of
-    PCA.
-    PARAMS:
-    - PA, popanal object, holds all data. 
-    - DF, dataframe, with one column for each categorical variable you care about (in DATAPLOT_GROUPING_VARS).
-    The len(DF) must equal num trials in PA (asserts this)
-    - trial_agg_grouping, list of str defining how to group trials, e.g,
-    ["shape_oriented", "gridloc"]
-    - norm_subtract_condition_invariant, bool, if True, then at each timepoint subtracts
-    mean FR across trials
-    RETURNS:
-    - PApca, a popanal holding the data that went into PCA, and the results of PCA,
-    and methods to project any new data to this space.
-    """
-
-    assert DF==None, "instead, put this in PA.Xlabels"
-
-    # First, decide whether to take mean over some way of grouping trials
-    if trial_agg_method==None:
-        # Then dont aggregate by trials
-        PApca = PA.copy()
-    elif trial_agg_method=="grouptrials":
-        # Then take mean over trials, after grouping, so shape
-        # output is (nchans, ngrps, time), where ngrps < ntrials
-        from pythonlib.tools.pandastools import grouping_append_and_return_inner_items
-        if DF is None:
-            DF = PA.Xlabels["trials"]
-        if False:
-            groupdict = grouping_append_and_return_inner_items(DF, trial_agg_grouping)
-            # groupdict = DS.grouping_append_and_return_inner_items(trial_agg_grouping)
-            PApca = PA.agg_by_trialgrouping(groupdict)         
-        else:
-            # Better, since it retains Xlabels
-            PApca = PA.slice_and_agg_wrapper("trials", trial_agg_grouping)
-    else:
-        print(trial_agg_method)
-        assert False
-
-    # First, whether to subtract mean FR at each timepoint
-    if norm_subtract_condition_invariant:
-        PApca = PApca.norm_subtract_mean_each_timepoint()
-
-    # second, whether to agg by time (optional). e..g, take mean over time
-    if time_agg_method=="mean":
-        PApca = PApca.agg_wrapper("times")
-        # PApca = PApca.mean_over_time(return_as_popanal=True)
-    else:
-        assert time_agg_method==None
-
-    print("Shape of data going into PCA (chans, trials, times):", PApca.X.shape)
-    fig = PApca.pca("svd", ploton=ploton) 
-    
-    return PApca, fig
-
-def compute_data_projections(PA, DF, MS, VERSION, REGIONS, DATAPLOT_GROUPING_VARS, 
-                            pca_trial_agg_grouping = None, pca_trial_agg_method = "grouptrials", 
-                            pca_time_agg_method = None, ploton=True):
-    """
-    Combines population nerual data (PA) and task/beh features (DF) and does (i) goruping of trials,
-    (ii) data processing, etc.
-    Process data for plotting, especialyl gropuping trials based on categorical
-    features (e..g, shape). A useful feature is projecting data to a new space
-    defined by PCA, where PCA computed on aggregated data, e..g, first get mean activity
-    for each location, then PCA on those locations (like demixed PCA).
-    
-    PARAMS:
-    - PA, popanal object, holds all data. 
-    - DF, dataframe, with one column for each categorical variable you care about (in DATAPLOT_GROUPING_VARS).
-    The len(DF) must equal num trials in PA (asserts this)
-    - MS, MultSession object, holding the "raw" neural data, has useful metadata needed for this, e.g,,
-    extracting brain regions, only good sitese, etc.
-    - VERSION, str, how to represent data. does all transfomrations required.
-    --- if "PCA", then will need the params starting with pca_*:
-    - REGIONS, list of str, brain regions, prunes data to just this
-    - DATAPLOT_GROUPING_VARS, lsit of strings, each a variable, takes conjunction to make gorups, with each
-    group a row in the resulting dataframe. this controls data represtations, but doesnt not affect the pca space.
-    - pca_trial_agg_grouping, list of str each a category, takes conjunction to defines the groups that are then
-    used for PCA.
-    - pca_trial_agg_method, pca_time_agg_method str, both strings, how to aggregate (mean) data
-    before doing PCA> grouptrials' --> take mean before PC
-    """
-    from pythonlib.tools.pandastools import applyFunctionToAllRows, grouping_append_and_return_inner_items
-    import scipy.stats as stats
-
-    if pca_trial_agg_grouping is None:
-        pca_trial_agg_grouping = ["gridloc"]
-    assert len(DF)==PA.X.shape[1], "num trials dont match"
-
-    # How to transform data
-    if VERSION=="raw":
-        YLIM = [0, 100]
-        VERSION_DAT = "raw"
-    elif VERSION=="z":
-        YLIM = [-2, 2]
-        VERSION_DAT = "raw"
-    elif VERSION=="PCA":
-        YLIM = [-50, 50]
-        VERSION_DAT = "raw"
-    else:
-        assert False
-
-    # Slice to desired chans
-    CHANS = MS.sitegetter_all(REGIONS, how_combine="intersect")
-    CHANS = [x for x in CHANS if x in PA.Chans]
-    assert len(CHANS)>0
-    PAallThis = PA._slice_by_chan(CHANS, VERSION_DAT, True)
-
-    # Construct PCA space
-    if VERSION=="PCA":
-        # Construct PCA space
-        PApca, figs_pca = pca_make_space(PAallThis, DF, pca_trial_agg_method, pca_trial_agg_grouping, pca_time_agg_method, ploton=ploton)
-    else:
-        PApca = None
-        figs_pca = None
-
-    # # Get list of sites
-    # CHANS = SN.sitegetter_all(list_regions=REGIONS, clean=CLEAN)
-
-    ################ COLLECT DATA TO PLOT
-    # Generate grouping dict for data to plot
-#     gridloc = (-1,-1) Obsolete
-    groupdict = grouping_append_and_return_inner_items(DF, DATAPLOT_GROUPING_VARS)
-    # groupdict = generate_data_groupdict(DATAPLOT_GROUPING_VARS, GET_ONE_LOC=False, gridloc=None, PRUNE_SHAPES=False)
-
-    # - for each group, get a slice of PAall
-    DatGrp = []
-    for grp, inds in groupdict.items():
-        pa = PAallThis._slice_by_trial(inds, version=VERSION_DAT, return_as_popanal=True)
-        DatGrp.append({
-            "group":grp,
-            "PA":pa})
-
-    # For each group, get a vector represenetation    
-    for dat in DatGrp:
-        pa = dat["PA"]
-        x = pa.mean_over_time()
-
-        # PCA?
-        if VERSION=="PCA":
-            # project to space constructed using entire dataset
-            x = PApca.reprojectInput(x, len(PAallThis.Chans))
-        dat["X_timemean"] = x
-        dat["X_timetrialmean"] = np.mean(x, 1)
-        dat["X_timetrialmedian"] = np.median(x, 1)
-        dat["X_timemean_trialsem"] = stats.sem(x, 1)
-        
-    # Convert to dataframe and append columns indicate labels
-    DatGrpDf = pd.DataFrame(DatGrp)
-    for i, var in enumerate(DATAPLOT_GROUPING_VARS):
-        def F(x):
-            return x["group"][i]
-        DatGrpDf = applyFunctionToAllRows(DatGrpDf, F, var)
-
-    ################## PLOTS
-    if ploton:
-        # PLOT: distribution of FR (mean vec) for each shape
-        from pythonlib.tools.plottools import subplot_helper
-        getax, figholder, nplots = subplot_helper(2, 10, len(DatGrp), SIZE=4, ASPECTWH=2, ylim=YLIM)
-        for i, dat in enumerate(DatGrp):
-            ax = getax(i)
-            x = dat["X_timemean"]
-            ax.plot(PAallThis.Chans, x, '-', alpha=0.4);
-
-        # PLOT, get mean vector for each shape, and plot overlaied
-        fig, ax = plt.subplots(1,1, figsize=(15, 4))
-        for i, dat in enumerate(DatGrp):
-            x = dat["X_timetrialmean"]
-            xerr = dat["X_timemean_trialsem"]
-            ax.plot(PAallThis.Chans, x, '-', alpha=0.4);
-        ax.set_ylim(YLIM)
-
-        print("TODO: return figs for saving")
-        
-    return DatGrp, groupdict, DatGrpDf
-
-
-def datgrp_flatten_to_dattrials(DatGrp, DATAPLOT_GROUPING_VARS):
-    """ Takes DatGrp, which is one entry per group,
-    and flattens to DfTrials, which is one entry per trial,
-    and returns as DataFrame
-    PARAMS;
-    - DatGrp, output of compute_data_projections
-    - DATAPLOT_GROUPING_VARS, used for breaking out each variable into its own column.
-    """
-    out = []
-    for Dat in DatGrp:
-
-        # extract group-level things
-        grp = Dat["group"]
-        X = Dat["X_timemean"] # processed X (nchans, ntrials)
-        ntrials = X.shape[1]
-
-        # collect one row for each trial
-        for i in range(ntrials):
-
-            # Add this trial's neural data
-            out.append({
-                "x":X[:, i],
-                "grp":grp,
-            })
-
-            # break out each label dimension
-            for i, varname in enumerate(DATAPLOT_GROUPING_VARS):
-                out[-1][varname] = grp[i]
-
-    DfTrials = pd.DataFrame(out)
-    return DfTrials
-
-def dftrials_centerize_by_group_mean(DfTrials, grouping_for_mean):
-    """ 
-    For each row, subtract the group mean for mean neural activiy;
-    PARAMS:
-    - DfTrials, df, each row a trial
-    - grouping_for_mean, list of str, conjunction is a group, e..g, 
-    ["shape_oriented", "gridsize"]
-    RETURNS:
-    - novel dataframe, same size as input, but with extra column with 
-    name "x_mean"
-    """
-    from pythonlib.tools.pandastools import aggregThenReassignToNewColumn, append_col_with_grp_index, applyFunctionToAllRows
-
-    # 1) Get grouping, then get mean, then place back into each row.
-    def F(x):
-        """ get mean activity across trials
-        """
-        import numpy as np
-        return np.mean(x["x"])
-    NEWCOL = "x_grp_mean"
-    dfnew = aggregThenReassignToNewColumn(DfTrials, F, grouping_for_mean, NEWCOL)
-
-    # 2) Append group index as tuple
-    dfnew = append_col_with_grp_index(dfnew, grouping_for_mean, "grp", False)
-
-    # 3) For each row, subtract its group's mean.
-    def F(x):
-        return x["x"] - x[NEWCOL]
-    print("**********", dfnew.columns)
-    dfnew = applyFunctionToAllRows(dfnew, F, "x_centered")
-    return dfnew
-
 
 def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None, 
     map_idxpa_to_value=None, map_idxpa_to_value_colname = None, 
@@ -1891,7 +1676,8 @@ def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None,
         for i, pa in enumerate(list_pa):
             if pa.X.shape[2]==n_min+1:
                 # then too long by one. prune it.
-                list_pa[i] = pa.slice_time_by_indices(0, -2)
+                list_pa[i] = pa.slice_by_dim_indices_wrapper("times", 0, -2)
+                # list_pa[i] = pa.slice_time_by_indices(0, -2)
             elif not pa.X.shape[2]==n_min:
                 print(list_n)
                 assert False, "time bins are not smae length acrfoss all pa..."

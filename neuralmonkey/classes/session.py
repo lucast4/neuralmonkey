@@ -341,6 +341,12 @@ class Session(object):
         else:
             assert False
 
+        # Only do kilosort if this is MINIMAL loading -- ie. meaning
+        # that all preprocessing and local stuff has been completed.
+        # Needs it to be TDT to complete preprocessing (I think?).
+        if not self._LOAD_VERSION == "MINIMAL_LOADING":
+            spikes_version = "tdt"
+
         if DEBUG_TIMING:
             ts = makeTimeStamp()
             print("@@@@ DEBUG TIMING, STARTING AT",  ts)
@@ -582,6 +588,13 @@ class Session(object):
         self.MapSiteToRegionCombined = {}
         self.MapSiteToRegion = {}
 
+        # Check if ks exists.
+        if spikes_version=="kilosort_if_exists":
+            if self.spiketimes_ks_check_if_exists():
+                spikes_version = "kilosort"
+            else:
+                spikes_version = "tdt"
+
         # Extract spikes if needed/.
         if spikes_version=="tdt":
             # pass, no need to load
@@ -589,7 +602,7 @@ class Session(object):
         elif spikes_version=="kilosort":
             # Load 
             self.spiketimes_ks_load()
-            self.spiketimes_ks_extract_alltrials()   
+            self.spiketimes_ks_extract_alltrials()
         else:
             print(spikes_version)
             assert False, "Code it"
@@ -599,18 +612,20 @@ class Session(object):
         self.SPIKES_VERSION=spikes_version
         self._SPIKES_VERSION_INPUTED = spikes_version
 
-
     ####################### PREPROCESS THINGS
     def _datasetbeh_cleanup(self):
         """ To run, useful since sometimes (MINIMAL LOADING) loads the cached dataset, which 
         might have older version of data
         """
         if self.Datasetbeh is not None:
-            self.Datasetbeh._cleanup_reloading_saved_state()
+            if False:
+                # This is now done within loading of dataset
+                self.Datasetbeh._cleanup_preprocess_each_time_load_dataset()
 
-            # Important, to reset all tokens, some which mgith be incompleted, using
-            # old code, e.g., gridloc_local
-            self.Datasetbeh.behclass_preprocess_wrapper(skip_if_exists=False)
+            if False: # 2/4/24/ now done in _cleanup_reloading_saved_state()
+                # Important, to reset all tokens, some which mgith be incompleted, using
+                # old code, e.g., gridloc_local
+                self.Datasetbeh.behclass_preprocess_wrapper(skip_if_exists=False)
 
             # sanity check that every neuiral trial has a dataset trial
             trials = self.get_trials_list(True)
@@ -1454,6 +1469,7 @@ class Session(object):
         paththis = f"{pathdir}/dataset_beh.pkl"
         with open(paththis, "rb") as f:
             self.Datasetbeh = pickle.load(f)
+            self.Datasetbeh._cleanup_preprocess_each_time_load_dataset()
 
         self.Datasetbeh.LockPreprocess = True
         self._generate_mappers_quickly_datasetbeh()
@@ -1609,6 +1625,15 @@ class Session(object):
             clusts = sorted(clusts)
         
         return clusts
+
+    def spiketimes_ks_check_if_exists(self):
+        """ Returns True if finalized (curated) kilosort
+        data exists, i.e, on server.
+        """
+        BASEDIR = "/mnt/Freiwald/kgupta/neural_data/postprocess/final_clusters/"
+        clusters_final = f"{BASEDIR}/{self.Animal}/{self.Date}/DATSTRUCT_CLEAN_MERGED.mat"
+        from os.path import isfile
+        return isfile(clusters_final)
 
     def spiketimes_ks_load(self, PRINT=False, SANITY=True):
         """ Load all kilosort data fro this session. This is manually curated and
@@ -3205,7 +3230,7 @@ class Session(object):
         it.
         """
         for i, site in enumerate(self.sitegetter_all()):
-            print(i, " -- ", self.sitegetter_summarytext(site))
+            print(f"idx {i}, site {site}, -- ", self.sitegetter_summarytext(site))
 
     def sitegetter_print_summary_nunits_by_region(self):
         """ Prints num units (clean) per region
@@ -4454,7 +4479,7 @@ class Session(object):
         """
         from pythonlib.dataset.dataset import Dataset
         from pythonlib.dataset.dataset_preprocess.general import preprocessDat
-        from pythonlib.dataset.dataset import load_dataset, load_dataset_daily_helper
+        from pythonlib.dataset.dataset import load_dataset_notdaily_helper, load_dataset_daily_helper
 
         assert self.DatAll is not None, "need to load first, run SN.extract_raw_and_spikes_helper()"
 
@@ -4468,7 +4493,7 @@ class Session(object):
             else:
                 # load saved
                 expt = self.DatasetbehExptname
-            D = load_dataset(self.Animal, expt)
+            D = load_dataset_notdaily_helper(self.Animal, expt)
         else:
             print(version)
             assert False
@@ -5267,7 +5292,7 @@ class Session(object):
                     assert event.find("off_strokeidx_")==0
 
                     # - which stroke id
-                    idx = int(event[13:])
+                    idx = int(event[14:])
 
                     # onset of idx stroke (touch)
                     _, offs = self.strokes_extract_ons_offs(trial)
@@ -6087,14 +6112,15 @@ class Session(object):
 
     ####################### GENERATE POPANAL for a trial
     def _popanal_generate_from_raw(self, frate_mat, times, chans, df_label_trials=None,
-        df_label_cols_get=None):
-        """ Low level code to generate from inputed raw fr data
+        list_df_label_cols_get=None):
+        """ Low level code to generate PopAnal from inputed raw fr data
         PARAMS:
         - frate_mat, shape (chans, trials, times)
         - times, shape (times,)
         - df_label_trials, either None (ignroes) or df labeling each trial, 
         whwere the rows match frmat[-, :, -]
-        - df_label_cols_get, which cols of df_label_trials to take.
+        - df_label_cols_get, which cols of df_label_trials to take. if NOne, then
+        will take at least "trialcode".
         RETURNS:
         - PopAnal object
         """
@@ -6104,10 +6130,11 @@ class Session(object):
 
         # Input labels
         if df_label_trials is not None:
-            if len(df_label_cols_get)==0:
-                df_label_cols_get = ["trialcode"] # need to be not empyt or else doswnsdtream daifls.
-            assert df_label_cols_get is not None and len(df_label_cols_get)>0
-            PA.labels_features_input_from_dataframe(df_label_trials, df_label_cols_get, dim="trials")
+            if len(list_df_label_cols_get)==0:
+                assert "trialcode" in df_label_trials.columns, "either pass in at least one feature, or have trialcode column"
+                list_df_label_cols_get = ["trialcode"] # need to be not empyt or else doswnsdtream daifls.
+            assert list_df_label_cols_get is not None and len(list_df_label_cols_get)>0
+            PA.labels_features_input_from_dataframe(df_label_trials, list_df_label_cols_get, dim="trials")
 
         return PA
 
@@ -6461,7 +6488,7 @@ class Session(object):
 
     def smoothedfr_extract_timewindow_bystroke(self, trials, strokeids, 
         sites, pre_dur=-0.1, post_dur=0.1,
-        fail_if_times_outside_existing=True):
+        fail_if_times_outside_existing=True, align_to="onset"):
         """ Extract smoothed fr dataset for these trials and strokeids
         """
         from quantities import s
@@ -6492,10 +6519,15 @@ class Session(object):
                 assert np.isclose(timeon, timeon_neural)
                 assert np.isclose(timeoff, timeoff_neural)
                 time_align = timeon
-            else:                
-                alignto = f"on_strokeidx_{indstrok}"
-                time_align = self.events_get_time_using_photodiode(tr, 
-                    list_events=[alignto])[alignto]
+            else:
+                if align_to=="onset":
+                    _alignto = f"on_strokeidx_{indstrok}"
+                elif align_to=="offset":
+                    _alignto = f"off_strokeidx_{indstrok}"
+                else:
+                    assert False
+                time_align = self.events_get_time_using_photodiode(tr,
+                    list_events=[_alignto])[_alignto]
                 time_align = time_align[0] # take first time in list of times.
             t1 = time_align + pre_dur
             t2 = time_align + post_dur
@@ -8961,7 +8993,8 @@ class Session(object):
         return df
 
     def snippets_extract_bystroke(self, sites, DS, pre_dur= -0.4, post_dur= 0.4,
-        features_to_get_extra=None, fr_which_version="sqrt", SANITY_CHECK=False):
+        features_to_get_extra=None, fr_which_version="sqrt", SANITY_CHECK=False,
+                                  align_to="onset"):
         """ Helper to extract snippets in flexible way, saligend to each stroke onset.
         PARAMS:
         - sites, list of ints to extract.
@@ -8995,8 +9028,14 @@ class Session(object):
 
             tc = DS.Dat.iloc[ind]["dataset_trialcode"]
             si = DS.Dat.iloc[ind]["stroke_index"]
-            trial_neural = self.datasetbeh_trialcode_to_trial(tc) 
-            event = f"on_strokeidx_{si}"
+            trial_neural = self.datasetbeh_trialcode_to_trial(tc)
+            if align_to=="onset":
+                event = f"on_strokeidx_{si}"
+            elif align_to=="offset":
+                event = f"off_strokeidx_{si}"
+            else:
+                assert False
+
             event_time = self.events_get_time_helper(event, trial_neural)[0]
 
             trials.append(trial_neural)
@@ -9028,7 +9067,8 @@ class Session(object):
         fail_if_times_outside_existing = True
         pa = self.smoothedfr_extract_timewindow_bystroke(trials, strokeids, sites, 
             pre_dur=pre_dur, post_dur=post_dur, 
-            fail_if_times_outside_existing=fail_if_times_outside_existing) 
+            fail_if_times_outside_existing=fail_if_times_outside_existing,
+            align_to=align_to)
         # print(pa.X.shape) # (chans, trials, tbins)
         # print(pa.Trials)
         # print(pa.Chans) 
@@ -9063,27 +9103,27 @@ class Session(object):
         if SANITY_CHECK:
             assert df["trialcode"].tolist() == DS.Dat.iloc[list_ind]["dataset_trialcode"].tolist()
 
-        # Compute fr scalar
-        if False:
-            # moved to snippets
-            dur = post_dur - pre_dur
-            def F(x):
-                inds = (x["spike_times"]>=pre_dur) & (x["spike_times"]<=post_dur)
-                nspk = sum(inds)
-                rate = nspk/dur
-                return rate
-            df = applyFunctionToAllRows(df, F, "fr_scalar_raw")
-
-            # tgransform the fr if desired
-            if fr_which_version=="raw":
-                df["fr_scalar"] = df["fr_scalar_raw"] 
-            elif fr_which_version=="sqrt":
-                df["fr_scalar"] = df["fr_scalar_raw"]**0.5
-            else:
-                print(fr_which_version)
-                assert False
-
-            df["fr_sm_sqrt"] = df["fr_sm"]**0.5
+        # # Compute fr scalar
+        # if False:
+        #     # moved to snippets
+        #     dur = post_dur - pre_dur
+        #     def F(x):
+        #         inds = (x["spike_times"]>=pre_dur) & (x["spike_times"]<=post_dur)
+        #         nspk = sum(inds)
+        #         rate = nspk/dur
+        #         return rate
+        #     df = applyFunctionToAllRows(df, F, "fr_scalar_raw")
+        #
+        #     # tgransform the fr if desired
+        #     if fr_which_version=="raw":
+        #         df["fr_scalar"] = df["fr_scalar_raw"]
+        #     elif fr_which_version=="sqrt":
+        #         df["fr_scalar"] = df["fr_scalar_raw"]**0.5
+        #     else:
+        #         print(fr_which_version)
+        #         assert False
+        #
+        #     df["fr_sm_sqrt"] = df["fr_sm"]**0.5
 
         return df
 
@@ -9437,7 +9477,7 @@ class Session(object):
         """ Seitch debug mode to variable passed in.
         Takes care of clearing variables that have state (memoized)
         Debug mode this prunes sites and trials, so analyses runs faster
-        """
+    """
     
         if trials==True and self._DEBUG_PRUNE_TRIALS==False:
             # Turn on debug mode
@@ -9452,6 +9492,24 @@ class Session(object):
         elif sites==True and self._DEBUG_PRUNE_SITES==False:
             self._DEBUG_PRUNE_SITES=True
 
+    #######################
+    def datamod_sitegetter_reorder_by_bregion(self, df, col="bregion"):
+        """ reorder rows of dataframe based on bregion, from top to bottom
+        RETURNS:
+            - df, sorted. DOes not modify input
+        """
+        from neuralmonkey.neuralplots.brainschematic import datamod_reorder_by_bregion
+        return datamod_reorder_by_bregion(df)
+        # if col not in df.columns:
+        #     if "region" in df.columns:
+        #         col = "region"
+        #     else:
+        #         print(df.columns)
+        #         assert False, "whichc olumn holds regions?"
+        # map_region_to_index = {region:i for i, region in enumerate(REGIONS_IN_ORDER)}
+        # def F(x):
+        #     return [map_region_to_index[xx] for xx in x] # list of ints
+        # return df.sort_values(by=col, key=lambda x:F(x))
 
 #####################################################################
 assert REGIONS_IN_ORDER == ["M1_m", "M1_l", "PMv_l", "PMv_m",

@@ -7,6 +7,8 @@ See notebook: 220713_prims_state_space
 import matplotlib.pyplot as plt
 import numpy as np
 
+assert False, "OLD. instead, use state_space_good. See analy_pca_extract.py"
+
 def get_traintest_split_conjunction(DfTrials, list_varnames, list_varlevels, verbose=False):
     """ 
     Helper to get train/test split, where test is holding out all trials for a specific
