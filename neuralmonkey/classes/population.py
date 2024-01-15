@@ -643,18 +643,24 @@ class PopAnal():
         - t1, t2, start and end time for slicing
         - fail_if_times_outside_existing, bool, if True, then self.Times must have times
         before t1 and after t2 (i.e., t1 and t2 are within range of data), otherwise raoises
-        NotEnoughDataException
+        NotEnoughDataException. if False, returns None.
         - subtract_this_from_times, scalar, will subtract from times (to recenter). or None 
         does nothing.
         RETURNS:
         - np array, (nchans, ntrials, timesliced)
+        - OR None, if not enough data, and fail_if_times_outside_existing==True
         """
 
-        if fail_if_times_outside_existing:
-            if sum(self.Times<=t1)==0 or sum(self.Times>=t2)==0:
+        if sum(self.Times<=t1)==0 or sum(self.Times>=t2)==0:
+            if fail_if_times_outside_existing:
                 print("asking for times outside data range; (min, max that exists, t1, t2):", min(self.Times), max(self.Times), t1, t2)
                 from pythonlib.tools.exceptions import NotEnoughDataException
                 raise NotEnoughDataException
+            else:
+                if return_as_popanal:
+                    return None
+                else:
+                    return None, None
 
         if not isinstance(self.Times, list):
             self.Times = np.array(self.Times)

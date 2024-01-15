@@ -207,7 +207,8 @@ class Snippets(object):
         trials_prune_just_those_including_events=True,
         fr_which_version="sqrt",
         NEW_VERSION=True,
-        SKIP_DATA_EXTRACTION =False
+        SKIP_DATA_EXTRACTION =False,
+        fail_if_times_outside_existing=True
         ):
         """ Initialize a dataset
         PARAMS:
@@ -241,6 +242,9 @@ class Snippets(object):
         # To cache sanity checks.
         self._SanityFrSmTimesIdentical = None
 
+        if fail_if_times_outside_existing==False:
+            assert which_level=="flex", "only coded for this level... just add it below."
+            
         if SKIP_DATA_EXTRACTION:
             # Then useful if tyou want to load old data.
             return
@@ -405,7 +409,8 @@ class Snippets(object):
 
             DfScalar = SN.snippets_extract_by_event_flexible(sites_keep, trials,
                 list_events, pre_dur, post_dur, 
-                features_to_get_extra=None, fr_which_version="sqrt", DEBUG=False)
+                features_to_get_extra=None, fr_which_version="sqrt", DEBUG=False,
+                fail_if_times_outside_existing=fail_if_times_outside_existing)
             ListPA = None
             DS = None
             # Fill in dummy variables
@@ -1373,7 +1378,7 @@ class Snippets(object):
             DFTHIS = self.DfScalar
 
         if site is not None:
-            assert site in DFTHIS["chan"], "This channel doesnt exist!!"
+            assert site in DFTHIS["chan"].tolist(), "This channel doesnt exist!!"
         
         if event is not None:
             if event in DFTHIS["event"].tolist():
@@ -1926,6 +1931,8 @@ class Snippets(object):
         print(var)
         print(vars_conjuction)
 
+        assert(np.all(np.diff(self.DfScalar.index)==1)), "do reset index"
+
         assert isinstance(vars_conjuction, list)
 
         df_scalar_orig_length = len(self.DfScalar)
@@ -2208,6 +2215,8 @@ class Snippets(object):
 
         print(f"COMPUTING {which_data}!!!")
         try:
+            print(EVENTS_ALREADY_DONE)
+            print(THINGS_TO_EXTRACT)
             res = self.modulationgood_compute_wrapper(var, 
                 vars_conjuction, score_ver=score_ver, get_z_score=get_z_score,
                 DEBUG_CONJUNCTIONS=DEBUG_CONJUNCTIONS,
@@ -2302,16 +2311,16 @@ class Snippets(object):
                 self.ParamsDictDfvar["params_modulationgood_compute"] = load_yaml_config(params_path)
                 self.ParamsDfvar = load_yaml_config(params_path)
 
+            params_path = f"{sdir_base}/ParamsGlobals.yaml"
             if os.path.exists(params_path):
-                params_path = f"{sdir_base}/ParamsGlobals.yaml"
                 self.ParamsDictDfvar["ParamsGlobals"] = load_yaml_config(params_path)
 
+            params_path = f"{sdir_base}/params_to_save.yaml"
             if os.path.exists(params_path):
-                params_path = f"{sdir_base}/params_to_save.yaml"
                 self.ParamsDictDfvar["params_to_save"] = load_yaml_config(params_path)
 
+            params_path = f"{sdir_base}/Params.yaml"
             if os.path.exists(params_path):
-                params_path = f"{sdir_base}/Params.yaml"
                 self.ParamsDictDfvar["Params"] = load_yaml_config(params_path)
 
         return DFTHIS, list_eventwindow_event, RELOAD_DFVAR_SUCCESSFUL, RECOMPUTED
@@ -3603,7 +3612,7 @@ class Snippets(object):
         figure for each level of the conjucntion variaable.
         """
 
-        if self.Params["which_level"]=="trial":
+        if self.Params["which_level"] in ["trial", "flex"]:
             plotfunc = lambda var, vars_conjuction, sdir, nplot: self._modulationgood_plot_drawings_variables_bytrial(var, vars_conjuction, sdir, nplot)
         elif self.Params["which_level"]=="stroke":
             plotfunc = lambda var, vars_conjuction, sdir, nplot: self._modulationgood_plot_drawings_variables(var, vars_conjuction, sdir, nplot)
@@ -3614,7 +3623,7 @@ class Snippets(object):
         # First, is this trial or stroke level.
         if self.SNmult is None:
             # Then this is a single session, plot it.
-            if self.Params["which_level"]=="trial":
+            if self.Params["which_level"] in ["trial", "flex"]:
                 return self._modulationgood_plot_drawings_variables_bytrial(var, vars_conjuction, sdir, nplot)
             else:
                 return self._modulationgood_plot_drawings_variables(var, vars_conjuction, sdir, nplot)
@@ -3631,7 +3640,7 @@ class Snippets(object):
 
                 sdir_this = f"{sdir}/session_{idx_session}"
                 os.makedirs(sdir_this, exist_ok=True)
-                if self.Params["which_level"]=="trial":
+                if self.Params["which_level"] in ["trial", "flex"]:
                     return sp._modulationgood_plot_drawings_variables_bytrial(var, vars_conjuction, sdir_this, nplot)
                 else:
                     return sp._modulationgood_plot_drawings_variables(var, vars_conjuction, sdir_this, nplot)
@@ -3657,12 +3666,19 @@ class Snippets(object):
                 indsplot = range(len(trialcodes))
 
             # Get data
-            tmp = dfsub[var].to_list()
-            titles = [tmp[i] for i in indsplot]
+            # WSRONG - is noit matching triaclodes, which are sorted(unique())
+            # tmp = dfsub[var].to_list()
+            # titles = [tmp[i] for i in indsplot]
             tcs = [trialcodes[i] for i in indsplot]
             
             # convert trialcodes to dataset indices
             inds_dat_beh = [self.SN.datasetbeh_trialcode_to_datidx(tc) for tc in tcs]
+            if var in self.SN.Datasetbeh.Dat.columns:
+                # title each subplot by its var 
+                titles = self.SN.Datasetbeh.Dat.iloc[inds_dat_beh][var].tolist()
+            else:
+                # Usually becuase this var is realted to something like eye fixations, which are not trial-level.
+                titles = self.SN.Datasetbeh.Dat.iloc[inds_dat_beh]["trialcode"].tolist()
 
             if len(inds_dat_beh)==0 or any([x is None for x in inds_dat_beh]):
                 print("trialcodes: ", trialcodes)
@@ -3674,14 +3690,12 @@ class Snippets(object):
             # -- PLOT BEH            
             fig, axes, _ = self.SN.Datasetbeh.plotMultTrials2(inds_dat_beh, "strokes_beh", titles=titles)
             for ax, tit, tcthis in zip(axes.flatten(), titles, tcs):
-                # ax.set_title(f"{var}:{tit}")
                 ax.set_ylabel(f"{tcthis}")
             fig.savefig(f"{sdir}/lev_others-{'-'.join([str(x) for x in lev_others])}-BEH.pdf")
             
             # -- PLOT TASK            
             fig, axes, _ = self.SN.Datasetbeh.plotMultTrials2(inds_dat_beh, "strokes_task", titles=titles)
             for ax, tit, tcthis in zip(axes.flatten(), titles, tcs):
-                # ax.set_title(f"{var}:{tit}")
                 ax.set_ylabel(f"{tcthis}")
             fig.savefig(f"{sdir}/lev_others-{'-'.join([str(x) for x in lev_others])}-TASK.pdf")
 
@@ -4293,16 +4307,17 @@ class Snippets(object):
                     pass
 
             # Plot for each level of user-defined conjucntions
-            from neuralmonkey.metadat.analy.anova_params import params_getter_plots
-            sn = self._session_extract_all()[0]
-            params = params_getter_plots(sn.Animal, sn.Date, self.Params["which_level"], self.ParamsDfvar["ANALY_VER"])
-            VARS_GROUP_PLOT = params["VARS_GROUP_PLOT"]
-            for vars_group in VARS_GROUP_PLOT:
-                savedirthis = f"{savedir}/vars_group/{'-'.join(vars_group)}"
-                os.makedirs(savedirthis, exist_ok=True)
-                if all([v in df_var.columns for v in vars_group]):
-                    print("Saving plots at: ", savedirthis)
-                    self.modulationgood_plot_summarystats_groupvars(df_var, vars_group, savedirthis)
+            from neuralmonkey.metadat.analy.anova_params import params_getter_plots, LIST_ANALYSES
+            if hasattr(self, "ParamsDfvar") and "ANALY_VER" in self.ParamsDfvar and self.ParamsDfvar["ANALY_VER"] in LIST_ANALYSES:
+                sn = self._session_extract_all()[0]
+                params = params_getter_plots(sn.Animal, sn.Date, self.Params["which_level"], self.ParamsDfvar["ANALY_VER"])
+                VARS_GROUP_PLOT = params["VARS_GROUP_PLOT"]
+                for vars_group in VARS_GROUP_PLOT:
+                    savedirthis = f"{savedir}/vars_group/{'-'.join(vars_group)}"
+                    os.makedirs(savedirthis, exist_ok=True)
+                    if all([v in df_var.columns for v in vars_group]):
+                        print("Saving plots at: ", savedirthis)
+                        self.modulationgood_plot_summarystats_groupvars(df_var, vars_group, savedirthis)
 
             for var_other_single in var_others: # var_other_single = "stroke_index"
 

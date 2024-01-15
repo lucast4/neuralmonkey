@@ -1482,6 +1482,10 @@ class MetricsScalar(object):
             eventscores = {}
             for event in self.ListEventsUniqname:
                 dfthis = self.Data[self.Data["event"]==event]
+                if len(dfthis)==0:
+                    print(event)
+                    print(self.Data["event"].unique())
+                    assert False, "imcorrect evemnt name?"
                 DICT_SCORE, DICT_MINSHUFF, DICT_ZSCORE = self._anova_running_wrapper_nosplits(dfthis, var, 
                         vars_others=None)
                 if return_as_score_zscore_tuple:
