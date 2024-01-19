@@ -54,6 +54,8 @@ def load_snippet_single(sn, which_level):
     # within this sp, save mapping to its session
     sp.DfScalar["session_idx"] = sess
 
+    sp.datamod_append_outliers()
+
     return sp
 
 def load_and_concat_mult_snippets(MS, which_level, SITES_COMBINE_METHODS = "intersect",
@@ -101,10 +103,12 @@ def load_and_concat_mult_snippets(MS, which_level, SITES_COMBINE_METHODS = "inte
 
         sp = load_snippet_single(sn, which_level)
 
+        # Track its origin
+        sp.DfScalar["session_neural"] = i
+
         # store
         list_sp.append(sp)
         list_sn.append(sn)
-       
 
     # 4) concatenate all sessions.
     print("This many vals across loaded session")
@@ -125,7 +129,15 @@ def load_and_concat_mult_snippets(MS, which_level, SITES_COMBINE_METHODS = "inte
     # SPall.DS = None
     SPall._CONCATTED_SNIPPETS = True
     SPall.SNmult = MS
-    SPall.DSmult = [sp.DS for sp in list_sp]
+    if True:
+        # do concat once here
+        from pythonlib.dataset.dataset_strokes import concat_dataset_strokes
+        list_ds = [sp.DS for sp in list_sp]
+        DS = concat_dataset_strokes(list_ds)
+        SPall.DS = DS
+    else:
+        # Old, but this means needs to concat each time read it.
+        SPall.DSmult = [sp.DS for sp in list_sp]
     
     # ind_sess = 0
     # trial_within = 0 
@@ -178,6 +190,8 @@ def load_and_concat_mult_snippets(MS, which_level, SITES_COMBINE_METHODS = "inte
         setattr(SPall, attr, items_combine)
         # print("items: ", len(items[0]), len(items[1]), SITES_COMBINE_METHODS, ":", len(items_combine))
 
+    SPall.Sites = sorted(SPall.Sites)
+
     # In data, keep only the sites in self.Sites
     SPall.DfScalar = SPall.DfScalar[SPall.DfScalar["chan"].isin(SPall.Sites)].reset_index(drop=True)
 
@@ -208,7 +222,8 @@ class Snippets(object):
         fr_which_version="sqrt",
         NEW_VERSION=True,
         SKIP_DATA_EXTRACTION =False,
-        fail_if_times_outside_existing=True
+        fail_if_times_outside_existing=True,
+        DS_pruned = None
         ):
         """ Initialize a dataset
         PARAMS:
@@ -232,7 +247,7 @@ class Snippets(object):
         self.DfScalarBeforePrune = None
         self.SN = SN
         self.SNmult = None
-        self.DSmult = None
+        # self.DSmult = None
         self._NEW_VERSION = NEW_VERSION
         self._SKIP_DATA_EXTRACTION = SKIP_DATA_EXTRACTION
         self._CONCATTED_SNIPPETS = False
@@ -287,10 +302,14 @@ class Snippets(object):
             post_dur = list_post_dur[0]
 
             # Each datapt matches a single stroke
-            DS = datasetstrokes_extract(dataset_pruned_for_trial_analysis,
-                strokes_only_keep_single, tasks_only_keep_these,
-                None,
-                list_features_extraction)
+            if DS_pruned is None:
+                # Then get it. Otherwise just use the input and assume you did everthing right.
+                DS = datasetstrokes_extract(dataset_pruned_for_trial_analysis,
+                    strokes_only_keep_single, tasks_only_keep_these,
+                    None,
+                    list_features_extraction)
+            else:
+                DS = DS_pruned
 
             # Filter the trials
             trials = SN.get_trials_list(True, True, only_if_in_dataset=True,
@@ -883,17 +902,17 @@ class Snippets(object):
         RETURNS:
             - modifies self.DfScalar
         """
-
-        if self.DfScalar_OutlierRows is not None:
-            if return_copy:
-                DfScalar = self.DfScalar.copy()
-                DfScalar = pd.concat([DfScalar, self.DfScalar_OutlierRows]).reset_index(drop=True)
-                return DfScalar
-            else:
-                # Mutate
-                self.DfScalar = pd.concat([self.DfScalar, self.DfScalar_OutlierRows]).reset_index(drop=True)
-                # and delete this, so you don't retry this
-                self.DfScalar_OutlierRows = None
+        if hasattr(self, "DfScalar_OutlierRows"):
+            if self.DfScalar_OutlierRows is not None:
+                if return_copy:
+                    DfScalar = self.DfScalar.copy()
+                    DfScalar = pd.concat([DfScalar, self.DfScalar_OutlierRows]).reset_index(drop=True)
+                    return DfScalar
+                else:
+                    # Mutate
+                    self.DfScalar = pd.concat([self.DfScalar, self.DfScalar_OutlierRows]).reset_index(drop=True)
+                    # and delete this, so you don't retry this
+                    self.DfScalar_OutlierRows = None
 
     def datamod_remove_outliers(self):
         """ Remove outliers based on fr_scalar, only for high fr outliers,
@@ -1031,7 +1050,14 @@ class Snippets(object):
         out_features = []
         ct = 0
         for idx in list_idx:
-            dfthis = DF[(DF[var_trial]==idx)]
+            dfthis = DF[(DF[var_trial]==idx)] # len num sites
+            assert len(dfthis)==len(chans_needed)
+            # if len(dfthis)>1:
+            #     print(len(dfthis))
+            #     print(dfthis["event"])
+            #     print(dfthis["trialcode"])
+            #     print(dfthis[var_trial])
+            #     assert False
 
             # try to slice the desired chans
             if chans_needed is None:
@@ -1067,17 +1093,28 @@ class Snippets(object):
             
             # Extract features for this trial.
             tmp ={}
+            nchecked = 0
             for feat in list_features_extraction:
-                if not len(dfthis[feat].unique())==1:
-                    print(dfthis[feat].value_counts())
-                    print("Unique:", dfthis[feat].unique())
-                    print(len(dfthis))
-                    print(idx, feat)
-                    assert False, "each datapt index should have one value for thisf eature (since its one datapt).."
-                value = dfthis[feat].unique()[0]
+                # rows should be diff sites, so they should have identical
+                # features...
+                try:
+                    if not len(dfthis[feat].unique())==1:
+                        print(dfthis[feat].value_counts())
+                        print("Unique:", dfthis[feat].unique())
+                        print(len(dfthis))
+                        print(idx, feat)
+                        assert False, "each datapt index should have one value for thisf eature (since its one datapt).."
+                    nchecked+=1
+                except TypeError as err:
+                    # ignore.... (if it succeeds for eveyrthing above, unlikely below).
+                    pass
+                    # first = dfthis[feat][0]
+                    # for item in dfthis[feat]:
+                    #     assert item == first
+                value = dfthis[feat][0]
                 tmp[feat] = value
+            assert nchecked/len(list_features_extraction)>0.5, "check at least half of vartiables..."
             out_features.append(tmp)
-
             ct+=1
         print(f"Colected {ct} out of {len(list_idx)} datapts.")
         print("NOTE: missed datapts are likely because of removed outliers")
@@ -6318,7 +6355,22 @@ class Snippets(object):
             assert False, "in progress"
             # TODO: check that this[site] is identical to unqiue list of sites
 
-    def sitegetter_map_region_to_sites(self, bregion, clean=True):
+    def animal(self):
+        """ Return string, animal"""
+        sn = self._session_extract_all()[0]
+        return sn.Animal
+
+    def date(self):
+        """ Return int, date, YYMMDD"""
+        sn = self._session_extract_all()[0]
+        return sn.Date
+
+    def bregion_list(self):
+        sn = self._session_extract_all()[0]
+        list_bregion = sn.sitegetter_get_brainregion_list()
+        return list_bregion
+
+    def sitegetter_map_region_to_sites(self, bregion):
         """ Return list of ints (sites) that are in self.Sites,
         and also for this bregion.
         RETURNS:
@@ -6329,7 +6381,7 @@ class Snippets(object):
         list_sn = self._session_extract_all()
         list_sites = []
         for sn in list_sn:
-            list_sites.extend(sn.sitegetter_map_region_to_sites(bregion))
+            list_sites.extend(sn.sitegetter_all([bregion]))
 
         # Only keep self.Sites which are in that list
         sites = [s for s in self.Sites if s in list_sites]
@@ -6425,7 +6477,8 @@ class Snippets(object):
         print(column)
         self.DfScalar[column] = dfslice[column].tolist()
 
-    def datasetbeh_append_column_helper(self, list_var, Dataset=None, DS=None):
+    def datasetbeh_append_column_helper(self, list_var, Dataset=None,
+                                        DS=None, stop_if_fail=False):
         """ Tries to append each var in list_var, looking thru
         datasetbeh and datasetstrokes. returns success (get all)
         or failure (missed at least one)
@@ -6440,7 +6493,7 @@ class Snippets(object):
         success = True
         for var in list_var:
             if var not in self.DfScalar.columns:
-                if var in DS.Dat.columns:
+                if DS is not None and var in DS.Dat.columns:
                     print("Appending... ", var)
                     self.datasetbeh_datstrokes_append_column(var, DS)
                 elif var in Dataset.Dat.columns:
@@ -6449,6 +6502,8 @@ class Snippets(object):
                 else:
                     success = False
                     print("Failed to find this var:", var)
+                    if stop_if_fail:
+                        return success
         return success
 
     def datasetbeh_append_column(self, column, Dataset=None):
@@ -6489,8 +6544,13 @@ class Snippets(object):
             return Dall
         elif kind=="datstrokes":
             # each row is stroke
-            assert self.DS is not None, "is it in SP.DSmult? or what? Code it for multiple DS< if so."
+            # if self.DS is not None:
             return self.DS
+            # else:
+            #     from pythonlib.dataset.dataset_strokes import concat_dataset_strokes
+            #     list_ds = [ds for ds in self.DSmult]
+            #     DS = concat_dataset_strokes(list_ds)
+            #     return DS
         else:
             assert False
  
@@ -6544,6 +6604,12 @@ class Snippets(object):
         self.ListPA = None
         # self.DS = None
         self._LOADED = True
+        if not hasattr(self, "DfScalar_OutlierRows"):
+            # older (before around jan 2024) saved the entier dataset including outliers...
+            # wihtout this field.
+            self.DfScalar_OutlierRows = None
+        else:
+            self.datamod_append_outliers()
 
     def _sanity_trial_and_chans_are_balanced(self, dfthis=None, trial_key="index_datapt"):
         """ Check that all channel have the same trials, and vice versa.
@@ -6825,24 +6891,25 @@ def extraction_helper(SN, which_level="trial", list_features_modulation_append=N
 
     return SP
 
-def datasetstrokes_extract(D, strokes_only_keep_single=False, tasks_only_keep_these=None, 
+def datasetstrokes_extract(D, version, strokes_only_keep_single=False, tasks_only_keep_these=None,
     prune_feature_levels_min_n_trials=None, list_features=None, vel_onset_twindow = (0, 0.2)):
     """ Helper to extract dataset strokes
     PARAMS:
     - strokes_only_keep_single, bool, if True, then prunes dataset: 
     "remove_if_multiple_behstrokes_per_taskstroke"
     """
+    from pythonlib.dataset.dataset_strokes import DatStrokes, preprocess_dataset_to_datstrokes
 
     if list_features is None:
         list_features = []
-        
+
     # 1. Extract all strokes, as bag of strokes.
-    from pythonlib.dataset.dataset_strokes import DatStrokes, preprocess_dataset_to_datstrokes
     if False:
         DS = DatStrokes(D)
     else:
         # For PIG, singleprims, etc.
-        DS = preprocess_dataset_to_datstrokes(D, version="clean_one_to_one")
+        # DS = preprocess_dataset_to_datstrokes(D, version="clean_one_to_one")
+        DS = preprocess_dataset_to_datstrokes(D, version=version)
 
     # for features you want, if they are not in DS, then try extracting from D
     for feat in list_features:

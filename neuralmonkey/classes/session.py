@@ -6442,7 +6442,8 @@ class Session(object):
 
             # slice to desired channels
             pa = pa._slice_by_chan(sites) 
-            
+
+            assert fail_if_times_outside_existing==True, "toehrwise deal with possible change in size of output."
             # Extract snip
             t1 = time_align + pre_dur
             t2 = time_align + post_dur
@@ -6531,6 +6532,9 @@ class Session(object):
                 time_align = time_align[0] # take first time in list of times.
             t1 = time_align + pre_dur
             t2 = time_align + post_dur
+
+            assert fail_if_times_outside_existing==True, "toehrwise deal with possible change in size of output."
+
             pa = pa._slice_by_time_window(t1, t2, return_as_popanal=True,
                 fail_if_times_outside_existing=fail_if_times_outside_existing,
                 subtract_this_from_times=time_align)
@@ -6617,6 +6621,8 @@ class Session(object):
                 time_align = time_align[0] # take first time in list of times.
                 t1 = time_align + pre_dur
                 t2 = time_align + post_dur
+
+                assert fail_if_times_outside_existing==True, "toehrwise deal with possible change in size of output."
 
                 try:
                     pa = pa._slice_by_time_window(t1, t2, return_as_popanal=True,

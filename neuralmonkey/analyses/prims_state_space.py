@@ -273,7 +273,9 @@ def extract_neural_snippets_aligned_to(MS, DS,
         t2 = time_align + t2_rel
         PA = SNthis.popanal_generate_save_trial(trial_neural, print_shape_confirmation=False,
                                             clean_chans=True, overwrite=True)
-        PAslice = PA._slice_by_time_window(t1, t2, return_as_popanal=True)
+        fail_if_times_outside_existing = True
+        assert fail_if_times_outside_existing==True, "toehrwise deal with possible change in size of output."
+        PAslice = PA._slice_by_time_window(t1, t2, return_as_popanal=True, fail_if_times_outside_existing=fail_if_times_outside_existing)
 
         # save this slice
         list_xslices.append(PAslice)

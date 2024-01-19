@@ -628,7 +628,8 @@ class PopAnal():
             # values are [t1, t2]
             assert len(values)==2
             assert values[1]>values[0]
-            indices = self.index_find_these_values(dim, values)
+            indices = self.index_find_this_time_window(values)
+            # indices = self.index_find_these_values(dim, values)
             assert len(indices)==2
         else:
             assert False
@@ -668,7 +669,25 @@ class PopAnal():
             assert len(inds)==2
             t1 = self.Times[inds[0]]
             t2 = self.Times[inds[1]]
-            pa = self._slice_by_time_window(t1, t2, True, True)
+
+            # make times slgitly wider, to ensure get inclusive indices. This solves
+            # problems if numerical imprecision leading to variable output sizes.
+            if inds[0]==0:
+                t1 = t1-1
+            else:
+                t1_prev = self.Times[inds[0]-1]
+                t1 -= (t1-t1_prev)/2
+
+            if inds[1]==-1 or inds[1]==len(self.Times)-1:
+                t2 = t2+1
+            else:
+                t2_next = self.Times[inds[1]+1]
+                t2 += (t2_next - t2)/2
+
+            # print(t1, t2)
+            # print(self.Times)
+            pa = self._slice_by_time_window(t1, t2, True, False)
+
             if len(self.Xlabels["times"])>0:
                 # then slice it
                 assert False, "code it"
@@ -722,8 +741,8 @@ class PopAnal():
         - t1, t2, start and end time for slicing, inclusive
         - fail_if_times_outside_existing, bool, if True, then self.Times must have times
         before t1 and after t2 (i.e., t1 and t2 are within range of data), otherwise raoises
-        NotEnoughDataException. if False, returns None.
-        - subtract_this_from_times, scalar, will subtract from times (to recenter). or None 
+        NotEnoughDataException. if False, returns whatever exists within time window..
+        - subtract_this_from_times, scalar, will subtract from times (to recenter). or None
         does nothing.
         RETURNS:
         - np array, (nchans, ntrials, timesliced)
@@ -735,11 +754,11 @@ class PopAnal():
                 print("asking for times outside data range; (min, max that exists, t1, t2):", min(self.Times), max(self.Times), t1, t2)
                 from pythonlib.tools.exceptions import NotEnoughDataException
                 raise NotEnoughDataException
-            else:
-                if return_as_popanal:
-                    return None
-                else:
-                    return None, None
+            # else:
+            #     if return_as_popanal:
+            #         return None
+            #     else:
+            #         return None, None
 
         if not isinstance(self.Times, list):
             self.Times = np.array(self.Times)
@@ -946,6 +965,16 @@ class PopAnal():
         PA.Xlabels[along_dim] = pd.DataFrame()
 
         return PA
+
+    def slice_by_labels_range(self, dim_str, dim_variable, valmin, valmax):
+        """ Returns data with variable within valmin and
+        valmax (inclusive)
+        """
+        dfthis = self.Xlabels[dim_str]
+        assert np.all(np.diff(dfthis.index))==1
+        inds = dfthis[(dfthis[dim_variable]>=valmin) & (dfthis[dim_variable]<=valmax)].index.tolist()
+        pa = self.slice_by_dim_indices_wrapper(dim_str, inds)
+        return pa
 
     def slice_by_labels(self, dim_str, dim_variable, list_values):
         """
@@ -1371,6 +1400,23 @@ class PopAnal():
         ind = np.argmin(np.abs(self.Times - time))
         return ind
 
+    def index_find_this_time_window(self, twind, time_keep_only_within_window=True):
+        """
+        Get min and max indices into self.Times, such that all values in self.Times[indices]
+        are contained within twind (ie.,a ll less than twind).
+        """
+
+        inds = self.index_find_these_values("times", twind)
+        assert len(inds)==2
+
+        if time_keep_only_within_window:
+            while self.Times[inds[0]]<twind[0]:
+                inds[0]+=1
+            while self.Times[inds[1]]>twind[1]:
+                inds[1]-=1
+
+        return inds
+
     def index_find_these_values(self, dim, values):
         """ return the indices into self.Trials or self.Chans for these values
         PARAMS;
@@ -1636,7 +1682,8 @@ def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None,
     map_idxpa_to_value=None, map_idxpa_to_value_colname = None, 
     assert_otherdims_have_same_values=True, 
     assert_otherdims_restrict_to_these=("chans", "trials", "times"),
-    all_pa_inherit_times_of_pa_at_this_index=None):
+    all_pa_inherit_times_of_pa_at_this_index=None,
+                         replace_times_with_dummy_variable=False):
     """ Concatenate multiple popanals. They must have same shape except
     for the one dim concatted along.
     PARAMS:
@@ -1653,7 +1700,10 @@ def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None,
     they are the same across pa, otherwise lsit of Nones
     the first pa.
     - all_pa_inherit_times_of_pa_at_this_index, either None (does nothign) or int, which
-    is index into list_pa. all pa will be forced to use pa.Times from this pa.
+    is index into list_pa. all pa will be forced to use pa.Times from this pa. Useful if thye
+    have differnet time bases, but you really just care about realtive time to alignment.
+    replace_times_with_dummy_variable, bool, if True, then reaplces all times with indices
+    0, 1.,,,
     RETURNS:
     - PopAnal object,
     --- or None, if inputed list_pa is empty.
@@ -1676,8 +1726,13 @@ def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None,
         for i, pa in enumerate(list_pa):
             if pa.X.shape[2]==n_min+1:
                 # then too long by one. prune it.
-                list_pa[i] = pa.slice_by_dim_indices_wrapper("times", 0, -2)
+                list_pa[i] = pa.slice_by_dim_indices_wrapper("times", [0, -2]) # takes inclusive from self.Times[0] to self.Times[-2]
                 # list_pa[i] = pa.slice_time_by_indices(0, -2)
+            # elif pa.X.shape[2]==n_min+2:
+            #     # then too long by two, e.g, onset and offset? (assumed so, but checks later). prune it.
+            #     print(pa.Times)
+            #     list_pa[i] = pa.slice_by_dim_indices_wrapper("times", [1, -2])
+            #     # list_pa[i] = pa.slice_time_by_indices(0, -2)
             elif not pa.X.shape[2]==n_min:
                 print(list_n)
                 assert False, "time bins are not smae length acrfoss all pa..."
@@ -1685,13 +1740,21 @@ def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None,
                 pass
 
     if all_pa_inherit_times_of_pa_at_this_index is not None:
+        assert replace_times_with_dummy_variable==False
         pa_base = list_pa[all_pa_inherit_times_of_pa_at_this_index]
         for pa in list_pa:
             assert len(pa.Times)==len(pa_base.Times)
             pa.Times = pa_base.Times
 
+    if replace_times_with_dummy_variable:
+        assert all_pa_inherit_times_of_pa_at_this_index is None
+        for pa in list_pa:
+            pa.Times = np.arange(len(pa.Times))
+
     # 1) Concat the data
     list_x = [pa.X for pa in list_pa]
+    # for x in list_x:
+    #     print(x.shape)
     X = np.concatenate(list_x, axis=dim)
 
     # Get the common values for the new concatted pa. if all pa have same values, then
