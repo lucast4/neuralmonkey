@@ -5,7 +5,31 @@ See snippets.modulation_plot_heatmaps_brain_schematic (move stuff here)
 
 import numpy as np
 import matplotlib.pyplot as plt
+from neuralmonkey.classes.session import REGIONS_IN_ORDER
+from pythonlib.globals import PATH_NEURALMONKEY
 
+#
+# def mapper_bregion_to_index():
+#     """ Return dict mapping bregion to index useful for
+#     consistent plotting order (hierarhcial)
+#     """
+#     from neuralmonkey.classes.session import
+
+def datamod_reorder_by_bregion(df, col="bregion"):
+    """ reorder rows of dataframe based on bregion, from top to bottom
+    RETURNS:
+        - df, sorted. DOes not modify input
+    """
+    if col not in df.columns:
+        if "region" in df.columns:
+            col = "region"
+        else:
+            print(df.columns)
+            assert False, "whichc olumn holds regions?"
+    map_region_to_index = {region:i for i, region in enumerate(REGIONS_IN_ORDER)}
+    def F(x):
+        return [map_region_to_index[xx] for xx in x] # list of ints
+    return df.sort_values(by=col, key=lambda x:F(x))
 
 def mapper_bregion_to_location():
     map_bregion_to_location = {}
@@ -87,42 +111,25 @@ def regions_get_ordered_by_x(ver="hand", prune_index=True, combined_regions=Fals
     
     return regions_ordered_by_x
 
-def plot_df(df, valname, subplot_var, savedir = None, savesuffix="", 
-        DEBUG=False, diverge=False):
+def plot_df_from_wideform(dfthis_agg_2d, savedir=None, col1_name="bregion", # just for saving
+                          subplot_var=None, valname=None, savesuffix="", # Just for saving
+                          norm_method=None,
+                          diverge=False, DEBUG=False):
+    """ Plot df that is already wide form, with rows as bregion and columns as each
+    subplot. Inputed vars are for labeling purposes, not for tforming dframe.
+    Zlim will be matched across all subplots.
     """
-    GOOD - plot given df with values in column (valname) and multiple subplots
-    (subplot_var). 
-    PARAMS:
-    - df, long-form dataframe with N rows per brain region, if N>1, then will
-    agg by taking mean.
-    - valname, str, column name in df that maps to color (e.g., "val")
-    - subplot_var, which variables levels to separate into subplots. Leave None if doesnt
-    have.
-    """
-    from pythonlib.tools.pandastools import convert_to_2d_dataframe
-    from pythonlib.globals import PATH_NEURALMONKEY
+    from pythonlib.tools.snstools import heatmap
+
     map_bregion_to_location = mapper_bregion_to_location()
 
-    if "region" in df.columns:
-        REGION = "region"
-    elif "bregion" in df.columns:
-        REGION = "bregion"
-    else:
-        print(df.columns)
-        assert False, "must be  a column called region or bregion"
-
-    # Convert to a 2d dataframe with histrogram and rgb values
-    norm_method = None
+    # Plot heatmap
     annotate_heatmap = False
     ZLIMS = [None, None]
-
-    dfthis_agg_2d, fig_hist, ax_hist, rgba_values = convert_to_2d_dataframe(df, 
-                                                 REGION, subplot_var, True, agg_method="mean", 
-                                                 val_name=valname, 
-                                                 norm_method=norm_method,
-                                                 annotate_heatmap=annotate_heatmap,
-                                                zlims = ZLIMS, diverge=diverge
-                                                )
+    fig_hist, ax_hist, rgba_values = heatmap(dfthis_agg_2d, None, annotate_heatmap, ZLIMS,
+                                   diverge=diverge, norm_method=norm_method)
+    ax_hist.set_xlabel(subplot_var)
+    ax_hist.set_ylabel(col1_name)
 
     # 1) DEFINE COORDS FOR EACH REGION
     # (horiz from left, vert from top)
@@ -135,7 +142,6 @@ def plot_df(df, valname, subplot_var, savedir = None, savesuffix="",
         map_bregion_to_location[k] = [xoffset + xmult*v[0], yoffset + ymult*v[1]]
     rad = (xmult + ymult)/4
 
-
     def _find_region_location(region):
         if region in map_bregion_to_location.keys():
             return map_bregion_to_location[region]
@@ -146,11 +152,11 @@ def plot_df(df, valname, subplot_var, savedir = None, savesuffix="",
             for k, v in map_bregion_to_location.items():
                 if region == k[3:]:
                     loc = v
-                    
+
                     # print(region, k)
                     # print(map_bregion_to_location)
                     assert FOUND==False
-                    FOUND = True        
+                    FOUND = True
             assert FOUND==True
             assert loc is not None, "didnt find!"
             return loc
@@ -159,7 +165,7 @@ def plot_df(df, valname, subplot_var, savedir = None, savesuffix="",
     list_regions = dfthis_agg_2d.index.tolist()
     for i, region in enumerate(list_regions):
         map_bregion_to_rowindex[region] = i
-        
+
     if DEBUG:
         print("\nindex -- region")
         for k, v in map_bregion_to_rowindex.items():
@@ -175,7 +181,7 @@ def plot_df(df, valname, subplot_var, savedir = None, savesuffix="",
             print(i, ' -- ' , event)
 
 
-    # PLOT:
+    # PLOT
     ncols = len(list_events)
     nrows = int(np.ceil(len(list_events)/ncols))
     fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(3*ncols, 3*nrows), squeeze=False)
@@ -183,7 +189,7 @@ def plot_df(df, valname, subplot_var, savedir = None, savesuffix="",
     for i, (ax, event) in enumerate(zip(axes.flatten(), list_events)):
 
         ax.set_title(event)
-        
+
         # 1) load a cartoon image of brain
     #     image_name = "/home/lucast4/Downloads/thumbnail_image001.png"
         # image_name = "/gorilla3/Dropbox/SCIENCE/FREIWALD_LAB/DATA/brain_drawing_template.jpg"
@@ -212,16 +218,159 @@ def plot_df(df, valname, subplot_var, savedir = None, savesuffix="",
         ax.set_xticks([])
         ax.set_yticks([])
 
-
     # SAVE FIG
     if savedir:
-        path = f"{savedir}/brainschem-{subplot_var}-{valname}-{savesuffix}.pdf"
-        path_hist = f"{savedir}/brainschem-{subplot_var}-{valname}-{savesuffix}-HIST.pdf"
+        path = f"{savedir}/brainschem-{subplot_var}-{valname}-norm_{norm_method}-{savesuffix}.pdf"
+        path_hist = f"{savedir}/brainschem-{subplot_var}-{valname}-norm_{norm_method}-{savesuffix}-HIST.pdf"
         print("Saving to: ", path)
         fig.savefig(path)
         fig_hist.savefig(path_hist)
-        
+
     return fig, axes
+
+def plot_df_from_longform(df, valname, subplot_var, savedir = None, savesuffix="",
+                          DEBUG=False, diverge=False, norm_method=None):
+    """
+    GOOD - plot given df with values in column (valname) and multiple subplots
+    (subplot_var). Must be longform. Here does aggregation by taking the mean,
+    if required.
+    PARAMS:
+    - df, long-form dataframe with N rows per brain region, if N>1, then will
+    agg by taking mean.
+    - valname, str, column name in df that maps to color (e.g., "val")
+    - subplot_var, which variables levels to separate into subplots. Leave None if doesnt
+    have.
+    """
+    from pythonlib.tools.pandastools import convert_to_2d_dataframe
+    map_bregion_to_location = mapper_bregion_to_location()
+
+    if "region" in df.columns:
+        REGION = "region"
+    elif "bregion" in df.columns:
+        REGION = "bregion"
+    else:
+        print(df.columns)
+        assert False, "must be  a column called region or bregion"
+
+    # Convert to a 2d dataframe with histrogram and rgb values
+    norm_method = None
+    annotate_heatmap = False
+    ZLIMS = [None, None]
+
+    dfthis_agg_2d, fig_hist, ax_hist, rgba_values = convert_to_2d_dataframe(df, 
+                                                 REGION, subplot_var, True, agg_method="mean", 
+                                                 val_name=valname, 
+                                                 norm_method=norm_method,
+                                                 annotate_heatmap=annotate_heatmap,
+                                                zlims = ZLIMS, diverge=diverge
+                                                )
+
+    fig, axes = plot_df_from_wideform(dfthis_agg_2d, savedir, REGION, # just for saving
+                          subplot_var, valname, savesuffix, # Just for saving
+                          norm_method,
+                          diverge, DEBUG)
+
+    return fig, axes
+
+    # "
+    # # 1) DEFINE COORDS FOR EACH REGION
+    # # (horiz from left, vert from top)
+    # xmult = 33
+    # ymult = 50
+    # # xoffset = 230 # if use entire image
+    # xoffset = 100 # if clip
+    # yoffset = 30
+    # for k, v in map_bregion_to_location.items():
+    #     map_bregion_to_location[k] = [xoffset + xmult*v[0], yoffset + ymult*v[1]]
+    # rad = (xmult + ymult)/4
+    #
+    #
+    # def _find_region_location(region):
+    #     if region in map_bregion_to_location.keys():
+    #         return map_bregion_to_location[region]
+    #     else:
+    #         # assume region is like "M1_m" and keys are like "00_M1_m"
+    #         v = None
+    #         FOUND = False
+    #         for k, v in map_bregion_to_location.items():
+    #             if region == k[3:]:
+    #                 loc = v
+    #
+    #                 # print(region, k)
+    #                 # print(map_bregion_to_location)
+    #                 assert FOUND==False
+    #                 FOUND = True
+    #         assert FOUND==True
+    #         assert loc is not None, "didnt find!"
+    #         return loc
+    #
+    # map_bregion_to_rowindex = {}
+    # list_regions = dfthis_agg_2d.index.tolist()
+    # for i, region in enumerate(list_regions):
+    #     map_bregion_to_rowindex[region] = i
+    #
+    # if DEBUG:
+    #     print("\nindex -- region")
+    #     for k, v in map_bregion_to_rowindex.items():
+    #         print(v, k)
+    #
+    # map_event_to_colindex = {}
+    # list_events = dfthis_agg_2d.columns.tolist()
+    # for i, event in enumerate(list_events):
+    #     map_event_to_colindex[event] = i
+    # if DEBUG:
+    #     print("\nindex -- event")
+    #     for event, i in map_event_to_colindex.items():
+    #         print(i, ' -- ' , event)
+    #
+    #
+    # # PLOT:
+    # ncols = len(list_events)
+    # nrows = int(np.ceil(len(list_events)/ncols))
+    # fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(3*ncols, 3*nrows), squeeze=False)
+    #
+    # for i, (ax, event) in enumerate(zip(axes.flatten(), list_events)):
+    #
+    #     ax.set_title(event)
+    #
+    #     # 1) load a cartoon image of brain
+    # #     image_name = "/home/lucast4/Downloads/thumbnail_image001.png"
+    #     # image_name = "/gorilla3/Dropbox/SCIENCE/FREIWALD_LAB/DATA/brain_drawing_template.jpg"
+    #     image_name = f"{PATH_NEURALMONKEY}/neuralplots/images/brain_drawing_template.jpg"
+    #     im = plt.imread(image_name)
+    #     im = im[:330, 130:]
+    #     ax.imshow(im)
+    #
+    # #     if i==1:
+    # #         assert False
+    #     for bregion in list_regions:
+    #         irow = map_bregion_to_rowindex[bregion]
+    #         icol = map_event_to_colindex[event]
+    #
+    #         col = rgba_values[irow, icol]
+    #         cen = _find_region_location(bregion)
+    #
+    #         # 2) each area has a "blob", a circle on this image
+    #
+    #         # print(bregion, irow, icol, col, cen)
+    #         c = plt.Circle(cen, rad, color=col, clip_on=False)
+    #         ax.add_patch(c)
+    #
+    # # Remove axis ticks
+    # for ax in axes.flatten():
+    #     ax.set_xticks([])
+    #     ax.set_yticks([])
+    #
+    #
+    # # SAVE FIG
+    # if savedir:
+    #     path = f"{savedir}/brainschem-{subplot_var}-{valname}-{savesuffix}.pdf"
+    #     path_hist = f"{savedir}/brainschem-{subplot_var}-{valname}-{savesuffix}-HIST.pdf"
+    #     print("Saving to: ", path)
+    #     fig.savefig(path)
+    #     fig_hist.savefig(path_hist)
+    #
+    # return fig, axes
 
 
 def plot_scalar_values(regions, values, diverge=False):
@@ -263,8 +412,8 @@ def plot_scalar_values(regions, values, diverge=False):
     # 1) values and regions, collect in a pandas dataframe
     df = pd.DataFrame({"region":regions, "value":values})
 
-    return plot_df(df, "value", subplot_var=None, savedir = None, savesuffix="", 
-        DEBUG=False, diverge=diverge)
+    return plot_df_from_longform(df, "value", subplot_var=None, savedir = None, savesuffix="",
+                                 DEBUG=False, diverge=diverge)
 
     # map_bregion_to_value = {}
     # for reg, val in zip(regions, rgba_values):

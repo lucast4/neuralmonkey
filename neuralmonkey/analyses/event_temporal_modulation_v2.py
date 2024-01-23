@@ -46,7 +46,7 @@ def preprocess_and_extract(SP, SAVEDIR=None):
     df_modtime = applyFunctionToAllRows(df_modtime, F, newcolname="site_region")
 
     def F(x):
-        return SP.SN.sitegetter_map_site_to_region(x["site"])
+        return SP.SN.sitegetterKS_map_site_to_region(x["site"])
     df_modtime = applyFunctionToAllRows(df_modtime, F, newcolname="region")
 
     # SAVE
@@ -65,7 +65,7 @@ def preprocess_and_extract(SP, SAVEDIR=None):
 def plot_overview(df_modtime, SP, SAVEDIR, response = "r2_time_minusmean"):
     """ Helkper for the overall plots to look at event encoding
     """
-    from neuralmonkey.neuralplots.brainschematic import plot_df
+    from neuralmonkey.neuralplots.brainschematic import plot_df_from_longform
 
     # 1) old plots
     from neuralmonkey.analyses.event_temporal_modulation import plot_overview as po
@@ -74,9 +74,9 @@ def plot_overview(df_modtime, SP, SAVEDIR, response = "r2_time_minusmean"):
     # 2) Brain schematic.
     sdir = f"{SAVEDIR}/brain_schematic"
     os.makedirs(sdir, exist_ok=True)
-    plot_df(df_modtime, "r2_time_minusmean", None, savedir=sdir)
-    plot_df(df_modtime, "r2_time", None, savedir=sdir)
-    plot_df(df_modtime, "r2_time_zscored", None, savedir=sdir)
+    plot_df_from_longform(df_modtime, "r2_time_minusmean", None, savedir=sdir)
+    plot_df_from_longform(df_modtime, "r2_time", None, savedir=sdir)
+    plot_df_from_longform(df_modtime, "r2_time_zscored", None, savedir=sdir)
 
     # 3) z-scored heatmaps of activity
     sdir = f"{SAVEDIR}/heatmaps_smfr"

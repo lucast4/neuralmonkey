@@ -133,16 +133,19 @@ if __name__=="__main__":
             DS.dataset_replace_dataset(Dall)
 
             # get fields from Dall
-            if var not in DS.Dat.columns:
-                for var in list_var_reextract:
+            for var in list_var_reextract:
+                if var not in DS.Dat.columns:
                     if var in DS.Dataset.Dat.columns:
                         # 1) append a new column in DS that has the desired variable from Dataset
+                        print("Extracting: ", var)
                         DS.dataset_append_column(var)
                     else:
                         print(var)
                         assert False, "SHOULD REGENERATE DS  with this var!!"
+                else:
+                    print("Skipping: ", var)
 
-            # concat 
+            # concat
             list_ds_dat.append(DS.Dat)
 
         # Extract the concatenated df strokes            

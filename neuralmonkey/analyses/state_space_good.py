@@ -1,23 +1,496 @@
+""" Mixture of things, related to population-level analyses.
+- DECODING
+- STATE SPACE PLOTS (trajectories)
+- RSA (NO: this moved to /rsa.py).
+"""
 
 
-import numpy as np
-from pythonlib.tools.plottools import makeColors
-from pythonlib.tools.plottools import legend_add_manual
-import matplotlib.pyplot as plt
+import os
 import pickle
-from pythonlib.tools.expttools import load_yaml_config
 
-def _compute_PCA_space(SP, pca_trial_agg_grouping, pca_time_agg_method=None,
-    list_event_window=None,
-    pca_norm_subtract_condition_invariant = True,
-    list_bregion = None,
-    list_vars_others=None,
-    do_balance=True):
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
+
+from pythonlib.tools.listtools import sort_mixed_type
+from pythonlib.tools.expttools import load_yaml_config
+from pythonlib.tools.plottools import makeColors, legend_add_manual, savefig, rotate_x_labels, rotate_y_labels
+from pythonlib.tools.expttools import writeDictToYaml
+from pythonlib.tools.pandastools import append_col_with_grp_index, convert_to_2d_dataframe
+from pythonlib.tools.snstools import rotateLabel
+
+
+def popanal_preprocess_scalar_normalization(PA, grouping_vars, subtract_mean_each_level_of_var ="IGNORE",
+                                            plot_example_chan=None,
+                                            plot_example_split_var=None,
+                                            DO_AGG_TRIALS=True):
+    """ Preprocess PA, with different options for normalization ,etc
+    PARAMS:
+    - subtract_mean_each_level_of_var, eitehr None (ignore) or str, in which case will
+    find mean fr for each level of this var, then subtract this mean from all datpts that
+    have this level for this var. e.g., if subtract_mean_each_level_of_var=="gridloc", then
+    de-means for each location.
+    """
+
+
+    # if plot_example_chan==False:
+    #     plot_example_chan = None
+    # assert isinstance(plot_example_chan, bool) or isinstance(plot_example_chan, int)
+
+    if subtract_mean_each_level_of_var is None:
+        subtract_mean_each_level_of_var = "IGNORE"
+    else:
+        assert isinstance(subtract_mean_each_level_of_var, str)
+
+    # 1) First, rescale all FR (as in Churchland stuff), but isntead of using
+    # range, use std (like z-score)
+    if False:
+        # FR
+        normvec = np.mean(np.mean(PA.X, axis=1, keepdims=True), axis=2, keepdims=True) # (chans, 1, 1)
+    else:
+        # STD (across all trials and times)
+        normvec = np.std(np.reshape(PA.X, (PA.X.shape[0], -1)), axis=1) # (chans, 1, 1)
+        assert len(normvec.shape)==1
+        normvec = np.reshape(normvec, [normvec.shape[0], 1,1])
+    normmin = np.percentile(normvec, [2.5]) # get the min, add this on to still have
+    # higher FR neurons more important
+    PAnorm = PA.copy()
+    PAnorm.X = PAnorm.X/(normvec+normmin)
+
+    # 1) subtract global mean (i.e., at each time bin)
+    PAnorm = PAnorm.norm_subtract_trial_mean_each_timepoint()
+
+    if False: # Replaced with rescale step above
+        # 2) rescale (for each time bin, across all trials
+        Xstd = np.std(PAnorm.X, axis=1, keepdims=True) # (chans, 1, times)
+        if False:
+            # Just z-score.
+            PAnorm.X = PAnorm.X/Xstd
+        else:
+            # Greater penalty for low FR neurons. I.e., This solves problem
+            # that z-score places low FR neruons at same scale as high FR.
+            # instead, this penalizes low FR.
+            fr_min_1 = np.percentile(np.mean(Xstd, axis=2), [2.5]).squeeze() # Lowest fr across channels.
+            fr_min_2 = np.percentile(np.mean(PAnorm.X, axis=2), [2.5]).squeeze() # Lowest fr across channels.
+            print(np.mean(Xstd, axis=2))
+            print(np.mean(PAnorm.X, axis=2))
+            assert False
+            PAnorm.X = PAnorm.X/(Xstd + fr_min)
+
+    # 3) Subtract mean based on grouping by other variable
+    if not subtract_mean_each_level_of_var=="IGNORE":
+        from neuralmonkey.classes.population import concatenate_popanals
+        list_pa = PAnorm.split_by_label("trials", subtract_mean_each_level_of_var)[0]
+        list_pa_norm = []
+        for pa in list_pa:
+            # subtract global mean
+            list_pa_norm.append(pa.norm_subtract_trial_mean_each_timepoint())
+        PAnorm = concatenate_popanals(list_pa_norm, "trials")
+
+    ### GET SCALARS (by averaging over time and grouping by variables of interest)
+    if DO_AGG_TRIALS:
+        # - get single "pseudotrial" for each conjunctive level
+        # vars = ["shape_oriented", "gridloc", "FEAT_num_strokes_task", "stroke_index"]
+        # vars = ["shape_oriented", "gridloc"]
+        PAagg, groupdict = PAnorm.slice_and_agg_wrapper("trials", grouping_vars, return_group_dict=True)
+        # print("Sample sizes for each level of grouping vars")
+        # for k,v in groupdict.items():
+        #     print(k, " -- ", len(v))
+        # assert False
+    else:
+        PAagg = PAnorm
+        groupdict = None
+
+    # Finally, convert to scalars.
+    PAagg = PAagg.agg_wrapper("times") # mean over time --> (chans, trials)
+
+    ######## PLOTS
+    if plot_example_chan is not None:
+        add_legend = True
+        fig, axes = plt.subplots(2,2, figsize=(8,8))
+
+        for pathis, ax in zip([PA, PAnorm, PAagg], axes.flatten()):
+            pathis.plotwrapper_smoothed_fr_split_by_label("trials", plot_example_split_var,
+                ax=ax, add_legend=add_legend, chan=plot_example_chan)
+            ax.axhline(0)
+    else:
+        fig, axes = None, None
+
+    return PAnorm, PAagg, fig, axes, groupdict
+
+
+# def rsa_distmat_quantify_same_diff_variables(Clsim, ind_var, ignore_diagonal=True):
+#     """
+#     PARAMS:
+#     - ind_var = 0 # e..g, if each row is labeled with a tuple like (shape, loc), then if
+#     ind_var==0, then this means "same" is defined as having same shape
+#     """
+#
+#     # Collect mapping
+#     map_pair_labels_to_indices = {} # (lab1, lab2) --> (col, row)
+#     for i, lr in enumerate(Clsim.Labels):
+#         for j, lc in enumerate(Clsim.LabelsCols):
+#             # only take off diagonal
+#             if ignore_diagonal:
+#                 if i>=j:
+#                     continue
+#             else:
+#                 if i>j:
+#                     continue
+#             map_pair_labels_to_indices[(lr, lc)] = (i, j)
+#
+#     # Find the coordinates of "same" and "diff" pairs.
+#     # given a var dimension, get all indices that are "same" along that dimension
+#     list_inds_same = []
+#     list_inds_diff = []
+#     for lab_pair, inds in map_pair_labels_to_indices.items():
+#         a = lab_pair[0][ind_var]
+#         b = lab_pair[1][ind_var]
+#         if a==b:
+#             # then is "same"
+#             list_inds_same.append(inds)
+#         else:
+#             list_inds_diff.append(inds)
+#
+#     # Collect data
+#     list_i = [x[0] for x in list_inds_same]
+#     list_j = [x[1] for x in list_inds_same]
+#     vals_same = Clsim.Xinput[(list_i, list_j)]
+#
+#     list_i = [x[0] for x in list_inds_diff]
+#     list_j = [x[1] for x in list_inds_diff]
+#     vals_diff = Clsim.Xinput[(list_i, list_j)]
+#
+#     return vals_same, vals_diff
+
+
+
+# def load_single_data(RES, bregion, twind, which_level):
+#     """ Helper to load...
+#     """
+#
+#     tmp = [res for res in RES if res["which_level"]==which_level]
+#     if len(tmp)!=1:
+#         print(tmp)
+#         assert False
+#     res = tmp[0]
+#
+#     # Extract specifics
+#     key = (bregion, twind)
+#     PA = res["DictBregionTwindPA"][key]
+#     Clraw = res["DictBregionTwindClraw"][key]
+#     Clsim = res["DictBregionTwindClsim"][key]
+#
+#     return res, PA, Clraw, Clsim
+
+
+def snippets_extract_popanals_split_bregion_twind(SP, list_time_windows, EFFECT_VARS=None):
+    """ Extraction of specific PopAnals for each conjunction of (twind, bregion).
+    PARAMS:
+    - list_time_windowsm, list of timw eindow, tuples .e.g, (-0.2, 0.2), each defining a specific
+    extracvted PA.
+    - EFFECT_VARS, list of str, vars to extract, mainly to make sure the etracted PA have all
+    variables. If not SKIP_ANALY_PLOTTING, then these also determine which plots.
+    RETURNS:
+    - DictBregionTwindPA, dict, mapping (bregion, twind) --> pa.
+    All PAs guaradteeed to have iodentical (:, trials, times).
+    """
+    from pythonlib.tools.pandastools import append_col_with_grp_index
+
+    list_features_extraction_stroke = [
+                                "stroke_index", "stroke_index_fromlast", "stroke_index_fromlast_tskstks",
+                                "stroke_index_semantic", "stroke_index_semantic_tskstks",
+                                "shape_oriented", "gridloc",
+                                "CTXT_loc_next", "CTXT_shape_next",
+                                "CTXT_loc_prev", "CTXT_shape_prev",
+                                "gap_from_prev_angle_binned", "gap_to_next_angle_binned",
+                                "gap_from_prev_angle", "gap_to_next_angle",
+                                "distcum", "displacement", "circularity"]
+
+    list_features_extraction_trial = ["trialcode", "aborted", "trial_neural", "event_time", "task_kind", "gridsize",
+                                      "FEAT_num_strokes_task", "FEAT_num_strokes_beh",
+                                      "character", "probe", "supervision_stage_new", "supervision_stage_concise",
+                                      "epoch_orig", "epoch", "taskgroup",
+                                      "char_seq",
+                                      "origin", "donepos"]
+    n_strok_max = 4
+    for i in range(n_strok_max):
+        for suff in ["shape", "loc", "loc_local"]:
+            list_features_extraction_trial.append(f"seqc_{i}_{suff}")
+    list_features_extraction_trial.append("seqc_nstrokes_beh")
+    list_features_extraction_trial.append("seqc_nstrokes_task")
+
+    # Features that should always extract (Strokes dat)
+    if SP.Params["which_level"]=="stroke":
+        list_features_extraction = list_features_extraction_trial + list_features_extraction_stroke
+        # list_features_extraction = ["trialcode", "aborted", "trial_neural", "event_time", "task_kind",
+        #                             "stroke_index", "stroke_index_fromlast", "stroke_index_fromlast_tskstks",
+        #                             "stroke_index_semantic", "stroke_index_semantic_tskstks",
+        #                             "shape_oriented", "gridloc", "gridsize",
+        #                             "FEAT_num_strokes_task", "FEAT_num_strokes_beh",
+        #                             "CTXT_loc_next", "CTXT_shape_next",
+        #                             "CTXT_loc_prev", "CTXT_shape_prev",
+        #                             "gap_from_prev_angle_binned", "gap_to_next_angle_binned",
+        #                             "gap_from_prev_angle", "gap_to_next_angle",
+        #                             "distcum", "displacement", "circularity"
+        #                             ]
+    elif SP.Params["which_level"]=="trial":
+        list_features_extraction = list_features_extraction_trial
+    else:
+        print(SP.Params["which_level"])
+        assert False
+
+    if EFFECT_VARS is None:
+        EFFECT_VARS = []
+
+    ######################## PREPPING
+    # get back all the outliers, since they just a single removed outlier (chan x trial) will throw out the entire trial.
+    SP.datamod_append_outliers()
+    SP.datamod_append_unique_indexdatapt()
+
+    # Append variables by hand
+    # Prep dataset, for later variable extraction
+    D = SP.datasetbeh_extract_dataset()
+    if "FEAT_num_strokes_task" not in D.Dat.columns:
+        D.extract_beh_features()
+    if "char_seq" not in D.Dat.columns:
+        D.sequence_char_taskclass_assign_char_seq()
+    if "seqc_nstrokes_task" not in D.Dat.columns:
+        D.seqcontext_preprocess()
+
+    # SP.datasetbeh_append_column("FEAT_num_strokes_task", D)
+    # SP.datasetbeh_append_column("aborted", D)
+
+    # For the rest, try to get automatically.
+    vars_to_extract = EFFECT_VARS + list_features_extraction
+    assert SP.datasetbeh_append_column_helper(vars_to_extract, D, stop_if_fail=True)==True # Extract all the vars here
+
+    # Conjunction of stroke index and num strokes in task.
+    if False:
+        SP.DfScalar = append_col_with_grp_index(SP.DfScalar, ["FEAT_num_strokes_task", "stroke_index"], "nstk_stkidx", False)
+
+    ####################### EXTRACT DATA
+    list_features_extraction = list(set(list_features_extraction + EFFECT_VARS))
+    list_bregion = SP.bregion_list()
+
+    # 1) Extract population data
+    DictEvBrTw_to_PA = {}
+    for event in SP.Params["list_events_uniqnames"]:
+        # assert len(SP.Params["list_events_uniqnames"])==1, "assuming is strokes, just a single event... otherwise iterate"
+        # event = SP.Params["list_events_uniqnames"][0]
+        PA, _ = SP.dataextract_as_popanal_statespace(SP.Sites, event,
+                                                     list_features_extraction=list_features_extraction,
+                                                  which_fr_sm = "fr_sm", max_frac_trials_lose=0.02)
+
+        # print("These are requested sites:", SP.Sites)
+        # print("These are extracted sites:", PA.Chans)
+
+        # Split PA based on chans (e.g., bregions), times (e.g., different time slices) BEFORE doing downstream analyses
+        DictBregionTwindPA = {}
+        trials = None
+        xlabels_times = None
+        xlabels_trials = None
+        for twind in list_time_windows:
+            times = None
+            for bregion in list_bregion:
+                # Bregion
+                chans_needed = SP.sitegetter_map_region_to_sites(bregion)
+                pa = PA.slice_by_dim_values_wrapper("chans", chans_needed)
+                # Times
+                pa = pa.slice_by_dim_values_wrapper("times", twind)
+
+
+                # sanity check that all pa are identical
+                if trials is not None:
+                    assert pa.Trials == trials
+                if times is not None:
+                    # print(list(pa.Times))
+                    # print(list(times))
+                    assert list(pa.Times) == list(times)
+                if xlabels_trials is not None:
+                    assert pa.Xlabels["trials"].equals(xlabels_trials)
+                if xlabels_times is not None:
+                    assert pa.Xlabels["times"].equals(xlabels_times)
+
+                # Update all
+                trials = pa.Trials
+                times = pa.Times
+                xlabels_trials = pa.Xlabels["trials"]
+                xlabels_times = pa.Xlabels["times"]
+
+                # DictBregionTwindPA[(bregion, twind)] = pa
+                DictEvBrTw_to_PA[(event, bregion, twind)] = pa
+                print(event, " -- ", bregion, " -- ", twind, " -- (data shape:)", pa.X.shape)
+
+    return DictEvBrTw_to_PA
+
+    # #################### COMPUTE DISTANCE MATRICES AND SCORE RELATIVE TO THEORETICAL MATRICES.
+    # PLOT = PLOT_INDIV
+    # list_dfres = []
+    # list_dfres_theor = []
+    # DictBregionTwindClraw = {}
+    # DictBregionTwindClsim = {}
+    # ct = 0
+    # for (bregion, twind), pa in DictBregionTwindPA.items():
+    #     print("Scoring, for: ", bregion, twind)
+    #
+    #     sdir = f"{savedir}/preprocess/{bregion}-{twind}"
+    #     os.makedirs(sdir, exist_ok=True)
+    #     print("Saving to: ", sdir)
+    #
+    #     PLOT_THEORETICAL_SIMMATS = ct==0 and PLOT==True # Only do once. this same across bregions and twinds.
+    #     dfres_same_diff, dfres_theor, Clraw, Clsim, PAagg = _preprocess_rsa_scalar_population(pa, EFFECT_VARS, version_distance,
+    #                                                                                           PLOT=PLOT,
+    #                                                                                           sdir=sdir,
+    #                                                                                           subtract_mean_each_level_of_var=subtract_mean_each_level_of_var,
+    #                                                                                            PLOT_THEORETICAL_SIMMATS=PLOT_THEORETICAL_SIMMATS)
+    #
+    #     # Collect results
+    #     dfres_same_diff["bregion"] = bregion
+    #     dfres_same_diff["twind"] = [twind for _ in range(len(dfres_same_diff))]
+    #     dfres_theor["bregion"] = bregion
+    #     dfres_theor["twind"] = [twind for _ in range(len(dfres_theor))]
+    #
+    #     list_dfres.append(dfres_same_diff)
+    #     list_dfres_theor.append(dfres_theor)
+    #
+    #     DictBregionTwindClraw[(bregion, twind)] = Clraw
+    #     DictBregionTwindClsim[(bregion, twind)] = Clsim
+    #
+    #     plt.close("all")
+    #
+    # DFRES_SAMEDIFF = pd.concat(list_dfres).reset_index(drop=True)
+    # DFRES_THEOR = pd.concat(list_dfres_theor).reset_index(drop=True)
+    #
+    # ###############################
+    # # SUMMARY PLOTS
+    # sdir = f"{savedir}/summary"
+    # os.makedirs(sdir, exist_ok=True)
+    #
+    # ########################### 1. Same (level within var) vs. diff.
+    # if version_distance=="pearson":
+    #     GROUPING_LEVELS = ["diff", "same"]
+    # elif version_distance=="euclidian":
+    #     GROUPING_LEVELS = ["same", "diff"]
+    # else:
+    #     assert False
+    # dfsummary, dfsummaryflat, COLNAMES_NOABS, COLNAMES_ABS, COLNAMES_DIFF = summarize_featurediff(DFRES_SAMEDIFF,
+    #                                                                                               "same_or_diff", GROUPING_LEVELS, ["mean"], ["ind_var", "ind_var_str", "bregion", "sort_order", "grouping_vars", "subtract_mean_each_level_of_var"])
+    # dfsummaryflat = SP.SN.datamod_sitegetter_reorder_by_bregion(dfsummaryflat)
+    #
+    # # Summarize all
+    # var_subplot = ["grouping_vars", "subtract_mean_each_level_of_var"]
+    # _, fig = plot_45scatter_means_flexible_grouping(dfsummaryflat, "ind_var_str", "shape_oriented", "gridloc", var_subplot, "value", "bregion");
+    # savefig(fig, f"{sdir}/plot45_same_vs_diff-1.pdf")
+    # if "stroke_index" in EFFECT_VARS:
+    #     _, fig = plot_45scatter_means_flexible_grouping(dfsummaryflat, "ind_var_str", "shape_oriented", "stroke_index", var_subplot, "value", "bregion");
+    #     savefig(fig, f"{sdir}/plot45_same_vs_diff-2.pdf")
+    #     _, fig = plot_45scatter_means_flexible_grouping(dfsummaryflat, "ind_var_str", "gridloc", "stroke_index", var_subplot, "value", "bregion");
+    #     savefig(fig, f"{sdir}/plot45_same_vs_diff-3.pdf")
+    # plt.close("all")
+    #
+    # if False:
+    #     # Not working, problem is dfthis comes up empty. easy fix.
+    #     # Is redundant given the following "theoretical comparison" plots.
+    #     # Plot for each grouping_vars
+    #
+    #     grouping_vars = ("shape_oriented", "gridloc", "stroke_index")
+    #     # grouping_vars = ["shape_oriented", "gridloc"]
+    #     a = DFRES_SAMEDIFF["grouping_vars"].isin([grouping_vars])
+    #     b = DFRES_SAMEDIFF["subtract_mean_each_level_of_var"].isin(["IGNORE"])
+    #     dfthis = DFRES_SAMEDIFF[(a) & (b)]
+    #
+    #     a = dfsummaryflat["grouping_vars"].isin([grouping_vars])
+    #     b = dfsummaryflat["subtract_mean_each_level_of_var"].isin(["IGNORE"])
+    #
+    #     dfthis_diff = dfsummaryflat[(a) & (b)]
+    #     dfthis_diff
+    #     from pythonlib.tools.pandastools import plot_pointplot_errorbars
+    #     from pythonlib.tools.plottools import rotate_x_labels
+    #
+    #     # pull out the non-hierarchical dataframes
+    #     fig, axes = plt.subplots(2,2, figsize=(10,10), sharey=True)
+    #     list_ind_var = sorted(dfthis["ind_var"].unique().tolist())
+    #     list_same_diff = ["same", "diff"]
+    #     ct = 0
+    #     for ind_var, ax in zip(list_ind_var, axes.flatten()):
+    #         ind_var_str = grouping_vars[ind_var]
+    #         ax.set_title(ind_var_str)
+    #         ct+=1
+    #         for same_diff in list_same_diff:
+    #             dfthisthis = dfthis[dfthis["ind_var"]==ind_var]
+    #             plot_pointplot_errorbars(dfthisthis, "bregion", "mean", ax=ax, yvar_err=f"sem", hue="same_or_diff")
+    #             # assert False
+    #             #
+    #             # x=dfthisthis["bregion"]
+    #             # y=dfthisthis[f"{same_diff}_mean"]
+    #             # yerr = dfthisthis[f"{same_diff}_sem"]
+    #             # lab = f"{same_diff}-{ind_var_str}"
+    #             # ax.errorbar(x=x, y=y, yerr=yerr, label=lab)
+    #             # # ax.bar(x, y, yerr=yerr, label=lab, alpha=0.4)
+    #             # # sns.barplot(data=dfthisthis, x="bregion", y="same_mean", yerr=dfthisthis["same_sem"])
+    #
+    #         ax.axhline(0, color="k", alpha=0.25)
+    #         rotate_x_labels(ax, 75)
+    #         ax.legend()
+    #
+    #     ax = axes.flatten()[ct]
+    #     list_ind_var = sorted(dfthis["ind_var"].unique().tolist())
+    #     list_same_diff = ["same", "diff"]
+    #     for ind_var in list_ind_var:
+    #         ind_var_str = grouping_vars[ind_var]
+    #         dfthisthis = dfthis_diff[dfthis_diff["ind_var"]==ind_var]
+    #
+    #         x=dfthisthis["bregion"]
+    #         y=dfthisthis["value"]
+    #         lab = f"{ind_var_str}"
+    #         ax.plot(x, y, label=lab)
+    #
+    #     ax.axhline(0, color="k", alpha=0.25)
+    #     rotate_x_labels(ax, 75)
+    #     ax.legend()
+    #
+    # #################### 2. Comparing data simmat to theoretical simmats.
+    # for yvar in ["cc", "mr_coeff"]:
+    #     fig = sns.catplot(data=DFRES_THEOR, x="bregion", y=yvar, hue="var", kind="point", aspect=1.5,
+    #                     row="twind")
+    #     rotateLabel(fig)
+    #     savefig(fig, f"{sdir}/vs_theor_simmat-pointplot-{yvar}.pdf")
+    #
+    #     fig = sns.catplot(data=DFRES_THEOR, x="bregion", y=yvar, hue="var", alpha=0.5, aspect=1.5, row="twind")
+    #     rotateLabel(fig)
+    #     savefig(fig, f"{sdir}/vs_theor_simmat-scatterplot-{yvar}.pdf")
+    #
+    #     # Summarize results in a heatmap (region x effect)
+    #     for norm in ["col_sub", "row_sub", None]:
+    #         for twind in list_time_windows:
+    #             dfthis = DFRES_THEOR[DFRES_THEOR["twind"] == twind]
+    #             _, fig, _, _ = convert_to_2d_dataframe(dfthis, "bregion", "var",
+    #                                                    True, "mean",
+    #                                                    yvar, annotate_heatmap=False, dosort_colnames=False,
+    #                                                    norm_method=norm)
+    #             savefig(fig, f"{sdir}/vs_theor_simmat-heatmap-{yvar}-norm_{norm}-twind_{twind}.pdf")
+    #
+    #             plt.close("all")
+    #
+    # return DFRES_SAMEDIFF, DFRES_THEOR, DictBregionTwindPA, \
+    #     DictBregionTwindClraw, DictBregionTwindClsim, savedir
+
+
+def preprocess_pca(SP, pca_trial_agg_grouping, pca_time_agg_method=None,
+                   list_event_window=None,
+                   pca_norm_subtract_condition_invariant = True,
+                   list_bregion = None,
+                   list_vars_others=None,
+                   do_balance=True):
     # pca_trial_agg_grouping = "epoch"
     # pca_trial_agg_grouping = "seqc_0_shape"
     # list_bregion = ["PMv_m"]
+
+    assert False, "Quicker: first extract PA using PA, _ = SP.dataextract_as_popanal_statespace, then split into bregions and timw windows, then do below. see rsa for how donw."
     import pandas as pd
-    
+
     if list_bregion is None:
         from neuralmonkey.classes.session import REGIONS_IN_ORDER as list_bregion
 
@@ -25,20 +498,20 @@ def _compute_PCA_space(SP, pca_trial_agg_grouping, pca_time_agg_method=None,
     for i, (event, pre_dur, post_dur) in enumerate(list_event_window):
         # Get PCA space using all data in window
         for bregion in list_bregion:
-            
+
             print(f"{event} - {pre_dur} - {post_dur} - {bregion}")
-            
+
             # Get sites for this regions
             sites = SP.sitegetter_map_region_to_sites(bregion)
-            
+
             # Do PCA
-            PApca, fig, PA, sample_meta = SP._statespace_pca_compute_spaces(sites, event, pre_dur, post_dur, 
-                                               pca_trial_agg_grouping=pca_trial_agg_grouping,
-                                               pca_time_agg_method=pca_time_agg_method,
-                                               pca_norm_subtract_condition_invariant=pca_norm_subtract_condition_invariant,
-                                               pca_plot=False,
-                                               list_vars_others=list_vars_others,
-                                               do_balance=do_balance)            
+            PApca, fig, PA, sample_meta = SP.dataextract_as_popanal_statespace_balanced_pca(sites, event, pre_dur, post_dur,
+                                                                                            pca_trial_agg_grouping=pca_trial_agg_grouping,
+                                                                                            pca_time_agg_method=pca_time_agg_method,
+                                                                                            pca_norm_subtract_condition_invariant=pca_norm_subtract_condition_invariant,
+                                                                                            pca_plot=False,
+                                                                                            list_vars_others=list_vars_others,
+                                                                                            do_balance=do_balance)
 
             RES.append({
                 "event":event,
@@ -54,6 +527,65 @@ def _compute_PCA_space(SP, pca_trial_agg_grouping, pca_time_agg_method=None,
     DF_PA_SPACES = pd.DataFrame(RES)
 
     return DF_PA_SPACES
+
+# Which dataset to use to construct PCA?
+# def pca_make_space(PA, DF, trial_agg_method, trial_agg_grouping,
+#     time_agg_method=None,
+#     norm_subtract_condition_invariant=False,
+#     ploton=True):
+#     """ Prperocess data (e.g,, grouping by trial and time) and then
+#     Make a PopAnal object holding (i) data for PCA and (ii) the results of
+#     PCA.
+#     PARAMS:
+#     - PA, popanal object, holds all data.
+#     - DF, dataframe, with one column for each categorical variable you care about (in DATAPLOT_GROUPING_VARS).
+#     The len(DF) must equal num trials in PA (asserts this)
+#     - trial_agg_grouping, list of str defining how to group trials, e.g,
+#     ["shape_oriented", "gridloc"]
+#     - norm_subtract_condition_invariant, bool, if True, then at each timepoint subtracts
+#     mean FR across trials
+#     RETURNS:
+#     - PApca, a popanal holding the data that went into PCA, and the results of PCA,
+#     and methods to project any new data to this space.
+#     """
+#
+#     assert DF==None, "instead, put this in PA.Xlabels"
+#
+#     # First, decide whether to take mean over some way of grouping trials
+#     if trial_agg_method==None:
+#         # Then dont aggregate by trials
+#         PApca = PA.copy()
+#     elif trial_agg_method=="grouptrials":
+#         # Then take mean over trials, after grouping, so shape
+#         # output is (nchans, ngrps, time), where ngrps < ntrials
+#         if DF is None:
+#             DF = PA.Xlabels["trials"]
+#         if False:
+#             groupdict = grouping_append_and_return_inner_items(DF, trial_agg_grouping)
+#             # groupdict = DS.grouping_append_and_return_inner_items(trial_agg_grouping)
+#             PApca = PA.agg_by_trialgrouping(groupdict)
+#         else:
+#             # Better, since it retains Xlabels
+#             PApca = PA.slice_and_agg_wrapper("trials", trial_agg_grouping)
+#     else:
+#         print(trial_agg_method)
+#         assert False
+#
+#     # First, whether to subtract mean FR at each timepoint
+#     if norm_subtract_condition_invariant:
+#         PApca = PApca.norm_subtract_mean_each_timepoint()
+#
+#     # second, whether to agg by time (optional). e..g, take mean over time
+#     if time_agg_method=="mean":
+#         PApca = PApca.agg_wrapper("times")
+#         # PApca = PApca.mean_over_time(return_as_popanal=True)
+#     else:
+#         assert time_agg_method==None
+#
+#     print("Shape of data going into PCA (chans, trials, times):", PApca.X.shape)
+#     fig = PApca.pca("svd", ploton=ploton)
+#
+#     return PApca, fig
 
 def _preprocess_extract_PApca(DF_PA_SPACES, event_wind, bregion):
     tmp = DF_PA_SPACES[(DF_PA_SPACES["event_wind"]==event_wind) & (DF_PA_SPACES["bregion"]==bregion)]
@@ -71,7 +603,7 @@ def _preprocess_extract_plot_params(SP, PApca):
 def plot_statespace_grpbyevent_overlay_othervars(PApca, SP, var, vars_others, PLOT_TRIALS=False,
     dims_pc = (0,1), alpha_mean=0.5, alpha_trial=0.2, n_trials_rand=10, time_windows_mean=None,
     list_event_data=None):
-    
+
     if list_event_data is None:
         # get all events
         list_event_data, _ = _preprocess_extract_plot_params(SP, PApca)
@@ -98,7 +630,7 @@ def plot_statespace_grpbyevent_overlay_othervars(PApca, SP, var, vars_others, PL
                 ax, PLOT_TRIALS, dims_pc, alpha_mean, alpha_trial, n_trials_rand)
     return fig
 
-    
+
 def plot_statespace_grpbyevent(PApca, SP, var, vars_others, PLOT_TRIALS=False,
     dims_pc = (0,1), time_windows_mean=None, alpha_mean=0.5, alpha_trial=0.2,
     n_trials_rand=10):
@@ -143,9 +675,9 @@ def plot_statespace_grpbyvarsothers(event, PApca, SP, var, vars_others, PLOT_TRI
 
 
     # Extract data for this event
-    list_event, sites = _preprocess_extract_plot_params(SP, PApca)    
+    list_event, sites = _preprocess_extract_plot_params(SP, PApca)
     DICT_DF_DAT, levels_var, levels_othervar = SP._statespace_pca_extract_data(sites, event, var, vars_others)
-        
+
     list_cols = makeColors(len(levels_var))
 
     # print("levels_var:", levels_var)
@@ -169,10 +701,10 @@ def plot_statespace_grpbyvarsothers(event, PApca, SP, var, vars_others, PLOT_TRI
 
                 _plot_statespace_df_on_ax(PApca, SP, df, time_windows_mean,
                     ax, col, PLOT_TRIALS, dims_pc, alpha_mean, n_trials_rand=n_trials_rand)
-                    
+
         # overlay legend
         legend_add_manual(ax, levels_var, list_cols, 0.2)
-        
+
     return fig
 
 def _plot_statespace_dfmult_on_ax(DICT_DF_DAT, PApca, SP, time_windows_mean,
@@ -182,15 +714,15 @@ def _plot_statespace_dfmult_on_ax(DICT_DF_DAT, PApca, SP, time_windows_mean,
     list_cols = makeColors(len(DICT_DF_DAT))
 
     for (key, df), col in zip(DICT_DF_DAT.items(), list_cols):
-    
+
         if len(df)==0:
             print(f"No data, skipping: {key}")
             continue
-            
+
         _plot_statespace_df_on_ax(PApca, SP, df, time_windows_mean,
             ax, col, PLOT_TRIALS, dims_pc, alpha_mean, alpha_trial=alpha_trial,
             n_trials_rand=n_trials_rand)
-        
+
     # overlay legend
     legend_add_manual(ax, list(DICT_DF_DAT.keys()), list_cols, 0.1)
 
@@ -215,7 +747,7 @@ def _plot_statespace_df_on_ax(PApca, SP, df, time_windows_mean,
 
     # convert to pa
     # get frmat from data
-    PAdata = SP._dataextract_as_popanal_good(df, chans_needed=sites)    
+    PAdata = SP.dataextract_as_popanal_good(df, chans_needed=sites)
 
     if time_windows_mean is not None:
         PAdata.X, PAdata.Times = PAdata.agg_by_time_windows(time_windows=time_windows_mean)
@@ -241,7 +773,7 @@ def _plot_statespace_df_on_ax(PApca, SP, df, time_windows_mean,
 
         for trial in trials_plot:
             frmat = PAdata.X[:, trial, :]
-            PApca.statespace_pca_plot_projection(frmat, ax, dims_pc=dims_pc, color_for_trajectory=col, 
+            PApca.statespace_pca_plot_projection(frmat, ax, dims_pc=dims_pc, color_for_trajectory=col,
                                         times=PAdata.Times, times_to_mark=times_to_mark,
                                          times_to_mark_markers=times_to_mark_markers,
                                          alpha = alpha_trial,
@@ -249,7 +781,7 @@ def _plot_statespace_df_on_ax(PApca, SP, df, time_windows_mean,
 
     # Overlay the mean trajectory for a level            
     frmean = np.mean(PAdata.X, axis=1)
-    PApca.statespace_pca_plot_projection(frmean, ax, dims_pc=dims_pc, color_for_trajectory=col, 
+    PApca.statespace_pca_plot_projection(frmean, ax, dims_pc=dims_pc, color_for_trajectory=col,
                                         times=PAdata.Times, times_to_mark=times_to_mark,
                                          times_to_mark_markers=times_to_mark_markers,
                                          alpha = alpha_mean,
@@ -264,7 +796,7 @@ def plotwrapper_statespace_mult_events():
     PApca = tmp["PApca"].item()
 
     # WHICH DATA?
-    fig = plot_statespace_grpbyevent(PApca, SP, var_dat, vars_others_dat, dims_pc = dims_pc, 
+    fig = plot_statespace_grpbyevent(PApca, SP, var_dat, vars_others_dat, dims_pc = dims_pc,
                                   time_windows_mean = time_windows_traj, alpha_mean=0.2,
                                   PLOT_TRIALS=PLOT_TRIALS)
     fig.savefig(f"{SAVEDIR}/eventpca_{event_wind}-{bregion}-var_{var}-OV_{[str(x) for x in vars_others]}.pdf")
@@ -272,7 +804,7 @@ def plotwrapper_statespace_mult_events():
 
 def plotwrapper_statespace_single_event_bregion(DF_PA_SPACES, SP, event_wind_pca, bregion, event_dat,
                              var_dat, vars_others_dat, time_windows_traj=None,
-                             savedir=None, dims_pc = (0,1), 
+                             savedir=None, dims_pc = (0,1),
                              PLOT_TRIALS=False, n_trials_rand=10,
                              alpha_mean=0.5, alpha_trial=0.2):
     """
@@ -285,14 +817,14 @@ def plotwrapper_statespace_single_event_bregion(DF_PA_SPACES, SP, event_wind_pca
     tmp = DF_PA_SPACES[(DF_PA_SPACES["event_wind"]==event_wind_pca) & (DF_PA_SPACES["bregion"]==bregion)]
     assert len(tmp)==1
     PApca = tmp["PApca"].item()
-    
+
     _, sites = _preprocess_extract_plot_params(SP, PApca)
 
     LIST_FIG = []
 
     ##### 1) Plot all on a single axis
     DICT_DF_DAT, _, _ = SP._statespace_pca_extract_data(sites, event_dat, var_dat, vars_others_dat)
-    
+
     if len(DICT_DF_DAT)==0:
         return
 
@@ -332,7 +864,7 @@ def plotwrapper_statespace_single_event_bregion(DF_PA_SPACES, SP, event_wind_pca
         saveMultToPDF(path, LIST_FIG)
 
 def _plot_pca_results(PApca):
-    
+
     fig, ax = plt.subplots()
     w = PApca.Saved["pca"]["w"]
 
@@ -343,9 +875,9 @@ def _plot_pca_results(PApca):
     ax.hlines(0.9, 0, len(w))
     ax.set_ylim(0, 1)
     return fig
-    
 
-def _plot_variance_explained_timecourse(PApca, SP, event_dat, var, vars_others=None, 
+
+def _plot_variance_explained_timecourse(PApca, SP, event_dat, var, vars_others=None,
     time_windows=None, Dimslist = (0,1, 2)):
     """ Plot(overlay) timecourse of variance explained by each dimension, by 
     reprojecting data onto the subspace.
@@ -363,11 +895,11 @@ def _plot_variance_explained_timecourse(PApca, SP, event_dat, var, vars_others=N
     w = PApca.Saved["pca"]["w"]
 
     # get time windows and popanal
-    PAdata = SP._dataextract_as_popanal_good(dfall, chans_needed=sites)    
+    PAdata = SP.dataextract_as_popanal_good(dfall, chans_needed=sites)
 
     if time_windows is not None:
         PAdata.X, PAdata.Times = PAdata.agg_by_time_windows(time_windows=time_windows)
-            
+
     # agg: take mean for each level.
     PAdata = PAdata.slice_and_agg_wrapper("trials", [var])
 
@@ -408,14 +940,14 @@ def _plot_variance_explained_timecourse(PApca, SP, event_dat, var, vars_others=N
     for idim, col in zip(range(Vfrac.shape[0]), pcols):
         ntimes = Vfrac.shape[2]
         ax.plot(PAdata.Times, Vfrac[idim, 0, :], color=col, label=idim)
-        
+
         # - overlay frac variance explained by each dim in training data
         pcdim = Dimslist[idim]
-    #     ax.axhline(w[pcdim], linestyle="--", label=f"trainingdat:{pcdim}", color=col)    
-        ax.axhline(w[pcdim], linestyle="--", color=col)    
+    #     ax.axhline(w[pcdim], linestyle="--", label=f"trainingdat:{pcdim}", color=col)
+        ax.axhline(w[pcdim], linestyle="--", color=col)
     ax.legend()
     ax.set_ylim(0, 1)
-    
+
     # sum of normalized variance
     ax = axes.flatten()[2]
     ax.set_title("sum (across dims)")
@@ -424,11 +956,11 @@ def _plot_variance_explained_timecourse(PApca, SP, event_dat, var, vars_others=N
     ax.plot(PAdata.Times, Vfrac_sum[0, 0,:], color="k", label=idim)
     ax.legend()
     ax.set_ylim(0, 1)
-    
+
 #     # - overlay frac variance explained by each dim in training data
 #     pcdim = Dimslist[idim]
-# #     ax.axhline(w[pcdim], linestyle="--", label=f"trainingdat:{pcdim}", color=col)    
-#     ax.axhline(w[pcdim], linestyle="--", color=col)    
+# #     ax.axhline(w[pcdim], linestyle="--", label=f"trainingdat:{pcdim}", color=col)
+#     ax.axhline(w[pcdim], linestyle="--", color=col)
 
     # Cum variance explained by traning data
     ax = axes.flatten()[3]
@@ -451,14 +983,14 @@ def _load_pca_space(pca_trial_agg_grouping, animal, DATE):
 
     print("Loaded this already computed PCA space, with these params:")
     print(params_pca_space)
-    
+
     return DF_PA_SPACES, params_pca_space, SAVEDIR
 
 def plot_variance_explained_timecourse(SP, animal, DATE, pca_trial_agg_grouping, bregion, event_wind_pca, event_dat):
     """ Plot timecourse of variance explained
     """
     list_vars = [
-        "seqc_0_shape", 
+        "seqc_0_shape",
         "seqc_0_loc",
         "gridsize"
     ]
@@ -472,7 +1004,7 @@ def plot_variance_explained_timecourse(SP, animal, DATE, pca_trial_agg_grouping,
 
     for pca_trial_agg_grouping in list_vars:
         DF_PA_SPACES, params_pca_space, SAVEDIR = _load_pca_space(pca_trial_agg_grouping, animal, DATE)
-        
+
         tmp = DF_PA_SPACES[(DF_PA_SPACES["bregion"]==bregion) & (DF_PA_SPACES["event_wind"]==event_wind_pca)]
         assert len(tmp)==1
         PApca = tmp.iloc[0]["PApca"]
@@ -482,12 +1014,13 @@ def plot_variance_explained_timecourse(SP, animal, DATE, pca_trial_agg_grouping,
             savedir = f"{SAVEDIR}/FIGS/var_explained_timecourse"
             import os
             os.makedirs(savedir, exist_ok=True)
-            
+
             fig = _plot_variance_explained_timecourse(PApca, SP, event_dat, var_dat, Dimslist=Dimslist);
-            
+
             path = f"{savedir}/eventpca-{event_wind_pca}|{bregion}|eventdat_{event_dat}|var_{var_dat}|{bregion}.pdf"
             fig.savefig(path)
-    #         assert False  
+    #         assert False
 
             print("--- SAVING AT:", f"{savedir}/var_{var_dat}.pdf")
         plt.close("all")
+

@@ -55,6 +55,8 @@ def load_snippet_single(sn, which_level):
     # within this sp, save mapping to its session
     sp.DfScalar["session_idx"] = sess
 
+    sp.datamod_append_outliers()
+
     return sp
 
 def load_and_concat_mult_snippets(MS, which_level, SITES_COMBINE_METHODS = "intersect",
@@ -102,10 +104,12 @@ def load_and_concat_mult_snippets(MS, which_level, SITES_COMBINE_METHODS = "inte
 
         sp = load_snippet_single(sn, which_level)
 
+        # Track its origin
+        sp.DfScalar["session_neural"] = i
+
         # store
         list_sp.append(sp)
         list_sn.append(sn)
-       
 
     # 4) concatenate all sessions.
     print("This many vals across loaded session")
@@ -126,7 +130,15 @@ def load_and_concat_mult_snippets(MS, which_level, SITES_COMBINE_METHODS = "inte
     # SPall.DS = None
     SPall._CONCATTED_SNIPPETS = True
     SPall.SNmult = MS
-    SPall.DSmult = [sp.DS for sp in list_sp]
+    if True:
+        # do concat once here
+        from pythonlib.dataset.dataset_strokes import concat_dataset_strokes
+        list_ds = [sp.DS for sp in list_sp]
+        DS = concat_dataset_strokes(list_ds)
+        SPall.DS = DS
+    else:
+        # Old, but this means needs to concat each time read it.
+        SPall.DSmult = [sp.DS for sp in list_sp]
     
     # ind_sess = 0
     # trial_within = 0 
@@ -179,6 +191,8 @@ def load_and_concat_mult_snippets(MS, which_level, SITES_COMBINE_METHODS = "inte
         setattr(SPall, attr, items_combine)
         # print("items: ", len(items[0]), len(items[1]), SITES_COMBINE_METHODS, ":", len(items_combine))
 
+    SPall.Sites = sorted(SPall.Sites)
+
     # In data, keep only the sites in self.Sites
     SPall.DfScalar = SPall.DfScalar[SPall.DfScalar["chan"].isin(SPall.Sites)].reset_index(drop=True)
 
@@ -209,7 +223,8 @@ class Snippets(object):
         fr_which_version="sqrt",
         NEW_VERSION=True,
         SKIP_DATA_EXTRACTION =False,
-        fail_if_times_outside_existing=True
+        fail_if_times_outside_existing=True,
+        DS_pruned = None
         ):
         """ Initialize a dataset
         PARAMS:
@@ -233,7 +248,7 @@ class Snippets(object):
         self.DfScalarBeforePrune = None
         self.SN = SN
         self.SNmult = None
-        self.DSmult = None
+        # self.DSmult = None
         self._NEW_VERSION = NEW_VERSION
         self._SKIP_DATA_EXTRACTION = SKIP_DATA_EXTRACTION
         self._CONCATTED_SNIPPETS = False
@@ -277,7 +292,7 @@ class Snippets(object):
                 POST_DUR = list_post_dur[0]
 
         ### EXTRACT SNIPPETS
-        if which_level=="stroke":
+        if which_level in ["stroke", "stroke_off"]:
             # Sanity checks
             assert len(list_events)==0, "event is stroke. you made a mistake (old code, site anova?)"
             assert len(list_pre_dur)==1
@@ -288,10 +303,14 @@ class Snippets(object):
             post_dur = list_post_dur[0]
 
             # Each datapt matches a single stroke
-            DS = datasetstrokes_extract(dataset_pruned_for_trial_analysis,
-                strokes_only_keep_single, tasks_only_keep_these,
-                None,
-                list_features_extraction)
+            if DS_pruned is None:
+                # Then get it. Otherwise just use the input and assume you did everthing right.
+                DS = datasetstrokes_extract(dataset_pruned_for_trial_analysis,
+                    strokes_only_keep_single, tasks_only_keep_these,
+                    None,
+                    list_features_extraction)
+            else:
+                DS = DS_pruned
 
             # Filter the trials
             trials = SN.get_trials_list(True, True, only_if_in_dataset=True,
@@ -309,13 +328,22 @@ class Snippets(object):
                     print(DS.Dat.columns)
                     assert False, "get this feature"
 
+            if which_level=="stroke":
+                align_to="onset"
+            elif which_level=="stroke_off":
+                align_to="offset"
+            else:
+                assert False
+
             if NEW_VERSION:
                 DfScalar = SN.snippets_extract_bystroke(sites_keep, DS, 
                     features_to_get_extra=list_features_extraction, 
                     fr_which_version=fr_which_version, pre_dur=pre_dur,
-                    post_dur=post_dur)
+                    post_dur=post_dur,
+                    align_to=align_to)
                 ListPA = None
             else:
+                assert False, "this is incorrect"
                 ListPA = self.extract_snippets_strokes(DS, sites_keep, pre_dur, post_dur,
                     features_to_get_extra=list_features_extraction)
 
@@ -492,8 +520,8 @@ class Snippets(object):
         print(f"** Generated Snippets, (ver {which_level}). Final length of SP.DfScalar: {len(self.DfScalar)}")
          
         # self.DfScalar["event"] = self.DfScalar["event_aligned"]
-
-        self.pascal_remove_outliers()
+        # 1/4/23 - used to do it, but this takes lot of space t
+        self.datamod_remove_outliers()
 
     def globals_initialize(self):
         """ Initialize self.ParamsGlobals to defaults"""
@@ -555,6 +583,7 @@ class Snippets(object):
             features_to_get_extra=None):
         """ Extract popanal, one data pt per stroke
         """
+        assert False, "use snippets_extract_bystroke"
 
         # 2) Extract snippets
         ListPA = self.SN.popanal_generate_alldata_bystroke(DS, sites_keep, align_to_stroke=True, 
@@ -745,7 +774,7 @@ class Snippets(object):
         if var_level is not None:
             var = var_level[0] # str
             lev = var_level[1] # value
-            pa = pa.slice_by_label("trials", var, lev)
+            pa = pa.slice_by_labels("trials", var, [lev])
 
         return pa
 
@@ -868,17 +897,35 @@ class Snippets(object):
         print("self.PAscalar.X.shape : ", self.PAscalar.X.shape)
         return self.DfScalar
 
-    def pascal_remove_outliers(self):
+    def datamod_append_outliers(self, return_copy=False):
+        """ If you removed outliers, add them back.
+        (REversible, beucase outlier is a column)
+        RETURNS:
+            - modifies self.DfScalar
+        """
+        if hasattr(self, "DfScalar_OutlierRows"):
+            if self.DfScalar_OutlierRows is not None:
+                if return_copy:
+                    DfScalar = self.DfScalar.copy()
+                    DfScalar = pd.concat([DfScalar, self.DfScalar_OutlierRows]).reset_index(drop=True)
+                    return DfScalar
+                else:
+                    # Mutate
+                    self.DfScalar = pd.concat([self.DfScalar, self.DfScalar_OutlierRows]).reset_index(drop=True)
+                    # and delete this, so you don't retry this
+                    self.DfScalar_OutlierRows = None
+
+    def datamod_remove_outliers(self):
         """ Remove outliers based on fr_scalar, only for high fr outliers,
         defualt is 3.5x std + mean.
         RETURNS:
-        - modifies self.DfScalar, removing outliers.
-        also saves the old in self.DfScalar_BeforeRemoveOutlier
+        - modifies self.DfScalar, removing outliers, which are rows saved in
+        self.DfScalar_OutlierRows
         NOTE: will do diff thing every time run.
         """
         from pythonlib.tools.pandastools import aggregThenReassignToNewColumn, applyFunctionToAllRows
 
-        if hasattr(self, "DfScalar_BeforeRemoveOutlier"):
+        if hasattr(self, "DfScalar_OutlierRows"):
             assert False, "Looks like already ran.. comment this out if you want to "
         
         df = self.DfScalar
@@ -905,12 +952,17 @@ class Snippets(object):
         # 2) each row. outlier?
         df = applyFunctionToAllRows(df, F, "outlier_remove")
 
+        ## Save just the rows that are removed as outliers. saves space
+        self.DfScalar_OutlierRows = df[df["outlier_remove"]==True]
+
         # 3) remove the outliers
-        self.DfScalar_BeforeRemoveOutlier = df.copy()
+        # self.DfScalar_BeforeRemoveOutlier = df.copy()
+
         df = df[df["outlier_remove"]==False].reset_index(drop=True)
         self.DfScalar = df
-        print("Starting len: ", len(self.DfScalar_BeforeRemoveOutlier))
+
         print("Removed outliers! new len: ", len(df))
+
 
 
     ############# working with frmat
@@ -945,12 +997,16 @@ class Snippets(object):
     #     dfthis = self.datamod_prune_time_window(dfthis, pre_dur, post_dur)
 
 
-
-
-    def _dataextract_as_popanal_good(self, DF, var_trial="index_datapt",
-            which_fr_sm = "fr_sm_sqrt", chans_needed=None,
-            balance_chans_trials=False):
-        """ Convert this slice of self.DfScalar to popanal, across chans, trials, and time
+    def dataextract_as_popanal_good(self, DF, var_trial="index_datapt",
+                                    which_fr_sm = "fr_sm_sqrt", chans_needed=None,
+                                    balance_chans_trials=False, list_features_extraction=None,
+                                    max_frac_trials_lose=None):
+        """ Convert this slice of self.DfScalar to popanal, across chans, trials, and time.
+        Makes sure that this is clean (i.e, unique and completely balanced balues for
+        chans and trials), and this is what you usually want for population analyses. Doesnt
+        care about balancing varible features, that you can do later.
+        If a var_trial level (e.g., trial) doesnt ahve all chans, then will throw that trial out
+        entirely.
         PARAMS:
         - DF, slice of self.DfScalar, this must have only one row for each (var_trial, chan).
         This means that it can't have multiple events. i.e. this is a single event.
@@ -959,7 +1015,9 @@ class Snippets(object):
         if None, then uses what find for first trial, and throws error if cannot extract 
         these from each trial.
         - balance_chans_trials, bool, if True, then helps ensure that each conjunction of
-        trial x chan has at least one datapt (fails otherwise). 
+        trial x chan has at least one datapt (fails otherwise).
+        - max_frac_trials_lose, either None(Ignore) or fraction, in which case will throw exception
+        if lose more trials than max_frac_trials_lose
         """
         from pythonlib.tools.pandastools import slice_by_row_label
         from pythonlib.tools.pandastools import conjunction_vars_prune_to_balance
@@ -982,15 +1040,25 @@ class Snippets(object):
             # check that its unique
             assert sorted(list(set(chans_needed))) == sorted(chans_needed)
 
+        if list_features_extraction is None:
+            list_features_extraction = []
+        list_features_extraction = list_features_extraction + self.Params["list_features_extraction"] + ["trialcode"] + [var_trial]
+        list_features_extraction = list(set(list_features_extraction))
+
         ######### COLLECT DATA across all trials
         list_frmat = []
-        # chans_prev = None
-        # chans_needed = Sites
         list_idx_kept =[]
-        list_features = []
         out_features = []
+        ct = 0
         for idx in list_idx:
-            dfthis = DF[(DF[var_trial]==idx)]
+            dfthis = DF[(DF[var_trial]==idx)] # len num sites
+            assert len(dfthis)==len(chans_needed)
+            # if len(dfthis)>1:
+            #     print(len(dfthis))
+            #     print(dfthis["event"])
+            #     print(dfthis["trialcode"])
+            #     print(dfthis[var_trial])
+            #     assert False
 
             # try to slice the desired chans
             if chans_needed is None:
@@ -1006,12 +1074,11 @@ class Snippets(object):
             # use the inputed chans
             # print(dfthis["chan"].value_counts)
             try:
-                dfthis = slice_by_row_label(dfthis, "chan", chans_needed, reset_index=True, assert_exactly_one_each=True)
+                dfthis = slice_by_row_label(dfthis, "chan", chans_needed,
+                                            reset_index=True, assert_exactly_one_each=True)
             except NotEnoughDataException:
                 # Skip this datapt, it doesnt have all chans...
-                print("---")
-                print("BAD:", dfthis["chan"].unique())
-                print("Skipping datapt: ", idx)
+                print(f"BAD (this datpt {idx} doesnt have data across all these chans):", dfthis["chan"].unique())
                 continue
             # print("GOOD:", dfthis["chan"].unique())
             # print(idx)
@@ -1027,11 +1094,37 @@ class Snippets(object):
             
             # Extract features for this trial.
             tmp ={}
-            for feat in self.Params["list_features_extraction"]:
-                assert len(dfthis[feat].unique())==1, "each datapt index should have one value for thisf eature (since its one datapt).."
-                value = dfthis[feat].unique()[0]
+            nchecked = 0
+            for feat in list_features_extraction:
+                # rows should be diff sites, so they should have identical
+                # features...
+                try:
+                    if not len(dfthis[feat].unique())==1:
+                        print(dfthis[feat].value_counts())
+                        print("Unique:", dfthis[feat].unique())
+                        print(len(dfthis))
+                        print(idx, feat)
+                        assert False, "each datapt index should have one value for thisf eature (since its one datapt).."
+                    nchecked+=1
+                except TypeError as err:
+                    # ignore.... (if it succeeds for eveyrthing above, unlikely below).
+                    pass
+                    # first = dfthis[feat][0]
+                    # for item in dfthis[feat]:
+                    #     assert item == first
+                value = dfthis[feat][0]
                 tmp[feat] = value
+            assert nchecked/len(list_features_extraction)>0.5, "check at least half of vartiables..."
             out_features.append(tmp)
+            ct+=1
+        print(f"Colected {ct} out of {len(list_idx)} datapts.")
+        print("NOTE: missed datapts are likely because of removed outliers")
+
+        if max_frac_trials_lose is not None:
+            frac_lost = 1-ct/len(list_idx)
+            if frac_lost>max_frac_trials_lose:
+                print("Not enough data, likely you DfScalar excludes outlier chan x trials. You should concat outlier rows back to dfscalar")
+                raise NotEnoughDataException
 
         # import pandas as pd
         df_features = pd.DataFrame(out_features)
@@ -1047,18 +1140,22 @@ class Snippets(object):
                 print(chans_prev)
                 assert False
             chans_prev = chans
-            
+
+        assert len(list_frmat)>0, "no data!!!"
+
         # Construct a PA 
         frate_mat = np.concatenate(list_frmat, axis=1)
         # sn = SP.SNmult.SessionsList[0]
         sn, _ = self._session_extract_sn_and_trial(0)    
-        PA = sn._popanal_generate_from_raw(frate_mat, times, chans_needed, df_features, self.Params["list_features_extraction"])
+        PA = sn._popanal_generate_from_raw(frate_mat, times, chans_needed,
+                                           df_features, list_features_extraction)
 
         return PA
 
-    def _dataextract_as_popanal_singlesite(self, dfthis, sites, time_take_first=True,
-        list_cols=None):
-        """ Low-level to convert dfthis to popanal
+    def _dataextract_as_popanal_singlesite_OLD(self, dfthis, sites, time_take_first=True,
+                                               list_cols=None):
+        """ Low-level to convert dfthis to popanal. Should
+        be made obsolete, as this doesnt really do much.
         """
         assert len(dfthis)>0
         assert len(sites)==1, "not codede yet for more sites..."
@@ -1090,9 +1187,10 @@ class Snippets(object):
 
         return PA
 
-    def dataextract_as_popanal_conjunction_vars(self, var, vars_others=None, site=None,
-        event=None, list_cols=None):
-        """ [GOOD} Return a single popanal, for a single site.
+    def _dataextract_as_popanal_conjunction_vars_OLD(self, var, vars_others=None, site=None,
+                                                     event=None, list_cols=None):
+        """ [OLD] extract dict of PAs, one for each level of vars_others,
+        where the data within the PA has all levels of var.
         """
 
         assert site is not None, "not coded yet. assumes this for below [site]"
@@ -1107,13 +1205,13 @@ class Snippets(object):
 
         dict_lev_pa = {}
         for lev_other, dfthis in dict_lev_df.items():
-            pa = self._dataextract_as_popanal_singlesite(dfthis, [site], list_cols=list_cols)
+            pa = self._dataextract_as_popanal_singlesite_OLD(dfthis, [site], list_cols=list_cols)
             dict_lev_pa[lev_other] = pa
 
         return dict_lev_pa, levels_var 
 
-    def dataextract_as_df_good(self, chan=None, event=None, var=None, var_level=None, 
-            dfthis=None, list_chan=None, pre_dur=None, post_dur=None):
+    def dataextract_as_df_good(self, chan=None, event_aligned=None, var=None, var_level=None,
+                               dfthis=None, list_chan=None, pre_dur=None, post_dur=None):
         """ 
         Extract dfthis, slice of self.DfScalar
         PARAMS
@@ -1138,15 +1236,19 @@ class Snippets(object):
 
         if chan is not None:
             dfthis = dfthis[(dfthis["chan"]==chan)]
+            assert len(dfthis)>0
 
         if list_chan is not None:
             dfthis = dfthis[(dfthis["chan"].isin(list_chan))]
+            assert len(dfthis)>0
 
-        if event is not None:
-            dfthis = dfthis[(dfthis["event"]==event)]
+        if event_aligned is not None:
+            dfthis = dfthis[(dfthis["event_aligned"] == event_aligned)]
+            assert len(dfthis)>0
 
         if var is not None:
             dfthis = dfthis[(dfthis[var]==var_level)]
+            assert len(dfthis)>0
 
         dfthis = dfthis.copy().reset_index(drop=True)
 
@@ -1160,17 +1262,18 @@ class Snippets(object):
     #     do_balance=False, balance_var=None, list_balance_vars_others=None):
 
 
-    def dataextract_as_df_multsites_wrapper(self, sites, event, 
-        var=None, list_vars_others=None, do_balance=False, 
-        pre_dur=None, post_dur=None, trial_var = "index_datapt",
-        PRINT = False,
-        exclude_othervar_levels_missing_any_var_level=False):
+    def dataextract_as_df_multsites_wrapper(self, sites, event_aligned,
+                                            var=None, list_vars_others=None, do_balance=False,
+                                            pre_dur=None, post_dur=None, trial_var = "index_datapt",
+                                            PRINT = False,
+                                            exclude_othervar_levels_missing_any_var_level=False):
         """
-        GOOD, a single method to extract data, allowing for multiple sites,
-        split by vars, etc.
+        GOOD, a single method to extract structured data,
+        allowing for multiple sites, structured by split by vars, etc, ensuring
+        you have balanced data, and pruning otherwise.
         PARAMS:
         - sites, list of ints
-        - event, str, e.b., "00_..."
+        - event_aligned, str, e.b., "00_..."
         - var, if not None, then will prune dataset to be sure you have enough
         data for each level of var.
         - list_vars_others, list of str, if not None, then looks at conjunctions
@@ -1185,10 +1288,9 @@ class Snippets(object):
         Option 3: also balance
             also input do_balance=True
         """
-                
+
         # Always start with geting raw data, since this function allows getting multiple sites, ignoring variables
-        dfthis = self.dataextract_as_df_good(event=event, list_chan=sites, pre_dur=pre_dur, post_dur=post_dur)
-        
+        dfthis = self.dataextract_as_df_good(event_aligned=event_aligned, list_chan=sites, pre_dur=pre_dur, post_dur=post_dur)
 
         # Get conjunction vars, and balance the data?
         if var:
@@ -1460,7 +1562,10 @@ class Snippets(object):
         return dfthis, dict_lev_df, levels_var
 
 
-    def dataextract_as_df(self, grouping_variables, grouped_var_col_name):
+    def dataextract_as_df_OLD(self, grouping_variables, grouped_var_col_name):
+        """
+        OBSOLETE, not used.
+        """
         from pythonlib.tools.pandastools import append_col_with_grp_index
         dfthis = append_col_with_grp_index(self.DfScalar, grouping_variables, 
             grouped_var_col_name, strings_compact=True)
@@ -1574,6 +1679,8 @@ class Snippets(object):
         - takes about 18ms for len 400 df.
         """
 
+        assert len(df)>0
+        assert pre_dur < post_dur, "pre_dur usually negative."
         assert pre_dur is not None
         assert post_dur is not None
 
@@ -1683,7 +1790,7 @@ class Snippets(object):
 
         if self.Params["which_level"]=="trial":
             grp = ["trialcode"]
-        elif self.Params["which_level"]=="stroke":
+        elif self.Params["which_level"] in ["stroke", "stroke_off"]:
             grp = ["trialcode", "stroke_index"]
         else:
             assert False
@@ -1885,14 +1992,14 @@ class Snippets(object):
 
 
     def modulationgood_compute_plot_ALL(self, var, vars_conjuction, 
-        score_ver='r2smfr_minshuff', SAVEDIR="/tmp", 
+        score_ver='r2_maxtime_1way_mshuff', SAVEDIR="/tmp",
         PRE_DUR_CALC = None, POST_DUR_CALC= None,
         globals_nmin = None, globals_lenient_allow_data_if_has_n_levels = None,
         FR_THRESH=None, FR_PERCENTILE = 10, 
         list_events = None, list_pre_dur = None, list_post_dur = None,
         DEBUG_CONJUNCTIONS = False,
         PLOT_EACH_CHAN=False,
-        get_z_score=True,
+        get_z_score=False,
         reload_df_var_if_exists=True,
         supervision_keep_only_not_training=True,
         trialcodes_keep=None,
@@ -1900,7 +2007,7 @@ class Snippets(object):
         params_to_save=None,
         do_only_print_conjunctions=False,
         PLOT_RASTERS = True,
-        PLOT_EACH_EVENT=True):
+        PLOT_EACH_EVENT=False):
         """
         New version for computing and plotting all modulation (anova) for a given variable. and set
         of conjunction variables. 
@@ -1927,7 +2034,11 @@ class Snippets(object):
         # var = "chunk_within_rank"
         # vars_conjuction = ['stroke_index', 'gridloc', 'chunk_rank'] # list of str, vars to take conjunction over
         # vars_conjuction = ['gridloc', 'chunk_rank'] # list of str, vars to take conjunction over
-        
+
+        # Helping figure out which variables matter
+        assert PRE_DUR_CALC is None, "not used! use list_pre_dur etc"
+        assert POST_DUR_CALC is None, "not used! use list_pre_dur etc"
+
         print(" !!! RUNNING modulationgood_compute_plot_ALL for var and vars_conjuction:")
         print(var)
         print(vars_conjuction)
@@ -2161,7 +2272,7 @@ class Snippets(object):
                 mpl.use(old_backend) # switch back just to be safe..
 
         else:
-            print("!!SKIPPING PLOTS!! not enough data") 
+            print("!!SKIPPING PLOTS!! not enough data")
             print(len(df_var))
 
 
@@ -4479,19 +4590,19 @@ class Snippets(object):
         (bregion, event), aggregated from df_var
         """
         ######## HEATMAP (brain schematic)
-        from neuralmonkey.neuralplots.brainschematic import plot_df
+        from neuralmonkey.neuralplots.brainschematic import plot_df_from_longform
 
         for valkind in df_var["val_kind"].unique().tolist():
             dfthis = df_var[df_var["val_kind"]==valkind]
 
             # Plot all, including movement
-            plot_df(dfthis, "val", "event", savedir=sdir, savesuffix=f"{valkind}")
+            plot_df_from_longform(dfthis, "val", "event", savedir=sdir, savesuffix=f"{valkind}")
 
             # remove movement event
             inds_motor = dfthis["_event"].str.contains("stroke")
             dfthismotor = dfthis[~inds_motor]
             if len(dfthismotor)>0:
-                plot_df(dfthismotor, "val", "event", savedir=sdir, savesuffix=f"{valkind}-NOMOTOR")
+                plot_df_from_longform(dfthismotor, "val", "event", savedir=sdir, savesuffix=f"{valkind}-NOMOTOR")
 
             plt.close("all")
 
@@ -4583,14 +4694,81 @@ class Snippets(object):
 
         return DICT_DF_DAT, levels_var, levels_othervar
 
+    def dataextract_as_popanal_statespace(self, sites, event, pre_dur=None, post_dur=None,
+                                      do_balance=False, balance_var=None, balance_list_vars_others=None,
+                                      exclude_othervar_levels_missing_any_var_level=False,
+                                      list_features_extraction=None,
+                                      which_fr_sm = "fr_sm", max_frac_trials_lose=None):
+        """ [GOOD] Use this for all population-level analyses.
+        Extract data that is clean - i.e., (i) balanced to get
+        all combo of trials x chans x timepoints in a single PA. (ii) Can also choose to
+        balance across variables (e.g., each conjuction of variables must have at least n datapts.
+        (iii) prune to specific time window.
+        PARAMS;
+        - dfthis, slice of self.DfScalar, for a single event.
+        - do_balance, bool, if True, then makes sure each conjucjtion of levle of var and vars others has data,
+        i.e, then makes sure the resulting dfthis is "square" in that each level of var has at least some data for
+        each level of vars_others. Does this in an interative fashion (see inner code).
+        - balance_var, str,.
+        - balance_list_vars_others, list of str, other vars, to cross with balancevary (ecah conjucntion of this)
+        - exclude_othervar_levels_missing_any_var_level, bool, if True, then only keeps levels of othervar which have at least one datapt for each level of var
+        RETURNS:
+            - PA, single (chans, trials, times)
+            - sample_meta, dict, metaparams for subsampling, balancing etc
 
-    def _statespace_pca_compute_spaces(self, sites, event, pre_dur, post_dur, 
-        var=None, list_vars_others=None, do_balance=False, 
-        pca_trial_agg_grouping=None, pca_time_agg_method=None, 
-        pca_norm_subtract_condition_invariant=False,
-        pca_plot=True,
-        exclude_othervar_levels_missing_any_var_level=True):
         """
+        from pythonlib.tools.pandastools import grouping_print_n_samples
+
+        if do_balance:
+            assert isinstance(balance_var, str)
+            assert isinstance(balance_list_vars_others, list)
+
+        # 1) Extract data
+        dfthis = self.dataextract_as_df_multsites_wrapper(sites, event,
+            balance_var, balance_list_vars_others, do_balance, pre_dur, post_dur,
+            exclude_othervar_levels_missing_any_var_level=exclude_othervar_levels_missing_any_var_level)
+
+        if len(dfthis)==0:
+            print(sites)
+            print(event)
+            print(balance_var)
+            print(balance_list_vars_others)
+            raise NotEnoughDataException
+
+        # save the num conjunctions
+        if do_balance:
+            if balance_list_vars_others is not None:
+                grpdict = grouping_print_n_samples(dfthis, balance_list_vars_others+[balance_var])
+            else:
+                grpdict = grouping_print_n_samples(dfthis, [balance_var])
+
+            sample_meta = {
+                "grpdict":grpdict
+            }
+        else:
+            sample_meta = {}
+
+        # TODO: balance the n data as well
+
+        # Convert to PA
+        # The reason is simply to use the methods within there for generating PCA space
+        PA = self.dataextract_as_popanal_good(dfthis, list_features_extraction=list_features_extraction,
+                                    which_fr_sm = which_fr_sm, chans_needed=sites,
+                                              max_frac_trials_lose=max_frac_trials_lose)
+
+        return PA, sample_meta
+
+
+    def dataextract_as_popanal_statespace_balanced_pca(self, sites, event, pre_dur, post_dur,
+                                                       var=None, list_vars_others=None, do_balance=False,
+                                                       pca_trial_agg_grouping=None, pca_time_agg_method=None,
+                                                       pca_norm_subtract_condition_invariant=False,
+                                                       pca_plot=True,
+                                                       exclude_othervar_levels_missing_any_var_level=True):
+        """
+        Extract space that is perfectly balanced, so that each variable conjunction has at least one
+        datpt for each level of var, and vice versa (ie.., square), and optionally return a processed version after applying
+        PCA (dim=chans, data=trials, or trial_means after grouping).
         PARAMS;
         - dfthis, slice of self.DfScalar, for a single event. 
         - do_balance, bool, if True, then makes sure each conjucjtion of levle of var and vars others has data
@@ -4600,82 +4778,25 @@ class Snippets(object):
         if ["seqc_0_shape"], then pca is done on mean values, one for each shape.
         - pca_time_agg_method, either None, or ",mean" where mean takes mean over time
         - trial_var, name of column which counts as a single datapt. is used for extracting balanced data.
-        """ 
+        """
+        from neuralmonkey.analyses.state_space_good import pca_make_space
 
         assert list_vars_others is None, "not yet coded!!!"
         if var is None and pca_trial_agg_grouping is not None:
             # you should prune.
             var = pca_trial_agg_grouping
 
-        if list_vars_others is None:
-            do_balance = False
-
-        # 1) Extract data 
-        dfthis = self.dataextract_as_df_multsites_wrapper(sites, event, 
-            var, list_vars_others, do_balance, pre_dur, post_dur,
-            exclude_othervar_levels_missing_any_var_level=exclude_othervar_levels_missing_any_var_level)
-        # dfthis = self.dataextract_as_df_multsites_wrapper(sites, event, 
-        #     None, None, False, pre_dur, post_dur) 
-
-        if len(dfthis)==0:
-            print(sites)
-            print(event)
-            print(var)
-            print(list_vars_others)
-            raise NotEnoughDataException
-
-        # save the num conjunctions
-        from pythonlib.tools.pandastools import grouping_print_n_samples
-        if list_vars_others is not None:
-            grpdict = grouping_print_n_samples(dfthis, list_vars_others+[var])
-        else:
-            grpdict = grouping_print_n_samples(dfthis, [var])
-
-        sample_meta = {
-            "grpdict":grpdict
-        }
-
-        # if do_balance:
-        #     assert isinstance(balance_var, str)
-        #     assert isinstance(list_balance_vars_others, list)
-
-        #     #### FIRST, get pruned dataset for a single site.
-        #     # Then no missing conjunctions of levels of var and vars_others
-        #     Sites = dfthis["chan"].unique().tolist()
-        #     # 2) Extract, pruning by sample sizes of conjunctions.
-        #     # just pick the first site, since now all sites have exacly the same trials.
-        #     _dfthis_single, _, _ = self.dataextract_as_df_conjunction_vars(balance_var, list_balance_vars_others, 
-        #                                     site=Sites[0], DFTHIS=dfthis, 
-        #                                     DEBUG_CONJUNCTIONS=False, balance_no_missed_conjunctions=True)
-
-        #     #### SECOND, use result from single site to filter all data
-        #     # dfthis tells you which datinds to keep to still have good n data
-        #     # Apply this filter to keep only these datinds for all sites.
-        #     print("Starting len:", len(dfthis))
-        #     list_index_datapt = _dfthis_single["index_datapt"].unique().tolist()
-        #     print("These are the final good index datapts: ")
-        #     print(list_index_datapt)
-        #     dfthis = dfthis[dfthis["index_datapt"].isin(list_index_datapt)].reset_index(drop=True)
-        #     print("Ending len:", len(dfthis))
-
-        #     # TODO: balance the n data as well
-
-        ##### Now you have fully balanced dataset, get PCA space
-        # For every trial, get a PA across all chans. then concatenate the PA.
-        # - first, assign a datapt index 
-
-        # Convert to PA
-        # The reason is simply to use the methods within there for generating PCA space
-        PA = self._dataextract_as_popanal_good(dfthis)    
+        PA, sample_meta = self.dataextract_as_popanal_statespace(sites, event, pre_dur, post_dur,
+                                      do_balance, var, list_vars_others,
+                                      exclude_othervar_levels_missing_any_var_level)
 
         #### DO PCA
-        from neuralmonkey.classes.population import pca_make_space
         if pca_trial_agg_grouping is None:
             trial_agg_method = None
         else:
             trial_agg_method = "grouptrials"
 
-        PApca, fig = pca_make_space(PA, DF=None, trial_agg_method=trial_agg_method, trial_agg_grouping=pca_trial_agg_grouping, 
+        PApca, fig = PA.pca_make_space(trial_agg_method=trial_agg_method, trial_agg_grouping=pca_trial_agg_grouping,
                        time_agg_method=pca_time_agg_method, 
                        norm_subtract_condition_invariant=pca_norm_subtract_condition_invariant,
                        ploton=pca_plot)
@@ -5243,7 +5364,7 @@ class Snippets(object):
         tmp = self._plotgood_rasters_extract_xmin_xmax()
         event_bounds = [tmp[0], 0., tmp[1]]
 
-        pathis = self._dataextract_as_popanal_singlesite(dfthis, [site])
+        pathis = self._dataextract_as_popanal_singlesite_OLD(dfthis, [site])
         pathis.plotwrapper_smoothed_fr(ax=ax, plot_indiv=False, plot_summary=True)
 
 
@@ -5262,8 +5383,8 @@ class Snippets(object):
         """
 
         # Extract data
-        dict_lev_pa, levels_var = self.dataextract_as_popanal_conjunction_vars(var, 
-            vars_others, site, event=event)
+        dict_lev_pa, levels_var = self._dataextract_as_popanal_conjunction_vars_OLD(var,
+                                                                                    vars_others, site, event=event)
 
         # Prune to data you want.
         if plot_these_levels_of_varsothers:
@@ -5486,7 +5607,7 @@ class Snippets(object):
         list_list_snidx = []
         ymax_prev = 0
         for lev_var in levels_var:
-            dfthisthis = self.dataextract_as_df_good(dfthis=dfthis, event=event, var=var, var_level=lev_var)
+            dfthisthis = self.dataextract_as_df_good(dfthis=dfthis, event_aligned=event, var=var, var_level=lev_var)
             # assert False, "get event"
             # dfthisthis = dfthis[(dfthis[var]==lev_var) & (dfthis[event]==lev_var)]
             
@@ -5762,7 +5883,7 @@ class Snippets(object):
     def plotgood_rasters(self, site, event=None, ax=None):
         """ Plot a single raster plot for this site and event, not split by any variables.
         """
-        dfthis = self.dataextract_as_df_good(chan=site, event=event)
+        dfthis = self.dataextract_as_df_good(chan=site, event_aligned=event)
         fig, ax = self._plotgood_rasters(dfthis, xmin=None, xmax=None, ax=ax)
         return fig, ax
 
@@ -6240,7 +6361,22 @@ class Snippets(object):
             assert False, "in progress"
             # TODO: check that this[site] is identical to unqiue list of sites
 
-    def sitegetter_map_region_to_sites(self, bregion, clean=True):
+    def animal(self):
+        """ Return string, animal"""
+        sn = self._session_extract_all()[0]
+        return sn.Animal
+
+    def date(self):
+        """ Return int, date, YYMMDD"""
+        sn = self._session_extract_all()[0]
+        return sn.Date
+
+    def bregion_list(self):
+        sn = self._session_extract_all()[0]
+        list_bregion = sn.sitegetter_get_brainregion_list()
+        return list_bregion
+
+    def sitegetter_map_region_to_sites(self, bregion):
         """ Return list of ints (sites) that are in self.Sites,
         and also for this bregion.
         RETURNS:
@@ -6251,7 +6387,7 @@ class Snippets(object):
         list_sn = self._session_extract_all()
         list_sites = []
         for sn in list_sn:
-            list_sites.extend(sn.sitegetter_map_region_to_sites(bregion))
+            list_sites.extend(sn.sitegetter_all([bregion]))
 
         # Only keep self.Sites which are in that list
         sites = [s for s in self.Sites if s in list_sites]
@@ -6320,6 +6456,61 @@ class Snippets(object):
 
         return fig
 
+    def datasetbeh_datstrokes_append_column(self, column, DS=None):
+        """ Extract values from beh dataset (DatStrokes) for this column,
+        where each datapt is a specific (trialcode, stroke_index),
+        and append to self.DfScalar, mutating it.
+        PARAMS;
+        - dataset, if None, then uses the one saved in Snippets.
+        """
+        from pythonlib.tools.pandastools import slice_by_row_label
+
+        # 1) Extract dataset
+        if DS is None:
+            DS = self.datasetbeh_extract_dataset(kind="datstrokes")
+
+        # 2) get each (trialcode stroke_index) in self... and then get its value for <column>
+        list_tc = self.DfScalar["trialcode"].tolist()
+        list_si = self.DfScalar["stroke_index"].tolist()
+
+        # Get the sliced dataframe
+        dfslice = DS.dataset_slice_by_trialcode_strokeindex(list_tc, list_si)
+        # dfslice = slice_by_row_label(Dataset.Dat, "trialcode", trialcodesthis,
+        #     reset_index=True, assert_exactly_one_each=True)
+
+        # Assign the values to self
+        print("Updating this column of self.DfScalar with Dataset beh:")
+        print(column)
+        self.DfScalar[column] = dfslice[column].tolist()
+
+    def datasetbeh_append_column_helper(self, list_var, Dataset=None,
+                                        DS=None, stop_if_fail=False):
+        """ Tries to append each var in list_var, looking thru
+        datasetbeh and datasetstrokes. returns success (get all)
+        or failure (missed at least one)
+        """
+
+        if Dataset is None:
+            Dataset = self.datasetbeh_extract_dataset()
+
+        if DS is None:
+            DS = self.datasetbeh_extract_dataset(kind="datstrokes")
+
+        success = True
+        for var in list_var:
+            if var not in self.DfScalar.columns:
+                if DS is not None and var in DS.Dat.columns:
+                    print("Appending... ", var)
+                    self.datasetbeh_datstrokes_append_column(var, DS)
+                elif var in Dataset.Dat.columns:
+                    print("Appending... ", var)
+                    self.datasetbeh_append_column(var, Dataset)
+                else:
+                    success = False
+                    print("Failed to find this var:", var)
+                    if stop_if_fail:
+                        return success
+        return success
 
     def datasetbeh_append_column(self, column, Dataset=None):
         """ Extract values from beh dataset, for this column, 
@@ -6345,18 +6536,33 @@ class Snippets(object):
         print(column)
         self.DfScalar[column] = dfslice[column].tolist()
 
-    def datasetbeh_extract_dataset(self):
+    def datasetbeh_extract_dataset(self, kind="dataset"):
         """ Extract Dataset object concated across all sessions, for this Snippets.
+        Either trial dataset ("dataset") or strokes ("datstrokes")
         RETURNS:
-        - Dall, a single Dataset
+        - Dall, a single Dataset (a copy)
         """
-        from pythonlib.dataset.analy_dlist import concatDatasets
-        list_sn = self._session_extract_all()
-        Dall = concatDatasets([sn.Datasetbeh for sn in list_sn])
-        return Dall
+        if kind=="dataset":
+            # each row is trial
+            from pythonlib.dataset.analy_dlist import concatDatasets
+            list_sn = self._session_extract_all()
+            Dall = concatDatasets([sn.Datasetbeh for sn in list_sn])
+            return Dall
+        elif kind=="datstrokes":
+            # each row is stroke
+            # if self.DS is not None:
+            return self.DS
+            # else:
+            #     from pythonlib.dataset.dataset_strokes import concat_dataset_strokes
+            #     list_ds = [ds for ds in self.DSmult]
+            #     DS = concat_dataset_strokes(list_ds)
+            #     return DS
+        else:
+            assert False
  
     def load_v2(self, savedir):
         """ To load data saved using save_v2
+        NOTE: Loads with outlier rows kept!
         """
         import pickle
 
@@ -6395,7 +6601,7 @@ class Snippets(object):
             self.DfScalar = self.datamod_compute_fr_scalar(self.DfScalar)
         if False: # Skip, since have already removed outliers.
             print("Removing outliers (using fr scalar) ...")
-            self.pascal_remove_outliers()
+            self.datamod_remove_outliers()
 
         # Adding just since other code expects it sometimes
         self.DfScalar["fr_sm_sqrt"] = self.DfScalar["fr_sm"]**0.5
@@ -6404,6 +6610,12 @@ class Snippets(object):
         self.ListPA = None
         # self.DS = None
         self._LOADED = True
+        if not hasattr(self, "DfScalar_OutlierRows"):
+            # older (before around jan 2024) saved the entier dataset including outliers...
+            # wihtout this field.
+            self.DfScalar_OutlierRows = None
+        else:
+            self.datamod_append_outliers()
 
     def _sanity_trial_and_chans_are_balanced(self, dfthis=None, trial_key="index_datapt"):
         """ Check that all channel have the same trials, and vice versa.
@@ -6441,15 +6653,15 @@ class Snippets(object):
         """
         import pickle
 
-        # 1) DfScalar
-        # if hasattr(self, "DfScalar_BeforeRemoveOutlier"):
-        #     # Ideally keep all. can easily remove outliers.
-        #     DfScalar = self.DfScalar_BeforeRemoveOutlier.copy()
-        # else:
-        #     DfScalar = self.DfScalar.copy()
-
-        # Ideally keep all. can easily remove outliers.
-        DfScalar = self.DfScalar_BeforeRemoveOutlier.copy()
+        if False:
+            # Ideally keep all. can easily remove outliers.
+            DfScalar = self.DfScalar_BeforeRemoveOutlier.copy()
+        else:
+            # Reconstruct pre-remove-outlier.
+            DfScalar = self.datamod_append_outliers(return_copy=True)
+            # DfScalar = self.DfScalar.copy()
+            # DfScalar_OutlierRows = self.DfScalar_OutlierRows.copy()
+            # DfScalar = pd.concat([DfScalar, DfScalar_OutlierRows]).reset_index(drop=True)
 
         # 2) fr_sm_times
         # check that all have same fr times
@@ -6685,22 +6897,25 @@ def extraction_helper(SN, which_level="trial", list_features_modulation_append=N
 
     return SP
 
-
-def datasetstrokes_extract(D, strokes_only_keep_single=False, tasks_only_keep_these=None, 
+def datasetstrokes_extract(D, version, strokes_only_keep_single=False, tasks_only_keep_these=None,
     prune_feature_levels_min_n_trials=None, list_features=None, vel_onset_twindow = (0, 0.2)):
     """ Helper to extract dataset strokes
     PARAMS:
     - strokes_only_keep_single, bool, if True, then prunes dataset: 
     "remove_if_multiple_behstrokes_per_taskstroke"
-
     """
+    from pythonlib.dataset.dataset_strokes import DatStrokes, preprocess_dataset_to_datstrokes
 
     if list_features is None:
         list_features = []
-        
+
     # 1. Extract all strokes, as bag of strokes.
-    from pythonlib.dataset.dataset_strokes import DatStrokes
-    DS = DatStrokes(D)
+    if False:
+        DS = DatStrokes(D)
+    else:
+        # For PIG, singleprims, etc.
+        # DS = preprocess_dataset_to_datstrokes(D, version="clean_one_to_one")
+        DS = preprocess_dataset_to_datstrokes(D, version=version)
 
     # for features you want, if they are not in DS, then try extracting from D
     for feat in list_features:
@@ -6734,9 +6949,6 @@ def datasetstrokes_extract(D, strokes_only_keep_single=False, tasks_only_keep_th
         for var in list_features:
             print("====", var)
             DS.Dat = filter_by_min_n(DS.Dat, var, prune_feature_levels_min_n_trials)
-
-    # Extract timing inforamtion (e.g., stroek onsets, offsets)
-    DS.timing_extract_basic()
 
     # list_features = ["task_kind", "gridsize", "shape_oriented", "gridloc"]
     for key in list_features:

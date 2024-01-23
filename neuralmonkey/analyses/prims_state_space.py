@@ -11,6 +11,295 @@ from ..population.dimreduction import plotStateSpace
 import random
 import os
 
+assert False, "OLD. instead, use state_space_good. See analy_pca_extract.py"
+
+
+def compute_data_projections(PA, DF, MS, VERSION, REGIONS, DATAPLOT_GROUPING_VARS,
+                            pca_trial_agg_grouping = None, pca_trial_agg_method = "grouptrials",
+                            pca_time_agg_method = None, ploton=True):
+    """
+    Combines population nerual data (PA) and task/beh features (DF) and does (i) goruping of trials,
+    (ii) data processing, etc.
+    Process data for plotting, especialyl gropuping trials based on categorical
+    features (e..g, shape). A useful feature is projecting data to a new space
+    defined by PCA, where PCA computed on aggregated data, e..g, first get mean activity
+    for each location, then PCA on those locations (like demixed PCA).
+
+    PARAMS:
+    - PA, popanal object, holds all data.
+    - DF, dataframe, with one column for each categorical variable you care about (in DATAPLOT_GROUPING_VARS).
+    The len(DF) must equal num trials in PA (asserts this)
+    - MS, MultSession object, holding the "raw" neural data, has useful metadata needed for this, e.g,,
+    extracting brain regions, only good sitese, etc.
+    - VERSION, str, how to represent data. does all transfomrations required.
+    --- if "PCA", then will need the params starting with pca_*:
+    - REGIONS, list of str, brain regions, prunes data to just this
+    - DATAPLOT_GROUPING_VARS, lsit of strings, each a variable, takes conjunction to make gorups, with each
+    group a row in the resulting dataframe. this controls data represtations, but doesnt not affect the pca space.
+    - pca_trial_agg_grouping, list of str each a category, takes conjunction to defines the groups that are then
+    used for PCA.
+    - pca_trial_agg_method, pca_time_agg_method str, both strings, how to aggregate (mean) data
+    before doing PCA> grouptrials' --> take mean before PC
+    """
+    from pythonlib.tools.pandastools import applyFunctionToAllRows, grouping_append_and_return_inner_items
+    import scipy.stats as stats
+
+    if pca_trial_agg_grouping is None:
+        pca_trial_agg_grouping = ["gridloc"]
+    assert len(DF)==PA.X.shape[1], "num trials dont match"
+
+    # How to transform data
+    if VERSION=="raw":
+        YLIM = [0, 100]
+        VERSION_DAT = "raw"
+    elif VERSION=="z":
+        YLIM = [-2, 2]
+        VERSION_DAT = "raw"
+    elif VERSION=="PCA":
+        YLIM = [-50, 50]
+        VERSION_DAT = "raw"
+    else:
+        assert False
+
+    # Slice to desired chans
+    CHANS = MS.sitegetter_all(REGIONS, how_combine="intersect")
+    CHANS = [x for x in CHANS if x in PA.Chans]
+    assert len(CHANS)>0
+    PAallThis = PA._slice_by_chan(CHANS, VERSION_DAT, True)
+
+    # Construct PCA space
+    if VERSION=="PCA":
+        # Construct PCA space
+        PApca, figs_pca = pca_make_space(PAallThis, DF, pca_trial_agg_method, pca_trial_agg_grouping, pca_time_agg_method, ploton=ploton)
+    else:
+        PApca = None
+        figs_pca = None
+
+    # # Get list of sites
+    # CHANS = SN.sitegetter_all(list_regions=REGIONS, clean=CLEAN)
+
+    ################ COLLECT DATA TO PLOT
+    # Generate grouping dict for data to plot
+#     gridloc = (-1,-1) Obsolete
+    groupdict = grouping_append_and_return_inner_items(DF, DATAPLOT_GROUPING_VARS)
+    # groupdict = generate_data_groupdict(DATAPLOT_GROUPING_VARS, GET_ONE_LOC=False, gridloc=None, PRUNE_SHAPES=False)
+
+    # - for each group, get a slice of PAall
+    DatGrp = []
+    for grp, inds in groupdict.items():
+        pa = PAallThis._slice_by_trial(inds, version=VERSION_DAT, return_as_popanal=True)
+        DatGrp.append({
+            "group":grp,
+            "PA":pa})
+
+    # For each group, get a vector represenetation
+    for dat in DatGrp:
+        pa = dat["PA"]
+        x = pa.mean_over_time()
+
+        # PCA?
+        if VERSION=="PCA":
+            # project to space constructed using entire dataset
+            x = PApca.reprojectInput(x, len(PAallThis.Chans))
+        dat["X_timemean"] = x
+        dat["X_timetrialmean"] = np.mean(x, 1)
+        dat["X_timetrialmedian"] = np.median(x, 1)
+        dat["X_timemean_trialsem"] = stats.sem(x, 1)
+
+    # Convert to dataframe and append columns indicate labels
+    DatGrpDf = pd.DataFrame(DatGrp)
+    for i, var in enumerate(DATAPLOT_GROUPING_VARS):
+        def F(x):
+            return x["group"][i]
+        DatGrpDf = applyFunctionToAllRows(DatGrpDf, F, var)
+
+    ################## PLOTS
+    if ploton:
+        # PLOT: distribution of FR (mean vec) for each shape
+        from pythonlib.tools.plottools import subplot_helper
+        getax, figholder, nplots = subplot_helper(2, 10, len(DatGrp), SIZE=4, ASPECTWH=2, ylim=YLIM)
+        for i, dat in enumerate(DatGrp):
+            ax = getax(i)
+            x = dat["X_timemean"]
+            ax.plot(PAallThis.Chans, x, '-', alpha=0.4);
+
+        # PLOT, get mean vector for each shape, and plot overlaied
+        fig, ax = plt.subplots(1,1, figsize=(15, 4))
+        for i, dat in enumerate(DatGrp):
+            x = dat["X_timetrialmean"]
+            xerr = dat["X_timemean_trialsem"]
+            ax.plot(PAallThis.Chans, x, '-', alpha=0.4);
+        ax.set_ylim(YLIM)
+
+        print("TODO: return figs for saving")
+
+    return DatGrp, groupdict, DatGrpDf
+
+
+def datgrp_flatten_to_dattrials(DatGrp, DATAPLOT_GROUPING_VARS):
+    """ Takes DatGrp, which is one entry per group,
+    and flattens to DfTrials, which is one entry per trial,
+    and returns as DataFrame
+    PARAMS;
+    - DatGrp, output of compute_data_projections
+    - DATAPLOT_GROUPING_VARS, used for breaking out each variable into its own column.
+    """
+    out = []
+    for Dat in DatGrp:
+
+        # extract group-level things
+        grp = Dat["group"]
+        X = Dat["X_timemean"] # processed X (nchans, ntrials)
+        ntrials = X.shape[1]
+
+        # collect one row for each trial
+        for i in range(ntrials):
+
+            # Add this trial's neural data
+            out.append({
+                "x":X[:, i],
+                "grp":grp,
+            })
+
+            # break out each label dimension
+            for i, varname in enumerate(DATAPLOT_GROUPING_VARS):
+                out[-1][varname] = grp[i]
+
+    DfTrials = pd.DataFrame(out)
+    return DfTrials
+
+def dftrials_centerize_by_group_mean(DfTrials, grouping_for_mean):
+    """
+    For each row, subtract the group mean for mean neural activiy;
+    PARAMS:
+    - DfTrials, df, each row a trial
+    - grouping_for_mean, list of str, conjunction is a group, e..g,
+    ["shape_oriented", "gridsize"]
+    RETURNS:
+    - novel dataframe, same size as input, but with extra column with
+    name "x_mean"
+    """
+    from pythonlib.tools.pandastools import aggregThenReassignToNewColumn, append_col_with_grp_index, applyFunctionToAllRows
+
+    # 1) Get grouping, then get mean, then place back into each row.
+    def F(x):
+        """ get mean activity across trials
+        """
+        import numpy as np
+        return np.mean(x["x"])
+    NEWCOL = "x_grp_mean"
+    dfnew = aggregThenReassignToNewColumn(DfTrials, F, grouping_for_mean, NEWCOL)
+
+    # 2) Append group index as tuple
+    dfnew = append_col_with_grp_index(dfnew, grouping_for_mean, "grp", False)
+
+    # 3) For each row, subtract its group's mean.
+    def F(x):
+        return x["x"] - x[NEWCOL]
+    print("**********", dfnew.columns)
+    dfnew = applyFunctionToAllRows(dfnew, F, "x_centered")
+    return dfnew
+
+
+def extract_neural_snippets_aligned_to(MS, DS,
+    align_to = "go_cue",
+    t1_relonset = -0.4, t2_rel = 0):
+    """ Extract neural data, snippets, aligned to strokes, currently taking
+    alignment times relative to trial events, so only really makes sense for
+    single-stroke trials, or for aligning to strokes directly
+    PARAMS:
+    - MS, MultSession
+    - DS, DatStrokes
+    - align_to, str, what to align snips to
+    RETURNS:
+    - PAall, PopAnal for all snippets
+    (Also modifies DS, adding column: neural_pop_slice)
+    """
+
+    # For each stroke in DS, get its neural snippet
+
+    # # --- PARAMS
+    # align_to = "go_cue"
+    # # align_to = "on_stroke_1"
+    # t1_relonset = -0.4
+    # # t2_ver = "onset"
+    # t2_rel = 0
+
+    assert False, "use popanal_generate_alldata_bystroke instead (it collects all features into PopAnal"
+    list_xslices = []
+
+    ParamsDict = {}
+    ParamsDict["align_to"] = align_to
+    ParamsDict["t1_relonset"] = t1_relonset
+    # ParamsDict["t2_ver"] = t2_ver
+    ParamsDict["t2_rel"] = t2_rel
+
+    for ind in range(len(DS.Dat)):
+
+        if ind%200==0:
+            print("index strokes: ", ind)
+
+        # --- BEH
+        trialcode = DS.Dat.iloc[ind]["dataset_trialcode"]
+        indstrok = DS.Dat.iloc[ind]["stroke_index"]
+
+        # --- NEURAL
+        # Find the trial in neural data
+        SNthis, trial_neural = MS.index_convert(trialcode)[:2]
+        trial_neural2 = SNthis.datasetbeh_trialcode_to_trial(trialcode)
+        assert trial_neural==trial_neural2
+        del trial_neural2
+
+        # get strokes ons and offs
+        if align_to=="stroke_onset":
+            # Then align to onset of stroke that is in DS
+            # Sanity check (confirm that timing for neural is same as timing saved in dataset)
+            ons, offs = SNthis.strokes_extract_ons_offs(trial_neural)
+            timeon_neural = ons[indstrok]
+            timeoff_neural = offs[indstrok]
+            timeon = DS.Dat.iloc[ind]["time_onset"]
+            timeoff = DS.Dat.iloc[ind]["time_offset"]
+            assert np.isclose(timeon, timeon_neural)
+            assert np.isclose(timeoff, timeoff_neural)
+            time_align = timeon
+        else:
+            # Align to timing of things in trials
+            time_align = SNthis.events_get_time_all(trial_neural, list_events=[align_to])[align_to]
+
+
+        # --- POPANAL
+        # Extract the neural snippet
+        t1 = time_align + t1_relonset
+        t2 = time_align + t2_rel
+        PA = SNthis.popanal_generate_save_trial(trial_neural, print_shape_confirmation=False,
+                                            clean_chans=True, overwrite=True)
+        fail_if_times_outside_existing = True
+        assert fail_if_times_outside_existing==True, "toehrwise deal with possible change in size of output."
+        PAslice = PA._slice_by_time_window(t1, t2, return_as_popanal=True, fail_if_times_outside_existing=fail_if_times_outside_existing)
+
+        # save this slice
+        list_xslices.append(PAslice)
+
+    # Save into DS
+    DS.Dat["neural_pop_slice"] = list_xslices
+
+    ##### Combine all strokes into a single PA (consider them "trials")
+
+    from quantities import s
+    from neuralmonkey.classes.population import PopAnal
+
+    list_PAslice = DS.Dat["neural_pop_slice"].tolist()
+    CHANS = list_PAslice[0].Chans
+    TIMES = (list_PAslice[0].Times - list_PAslice[0].Times[0]) + t1_relonset*s # times all as [-predur, ..., postdur]
+
+    # get list of np arrays
+    Xall = np.concatenate([pa.X for pa in list_PAslice], axis=1)
+    PAall = PopAnal(Xall, TIMES, CHANS)
+
+    return PAall
+
+    ####################################
+
 def plot_results_state_space_by_group_(DatDict, DATAPLOT_GROUPING_VARS, ResDict, 
     plot_dims=(0,1), COLOR_BY = "shape", TEXT_LABEL_BY="group",
     overlay_strokes="beh", plot_mean=False, ax=None, color_dict=None):
