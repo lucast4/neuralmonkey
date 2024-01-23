@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 import numpy as np
 import pandas as pd
 from pythonlib.tools.pandastools import applyFunctionToAllRows
@@ -1993,6 +1994,7 @@ class Snippets(object):
         # Focus on the higher firing rate sites
         fig = self.sites_update_fr_thresh(FR_THRESH, FR_PERCENTILE, True, True)
         fig.savefig(f"{sdir_base}/sites_pruned_by_fr_hist.pdf")
+        #plt.close(fig)
 
         ###### GLOBALS
         if PRE_DUR_CALC is None:
@@ -2146,6 +2148,9 @@ class Snippets(object):
                 print("** Plotting raster + sm fr:", sdir_rasters)
                 ##### Plot raster + sm fr
                 # Plot rasters for each site
+                old_backend = mpl.get_backend()
+                print("default backend is " + old_backend)
+                mpl.use('agg') # non-GUI backend, so that the loop below doesn't run into a memory leak error (see GitHub matplotlib: #20300)
                 for site in self.Sites:
                     path = f"{sdir_rasters}/{sn.sitegetter_summarytext(site)}.png"
                     if not os.path.exists(path):
@@ -2153,6 +2158,7 @@ class Snippets(object):
                             event=event)
                         fig.savefig(path)
                         plt.close("all")
+                mpl.use(old_backend) # switch back just to be safe..
 
         else:
             print("!!SKIPPING PLOTS!! not enough data") 
