@@ -8,7 +8,7 @@ from pythonlib.tools.expttools import writeStringsToFile
 ONLY_ESSENTIAL_VARS = False # then just the first var, assuemd to be most important, for quick analys
 
 ##################
-LIST_ANALYSES = ["rulesw", "ruleswALLDATA", "ruleswERROR", "singleprimvar", "seqcontextvar", "seqcontext", "singleprim"] # repo of possible analses, 
+LIST_ANALYSES = ["rulesw", "ruleswALLDATA", "ruleswERROR", "singleprimvar", "seqcontextvar", "seqcontext", "singleprim", "charstrokes"] # repo of possible analses,
 
 # def exptlist_getter(self):
 
@@ -36,7 +36,7 @@ def _params_score_sequence_ver(animal, DATE, ANALY_VER):
         else:
             print(animal, DATE)
             assert False
-    elif ANALY_VER in ["singleprimvar", "seqcontext", "singleprim", "seqcontextvar"]:
+    elif ANALY_VER in ["singleprimvar", "seqcontext", "singleprim", "seqcontextvar", "charstrokes"]:
         DO_SCORE_SEQUENCE_VER = None
     else:
         assert False
@@ -1358,6 +1358,9 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
         preprocess_steps_append = ["one_to_one_beh_task_strokes_allow_unfinished"]
     elif ANALY_VER in ["singleprim"]:
         preprocess_steps_append = ["one_to_one_beh_task_strokes", "remove_online_abort"]
+    elif ANALY_VER in ["charstrokes"]:
+        # Dont carea bout match btw beh and task strokes
+        preprocess_steps_append = ["remove_online_abort"]
     else:
         assert False
     preprocess_steps_append.append("beh_strokes_at_least_one")
@@ -1405,7 +1408,7 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
         EXTRACT_EPOCHSETS_trial_label = "taskconfig_shploc"
         EXTRACT_EPOCHSETS_n_max_epochs = 10 # make this higher, since these are usually clean expts.
         EXTRACT_EPOCHSETS_merge_sets = True
-    elif ANALY_VER in ["singleprim", "seqcontext"]:
+    elif ANALY_VER in ["singleprim", "seqcontext", "charstrokes"]:
         DO_CHARSEQ_VER = None
         EXTRACT_EPOCHSETS = False
         EXTRACT_EPOCHSETS_trial_label = None
@@ -1468,6 +1471,11 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
         # Will be run automatically with snippet extraction.
         datasetstrokes_extract_to_prune_trial = None
         datasetstrokes_extract_to_prune_stroke = "clean_one_to_one"
+    elif ANALY_VER in ["charstrokes"]:
+        # Character strokes.
+        # Shape labels must be saved and loadable (e..g, from clustering).
+        datasetstrokes_extract_to_prune_trial = None
+        datasetstrokes_extract_to_prune_stroke = "clean_chars_load_clusters"
     else:
         print(ANALY_VER)
         assert False

@@ -294,15 +294,19 @@ class Snippets(object):
             post_dur = list_post_dur[0]
 
             # Each datapt matches a single stroke
-            if DS_pruned is None:
-                assert False, "dont extract here, isntead, extract AFTER load params"
-                # Then get it. Otherwise just use the input and assume you did everthing right.
-                DS = datasetstrokes_extract(dataset_pruned_for_trial_analysis, "clean_one_to_one",
-                    strokes_only_keep_single, tasks_only_keep_these,
-                    None,
-                    list_features_extraction)
+            if False:
+                if DS_pruned is None:
+                    assert False, "dont extract here, isntead, extract AFTER load params"
+                    # Then get it. Otherwise just use the input and assume you did everthing right.
+                    DS = datasetstrokes_extract(dataset_pruned_for_trial_analysis, "clean_one_to_one",
+                        strokes_only_keep_single, tasks_only_keep_these,
+                        None,
+                        list_features_extraction)
+                else:
+                    DS = DS_pruned
             else:
-                DS = DS_pruned
+                # Just get DS without any pruning.
+                DS = datasetstrokes_extract(dataset_pruned_for_trial_analysis, "all_no_clean")
 
             # Filter the trials
             trials = SN.get_trials_list(True, True, only_if_in_dataset=True,
@@ -414,7 +418,7 @@ class Snippets(object):
             post_dur = list_post_dur[0]
 
             if trials_prune_just_those_including_events:
-                events_that_must_include =  list_events
+                events_that_must_include = list_events
             else:
                 events_that_must_include = None
             trials = SN.get_trials_list(True, True, only_if_in_dataset=True, 
@@ -6968,11 +6972,14 @@ def extraction_helper(SN, which_level="trial", list_features_modulation_append=N
      it is onset of trial, might wnat to make shorter.
     """
 
-
     # General cleanup of dataset.
-    if dataset_pruned_for_trial_analysis is None:
-        # This is generally what you want
-        dataset_pruned_for_trial_analysis = _dataset_extract_prune_general(SN)
+    if False:
+        if dataset_pruned_for_trial_analysis is None:
+            # This is generally what you want
+            dataset_pruned_for_trial_analysis = _dataset_extract_prune_general(SN)
+    else:
+        # Dont exclude ANY data. DO this AFTER extracting Snippets.
+        dataset_pruned_for_trial_analysis = sn.Datasetbeh.copy()
 
     if which_level=="trial":
         # Events
@@ -7005,7 +7012,7 @@ def extraction_helper(SN, which_level="trial", list_features_modulation_append=N
             print(list_pre_dur)
             print(list_post_dur)
 
-        trials_prune_just_those_including_events = True # msut have fix touch
+        trials_prune_just_those_including_events = True # True is fine, this just checkl that has fix touch
         DS_pruned = None
 
     elif which_level in ["stroke", "stroke_off"]:
