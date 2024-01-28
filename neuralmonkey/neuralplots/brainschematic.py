@@ -114,7 +114,8 @@ def regions_get_ordered_by_x(ver="hand", prune_index=True, combined_regions=Fals
 def plot_df_from_wideform(dfthis_agg_2d, savedir=None, col1_name="bregion", # just for saving
                           subplot_var=None, valname=None, savesuffix="", # Just for saving
                           norm_method=None,
-                          diverge=False, DEBUG=False):
+                          diverge=False, DEBUG=False,
+                          zlims=(None, None)):
     """ Plot df that is already wide form, with rows as bregion and columns as each
     subplot. Inputed vars are for labeling purposes, not for tforming dframe.
     Zlim will be matched across all subplots.
@@ -125,8 +126,8 @@ def plot_df_from_wideform(dfthis_agg_2d, savedir=None, col1_name="bregion", # ju
 
     # Plot heatmap
     annotate_heatmap = False
-    ZLIMS = [None, None]
-    fig_hist, ax_hist, rgba_values = heatmap(dfthis_agg_2d, None, annotate_heatmap, ZLIMS,
+    # ZLIMS = [None, None]
+    fig_hist, ax_hist, rgba_values = heatmap(dfthis_agg_2d, None, annotate_heatmap, zlims,
                                    diverge=diverge, norm_method=norm_method)
     ax_hist.set_xlabel(subplot_var)
     ax_hist.set_ylabel(col1_name)

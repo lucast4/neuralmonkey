@@ -33,7 +33,6 @@ def popanal_preprocess_scalar_normalization(PA, grouping_vars, subtract_mean_eac
     de-means for each location.
     """
 
-
     # if plot_example_chan==False:
     #     plot_example_chan = None
     # assert isinstance(plot_example_chan, bool) or isinstance(plot_example_chan, int)
@@ -41,6 +40,8 @@ def popanal_preprocess_scalar_normalization(PA, grouping_vars, subtract_mean_eac
     if subtract_mean_each_level_of_var is None:
         subtract_mean_each_level_of_var = "IGNORE"
     else:
+        print(subtract_mean_each_level_of_var)
+
         assert isinstance(subtract_mean_each_level_of_var, str)
 
     # 1) First, rescale all FR (as in Churchland stuff), but isntead of using
@@ -88,36 +89,39 @@ def popanal_preprocess_scalar_normalization(PA, grouping_vars, subtract_mean_eac
             list_pa_norm.append(pa.norm_subtract_trial_mean_each_timepoint())
         PAnorm = concatenate_popanals(list_pa_norm, "trials")
 
+    # Finally, convert to scalars.
+    PAscal = PAnorm.agg_wrapper("times") # mean over time --> (chans, trials)
+
     ### GET SCALARS (by averaging over time and grouping by variables of interest)
     if DO_AGG_TRIALS:
         # - get single "pseudotrial" for each conjunctive level
         # vars = ["shape_oriented", "gridloc", "FEAT_num_strokes_task", "stroke_index"]
         # vars = ["shape_oriented", "gridloc"]
-        PAagg, groupdict = PAnorm.slice_and_agg_wrapper("trials", grouping_vars, return_group_dict=True)
+        PAscalagg, groupdict = PAscal.slice_and_agg_wrapper("trials", grouping_vars, return_group_dict=True)
         # print("Sample sizes for each level of grouping vars")
         # for k,v in groupdict.items():
         #     print(k, " -- ", len(v))
         # assert False
     else:
-        PAagg = PAnorm
+        PAscalagg = PAscal
         groupdict = None
 
-    # Finally, convert to scalars.
-    PAagg = PAagg.agg_wrapper("times") # mean over time --> (chans, trials)
+    # # Finally, convert to scalars.
+    # PAagg = PAagg.agg_wrapper("times") # mean over time --> (chans, trials)
 
     ######## PLOTS
     if plot_example_chan is not None:
         add_legend = True
         fig, axes = plt.subplots(2,2, figsize=(8,8))
 
-        for pathis, ax in zip([PA, PAnorm, PAagg], axes.flatten()):
+        for pathis, ax in zip([PA, PAnorm, PAscalagg], axes.flatten()):
             pathis.plotwrapper_smoothed_fr_split_by_label("trials", plot_example_split_var,
                 ax=ax, add_legend=add_legend, chan=plot_example_chan)
             ax.axhline(0)
     else:
         fig, axes = None, None
 
-    return PAnorm, PAagg, fig, axes, groupdict
+    return PAscal, PAscalagg, fig, axes, groupdict
 
 
 # def rsa_distmat_quantify_same_diff_variables(Clsim, ind_var, ignore_diagonal=True):
@@ -185,145 +189,222 @@ def popanal_preprocess_scalar_normalization(PA, grouping_vars, subtract_mean_eac
 #     return res, PA, Clraw, Clsim
 
 
-def snippets_extract_popanals_split_bregion_twind(SP, list_time_windows, EFFECT_VARS=None):
-    """ Extraction of specific PopAnals for each conjunction of (twind, bregion).
+def snippets_extract_popanals_split_bregion_twind(SP, list_time_windows, vars_extract_from_dfscalar,
+                                                  SAVEDIR=None, dosave=False,
+                                                  HACK_RENAME_SHAPES=False):
+    """ [GOOD] SP --> Multiple Popanals, each with speciifc (event, bregion, twind), and
+    with all variables extracted into each pa.Xlabels["trials"]. The goal is that at can
+    run all population analyses using these pa, without need for having beh datasets and
+    all snippets in memory.
+    Extraction of specific PopAnals for each conjunction of (twind, bregion).
     PARAMS:
     - list_time_windowsm, list of timw eindow, tuples .e.g, (-0.2, 0.2), each defining a specific
     extracvted PA.
     - EFFECT_VARS, list of str, vars to extract, mainly to make sure the etracted PA have all
     variables. If not SKIP_ANALY_PLOTTING, then these also determine which plots.
+    - dosave, bool, def faulse since takes lots sapce, like 1-3g per wl.
     RETURNS:
     - DictBregionTwindPA, dict, mapping (bregion, twind) --> pa.
     All PAs guaradteeed to have iodentical (:, trials, times).
     """
     from pythonlib.tools.pandastools import append_col_with_grp_index
 
-    list_features_extraction_stroke = [
-                                "stroke_index", "stroke_index_fromlast", "stroke_index_fromlast_tskstks",
-                                "stroke_index_semantic", "stroke_index_semantic_tskstks",
-                                "shape_oriented", "gridloc",
-                                "CTXT_loc_next", "CTXT_shape_next",
-                                "CTXT_loc_prev", "CTXT_shape_prev",
-                                "gap_from_prev_angle_binned", "gap_to_next_angle_binned",
-                                "gap_from_prev_angle", "gap_to_next_angle",
-                                "distcum", "displacement", "circularity"]
 
-    list_features_extraction_trial = ["trialcode", "aborted", "trial_neural", "event_time", "task_kind", "gridsize",
-                                      "FEAT_num_strokes_task", "FEAT_num_strokes_beh",
-                                      "character", "probe", "supervision_stage_new", "supervision_stage_concise",
-                                      "epoch_orig", "epoch", "taskgroup",
-                                      "char_seq",
-                                      "origin", "donepos"]
-    n_strok_max = 4
-    for i in range(n_strok_max):
-        for suff in ["shape", "loc", "loc_local"]:
-            list_features_extraction_trial.append(f"seqc_{i}_{suff}")
-    list_features_extraction_trial.append("seqc_nstrokes_beh")
-    list_features_extraction_trial.append("seqc_nstrokes_task")
+    if SAVEDIR is None and dosave:
+        from pythonlib.globals import PATH_ANALYSIS_OUTCOMES
+        SAVEDIR = f"{PATH_ANALYSIS_OUTCOMES}/recordings/main/SAVED_POPANALS"
+        os.makedirs(SAVEDIR, exist_ok=True)
 
-    # Features that should always extract (Strokes dat)
-    if SP.Params["which_level"]=="stroke":
-        list_features_extraction = list_features_extraction_trial + list_features_extraction_stroke
-        # list_features_extraction = ["trialcode", "aborted", "trial_neural", "event_time", "task_kind",
-        #                             "stroke_index", "stroke_index_fromlast", "stroke_index_fromlast_tskstks",
-        #                             "stroke_index_semantic", "stroke_index_semantic_tskstks",
-        #                             "shape_oriented", "gridloc", "gridsize",
-        #                             "FEAT_num_strokes_task", "FEAT_num_strokes_beh",
-        #                             "CTXT_loc_next", "CTXT_shape_next",
-        #                             "CTXT_loc_prev", "CTXT_shape_prev",
-        #                             "gap_from_prev_angle_binned", "gap_to_next_angle_binned",
-        #                             "gap_from_prev_angle", "gap_to_next_angle",
-        #                             "distcum", "displacement", "circularity"
-        #                             ]
-    elif SP.Params["which_level"]=="trial":
-        list_features_extraction = list_features_extraction_trial
-    else:
-        print(SP.Params["which_level"])
-        assert False
+    # if vars_extract_append is None:
+    #     EFFECT_VARS = []
 
-    if EFFECT_VARS is None:
-        EFFECT_VARS = []
+    # list_features_extraction_stroke = [
+    #                             "stroke_index", "stroke_index_fromlast", "stroke_index_fromlast_tskstks",
+    #                             "stroke_index_semantic", "stroke_index_semantic_tskstks",
+    #                             "shape_oriented", "gridloc",
+    #                             "CTXT_loc_next", "CTXT_shape_next",
+    #                             "CTXT_loc_prev", "CTXT_shape_prev",
+    #                             "gap_from_prev_angle_binned", "gap_to_next_angle_binned",
+    #                             "gap_from_prev_angle", "gap_to_next_angle",
+    #                             "distcum", "displacement", "circularity"]
+    #
+    # list_features_extraction_trial = ["trialcode", "aborted", "trial_neural", "event_time", "task_kind", "gridsize",
+    #                                   "FEAT_num_strokes_task", "FEAT_num_strokes_beh",
+    #                                   "character", "probe", "supervision_stage_new", "supervision_stage_concise",
+    #                                   "epoch_orig", "epoch", "taskgroup",
+    #                                   "char_seq",
+    #                                   "origin", "donepos"]
+    # n_strok_max = 4
+    # for i in range(n_strok_max):
+    #     for suff in ["shape", "loc", "loc_local"]:
+    #         list_features_extraction_trial.append(f"seqc_{i}_{suff}")
+    # list_features_extraction_trial.append("seqc_nstrokes_beh")
+    # list_features_extraction_trial.append("seqc_nstrokes_task")
+    #
+    # # Features that should always extract (Strokes dat)
+    # if SP.Params["which_level"] in ["stroke", "stroke_off"]:
+    #     list_features_extraction = list_features_extraction_trial + list_features_extraction_stroke
+    # elif SP.Params["which_level"]=="trial":
+    #     list_features_extraction = list_features_extraction_trial
+    # else:
+    #     print(SP.Params["which_level"])
+    #     assert False
+    #
+    # if EFFECT_VARS is None:
+    #     EFFECT_VARS = []
+    #
+    # ######################## PREPPING
+    # # get back all the outliers, since they just a single removed outlier (chan x trial) will throw out the entire trial.
+    # SP.datamod_append_outliers()
+    # SP.datamod_append_unique_indexdatapt()
+    #
+    # # Append variables by hand
+    # # Prep dataset, for later variable extraction
+    # D = SP.datasetbeh_extract_dataset()
+    # if "FEAT_num_strokes_task" not in D.Dat.columns:
+    #     D.extract_beh_features()
+    # if "char_seq" not in D.Dat.columns:
+    #     D.sequence_char_taskclass_assign_char_seq()
+    # if "seqc_nstrokes_task" not in D.Dat.columns:
+    #     D.seqcontext_preprocess()
+    #
+    # # For the rest, try to get automatically.
+    # vars_to_extract = EFFECT_VARS + list_features_extraction
+    # assert SP.datasetbeh_append_column_helper(vars_to_extract, D, stop_if_fail=True)==True # Extract all the vars here
+    #
+    # # Conjunction of stroke index and num strokes in task.
+    # if False:
+    #     SP.DfScalar = append_col_with_grp_index(SP.DfScalar, ["FEAT_num_strokes_task", "stroke_index"], "nstk_stkidx", False)
 
-    ######################## PREPPING
-    # get back all the outliers, since they just a single removed outlier (chan x trial) will throw out the entire trial.
-    SP.datamod_append_outliers()
-    SP.datamod_append_unique_indexdatapt()
+    if HACK_RENAME_SHAPES:
+        ############# HACK - rename shapes (lumping)
+        #### Rename any variable values? Hacky
+        # Lump together (done by hand)
+        map_shapelump_to_shapes = {}
+        map_shape_to_shapelump = {}
+        for grp in [
+            ["V-2-1-0", "arcdeep-4-1-0", "usquare-1-1-0"],
+            ["V-2-3-0", "arcdeep-4-3-0", "usquare-1-3-0"],
+            ["V-2-2-0", "arcdeep-4-2-0", "usquare-1-2-0"],
+            ["V-2-4-0", "arcdeep-4-4-0", "usquare-1-4-0"]]:
 
-    # Append variables by hand
-    # Prep dataset, for later variable extraction
-    D = SP.datasetbeh_extract_dataset()
-    if "FEAT_num_strokes_task" not in D.Dat.columns:
-        D.extract_beh_features()
-    if "char_seq" not in D.Dat.columns:
-        D.sequence_char_taskclass_assign_char_seq()
-    if "seqc_nstrokes_task" not in D.Dat.columns:
-        D.seqcontext_preprocess()
+            # name it after the first
+            name = f"L|{grp[0]}"
+            assert name not in map_shapelump_to_shapes
+            map_shapelump_to_shapes[name] = grp
 
-    # SP.datasetbeh_append_column("FEAT_num_strokes_task", D)
-    # SP.datasetbeh_append_column("aborted", D)
+            for g in grp:
+                assert g not in map_shape_to_shapelump
+                map_shape_to_shapelump[g] = name
 
-    # For the rest, try to get automatically.
-    vars_to_extract = EFFECT_VARS + list_features_extraction
-    assert SP.datasetbeh_append_column_helper(vars_to_extract, D, stop_if_fail=True)==True # Extract all the vars here
-
-    # Conjunction of stroke index and num strokes in task.
-    if False:
-        SP.DfScalar = append_col_with_grp_index(SP.DfScalar, ["FEAT_num_strokes_task", "stroke_index"], "nstk_stkidx", False)
+        # Replace shape values for all columns that have "shape" in them.
+        shape_keys = [k for k in vars_extract_from_dfscalar if "shape" in k]
+        for sk in shape_keys:
+            if len(SP.DfScalar[sk].unique())>3:
+                print(" -- Lumping shapes (renaming) in SP.DfScalar, for: ", sk)
+                def F(x):
+                    sh = x[sk]
+                    if sh in map_shape_to_shapelump.keys():
+                        return map_shape_to_shapelump[sh]
+                    else:
+                        return sh
+                SP.DfScalar[sk] = SP.DfScalar.apply(F, axis=1)
 
     ####################### EXTRACT DATA
-    list_features_extraction = list(set(list_features_extraction + EFFECT_VARS))
+    # list_features_extraction = list(set(list_features_extraction + EFFECT_VARS))
     list_bregion = SP.bregion_list()
 
-    # 1) Extract population data
+    # 1) Extract population dataras
     DictEvBrTw_to_PA = {}
     for event in SP.Params["list_events_uniqnames"]:
-        # assert len(SP.Params["list_events_uniqnames"])==1, "assuming is strokes, just a single event... otherwise iterate"
-        # event = SP.Params["list_events_uniqnames"][0]
-        PA, _ = SP.dataextract_as_popanal_statespace(SP.Sites, event,
-                                                     list_features_extraction=list_features_extraction,
-                                                  which_fr_sm = "fr_sm", max_frac_trials_lose=0.02)
+        if event in SP.DfScalar["event"].tolist():
+            # assert len(SP.Params["list_events_uniqnames"])==1, "assuming is strokes, just a single event... otherwise iterate"
+            # event = SP.Params["list_events_uniqnames"][0]
+            PA, _ = SP.dataextract_as_popanal_statespace(SP.Sites, event,
+                                                         list_features_extraction=vars_extract_from_dfscalar,
+                                                      which_fr_sm = "fr_sm", max_frac_trials_lose=0.02)
 
-        # print("These are requested sites:", SP.Sites)
-        # print("These are extracted sites:", PA.Chans)
+            assert len(PA.X)>0
+            # print("These are requested sites:", SP.Sites)
+            # print("These are extracted sites:", PA.Chans)
 
-        # Split PA based on chans (e.g., bregions), times (e.g., different time slices) BEFORE doing downstream analyses
-        DictBregionTwindPA = {}
-        trials = None
-        xlabels_times = None
-        xlabels_trials = None
-        for twind in list_time_windows:
-            times = None
-            for bregion in list_bregion:
-                # Bregion
-                chans_needed = SP.sitegetter_map_region_to_sites(bregion)
-                pa = PA.slice_by_dim_values_wrapper("chans", chans_needed)
-                # Times
-                pa = pa.slice_by_dim_values_wrapper("times", twind)
+            # Split PA based on chans (e.g., bregions), times (e.g., different time slices) BEFORE doing downstream analyses
+            DictBregionTwindPA = {}
+            trials = None
+            xlabels_times = None
+            xlabels_trials = None
+            for twind in list_time_windows:
+                times = None
+                for bregion in list_bregion:
 
+                    print(event, bregion, twind)
 
-                # sanity check that all pa are identical
-                if trials is not None:
-                    assert pa.Trials == trials
-                if times is not None:
-                    # print(list(pa.Times))
-                    # print(list(times))
-                    assert list(pa.Times) == list(times)
-                if xlabels_trials is not None:
-                    assert pa.Xlabels["trials"].equals(xlabels_trials)
-                if xlabels_times is not None:
-                    assert pa.Xlabels["times"].equals(xlabels_times)
+                    # Bregion
+                    chans_needed = SP.sitegetter_map_region_to_sites(bregion)
+                    pa = PA.slice_by_dim_values_wrapper("chans", chans_needed)
+                    # Times
+                    pa = pa.slice_by_dim_values_wrapper("times", twind)
 
-                # Update all
-                trials = pa.Trials
-                times = pa.Times
-                xlabels_trials = pa.Xlabels["trials"]
-                xlabels_times = pa.Xlabels["times"]
+                    assert len(pa.X)>0
 
-                # DictBregionTwindPA[(bregion, twind)] = pa
-                DictEvBrTw_to_PA[(event, bregion, twind)] = pa
-                print(event, " -- ", bregion, " -- ", twind, " -- (data shape:)", pa.X.shape)
+                    # sanity check that all pa are identical
+                    if trials is not None:
+                        assert pa.Trials == trials
+                    if times is not None:
+                        # print(list(pa.Times))
+                        # print(list(times))
+                        assert list(pa.Times) == list(times)
+                    if xlabels_trials is not None:
+                        assert pa.Xlabels["trials"].equals(xlabels_trials)
+                    if xlabels_times is not None:
+                        assert pa.Xlabels["times"].equals(xlabels_times)
 
-    return DictEvBrTw_to_PA
+                    # Update all
+                    trials = pa.Trials
+                    times = pa.Times
+                    xlabels_trials = pa.Xlabels["trials"]
+                    xlabels_times = pa.Xlabels["times"]
+
+                    # DictBregionTwindPA[(bregion, twind)] = pa
+                    DictEvBrTw_to_PA[(SP.Params["which_level"], event, bregion, twind)] = pa
+                    print(event, " -- ", bregion, " -- ", twind, " -- (data shape:)", pa.X.shape)
+
+    # Save it as dataframe
+    tmp = []
+    for k, v in DictEvBrTw_to_PA.items():
+
+        # Make sure pa itself is keeping track of the outer varibles,
+        # for sanity checks once you start splitting and grouping.
+        v.Xlabels["trials"]["which_level"] = k[0]
+        v.Xlabels["trials"]["event"] = k[1]
+        v.Xlabels["trials"]["bregion"] = k[2]
+        v.Xlabels["trials"]["twind"] = [k[3] for _ in range(len(v.Xlabels["trials"]))]
+
+        tmp.append({
+            "which_level":k[0],
+            "event":k[1],
+            "bregion":k[2],
+            "twind":k[3],
+            "pa":v
+        })
+    DFallpa = pd.DataFrame(tmp)
+
+    ## SAVE
+    if dosave:
+        import pickle
+        mult_sing, sessions = SP.check_if_single_or_mult_session()
+        sessions_str = "_".join([str(s) for s in sessions])
+        if mult_sing == "mult":
+            SAVEDIR = f"{PATH_ANALYSIS_OUTCOMES}/recordings/main/SAVED_POPANALS/mult_session"
+            path = f"{SAVEDIR}/{SP.animal()}-{SP.date()}-{SP.Params['which_level']}-{sessions_str}.pkl"
+        elif mult_sing=="sing":
+            SAVEDIR = f"{PATH_ANALYSIS_OUTCOMES}/recordings/main/SAVED_POPANALS/single_session"
+            path = f"{SAVEDIR}/{SP.animal()}-{SP.date()}-{SP.Params['which_level']}-{sessions_str}.pkl"
+        with open(path, "wb") as f:
+            pickle.dump(DFallpa, f)
+        print("Saved to: ", path)
+
+    return DFallpa
 
     # #################### COMPUTE DISTANCE MATRICES AND SCORE RELATIVE TO THEORETICAL MATRICES.
     # PLOT = PLOT_INDIV

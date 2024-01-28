@@ -1530,11 +1530,56 @@ class MetricsScalar(object):
             return eventscores
 
 ####################### UTILS
+def _shuffle_dataset_generate_toy_data():
+    """ Return dataframe for testing shuffling methods."""
+    df = pd.DataFrame({
+        "a":[1,1,1,2,2,2,3,3,3, 1, 1, 1],
+        "b":[1,2,3,1,2,3,1,2,3, 1, 2, 3],
+        "c":[1,2,3,1,2,3,1,2,3, 1, 2, 3],
+        "d":[1,2,3,1,2,3,1,2,3, 1, 2, 3],
+    })
+    return df
+
+def _shuffle_dataset_hier(df, list_var_noshuff, list_var_shuff,
+                          maintain_block_temporal_structure=False,
+                          return_in_input_order=True):
+    """ Hierarhical, this means shuffle only the variables in list_var_shuff, within
+    each level of list_var_noshuff. Moreover, all var in lisT_var_shuff will
+    remain correlated. e.g., if want to shuffle all cases of (char, seq) within
+    each epoch, have list_var_noshuff = ["epoch"], and list_var_shuff = ["char", "seq"],
+    which does dfs for each level of "epoch" one by one, and within each one, shuffle
+    the values of ["char", "seq"] (without changing values of other variables), and then
+    concatenate.
+    PARAMS:
+    - return_in_input_order, bool, if True, then the rows match the inpout rows. in this case,
+    will not have "index" column
+    RETURNS:
+        - df, with new column "index" holding the original indices.
+    NOTE: confirmed doesnt mod input. and works correctly, including "index" correctly mapping
+    to original data.
+    """
+
+    # For each group of var, shuffle the othervar
+    list_grp = []
+    for i, grp in df.groupby(list_var_noshuff):
+        if len(list_var_shuff)==1:
+            grp = _shuffle_dataset(grp, list_var_shuff[0], maintain_block_temporal_structure=maintain_block_temporal_structure)
+        else:
+            grp = _shuffle_dataset_varconj(grp, list_var_shuff, maintain_block_temporal_structure=maintain_block_temporal_structure)
+        list_grp.append(grp)
+    if return_in_input_order:
+        df_shuff = pd.concat(list_grp).sort_index()
+    else:
+        df_shuff = pd.concat(list_grp).reset_index()
+
+    return df_shuff
+
 def _shuffle_dataset_varconj(df, list_var, maintain_block_temporal_structure=True, 
         shift_level="datapt", DEBUG=False, PRINT=False):
     """ Like _shuffle_dataset, but allowing you maintain the correlation between
     multiple varialbes. e..g, if you are doing two-way anova, want to make sure the sample
-    size of conjunction var1xvar2 does not change. TO do this, make dummy variable that 
+    size of conjunction var1xvar2 does not change.
+    Here, does it by making dummy variable that
     is conjunciton, shuffle using that varaibale, then pull out new var1 and var2 from 
     dummy
     PARAMS:
@@ -1545,7 +1590,7 @@ def _shuffle_dataset_varconj(df, list_var, maintain_block_temporal_structure=Tru
     # make a new temp var
     from pythonlib.tools.pandastools import append_col_with_grp_index, applyFunctionToAllRows, grouping_print_n_samples
 
-    assert len(list_var)==2, "not yet coded for >2"
+    # assert len(list_var)==2, "not yet coded for >2"
 
     # 1) Make a dummy conjunction variable.
     dfthis = append_col_with_grp_index(df, list_var, "dummy", use_strings=False)
@@ -1554,14 +1599,15 @@ def _shuffle_dataset_varconj(df, list_var, maintain_block_temporal_structure=Tru
     dfthis = _shuffle_dataset(dfthis, "dummy", maintain_block_temporal_structure, shift_level, DEBUG)
 
     # 3) Pull out the var1 and var2
-    # resassign var and vars_others
-    def F(x):
-        return x["dummy"][0]
-    dfthis = applyFunctionToAllRows(dfthis, F, list_var[0])
-
-    def F(x):
-        return x["dummy"][1]
-    dfthis = applyFunctionToAllRows(dfthis, F, list_var[1])
+    # resassign vars
+    for i, varname in enumerate(list_var):
+        def F(x):
+            return x["dummy"][i]
+        dfthis = applyFunctionToAllRows(dfthis, F, varname)
+    #
+    # def F(x):
+    #     return x["dummy"][1]
+    # dfthis = applyFunctionToAllRows(dfthis, F, list_var[1])
 
     if PRINT:
         print("=== Original, first 5 inds. SHOULD NOT CHANGE")
@@ -1577,6 +1623,9 @@ def _shuffle_dataset_varconj(df, list_var, maintain_block_temporal_structure=Tru
         grouping_print_n_samples(df, list_var)
         print("-shuffled")
         grouping_print_n_samples(dfthis, list_var)
+
+    if "dummy" in dfthis.columns:
+        del dfthis["dummy"]
 
     return dfthis
 

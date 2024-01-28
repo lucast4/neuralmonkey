@@ -19,15 +19,15 @@ SAVEDIR_SNIPPETS_TRIAL = "/gorilla1/analyses/recordings/main/anova/bytrial" # fo
 # import warnings
 # warnings.filterwarnings("error")
 
-def load_snippets(sdir, fname="Snippets"):
-    import pickle as pkl
-
-    path = f"{sdir}/{fname}.pkl"
-    with open(path, "rb") as f:
-        SP = pkl.load(f)
-
-    return SP
-
+# def load_snippets(sdir, fname="Snippets"):
+#     import pickle as pkl
+#
+#     path = f"{sdir}/{fname}.pkl"
+#     with open(path, "rb") as f:
+#         SP = pkl.load(f)
+#
+#     return SP
+#
 
 def load_snippet_single(sn, which_level):
     """ Load a single prevsiouly saved snippet
@@ -38,14 +38,8 @@ def load_snippet_single(sn, which_level):
     # 1) initialize SP from SN, without data
     sp = Snippets(sn, None, None, None, None, None, None, SKIP_DATA_EXTRACTION=True)
 
-    # 2) load        
-    if which_level=="trial":
-        SAVEDIR = SAVEDIR_SNIPPETS_TRIAL
-    elif which_level=="stroke":
-        SAVEDIR = SAVEDIR_SNIPPETS_STROKE
-    else:
-        print(which_level)
-        assert False
+    # 2) load
+    SAVEDIR = f"/gorilla1/analyses/recordings/main/anova/by{which_level}"
     sdir = f"{SAVEDIR}/{sn.Animal}-{sn.Date}-sess_{sess}"
 
     # 3) regenerate all data.
@@ -75,14 +69,8 @@ def load_and_concat_mult_snippets(MS, which_level, SITES_COMBINE_METHODS = "inte
     
     from pythonlib.tools.checktools import check_objects_identical
     import os
-        
-    if which_level=="trial":
-        SAVEDIR = SAVEDIR_SNIPPETS_TRIAL
-    elif which_level=="stroke":
-        SAVEDIR = SAVEDIR_SNIPPETS_STROKE
-    else:
-        print(which_level)
-        assert False
+
+    SAVEDIR = f"/gorilla1/analyses/recordings/main/anova/by{which_level}"
 
     # Genreate the seave dir. 
     # Assumes there is only single animal and date... (not necessary, just 
@@ -95,7 +83,7 @@ def load_and_concat_mult_snippets(MS, which_level, SITES_COMBINE_METHODS = "inte
 
     # list_session = [0,1,2,3]
     list_sp = []
-    list_sn = []
+    # list_sn = []
     for i, sn in enumerate(MS.SessionsList):
 
         sess = sn.RecSession
@@ -108,7 +96,7 @@ def load_and_concat_mult_snippets(MS, which_level, SITES_COMBINE_METHODS = "inte
 
         # store
         list_sp.append(sp)
-        list_sn.append(sn)
+        # list_sn.append(sn)
 
     # 4) concatenate all sessions.
     print("This many vals across loaded session")
@@ -120,7 +108,9 @@ def load_and_concat_mult_snippets(MS, which_level, SITES_COMBINE_METHODS = "inte
     # sn = MS.SessionsList[0]
 
     # 1) initialize SP from SN, without data
-    SPall = Snippets(None, None, None, None, None, None, None, SKIP_DATA_EXTRACTION=True)
+    SPall = Snippets(None, None, None,
+                     None, None,
+                     None, None, SKIP_DATA_EXTRACTION=True)
     SPall.DfScalar = pd.concat([sp.DfScalar for sp in list_sp]).reset_index(drop=True)
 
     # Other stuff
@@ -198,8 +188,9 @@ def load_and_concat_mult_snippets(MS, which_level, SITES_COMBINE_METHODS = "inte
     # Remove columns from DfScalar that are ambiguous
     # TODO...
 
-    # Save all the sp.
-    
+    # make sure is numbered
+    SPall.DfScalar["event"] = SPall.DfScalar["event_aligned"]
+
     return SPall, SAVEDIR_ALL
 
 
@@ -303,8 +294,9 @@ class Snippets(object):
 
             # Each datapt matches a single stroke
             if DS_pruned is None:
+                assert False, "dont extract here, isntead, extract AFTER load params"
                 # Then get it. Otherwise just use the input and assume you did everthing right.
-                DS = datasetstrokes_extract(dataset_pruned_for_trial_analysis,
+                DS = datasetstrokes_extract(dataset_pruned_for_trial_analysis, "clean_one_to_one",
                     strokes_only_keep_single, tasks_only_keep_these,
                     None,
                     list_features_extraction)
@@ -351,7 +343,7 @@ class Snippets(object):
             # list_events = ["stroke"]
             # list_events_uniqnames = ["00_stroke"]
 
-            DfScalar["event"] = "stroke"
+            DfScalar["event"] = "00_stroke"
             # NOTE: DfScalar["event_aligned"] will be "00_stroke"
 
             list_events = DfScalar["event"].unique().tolist()
@@ -398,6 +390,8 @@ class Snippets(object):
             else:
                 ListPA, list_events_uniqnames = self.extract_snippets_trials(trials, sites_keep, list_events, list_pre_dur, list_post_dur,
                     list_features_extraction)
+
+            DfScalar["event"] = DfScalar["event_aligned"]
 
         elif which_level == "flex":
             # Flexible, based on event markers (abstract, or timestamp, can work).
@@ -448,8 +442,8 @@ class Snippets(object):
 
             # Replace events_aligned with the num_event.
             # THis is assumed for many of codes downstream.
-            DfScalar["event"] = DfScalar["event_aligned"] # "go"
-            DfScalar["event_aligned"] = DfScalar["event_unique_name"]  # "00_go"
+            DfScalar["event"] = DfScalar["event_unique_name"]  # "00_go"
+            # DfScalar["event_aligned"] = DfScalar["event_unique_name"]  # "00_go"
         else:
             assert False
 
@@ -900,19 +894,30 @@ class Snippets(object):
         """ If you removed outliers, add them back.
         (REversible, beucase outlier is a column)
         RETURNS:
-            - modifies self.DfScalar
+            - modifies self.DfScalar (if return_copy is False)
+            - or returns copy, wihtout mod
         """
+
+        cols_pre = self.DfScalar.columns
         if hasattr(self, "DfScalar_OutlierRows"):
             if self.DfScalar_OutlierRows is not None:
                 if return_copy:
                     DfScalar = self.DfScalar.copy()
                     DfScalar = pd.concat([DfScalar, self.DfScalar_OutlierRows]).reset_index(drop=True)
+                    if not cols_pre==DfScalar.columns:
+                        print(cols_pre)
+                        print(DfScalar)
+                        assert False
                     return DfScalar
                 else:
                     # Mutate
                     self.DfScalar = pd.concat([self.DfScalar, self.DfScalar_OutlierRows]).reset_index(drop=True)
                     # and delete this, so you don't retry this
                     self.DfScalar_OutlierRows = None
+                    if not cols_pre==self.DfScalar.columns:
+                        print(cols_pre)
+                        print(self.DfScalar)
+                        assert False
 
     def datamod_remove_outliers(self):
         """ Remove outliers based on fr_scalar, only for high fr outliers,
@@ -1793,7 +1798,20 @@ class Snippets(object):
             grp = ["trialcode", "stroke_index"]
         else:
             assert False
-            
+
+        try:
+            for g in grp:
+                if g not in self.DfScalar.columns:
+                    print("HERE")
+                    print(g)
+                    print(self.DfScalar)
+                    assert False
+        except Exception as err:
+            print("HERE")
+            print(g)
+            print(self.DfScalar)
+            raise err
+
         self.DfScalar = append_col_with_grp_index(self.DfScalar, grp, "index_datapt", use_strings=False)
 
     # def datamod_balance_conjunction_of_levels(self, dfthis, var1, var2,
@@ -4750,6 +4768,8 @@ class Snippets(object):
                                     which_fr_sm = which_fr_sm, chans_needed=sites,
                                               max_frac_trials_lose=max_frac_trials_lose)
 
+        for var in list_features_extraction:
+            assert var in PA.Xlabels["trials"].columns
         return PA, sample_meta
 
 
@@ -6553,7 +6573,106 @@ class Snippets(object):
             #     return DS
         else:
             assert False
- 
+
+    def datasetbeh_preprocess_clean_by_expt(self, ANALY_VER, vars_extract_append):
+        """
+        Prune snippets before running any analyses.
+        NOTE: removes all trialcodes that miss even just one stroke (as
+        tested in DatStrokes)
+        :return:
+        - Modifies self.DfScalar,, removing rows based on pruned dataset, and appending
+        columns as needed.
+        - D, pruned Dataset. Note: this is NOT saved in SP.
+        - list_features_extraction, list of str, features that wqere extracted successfulty.
+        """
+        from neuralmonkey.metadat.analy.anova_params import dataset_apply_params
+
+        # get back all the outliers, since they just a single removed outlier (chan x trial) will throw out the entire trial.
+        self.datamod_append_outliers()
+        self.datamod_append_unique_indexdatapt()
+
+        ########################## PREP/CLEAN DATASET
+        D = self.datasetbeh_extract_dataset()
+        animal = self.animal()
+        date = self.date()
+
+        # Preprocess, clean, and prune D
+        Dprun, DSprun, params = dataset_apply_params(D, ANALY_VER, animal, date)
+        D = Dprun # prune it
+
+        # Append variables by hand
+        # D = self.datasetbeh_extract_dataset()
+        if "FEAT_num_strokes_task" not in D.Dat.columns:
+            D.extract_beh_features()
+        if "char_seq" not in D.Dat.columns:
+            D.sequence_char_taskclass_assign_char_seq()
+        if "seqc_nstrokes_task" not in D.Dat.columns:
+            D.seqcontext_preprocess()
+
+        # Prune DfScalar to only have trialcodes that remain after pruning.
+        TRIALCODES_KEEP = D.Dat["trialcode"].tolist()
+        print("Starting len dfscalar: ", len(self.DfScalar))
+        self.DfScalar = self.DfScalar[self.DfScalar["trialcode"].isin(TRIALCODES_KEEP)].reset_index(drop=True)
+        print("Ending len dfscalar: ", len(self.DfScalar))
+
+        # Optioanlly, for which_level = "stroke", prune rows based on (tc, stroke index).
+        if self.Params["which_level"] in ["stroke", "stroke_off"] and DSprun is not None:
+            tcs = DSprun.Dat["trialcode"].tolist()
+            sis = DSprun.Dat["stroke_index"].tolist()
+            print(" --- Pruning SP.DfScalar to match DSpruned...", "start len: ", len(self.DfScalar))
+
+            # assert_exactly_one_each = False, since a trial can have multiple rows in SP.DfScalar.
+            self.DfScalar = DSprun.dataset_slice_by_trialcode_strokeindex(tcs, sis, df=self.DfScalar,
+                                                                          assert_exactly_one_each=False)
+            print("... End len: ", len(self.DfScalar))
+
+        ##################################### EXTRACT FEATURES INTO DFSCALAR
+        list_features_extraction_stroke = [
+                                    "stroke_index", "stroke_index_fromlast", "stroke_index_fromlast_tskstks",
+                                    "stroke_index_semantic", "stroke_index_semantic_tskstks",
+                                    "shape_oriented", "gridloc",
+                                    "CTXT_loc_next", "CTXT_shape_next",
+                                    "CTXT_loc_prev", "CTXT_shape_prev",
+                                    "gap_from_prev_angle_binned", "gap_to_next_angle_binned",
+                                    "gap_from_prev_angle", "gap_to_next_angle"]
+                                    # "distcum", "displacement", "circularity"]
+                                    # "distcum", "displacement", "circularity"]
+
+        list_features_extraction_trial = ["trialcode", "aborted", "event_time", "task_kind", "gridsize",
+                                          "FEAT_num_strokes_task", "FEAT_num_strokes_beh",
+                                          "character", "probe", "supervision_stage_concise",
+                                          "epoch_orig", "epoch", "taskgroup",
+                                          "origin", "donepos"]
+        # supervision_stage_new, trial_neural, "char_seq"
+        n_strok_max = 2
+        for i in range(n_strok_max):
+            # for suff in ["shape", "loc", "loc_local"]:
+            for suff in ["shape", "loc"]:
+                list_features_extraction_trial.append(f"seqc_{i}_{suff}")
+        list_features_extraction_trial.append("seqc_nstrokes_beh")
+        list_features_extraction_trial.append("seqc_nstrokes_task")
+
+        # Features that should always extract (Strokes dat)
+        if self.Params["which_level"] in ["stroke", "stroke_off"]:
+            list_features_extraction = list_features_extraction_trial + list_features_extraction_stroke
+        elif self.Params["which_level"]=="trial":
+            list_features_extraction = list_features_extraction_trial
+        else:
+            print(self.Params["which_level"])
+            assert False
+
+        # For the rest, try to get automatically.
+        vars_to_extract = vars_extract_append + list_features_extraction
+        assert self.datasetbeh_append_column_helper(vars_to_extract, D, stop_if_fail=True)==True # Extract all the vars here
+
+        for var in list_features_extraction:
+            if var not in self.DfScalar.columns:
+                print(var)
+                print(D.Dat.columns)
+                print(self.DfScalar.columns)
+
+        return D, list_features_extraction
+
     def load_v2(self, savedir):
         """ To load data saved using save_v2
         NOTE: Loads with outlier rows kept!
@@ -6611,6 +6730,11 @@ class Snippets(object):
         else:
             self.datamod_append_outliers()
 
+        ## CLEANUP
+        if "event_aligned" in self.DfScalar.columns:
+            self.DfScalar["event"] = self.DfScalar["event_aligned"]
+            # del self.DfScalar["event_aligned"]
+
     def _sanity_trial_and_chans_are_balanced(self, dfthis=None, trial_key="index_datapt"):
         """ Check that all channel have the same trials, and vice versa.
         Does this by checking that the num trials are matched across chans, so
@@ -6638,6 +6762,23 @@ class Snippets(object):
             self._SanityFrSmTimesIdentical = np.max(np.abs(np.diff(x, axis=0))) < 0.001
 
         return self._SanityFrSmTimesIdentical
+
+    def check_if_single_or_mult_session(self):
+        """
+        Is this a Snip from a single session, or concatenated from multiple rec sessions?
+        :return:
+        - "mult" or "single"
+        - sessions, list of ints.
+        """
+        if self._CONCATTED_SNIPPETS:
+            assert self.SNmult is not None
+            assert self.SN is None
+            sessions = [sn.RecSession for sn in self.SNmult.SessionsList]
+            return "mult", sessions
+        else:
+            assert self.SNmult is None
+            assert self.SN is not None
+            return "single", [self.SN.RecSession]
 
     def save_v2(self, savedir):
         """ To save, but instead of pruing then saving, as in save(), here
@@ -6811,8 +6952,8 @@ class Snippets(object):
 
 
 def extraction_helper(SN, which_level="trial", list_features_modulation_append=None,
-    dataset_pruned_for_trial_analysis = None, NEW_VERSION=True, PRE_DUR = -0.4,
-    POST_DUR = 0.4, PRE_DUR_FIXCUE=None):
+    dataset_pruned_for_trial_analysis = None, NEW_VERSION=True, PRE_DUR = -0.6,
+    POST_DUR = 0.6, PRE_DUR_FIXCUE=None):
     """ Helper to extract Snippets for this session
     PARAMS;
     - list_features_modulation_append, eitehr None (do nothing) or list of str,
@@ -6847,7 +6988,6 @@ def extraction_helper(SN, which_level="trial", list_features_modulation_append=N
             list_post_dur = [POST_DUR for ev in list_events]
         # list_pre_dur = [-0.8 for _ in range(len(list_events))]
         # list_post_dur = [0.8 for _ in range(len(list_events))]
-        strokes_only_keep_single = False
         prune_feature_levels_min_n_trials = 1
 
         if PRE_DUR_FIXCUE:
@@ -6858,18 +6998,23 @@ def extraction_helper(SN, which_level="trial", list_features_modulation_append=N
             print(list_events)
             print(list_pre_dur)
             print(list_post_dur)
-    elif which_level=="stroke":
+
+        trials_prune_just_those_including_events = True # msut have fix touch
+        DS_pruned = None
+
+    elif which_level in ["stroke", "stroke_off"]:
         # Extracts snippets aligned to strokes. Features are columns in DS.
-        which_level = "stroke"
         list_events = [] # must be empty
-        list_features_extraction = ["shape_oriented", "gridloc"] # e.g, ['shape_oriented', 'gridloc']
-        # list_features_get_conjunction = ["shape_oriented", "gridloc"] # not required, but useful if you want to get conjunction of these vars.
-        list_features_get_conjunction = ["shape_oriented", "gridloc"] # REQUIRED. these are if you want to get conjunction of these vars, and
+        list_features_extraction = [] #
+        list_features_get_conjunction = []
         # also those for computing moduulation.
         list_pre_dur = [PRE_DUR]
         list_post_dur = [POST_DUR]
         strokes_only_keep_single = False # if True, then prunes dataset, removing trials "remove_if_multiple_behstrokes_per_taskstroke"
-        prune_feature_levels_min_n_trials = 1 
+        prune_feature_levels_min_n_trials = 1
+        dataset_pruned_for_trial_analysis = None
+        trials_prune_just_those_including_events = False
+        DS_pruned = None
     else:
         print(which_level)
         assert False
@@ -6879,15 +7024,21 @@ def extraction_helper(SN, which_level="trial", list_features_modulation_append=N
         list_features_extraction = list_features_extraction + list_features_modulation_append
         list_features_get_conjunction = list_features_get_conjunction + list_features_modulation_append
 
-
-    SP = Snippets(SN=SN, which_level=which_level, list_events=list_events, 
-                list_features_extraction=list_features_extraction, 
-                list_features_get_conjunction=list_features_get_conjunction, 
-                list_pre_dur=list_pre_dur, list_post_dur=list_post_dur,
-                strokes_only_keep_single=strokes_only_keep_single,
-                  prune_feature_levels_min_n_trials=prune_feature_levels_min_n_trials,
-                  dataset_pruned_for_trial_analysis = dataset_pruned_for_trial_analysis,
-                NEW_VERSION=NEW_VERSION)
+    SP = Snippets(SN,
+        which_level,
+        list_events,
+        list_features_extraction,
+        list_features_get_conjunction,
+        list_pre_dur,
+        list_post_dur,
+        strokes_only_keep_single=None,
+        tasks_only_keep_these=None,
+        prune_feature_levels_min_n_trials=prune_feature_levels_min_n_trials,
+        dataset_pruned_for_trial_analysis=dataset_pruned_for_trial_analysis,
+        trials_prune_just_those_including_events=trials_prune_just_those_including_events,
+        fr_which_version='sqrt',
+        SKIP_DATA_EXTRACTION=False,
+        DS_pruned=DS_pruned)
 
     return SP
 
@@ -6899,6 +7050,10 @@ def datasetstrokes_extract(D, version, strokes_only_keep_single=False, tasks_onl
     "remove_if_multiple_behstrokes_per_taskstroke"
     """
     from pythonlib.dataset.dataset_strokes import DatStrokes, preprocess_dataset_to_datstrokes
+
+    if not isinstance(version, str):
+        print(version)
+        assert False
 
     if list_features is None:
         list_features = []
@@ -6952,14 +7107,22 @@ def datasetstrokes_extract(D, version, strokes_only_keep_single=False, tasks_onl
 
     return DS
 
-def _dataset_extract_prune_general_dataset(D, list_superv_keep = None,
-        preprocess_steps_append=None, remove_aborts=True,
-        list_superv_keep_full=None):
+def dataset_extract_prune_general_dataset(D,
+                                          list_superv_keep, preprocess_steps_append,
+                                          remove_aborts, list_superv_keep_full):
+                                          # list_superv_keep = None,
+                                          # preprocess_steps_append=None, remove_aborts=True,
+                                          # list_superv_keep_full=None):
+
+    """ [Good] Helper to prune main dataset
+    """
 
     Dcopy = D.copy()
     print("Starting length of D.Dat:", len(Dcopy.Dat))
+
     # Remove if aborted
     if remove_aborts:
+        assert False, "do this with preprocessGood"
         Dcopy.filterPandas({"aborted":[False]}, "modify")
         print("Len, after remove aborts:", len(Dcopy.Dat))
 
@@ -6974,27 +7137,23 @@ def _dataset_extract_prune_general_dataset(D, list_superv_keep = None,
         # list_superv_keep = LIST_SUPERV_NOT_TRAINING
         Dcopy.preprocessGood(params=["no_supervision"])
     else:
-        if list_superv_keep is None:
-            print("############ TAKING ONLY NO SUPERVISION TRIALS")
-            # list_superv_keep = LIST_SUPERV_NOT_TRAINING
+        print("############ TAKING ONLY THESE SUPERVISION TRIALS:")
+        print(list_superv_keep)
+        assert isinstance(list_superv_keep, list)
+        assert False, "do this with preprocessGood"
 
-            Dcopy.preprocessGood(params=["no_supervision"])
-        else:
-            print("############ TAKING ONLY THESE SUPERVISION TRIALS:")
-            print(list_superv_keep)
-            assert isinstance(list_superv_keep, list)
+        # Only during no-supervision blocks
+        print("--BEFORE REMOVE; existing supervision_stage_concise:")
+        print(Dcopy.Dat["supervision_stage_concise"].value_counts())
+        print("Keeping only these supervision values: ", list_superv_keep)
+        Dcopy.filterPandas({"supervision_stage_concise":list_superv_keep}, "modify")
+        print("--AFTER REMOVE; existing supervision_stage_concise:")
+        print(Dcopy.Dat["supervision_stage_concise"].value_counts())
 
-            # Only during no-supervision blocks
-            print("--BEFORE REMOVE; existing supervision_stage_concise:")
-            print(Dcopy.Dat["supervision_stage_concise"].value_counts())
-            print("Keeping only these supervision values: ", list_superv_keep)
-            Dcopy.filterPandas({"supervision_stage_concise":list_superv_keep}, "modify")
-            print("--AFTER REMOVE; existing supervision_stage_concise:")
-            print(Dcopy.Dat["supervision_stage_concise"].value_counts())
-        
     print("Dataset final len:", len(Dcopy.Dat))
 
     if list_superv_keep_full is not None:
+        assert False, "do this with preprocessGood"
         print("--BEFORE REMOVE; existing supervision_stage_new:")
         print(Dcopy.Dat["supervision_stage_new"].value_counts())
         Dcopy.filterPandas({"supervision_stage_new":list_superv_keep_full}, "modify")
@@ -7005,17 +7164,16 @@ def _dataset_extract_prune_general_dataset(D, list_superv_keep = None,
     return Dcopy
     
 
-
 def _dataset_extract_prune_general(sn, list_superv_keep = None,
         preprocess_steps_append=None, remove_aborts=True,
         list_superv_keep_full=None):
     """
     Generic, should add to this.
     """
-    return _dataset_extract_prune_general_dataset(sn.Datasetbeh,
-        list_superv_keep = list_superv_keep,
-        preprocess_steps_append=preprocess_steps_append, remove_aborts=remove_aborts,
-        list_superv_keep_full=list_superv_keep_full)
+    return dataset_extract_prune_general_dataset(sn.Datasetbeh,
+                                                 list_superv_keep = list_superv_keep,
+                                                 preprocess_steps_append=preprocess_steps_append, remove_aborts=remove_aborts,
+                                                 list_superv_keep_full=list_superv_keep_full)
 
 def _dataset_extract_prune_sequence(sn, n_strok_max = 2):
     """ Prep beh dataset before extracting snippets.

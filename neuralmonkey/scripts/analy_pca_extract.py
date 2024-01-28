@@ -4,7 +4,7 @@ from neuralmonkey.scripts.load_and_save_locally import load_and_preprocess_singl
 import neuralmonkey.utils.monkeylogic as mkl
 from neuralmonkey.classes.session import load_session_helper, load_mult_session_helper
 import os
-from neuralmonkey.metadat.analy.anova_params import dataset_apply_params
+from neuralmonkey.metadat.analy.anova_params import dataset_apply_params_OLD
 
 which_level="trial"    
 ANALY_VER = "singleprim"
@@ -15,6 +15,8 @@ LIST_DATE = [230615, 230619, 230621, 230614, 230616, 230618]
 # animal = "Pancho"
 # LIST_DATE =  [220606, 220608, 220609, 220610, 220718, 220719, 220724, 220918, 
 #     221217, 221218, 221220, 230103, 230104]
+
+assert False, "Use same methods as in rsa stuff..."
 
 for DATE in LIST_DATE:
 
@@ -34,7 +36,7 @@ for DATE in LIST_DATE:
 
     ListD = [sn.Datasetbeh for sn in MS.SessionsList]
     Dall, dataset_pruned_for_trial_analysis, TRIALCODES_KEEP, params, params_extraction = \
-        dataset_apply_params(ListD, animal, DATE, which_level, ANALY_VER)
+        dataset_apply_params_OLD(ListD, animal, DATE, which_level, ANALY_VER)
     SP.DfScalar = SP.DfScalar[SP.DfScalar["trialcode"].isin(TRIALCODES_KEEP)].reset_index(drop=True)            
 
     ####################### REEXTRACT VARIABLES into SP.DfScalar

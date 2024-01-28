@@ -45,6 +45,7 @@ which_level="trial"
 SP, SAVEDIR_ALL = load_and_concat_mult_snippets(MS, which_level=which_level)
 
 
+assert False, "replace with RSA code"
 
 
 
@@ -62,7 +63,7 @@ assert False, "replabe below with function that preprocesses Dataset"
 
 from neuralmonkey.metadat.analy.anova_params import params_getter_plots, params_getter_extraction
 from pythonlib.dataset.analy_dlist import concatDatasets
-from neuralmonkey.classes.snippets import _dataset_extract_prune_general, _dataset_extract_prune_general_dataset
+from neuralmonkey.classes.snippets import _dataset_extract_prune_general, dataset_extract_prune_general_dataset
 params = params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=anova_interaction)
 params_extraction = params_getter_extraction(animal, DATE, which_level, ANALY_VER)
 
@@ -252,12 +253,12 @@ else:
 
 ###### PRUNE DATASET TO GET SUBSET TRIALCODES
 # Only keep subset these trialcodes
-dataset_pruned_for_trial_analysis = _dataset_extract_prune_general_dataset(Dall, 
-    list_superv_keep=params["list_superv_keep"], 
-    preprocess_steps_append=params["preprocess_steps_append"],
-    remove_aborts=params["remove_aborts"],
-    list_superv_keep_full=params["list_superv_keep_full"], 
-    )    
+dataset_pruned_for_trial_analysis = dataset_extract_prune_general_dataset(Dall,
+                                                                          list_superv_keep=params["list_superv_keep"],
+                                                                          preprocess_steps_append=params["preprocess_steps_append"],
+                                                                          remove_aborts=params["remove_aborts"],
+                                                                          list_superv_keep_full=params["list_superv_keep_full"],
+                                                                          )
 
 TRIALCODES_KEEP = dataset_pruned_for_trial_analysis.Dat["trialcode"].tolist()
 

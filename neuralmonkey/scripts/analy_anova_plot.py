@@ -12,7 +12,7 @@ import os
 from pythonlib.tools.exceptions import NotEnoughDataException
 import sys
 # from neuralmonkey.metadat.analy.anova_params import params_getter_plots, params_getter_extraction, dataset_apply_params
-from neuralmonkey.metadat.analy.anova_params import dataset_apply_params
+from neuralmonkey.metadat.analy.anova_params import dataset_apply_params_OLD
 from neuralmonkey.classes.snippets import load_and_concat_mult_snippets
 from pythonlib.tools.expttools import writeDictToYaml
 import pandas as pd
@@ -64,7 +64,7 @@ if __name__=="__main__":
 
     ListD = [sn.Datasetbeh for sn in MS.SessionsList]
     Dall, dataset_pruned_for_trial_analysis, TRIALCODES_KEEP, params, params_extraction = \
-        dataset_apply_params(ListD, animal, DATE, which_level, ANALY_VER, anova_interaction)
+        dataset_apply_params_OLD(ListD, animal, DATE, which_level, ANALY_VER, anova_interaction)
 
     ####################### REEXTRACT VARIABLES into SP.DfScalar
     list_var_reextract = []
