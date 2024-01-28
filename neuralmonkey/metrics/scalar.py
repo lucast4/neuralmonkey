@@ -1066,23 +1066,40 @@ class MetricsScalar(object):
                 dftmp = pd.DataFrame({"fr":frvec, var:var_vals})
                 BETWEEN = [var]
 
-            # print("pg.anova")
-            aov = pg.anova(data=dftmp, dv="fr", between=BETWEEN, detailed=True, effsize="n2")
-            
-            # keep results
-            for s in list_sources:
-                # print(s)
-                # print("HERE",   aov[aov["Source"]==s]["SS"].values)
-                SS = aov[aov["Source"]==s]["SS"].values[0]
-                peta2 = aov[aov["Source"]==s]["n2"].values[0]
-
-                if s=="Within":
-                    # for one-way, it is called Within.
-                    dict_results["Residual"].append(SS)
-                    dict_peta2["Residual"].append(peta2)
-                else:
-                    dict_results[s].append(SS)
-                    dict_peta2[s].append(peta2)
+            if min(frvec)==max(frvec): # all must be same, and likely 0, which would throw error
+                for s in list_sources:
+                    if s=="Within":
+                        # for one-way, it is called Within.
+                        dict_results["Residual"].append(np.nan)
+                        dict_peta2["Residual"].append(np.nan)
+                    else:
+                        dict_results[s].append(np.nan)
+                        dict_peta2[s].append(np.nan)
+            else:
+                # print("pg.anova")
+                aov = pg.anova(data=dftmp, dv="fr", between=BETWEEN, detailed=True, effsize="n2")
+                
+                # keep results
+                for s in list_sources:
+                    # print(s)
+                    # print("HERE",   aov[aov["Source"]==s]["SS"].values)
+                    SS = aov[aov["Source"]==s]["SS"].values[0]
+                    try:
+                        peta2 = aov[aov["Source"]==s]["n2"].values[0]
+                    except Exception as err:
+                        print("aov", aov)
+                        print("dftmp", dftmp)
+                        print("dftmp-fr", dftmp['fr'])
+                        print("dftmp-var", dftmp[var])
+                        print("dftmp-vars_others", dftmp[vars_others])
+                        raise err
+                    if s=="Within":
+                        # for one-way, it is called Within.
+                        dict_results["Residual"].append(SS)
+                        dict_peta2["Residual"].append(peta2)
+                    else:
+                        dict_results[s].append(SS)
+                        dict_peta2[s].append(peta2)
 
 
         # print(frmat.shape)
