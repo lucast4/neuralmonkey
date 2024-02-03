@@ -25,10 +25,22 @@ if LOCAL_LOADING_MODE:
 else:
     assert os.path.exists(PATH_DATA_NEURAL_RAW), "might have to mount servr?"
 
-REGIONS_IN_ORDER = ["M1_m", "M1_l", "PMv_l", "PMv_m",
+_REGIONS_IN_ORDER = ("M1_m", "M1_l", "PMv_l", "PMv_m",
                 "PMd_p", "PMd_a", "dlPFC_p", "dlPFC_a", 
                 "vlPFC_p", "vlPFC_a", "FP_p", "FP_a", 
-                "SMA_p", "SMA_a", "preSMA_p", "preSMA_a"]
+                "SMA_p", "SMA_a", "preSMA_p", "preSMA_a")
+_REGIONS_IN_ORDER_COMBINED = ("M1", "PMv", "PMd", "dlPFC", "vlPFC", "FP",  "SMA", "preSMA")
+
+MAP_COMBINED_REGION_TO_REGION = {
+    "M1":["M1_m", "M1_l"],
+    "PMv":["PMv_l", "PMv_m"],
+    "PMd":["PMd_p", "PMd_a"],
+    "dlPFC":["dlPFC_p", "dlPFC_a"],
+    "vlPFC":["vlPFC_p", "vlPFC_a"],
+    "FP":["FP_p", "FP_a"],
+    "SMA":["SMA_p", "SMA_a"],
+    "preSMA":["preSMA_p", "preSMA_a"]}
+MAP_COMBINED_REGION_TO_REGION = {k:tuple(v) for k, v in MAP_COMBINED_REGION_TO_REGION.items()}
 
 # SMFR_SIGMA = 0.025
 SMFR_SIGMA = 0.040 # 4/29/23
@@ -90,7 +102,7 @@ SAVELOCALCACHED_TRIALS_FIXATION_SUCCESS = True
 def load_mult_session_helper(DATE, animal, dataset_beh_expt=None, expt = "*", 
     MINIMAL_LOADING=True,
     units_metadat_fail_if_no_exist=False,
-    spikes_version="tdt"):
+    spikes_version="kilosort_if_exists"):
     """ Hacky, iterates over range(10) sessions, concatenations into a single MultSessions
     for this date.
     """
@@ -135,7 +147,7 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
     ACTUALLY_BAREBONES_LOADING = False,
     units_metadat_fail_if_no_exist=False,
     do_if_spikes_incomplete="ignore",
-    spikes_version="tdt"):
+    spikes_version="kilosort_if_exists"):
     """ Load a single recording session.
     PARAMS:
     - DATE, str, "yymmdd"
@@ -290,7 +302,7 @@ class Session(object):
             ACTUALLY_BAREBONES_LOADING = False,
             units_metadat_fail_if_no_exist=False,
             do_if_spikes_incomplete="ignore",
-            spikes_version="tdt"):
+            spikes_version="kilosort_if_exists"):
         """
         PARAMS:
         - datestr, string, YYMMDD, e.g, "220609"
@@ -781,7 +793,7 @@ class Session(object):
         else:
             print("Sites metada path doesnt exist: ", path)
             if fail_if_no_exist:
-                assert False, "make the file first."
+                assert False, "make the /metadat/units/<date>.yaml file by hand."
 
         self._sitesdirty_update()
 
@@ -807,7 +819,7 @@ class Session(object):
 
 
         # get current sites
-        sites = self.sitegetter_all(clean=False)
+        sites = self.sitegetterKS_map_region_to_sites_MULTREG(clean=False)
         res = []
         for s in sites:
             rs, chan = self.convert_site_to_rschan(s)
@@ -1073,7 +1085,7 @@ class Session(object):
             # reextract
             def _missing_spikes():
                 """ Returns True if any channel is missing spikes... bsaed on filenames in spikes folder."""
-                for site in self.sitegetter_all(clean=False):
+                for site in self.sitegetterKS_map_region_to_sites_MULTREG(clean=False):
                     if self._spikes_check_file_exists_tdt(site)==False: 
                         print("++ MISSING THIS SITE's SPIKE DATA:", site)
                         return True
@@ -1408,7 +1420,7 @@ class Session(object):
                 for trial in list_trials:
                     if trial%20==0:
                         print("trial:", trial)
-                    for site in self.sitegetter_all(clean=False):
+                    for site in self.sitegetterKS_map_region_to_sites_MULTREG(clean=False):
                         this = self.datall_TDT_KS_slice_single_bysite(site, trial)
                         paththis = f"{path}/datslice_trial{trial}_site{site}.pkl"
                         with open(paththis, "wb") as f:
@@ -1535,7 +1547,7 @@ class Session(object):
 
 
             trials = self.get_trials_list(SAVELOCALCACHED_TRIALS_FIXATION_SUCCESS)
-            sites = self.sitegetter_all(clean=True) 
+            sites = self.sitegetterKS_map_region_to_sites_MULTREG(clean=True)
 
             for t in trials:
                 for s in sites:
@@ -1561,7 +1573,7 @@ class Session(object):
 
             # tdt spikes
             # sn.SPIKES_VERSION="tdt"
-            list_sites_tdt = self.sitegetter_all(force_tdt_sites=True)
+            list_sites_tdt = self.sitegetterKS_map_region_to_sites_MULTREG(force_tdt_sites=True)
 
             # any sites that have ks cluster but not kept in tdt?
             list_sites_ks = []
@@ -1678,6 +1690,8 @@ class Session(object):
         """
 
         assert self.SPIKES_VERSION=="tdt", "if not, might have circular error, as assues that sites means tdt site"
+        CLUST_STARTING_INDEX = 1000 # So that site nums for ks will not get confused with TDT nums
+        # whihc end at 512
 
         import mat73
         # import scipy.io as sio
@@ -1710,7 +1724,7 @@ class Session(object):
         keys_convert_to_int = ["RSn", "batch", "chan", "chan_global", "label_final_int"]
 
         # index by a global cluster id
-        clustid_glob = 0
+        clustid_glob = 0 + CLUST_STARTING_INDEX
         for ind in range(len(DATSTRUCT["times_sec_all"])):
             
         #     print("-------------------------------------")
@@ -1855,7 +1869,7 @@ class Session(object):
         self.DatSpikesSliceClustTrial = DatSliceAll
 
         # Make sure all sites are represented in mapper, even if they dont have any clusters.
-        sites = self.sitegetter_all(clean=False)
+        sites = self.sitegetterKS_map_region_to_sites_MULTREG(clean=False)
         mapper = {}
         for s in sites:
             if s in self._MapperKsortSiteToClustids.keys():
@@ -3229,7 +3243,7 @@ class Session(object):
         """ for each site, print a line (string) that summarizes
         it.
         """
-        for i, site in enumerate(self.sitegetter_all()):
+        for i, site in enumerate(self.sitegetterKS_map_region_to_sites_MULTREG()):
             print(f"idx {i}, site {site}, -- ", self.sitegetter_summarytext(site))
 
     def sitegetter_print_summary_nunits_by_region(self):
@@ -3237,7 +3251,7 @@ class Session(object):
         and total units etc
         """
         sites_all =[]
-        for area, sites in self._sitegetterKS_generate_mapper_region_to_sites(clean=True).items():
+        for area, sites in self.sitegetterKS_generate_mapper_region_to_sites_BASE(clean=True).items():
             print(area, " : ", len(sites))
             sites_all.append(len(sites))
         print(" ------- ")
@@ -3259,7 +3273,7 @@ class Session(object):
         # sn.sitegetter_all(["dlPFC_p", "dlPFC_a"])
         print("------")
         print("Summary for each overall region")
-        regions_summary = self.sitegetter_get_brainregion_list()
+        regions_summary = self.sitegetter_get_brainregion_list_BASE()
         max_prev = 0
         print("region, nunits, --, min(sitenum), max(sitenum)")
         for regsum in regions_summary:
@@ -3316,34 +3330,43 @@ class Session(object):
         assert False, "code it"
         assert False, "6/22/22 4B inserted upside down"
 
-    def _sitegettertdt_get_map_brainregion_to_site(self):
-        """ [TDT SITES] Retgurn dict mapping from regions to sites.
-        Hard coded.
-        RETURNS:
-        - dict[region] = list of sites
+
+    # def _sitegettertdt_get_map_brainregion_to_site(self):
+    #     """ [TDT SITES] Retgurn dict mapping from regions to sites.
+    #     Hard coded.
+    #     RETURNS:
+    #     - dict[region] = list of sites
+    #     """
+    #     # regions_in_order = ["M1_m", "M1_l", "PMv_l", "PMv_m",
+    #     #         "PMd_p", "PMd_a", "SMA_p", "SMA_a",
+    #     #         "dlPFC_p", "dlPFC_a", "vlPFC_p", "vlPFC_a",
+    #     #         "preSMA_p", "preSMA_a", "FP_p", "FP_a"]
+    #
+    #     regions_in_order = self.sitegetter_get_brainregion_list()
+    #
+    #     # EXCEPTIONS
+    #     # if self.Animal=="Pancho" and int(self.Date)==221002:
+    #     #     # Then 6A (PMvl) and 6B (PMvm) were switched
+    #     #     regions_in_order = [x for x in regions_in_order]
+    #     #     regions_in_order[2] = "PMv_m"
+    #     #     regions_in_order[3] = "PMv_l"
+    #     # else:
+    #     #     regions_in_order = regions_in_order
+    #
+    #     # Convert to dict
+    #     dict_sites ={}
+    #     for i, name in enumerate(regions_in_order):
+    #         dict_sites[name] = list(range(1+32*i, 1+32*(i+1)))
+    #     return dict_sites
+
+    # _sitegetterKS_generate_mapper_region_to_sites
+    def sitegetterKS_generate_mapper_region_to_sites_BASE(self, clean=True,
+                                                          combine_into_larger_areas=False,
+                                                          force_tdt_sites=False,
+                                                          exclude_bad_areas=False):
         """
-        # regions_in_order = ["M1_m", "M1_l", "PMv_l", "PMv_m",
-        #         "PMd_p", "PMd_a", "SMA_p", "SMA_a", 
-        #         "dlPFC_p", "dlPFC_a", "vlPFC_p", "vlPFC_a", 
-        #         "preSMA_p", "preSMA_a", "FP_p", "FP_a"]
-
-        # EXCEPTIONS
-        if self.Animal=="Pancho" and int(self.Date)==221002:
-            # Then 6A (PMvl) and 6B (PMvm) were switched
-            REGIONS_IN_ORDER[2] = "PMv_m"
-            REGIONS_IN_ORDER[3] = "PMv_l"
-        else:
-            pass
-
-        regions_in_order = REGIONS_IN_ORDER
-        dict_sites ={}
-        for i, name in enumerate(regions_in_order):
-            dict_sites[name] = list(range(1+32*i, 1+32*(i+1)))
-        return dict_sites
-
-    def _sitegetterKS_generate_mapper_region_to_sites(self, clean=True,
-        combine_into_larger_areas=False, force_tdt_sites=False):
-        """ [KILISORT WORKS] Generate dict mapping from region to sites, with added flexiblity of paras
+        [THE ONLY PLACE finalized sites are determined]
+        [KILISORT WORKS] Generate dict mapping from region to sites, with added flexiblity of paras
         PARAMS:
         - clean, bool, whether to remove bad sites
         - combine_into_larger_areas, bool,
@@ -3351,42 +3374,66 @@ class Session(object):
         - dict_sites[sitename] = list of ints (either sites or clusts, if using ks)
         """
 
-        # Get default sites
-        dict_sites = self._sitegettertdt_get_map_brainregion_to_site()
+        ################################## (1) Get default sites
+        # dict_sites = self._sitegettertdt_get_map_brainregion_to_site()
+        regions_in_order = self.sitegetter_get_brainregion_list_BASE()
+        assert len(regions_in_order)==16
+        dict_sites_TDT = {}
+        for i, name in enumerate(regions_in_order):
+            dict_sites_TDT[name] = list(range(1+32*i, 1+32*(i+1)))
 
-        # Remove bad sites?
-        if self.SPIKES_VERSION=="tdt" and clean:
-            assert self.SitesDirty is not None, "you need to enter which are bad sites in SitesDirty"
-            for k, v in dict_sites.items():
-                # remove any sites that are bad
-                dict_sites[k] = [vv for vv in v if vv not in self.SitesDirty]
+        ########################### ANIMAL-SPECIFIC THINGS
+        if self.Animal=="Diego":
+            # dlPFCp is severed.
+            dict_sites_TDT["dlPFC_p"] = []
 
+        if exclude_bad_areas:
+            # Optional excluding, might be useful to keep for some analtyses, but fuincationlly
+            # not good.
+            if self.Animal=="Pancho":
+                dict_sites_TDT["PMv_l"] = [] # Not drawing-related.. face area
+
+
+        ################## COMBINE INTO LARGER AREAS?
         if combine_into_larger_areas:
-            regions_specific = dict_sites.keys()
+            regions_specific = dict_sites_TDT.keys()
             # regions_in_order = ["M1", "PMv", "PMd", "SMA", "dlPFC", "vlPFC",  "preSMA", "FP"]
-            regions_in_order = ["M1", "PMv", "PMd", "dlPFC", "vlPFC", "FP",  "SMA", "preSMA"]
+            # regions_in_order_combined = ["M1", "PMv", "PMd", "dlPFC", "vlPFC", "FP",  "SMA", "preSMA"]
             def _regions_in(summary_region):
                 """ get list of regions (e.g, ["dlPFC_a", 'dlPFC_p']) that are in this summary region (e.g., dlPFC)
                 """
-                return [reg for reg in regions_specific if reg.find(summary_region)==0]
-            
-            dict_sites_new = {}
-            for reg in regions_in_order:
-                regions_specific_this = _regions_in(reg)
-                sites_this = [s for reg in regions_specific_this for s in dict_sites[reg]]
-                dict_sites_new[reg] = sites_this
-            dict_sites = dict_sites_new
 
-        ############ for KILOSORT? GET CLSUTERS
+                return MAP_COMBINED_REGION_TO_REGION[summary_region]
+
+                # assert False, "replace this with more guaranteed to work."
+                # return [reg for reg in regions_specific if reg.find(summary_region)==0]
+
+            dict_sites_new = {}
+            regions_in_order_combined = self.sitegetter_get_brainregion_list_BASE(True)
+            for reg_comb in regions_in_order_combined:
+                regions_specific_this = _regions_in(reg_comb)
+                sites_this = [s for _reg in regions_specific_this for s in dict_sites_TDT[_reg]]
+                dict_sites_new[reg_comb] = sites_this
+            dict_sites_TDT = dict_sites_new
+
+
+
+        ################################ (2) Get either TDT or KS sites.
         if self.SPIKES_VERSION=="tdt" or force_tdt_sites:
-            # Then you want map to sites (1-512)
-            # You already have it.
-            return dict_sites
+            # Remove bad sites?
+            if clean:
+                assert self.SitesDirty is not None, "you need to enter which are bad sites in SitesDirty"
+                for k, v in dict_sites_TDT.items():
+                    # remove any sites that are bad
+                    dict_sites_TDT[k] = [vv for vv in v if vv not in self.SitesDirty]
+            return dict_sites_TDT
+
         elif self.SPIKES_VERSION=="kilosort":
+            ############ for KILOSORT? GET CLSUTERS
             # Then you want map to cluster_id
 
             mapper_region_to_clustids = {}
-            for br, sites in dict_sites.items():
+            for br, sites in dict_sites_TDT.items():
                 # Collect clust ids for this region
                 clusts = self.ks_convert_sites_to_clusts(sites)
                 mapper_region_to_clustids[br] = clusts
@@ -3400,17 +3447,34 @@ class Session(object):
             print(self.SPIKES_VERSION)
             assert False, "code it"
 
-        # return dict_sites
-
-    def sitegetter_get_brainregion_list(self, combine_into_larger_areas=False):
-        """ Get list of str, names of all brain regions.
+    def sitegetter_get_brainregion_list_BASE(self, combine_into_larger_areas=False):
+        """ Get list of str, names of all brain regions, doesnt care what sites actually
+        exist, just in theory what it would be. e.g, Diego, an array dead, but still return
+        its area.
+        [The only place brain region list is generated]
         """
+
         if combine_into_larger_areas:
-            dict_sites = sorted(self._sitegetterKS_generate_mapper_region_to_sites(clean=False,
-                combine_into_larger_areas=True))
-            return list(dict_sites.keys())
+            return list(_REGIONS_IN_ORDER_COMBINED)
         else:
-            return REGIONS_IN_ORDER
+            regions_in_order = list(_REGIONS_IN_ORDER)
+
+            if self.Animal=="Pancho" and int(self.Date)==221002:
+                # Then 6A (PMvl) and 6B (PMvm) were switched
+                regions_in_order[2] = "PMv_m"
+                regions_in_order[3] = "PMv_l"
+
+            assert len(regions_in_order)==16
+            return regions_in_order
+
+        # if combine_into_larger_areas:
+        #     # dict_sites = sorted(self._sitegetterKS_generate_mapper_region_to_sites(clean=False,
+        #     #     combine_into_larger_areas=True))
+        #     dict_sites = self._sitegetterKS_generate_mapper_region_to_sites(clean=False,
+        #                                                                     combine_into_larger_areas=True)
+        #     return sorted(list(dict_sites.keys()))
+        # else:
+        #     return REGIONS_IN_ORDER
 
     # def sitegetter_map_multregions_to_sites(self, list_region, clean=True):
     #     """ Return lsit of sites,concatenated across regions in lisT_region
@@ -3418,17 +3482,27 @@ class Session(object):
     #     return self.sitegetter_all(list_region, clean=clean)
 
     def sitegetterKS_map_region_to_sites(self, region, clean=True,
-            force_tdt_sites=False):
-        """ [KILOSORT works] Given a region (string) map to a list of ints (sites)
+            force_tdt_sites=False,
+                                         exclude_bad_areas=False):
+        """ [KILOSORT works] Given a region (string) map to a list of ints (sites).
         RETURNS;
         - list of ints, either sites or clusters (if using ks)
         """
 
-        mapper = self._sitegetterKS_generate_mapper_region_to_sites(clean, 
-            combine_into_larger_areas=False, force_tdt_sites=force_tdt_sites)
-        if region not in mapper.keys():
-            mapper = self._sitegetterKS_generate_mapper_region_to_sites(clean, 
-                combine_into_larger_areas=True, force_tdt_sites=force_tdt_sites) 
+        if region in _REGIONS_IN_ORDER:
+            combine_into_larger_areas = False
+        elif region in _REGIONS_IN_ORDER_COMBINED:
+            combine_into_larger_areas = True
+        else:
+            assert False
+
+        mapper = self.sitegetterKS_generate_mapper_region_to_sites_BASE(clean,
+                                                                        combine_into_larger_areas=combine_into_larger_areas,
+                                                                        force_tdt_sites=force_tdt_sites,
+                                                                        exclude_bad_areas=exclude_bad_areas)
+        # if region not in mapper.keys():
+        #     mapper = self._sitegetterKS_generate_mapper_region_to_sites(clean,
+        #         combine_into_larger_areas=True, force_tdt_sites=force_tdt_sites)
 
         sites_or_clusts = mapper[region]
 
@@ -3455,7 +3529,7 @@ class Session(object):
 
         if len(Mapper)==0:
             # Generate it
-            dict_sites = self._sitegetterKS_generate_mapper_region_to_sites(
+            dict_sites = self.sitegetterKS_generate_mapper_region_to_sites_BASE(
                 clean=False, combine_into_larger_areas=region_combined) # clean=False, since maping from sites to reg.
             for bregion, slist in dict_sites.items():
                 for s in slist:
@@ -3529,8 +3603,8 @@ class Session(object):
 
         return sites_sorted
 
-    def sitegetter_all(self, list_regions=None, clean=True,
-            force_tdt_sites=False):
+    def sitegetterKS_map_region_to_sites_MULTREG(self, list_regions=None, clean=True,
+                                                 force_tdt_sites=False):
         """ [KILOSORT_WORKS] Get all sites, in order
         MNOTE: will be in order of list_regions
         PARAMS:
@@ -3541,7 +3615,7 @@ class Session(object):
         """
         
         if list_regions is None:
-            list_regions = self.sitegetter_get_brainregion_list(combine_into_larger_areas=False)
+            list_regions = self.sitegetter_get_brainregion_list_BASE(combine_into_larger_areas=False)
 
         sites = []
         for region in list_regions:
@@ -3752,7 +3826,7 @@ class Session(object):
         """ Gets fr for all sites and saves in self.DatAll, and saves
         to disk. This is more for computation than for returning anything useufl. 
         Run this once."""
-        for site in self.sitegetter_all(clean=False):
+        for site in self.sitegetterKS_map_region_to_sites_MULTREG(clean=False):
             
             if site%50==0:
                 print(site)
@@ -3770,7 +3844,7 @@ class Session(object):
         """
         frmeans = []
         sites =[]
-        for site in self.sitegetter_all(clean=False):
+        for site in self.sitegetterKS_map_region_to_sites_MULTREG(clean=False):
             # if site%50==0:
             #     print(site)
             frmeans.append(self.sitestats_fr(site)["fr_mean"])
@@ -6374,12 +6448,12 @@ class Session(object):
 
         if trial not in self.PopAnalDict.keys() or overwrite==True:
             # Get all spike trains for a trial
-            list_sites = self.sitegetter_all(clean=clean_chans)
+            list_sites = self.sitegetterKS_map_region_to_sites_MULTREG(clean=clean_chans)
             list_spiketrain = []
             for site in list_sites:
                 dat = self.datall_TDT_KS_slice_single_bysite(site, trial)
                 if "spiketrain" not in dat.keys() or dat["spiketrain"] is None:
-                    print("Generating spike train! (site, trial): ", site, trial)
+                    # print("Generating spike train! (site, trial): ", site, trial)
                     self._spiketrain_as_elephant(site, trial, cache=True)
                 st = dat["spiketrain"]
                 if st is None:
@@ -6682,7 +6756,7 @@ class Session(object):
         import pandas as pd
 
         if sites is None:
-            sites = self.sitegetter_all()
+            sites = self.sitegetterKS_map_region_to_sites_MULTREG()
 
         out = []
         for t in trials:
@@ -6945,7 +7019,7 @@ class Session(object):
         from pythonlib.tools.plottools import subplot_helper
 
         # list_sites = None # none, to get all
-        list_sites = self.sitegetter_all(clean=False)
+        list_sites = self.sitegetterKS_map_region_to_sites_MULTREG(clean=False)
 
         if XLIM is None:
             sharex = False
@@ -7053,7 +7127,7 @@ class Session(object):
         from pythonlib.tools.plottools import subplot_helper
 
         # list_sites = None # none, to get all
-        list_sites = self.sitegetter_all(clean=clean)
+        list_sites = self.sitegetterKS_map_region_to_sites_MULTREG(clean=clean)
 
         ncols = 16
         nrowsmax = 4
@@ -7235,7 +7309,7 @@ class Session(object):
         if site_to_highlight is not None:
             rsrand, chanrand = self.convert_site_to_rschan(site_to_highlight)
         if list_sites is None:
-            list_sites = self.sitegetter_all()
+            list_sites = self.sitegetterKS_map_region_to_sites_MULTREG()
 
         for i, site in enumerate(list_sites):
             d = self.datall_TDT_KS_slice_single_bysite(site, trial)
@@ -8328,7 +8402,7 @@ class Session(object):
         # A single raw channel 
         import random
         ax = axes.flatten()[5]
-        site = random.choice(self.sitegetter_all())
+        site = random.choice(self.sitegetterKS_map_region_to_sites_MULTREG())
         ax.set_title(f"ranbdom raw data: site{site}")
         D = self.datall_TDT_KS_slice_single_bysite(site, trialtdt)
         if D is not None:
@@ -8538,7 +8612,7 @@ class Session(object):
         if dataset_group=="ep_tknd_sup":
             self.Datasetbeh.grouping_append_col(["epoch", "task_kind", "supervision_stage_concise"], "ep_tknd_sup")
             # self.Datasetbeh.Dat["ep_tknd_sup"].value_counts()
-        sites = self.sitegetter_all()
+        sites = self.sitegetterKS_map_region_to_sites_MULTREG()
         print("Plotting plotbatch_rastersevents_blocked ...")
         for s in sites:
             if s%10==0:
@@ -8552,7 +8626,7 @@ class Session(object):
         """ each site plots many trials, each a separaet event(subplot)
         NOTE: about 10x faster for .png vs. .pdf
         """
-        sites = self.sitegetter_all()
+        sites = self.sitegetterKS_map_region_to_sites_MULTREG()
         for s in sites:
             fig = self.plotwrapper_raster_onesite_eventsubplots(s, ntrials=ntrials, sdir=sdir)
             # print("saving fig", s)
@@ -8570,7 +8644,7 @@ class Session(object):
         trials = self.get_trials_list(True)
         print("This many good trials: ", len(trials))
         print("Ending on trial: ", max(trials))
-        sites = self.sitegetter_all()
+        sites = self.sitegetterKS_map_region_to_sites_MULTREG()
 
         # LIST_ALIGN_TO = ["go", "samp"]
         LIST_ALIGN_TO = ["go"]
@@ -9471,14 +9545,6 @@ class Session(object):
         print("SAVING: ", path)
         dfchannels.to_pickle(path)
 
-        if False:
-            # dont need anymore, since have dfchannels        
-            # save map from bregion to site
-            path = f"{sdir}/map_bregion_to_site-{suffix}.pkl"
-            x =self._sitegettertdt_get_map_brainregion_to_site()
-            with open(path, "wb") as f:
-                pickle.dump(x, f)
-
     def debug_mode_switch_to(self, sites=True, trials=True):
         """ Seitch debug mode to variable passed in.
         Takes care of clearing variables that have state (memoized)
@@ -9518,7 +9584,8 @@ class Session(object):
         # return df.sort_values(by=col, key=lambda x:F(x))
 
 #####################################################################
-assert REGIONS_IN_ORDER == ["M1_m", "M1_l", "PMv_l", "PMv_m",
+assert _REGIONS_IN_ORDER == ("M1_m", "M1_l", "PMv_l", "PMv_m",
                 "PMd_p", "PMd_a", "dlPFC_p", "dlPFC_a", 
                 "vlPFC_p", "vlPFC_a", "FP_p", "FP_a", 
-                "SMA_p", "SMA_a", "preSMA_p", "preSMA_a"] # to avoid accidental changes to REGIONS_IN_ORDER
+                "SMA_p", "SMA_a", "preSMA_p", "preSMA_a") # to avoid accidental changes to REGIONS_IN_ORDER
+assert _REGIONS_IN_ORDER_COMBINED == ("M1", "PMv", "PMd", "dlPFC", "vlPFC", "FP",  "SMA", "preSMA")
