@@ -13,6 +13,7 @@ from neuralmonkey.classes.snippets import load_snippet_single
 from pythonlib.tools.expttools import writeDictToYaml
 from neuralmonkey.classes.snippets import Snippets, extraction_helper
 from neuralmonkey.classes.snippets import _dataset_extract_prune_general
+from pythonlib.tools.exceptions import NotEnoughDataException
 
 LIST_SESSIONS = None
 DEBUG = False # runs fast
@@ -47,10 +48,26 @@ if __name__=="__main__":
 
             try:
                 sp = load_snippet_single(sn, which_level)
-                SKIP_EXTRACTION = True
-            except Exception as err:
+                # Only skip extraction if the sites all match. e.g., maybe Kilosort
+                # has been completed recently, then should redo Snippets.
+
+                if sorted(sp.Sites) == sn.sitegetterKS_map_region_to_sites_MULTREG():
+                    print("Saved SP has identical sites to SN -- no need to reextract!")
+                    SKIP_EXTRACTION = True
+                else:
+                    print("Saved SP has DIFFERENT sites to SN -- DO REEXTRACT of SP!")
+                    SKIP_EXTRACTION = False
+            except FileNotFoundError as err:
                 # Then recompute
+                print("No saved SP found -- DO EXTRACT of SP!")
                 SKIP_EXTRACTION = False
+            except NotEnoughDataException as err:
+                # Then SP exists, but it is incompativale with SN, lkekly becuase
+                # SN is now kiloosrt.
+                print("SP incompatioble with SN (kilosoert?) -- DO EXTRACT of SP!")
+                SKIP_EXTRACTION = False
+            except Exception as err:
+                raise err
 
             if SKIP_EXTRACTION:
                 print("** SKIPPING EXTRACTION, since was able to load snippets, for: ")

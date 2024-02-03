@@ -153,7 +153,7 @@ class MultSessions(object):
 
         list_list_sites = []
         for SN in self.SessionsList:
-            list_sites = SN.sitegetter_all(list_regions, clean)
+            list_sites = SN.sitegetterKS_map_region_to_sites_MULTREG(list_regions, clean)
             list_list_sites.append(list_sites)
 
         if how_combine=="assert_identical":

@@ -256,7 +256,7 @@ class Snippets(object):
             # Then useful if tyou want to load old data.
             return
 
-        sites = SN.sitegetter_all()
+        sites = SN.sitegetterKS_map_region_to_sites_MULTREG()
         # 1b) Which sites to use?
         if False:
             # Prune to top N sites, just for quick analysis
@@ -460,6 +460,9 @@ class Snippets(object):
                 map_var_to_othervars = pa.labels_features_input_conjunction_other_vars(dim="trials", 
                     list_var = list_features_get_conjunction)
 
+        # Make sure you save bregions in dfscalar
+        self.datamod_append_bregion(self.DfScalar)
+
         ### SAVE VARIABLES
         self.ListPA = ListPA
         self.Sites = sites_keep
@@ -478,7 +481,8 @@ class Snippets(object):
             "strokes_only_keep_single":strokes_only_keep_single,
             "tasks_only_keep_these":tasks_only_keep_these,
             "prune_feature_levels_min_n_trials":prune_feature_levels_min_n_trials,
-            "fr_which_version":fr_which_version
+            "fr_which_version":fr_which_version,
+            "SPIKES_VERSION":SN.SITES_VERSION
         }
         self.globals_initialize() 
 
@@ -909,17 +913,27 @@ class Snippets(object):
                 if return_copy:
                     DfScalar = self.DfScalar.copy()
                     DfScalar = pd.concat([DfScalar, self.DfScalar_OutlierRows]).reset_index(drop=True)
-                    if not cols_pre==DfScalar.columns:
+                    try:
+                        if not cols_pre.tolist()==DfScalar.columns.tolist():
+                            print(cols_pre)
+                            print(DfScalar)
+                            assert False
+                        return DfScalar
+                    except ValueError as err:
+                        print("********************")
                         print(cols_pre)
-                        print(DfScalar)
-                        assert False
-                    return DfScalar
+                        print(DfScalar.columns)
+                        print(type(cols_pre[0]))
+                        print(type(DfScalar.columns[0]))
+                        from pythonlib.tools.checktools import check_objects_identical
+                        check_objects_identical(cols_pre.tolist(), DfScalar.columns.tolist())
+                        raise err
                 else:
                     # Mutate
                     self.DfScalar = pd.concat([self.DfScalar, self.DfScalar_OutlierRows]).reset_index(drop=True)
                     # and delete this, so you don't retry this
                     self.DfScalar_OutlierRows = None
-                    if not cols_pre==self.DfScalar.columns:
+                    if not cols_pre.tolist()==self.DfScalar.columns.tolist():
                         print(cols_pre)
                         print(self.DfScalar)
                         assert False
@@ -2963,7 +2977,7 @@ class Snippets(object):
 
         if bregion_add_num_prefix:
             # generate map from bregion to its number
-            regions_in_order = self.SN.sitegetter_get_brainregion_list(bregion_combine)
+            regions_in_order = self.SN.sitegetter_get_brainregion_list_BASE(bregion_combine)
             map_bregion_to_idx = {}
             for i, reg in enumerate(regions_in_order):
                 map_bregion_to_idx[reg] = i
@@ -5256,7 +5270,7 @@ class Snippets(object):
             event0 = self.Params["list_events_uniqnames"][0]
         
         ## Iter over each region
-        list_regions = self.SN.sitegetter_get_brainregion_list()
+        list_regions = self.SN.sitegetter_get_brainregion_list_BASE()
         for region in list_regions:
             print("Plotting...", region)
             sites_this = [s for s in self.Sites if s in self.SN.sitegetter_map_region_to_sites(region)]
@@ -6395,12 +6409,15 @@ class Snippets(object):
         sn = self._session_extract_all()[0]
         return sn.Date
 
-    def bregion_list(self):
+    def bregion_list(self, combine_into_larger_areas=False):
+        """ GEt begion list from SEssion()"""
         sn = self._session_extract_all()[0]
-        list_bregion = sn.sitegetter_get_brainregion_list()
+        list_bregion = sn.sitegetter_get_brainregion_list_BASE(
+            combine_into_larger_areas=combine_into_larger_areas)
         return list_bregion
 
-    def sitegetter_map_region_to_sites(self, bregion):
+    def sitegetter_map_region_to_sites(self, bregion,
+                                       exclude_bad_areas=False):
         """ Return list of ints (sites) that are in self.Sites,
         and also for this bregion.
         RETURNS:
@@ -6411,7 +6428,8 @@ class Snippets(object):
         list_sn = self._session_extract_all()
         list_sites = []
         for sn in list_sn:
-            list_sites.extend(sn.sitegetter_all([bregion]))
+            # list_sites.extend(sn.sitegetter_all([bregion]))
+            list_sites.extend(sn.sitegetterKS_map_region_to_sites(bregion, exclude_bad_areas=exclude_bad_areas))
 
         # Only keep self.Sites which are in that list
         sites = [s for s in self.Sites if s in list_sites]
@@ -6672,8 +6690,8 @@ class Snippets(object):
             assert False
 
         # For the rest, try to get automatically.
-        vars_to_extract = vars_extract_append + list_features_extraction
-        assert self.datasetbeh_append_column_helper(vars_to_extract, D, stop_if_fail=True)==True # Extract all the vars here
+        list_features_extraction = vars_extract_append + list_features_extraction
+        assert self.datasetbeh_append_column_helper(list_features_extraction, D, DS=DSprun, stop_if_fail=True)==True # Extract all the vars here
 
         for var in list_features_extraction:
             if var not in self.DfScalar.columns:
@@ -6744,6 +6762,44 @@ class Snippets(object):
         if "event_aligned" in self.DfScalar.columns:
             self.DfScalar["event"] = self.DfScalar["event_aligned"]
             # del self.DfScalar["event_aligned"]
+
+        # Sanity checks that sites line up with SN. This can be different if,
+        # for example, SN now uses kilosort units, but SP was saved with TDT.
+        sn = self.SN
+        try:
+            # all SP sites should be in sn.
+            sites_sn = sn.sitegetterKS_map_region_to_sites_MULTREG()
+            sites_both = [s for s in self.Sites if s in sites_sn]
+
+            n_sites_sp = len(self.Sites)
+            n_sites_sn = len(sites_sn)
+            n_sites_both = len(sites_both)
+
+            if "SPIKES_VERSION" in self.Params:
+                assert self.Params["SPIKES_VERSION"] == sn.SPIKES_VERSION
+            else:
+                # infer whats the spikes version
+                if (np.all(np.diff(self.Sites)>0)) & (self.Sites[-1] > 480):
+                    # then this is tdt
+                    assert sn.SPIKES_VERSION=="tdt"
+                else:
+                    assert sn.SPIKES_VERSION=="kilosort"
+
+
+            assert n_sites_both/n_sites_sp>0.85, "Almost All sites in SP should be presnet in SN" # dont do 100% beucase Diego dlPFC
+            assert n_sites_both/n_sites_sn>0.95, "Almost all sites in SN sholdk be in SP"
+
+        except AssertionError as err:
+            print(self.Params)
+            print(self.Sites)
+            print(sites_sn)
+            print(sn.SPIKES_VERSION)
+            print(n_sites_both, n_sites_sn, n_sites_sp)
+            print([s for s in self.Sites if s not in sites_sn])
+            print([s for s in sites_sn if s not in self.Sites])
+            print("You should reextract Snippets or load MS with the same spikes version as in SP")
+            print(err)
+            raise NotEnoughDataException
 
     def _sanity_trial_and_chans_are_balanced(self, dfthis=None, trial_key="index_datapt"):
         """ Check that all channel have the same trials, and vice versa.
@@ -6979,7 +7035,7 @@ def extraction_helper(SN, which_level="trial", list_features_modulation_append=N
             dataset_pruned_for_trial_analysis = _dataset_extract_prune_general(SN)
     else:
         # Dont exclude ANY data. DO this AFTER extracting Snippets.
-        dataset_pruned_for_trial_analysis = sn.Datasetbeh.copy()
+        dataset_pruned_for_trial_analysis = SN.Datasetbeh.copy()
 
     if which_level=="trial":
         # Events

@@ -128,7 +128,7 @@ def plotNeurTimecourseErrorbar(Xmean, Xerror, times=None, ax=None, color="k",
         fig = None
     
     if times is None:
-        t = np.arange(len(X))
+        t = np.arange(len(Xmean))
     else:
         t = times
     npts = len(t)

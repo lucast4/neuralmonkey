@@ -8,6 +8,7 @@ import os
 import matplotlib.pyplot as plt
 
 DATES_IGNORE = ["220708"]
+SPIKES_VERSION = "kilosort_if_exists" #
 
 def load_and_preprocess_single_session(date, rec_session, animal = "Pancho"):
     """ [Good] Load this single rec session, coping things to local from server and making
@@ -71,7 +72,8 @@ def load_and_preprocess_single_session(date, rec_session, animal = "Pancho"):
 
     # 1) extract
     SN = load_session_helper(date, dataset_beh_expt, rec_session, animal, expt,  
-        BAREBONES_LOADING = True, do_if_spikes_incomplete="extract_quick_tdt")
+        BAREBONES_LOADING = True, do_if_spikes_incomplete="extract_quick_tdt",
+                             spikes_version=SPIKES_VERSION)
 
     check_dict = SN._check_preprocess_status()
     exists_1 = check_dict["exists_1"]
@@ -98,7 +100,7 @@ def load_and_preprocess_single_session(date, rec_session, animal = "Pancho"):
     if DO_EXTRACT:
         try:
             SN = load_session_helper(date, dataset_beh_expt, rec_session, animal, expt, 
-                do_all_copy_to_local=True) 
+                do_all_copy_to_local=True, spikes_version=SPIKES_VERSION)
         except Exception as err:
             print("&&&&&&&&&&&&")
             print(date, dataset_beh_expt, rec_session, animal, expt)
