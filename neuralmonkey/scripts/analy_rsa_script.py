@@ -20,6 +20,9 @@ from neuralmonkey.analyses.rsa import rsagood_score_wrapper, rsagood_pa_effectsi
 from neuralmonkey.classes.population_mult import dfpa_slice_specific_windows, dfpa_group_and_split
 
 
+
+assert False, "repalce with dfallpa_extraction_load_wrapper"
+
 # list_time_windows = [
 #     (-0.6, -0.4),
 #     (-0.5, -0.3),
@@ -50,6 +53,7 @@ list_time_windows = [
 # version_distance = "euclidian"
 version_distance = "euclidian_unbiased"
 HACK_RENAME_SHAPES = True
+SPIKES_VERSION = "tdt"
 
 def rsa_pipeline(MS, question, q_params):
     """ Computes and plots all for this question
@@ -68,13 +72,13 @@ def rsa_pipeline(MS, question, q_params):
         assert "epoch" in list_features_extraction, "sanity check"
 
         # Prune to just the events of interest
-        if q_params["events_keep"] is not None:
-            events_in = SP.DfScalar["event"].unique().tolist()
-            SP.DfScalar = SP.DfScalar[SP.DfScalar["event"].isin(q_params["events_keep"])].reset_index(drop=True)
-            if len(SP.DfScalar)==0:
-                print(q_params["events_keep"])
-                print(events_in)
-                assert False
+        # if q_params["events_keep"] is not None:
+        #     events_in = SP.DfScalar["event"].unique().tolist()
+        #     SP.DfScalar = SP.DfScalar[SP.DfScalar["event"].isin(q_params["events_keep"])].reset_index(drop=True)
+        #     if len(SP.DfScalar)==0:
+        #         print(q_params["events_keep"])
+        #         print(events_in)
+        #         assert False
 
         # Prune to just specific var:level combinations of interest
         if q_params["dict_vars_levels_prune"] is not None:
@@ -94,7 +98,8 @@ def rsa_pipeline(MS, question, q_params):
         # Extract all popanals
         dfallpa = snippets_extract_popanals_split_bregion_twind(SP, list_time_windows,
                                                         list_features_extraction,
-                                                        HACK_RENAME_SHAPES=HACK_RENAME_SHAPES)
+                                                        HACK_RENAME_SHAPES=HACK_RENAME_SHAPES,
+                                                        events_keep=q_params["events_keep"])
 
         assert "epoch" in list_features_extraction, "sanity check"
         list_pa = dfallpa["pa"].tolist()
@@ -127,8 +132,9 @@ def rsa_pipeline(MS, question, q_params):
             print(DFallpa["which_level"].value_counts())
             print(DFallpa["event"].value_counts())
             print(DFallpa["twind"].value_counts())
-            print(slice_agg_slices)
+            print("slice_agg_slices:", slice_agg_slices)
             DFallpa = dfpa_slice_specific_windows(DFallpa, slice_agg_slices)
+
             # 2) agg (one pa per bregion)
             print(" *** Before dfpa_group_and_split")
             print(DFallpa["which_level"].value_counts())
@@ -136,10 +142,17 @@ def rsa_pipeline(MS, question, q_params):
             print(DFallpa["twind"].value_counts())
             print(slice_agg_vars_to_split)
             DFallpa = dfpa_group_and_split(DFallpa, vars_to_split=slice_agg_vars_to_split)
+
             print(" *** After dfpa_group_and_split")
             print(DFallpa["which_level"].value_counts())
             print(DFallpa["event"].value_counts())
             print(DFallpa["twind"].value_counts())
+            print("Event, within pa:")
+
+            for pa in DFallpa["pa"].tolist():
+                print(pa.Xlabels["trials"]["event"].value_counts())
+                print(pa.Xlabels["trials"]["wl_ev_tw"].value_counts())
+                assert isinstance(pa.Xlabels["trials"]["wl_ev_tw"].values[0], str)
 
     # Other params for rsa computation.
     list_subtract_mean_each_level_of_var = q_params["list_subtract_mean_each_level_of_var"]
@@ -150,10 +163,12 @@ def rsa_pipeline(MS, question, q_params):
     # else:
     #     use_distributional_distance = False
 
+    # if False: # DEBUGGING
     list_pa = DFallpa["pa"].tolist()
     for pa in list_pa:
         for var in q_params["effect_vars"]:
             if var not in pa.Xlabels["trials"].columns:
+                print(var)
                 print(q_params)
                 print(pa.Xlabels["trials"])
                 print(list_features_extraction)
@@ -213,7 +228,7 @@ if __name__ == "__main__":
 
     animal = sys.argv[1]
     date = int(sys.argv[2])
-    MS = load_mult_session_helper(date, animal)
+    MS = load_mult_session_helper(date, animal, spikes_version=SPIKES_VERSION)
     MULTI = False
 
     DictParamsEachQuestion = rsagood_questions_dict(animal, date)

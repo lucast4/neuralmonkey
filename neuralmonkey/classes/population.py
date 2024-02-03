@@ -40,6 +40,8 @@ class PopAnal():
         reorder. *(nunits, ntrials, time)
 
         """
+        import copy
+
         self.Params = {}
         self.Xdataframe = None
         self.Xz = None
@@ -75,13 +77,22 @@ class PopAnal():
             self.Times = np.arange(self.X.shape[2])
         else:
             # assert isinstance(times, list), "or something list-like? change code?"
-            self.Times = np.array(times)
+            if isinstance(times, (list, tuple)) and not isinstance(times[0], str):
+                times = np.array(times)
+            if isinstance(times, np.ndarray) and len(times.shape)>1:
+                times = times.squeeze()
+                assert len(times.shape)==1
+            if not len(times)==self.X.shape[2]:
+                print(times)
+                print(self.X.shape)
+                assert False
+            self.Times = times
+        # print("HERERE", times, len(times))
 
         if chans is None:
             self.Chans = range(self.X.shape[0])
         else:
-            assert isinstance(chans, list)
-            self.Chans = chans
+            self.Chans = copy.copy(chans)
 
         # Spike trains
         self.SpikeTrains = spike_trains
@@ -98,9 +109,7 @@ class PopAnal():
         if trials is None:
             self.Trials = list(range(self.X.shape[1]))
         else:
-            assert isinstance(trials, list)
-            self.Trials = trials
-
+            self.Trials = copy.copy(trials)
 
         # Initialize dataframe holding dimension labels
         self.Xlabels = {}
@@ -112,19 +121,6 @@ class PopAnal():
         assert len(self.Chans)==self.X.shape[0]
         assert len(self.Trials)==self.X.shape[1]
         assert len(self.Times)==self.X.shape[2]
-
-        # # Helper, maps
-        # self.MapDimensionsStrToInt = {
-        #     "chans":0,
-        #     "trials":1,
-        #     "times":2
-        # }
-        # self.MapDimensionsIntToStr = {
-        #     0:"chans",
-        #     1:"trials",
-        #     2:"times"
-        # }
-
 
 
     def preprocess(self):
@@ -648,6 +644,9 @@ class PopAnal():
     #     # convert from indices to times
     #     time_wind = [self.Times[ind1], self.Times[ind2]]
     #     return self.slice_by_dim_indices_wrapper("times", time_wind)
+    #
+    # def bin_time(self):
+
 
     def slice_by_dim_indices_wrapper(self, dim, inds):
         """ Helper that is standard across the three dims (trials, times, chans),
@@ -658,7 +657,7 @@ class PopAnal():
         (is index, NOT the value itself). if dim=="times", then inds must be len 2,
         the start and ending times, for window, inclusive.
         RETURNS:
-        - PopAnal object, 
+        - PopAnal object, , copy
         - OR frmat array (chans, trials, times) if return_only_X==True
         """
 
@@ -684,8 +683,6 @@ class PopAnal():
                 t2_next = self.Times[inds[1]+1]
                 t2 += (t2_next - t2)/2
 
-            # print(t1, t2)
-            # print(self.Times)
             pa = self._slice_by_time_window(t1, t2, True, False)
 
             if len(self.Xlabels["times"])>0:
@@ -710,24 +707,29 @@ class PopAnal():
                 chan_inputed_row_index=True)
             if len(self.Xlabels["chans"])>0:
                 # then slice it
-                dfnew = self.Xlabels["chans"].iloc[inds].reset_index(drop=True)
+                dfnew = self.Xlabels["chans"].iloc[inds].reset_index(drop=True).copy()
             else:
                 dfnew = pd.DataFrame()
         elif dim_str=="trials":
             pa = self._slice_by_trial(inds, return_as_popanal=True)
             if len(self.Xlabels["trials"])>0:
                 # then slice it
-                dfnew = self.Xlabels["trials"].iloc[inds].reset_index(drop=True)
+                dfnew = self.Xlabels["trials"].iloc[inds].reset_index(drop=True).copy()
             else:
                 dfnew = pd.DataFrame()
         else:
             print(dim_str)
             assert False
 
+        # if True:
         # Retain the labels for the dimensions that are untouched
-        pa.Xlabels = self.Xlabels.copy()
+        # pa.Xlabels = self.Xlabels.copy()
+        pa.Xlabels = {dim:df.copy() for dim, df in self.Xlabels.items()}
         # subsample the dimensions you have sliced
         pa.Xlabels[dim_str] = dfnew
+        # else:
+        #     # copy all dimensions
+        #     pa.Xlabels = {dim:df.copy() for dim, df in self.Xlabels.items()}
 
         return pa
 
@@ -762,7 +764,7 @@ class PopAnal():
 
         if not isinstance(self.Times, list):
             self.Times = np.array(self.Times)
-        X = self.extract_activity(version=version)
+        X = self.extract_activity_copy(version=version)
         inds = (self.Times>=t1) & (self.Times<=t2)
         # print(sum(inds))
 
@@ -772,8 +774,13 @@ class PopAnal():
             print(t1, t2)
             print("must give times that have data within them!!")
             assert False
-            
-        x_windowed = X[:, :, inds]
+
+        try:
+            x_windowed = X[:, :, inds]
+        except Exception as err:
+            print(inds)
+            print(X.shape)
+            raise err
         times = np.array(self.Times[inds])
 
         if subtract_this_from_times:
@@ -795,7 +802,7 @@ class PopAnal():
         """
 
         # Collect data
-        X = self.extract_activity(version=version)
+        X = self.extract_activity_copy(version=version)
         X = X[:, inds, :]
         trials_actual = [self.Trials[i] for i in inds]
 
@@ -830,7 +837,7 @@ class PopAnal():
             del chans
 
         # Slice
-        X = self.extract_activity(version=version)
+        X = self.extract_activity_copy(version=version)
         X = X[inds, :, :]
 
         if return_as_popanal:
@@ -853,7 +860,7 @@ class PopAnal():
         shape (nchans, ntrials)
         """
         assert False, "OBSOLETE. use agg_wrapper, it retains Xlabels"
-        X = self.extract_activity(version = version)
+        X = self.extract_activity_copy(version = version)
         if return_as_popanal:
             Xnew = np.mean(X, axis=2, keepdims=True)
             return PopAnal(Xnew, times=np.array([0.]), chans=self.Chans, print_shape_confirmation=False)
@@ -866,8 +873,37 @@ class PopAnal():
         out shape (nchans, 1, time)
         """
         assert False, "OBSOLETE. use agg_wrapper, it retains Xlabels"
-        X = self.extract_activity(version=version)
+        X = self.extract_activity_copy(version=version)
         return np.mean(X, axis=1, keepdims=True)
+
+    def agg_by_time_windows_binned(self, DUR, SLIDE):
+        """
+        REturna  new PA that has times binned in sliding windows.
+        PARAMS:
+        - DUR, wiodth of window, in sec
+        - SLIDE, dur to slide window, in sec
+        """
+
+        # MAke new times iwndows
+        PRE = self.Times[0]
+        POST = self.Times[-1]
+        # n = (POST-PRE)/DUR
+        times1 = np.arange(PRE, POST-DUR, SLIDE)
+        times2 = times1+DUR
+        time_windows = np.stack([times1, times2], axis=1)
+
+        # print(DUR, SLIDE)
+        # print(time_windows)
+        # print(self.Times)
+        # assert False
+        X, times = self.agg_by_time_windows(time_windows)
+
+        PA = PopAnal(X, times=times, chans=self.Chans,
+                    trials = self.Trials)
+        PA.Xlabels["trials"] = self.Xlabels["trials"].copy()
+
+        return PA
+
 
     def agg_by_time_windows(self, time_windows):
         """ Take mean within multkple time windows, and use those as new time bins.
@@ -912,7 +948,7 @@ class PopAnal():
 
         along_dim, along_dim_str = self.help_get_dimensions(along_dim)
 
-        X = self.extract_activity(version="raw")
+        X = self.extract_activity_copy(version="raw")
         if agg_method=="mean":
             Xagg = np.mean(X, axis=along_dim, keepdims=True)
         elif agg_method=="median":
@@ -1156,6 +1192,7 @@ class PopAnal():
         all levels
         """
 
+        assert len(grouping_variables)==len(set(grouping_variables))
         from pythonlib.tools.pandastools import grouping_append_and_return_inner_items
 
         along_dim, along_dim_str = self.help_get_dimensions(along_dim)
@@ -1174,7 +1211,8 @@ class PopAnal():
         # Get indices for each grouping level
         groupdict = grouping_append_and_return_inner_items(df, 
             grouping_variables, groupinner='index', 
-            groupouter_levels=grouping_values)
+            groupouter_levels=grouping_values,
+                                           sort_keys=True)
 
         # Get sliced pa for each grouping level
         list_pa = []
@@ -1437,9 +1475,39 @@ class PopAnal():
             print(dim)
             assert False
 
+    def shuffle_by_trials(self, inds_rows):
+        """ Shuffle rows, given input indices, with many sanityc checeks,
+        and ensuring that both data and labels shuffled
+        PARAMS:
+        - inds_rows, list of ints, into self.X[:, inds_rows, :] and labels,
+        the new order.
+        RETURNS:
+        - copy of pa, shuiffled.
+        """
+
+        assert False, "In progress!!"
+
+        n = self.X.shape[1]
+        assert len(inds_rows) == n
+        assert(max(inds_rows)==n-1)
+        assert(min(inds_rows)==0)
+
+
+        inds_rows = df_shuff["index"].tolist()
+        pa_shuff = self.copy()
+
+        list(range(self.X.shape[1]))
+
+        pa_shuff.X = self.X[:, inds_rows, :]
+        pa_shuff.Xlabels["trials"] = self.Xlabels["trials"].iloc[inds_rows].reset_index(drop=True)
+        # sanity check
+        pa_shuff.Xlabels["trials"][var] == self.Xlabels["trials"][var]
+        pa_shuff.Xlabels["trials"][var]
+        self.Xlabels["trials"][var]
+
     #### EXTRACT ACTIVITY
-    def extract_activity(self, trial=None, version="raw"):
-        """ REturn activity for this trial
+    def extract_activity_copy(self, trial=None, version="raw"):
+        """ REturn activity for this trial, a copy
         PARAMS:
         - trial, int, if None, then returns over all trials
         - version, string, ee.g. {'raw', 'z'}
@@ -1449,15 +1517,15 @@ class PopAnal():
 
         if version=="raw":
             if trial is None:
-                return self.X
+                return self.X.copy()
             else:
-                return self.X[:, trial, :]
+                return self.X[:, trial, :].copy()
         elif version=="z":
             assert self.Xz is not None, "need to do zscore first"
             if trial is None:
-                return self.Xz
+                return self.Xz.copy()
             else:
-                return self.Xz[:, trial, :]
+                return self.Xz[:, trial, :].copy()
         else:
             print(version)
             assert False
@@ -1474,11 +1542,11 @@ class PopAnal():
 
     ### PLOTTING
     def plotNeurHeat(self, trial, version="raw", **kwargs):
-        X = self.extract_activity(trial, version)
+        X = self.extract_activity_copy(trial, version)
         return plotNeurHeat(X, **kwargs)
 
     def plotNeurTimecourse(self, trial, version="raw", **kwargs):
-        X = self.extract_activity(trial, version)
+        X = self.extract_activity_copy(trial, version)
         return plotNeurTimecourse(X, **kwargs)
 
     def plotwrapper_smoothed_fr(self, inds=None, axis_for_inds="site", ax=None, 
@@ -1519,6 +1587,10 @@ class PopAnal():
         # Reshape to (nsamp, times)
         X = X.reshape(X.shape[0] * X.shape[1], X.shape[2])
         n_time_bins = X.shape[1]
+
+        if len(X)<5:
+            plot_indiv = True
+            plot_summary = False
 
         # 1) Plot indiividual traces?
         if plot_indiv:
@@ -1587,15 +1659,17 @@ class PopAnal():
             legend_levels = list_levels_matching_pa
         pcols = makeColors(len(legend_levels))
         dict_lev_color = {}
+
+
         for pc, lev in zip(pcols, legend_levels):
             dict_lev_color[lev] = pc
 
         for pa, lev in zip(list_pa, list_levels_matching_pa):
             pcol = dict_lev_color[lev]
             pa.plotwrapper_smoothed_fr(ax=ax, plot_indiv=plot_indiv, plot_summary=plot_summary,
-                                          pcol_indiv = pcol, pcol_summary=pcol, 
+                                          pcol_indiv = pcol, pcol_summary=pcol,
                                           event_bounds=event_bounds)
-        
+
         # add legend
         if add_legend:
             from pythonlib.tools.plottools import legend_add_manual
@@ -1678,12 +1752,43 @@ class PopAnal():
         ax.grid()
 
 
+def concatenate_popanals_flexible(list_pa, concat_dim="trials"):
+    """ Concatenates popanals (along trial dim) which may have different time bases (but
+    the same n time bins.
+    If differnet, then replaces time with 0,1, 2... (index), otherwise uses actual time.
+    RETURNS:
+        - PA, new popanal
+        - twind, (tmin, tmax) from new PA.Times.
+    """
+    assert len(list_pa)>0, "didnt get any data"
+
+    if concat_dim=="trials":
+        # if you are combining multiple times, then replace times iwth a
+        # dummy variable
+        times_identical = check_identical_times(list_pa)
+        replace_times_with_dummy_variable = not times_identical
+
+        PA = concatenate_popanals(list_pa, "trials",
+                                    replace_times_with_dummy_variable=replace_times_with_dummy_variable)
+
+    elif concat_dim=="times":
+        # ALl will copy the trials df from the first pa.
+        PA = concatenate_popanals(list_pa, "times",
+                                     all_pa_inherit_trials_of_pa_at_this_index=0,
+                                     replace_times_with_dummy_variable=False)
+
+    # if times were replaced, what is new fake time window?
+    twind = (PA.Times[0], PA.Times[-1])
+
+    return PA, twind
+
 def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None, 
     map_idxpa_to_value=None, map_idxpa_to_value_colname = None, 
     assert_otherdims_have_same_values=True, 
     assert_otherdims_restrict_to_these=("chans", "trials", "times"),
     all_pa_inherit_times_of_pa_at_this_index=None,
-                         replace_times_with_dummy_variable=False):
+     replace_times_with_dummy_variable=False,
+     all_pa_inherit_trials_of_pa_at_this_index=None):
     """ Concatenate multiple popanals. They must have same shape except
     for the one dim concatted along.
     PARAMS:
@@ -1714,6 +1819,9 @@ def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None,
 
     if len(list_pa)==0:
         return None
+
+    # always copy
+    list_pa = [pa.copy() for pa in list_pa]
 
     dim, dim_str = help_get_dimensions(dim)
 
@@ -1757,59 +1865,6 @@ def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None,
     #     print(x.shape)
     X = np.concatenate(list_x, axis=dim)
 
-    # Get the common values for the new concatted pa. if all pa have same values, then
-    # keep. otherwise repalce with list of None
-    def _isin(vals, list_vals):
-        if isinstance(vals, list):
-            return vals in list_vals
-        elif isinstance(vals, np.ndarray):
-            vals_in = [np.all(vals == vals_check) for vals_check in list_vals]
-            return any(vals_in)
-        else:
-            print(type(vals))
-            assert False
-
-    def _get_common_values_this_dim(thisdim):
-        # collect the values, across all pa
-        vals_all = []
-        for pa in list_pa:
-            if thisdim=="chans":
-                vals_this = pa.Chans
-            elif thisdim=="trials":
-                vals_this = pa.Trials
-            elif thisdim=="times":
-                vals_this = pa.Times
-            else:
-                assert False
-            
-            if not _isin(vals_this, vals_all):
-                # This is new. collect it.
-                vals_all.append(vals_this)
-
-        # Decide whether they have the same vals.
-        if len(vals_all)==1:
-            # then good, all pa have same vals. keep iot
-            vals_good = vals_all[0]
-        elif len(vals_all)==0:
-            assert False, "how is this possible../."
-        else:
-            # then each pa has different vals.
-            if assert_otherdims_have_same_values and thisdim in assert_otherdims_restrict_to_these:
-                print("this dimensions has diff values across pa...")
-                print(thisdim)
-                for vals in vals_all:
-                    print(vals)
-                assert False
-
-            # replace with list of None, so dont get confused.
-            n_all = list(set([len(vals) for vals in vals_all]))
-            assert len(n_all)==1, "not supposed to be able to try to concat pa that have diff sizes for this dim"
-            n = n_all[0]
-            vals_good = [None for _ in range(n)]
-
-        return vals_good
-
-
     # 2) Create new PA
     if False:
         # [OLD METHOD] values for the non-concatted dimensions.
@@ -1818,21 +1873,36 @@ def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None,
         trials = pa1.Trials
         times = pa1.Times
 
+    # Extract values to populate the other dimensions
+    # - decide whether to enforce same values across all list_pa.
+    tmp = {}
+
+    for d in ["times", "chans", "trials"]:
+        tmp[d] = (assert_otherdims_have_same_values) and (d in assert_otherdims_restrict_to_these)
+    # - extract values
     if dim_str=="times":
         times = values_for_concatted_dim
-        chans = _get_common_values_this_dim("chans")
-        trials = _get_common_values_this_dim("trials")
+        if times is None:
+            # Make times = [(i, t) ...] where i is PA index, and t is the time iun PA.times.
+            times =[]
+            for i, patmp in enumerate(list_pa):
+                # times.extend([(i, t) for t in patmp.Times])
+                times.extend([f"{i}|{t:.4f}" for t in patmp.Times])
+        chans = check_get_common_values_this_dim(list_pa,"chans", tmp["chans"])
+        trials = check_get_common_values_this_dim(list_pa, "trials", tmp["trials"])
     elif dim_str=="chans":
-        times = _get_common_values_this_dim("times")
+        times = check_get_common_values_this_dim(list_pa, "times", tmp["times"])
         chans = values_for_concatted_dim
-        trials = _get_common_values_this_dim("trials")        
+        trials = check_get_common_values_this_dim(list_pa, "trials", tmp["trials"])
     elif dim_str=="trials":
-        times = _get_common_values_this_dim("times")
-        chans = _get_common_values_this_dim("chans")
+        times = check_get_common_values_this_dim(list_pa, "times", tmp["times"])
+        chans = check_get_common_values_this_dim(list_pa, "chans", tmp["chans"])
         trials = values_for_concatted_dim   
     else:
         print(dim_str)
         assert False
+
+    # Generate new popanal
     PA = PopAnal(X, times=times, trials = trials,
         chans = chans)
 
@@ -1841,6 +1911,17 @@ def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None,
     from pythonlib.tools.pandastools import concat
     list_df = [pa.Xlabels[dim_str] for pa in list_pa]
     PA.Xlabels[dim_str] = concat(list_df)
+
+    # Inherit the df from a specific idx.
+    if all_pa_inherit_trials_of_pa_at_this_index is not None:
+        # Sanity chcek that all dfs have same trialcodes.
+        tcs = list_pa[0].Xlabels["trials"]["trialcode"].tolist()
+        for patmp in list_pa[1:]:
+            assert patmp.Xlabels["trials"]["trialcode"].tolist() == tcs
+
+        # Replace
+        dftmp = list_pa[all_pa_inherit_trials_of_pa_at_this_index].Xlabels["trials"].copy()
+        PA.Xlabels["trials"] = dftmp
 
     # convert index_to_old_dataframe to meaningful value
     if map_idxpa_to_value is not None:
@@ -1879,3 +1960,101 @@ def help_get_dimensions(dim):
     else:
         assert False
     return dim, dim_str
+
+
+def check_identical_times(list_pa):
+    """ Returns True if all pa in list_pa have
+    smae time base (in pa.Times), wihtin numerical precision
+    """
+    from pythonlib.tools.nptools import isin_array
+
+    times_prev = None
+    times_identical = True
+    for pa in list_pa:
+        if times_prev is not None:
+            if len(pa.Times) != len(times_prev):
+                times_identical = False
+                break
+            if not isin_array(pa.Times, [times_prev]):
+                times_identical = False
+                break
+        times_prev = pa.Times
+    return times_identical
+
+
+def check_get_common_values_this_dim(list_pa, thisdim, assert_all_pa_have_same_values,
+                                     dims_are_columns_in_xlabels=False):
+    """ collect the values for this dim, across all pa,.
+    returns as a list of lists, each inner list unique.
+    PARAMS:
+    - thisdim, e.g., "trials"
+    - assert_all_pa_have_same_values, bool, if True, then fails if not unique values across
+    all pa.
+    RETURNS:
+        - list of values, the unique values. if no unique, thje returns list ofNones.
+    """
+
+    def _isin(vals, list_vals):
+        # Returns True if vals is in list_vals.
+
+        # solve bug if this is list of np arraus,.
+        # vals = list(vals)
+        # list_vals = list(list_vals)
+
+        if isinstance(vals, list):
+            return vals in list_vals
+        elif isinstance(vals, np.ndarray) and not isinstance(vals[0], str):
+            from pythonlib.tools.nptools import isin_array
+            return isin_array(vals, list_vals)
+            # vals_in = [np.all(vals == vals_check) for vals_check in list_vals]
+            # return any(vals_in)
+        else:
+            print(type(vals))
+            assert False
+
+    # Collect vals
+    vals_all = []
+    for pa in list_pa:
+        if dims_are_columns_in_xlabels:
+            vals_this = pa.Xlabels["trials"][thisdim].tolist()
+        else:
+            if thisdim=="chans":
+                vals_this = pa.Chans
+            elif thisdim=="trials":
+                vals_this = pa.Trials
+            elif thisdim=="times":
+                vals_this = pa.Times
+            else:
+                assert False
+
+        if isinstance(vals_this, np.ndarray) and isinstance(vals_this[0], str):
+            # Make this list of str, not array, or else will have bug downstream in _isin
+            vals_this = ([v for v in vals_this])
+
+        if not _isin(vals_this, vals_all):
+            # This is new. collect it.
+            vals_all.append(vals_this)
+
+    # Decide whether they have the same vals.
+    if len(vals_all)==1:
+        # then good, all pa have same vals. keep iot
+        vals_good = vals_all[0]
+    elif len(vals_all)==0:
+        assert False, "how is this possible../."
+    else:
+        # then pas have different vals.
+        if assert_all_pa_have_same_values:
+            print("this dimensions has diff values across pa...")
+            print(thisdim)
+            for vals in vals_all:
+                print(len(vals), vals)
+            assert False
+
+        # replace with list of None, so dont get confused.
+        n_all = list(set([len(vals) for vals in vals_all]))
+        assert len(n_all)==1, "not supposed to be able to try to concat pa that have diff sizes for this dim"
+        n = n_all[0]
+        vals_good = [None for _ in range(n)]
+
+    return vals_good
+
