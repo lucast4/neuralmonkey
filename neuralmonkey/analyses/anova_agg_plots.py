@@ -943,7 +943,7 @@ def plotwrapper_contrasts(DF_VAR, var_contrast, grouping, _PARAMS, PRINT=False,
     from pythonlib.tools.snstools import rotateLabel
     from pythonlib.tools.pandastools import append_col_with_grp_index
     from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars
-    from neuralmonkey.classes.session import REGIONS_IN_ORDER 
+    from neuralmonkey.classes.session import _REGIONS_IN_ORDER as REGIONS_IN_ORDER
     from pythonlib.tools.pandastools import grouping_print_n_samples
     from pythonlib.tools.expttools import writeDictToYaml
 
