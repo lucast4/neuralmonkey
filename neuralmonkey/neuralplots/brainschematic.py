@@ -5,7 +5,7 @@ See snippets.modulation_plot_heatmaps_brain_schematic (move stuff here)
 
 import numpy as np
 import matplotlib.pyplot as plt
-from neuralmonkey.classes.session import REGIONS_IN_ORDER
+from neuralmonkey.classes.session import _REGIONS_IN_ORDER as REGIONS_IN_ORDER
 from pythonlib.globals import PATH_NEURALMONKEY
 
 #

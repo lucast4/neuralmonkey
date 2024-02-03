@@ -24,7 +24,8 @@ from pythonlib.tools.snstools import rotateLabel
 def popanal_preprocess_scalar_normalization(PA, grouping_vars, subtract_mean_each_level_of_var ="IGNORE",
                                             plot_example_chan=None,
                                             plot_example_split_var=None,
-                                            DO_AGG_TRIALS=True):
+                                            DO_AGG_TRIALS=True,
+                                            subtract_mean_at_each_timepoint=True):
     """ Preprocess PA, with different options for normalization ,etc
     PARAMS:
     - subtract_mean_each_level_of_var, eitehr None (ignore) or str, in which case will
@@ -59,8 +60,9 @@ def popanal_preprocess_scalar_normalization(PA, grouping_vars, subtract_mean_eac
     PAnorm = PA.copy()
     PAnorm.X = PAnorm.X/(normvec+normmin)
 
-    # 1) subtract global mean (i.e., at each time bin)
-    PAnorm = PAnorm.norm_subtract_trial_mean_each_timepoint()
+    if subtract_mean_at_each_timepoint:
+        # 1) subtract global mean (i.e., at each time bin)
+        PAnorm = PAnorm.norm_subtract_trial_mean_each_timepoint()
 
     if False: # Replaced with rescale step above
         # 2) rescale (for each time bin, across all trials
@@ -121,7 +123,7 @@ def popanal_preprocess_scalar_normalization(PA, grouping_vars, subtract_mean_eac
     else:
         fig, axes = None, None
 
-    return PAscal, PAscalagg, fig, axes, groupdict
+    return PAnorm, PAscal, PAscalagg, fig, axes, groupdict
 
 
 # def rsa_distmat_quantify_same_diff_variables(Clsim, ind_var, ignore_diagonal=True):
@@ -191,7 +193,10 @@ def popanal_preprocess_scalar_normalization(PA, grouping_vars, subtract_mean_eac
 
 def snippets_extract_popanals_split_bregion_twind(SP, list_time_windows, vars_extract_from_dfscalar,
                                                   SAVEDIR=None, dosave=False,
-                                                  HACK_RENAME_SHAPES=False):
+                                                  HACK_RENAME_SHAPES=False,
+                                                  combine_into_larger_areas=False,
+                                                  events_keep=None,
+                                                  exclude_bad_areas=False):
     """ [GOOD] SP --> Multiple Popanals, each with speciifc (event, bregion, twind), and
     with all variables extracted into each pa.Xlabels["trials"]. The goal is that at can
     run all population analyses using these pa, without need for having beh datasets and
@@ -209,6 +214,9 @@ def snippets_extract_popanals_split_bregion_twind(SP, list_time_windows, vars_ex
     """
     from pythonlib.tools.pandastools import append_col_with_grp_index
 
+
+    if events_keep is None:
+        events_keep = SP.Params["list_events_uniqnames"]
 
     if SAVEDIR is None and dosave:
         from pythonlib.globals import PATH_ANALYSIS_OUTCOMES
@@ -283,10 +291,10 @@ def snippets_extract_popanals_split_bregion_twind(SP, list_time_windows, vars_ex
         map_shapelump_to_shapes = {}
         map_shape_to_shapelump = {}
         for grp in [
-            ["V-2-1-0", "arcdeep-4-1-0", "usquare-1-1-0"],
+            ["V-2-1-0", "arcdeep-4-1-0", "usquare-1-1-0", "L|arcdeep-4-1-0"],
             ["V-2-3-0", "arcdeep-4-3-0", "usquare-1-3-0"],
             ["V-2-2-0", "arcdeep-4-2-0", "usquare-1-2-0"],
-            ["V-2-4-0", "arcdeep-4-4-0", "usquare-1-4-0"]]:
+            ["V-2-4-0", "arcdeep-4-4-0", "usquare-1-4-0", "L|V-2-4-0"]]:
 
             # name it after the first
             name = f"L|{grp[0]}"
@@ -312,11 +320,11 @@ def snippets_extract_popanals_split_bregion_twind(SP, list_time_windows, vars_ex
 
     ####################### EXTRACT DATA
     # list_features_extraction = list(set(list_features_extraction + EFFECT_VARS))
-    list_bregion = SP.bregion_list()
+    list_bregion = SP.bregion_list(combine_into_larger_areas=combine_into_larger_areas)
 
     # 1) Extract population dataras
     DictEvBrTw_to_PA = {}
-    for event in SP.Params["list_events_uniqnames"]:
+    for event in events_keep:
         if event in SP.DfScalar["event"].tolist():
             # assert len(SP.Params["list_events_uniqnames"])==1, "assuming is strokes, just a single event... otherwise iterate"
             # event = SP.Params["list_events_uniqnames"][0]
@@ -340,34 +348,46 @@ def snippets_extract_popanals_split_bregion_twind(SP, list_time_windows, vars_ex
                     print(event, bregion, twind)
 
                     # Bregion
-                    chans_needed = SP.sitegetter_map_region_to_sites(bregion)
-                    pa = PA.slice_by_dim_values_wrapper("chans", chans_needed)
-                    # Times
-                    pa = pa.slice_by_dim_values_wrapper("times", twind)
+                    chans_needed = SP.sitegetter_map_region_to_sites(bregion, exclude_bad_areas=exclude_bad_areas)
+                    print("Sites for this bregion ", bregion)
+                    print(chans_needed)
+                    if len(chans_needed)>0:
+                        pa = PA.slice_by_dim_values_wrapper("chans", chans_needed)
+                        # Times
+                        pa = pa.slice_by_dim_values_wrapper("times", twind)
 
-                    assert len(pa.X)>0
+                        assert len(pa.X)>0
 
-                    # sanity check that all pa are identical
-                    if trials is not None:
-                        assert pa.Trials == trials
-                    if times is not None:
-                        # print(list(pa.Times))
-                        # print(list(times))
-                        assert list(pa.Times) == list(times)
-                    if xlabels_trials is not None:
-                        assert pa.Xlabels["trials"].equals(xlabels_trials)
-                    if xlabels_times is not None:
-                        assert pa.Xlabels["times"].equals(xlabels_times)
+                        # sanity check that all pa are identical
+                        if trials is not None:
+                            assert pa.Trials == trials
+                        if times is not None:
+                            # print(list(pa.Times))
+                            # print(list(times))
+                            assert list(pa.Times) == list(times)
+                        if xlabels_trials is not None:
+                            assert pa.Xlabels["trials"].equals(xlabels_trials)
+                        if xlabels_times is not None:
+                            assert pa.Xlabels["times"].equals(xlabels_times)
 
-                    # Update all
-                    trials = pa.Trials
-                    times = pa.Times
-                    xlabels_trials = pa.Xlabels["trials"]
-                    xlabels_times = pa.Xlabels["times"]
+                        # # uiseful - a conjucntionv ariable for each tw
+                        # from pythonlib.tools.pandastools import append_col_with_grp_index
+                        # pa.Xlabels["trials"] = append_col_with_grp_index(pa.Xlabels["trials"],
+                        #                                                 ["which_level", "event", "twind"],
+                        #                                                 "wl_ev_tw",
+                        #                                                 use_strings=False)
+                        #
+                        # Update all
+                        trials = pa.Trials
+                        times = pa.Times
+                        xlabels_trials = pa.Xlabels["trials"]
+                        xlabels_times = pa.Xlabels["times"]
 
-                    # DictBregionTwindPA[(bregion, twind)] = pa
-                    DictEvBrTw_to_PA[(SP.Params["which_level"], event, bregion, twind)] = pa
-                    print(event, " -- ", bregion, " -- ", twind, " -- (data shape:)", pa.X.shape)
+                        # DictBregionTwindPA[(bregion, twind)] = pa
+                        DictEvBrTw_to_PA[(SP.Params["which_level"], event, bregion, twind)] = pa
+                        print(event, " -- ", bregion, " -- ", twind, " -- (data shape:)", pa.X.shape)
+                    else:
+                        print("Skipping bregion (0 channels): ", bregion)
 
     # Save it as dataframe
     tmp = []
@@ -388,6 +408,15 @@ def snippets_extract_popanals_split_bregion_twind(SP, list_time_windows, vars_ex
             "pa":v
         })
     DFallpa = pd.DataFrame(tmp)
+
+    # # Sanity check
+    # for i, row in DFallpa.iterrows():
+    #     a = row["twind"]
+    #     b = row["pa"].Xlabels["trials"]["twind"].values[0]
+    #
+    #     if not a==b:
+    #         print(a, b)
+    #         assert False, "this is old versio before 1/28 -- delete it and regenerate DFallpa"
 
     ## SAVE
     if dosave:
@@ -573,7 +602,7 @@ def preprocess_pca(SP, pca_trial_agg_grouping, pca_time_agg_method=None,
     import pandas as pd
 
     if list_bregion is None:
-        from neuralmonkey.classes.session import REGIONS_IN_ORDER as list_bregion
+        from neuralmonkey.classes.session import _REGIONS_IN_ORDER as list_bregion
 
     RES = []
     for i, (event, pre_dur, post_dur) in enumerate(list_event_window):
@@ -1105,3 +1134,72 @@ def plot_variance_explained_timecourse(SP, animal, DATE, pca_trial_agg_grouping,
             print("--- SAVING AT:", f"{savedir}/var_{var_dat}.pdf")
         plt.close("all")
 
+
+
+def trajgood_plot_colorby_splotby(df, var_color_by, var_subplots, dims=(0,1),
+                                  traj_or_scalar="traj", mean_over_trials=True,
+                                  times_to_mark=None,
+                                   times_to_mark_markers=None,
+                                   time_bin_size=None,
+                                   markersize=6, marker="o",
+                                   text_plot_pt1=None,
+                                   alpha=0.2):
+    """ [GOOD], to plot trajectories colored by one variable, and split across subplots by another
+    variable.
+    PARAMS:
+    - df, standard form for holding trajectories, each row holds; one condition:
+    --- "z", activity (ndims, ntrials, ntimes),
+    --- "z_scalar", scalarized version (ndims, ntrials, 1) in "z_scalar".
+    --- "times", matching ntimes
+    Other columns are flexible, defnining varialbes.
+    """
+    from pythonlib.tools.plottools import makeColors
+    from neuralmonkey.population.dimreduction import statespace_plot_single
+    from pythonlib.tools.plottools import legend_add_manual
+
+    # One color for each level of effect var
+    levs_effect = sorted(df[var_color_by].unique().tolist())
+    pcols = makeColors(len(levs_effect))
+    map_lev_to_color = {}
+    for lev, pc in zip(levs_effect, pcols):
+        map_lev_to_color[lev] = pc
+
+    # One subplot per othervar
+    levs_other = sorted(df[var_subplots].unique().tolist())
+    ncols = 3
+    nrows = int(np.ceil(len(levs_other)/ncols))
+    fig, axes = plt.subplots(nrows, ncols, sharex=True, sharey=True, figsize=(ncols*3.5, nrows*3.5))
+    for ax, levo in zip(axes.flatten(), levs_other):
+        ax.set_title(levo)
+        dfthis = df[df[var_subplots]==levo]
+        # Plot each row
+        for _, row in dfthis.iterrows():
+
+            if traj_or_scalar=="traj":
+                X = row["z"] # (dims, trials, times)
+            else:
+                X = row["z_scalar"] # (dims, trials, 1)
+                # times_to_mark = [0]
+                # times_to_mark_markers = ["d"]
+                # time_bin_size = 0.05
+
+            if mean_over_trials:
+                x = X[dims, :] # (dims, trials, times)
+                assert len(x.shape)==3
+                x = np.mean(x, axis=1)
+            else:
+                x = X[dims, :] # (dims, trials, times)
+                assert False, "iterate over trials and plot each one."
+
+            times = row["times"]
+            color_for_trajectory = map_lev_to_color[row[var_color_by]]
+            statespace_plot_single(x, ax, color_for_trajectory,
+                                   times, times_to_mark, times_to_mark_markers,
+                                   time_bin_size = time_bin_size,
+                                   markersize=markersize, marker=marker,
+                                   text_plot_pt1=text_plot_pt1, alpha=alpha)
+
+    # Add legend to the last axis
+    legend_add_manual(ax, map_lev_to_color.keys(), map_lev_to_color.values(), 0.2)
+
+    return fig, axes

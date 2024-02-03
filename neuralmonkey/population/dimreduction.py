@@ -112,8 +112,74 @@ def runclassify(Mod, ModBase, modver, pop, yvar, use_actual_neurons=False):
     return Out, Reg, Figs
 
 
-def plotStateSpace(X, dims_neural=(0,1), plotndim=2, ax=None, 
-    color_for_trajectory="k", is_traj=False, text_plot_pt1=None, alpha=0.5,
+def statespace_plot_single(frmat, ax, color_for_trajectory="k",
+                           times=None, times_to_mark=None,
+                           times_to_mark_markers=None,
+                           time_bin_size=None,
+                           markersize=3, marker="o",
+                           text_plot_pt1=None,
+                           alpha=0.2):
+    """ [GOOD] Plot a single trial (or mean over trials) trajectory in state space (2d)
+    plots data in frmat in the space defined by PApca, which holds pca space
+    computed from the data in PApca
+    PARAMS:
+    - frmat, array shape (dims, times), data to plot, ndims must be 2.
+    in PApca. len(times) can be 1, in which case it plots dots, not traj.
+    - dims_pc, 2-integers, which pc dimensions to plot (x and y axes)
+    - times, array-like, len matches frmat.shape[1], used for placing markers
+    - times_to_mark, list of times, to place markers on them
+    - times_to_mark_markers, list of strings, markers to use. If None, then uses
+    0,1, 2,.../
+    [OBS] If None, then uses the times (as strings)
+    """
+    from neuralmonkey.population.dimreduction import plotStateSpace
+
+
+    is_traj = frmat.shape[1]>1
+
+    if not is_traj:
+        times_to_mark = None
+        time_bin_size = None
+
+    if time_bin_size is not None:
+        from neuralmonkey.utils.frmat import bin_frmat_in_time
+        assert times is not None
+        frmat, times = bin_frmat_in_time(frmat, times, time_bin_size)
+
+    if times_to_mark is not None:
+        assert times is not None
+        assert len(times)==frmat.shape[1]
+        if isinstance(times, list):
+            times = np.array(times)
+
+        # find indices matching these times
+        def _find_ind(t):
+            ind = np.argmin(np.abs(times - t))
+            return ind
+
+        times_to_mark_inds = [_find_ind(t) for t in times_to_mark]
+
+        if False: # is better to just use 0,1, ..
+            if times_to_mark_markers is None:
+                # then use the times themselves
+                times_to_mark_markers = [f"${t}$" for t in times_to_mark]
+    else:
+        times_to_mark_inds = None
+    dims_neural = (0,1)
+
+    plotStateSpace(frmat, dims_neural=dims_neural, plotndim=len(dims_neural), ax=ax,
+        color_for_trajectory=color_for_trajectory, is_traj=is_traj,
+                   alpha=alpha,
+        traj_mark_times_inds = times_to_mark_inds,
+        traj_mark_times_markers = times_to_mark_markers,
+        markersize=markersize, marker=marker,
+                   text_plot_pt1=text_plot_pt1)
+
+    # grid on, for easy comparisons
+    ax.grid()
+
+def plotStateSpace(X, dims_neural=(0,1), plotndim=2, ax=None,
+    color_for_trajectory="k", is_traj=True, text_plot_pt1=None, alpha=0.5,
     traj_mark_times_inds = None, traj_mark_times_markers = None,
     markersize=3, marker="o"):
     """ general, for plotting state space, will work
@@ -139,7 +205,7 @@ def plotStateSpace(X, dims_neural=(0,1), plotndim=2, ax=None,
     - 
     """
     import seaborn as sns
-        
+
     if traj_mark_times_inds is not None:
         if traj_mark_times_markers is None:
             traj_mark_times_markers = [f"${i}$" for i in range(len(traj_mark_times_inds))] # use 0, 1, ...
@@ -159,6 +225,11 @@ def plotStateSpace(X, dims_neural=(0,1), plotndim=2, ax=None,
     alpha_marker = 3*alpha
     if alpha_marker>1:
         alpha_marker = 1
+
+    # print(text_plot_pt1)
+    # print(traj_mark_times_inds)
+    # print(traj_mark_times_markers)
+    # assert False
 
     # PLOT
     if plotndim==2:
