@@ -62,7 +62,7 @@ def compute_data_projections(PA, DF, MS, VERSION, REGIONS, DATAPLOT_GROUPING_VAR
         assert False
 
     # Slice to desired chans
-    CHANS = MS.sitegetter_all(REGIONS, how_combine="intersect")
+    CHANS = MS.sitegetterKS_map_region_to_sites_MULTREG(REGIONS, how_combine="intersect")
     CHANS = [x for x in CHANS if x in PA.Chans]
     assert len(CHANS)>0
     PAallThis = PA._slice_by_chan(CHANS, VERSION_DAT, True)
