@@ -54,7 +54,7 @@ def load_snippet_single(sn, which_level):
     return sp
 
 def load_and_concat_mult_snippets(MS, which_level, SITES_COMBINE_METHODS = "intersect",
-    DEBUG = False):
+    DEBUG = False, prune_low_fr_sites=True):
     """ previously saved snippets using save_v2
     PARAMS:
     - MS, MultSessions, holding all the sessions for which each will
@@ -191,6 +191,10 @@ def load_and_concat_mult_snippets(MS, which_level, SITES_COMBINE_METHODS = "inte
 
     # make sure is numbered
     SPall.DfScalar["event"] = SPall.DfScalar["event_aligned"]
+
+    # Only keep sites with high fr
+    if prune_low_fr_sites:
+        SPall.prune_low_firing_rate_sites()
 
     return SPall, SAVEDIR_ALL
 
@@ -6736,6 +6740,9 @@ class Snippets(object):
                 this = pickle.load(f)
                 setattr(self, a, this)
 
+        # Explose sites. could be lowered due to pruning (e.g. low fr)
+        self.Sites = sorted(self.DfScalar["chan"].unique().tolist())
+
         # Recompute scalar fr (to help remove outliers)
         if False: # takes too long. now does qquiock computation (not winodwed)
             print("Computing fr scalar ...")
@@ -6978,6 +6985,37 @@ class Snippets(object):
         # Sites
         # Trials
 
+    def prune_low_firing_rate_sites(self, thresh = 1.5, PLOT=False):
+        """ Removes Sites with fr lower than thresh. Does so simply by removing them from
+         self.Sites, and not removing all the data from self.DfScalar """
+
+        # Get FR mean for each site
+        map_site_to_fr = {}
+        for site in self.Sites:
+            frmat, times, dict_plot_vals = self.dataextract_as_frmat(site)
+            frmean = np.mean(frmat)
+            map_site_to_fr[site] = frmean
+
+        # WHich sites keep?
+        sites_keep = [s for s,fr in map_site_to_fr.items() if fr>thresh]
+        print("Keeping this many sites that pass fr thresh:")
+        print(len(sites_keep), "/", len(map_site_to_fr))
+        print("Using threshold: ", thresh)
+        print("Updated self.Sites")
+
+        # Update
+        self.Sites = sites_keep
+
+        # Plot
+        if PLOT:
+            fig, ax = plt.subplots()
+            ax.hist(map_site_to_fr.values(), bins=100)
+            ax.axvline(thresh, color="r")
+        else:
+            fig = None
+
+        return fig
+
 
     def debug_subsample_prune(self, n_chans=32, n_trials=20):
         """ Prune dataset for quicker analyses. Do this by 
@@ -7019,7 +7057,7 @@ class Snippets(object):
 
 def extraction_helper(SN, which_level="trial", list_features_modulation_append=None,
     dataset_pruned_for_trial_analysis = None, NEW_VERSION=True, PRE_DUR = -0.6,
-    POST_DUR = 0.6, PRE_DUR_FIXCUE=None):
+    POST_DUR = 0.6, PRE_DUR_FIXCUE=None, remove_low_fr_sites=True):
     """ Helper to extract Snippets for this session
     PARAMS;
     - list_features_modulation_append, eitehr None (do nothing) or list of str,
@@ -7108,6 +7146,10 @@ def extraction_helper(SN, which_level="trial", list_features_modulation_append=N
         fr_which_version='sqrt',
         SKIP_DATA_EXTRACTION=False,
         DS_pruned=DS_pruned)
+
+    # Prune, to remove low FR sites
+    if remove_low_fr_sites:
+        SP.prune_low_firing_rate_sites()
 
     return SP
 
