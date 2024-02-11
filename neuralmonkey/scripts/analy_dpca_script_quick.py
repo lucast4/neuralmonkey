@@ -91,6 +91,41 @@ def plot_all_results_single(dpca, Z, effect_vars, params_dpca, savedir):
     W = 6
     H = 5
 
+    # Collect all marginalizations and order them and plot
+    labels_all = []
+    ratios_all = []
+    tmp = []
+    for lab, ratios in dpca.explained_variance_ratio_.items():
+        labels_all.extend(lab)
+        ratios_all.extend(ratios)
+
+        tmp.extend([(lab, r, i) for i, r in enumerate(ratios)])
+
+    # Sort
+    tmp = sorted(tmp, key = lambda x:-x[1])
+    import pandas as pd
+    df_exp_var = pd.DataFrame(tmp, columns=["margstr", "exp_var_ratio", "idx_within_marg"])
+    df_exp_var["rank"] = list(range(len(df_exp_var)))
+
+    if False:
+        fig, ax = plt.subplots()
+
+        x = np.arange(len(df_exp_var))
+        y = df_exp_var["exp_var_ratio"]
+        color = df_exp_var["margstr"].tolist()
+
+        ax.scatter(x=x, y=y, c=color)
+
+
+    import seaborn as sns
+    fig, ax = plt.subplots(figsize=(10,5))
+    sns.pointplot(data=df_exp_var[:15], x="rank", y="exp_var_ratio", hue="margstr", linestyles="none")
+    ax.axhline(0, color="k", alpha=0.25)
+    # sns.catplot(data=df_exp_var, x="rank", y="exp_var_ratio", hue="margstr")
+    savefig(fig, f"{savedir}/explained_var_combined.pdf")
+
+    plt.close("all")
+
     for indvar_to_color_by in [0,1]:
         # indvar_to_color_by = 0 # color each curve by this variable
 
@@ -130,41 +165,7 @@ def plot_all_results_single(dpca, Z, effect_vars, params_dpca, savedir):
         ax.plot(ratios, "-o", label=lab)
     ax.legend()
     savefig(fig, f"{savedir}/explained_var_each_marg.pdf")
-    # Collect all marginalizations and order them and plot
 
-    labels_all = []
-    ratios_all = []
-    tmp = []
-    for lab, ratios in dpca.explained_variance_ratio_.items():
-        labels_all.extend(lab)
-        ratios_all.extend(ratios)
-
-        tmp.extend([(lab, r, i) for i, r in enumerate(ratios)])
-
-    # Sort
-    tmp = sorted(tmp, key = lambda x:-x[1])
-    import pandas as pd
-    df_exp_var = pd.DataFrame(tmp, columns=["margstr", "exp_var_ratio", "idx_within_marg"])
-    df_exp_var["rank"] = list(range(len(df_exp_var)))
-
-    if False:
-        fig, ax = plt.subplots()
-
-        x = np.arange(len(df_exp_var))
-        y = df_exp_var["exp_var_ratio"]
-        color = df_exp_var["margstr"].tolist()
-
-        ax.scatter(x=x, y=y, c=color)
-
-
-    import seaborn as sns
-    fig, ax = plt.subplots(figsize=(10,5))
-    sns.pointplot(data=df_exp_var[:15], x="rank", y="exp_var_ratio", hue="margstr", linestyles="none")
-    ax.axhline(0, color="k", alpha=0.25)
-    # sns.catplot(data=df_exp_var, x="rank", y="exp_var_ratio", hue="margstr")
-    savefig(fig, f"{savedir}/explained_var_combined.pdf")
-
-    plt.close("all")
 
     ### State space plots
     from neuralmonkey.population.dimreduction import plotStateSpace
@@ -483,7 +484,7 @@ def preprocess_pa_to_frtensor(PA, effect_vars, keep_all_margs=False):
     import numpy as np
     from pythonlib.tools.pandastools import grouping_append_and_return_inner_items
 
-    assert len(effect_vars)==2, "currently hard coded for this..."
+    # assert len(effect_vars)==2, "currently hard coded for this..."
 
     # Normalize PA as did for RSA stuff.
     # (1) Normalize PA.
@@ -510,12 +511,19 @@ def preprocess_pa_to_frtensor(PA, effect_vars, keep_all_margs=False):
     var_ns = [len(map_var_to_lev[v]) for v in effect_vars]
 
     # map grp to indices
-    assert len(effect_vars)==2, "hard coded for this..."
-    map_grp_to_idx = {}
-    for i, lev1 in enumerate(map_var_to_lev[effect_vars[0]]):
-        for j, lev2 in enumerate(map_var_to_lev[effect_vars[1]]):
-            map_grp_to_idx[(lev1, lev2)]=(i,j)
-    assert len(set(map_grp_to_idx.values())) == len(map_grp_to_idx.values())
+    if len(effect_vars)==1:
+        map_grp_to_idx = {}
+        for i, lev1 in enumerate(map_var_to_lev[effect_vars[0]]):
+            map_grp_to_idx[(lev1,)]=(i)
+        assert len(set(map_grp_to_idx.values())) == len(map_grp_to_idx.values())
+    elif len(effect_vars)==2:
+        map_grp_to_idx = {}
+        for i, lev1 in enumerate(map_var_to_lev[effect_vars[0]]):
+            for j, lev2 in enumerate(map_var_to_lev[effect_vars[1]]):
+                map_grp_to_idx[(lev1, lev2)]=(i,j)
+        assert len(set(map_grp_to_idx.values())) == len(map_grp_to_idx.values())
+    else:
+        assert False
 
     # Initialize array
     # - count max n trials across all conjs
@@ -528,28 +536,46 @@ def preprocess_pa_to_frtensor(PA, effect_vars, keep_all_margs=False):
     for grp, inds in grpdict.items():
         print(grp, inds)
 
-        i, j = map_grp_to_idx[grp]
-        x = PAnorm.X[:, inds, :]
-
-        trialR[:len(inds), :, i, j, :] = np.transpose(x, [1, 0, 2])
+        if len(effect_vars)==1:
+            print( map_grp_to_idx.keys())
+            i = map_grp_to_idx[grp]
+            x = PAnorm.X[:, inds, :]
+            # print(x.shape)
+            trialR[:len(inds), :, i, :] = np.transpose(x, [1, 0, 2])
+            # print(trialR.shape)
+            # print(np.transpose(x, [1, 0, 2]).shape)
+            # assert False, "Correct?"
+        elif len(effect_vars)==2:
+            i, j = map_grp_to_idx[grp]
+            x = PAnorm.X[:, inds, :]
+            trialR[:len(inds), :, i, j, :] = np.transpose(x, [1, 0, 2])
+        else:
+            assert False
 
     # trial-average data
     R = np.nanmean(trialR,0)
     assert np.any(np.isnan(R))==False
 
     # center data
-    R -=  np.mean(R.reshape((nchans,-1)),1)[:,None,None, None] # each neuron gets one mean scalar across all other dimensions
+    if len(effect_vars)==1:
+        R -=  np.mean(R.reshape((nchans,-1)),1)[:,None, None] # each neuron gets one mean scalar across all other dimensions
+    elif len(effect_vars)==2:
+        R -=  np.mean(R.reshape((nchans,-1)),1)[:,None,None, None] # each neuron gets one mean scalar across all other dimensions
+    else:
+        assert False
 
     ###### dPCA params
     # labels = "slt" # (shape, location, time)
     labels = ""
     for var in effect_vars:
-        if var=="seqc_0_shape":
+        if var in ["shape", "seqc_0_shape"]:
             labels+="s"
         elif var=="seqc_0_loc":
             labels+="l"
         elif var=="gridsize":
             labels+="z"
+        elif var in ["di_an_ci_binned", "angle_binned", "dist_angle"]:
+            labels+="m" # m for motor.
         else:
             print(var)
             assert False
@@ -558,7 +584,11 @@ def preprocess_pa_to_frtensor(PA, effect_vars, keep_all_margs=False):
     if keep_all_margs:
         join = None
     else:
-        if labels=="slt":
+        if labels in ["st"]:
+            join = {
+                "s":["s", "st"],
+            }
+        elif labels in ["slt"]:
             join = {
                 "s":["s", "st"],
                 "l":["l", "lt"],
@@ -569,6 +599,10 @@ def preprocess_pa_to_frtensor(PA, effect_vars, keep_all_margs=False):
                 "s":["s", "st"],
                 "z":["z", "zt"],
                 "sz":["sz", "szt"],
+            }
+        elif labels=="mt":
+            join = {
+                "m":["m", "mt"],
             }
         else:
             print(labels)
@@ -586,7 +620,7 @@ def preprocess_pa_to_frtensor(PA, effect_vars, keep_all_margs=False):
         "map_grp_to_idx":map_grp_to_idx
     }
 
-    return R, trialR, map_var_to_lev, map_grp_to_idx, params_dpca
+    return R, trialR, map_var_to_lev, map_grp_to_idx, params_dpca, PAnorm
 
 
 
@@ -771,10 +805,10 @@ if __name__=="__main__":
                 writeDictToTxt(res_check_tasksets, path)
 
                 # Preprocess
-                R, trialR, map_var_to_lev, map_grp_to_idx, params_dpca = preprocess_pa_to_frtensor(pa, effect_vars, keep_all_margs=keep_all_margs)
+                R, trialR, map_var_to_lev, map_grp_to_idx, params_dpca, PAnorm = preprocess_pa_to_frtensor(pa, effect_vars, keep_all_margs=keep_all_margs)
 
                 params_dpca["data_shape-trial_N_features_time"] = trialR.shape
-                writeDictToYaml(params_dpca, f"{savedir}/params.yaml")
+                writeDictToTxt(params_dpca, f"{savedir}/params.yaml")
 
                 print("---- OUTPUT")
                 print(R.shape)
