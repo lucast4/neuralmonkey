@@ -21,6 +21,85 @@ from pythonlib.tools.pandastools import append_col_with_grp_index, convert_to_2d
 from pythonlib.tools.snstools import rotateLabel
 
 
+def _popanal_preprocess_normalize(PA, PLOT=False):
+    """ Normalize firing rates so that similar acorss neruons (higha nd low fr) whiel
+    still having higher for high fr.
+    Similar to "soft normalization" used by Churchland group.
+    """
+
+    x = PA.X.reshape(PA.X.shape[0], -1)
+
+    # STD (across all trials and times)
+    normvec = np.std(x, axis=1)
+    assert len(normvec.shape)==1
+    normvec = np.reshape(normvec, [normvec.shape[0], 1,1]) # (chans, 1, 1) # std for each chan, across (times, trials).
+    normmin = np.percentile(normvec, [2.5]) # get the min (std fr across time/conditions) across channels, add this on to still have
+
+    # min fr, to make this a "soft" normalization
+    frmean_each_chan = np.mean(x, axis=1) # (chans, 1, 1) # std for each chan, across (times, trials).
+    frmin = np.min(frmean_each_chan) # (chans, 1, 1)) # min (mean fr across time/condition) across chans
+    # frmin = np.min(np.mean(np.mean(PA.X, axis=1, keepdims=True), axis=2, keepdims=True)) # (chans, 1, 1)) # min (mean fr across time/condition) across chans
+
+    # to further help making this "soft"
+    abs_fr_min = 3 # any fr around this low, want to penalize drastically, effectively making it not contyribute much to population activit.
+
+    # DENOM = (normvec+normmin)
+    # DENOM = (normvec + normmin + frmin + abs_fr_min) # To further lower infleunce of low FR neurons (started 2/8/24, 2:55pm)
+    DENOM = (normvec + frmin + abs_fr_min) # To make more similar across chans. (started 2/11/24)
+
+    # Do normalization.
+    PAnorm = PA.copy()
+    PAnorm.X = PAnorm.X/DENOM
+
+    if PLOT:
+        from pythonlib.tools.plottools import plotScatter45
+        x = PA.X.reshape(PA.X.shape[0], -1)
+        frmean_base = np.mean(x, axis=1)
+        frstd_base = np.std(x, axis=1)
+
+        x = PAnorm.X.reshape(PAnorm.X.shape[0], -1)
+        frmean_norm = np.mean(x, axis=1)
+        frstd_norm = np.std(x, axis=1)
+
+        fig, axes = plt.subplots(2,3, figsize=(10, 8))
+
+        ax = axes.flatten()[0]
+        ax.plot(frmean_base, frmean_norm, "ok")
+        ax.plot(0,0, "wx")
+        ax.set_xlabel("frmean_base")
+        ax.set_ylabel("frmean_normed")
+
+        ax = axes.flatten()[1]
+        ax.plot(frstd_base, frstd_norm, "ok")
+        ax.plot(0,0, "wx")
+        ax.set_xlabel("frstd_base")
+        ax.set_ylabel("frstd_normed")
+
+        ax = axes.flatten()[2]
+        plotScatter45(frmean_base, frstd_base, ax=ax)
+        ax.set_xlabel("frmean_base")
+        ax.set_ylabel("frstd_base")
+
+        ax = axes.flatten()[3]
+        plotScatter45(frmean_norm, frstd_norm, ax=ax)
+        ax.set_xlabel("frmean_norm")
+        ax.set_ylabel("frstd_norm")
+
+        ax = axes.flatten()[4]
+        plotScatter45(frmean_base, DENOM.squeeze(), ax=ax)
+        ax.set_xlabel("mean fr (baseline)")
+        ax.set_ylabel("denom for norm")
+
+        ax = axes.flatten()[5]
+        plotScatter45(frstd_base, DENOM.squeeze(), ax=ax)
+        ax.set_xlabel("std fr (baseline)")
+        ax.set_ylabel("denom for norm")
+    else:
+        fig = None
+
+    return PAnorm, fig
+
+
 def popanal_preprocess_scalar_normalization(PA, grouping_vars, subtract_mean_each_level_of_var ="IGNORE",
                                             plot_example_chan=None,
                                             plot_example_split_var=None,
@@ -47,18 +126,22 @@ def popanal_preprocess_scalar_normalization(PA, grouping_vars, subtract_mean_eac
 
     # 1) First, rescale all FR (as in Churchland stuff), but isntead of using
     # range, use std (like z-score)
-    if False:
-        # FR
-        normvec = np.mean(np.mean(PA.X, axis=1, keepdims=True), axis=2, keepdims=True) # (chans, 1, 1)
-    else:
-        # STD (across all trials and times)
-        normvec = np.std(np.reshape(PA.X, (PA.X.shape[0], -1)), axis=1) # (chans, 1, 1)
-        assert len(normvec.shape)==1
-        normvec = np.reshape(normvec, [normvec.shape[0], 1,1])
-    normmin = np.percentile(normvec, [2.5]) # get the min, add this on to still have
-    # higher FR neurons more important
-    PAnorm = PA.copy()
-    PAnorm.X = PAnorm.X/(normvec+normmin)
+    PAnorm, _ = _popanal_preprocess_normalize(PA)
+    # if False:
+    #     # FR
+    #     normvec = np.mean(np.mean(PA.X, axis=1, keepdims=True), axis=2, keepdims=True) # (chans, 1, 1)
+    # else:
+    #     # STD (across all trials and times)
+    #     normvec = np.std(np.reshape(PA.X, (PA.X.shape[0], -1)), axis=1) # (chans, 1, 1)
+    #     assert len(normvec.shape)==1
+    #     normvec = np.reshape(normvec, [normvec.shape[0], 1,1])
+    # normmin = np.percentile(normvec, [2.5]) # get the min across channels, add this on to still have
+    # # higher FR neurons more important
+    # # DENOM = (normvec+normmin)
+    # tmp = np.min(np.mean(np.mean(PA.X, axis=1, keepdims=True), axis=2, keepdims=True)) # (chans, 1, 1)) # min mean fr across chans
+    # DENOM = (normvec + normmin + 3 + tmp) # To further lower infleunce of low FR neurons (started 2/8/24, 2:55pm)
+    # PAnorm = PA.copy()
+    # PAnorm.X = PAnorm.X/DENOM
 
     if subtract_mean_at_each_timepoint:
         # 1) subtract global mean (i.e., at each time bin)
@@ -408,6 +491,11 @@ def snippets_extract_popanals_split_bregion_twind(SP, list_time_windows, vars_ex
             "pa":v
         })
     DFallpa = pd.DataFrame(tmp)
+
+    if len(DFallpa)==0:
+        print(list_time_windows, vars_extract_from_dfscalar, HACK_RENAME_SHAPES,
+              combine_into_larger_areas, events_keep, exclude_bad_areas)
+        assert False, "probably params not compatible with each other"
 
     # # Sanity check
     # for i, row in DFallpa.iterrows():
@@ -1134,6 +1222,84 @@ def plot_variance_explained_timecourse(SP, animal, DATE, pca_trial_agg_grouping,
             print("--- SAVING AT:", f"{savedir}/var_{var_dat}.pdf")
         plt.close("all")
 
+def trajgood_plot_colorby_splotby_scalar_helper(xs, ys, labels_color, labels_subplot,
+                                                color_var, subplot_var,
+                                                overlay_mean=False, plot_text_over_examples=False,
+                                             text_to_plot=None,
+                                             alpha=0.5, SIZE=7):
+    """
+    Like trajgood_plot_colorby_splotby_scalar, but passing in the raw data directly, instead
+    of dataframe. Here constructs datafrane and runs for you.
+    :param xs: (n, 1)
+    :param ys: (n,1)
+    :param labels_color: len(n) list
+    :param labels_subplot:
+    :return:
+    """
+    assert xs.shape[1]==1
+    assert ys.shape[1]==1
+
+    tmp = {
+        color_var:labels_color,
+        subplot_var:labels_subplot,
+        "x":xs.tolist(),
+        "y":ys.tolist()
+    }
+    dfthis = pd.DataFrame(tmp)
+
+    return trajgood_plot_colorby_splotby_scalar(dfthis, color_var, subplot_var,
+                                         overlay_mean, plot_text_over_examples,
+                                                text_to_plot, alpha, SIZE)
+
+def trajgood_plot_colorby_splotby_scalar(df, var_color_by, var_subplots,
+                                         overlay_mean=False, plot_text_over_examples=False,
+                                         text_to_plot=None,
+                                         alpha=0.5, SIZE=5):
+    """ [GOOD], to plot scatter of pts, colored by one variable, and split across
+    subplots by another variable.
+    PARAMS:
+    - df, standard form for holding trajectories, each row holds; one condition:
+    --- "x", each a (1,) array, the value to plot on x coord (e.g,, dim1)
+    --- "y", see "x"
+    Other columns are flexible, defnining varialbes.
+    """
+    from pythonlib.tools.plottools import makeColors
+    from neuralmonkey.population.dimreduction import statespace_plot_single
+    from pythonlib.tools.plottools import legend_add_manual
+    from pythonlib.tools.plottools import plotScatterOverlay
+
+    # Color the labels
+    from pythonlib.tools.plottools import makeColors
+    # One color for each level of effect var
+    labellist = set(df[var_color_by])
+    pcols = makeColors(len(labellist))
+    map_lev_to_color = {}
+    for lev, pc in zip(labellist, pcols):
+        map_lev_to_color[lev] = pc
+
+    # One subplot per othervar
+    levs_other = sorted(df[var_subplots].unique().tolist())
+    ncols = 3
+    nrows = int(np.ceil(len(levs_other)/ncols))
+    fig, axes = plt.subplots(nrows, ncols, sharex=True, sharey=True,
+                             figsize=(ncols*SIZE, nrows*SIZE))
+    for ax, levo in zip(axes.flatten(), levs_other):
+        ax.set_title(levo)
+        dfthis = df[df[var_subplots]==levo]
+
+        xs = np.stack(dfthis["x"])
+        ys = np.stack(dfthis["y"])
+        X = np.concatenate((xs, ys), axis=1)
+
+        # lab = pd.factorize(dflab[color_var])[0]
+        labels = dfthis[var_color_by].values
+
+        plotScatterOverlay(X, labels, alpha=alpha, ax=ax, overlay_mean=overlay_mean,
+                           plot_text_over_examples=plot_text_over_examples,
+                           text_to_plot=text_to_plot, map_lev_to_color=map_lev_to_color,
+                           SIZE=SIZE)
+
+    return fig, axes
 
 
 def trajgood_plot_colorby_splotby(df, var_color_by, var_subplots, dims=(0,1),
