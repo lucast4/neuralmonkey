@@ -799,8 +799,9 @@ class Session(object):
 
     def sitesdirty_filter_by_spike_magnitude(self, 
             # MIN_THRESH = 90, # before 2/12/23
-            MIN_THRESH = 70, # this seems better, dont throw out some decent units.
-            plot_results=False, plot_spike_waveform=False, 
+            # MIN_THRESH = 70, # this seems better, dont throw out some decent units.
+            MIN_THRESH = 50, # 2/8/24 - this best, for population analyses, keep more.
+            plot_results=False, plot_spike_waveform=False,
             update_metadata=True):
         """ Prune channels with small spikes
         Can do this dynamaically, is pretty quick.
@@ -857,17 +858,18 @@ class Session(object):
             s = dfthis.iloc[i]["site"]
             pt = dfthis.iloc[i]["spk_peak_to_trough"]
             keep = dfthis.iloc[i]["keep"]
-            
-            if keep:
-                print("o ", s, pt)
-            else:
-                print("- ", s, pt)
+
+            if False:
+                if keep:
+                    print("o ", s, pt)
+                else:
+                    print("- ", s, pt)
 
         # histogram
         if plot_results:
-            fig, axes = plt.subplots(2,2)
+            fig, axes = plt.subplots(2,1)
             ax = axes.flatten()[0]
-            ax.hist(dfthis["spk_peak_to_trough"], bins=20)
+            ax.hist(dfthis["spk_peak_to_trough"], bins=40)
 
             sns.relplot(data=dfthis, x="site", y="spk_peak_to_trough", hue="keep", aspect=2)
             plt.grid(True)
@@ -3278,10 +3280,13 @@ class Session(object):
         print("region, nunits, --, min(sitenum), max(sitenum)")
         for regsum in regions_summary:
             sites = self.sitegetterKS_map_region_to_sites(regsum)
-            print(regsum, len(sites), "----", min(sites), max(sites))
-            min_this = min(sites)
-            # assert min_this > max_prev
-            max_prev = min_this
+            if len(sites)>0:
+                print(regsum, len(sites), "----", min(sites), max(sites))
+                min_this = min(sites)
+                # assert min_this > max_prev
+                max_prev = min_this
+            else:
+                print(regsum, len(sites))
 
 
     def sitegetter_summarytext(self, site):
@@ -6555,9 +6560,10 @@ class Session(object):
             assert_otherdims_restrict_to_these=("chans", "times"),
             all_pa_inherit_times_of_pa_at_this_index=0)
 
-        # Sanity checks
-        assert PAall.Chans ==sites
-        assert PAall.X.shape[1] == len(list_trials_actual)
+        if PAall is not None:
+            # Sanity checks
+            assert PAall.Chans ==sites
+            assert PAall.X.shape[1] == len(list_trials_actual)
 
         return PAall, list_trials_actual, list_times_actual, list_idx_trialtime_actual
 
@@ -6568,77 +6574,97 @@ class Session(object):
         """
         from quantities import s
         from .population import PopAnal
-        
-        assert isinstance(pre_dur, (float, int))
-        assert isinstance(pre_dur, (float, int))
+
         assert len(trials)==len(strokeids)
 
-        list_xslices = []
-        # 1) extract each trials' PA. Use the slicing tool in PA to extract snippet
+        # Collect all event times.
+        event_times = []
         for tr, indstrok in zip(trials, strokeids):
-            # extract popanal
-            pa, sampling_period = self.popanal_generate_save_trial(tr, return_sampling_period=True)   
-
-            # slice to desired channels
-            pa = pa._slice_by_chan(sites) 
-  
-            # slice to time window
-            if False:
-                # Then align to onset of stroke that is in DS
-                # Sanity check (confirm that timing for neural is same as timing saved in dataset)
-                ons, offs = SNthis.strokes_extract_ons_offs(trial_neural)
-                timeon_neural = ons[indstrok]
-                timeoff_neural = offs[indstrok]    
-                timeon = DS.Dat.iloc[ind]["time_onset"]
-                timeoff = DS.Dat.iloc[ind]["time_offset"]
-                assert np.isclose(timeon, timeon_neural)
-                assert np.isclose(timeoff, timeoff_neural)
-                time_align = timeon
+            if align_to=="onset":
+                _alignto = f"on_strokeidx_{indstrok}"
+            elif align_to=="offset":
+                _alignto = f"off_strokeidx_{indstrok}"
             else:
-                if align_to=="onset":
-                    _alignto = f"on_strokeidx_{indstrok}"
-                elif align_to=="offset":
-                    _alignto = f"off_strokeidx_{indstrok}"
-                else:
-                    assert False
-                time_align = self.events_get_time_using_photodiode(tr,
-                    list_events=[_alignto])[_alignto]
-                time_align = time_align[0] # take first time in list of times.
-            t1 = time_align + pre_dur
-            t2 = time_align + post_dur
+                assert False
+            time_align = self.events_get_time_using_photodiode(tr,
+                list_events=[_alignto])[_alignto]
+            time_align = time_align[0] # take first time in list of times.
+            event_times.append(time_align)
 
-            assert fail_if_times_outside_existing==True, "toehrwise deal with possible change in size of output."
 
-            pa = pa._slice_by_time_window(t1, t2, return_as_popanal=True,
-                fail_if_times_outside_existing=fail_if_times_outside_existing,
-                subtract_this_from_times=time_align)
-            
-            # save this slice
-            list_xslices.append(pa)
+        PAall, _, _, _ = self.smoothedfr_extract_timewindow_bytimes(trials, event_times,
+                sites, pre_dur, post_dur, fail_if_times_outside_existing,
+                                                   idx_trialtime_all=None)
 
-        # 2) Concatenate all PA into a single PA
-        if not fail_if_times_outside_existing:
-            assert False, "fix this!! if pre_dur extends before first time, then this is incorrect. Should do what?"
-        
-        # Replace all times with this time relative to alignement.
-        for pa in list_xslices:
-            # sampling period, to acocunt for random variation in alignment across snips.
-            TIMES = (pa.Times - pa.Times[0]) + pre_dur + sampling_period/2 # times all as [-predur, ..., postdur]
-            pa.Times = TIMES
-
-        # get list of np arrays
-        if False:
-            TIMES = (list_xslices[0].Times - list_xslices[0].Times[0]) + pre_dur*s # times all as [-predur, ..., postdur]
-            Xall = np.concatenate([pa.X for pa in list_xslices], axis=1) # concat along trials axis. each one is (nchans, 1, times)
-            PAall = PopAnal(Xall, TIMES, sites, trials=trials)
-        else:
-            from neuralmonkey.classes.population import concatenate_popanals
-
-            # then concat
-            PAall = concatenate_popanals(list_xslices, "trials", 
-                assert_otherdims_have_same_values=True, 
-                assert_otherdims_restrict_to_these=("chans", "times"),
-                all_pa_inherit_times_of_pa_at_this_index=0)
+        # assert isinstance(pre_dur, (float, int))
+        # assert isinstance(pre_dur, (float, int))
+        #
+        # list_xslices = []
+        # # 1) extract each trials' PA. Use the slicing tool in PA to extract snippet
+        # for tr, indstrok in zip(trials, strokeids):
+        #     # extract popanal
+        #     pa, sampling_period = self.popanal_generate_save_trial(tr, return_sampling_period=True)
+        #
+        #     # slice to desired channels
+        #     pa = pa._slice_by_chan(sites)
+        #
+        #     # slice to time window
+        #     if False:
+        #         # Then align to onset of stroke that is in DS
+        #         # Sanity check (confirm that timing for neural is same as timing saved in dataset)
+        #         ons, offs = SNthis.strokes_extract_ons_offs(trial_neural)
+        #         timeon_neural = ons[indstrok]
+        #         timeoff_neural = offs[indstrok]
+        #         timeon = DS.Dat.iloc[ind]["time_onset"]
+        #         timeoff = DS.Dat.iloc[ind]["time_offset"]
+        #         assert np.isclose(timeon, timeon_neural)
+        #         assert np.isclose(timeoff, timeoff_neural)
+        #         time_align = timeon
+        #     else:
+        #         if align_to=="onset":
+        #             _alignto = f"on_strokeidx_{indstrok}"
+        #         elif align_to=="offset":
+        #             _alignto = f"off_strokeidx_{indstrok}"
+        #         else:
+        #             assert False
+        #         time_align = self.events_get_time_using_photodiode(tr,
+        #             list_events=[_alignto])[_alignto]
+        #         time_align = time_align[0] # take first time in list of times.
+        #     t1 = time_align + pre_dur
+        #     t2 = time_align + post_dur
+        #
+        #     assert fail_if_times_outside_existing==True, "toehrwise deal with possible change in size of output."
+        #
+        #     pa = pa._slice_by_time_window(t1, t2, return_as_popanal=True,
+        #         fail_if_times_outside_existing=fail_if_times_outside_existing,
+        #         subtract_this_from_times=time_align)
+        #
+        #     # save this slice
+        #     list_xslices.append(pa)
+        #
+        # # 2) Concatenate all PA into a single PA
+        # if not fail_if_times_outside_existing:
+        #     assert False, "fix this!! if pre_dur extends before first time, then this is incorrect. Should do what?"
+        #
+        # # Replace all times with this time relative to alignement.
+        # for pa in list_xslices:
+        #     # sampling period, to acocunt for random variation in alignment across snips.
+        #     TIMES = (pa.Times - pa.Times[0]) + pre_dur + sampling_period/2 # times all as [-predur, ..., postdur]
+        #     pa.Times = TIMES
+        #
+        # # get list of np arrays
+        # if False:
+        #     TIMES = (list_xslices[0].Times - list_xslices[0].Times[0]) + pre_dur*s # times all as [-predur, ..., postdur]
+        #     Xall = np.concatenate([pa.X for pa in list_xslices], axis=1) # concat along trials axis. each one is (nchans, 1, times)
+        #     PAall = PopAnal(Xall, TIMES, sites, trials=trials)
+        # else:
+        #     from neuralmonkey.classes.population import concatenate_popanals
+        #
+        #     # then concat
+        #     PAall = concatenate_popanals(list_xslices, "trials",
+        #         assert_otherdims_have_same_values=True,
+        #         assert_otherdims_restrict_to_these=("chans", "times"),
+        #         all_pa_inherit_times_of_pa_at_this_index=0)
 
         return PAall
 
@@ -6661,85 +6687,109 @@ class Session(object):
         """
         from quantities import s
         from .population import PopAnal
-        
-        assert isinstance(pre_dur, (float, int))
-        assert isinstance(pre_dur, (float, int))
-        assert len(trials)>0
 
-        list_xslices = []
-        # 1) extract each trials' PA. Use the slicing tool in PA to extract snippet
+
+        # Get times
+        # Collect all event times.
+        event_times = []
         trials_gotten = []
         for tr in trials:
 
             # Skip trial if doesnt have this event
             has_event = self.events_does_trial_include_all_events(tr, [alignto])
             if has_event:
-
-                time_align = self.events_get_time_using_photodiode(tr, list_events=[alignto])[alignto]
-
-                # extract popanal
-                pa, sampling_period = self.popanal_generate_save_trial(tr, return_sampling_period=True) 
-
-                # slice to desired channels
-                pa = pa._slice_by_chan(sites)
-     
-                # slice to time window
-                if len(time_align)==0:
-                    # now its relaly fucked.
-                    # run this to make the stream plot
-                    self.events_get_time_using_photodiode(tr, list_events=[alignto], do_reextract_even_if_saved=True, plot_beh_code_stream=True)
-                    print(sites)
-                    print(tr)
-                    print(alignto)
-                    assert False, "didnt find this ewvent..."
-                time_align = time_align[0] # take first time in list of times.
-                t1 = time_align + pre_dur
-                t2 = time_align + post_dur
-
-                assert fail_if_times_outside_existing==True, "toehrwise deal with possible change in size of output."
-
-                try:
-                    pa = pa._slice_by_time_window(t1, t2, return_as_popanal=True,
-                        fail_if_times_outside_existing=fail_if_times_outside_existing,
-                        subtract_this_from_times=time_align)
-                except NotEnoughDataException as err:
-                    # not enough data for this time window.
-                    print(f"[smoothedfr_extract_timewindow] SKIPPING trial {tr}, time window too large (alignto, t1, t2, time_align): {alignto}, {t1}, {t2}, {time_align}")
-                    continue
-                
-                # save this slice
-                list_xslices.append(pa)
+                time_align = self.events_get_time_helper(alignto, tr, assert_one=False)[0]
+                # time_align = self.events_get_time_using_photodiode(tr, list_events=[alignto])[alignto]
                 trials_gotten.append(tr)
+                event_times.append(time_align)
+                if not isinstance(time_align, (float, int)):
+                    print(tr, alignto)
+                    print(time_align)
+                    assert False, "why is not numerical?"
 
-        # 2) Concatenate all PA into a single PA
-        if not fail_if_times_outside_existing:
-            assert False, "fix this!! if pre_dur extends before first time, then this is incorrect. Should do what?"
+        PAall, _, _, _ = self.smoothedfr_extract_timewindow_bytimes(trials_gotten, event_times,
+                sites, pre_dur, post_dur, fail_if_times_outside_existing,
+                                                   idx_trialtime_all=None)
 
+
+        # assert isinstance(pre_dur, (float, int))
+        # assert isinstance(pre_dur, (float, int))
+        # assert len(trials)>0
+        #
+        # list_xslices = []
+        # # 1) extract each trials' PA. Use the slicing tool in PA to extract snippet
+        # trials_gotten = []
+        # for tr in trials:
+        #
+        #     # Skip trial if doesnt have this event
+        #     has_event = self.events_does_trial_include_all_events(tr, [alignto])
+        #     if has_event:
+        #
+        #         time_align = self.events_get_time_using_photodiode(tr, list_events=[alignto])[alignto]
+        #
+        #         # extract popanal
+        #         pa, sampling_period = self.popanal_generate_save_trial(tr, return_sampling_period=True)
+        #
+        #         # slice to desired channels
+        #         pa = pa._slice_by_chan(sites)
+        #
+        #         # slice to time window
+        #         if len(time_align)==0:
+        #             # now its relaly fucked.
+        #             # run this to make the stream plot
+        #             self.events_get_time_using_photodiode(tr, list_events=[alignto], do_reextract_even_if_saved=True, plot_beh_code_stream=True)
+        #             print(sites)
+        #             print(tr)
+        #             print(alignto)
+        #             assert False, "didnt find this ewvent..."
+        #         time_align = time_align[0] # take first time in list of times.
+        #         t1 = time_align + pre_dur
+        #         t2 = time_align + post_dur
+        #
+        #         assert fail_if_times_outside_existing==True, "toehrwise deal with possible change in size of output."
+        #
+        #         try:
+        #             pa = pa._slice_by_time_window(t1, t2, return_as_popanal=True,
+        #                 fail_if_times_outside_existing=fail_if_times_outside_existing,
+        #                 subtract_this_from_times=time_align)
+        #         except NotEnoughDataException as err:
+        #             # not enough data for this time window.
+        #             print(f"[smoothedfr_extract_timewindow] SKIPPING trial {tr}, time window too large (alignto, t1, t2, time_align): {alignto}, {t1}, {t2}, {time_align}")
+        #             continue
+        #
+        #         # save this slice
+        #         list_xslices.append(pa)
+        #         trials_gotten.append(tr)
+        #
+        # # 2) Concatenate all PA into a single PA
+        # if not fail_if_times_outside_existing:
+        #     assert False, "fix this!! if pre_dur extends before first time, then this is incorrect. Should do what?"
+        #
+        # # # Replace all times with this time relative to alignement.
+        # # for pa in list_xslices:
+        # #     TIMES = (pa.Times - pa.Times[0]) + pre_dur*s # times all as [-predur, ..., postdur]
+        # #     pa.Times = TIMES
+        #
         # # Replace all times with this time relative to alignement.
         # for pa in list_xslices:
-        #     TIMES = (pa.Times - pa.Times[0]) + pre_dur*s # times all as [-predur, ..., postdur]
+        #     # sampling period, to acocunt for random variation in alignment across snips.
+        #     TIMES = (pa.Times - pa.Times[0]) + pre_dur + sampling_period/2 # times all as [-predur, ..., postdur]
         #     pa.Times = TIMES
+        #
+        # # get list of np arrays
+        # if False:
+        #     TIMES = (list_xslices[0].Times - list_xslices[0].Times[0]) + pre_dur*s # times all as [-predur, ..., postdur]
+        #     Xall = np.concatenate([pa.X for pa in list_xslices], axis=1) # concat along trials axis. each one is (nchans, 1, times)
+        #     PAall = PopAnal(Xall, TIMES, sites, trials=trials_gotten)
+        # else:
+        #     from neuralmonkey.classes.population import concatenate_popanals
+        #
+        #     # then concat
+        #     PAall = concatenate_popanals(list_xslices, "trials",
+        #         assert_otherdims_have_same_values=True,
+        #         assert_otherdims_restrict_to_these=("chans", "times"),
+        #         all_pa_inherit_times_of_pa_at_this_index=0)
 
-        # Replace all times with this time relative to alignement.
-        for pa in list_xslices:
-            # sampling period, to acocunt for random variation in alignment across snips.
-            TIMES = (pa.Times - pa.Times[0]) + pre_dur + sampling_period/2 # times all as [-predur, ..., postdur]
-            pa.Times = TIMES
-
-        # get list of np arrays
-        if False:
-            TIMES = (list_xslices[0].Times - list_xslices[0].Times[0]) + pre_dur*s # times all as [-predur, ..., postdur]
-            Xall = np.concatenate([pa.X for pa in list_xslices], axis=1) # concat along trials axis. each one is (nchans, 1, times)
-            PAall = PopAnal(Xall, TIMES, sites, trials=trials_gotten)
-        else:
-            from neuralmonkey.classes.population import concatenate_popanals
-
-            # then concat
-            PAall = concatenate_popanals(list_xslices, "trials", 
-                assert_otherdims_have_same_values=True, 
-                assert_otherdims_restrict_to_these=("chans", "times"),
-                all_pa_inherit_times_of_pa_at_this_index=0)
- 
         return PAall, trials_gotten
 
     def smoothedfr_extract_trials(self, trials, sites=None):
@@ -6987,7 +7037,15 @@ class Session(object):
 
 
     ####################### PLOTS (generic)
-    
+    def plot_spike_waveform_site(self, site):
+
+        rs, chan = self.convert_site_to_rschan(site)
+        spk = self.load_spike_waveforms_(rs, chan) # (nspk, ntimebins), e.g., (1000,30)
+
+        fig, ax = plt.subplots(1,1)
+        self.plot_spike_waveform(ax, spk)
+        return fig
+
     def plot_spike_waveform(self, ax, waveforms, nplot = 200, fs=None):
         """ Plot multipel spikes waveforms overlaid
         PARAMS:
@@ -9072,9 +9130,18 @@ class Session(object):
 
         return df
 
+    def snippets_extract_bysubstroke(self, sites, DS, pre_dur= -0.4, post_dur= 0.4,
+        features_to_get_extra=None, SANITY_CHECK=False, align_to="onset"):
+        """ Wrapper of snippets_extract_bystroke"""
+
+        fr_which_version = None # not used.
+        return self.snippets_extract_bystroke(sites, DS, pre_dur, post_dur,
+                    features_to_get_extra, fr_which_version, SANITY_CHECK,
+                    align_to, use_time_within_DS=True)
+
     def snippets_extract_bystroke(self, sites, DS, pre_dur= -0.4, post_dur= 0.4,
-        features_to_get_extra=None, fr_which_version="sqrt", SANITY_CHECK=False,
-                                  align_to="onset"):
+        features_to_get_extra=None, fr_which_version="sqrt", SANITY_CHECK=True,
+                                  align_to="onset", use_time_within_DS=False):
         """ Helper to extract snippets in flexible way, saligend to each stroke onset.
         PARAMS:
         - sites, list of ints to extract.
@@ -9100,6 +9167,7 @@ class Session(object):
         trials = []
         strokeids = []
         list_ind = []
+        event_times = []
         for ind in range(len(DS.Dat)):
 
             # print(ind)
@@ -9116,10 +9184,30 @@ class Session(object):
             else:
                 assert False
 
-            event_time = self.events_get_time_helper(event, trial_neural)[0]
+            if use_time_within_DS:
+                if align_to=="onset":
+                    event_time = DS.Dat.iloc[ind]["time_onset"]
+                elif align_to=="offset":
+                    event_time = DS.Dat.iloc[ind]["time_offset"]
+                else:
+                    assert False
+            else:
+                event_time = self.events_get_time_helper(event, trial_neural)[0]
+                # Sanity check
+                try:
+                    if align_to=="onset":
+                        assert event_time==DS.Dat.iloc[ind]["time_onset"], "bug somewjhere"
+                    elif align_to=="offset":
+                        assert event_time==DS.Dat.iloc[ind]["time_offset"]
+                except Exception as err:
+                    print(event_time)
+                    print(DS.Dat.iloc[ind])
+                    assert False
 
             trials.append(trial_neural)
             strokeids.append(si)
+            event_times.append(event_time)
+
             for s in sites:
 
                 # get spiketimes
@@ -9145,28 +9233,39 @@ class Session(object):
         # Get smoothed fr. this is MUCH faster than computing above.
         print("Extracting smoothed FR for all data...")
         fail_if_times_outside_existing = True
-        pa = self.smoothedfr_extract_timewindow_bystroke(trials, strokeids, sites, 
-            pre_dur=pre_dur, post_dur=post_dur, 
-            fail_if_times_outside_existing=fail_if_times_outside_existing,
-            align_to=align_to)
+        if True:
+            # Works for substrokes, doesnt have to get stroke events using SN.
+            pa = self.smoothedfr_extract_timewindow_bytimes(trials, event_times,
+                sites, pre_dur=pre_dur, post_dur=post_dur,
+                fail_if_times_outside_existing=fail_if_times_outside_existing)[0]
+            assert pa.X.shape[1]==len(trials)
+        else:
+            pa = self.smoothedfr_extract_timewindow_bystroke(trials, strokeids, sites,
+                pre_dur=pre_dur, post_dur=post_dur,
+                fail_if_times_outside_existing=fail_if_times_outside_existing,
+                align_to=align_to)
+
         # print(pa.X.shape) # (chans, trials, tbins)
         # print(pa.Trials)
         # print(pa.Chans) 
         # deal out time to each site and trial.
         print("Inserting smoothed FR into dataset...")
         ct = 0
-        for i in range(len(DS.Dat)):
+        # for i in range(len(DS.Dat)):
+        for i in range(len(trials)):
             for j in range(len(sites)):
                 fr_sm = pa.X[j, i, :]
                 fr_sm_times = pa.Times
                 OUT[ct]["fr_sm"] = fr_sm[None, :]
                 OUT[ct]["fr_sm_times"] = fr_sm_times[None, :]
-                ct+=1
-
                 if SANITY_CHECK:
-                    assert OUT[ct-1]["chan"] == sites[j]
-                    assert OUT[ct-1]["index_DS"] == i
-
+                    assert pa.Chans[j] == sites[j]
+                    assert OUT[ct]["chan"] == sites[j]
+                    assert OUT[ct]["index_DS"] == i
+                    assert OUT[ct]["trialcode"] == DS.Dat.iloc[i]["trialcode"]
+                    # assert OUT[ct]["event_time"] ==
+                    # event_time":event_time
+                ct+=1
         # ----
         df = pd.DataFrame(OUT)
 
