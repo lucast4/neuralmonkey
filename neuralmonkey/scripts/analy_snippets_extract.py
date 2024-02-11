@@ -17,7 +17,7 @@ from pythonlib.tools.exceptions import NotEnoughDataException
 
 LIST_SESSIONS = None
 DEBUG = False # runs fast
-
+SPIKES_VERSION = "tdt" # Still improving ks curation.
 LIST_WHICH_LEVEL = ["trial", "stroke", "stroke_off"]
 
 if __name__=="__main__":
@@ -35,7 +35,8 @@ if __name__=="__main__":
 
     # to help debug if times are misaligned.
     MS = load_mult_session_helper(DATE, animal,
-        units_metadat_fail_if_no_exist=True)
+        units_metadat_fail_if_no_exist=True,
+                                  spikes_version=SPIKES_VERSION)
 
     # for session in range(len(MS.SessionsList)):
     if LIST_SESSIONS is None:
@@ -103,7 +104,7 @@ if __name__=="__main__":
                 sn._DEBUG_PRUNE_SITES = True
                 dataset_pruned_for_trial_analysis.subsampleTrials(10, 1)
 
-            SP = extraction_helper(sn, which_level)
+            SP = extraction_helper(sn, which_level, PRE_DUR=-0.6, POST_DUR=0.6)
 
             SP.save_v2(SAVEDIR)
 
