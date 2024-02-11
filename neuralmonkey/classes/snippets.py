@@ -358,6 +358,70 @@ class Snippets(object):
             list_events = DfScalar["event"].unique().tolist()
             list_events_uniqnames = DfScalar["event_aligned"].unique().tolist()
 
+        elif which_level in ["substroke", "substroke_off"]:
+            # Sanity checks
+            assert len(list_events)==0, "event is stroke. you made a mistake (old code, site anova?)"
+            assert len(list_pre_dur)==1
+            assert len(list_post_dur)==1
+            events_that_must_include = None
+
+            pre_dur = list_pre_dur[0]
+            post_dur = list_post_dur[0]
+
+            # Add features specific to substrokes
+            features_for_substrokes = ["shape", "index_within_stroke", 
+                                       "circularity_binned", "distcum_binned", "angle_binned",
+                                       "dist_angle"]
+            list_features_extraction = list_features_extraction + features_for_substrokes
+
+            # Extract all substrokes
+            print("*** RUNNING PIPELINE TO GET SUBSTROKES...")
+            from pythonlib.dataset.substrokes import pipeline_wrapper
+            D, DS, _ = pipeline_wrapper(dataset_pruned_for_trial_analysis)
+
+            # Replace DatasetBeh in SN, needed for downstream code.
+            # And clear things that store event-related stuff, since this
+            # might include strokes.
+            SN.Datasetbeh = D
+            SN.EventsTimeUsingPhd = {}
+            # SN.PopAnalDict = {}
+            SN._CachedStrokesPeanutsOnly = {}
+            SN._CachedStrokes = {}
+
+            # Filter the trials
+            trials = SN.get_trials_list(True, True, only_if_in_dataset=True,
+                dataset_input=dataset_pruned_for_trial_analysis,
+                events_that_must_include = events_that_must_include)
+            print("\n == extracting these trials: ", trials)
+            trialcodes = [SN.datasetbeh_trial_to_trialcode(t) for t in trials]
+            DS.Dat = DS.Dat[DS.Dat["trialcode"].isin(trialcodes)].reset_index(drop=True)
+
+            for var in list_features_extraction:
+                if (var not in SN.Datasetbeh.Dat.columns) and (var not in DS.Dat.columns):
+                    print(var)
+                    print(SN.Datasetbeh.Dat.columns)
+                    print(DS.Dat.columns)
+                    assert False, "get this feature"
+
+            if which_level=="substroke":
+                align_to="onset"
+            elif which_level=="substroke_off":
+                align_to="offset"
+            else:
+                assert False
+
+            print("Extracting, SN.snippets_extract_bysubstroke...")
+            DfScalar = SN.snippets_extract_bysubstroke(sites_keep, DS,
+                features_to_get_extra=list_features_extraction, pre_dur=pre_dur,
+                post_dur=post_dur,
+                align_to=align_to)
+            ListPA = None
+
+            DfScalar["event"] = "00_substrk"
+            DfScalar["event_aligned"] = "00_substrk"
+            list_events = DfScalar["event"].unique().tolist()
+            list_events_uniqnames = DfScalar["event_aligned"].unique().tolist()
+
         elif which_level=="trial":
             # Each datapt is a single trial
             # no need to extract antyhing, use sn.Datasetbeh
@@ -464,8 +528,6 @@ class Snippets(object):
                 map_var_to_othervars = pa.labels_features_input_conjunction_other_vars(dim="trials", 
                     list_var = list_features_get_conjunction)
 
-        # Make sure you save bregions in dfscalar
-        self.datamod_append_bregion(self.DfScalar)
 
         ### SAVE VARIABLES
         self.ListPA = ListPA
@@ -474,7 +536,7 @@ class Snippets(object):
         self.Trials = trials
         self.Params = {
             "which_level":which_level,
-            # "list_events":list_events, 
+            # "list_events":list_events,
             "_list_events":list_events,
             "list_events_uniqnames":list_events_uniqnames,
             "list_features_extraction":list_features_extraction,
@@ -486,9 +548,9 @@ class Snippets(object):
             "tasks_only_keep_these":tasks_only_keep_these,
             "prune_feature_levels_min_n_trials":prune_feature_levels_min_n_trials,
             "fr_which_version":fr_which_version,
-            "SPIKES_VERSION":SN.SITES_VERSION
+            "SPIKES_VERSION":SN.SPIKES_VERSION
         }
-        self.globals_initialize() 
+        self.globals_initialize()
 
         # Genreate scalars
         if NEW_VERSION:
@@ -499,15 +561,17 @@ class Snippets(object):
             self.DfScalar["fr_sm_sqrt"] = self.DfScalar["fr_sm"]**0.5
         else:
             if False:
-                # Old version 
-                print("\n == listpa_convert_to_scalars")        
+                # Old version
+                print("\n == listpa_convert_to_scalars")
                 self.listpa_convert_to_scalars()
-                print("\n == pascal_convert_to_dataframe")        
+                print("\n == pascal_convert_to_dataframe")
                 self.pascal_convert_to_dataframe(fr_which_version=fr_which_version)
             else:
                 self.listpa_convert_to_scalar_v2(fr_which_version=fr_which_version)
                 self.DfScalar = self.DfScalar # they are the same
 
+        # Make sure you save bregions in dfscalar
+        self.datamod_append_bregion(self.DfScalar)
 
         # Get useful variables
         if not NEW_VERSION:
@@ -1817,7 +1881,7 @@ class Snippets(object):
 
         if self.Params["which_level"]=="trial":
             grp = ["trialcode"]
-        elif self.Params["which_level"] in ["stroke", "stroke_off"]:
+        elif self.Params["which_level"] in ["stroke", "stroke_off", "substroke", "substroke_off"]:
             grp = ["trialcode", "stroke_index"]
         else:
             assert False
@@ -5485,7 +5549,7 @@ class Snippets(object):
             if pathis is not None:
                 # plot
                 if _legend_added==False:
-                    ADD_LEGEND = not len(levels_var_exist)>12
+                    ADD_LEGEND = not len(levels_var_exist)>16
                     _legend_added=True
                 else:
                     ADD_LEGEND = False
@@ -6001,7 +6065,7 @@ class Snippets(object):
         return fig, axesall
 
     def plotgood_rasters_smfr_each_level_combined(self, site, var, 
-                vars_others=None, event=None):
+                vars_others=None, event=None, plotvers=("raster", "smfr")):
         """ [Good], plot in a single figure both rasters (top row) and sm fr (bottom), aligned.
         Each column is a level of vars_others. 
         PARAMS;
@@ -6059,21 +6123,23 @@ class Snippets(object):
                                                                            reduce_height_for_sm_fr=True)
  
             # 1) Plot the rasters ont he top row.
-            axes = axesall[0]
-            for ax, (lev_other, dfthis) in zip(axes.flatten(), levdat.items()):
-                self._plotgood_rasters_split_by_feature_levels(ax, dfthis, var, event=event, 
-                    xmin=xmin, xmax=xmax) 
-                # Make sure is readable even if is long name.
-                ax.set_title(map_level_to_idx[lev_other], fontsize=FONTSIZE, wrap=True)
-                ax.set_ylabel(map_level_to_idx[lev_other], fontsize=FONTSIZE, wrap=True)
-                ax.axvline(0, color="m") 
+            if "raster" in plotvers:
+                axes = axesall[0]
+                for ax, (lev_other, dfthis) in zip(axes.flatten(), levdat.items()):
+                    self._plotgood_rasters_split_by_feature_levels(ax, dfthis, var, event=event,
+                        xmin=xmin, xmax=xmax)
+                    # Make sure is readable even if is long name.
+                    ax.set_title(map_level_to_idx[lev_other], fontsize=FONTSIZE, wrap=True)
+                    ax.set_ylabel(map_level_to_idx[lev_other], fontsize=FONTSIZE, wrap=True)
+                    ax.axvline(0, color="m")
 
             # 2) Plot the sm fr on the lower row
-            axes = axesall[1]
-            levels_of_varsothers = list(levdat.keys())
-            self._plotgood_smoothfr_average_each_level(site, var, vars_others, event=event,
-                                                     plot_these_levels_of_varsothers=levels_of_varsothers,
-                                                     plot_on_these_axes=axes)  
+            if "smfr" in plotvers:
+                axes = axesall[1]
+                levels_of_varsothers = list(levdat.keys())
+                self._plotgood_smoothfr_average_each_level(site, var, vars_others, event=event,
+                                                         plot_these_levels_of_varsothers=levels_of_varsothers,
+                                                         plot_on_these_axes=axes)
 
             # make sure x axes is same for raster and sm fr
             for i in range(ncols):
@@ -6177,6 +6243,10 @@ class Snippets(object):
         else:
             fig, axesall = plt.subplots(2,1)
             axesall.flatten()[0].set_title("Not enough data!")
+
+        # Title tjhem
+        axesall.flatten()[0].set_ylabel(var_other_1)
+        axesall.flatten()[0].set_xlabel(var_other_2)
 
         return fig, axesall
 
@@ -6648,7 +6718,7 @@ class Snippets(object):
         print("Ending len dfscalar: ", len(self.DfScalar))
 
         # Optioanlly, for which_level = "stroke", prune rows based on (tc, stroke index).
-        if self.Params["which_level"] in ["stroke", "stroke_off"] and DSprun is not None:
+        if self.Params["which_level"] in ["stroke", "stroke_off", "substroke", "substroke_off"] and DSprun is not None:
             tcs = DSprun.Dat["trialcode"].tolist()
             sis = DSprun.Dat["stroke_index"].tolist()
             print(" --- Pruning SP.DfScalar to match DSpruned...", "start len: ", len(self.DfScalar))
@@ -6685,7 +6755,7 @@ class Snippets(object):
         list_features_extraction_trial.append("seqc_nstrokes_task")
 
         # Features that should always extract (Strokes dat)
-        if self.Params["which_level"] in ["stroke", "stroke_off"]:
+        if self.Params["which_level"] in ["stroke", "stroke_off", "substroke", "substroke_off"]:
             list_features_extraction = list_features_extraction_trial + list_features_extraction_stroke
         elif self.Params["which_level"]=="trial":
             list_features_extraction = list_features_extraction_trial
@@ -7109,7 +7179,7 @@ def extraction_helper(SN, which_level="trial", list_features_modulation_append=N
         trials_prune_just_those_including_events = True # True is fine, this just checkl that has fix touch
         DS_pruned = None
 
-    elif which_level in ["stroke", "stroke_off"]:
+    elif which_level in ["stroke", "stroke_off", "substroke", "substroke_off"]:
         # Extracts snippets aligned to strokes. Features are columns in DS.
         list_events = [] # must be empty
         list_features_extraction = [] #

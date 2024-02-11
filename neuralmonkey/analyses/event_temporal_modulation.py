@@ -288,7 +288,7 @@ def plot_overview(df_modtime, SAVEDIR, response = "r2_time_minusmean",
     """ Helkper for the overall plots to look at event encoding
     """
     
-    from pythonlib.tools.plottools import plotScatterXreduced, plotScatterOverlay
+    from pythonlib.tools.plottools import _plotScatterXreduced, plotScatterOverlay
     from pythonlib.tools.pandastools import convert_to_2d_dataframe
     from pythonlib.tools.snstools import rotateLabel
 
