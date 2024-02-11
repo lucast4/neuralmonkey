@@ -11,14 +11,97 @@ import pandas as pd
 
 # (animal, date, question) --> DFallPA
 
+def dfallpa_extraction_load_wrapper_from_MS(MS, question, list_time_windows,
+                                    which_level = "trial",
+                                    events_keep = None,
+                                    combine_into_larger_areas = True, exclude_bad_areas=True,
+                                    bin_by_time_dur = None, bin_by_time_slide = None,
+                                    slice_agg_slices = None, slice_agg_vars_to_split=None, slice_agg_concat_dim="trials",
+                                    HACK_RENAME_SHAPES = True):
+    """ Wrapper of dfallpa_extraction_load_wrapper for loading given already loaded
+    MS,
+    From SP (already saved) --> DFallpa
+    (ie not an option to load already saved DFallpa  but could implement that).
+    """
+    from neuralmonkey.classes.snippets import load_and_concat_mult_snippets
+    from neuralmonkey.classes.session import load_mult_session_helper
+    from neuralmonkey.analyses.state_space_good import snippets_extract_popanals_split_bregion_twind
+    from neuralmonkey.analyses.rsa import rsagood_questions_dict
+
+    animal = MS.animal()
+    date = MS.date()
+
+    SP, SAVEDIR_ALL = load_and_concat_mult_snippets(MS, which_level = which_level,
+        DEBUG=False)
+
+    # Load a question
+    DictParamsEachQuestion = rsagood_questions_dict(animal, date, question=question)
+    q_params = DictParamsEachQuestion[question]
+
+    # Clean up SP and extract features
+    D, list_features_extraction = SP.datasetbeh_preprocess_clean_by_expt(
+        ANALY_VER=q_params["ANALY_VER"], vars_extract_append=q_params["effect_vars"])
+
+    # Keep only specific events - to make the following faster.
+    if events_keep is None:
+        events_keep = q_params["events_keep"]
+
+    ## Extract all popanals
+    DFallpa = snippets_extract_popanals_split_bregion_twind(SP, list_time_windows,
+                                                    list_features_extraction,
+                                                    HACK_RENAME_SHAPES=HACK_RENAME_SHAPES,
+                                                    combine_into_larger_areas=combine_into_larger_areas,
+                                                    events_keep=events_keep,
+                                                    exclude_bad_areas=exclude_bad_areas)
+
+    # Bin times if needed
+    if bin_by_time_dur is not None:
+        list_pa = []
+        for pa in DFallpa["pa"].tolist():
+            list_pa.append(pa.agg_by_time_windows_binned(bin_by_time_dur, bin_by_time_slide))
+        DFallpa["pa"] = list_pa
+
+    # Aggregate PA if needed
+    from neuralmonkey.classes.population_mult import dfpa_slice_specific_windows, dfpa_group_and_split
+    if slice_agg_slices is not None:
+        # 1) slice
+        print(" *** Before dfpa_slice_specific_windows")
+        print(DFallpa["which_level"].value_counts())
+        print(DFallpa["event"].value_counts())
+        print(DFallpa["twind"].value_counts())
+        print("slice_agg_slices:", slice_agg_slices)
+        DFallpa = dfpa_slice_specific_windows(DFallpa, slice_agg_slices)
+
+        # 2) agg (one pa per bregion)
+        print(" *** Before dfpa_group_and_split")
+        print(DFallpa["which_level"].value_counts())
+        print(DFallpa["event"].value_counts())
+        print(DFallpa["twind"].value_counts())
+        print(slice_agg_vars_to_split)
+        DFallpa = dfpa_group_and_split(DFallpa, vars_to_split=slice_agg_vars_to_split, concat_dim=slice_agg_concat_dim)
+
+        print(" *** After dfpa_group_and_split")
+        print(DFallpa["which_level"].value_counts())
+        print(DFallpa["event"].value_counts())
+        print(DFallpa["twind"].value_counts())
+        print("Event, within pa:")
+
+        for pa in DFallpa["pa"].tolist():
+            print(pa.Xlabels["trials"]["event"].value_counts())
+            print(pa.Xlabels["trials"]["wl_ev_tw"].value_counts())
+            assert isinstance(pa.Xlabels["trials"]["wl_ev_tw"].values[0], str)
+
+    return DFallpa
+
+
 def dfallpa_extraction_load_wrapper(animal, date, question, list_time_windows,
                                     which_level = "trial",
                                     events_keep = None,
                                     combine_into_larger_areas = True, exclude_bad_areas=True,
                                     bin_by_time_dur = None, bin_by_time_slide = None,
-                                    slice_agg_slices = None, slice_agg_vars_to_split=None, slice_agg_concat_dim=None,
+                                    slice_agg_slices = None, slice_agg_vars_to_split=None, slice_agg_concat_dim="trials",
                                     LOAD_FROM_RSA_ANALY=False, rsa_ver_dist="euclidian_unbiased",
-                                    rsa_subtr=None, rsa_agg = True,
+                                    rsa_subtr=None, rsa_agg = True, rsa_invar=None,
                                     SPIKES_VERSION="tdt",
                                     HACK_RENAME_SHAPES = True):
 
@@ -27,11 +110,8 @@ def dfallpa_extraction_load_wrapper(animal, date, question, list_time_windows,
     By default this gets separate pa for each (event, bregion), but has many methods for
     slicing and aggregating across multiple PAs.
     """
-    from neuralmonkey.scripts.analy_dpca_script_quick import preprocess_pa_to_frtensor
     from neuralmonkey.classes.snippets import load_and_concat_mult_snippets
     from neuralmonkey.classes.session import load_mult_session_helper
-    import os
-    import pandas as pd
     from neuralmonkey.analyses.state_space_good import snippets_extract_popanals_split_bregion_twind
     from neuralmonkey.analyses.rsa import rsagood_questions_dict
 
@@ -41,11 +121,15 @@ def dfallpa_extraction_load_wrapper(animal, date, question, list_time_windows,
         version_distance = rsa_ver_dist
         subtract_mean_each_level_of_var = rsa_subtr
         DO_AGG_TRIALS = rsa_agg
+        vars_test_invariance_over_dict = rsa_invar
+
         DFallpa = rsagood_pa_vs_theor_wrapper_loadresults(animal, date, question,
                                                           version_distance, DO_AGG_TRIALS,
-                                                          subtract_mean_each_level_of_var)[0]
+                                                          subtract_mean_each_level_of_var,
+                                                          vars_test_invariance_over_dict)[0]
     else:
         # Generate it from saved Snippets
+        assert list_time_windows is not None
 
         ############### PARAMS
         # animal = "Diego"
@@ -57,65 +141,72 @@ def dfallpa_extraction_load_wrapper(animal, date, question, list_time_windows,
 
         ## Load Snippets
         MS = load_mult_session_helper(date, animal, spikes_version=SPIKES_VERSION)
-        SP, SAVEDIR_ALL = load_and_concat_mult_snippets(MS, which_level = which_level,
-            DEBUG=False)
 
-        # Load a question
-        DictParamsEachQuestion = rsagood_questions_dict(animal, date)
-        q_params = DictParamsEachQuestion[question]
+        DFallpa = dfallpa_extraction_load_wrapper_from_MS(MS, question, list_time_windows,
+                                    which_level, events_keep, combine_into_larger_areas,
+                                    exclude_bad_areas, bin_by_time_dur, bin_by_time_slide,
+                                    slice_agg_slices, slice_agg_vars_to_split, slice_agg_concat_dim,
+                                    HACK_RENAME_SHAPES)
 
-        # Clean up SP and extract features
-        D, list_features_extraction = SP.datasetbeh_preprocess_clean_by_expt(
-            ANALY_VER=q_params["ANALY_VER"], vars_extract_append=q_params["effect_vars"])
-
-        # Keep only specific events - to make the following faster.
-        if events_keep is None:
-            events_keep = q_params["events_keep"]
-
-        ## Extract all popanals
-        DFallpa = snippets_extract_popanals_split_bregion_twind(SP, list_time_windows,
-                                                        list_features_extraction,
-                                                        HACK_RENAME_SHAPES=HACK_RENAME_SHAPES,
-                                                        combine_into_larger_areas=combine_into_larger_areas,
-                                                        events_keep=events_keep,
-                                                        exclude_bad_areas=exclude_bad_areas)
-
-        # Bin times if needed
-        if bin_by_time_dur is not None:
-            list_pa = []
-            for pa in DFallpa["pa"].tolist():
-                list_pa.append(pa.agg_by_time_windows_binned(bin_by_time_dur, bin_by_time_slide))
-            DFallpa["pa"] = list_pa
-
-        # Aggregate PA if needed
-        from neuralmonkey.classes.population_mult import dfpa_slice_specific_windows, dfpa_group_and_split
-        if slice_agg_slices is not None:
-            # 1) slice
-            print(" *** Before dfpa_slice_specific_windows")
-            print(DFallpa["which_level"].value_counts())
-            print(DFallpa["event"].value_counts())
-            print(DFallpa["twind"].value_counts())
-            print("slice_agg_slices:", slice_agg_slices)
-            DFallpa = dfpa_slice_specific_windows(DFallpa, slice_agg_slices)
-
-            # 2) agg (one pa per bregion)
-            print(" *** Before dfpa_group_and_split")
-            print(DFallpa["which_level"].value_counts())
-            print(DFallpa["event"].value_counts())
-            print(DFallpa["twind"].value_counts())
-            print(slice_agg_vars_to_split)
-            DFallpa = dfpa_group_and_split(DFallpa, vars_to_split=slice_agg_vars_to_split, concat_dim=slice_agg_concat_dim)
-
-            print(" *** After dfpa_group_and_split")
-            print(DFallpa["which_level"].value_counts())
-            print(DFallpa["event"].value_counts())
-            print(DFallpa["twind"].value_counts())
-            print("Event, within pa:")
-
-            for pa in DFallpa["pa"].tolist():
-                print(pa.Xlabels["trials"]["event"].value_counts())
-                print(pa.Xlabels["trials"]["wl_ev_tw"].value_counts())
-                assert isinstance(pa.Xlabels["trials"]["wl_ev_tw"].values[0], str)
+        # SP, SAVEDIR_ALL = load_and_concat_mult_snippets(MS, which_level = which_level,
+        #     DEBUG=False)
+        #
+        # # Load a question
+        # DictParamsEachQuestion = rsagood_questions_dict(animal, date)
+        # q_params = DictParamsEachQuestion[question]
+        #
+        # # Clean up SP and extract features
+        # D, list_features_extraction = SP.datasetbeh_preprocess_clean_by_expt(
+        #     ANALY_VER=q_params["ANALY_VER"], vars_extract_append=q_params["effect_vars"])
+        #
+        # # Keep only specific events - to make the following faster.
+        # if events_keep is None:
+        #     events_keep = q_params["events_keep"]
+        #
+        # ## Extract all popanals
+        # DFallpa = snippets_extract_popanals_split_bregion_twind(SP, list_time_windows,
+        #                                                 list_features_extraction,
+        #                                                 HACK_RENAME_SHAPES=HACK_RENAME_SHAPES,
+        #                                                 combine_into_larger_areas=combine_into_larger_areas,
+        #                                                 events_keep=events_keep,
+        #                                                 exclude_bad_areas=exclude_bad_areas)
+        #
+        # # Bin times if needed
+        # if bin_by_time_dur is not None:
+        #     list_pa = []
+        #     for pa in DFallpa["pa"].tolist():
+        #         list_pa.append(pa.agg_by_time_windows_binned(bin_by_time_dur, bin_by_time_slide))
+        #     DFallpa["pa"] = list_pa
+        #
+        # # Aggregate PA if needed
+        # from neuralmonkey.classes.population_mult import dfpa_slice_specific_windows, dfpa_group_and_split
+        # if slice_agg_slices is not None:
+        #     # 1) slice
+        #     print(" *** Before dfpa_slice_specific_windows")
+        #     print(DFallpa["which_level"].value_counts())
+        #     print(DFallpa["event"].value_counts())
+        #     print(DFallpa["twind"].value_counts())
+        #     print("slice_agg_slices:", slice_agg_slices)
+        #     DFallpa = dfpa_slice_specific_windows(DFallpa, slice_agg_slices)
+        #
+        #     # 2) agg (one pa per bregion)
+        #     print(" *** Before dfpa_group_and_split")
+        #     print(DFallpa["which_level"].value_counts())
+        #     print(DFallpa["event"].value_counts())
+        #     print(DFallpa["twind"].value_counts())
+        #     print(slice_agg_vars_to_split)
+        #     DFallpa = dfpa_group_and_split(DFallpa, vars_to_split=slice_agg_vars_to_split, concat_dim=slice_agg_concat_dim)
+        #
+        #     print(" *** After dfpa_group_and_split")
+        #     print(DFallpa["which_level"].value_counts())
+        #     print(DFallpa["event"].value_counts())
+        #     print(DFallpa["twind"].value_counts())
+        #     print("Event, within pa:")
+        #
+        #     for pa in DFallpa["pa"].tolist():
+        #         print(pa.Xlabels["trials"]["event"].value_counts())
+        #         print(pa.Xlabels["trials"]["wl_ev_tw"].value_counts())
+        #         assert isinstance(pa.Xlabels["trials"]["wl_ev_tw"].values[0], str)
 
     return DFallpa
 

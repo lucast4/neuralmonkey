@@ -120,51 +120,62 @@ def OLD_pipeline_rsa_all_steps(SP, EFFECT_VARS, list_time_windows,
                                           PLOT_INDIV)
 
 def rsagood_pa_vs_theor_wrapper_loadresults(animal, date, question, version_distance,
-                                            DO_AGG_TRIALS=True,
-                                            subtract_mean_each_level_of_var=None):
+                                            DO_AGG_TRIALS, subtract_mean_each_level_of_var,
+                                            vars_test_invariance_over_dict):
     """ Load results of rsagood_pa_vs_theor_wrapper,
     RETURNS:
         - DFRES_THEOR, df with columns var, cc, bregion, twind, evnet, which_level
     """
 
-    savedir = f"{SAVEDIR_ANALYSES}/{animal}-{date}/agg_{DO_AGG_TRIALS}-subtr_{subtract_mean_each_level_of_var}-dist_{version_distance}/{question}"
+    if vars_test_invariance_over_dict is None:
+        suff = "invar_None"
+    else:
+        a = "_".join(vars_test_invariance_over_dict["same"])
+        b = "_".join(vars_test_invariance_over_dict["diff"])
+        suff = f"invar_{a}_{b}"
 
-    path = f"{savedir}/DFRES_THEOR.pkl"
-    DFRES_THEOR = pd.read_pickle(path)
+    for savedir in [
+        f"{SAVEDIR_ANALYSES}/{animal}-{date}/agg_{DO_AGG_TRIALS}-subtr_{subtract_mean_each_level_of_var}-dist_{version_distance}/{question}",
+        f"{SAVEDIR_ANALYSES}/{animal}-{date}/agg_{DO_AGG_TRIALS}-subtr_{subtract_mean_each_level_of_var}-dist_{version_distance}-{suff}/{question}"
+        ]:
 
-    path = f"{savedir}/DFRES_EFFECT_CONJ.pkl"
-    DFRES_EFFECT_CONJ = pd.read_pickle(path)
+        if os.path.exists(savedir):
+            path = f"{savedir}/DFRES_THEOR.pkl"
+            DFRES_THEOR = pd.read_pickle(path)
 
-    path = f"{savedir}/DFRES_EFFECT_MARG.pkl"
-    DFRES_EFFECT_MARG = pd.read_pickle(path)
+            path = f"{savedir}/DFRES_EFFECT_CONJ.pkl"
+            DFRES_EFFECT_CONJ = pd.read_pickle(path)
 
-    path = f"{savedir}/DFRES_SAMEDIFF.pkl"
-    DFRES_SAMEDIFF = pd.read_pickle(path)
+            path = f"{savedir}/DFRES_EFFECT_MARG.pkl"
+            DFRES_EFFECT_MARG = pd.read_pickle(path)
 
-    path = f"{savedir}/DFallpa.pkl"
-    DFallpa = pd.read_pickle(path)
-    # Fix an old problem, linked data (all data before 1/28/24)
-    for i, row in DFallpa.iterrows():
-        # Fix a problem
-        # The only var that was (incorrectly) linked across pa was twind.
-        a = row["twind"] # The correct twind
-        b = row["pa"].Xlabels["trials"]["twind"].values[0] # iuncorrect
-        if not a==b:
-            row["pa"].Xlabels["trials"] = row["pa"].Xlabels["trials"].copy()
-            row["pa"].Xlabels["trials"]["twind"] = [a for _ in range(len(row["pa"].Xlabels["trials"]))]
+            path = f"{savedir}/DFRES_SAMEDIFF.pkl"
+            DFRES_SAMEDIFF = pd.read_pickle(path)
 
-    from pythonlib.tools.expttools import load_yaml_config
-    path = f"{savedir}/Params.yaml"
-    Params = load_yaml_config(path)
+            path = f"{savedir}/DFallpa.pkl"
+            DFallpa = pd.read_pickle(path)
+            # Fix an old problem, linked data (all data before 1/28/24)
+            for i, row in DFallpa.iterrows():
+                # Fix a problem
+                # The only var that was (incorrectly) linked across pa was twind.
+                a = row["twind"] # The correct twind
+                b = row["pa"].Xlabels["trials"]["twind"].values[0] # iuncorrect
+                if not a==b:
+                    row["pa"].Xlabels["trials"] = row["pa"].Xlabels["trials"].copy()
+                    row["pa"].Xlabels["trials"]["twind"] = [a for _ in range(len(row["pa"].Xlabels["trials"]))]
 
-    Params["list_which_level"] = sorted(DFallpa["which_level"].unique().tolist())
-    Params["list_event"] = sorted(DFallpa["event"].unique().tolist())
-    Params["list_bregion"] = sorted(DFallpa["bregion"].unique().tolist())
-    Params["list_twind"] = sorted(DFallpa["twind"].unique().tolist())
-    Params["EFFECT_VARS"] = sorted(DFRES_THEOR["var"].unique().tolist())
+            from pythonlib.tools.expttools import load_yaml_config
+            path = f"{savedir}/Params.yaml"
+            Params = load_yaml_config(path)
 
-    return DFallpa, DFRES_THEOR, DFRES_SAMEDIFF, DFRES_EFFECT_CONJ, DFRES_EFFECT_MARG, Params, savedir
+            Params["list_which_level"] = sorted(DFallpa["which_level"].unique().tolist())
+            Params["list_event"] = sorted(DFallpa["event"].unique().tolist())
+            Params["list_bregion"] = sorted(DFallpa["bregion"].unique().tolist())
+            Params["list_twind"] = sorted(DFallpa["twind"].unique().tolist())
+            Params["EFFECT_VARS"] = sorted(DFRES_THEOR["var"].unique().tolist())
 
+            return DFallpa, DFRES_THEOR, DFRES_SAMEDIFF, DFRES_EFFECT_CONJ, DFRES_EFFECT_MARG, Params, savedir
+    assert False, "didnt find saved data"
 
 def rsagood_score_vs_shuff_wrapper(DFallpa, animal, date, question, q_params,
                                    subtract_mean_each_level_of_var, version_distance,
@@ -276,8 +287,9 @@ def rsagood_score_vs_shuff_wrapper(DFallpa, animal, date, question, q_params,
 
 # _pipeline_rsa_score_pa_all
 # rsagood_pa_vs_theor_wrapper
-def rsagood_score_wrapper(DFallpa, animal, date, question, q_params, version_distance, subtract_mean_each_level_of_var,
-                          vars_test_invariance_over_dict, DO_AGG_TRIALS, PLOT_INDIV=True, do_save=True):
+def rsagood_score_wrapper(DFallpa, animal, date, question, q_params, version_distance,
+                          subtract_mean_each_level_of_var, vars_test_invariance_over_dict,
+                          DO_AGG_TRIALS, PLOT_INDIV=True, do_save=True):
     """ GOOD - For each PA in DF, cOmpare distances matrices against theoretical matrices, and
     return summary rsults (and save).
     PARAMS.
@@ -293,9 +305,16 @@ def rsagood_score_wrapper(DFallpa, animal, date, question, q_params, version_dis
     from pythonlib.tools.pandastools import append_col_with_grp_index
     from pythonlib.tools.expttools import writeDictToYaml
 
+    if vars_test_invariance_over_dict is None:
+        suff = "invar_None"
+    else:
+        a = "_".join(vars_test_invariance_over_dict["same"])
+        b = "_".join(vars_test_invariance_over_dict["diff"])
+        suff = f"invar_{a}_{b}"
+
     # Sanity
     if do_save:
-        savedir = f"{SAVEDIR_ANALYSES}/{animal}-{date}/agg_{DO_AGG_TRIALS}-subtr_{subtract_mean_each_level_of_var}-dist_{version_distance}/{question}"
+        savedir = f"{SAVEDIR_ANALYSES}/{animal}-{date}/agg_{DO_AGG_TRIALS}-subtr_{subtract_mean_each_level_of_var}-dist_{version_distance}-{suff}/{question}"
         os.makedirs(savedir, exist_ok=True)
     else:
         savedir = None
@@ -398,6 +417,8 @@ def rsagood_score_wrapper(DFallpa, animal, date, question, q_params, version_dis
         # Prune PA based on this question
         pa, res_check_tasksets, res_check_effectvars = preprocess_rsa_prepare_popanal_wrapper(pa, **q_params)
 
+        assert len(pa.X)>0
+
         # if (wl, ev) in DictVarToClsimtheor_EachLevEvent.keys():
         #     DictVarToClsimtheor = DictVarToClsimtheor_EachLevEvent[(wl, ev)]
         # else:
@@ -423,6 +444,7 @@ def rsagood_score_wrapper(DFallpa, animal, date, question, q_params, version_dis
                                                                                               "distmat_distance_ver"],
                                                                                           DictVarToClsimtheor=DictVarToClsimtheor)
 
+        assert len(dfres_theor)>0
         plt.close("all")
         # DictVarToClsimtheor_EachLevEvent[(wl, ev)] = DictVarToClsimtheor
 
@@ -736,6 +758,9 @@ def rsagood_pa_vs_theor_single(PA, grouping_vars, version_distance, subtract_mea
     #                                              use_distributional_distance=use_distributional_distance)
     Clraw, Clsim = _rsagood_convert_PA_to_Cl(PAscal, grouping_vars, version_distance, DO_AGG_TRIALS)
 
+    assert len(Clraw.Xinput)>0
+    assert len(Clsim.Xinput)>0
+
     ########## GENERATE THEORETEICAL DISTANCE MATRICES.
     if DictVarToClsimtheor is None:
         # Initialize empty
@@ -783,7 +808,12 @@ def rsagood_pa_vs_theor_single(PA, grouping_vars, version_distance, subtract_mea
             list_sort_order = [list(range(len(grouping_vars)))]
         for sort_order in list_sort_order:
             figraw, ax = Clraw.rsa_plot_heatmap(sort_order, diverge=True)
-            figsim, ax = Clsim.rsa_plot_heatmap(sort_order, diverge=False)
+
+            if version_distance in ["_pearson_raw"]:
+                diverge = True
+            else:
+                diverge = False
+            figsim, ax = Clsim.rsa_plot_heatmap(sort_order, diverge=diverge)
             # - name this sort order
             main_var = grouping_vars[sort_order[0]]
             s = "_".join([str(i) for i in sort_order])
@@ -794,7 +824,6 @@ def rsagood_pa_vs_theor_single(PA, grouping_vars, version_distance, subtract_mea
 
             path = f"{sdir}/heat_sim-sort_order_{s}.pdf"
             savefig(figsim, path)
-
 
             # PLOT raw data, agged.
             if len(Clraw.Labels) > len(Clsim.Labels):
@@ -858,87 +887,88 @@ def rsagood_pa_vs_theor_single(PA, grouping_vars, version_distance, subtract_mea
 
     RES_VS_THEOR = []
     list_vec = []
-    for var in effect_vars:
-        Cltheor = DictVarToClsimtheor[var]
-        # Cltheor, fig = Clsim.rsa_distmat_construct_theoretical(var, PLOT=False)
+    if len(all_vars)>1:
+        for var in effect_vars:
+            Cltheor = DictVarToClsimtheor[var]
+            # Cltheor, fig = Clsim.rsa_distmat_construct_theoretical(var, PLOT=False)
 
-        # plot
-        # if PLOT_THEORETICAL_SIMMATS:
-        #     # Plot heatmaps (raw and sim mats)
-        #     sort_order = (0,) # each tuple is only len 1...
-        #     figsim, ax = Cltheor.rsa_plot_heatmap(sort_order, diverge=False)
-        #     s = "_".join([str(i) for i in sort_order])
-        #     s+=f"_{var}"
-        #     path = f"{sdir}/heat_sim-THEOR-sort_order_{s}.pdf"
-        #     savefig(figsim, path)
+            # plot
+            # if PLOT_THEORETICAL_SIMMATS:
+            #     # Plot heatmaps (raw and sim mats)
+            #     sort_order = (0,) # each tuple is only len 1...
+            #     figsim, ax = Cltheor.rsa_plot_heatmap(sort_order, diverge=False)
+            #     s = "_".join([str(i) for i in sort_order])
+            #     s+=f"_{var}"
+            #     path = f"{sdir}/heat_sim-THEOR-sort_order_{s}.pdf"
+            #     savefig(figsim, path)
 
-        if COMPUTE_VS_THEOR_MAT and "cc" in list_yvar:
+            if COMPUTE_VS_THEOR_MAT and "cc" in list_yvar:
 
-            # Optionally mask data before scoring
-            if vars_test_invariance_over_dict is not None:
-                # generate mask
-                mask_vars_same = vars_test_invariance_over_dict["same"]
-                mask_vars_diff = vars_test_invariance_over_dict["diff"]
-            else:
-                mask_vars_same, mask_vars_diff = None, None
+                # Optionally mask data before scoring
+                if vars_test_invariance_over_dict is not None:
+                    # generate mask
+                    mask_vars_same = vars_test_invariance_over_dict["same"]
+                    mask_vars_diff = vars_test_invariance_over_dict["diff"]
+                else:
+                    mask_vars_same, mask_vars_diff = None, None
 
-            if sdir is not None:
-                plot_and_save_mask_path = f"{sdir}/final_mask-diff_ctxt-{var}.png"
-            else:
-                plot_and_save_mask_path = None
-
-            if False:
-                # old version
-                c = Clsim.rsa_distmat_score_vs_theor(Cltheor, mask_vars_same, mask_vars_diff,
-                                                     help_context="othervars_at_least_one_diff",
-                                                     plot_and_save_mask_path=plot_and_save_mask_path)
-
-                # Also get positive control? Usually this is done by restricting analysis
-                # to same values for a set of context vars. With one effect var of interest
-                # - This should be all the vars that are NOT the tested var
                 if sdir is not None:
-                    plot_and_save_mask_path = f"{sdir}/final_mask-same_ctxt-{var}.png"
+                    plot_and_save_mask_path = f"{sdir}/final_mask-diff_ctxt-{var}.png"
                 else:
                     plot_and_save_mask_path = None
-                c_same_context = Clsim.rsa_distmat_score_vs_theor(Cltheor, PLOT=False, exclude_diag=False,
-                                                              help_context="othervars_all_same",
-                                                              plot_and_save_mask_path=plot_and_save_mask_path)
-            else:
-                c, c_same_context = Clsim.rsa_distmat_score_vs_theor(Cltheor,
-                                                                     vars_test_invariance_over_dict,
-                                                                     plot_and_save_mask_path=plot_and_save_mask_path)
 
-            # # Correlation matrix between data and theoreitcal sim mats
-            # # - get upper triangular
-            # list_masks = None
-            # if vars_test_invariance_over_dict is not None:
-            #     # generate mask
-            #     ma_invar = Clsim.rsa_matindex_same_diff_mult_var_flex(
-            #         vars_test_invariance_over_dict["same"],
-            #         vars_test_invariance_over_dict["diff"])
-            #     list_masks = [ma_invar]
-            #
-            # assert Clsim.Labels == Cltheor.Labels
-            # assert Clsim.LabelsCols == Cltheor.LabelsCols
-            # vec_data = Clsim.dataextract_masked_upper_triangular_flattened(list_masks=list_masks, plot_mask=False)
-            # vec_theor = Cltheor.dataextract_masked_upper_triangular_flattened(list_masks=list_masks, plot_mask=False)
-            #
-            # c = np.corrcoef(vec_data, vec_theor)[0,1]
+                if False:
+                    # old version
+                    c = Clsim.rsa_distmat_score_vs_theor(Cltheor, mask_vars_same, mask_vars_diff,
+                                                         help_context="othervars_at_least_one_diff",
+                                                         plot_and_save_mask_path=plot_and_save_mask_path)
 
-            # Collect
-            RES_VS_THEOR.append({
-                "var":var,
-                "cc":c,
-                "cc_same_context":c_same_context,
-                # "Clsim_theor":Cltheor
-            })
+                    # Also get positive control? Usually this is done by restricting analysis
+                    # to same values for a set of context vars. With one effect var of interest
+                    # - This should be all the vars that are NOT the tested var
+                    if sdir is not None:
+                        plot_and_save_mask_path = f"{sdir}/final_mask-same_ctxt-{var}.png"
+                    else:
+                        plot_and_save_mask_path = None
+                    c_same_context = Clsim.rsa_distmat_score_vs_theor(Cltheor, PLOT=False, exclude_diag=False,
+                                                                  help_context="othervars_all_same",
+                                                                  plot_and_save_mask_path=plot_and_save_mask_path)
+                else:
+                    c, c_same_context = Clsim.rsa_distmat_score_vs_theor(Cltheor,
+                                                                         vars_test_invariance_over_dict,
+                                                                         plot_and_save_mask_path=plot_and_save_mask_path)
 
-            # Also score "same vs diff"
-            restmp = Clsim.rsa_distmat_score_same_diff(var, all_vars, vars_test_invariance_over_dict, PLOT=False)
+                # # Correlation matrix between data and theoreitcal sim mats
+                # # - get upper triangular
+                # list_masks = None
+                # if vars_test_invariance_over_dict is not None:
+                #     # generate mask
+                #     ma_invar = Clsim.rsa_matindex_same_diff_mult_var_flex(
+                #         vars_test_invariance_over_dict["same"],
+                #         vars_test_invariance_over_dict["diff"])
+                #     list_masks = [ma_invar]
+                #
+                # assert Clsim.Labels == Cltheor.Labels
+                # assert Clsim.LabelsCols == Cltheor.LabelsCols
+                # vec_data = Clsim.dataextract_masked_upper_triangular_flattened(list_masks=list_masks, plot_mask=False)
+                # vec_theor = Cltheor.dataextract_masked_upper_triangular_flattened(list_masks=list_masks, plot_mask=False)
+                #
+                # c = np.corrcoef(vec_data, vec_theor)[0,1]
 
-            # Append
-            for score_name, score in restmp.items():
-                RES_VS_THEOR[-1][score_name] = score
+                # Collect
+                RES_VS_THEOR.append({
+                    "var":var,
+                    "cc":c,
+                    "cc_same_context":c_same_context,
+                    # "Clsim_theor":Cltheor
+                })
+
+                # Also score "same vs diff"
+                restmp = Clsim.rsa_distmat_score_same_diff(var, all_vars, vars_test_invariance_over_dict, PLOT=False)
+
+                # Append
+                for score_name, score in restmp.items():
+                    RES_VS_THEOR[-1][score_name] = score
 
 
     if COMPUTE_VS_THEOR_MAT:
@@ -1023,7 +1053,7 @@ def _rsagood_convert_PA_to_Cl(PAscal, grouping_vars, version_distance,
     """
     from pythonlib.cluster.clustclass import Clusters
 
-    if version_distance in ["euclidian", "pearson", "angle"]:
+    if version_distance in ["euclidian", "pearson", "angle", "_pearson_raw"]:
         use_distributional_distance = False
     elif version_distance in ["euclidian_unbiased"]:
         use_distributional_distance = True
@@ -1188,7 +1218,7 @@ def _preprocess_prune_pa_enough_data(PA, EFFECT_VARS,
                                      n_min_lev_per_var = 2,
                                      n_min_rows_per_lev = 5,
                                      n_min_rows_per_conjunction_of_var_othervar = 2,
-                                     n_min_per_conj_var = 3,
+                                     n_min_per_conj_var = 4,
                                      DEBUG=False):
     """
     Prunes PA. For each var in EFFECT_VARS, checks each level, and removes all trials of that level
@@ -1241,12 +1271,13 @@ def _preprocess_prune_pa_enough_data(PA, EFFECT_VARS,
                 levs_remove.append(lev)
                 continue
 
-            # N othervars that this level spans
-            n_each_other_var = dfres_check_thislev["n_rows_for_each_othervar_lev"].values[0]
-            n_other_var_levs_with_enough_rows = sum([n >= n_min_rows_per_conjunction_of_var_othervar for n in n_each_other_var])
-            if n_other_var_levs_with_enough_rows<2:
-                levs_remove.append(lev)
-                continue
+            if "n_rows_for_each_othervar_lev" in dfres_check_thislev:
+                # N othervars that this level spans
+                n_each_other_var = dfres_check_thislev["n_rows_for_each_othervar_lev"].values[0]
+                n_other_var_levs_with_enough_rows = sum([n >= n_min_rows_per_conjunction_of_var_othervar for n in n_each_other_var])
+                if n_other_var_levs_with_enough_rows<2:
+                    levs_remove.append(lev)
+                    continue
 
             # got this far. keep it
             levs_keep.append(lev)
@@ -1339,7 +1370,10 @@ def _preprocess_pa_check_how_much_data(PA, EFFECT_VARS):
             # n = len(dfthis) # num rows that has this level
 
             # Count n trials across each conjunction of othervars
-            n_each_other_var = tuple(grouping_count_n_samples(dfthis, [v for v in EFFECT_VARS if not v==var]))
+            if len(EFFECT_VARS)>1:
+                n_each_other_var = tuple(grouping_count_n_samples(dfthis, [v for v in EFFECT_VARS if not v==var]))
+            else:
+                n_each_other_var = []
 
             # min, median, and max
             # resthis[lev] = (
@@ -1355,13 +1389,15 @@ def _preprocess_pa_check_how_much_data(PA, EFFECT_VARS):
                 "n_levs_this_var":len(var_levs),
                 "lev":lev,
                 "n_rows_this_lev":len(dfthis), # num rows that has this level
-                "n_othervar_levs_spanned":len(n_each_other_var), # num othervar conjunctive levels spanned
-                "min_n_rows_across_othervar_levs":min(n_each_other_var), # min n rows across other-levels
-                "median_n_rows_across_othervar_levs":int(np.median(n_each_other_var)),
-                "max_n_rows_across_othervar_levs":max(n_each_other_var),
-                "n_othervar_levs_with_only_one_row":sum([n==1 for n in n_each_other_var]),
-                "n_rows_for_each_othervar_lev":n_each_other_var,
                 })
+
+            if len(n_each_other_var)>0:
+                resthis[-1]["n_othervar_levs_spanned"] = len(n_each_other_var) # num othervar conjunctive levels spanned
+                resthis[-1]["min_n_rows_across_othervar_levs"] = min(n_each_other_var) # min n rows across other-levels
+                resthis[-1]["median_n_rows_across_othervar_levs"] = int(np.median(n_each_other_var))
+                resthis[-1]["max_n_rows_across_othervar_levs"] = max(n_each_other_var)
+                resthis[-1]["n_othervar_levs_with_only_one_row"] = sum([n==1 for n in n_each_other_var])
+                resthis[-1]["n_rows_for_each_othervar_lev"] = n_each_other_var
 
         res[var] = pd.DataFrame(resthis)
 
@@ -1776,7 +1812,7 @@ def rsagood_pa_effectsize_plot_summary(DFRES_THEOR, DFRES_EFFECT_MARG, DFRES_EFF
                     plt.close("all")
 
 
-def rsagood_pa_vs_theor_plot_pairwise_distmats(DFallpa, Params, SAVEDIR, variables_plot,
+def rsagood_pa_vs_theor_plot_pairwise_distmats(DFallpa, version_distance, SAVEDIR, variables_plot,
                                                list_wl_ev_tw_plot, vars_test_invariance_over_dict,
                                                DO_AGG_TRIALS_PLOT=True):
     """
@@ -1838,8 +1874,7 @@ def rsagood_pa_vs_theor_plot_pairwise_distmats(DFallpa, Params, SAVEDIR, variabl
 
                             # Extract raw data
                             _, _, Clraw, _, PAagg, DictVarToClsimtheor = rsagood_pa_vs_theor_single(pa, [var1, var2],
-                                                                                                    Params[
-                                                                                                        "version_distance"],
+                                                                                                    version_distance,
                                                                                                     subtrmean,
                                                                                                     vars_test_invariance_over_dict=vars_test_invariance_over_dict,
                                                                                                     PLOT=True,
@@ -1851,6 +1886,79 @@ def rsagood_pa_vs_theor_plot_pairwise_distmats(DFallpa, Params, SAVEDIR, variabl
 
                             plt.close("all")
 
+def rsagood_pa_vs_theor_plot_pairwise_distmats_singlevar(DFallpa, version_distance, SAVEDIR, var_effect,
+                                               list_wl_ev_tw_plot, vars_test_invariance_over_dict,
+                                               DO_AGG_TRIALS_PLOT=True):
+    """
+    Plot pairwise distance matrices and raw activity data. This works
+    for cases with just a single var (e.g., shape), which doesnt work for other
+    which requires 2 vars.
+    PARAMS
+    - DFallpa, holds each pa
+    - Params, params, for the DFallpa
+    - SAVEDIR, base
+    - variables_plot, list of str, will plot all pairs from this
+    - list_wl_ev_tw_plot, list of tuples, each a (wl, ev, twind). Will make plots froe ach of
+    these tuples
+    - DO_AGG_TRIALS_PLOT, bool
+    NOTE: load the inputs:
+    DFRES_THEOR, DFallpa, Params, savedir = rsagood_pa_vs_theor_wrapper_loadresults(animal, date, question, version_distance, DO_AGG_TRIALS, subtract_mean_each_level_of_var)
+    """
+    savedir = f"{SAVEDIR}/replotting_pairwise_vars"
+    os.makedirs(savedir, exist_ok=True)
+    print(savedir)
+
+    # for wl in Params["list_which_level"]:
+    #     for ev in Params["list_event"]:
+    #             # for tw in Params["list_twind"]:
+    #             for tw in twinds_plot:
+
+    list_bregion = DFallpa["bregion"].unique().tolist()
+
+    DictVarToClsimtheor = {}
+    for wl, ev, tw in list_wl_ev_tw_plot:
+        # Norm of activity for each level of the variable. Then average these norms over the levels.
+        for br in list_bregion:
+
+            # Slice this df
+            a = DFallpa["which_level"]==wl
+            b = DFallpa["event"]==ev
+            c = DFallpa["bregion"]==br
+            d = DFallpa["twind"]==tw
+            dfthis = DFallpa[a & b & c & d]
+            if len(dfthis)!=1:
+                print(len(dfthis))
+                print(dfthis["which_level"].value_counts())
+                print(dfthis["event"].value_counts())
+                print(dfthis["twind"].value_counts())
+                print(dfthis["bregion"].value_counts())
+                print(sum(a))
+                print(sum(b))
+                print(sum(c))
+                print(sum(d))
+                print(wl, ev, tw, br)
+                assert False
+            pa = dfthis["pa"].values[0]
+            print(wl, ev, br, tw)
+
+            for subtrmean in [None]:
+                sdir = f"{savedir}/{wl}-{ev}-{br}-{tw}/{var_effect}"
+                os.makedirs(sdir, exist_ok=True)
+
+                # Extract raw data
+                _, _, Clraw, _, PAagg, DictVarToClsimtheor = rsagood_pa_vs_theor_single(pa, [var_effect],
+                                                                                        version_distance,
+                                                                                        subtrmean,
+                                                                                        vars_test_invariance_over_dict=vars_test_invariance_over_dict,
+                                                                                        PLOT=True,
+                                                                                        sdir=sdir,
+                                                                                        PLOT_THEORETICAL_SIMMATS=True,
+                                                                                        COMPUTE_VS_THEOR_MAT=True,
+                                                                                        DO_AGG_TRIALS=DO_AGG_TRIALS_PLOT,
+                                                                                        DictVarToClsimtheor=DictVarToClsimtheor)
+
+                plt.close("all")
+
 def rsagood_pa_vs_theor_samecontextctrl(DFMULT_THEOR, SAVEDIR_MULT):
     """
     :param DFMULT_THEOR:
@@ -1861,6 +1969,10 @@ def rsagood_pa_vs_theor_samecontextctrl(DFMULT_THEOR, SAVEDIR_MULT):
 
     # assert "cc_same_context" in DFMULT_THEOR.columns
     # assert "EffD_CtxS" in DFMULT_THEOR.columns
+
+    DFMULT_THEOR["twind_str"] = ["_to_".join([str(tt) for tt in t]) for t in DFMULT_THEOR["twind"].tolist()]
+    DFMULT_THEOR = append_col_with_grp_index(DFMULT_THEOR, ["which_level", "twind_str"], "wl_tw", strings_compact=True)
+    DFMULT_THEOR = append_col_with_grp_index(DFMULT_THEOR, ["which_level", "event"], "wl_ev", strings_compact=True)
 
     # Derived metrics
     DFMULT_THEOR["score_CtxS"] = DFMULT_THEOR["EffD_CtxS"] - DFMULT_THEOR["EffS_CtxS"]
@@ -1874,7 +1986,7 @@ def rsagood_pa_vs_theor_samecontextctrl(DFMULT_THEOR, SAVEDIR_MULT):
     # rsagood_pa_vs_theor_plot_results(DFMULT_THEOR, SAVEDIR_MULT, yvar="score_ratio")
 
     ################
-    savedir = f"{SAVEDIR_MULT}/samecontextctrl"
+    savedir = f"{SAVEDIR_MULT}/samecontextctrl_OLD_cc"
     os.makedirs(savedir, exist_ok=True)
 
     # Second, compare cc (diff ) vs same contxt.
@@ -1905,8 +2017,20 @@ def rsagood_pa_vs_theor_samecontextctrl(DFMULT_THEOR, SAVEDIR_MULT):
                 savefig(fig, f"{savedir}/scatter-rsa_vs_effectsize-{wl}_{ev}_{tw}.pdf")
 
     ################
-    savedir = f"{SAVEDIR_MULT}/samediff_bycontext"
+    savedir = f"{SAVEDIR_MULT}/samediff_bycontext_NEW"
     os.makedirs(savedir, exist_ok=True)
+
+    try:
+        for yvar in ["EffD_CtxS", "EffS_CtxS", "EffD_CtxD", "EffS_CtxD"]:
+            fig = sns.catplot(data=DFMULT_THEOR, x="twind", y=yvar, col="bregion", hue="var",
+                              kind="point", row="wl_ev")
+            rotateLabel(fig)
+            savefig(fig, f"{savedir}/pointplot-{yvar}-bregions.pdf")
+            plt.close("all")
+    except Exception as err:
+        fig, ax = plt.subplots()
+        savefig(fig, f"{savedir}/FAILED.pdf")
+        plt.close("all")
 
     # Second, compare cc (diff ) vs same contxt.
     # - Stack, to use scatterplot.
@@ -2535,59 +2659,68 @@ def OBS_pipeline_rsa_scalar_population_MULT_PLOT_DETAILED(animal, DATE, version_
             plt.close("all")
 
 
-def rsagood_questions_dict(animal, date):
+def rsagood_questions_dict(animal, date, question=None):
     """ Return dict of questions for this animal/date
+    PARAMS:
+    - question, if None, then get all for this animal. else get this specific inputed one.
     """
 
-    ## Single prims
-    if (animal, date) in [
-            ("Pancho", 220716),
-            ("Diego", 230618),
-            ("Diego", 230619)]:
-        questions = ["SP_shape_size"]
-    ## Single prims
-    elif (animal, date) in [
-            ("Diego", 230614),
-            ("Diego", 230615)]:
-        questions = ["SP_shape_loc_TIME", "SP_shape_loc"]
-    elif (animal, date) in [
-            ("Pancho", 220715)]:
-        # JUST TESTING STROEKS = TRIALS>.. (resutsl).
-        questions = ["SP_shape_loc_STROKES", "SP_shape_loc_TIME", "SP_shape_loc"]
-    ## Single prims
-    elif (animal, date) in [
-            ("Pancho", 220606),
-            ("Pancho", 220608),
-            ("Pancho", 220609),
-            ("Pancho", 220610),
-            ("Pancho", 220918)]:
-        questions = ["SP_shape_loc_size"]
-    ## PIG
-    elif (animal, date) in [
-            ("Diego", 230628),
-            ("Diego", 230630),
-            ("Pancho", 230623),
-            ("Pancho", 230626)]:
-        questions = ["shape_loc", "seq_pred", "pig_vs_sp", "seq_ctxt"]
-    elif (animal, date) in [
-            ("Pancho", 230612),
-            ("Pancho", 230613)
-            ]:
-        questions = ["CV_shape", "CV_shape_2", "CV_loc", "CV_loc_2"][::-1]
-    elif (animal, date) in [
-            ("Diego", 231201),
-            ("Diego", 231204),
-            ("Diego", 231219),
-            ("Pancho", 230120),
-            ("Pancho", 230122),
-            ("Pancho", 230125),
-            ("Pancho", 230126),
-            ("Pancho", 230127),
-            ]:
-        questions = ["CHAR_shape_2", "CHAR_shape"]
+    if question is not None:
+        questions = [question]
     else:
-        print(animal, date)
-        assert False
+        ## Single prims
+        if (animal, date) in [
+                ("Pancho", 220717)]:
+            # (location, size)
+            questions = ["SP_loc_size"]
+        elif (animal, date) in [
+                ("Pancho", 220716),
+                ("Diego", 230618),
+                ("Diego", 230619)]:
+            questions = ["SP_shape_size", "SS_shape"]
+        ## Single prims
+        elif (animal, date) in [
+                ("Diego", 230614),
+                ("Diego", 230615)]:
+            questions = ["SP_shape_loc_TIME", "SP_shape_loc", "SS_shape"]
+        elif (animal, date) in [
+                ("Pancho", 220715)]:
+            # JUST TESTING STROEKS = TRIALS>.. (resutsl).
+            questions = ["SP_shape_loc_STROKES", "SP_shape_loc_TIME", "SP_shape_loc"]
+        ## Single prims
+        elif (animal, date) in [
+                ("Pancho", 220606),
+                ("Pancho", 220608),
+                ("Pancho", 220609),
+                ("Pancho", 220610),
+                ("Pancho", 220918)]:
+            questions = ["SP_shape_loc_size"]
+        ## PIG
+        elif (animal, date) in [
+                ("Diego", 230628),
+                ("Diego", 230630),
+                ("Pancho", 230623),
+                ("Pancho", 230626)]:
+            questions = ["shape_loc", "seq_pred", "pig_vs_sp", "seq_ctxt"]
+        elif (animal, date) in [
+                ("Pancho", 230612),
+                ("Pancho", 230613)
+                ]:
+            questions = ["CV_shape", "CV_shape_2", "CV_loc", "CV_loc_2"][::-1]
+        elif (animal, date) in [
+                ("Diego", 231201),
+                ("Diego", 231204),
+                ("Diego", 231219),
+                ("Pancho", 230120),
+                ("Pancho", 230122),
+                ("Pancho", 230125),
+                ("Pancho", 230126),
+                ("Pancho", 230127),
+                ]:
+            questions = ["CHAR_shape_2", "CHAR_shape"]
+        else:
+            print(animal, date)
+            assert False
 
     DictParamsEachQuestion = {q:rsagood_questions_params(q) for q in questions}
 
@@ -2612,6 +2745,13 @@ def rsagood_questions_params(question):
     # slice_agg_slices = None
     # slice_agg_vars_to_split = None
     # events_keep = None
+    list_time_windows = [
+        (-0.5, -0.3),
+        (-0.3, -0.1),
+        (-0.1, 0.1),
+        (0.1, 0.3),
+        (0.3, 0.5),
+        ]
 
     ##### Use specific datasets for specific questions.
     if question=="seq_pred":
@@ -3110,6 +3250,69 @@ def rsagood_questions_params(question):
         plot_pairwise_distmats_twinds = [
             ("dummy", "dummy", "dummy")
         ]
+
+    elif question=="SS_shape":
+        # Substrokes, shapes (strokes) vs. substroke features (category)
+
+        ## Params which apply across all which_level
+        effect_vars = ["shape", "dist_angle", "index_within_stroke"]
+        list_which_level = ["substroke"] # Whihc which_level to keep
+
+        ## For "stroke" and "stroke_off" which_levels
+        exclude_last_stroke=False
+        exclude_first_stroke=False
+        keep_only_first_stroke=False
+        min_taskstrokes = 1
+        max_taskstrokes = 5
+        THRESH_clust_sim_max = None
+
+        ## Params which apply AFTER you have concated across which_level
+        # Which events to prune to
+        events_keep = ['00_substrk']
+        ANALY_VER = "singleprim"
+
+        # If this requires slicing and agging DFallpa
+        slice_agg_slices = None
+        slice_agg_vars_to_split = None
+
+        list_subtract_mean_each_level_of_var = [None]
+        list_vars_test_invariance_over_dict = [
+            {"same":["index_within_stroke"], "diff":["shape"]},
+            {"same":["index_within_stroke"], "diff":["dist_angle"]},
+            None,
+        ]
+
+        # Which variables to plot all the pairwise distmats for
+        plot_pairwise_distmats_variables = ["shape", "dist_angle"]
+        plot_pairwise_distmats_twinds = [
+            ("substroke", "00_substrk", (-0.1, 0)),
+        ]
+
+        list_time_windows = [
+            (-0.3, -0.2),
+            (-0.2, -0.1),
+            (-0.1, 0.),
+            (0, 0.1),
+            (0.1, 0.2),
+            (0.2, 0.3),
+            ]
+    elif question=="SS_shape_firstss":
+        # The first substroke only, which removes influence of
+        # within-stroke context of sequence of substrokes.
+
+        q_params = rsagood_questions_params("SS_shape")
+
+        q_params["keep_only_first_stroke"] = True
+        # Altenratiebly, prun it.
+        # dict_vars_levels_prune = {
+        #     "epoch":["oneloc_varyshp"]
+        # }
+
+        q_params["effect_vars"] = ["shape", "dist_angle"]
+        q_params["list_vars_test_invariance_over_dict"] = [None]
+
+        return q_params
+
     else:
         print(question)
         assert False
@@ -3139,6 +3342,13 @@ def rsagood_questions_params(question):
     for var in plot_pairwise_distmats_variables:
         assert var in effect_vars
 
+    tmp = []
+    for x in list_vars_test_invariance_over_dict:
+        if x is not None and len(x["same"])==0 and len(x["diff"])==0:
+            tmp.append(None)
+        else:
+            tmp.append(x)
+    list_vars_test_invariance_over_dict = tmp
 
     q_params = {
         "effect_vars":effect_vars,
@@ -3162,6 +3372,7 @@ def rsagood_questions_params(question):
         "list_vars_test_invariance_over_dict":list_vars_test_invariance_over_dict,
         "dict_vars_levels_prune":dict_vars_levels_prune,
         "ANALY_VER":ANALY_VER,
+        "list_time_windows":list_time_windows
     }
 
     return q_params
