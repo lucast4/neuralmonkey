@@ -736,7 +736,8 @@ class PopAnal():
 
     def _slice_by_time_window(self, t1, t2, return_as_popanal=False,
             fail_if_times_outside_existing=True, version="raw", 
-            subtract_this_from_times = None):
+            subtract_this_from_times = None,
+            method_if_not_enough_time="keep_and_prune_time"):
         """ Slice population by time window, where
         time is based on self.Times
         PARAMS;
@@ -752,15 +753,26 @@ class PopAnal():
         """
 
         if sum(self.Times<=t1)==0 or sum(self.Times>=t2)==0:
+            # Not enough time data.
             if fail_if_times_outside_existing:
+                # Then throw error
                 print("asking for times outside data range; (min, max that exists, t1, t2):", min(self.Times), max(self.Times), t1, t2)
                 from pythonlib.tools.exceptions import NotEnoughDataException
                 raise NotEnoughDataException
-            # else:
-            #     if return_as_popanal:
-            #         return None
-            #     else:
-            #         return None, None
+            else:
+                # Then silently deal with it.
+                if method_if_not_enough_time=="keep_and_prune_time":
+                    # Then keep data, and just purne the time window
+                    pass
+                elif method_if_not_enough_time=="return_none":
+                    # Then abort, and return Nones
+                    if return_as_popanal:
+                        return None
+                    else:
+                        return None, None
+                else:
+                    print(method_if_not_enough_time)
+                    assert False, "code it"
 
         if not isinstance(self.Times, list):
             self.Times = np.array(self.Times)

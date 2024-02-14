@@ -6487,7 +6487,8 @@ class Session(object):
     def smoothedfr_extract_timewindow_bytimes(self, trials, times, 
         sites, pre_dur=-0.1, post_dur=0.1,
         fail_if_times_outside_existing=True,
-        idx_trialtime_all=None): 
+        idx_trialtime_all=None,
+        method_if_not_enough_time="keep_and_prune_time"):
         """ [GOOD, FLEXIBLE] Extract smoothed fr dataset for these trials and times.
         PARAMS:
         - trials, list of trials in sn.
@@ -6522,19 +6523,19 @@ class Session(object):
             # slice to desired channels
             pa = pa._slice_by_chan(sites) 
 
-            assert fail_if_times_outside_existing==True, "toehrwise deal with possible change in size of output."
+            # assert fail_if_times_outside_existing==True, "toehrwise deal with possible change in size of output."
             # Extract snip
             t1 = time_align + pre_dur
             t2 = time_align + post_dur
             pa = pa._slice_by_time_window(t1, t2, return_as_popanal=True,
                 fail_if_times_outside_existing=fail_if_times_outside_existing,
-                subtract_this_from_times=time_align)
+                subtract_this_from_times=time_align,
+                method_if_not_enough_time=method_if_not_enough_time)
 
             if pa is None:
                 # Then skip this
                 assert fail_if_times_outside_existing==False, "how else coudl you have gotten None?"
-                # print(t1, t2)
-                # print(tr, time_align)
+                assert method_if_not_enough_time=="return_none"
                 continue
             
             # save this slice
@@ -8982,7 +8983,8 @@ class Session(object):
         list_events, 
         pre_dur= -0.4, post_dur= 0.4, features_to_get_extra=None, 
         fr_which_version="sqrt", DEBUG=False,
-        fail_if_times_outside_existing=True):
+        fail_if_times_outside_existing=True,
+        method_if_not_enough_time="return_none"):
         """ Helper to extract snippets in flexible way, saligend to each event.
         PARAMS:
         - sites, list of ints to extract.
@@ -8991,6 +8993,10 @@ class Session(object):
         - features_to_get_extra, list of str, features to extract from DS. fails if these dont
         already exist in DS.
         - SANITY_CHECK, if True, checks alignment across diff columns of df during extraction, no mistakes.
+        - method_if_not_enough_time, str, note: Make it method_if_not_enough_time="return_none" and fail_if_times_outside_existing==None,
+        # as Kedar was using this for fixations... So this throws out fixations that are
+        # too close to edge of trial. In general should determine this outside the funcgtion.
+
         RETURNS:
         - dataframe, each row a (chan, event).
         """
@@ -9093,7 +9099,8 @@ class Session(object):
         pa, trials_all, times_all, idx_trialtime_all = self.smoothedfr_extract_timewindow_bytimes(trials_all, times_all, sites, 
             pre_dur=pre_dur, post_dur=post_dur, 
             fail_if_times_outside_existing=fail_if_times_outside_existing,
-            idx_trialtime_all=idx_trialtime_all) 
+            idx_trialtime_all=idx_trialtime_all,
+            method_if_not_enough_time=method_if_not_enough_time)
 
         # Prune OUT to just those trials that have full data...
         OUT = [O for O in OUT if O["idx_trialtime"] in idx_trialtime_all]
