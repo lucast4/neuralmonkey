@@ -1483,7 +1483,8 @@ def trajgood_plot_colorby_splotby(df, var_color_by, var_subplots, dims=(0,1),
                                    time_bin_size=None,
                                    markersize=6, marker="o",
                                    text_plot_pt1=None,
-                                   alpha=0.2):
+                                   alpha=0.5,
+                                   ntrials=5):
     """ [GOOD], to plot trajectories colored by one variable, and split across subplots by another
     variable.
     PARAMS:
@@ -1491,6 +1492,7 @@ def trajgood_plot_colorby_splotby(df, var_color_by, var_subplots, dims=(0,1),
     --- "z", activity (ndims, ntrials, ntimes),
     --- "z_scalar", scalarized version (ndims, ntrials, 1) in "z_scalar".
     --- "times", matching ntimes
+    - mean_over_trials, bool, if True, then plots mean, if False, plots ntrials random trials.
     Other columns are flexible, defnining varialbes. must have var_color_by, var_subplots
     """
     from pythonlib.tools.plottools import makeColors
@@ -1523,21 +1525,36 @@ def trajgood_plot_colorby_splotby(df, var_color_by, var_subplots, dims=(0,1),
                 # times_to_mark_markers = ["d"]
                 # time_bin_size = 0.05
 
+            times = row["times"]
+            color_for_trajectory = map_lev_to_color[row[var_color_by]]
+
             if mean_over_trials:
                 x = X[dims, :] # (dims, trials, times)
                 assert len(x.shape)==3
                 x = np.mean(x, axis=1)
-            else:
-                x = X[dims, :] # (dims, trials, times)
-                assert False, "iterate over trials and plot each one."
 
-            times = row["times"]
-            color_for_trajectory = map_lev_to_color[row[var_color_by]]
-            statespace_plot_single(x, ax, color_for_trajectory,
-                                   times, times_to_mark, times_to_mark_markers,
-                                   time_bin_size = time_bin_size,
-                                   markersize=markersize, marker=marker,
-                                   text_plot_pt1=text_plot_pt1, alpha=alpha)
+                statespace_plot_single(x, ax, color_for_trajectory,
+                                       times, times_to_mark, times_to_mark_markers,
+                                       time_bin_size = time_bin_size,
+                                       markersize=markersize, marker=marker,
+                                       text_plot_pt1=text_plot_pt1, alpha=alpha)
+            else:
+                # Loop over all trials
+                # Pick subset of trials
+                n = X.shape[1]
+                if n>ntrials:
+                    import random
+                    trials_get = random.sample(range(n), ntrials)
+                else:
+                    trials_get = range(n)
+
+                for tr in trials_get:
+                    x = X[dims, tr, :] # (dims, times)
+                    statespace_plot_single(x, ax, color_for_trajectory,
+                                           times, times_to_mark, times_to_mark_markers,
+                                           time_bin_size = time_bin_size,
+                                           markersize=markersize, marker=marker,
+                                           text_plot_pt1=text_plot_pt1, alpha=alpha)
 
     # Add legend to the last axis
     legend_add_manual(ax, map_lev_to_color.keys(), map_lev_to_color.values(), 0.2)

@@ -1096,55 +1096,70 @@ class PopAnal():
 
         return PA
 
-    def norm_by_label_subtract_mean(self, dim_str, dim_variable):
+    def norm_by_label_subtract_mean(self, dim_str, dim_variable_grp):
         """ Returns PA of same size as self, but subtracting the mean
         fr for each level of dim_variable. I.e., gets the noise after taking
         into account the level.
+        PARAMS:
+        - dim_variable_grp, list of str
+        RETURNS:
+            - copy of PA, same size as self, guarandeed to have same ordering of
+            chans and times, but NOT guaranteed to have same ordering of trials.
         """
 
-        assert False, "copied from NB, where I did test, but not htested here."
-        # slice and split
-        list_pa, list_lev = PA.split_by_label("trials", var)
+        # First, split into separate pa, one for each level of <dim_variable>
+        list_pa = self.split_by_label(dim_str, dim_variable_grp)[0]
 
-        # for each lev, normalize it
-        for pa, lev in zip(list_pa, list_lev):
-            print(lev, pa.X.shape)
-            
-            df = pamean.Xlabels["trials"]
-            inds = df[df[var]==lev].index.tolist()
-            assert len(inds)==1
-            xmean = pamean.X[:, inds[0], :][:,None, :] # (nchans, 1, ntimes)
-            
-            # subtract the mean
-            pa.X = pa.X - xmean
-            
+        # Subtract mean for each, then concat.
+        list_pa_norm = []
+        for pa in list_pa:
+            list_pa_norm.append(pa.norm_subtract_trial_mean_each_timepoint())
+        PA = concatenate_popanals(list_pa_norm, "trials")
 
-        # concatenate 
-        from neuralmonkey.classes.population import concatenate_popanals
-        PAnorm = concatenate_popanals(list_pa, "trials")
+        assert PA.Chans == self.Chans
+        assert check_identical_times([self, PA])==True
+        assert len(PA.Trials)==len(self.Trials)
 
+        return PA
 
-    def split_by_label(self, dim_str, dim_variable):
+    def split_by_label(self, dim_str, dim_variable_grp):
         """ Splits self into multiple smaller PA, each with a single level for
-        dim_variable. Uses dataframe self.Xlabels[dim_str].
+        dim_variable_grp. Uses dataframe self.Xlabels[dim_str].
         PARAMS:
         - dim_str, which dim in self.X to check. e.g,., "trials"
-        - dim_variable, string, e.g., "gridsize"
+        - dim_variable_grp, list of string, e.g., "gridsize"
         RETURNS:
         - ListPA, e.g., each PA has only trials with a single level of gridsize
         - list_levels, list of str, maches ListPA
         """
 
+        if isinstance(dim_variable_grp, str):
+            # Legacy code.
+            dim_variable_grp = [dim_variable_grp]
+            IS_STRING = True
+        else:
+            IS_STRING = False
+
+        # make dummy variable
+        from pythonlib.tools.pandastools import append_col_with_grp_index
+        self.Xlabels[dim_str] = append_col_with_grp_index(self.Xlabels[dim_str],
+                                                          dim_variable_grp,
+                                                          "_dummy", use_strings=False)
+
         # 1) Get list of levels
-        list_levels = self.Xlabels[dim_str][dim_variable].unique().tolist()
+        list_levels = self.Xlabels[dim_str]["_dummy"].unique().tolist()
 
         # 2) For each level, return a single PA
         ListPA = []
         for lev in list_levels:
             # slice
-            pathis = self.slice_by_labels(dim_str, dim_variable, [lev])
+            pathis = self.slice_by_labels(dim_str, "_dummy", [lev])
             ListPA.append(pathis)
-        
+
+        if IS_STRING:
+            # convert back to string (legacy code)
+            list_levels = [x[0] for x in list_levels]
+
         return ListPA, list_levels
 
     #######################
