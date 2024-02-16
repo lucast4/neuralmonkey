@@ -29,8 +29,8 @@
 import numpy as np
 
 
-def _model_score(X, y, version="lin_svm", model_params=None, do_train_test_split=False, 
-    niter=10, mean_score=False):
+def _model_score_OBSOLETE(X, y, version="lin_svm", model_params=None, do_train_test_split=False,
+                          niter=10, mean_score=False):
     """ Quickly fit and score model
     """
     if model_params is None:
@@ -45,11 +45,16 @@ def _model_score(X, y, version="lin_svm", model_params=None, do_train_test_split
         return list_scores
 
 
-def _model_fit(X, y, version="lin_svm", model_params=None, do_train_test_split=False):
+def _model_fit(X, y, version="lin_svm", model_params=None, do_train_test_split=False,
+                do_center=True, do_std=True):
     """ 
     PARAMS:
     - X, (nsamp, nfeat), features
     - y, (nsamp, ), labels
+
+    See this for chaining a PCA:
+    https://scikit-learn.org/stable/auto_examples/compose/plot_digits_pipe.html
+
     """
     import warnings
     from sklearn.svm import SVC
@@ -64,7 +69,10 @@ def _model_fit(X, y, version="lin_svm", model_params=None, do_train_test_split=F
 
     if version=="lin_svm":
         # Linear SVM
-        mod = Pipeline([('scaler', StandardScaler()), (version, LinearSVC(**model_params))])
+        mod = Pipeline([
+            ('scaler', StandardScaler(with_mean=do_center, with_std=do_std)),
+            (version, LinearSVC(**model_params,  max_iter=10000, dual=True))]
+        )
     else:
         assert False, "code it"
 

@@ -120,8 +120,6 @@ def popanal_preprocess_scalar_normalization(PA, grouping_vars, subtract_mean_eac
     if subtract_mean_each_level_of_var is None:
         subtract_mean_each_level_of_var = "IGNORE"
     else:
-        print(subtract_mean_each_level_of_var)
-
         assert isinstance(subtract_mean_each_level_of_var, str)
 
     # 1) First, rescale all FR (as in Churchland stuff), but isntead of using
@@ -1222,20 +1220,133 @@ def plot_variance_explained_timecourse(SP, animal, DATE, pca_trial_agg_grouping,
             print("--- SAVING AT:", f"{savedir}/var_{var_dat}.pdf")
         plt.close("all")
 
+
+def _trajgood_make_colors_discrete_var(labels):
+    """
+    Helper to make colors for plotting, mapping from unque item
+    in labels to rgba color. Can be continuous or discrete (and will
+    check this automatically).
+    PARAMS:
+    - labels, values, either cont or discrete.
+    RETURNS:
+    - dict,  mapping from value to color (if discrete), otherw sie None
+    - color_type, str, either "cont" or "discrete".
+    """
+    labels_color_uniq = sorted(list(set(labels)))
+
+    # continuous?
+    if len(labels_color_uniq)>50 and isinstance(labels_color_uniq[0], (int, np.ndarray, float)):
+        color_type = "cont"
+        # from pythonlib.tools.plottools import map_continuous_var_to_color_range as mcv
+        # valmin = min(df[var_color_by])
+        # valmax = max(df[var_color_by])
+        # def map_continuous_var_to_color_range(vals):
+        #     return mcv(vals, valmin, valmax)
+        # label_rgbs = map_continuous_var_to_color_range(df[var_color_by])
+        _map_lev_to_color = None
+    else:
+        color_type = "discr"
+        # label_rgbs = None
+        pcols = makeColors(len(labels_color_uniq))
+        _map_lev_to_color = {}
+        for lev, pc in zip(labels_color_uniq, pcols):
+            _map_lev_to_color[lev] = pc
+
+    return _map_lev_to_color, color_type
+
+def trajgood_plot_colorby_splotbydims_scalar(X, labels_color, list_dims,
+                                         overlay_mean=False, plot_text_over_examples=False,
+                                         text_to_plot=None,
+                                         alpha=0.5, SIZE=5):
+    """ [GOOD], to plot scatter of pts, colored by one variable, and split across
+    different slices (pairs of dimensions).
+    PARAMS:
+    - X, (npts, ndims)
+    - labels_color, (npts,) discrete labels for coloring.
+    - list_dims, list of 2-length iterables, holding dimensions .e,g [(0,1), (2,3)]
+    Other columns are flexible, defnining varialbes.
+    """
+    from pythonlib.tools.plottools import makeColors
+    from neuralmonkey.population.dimreduction import statespace_plot_single
+    from pythonlib.tools.plottools import legend_add_manual
+    from pythonlib.tools.plottools import plotScatterOverlay
+
+    assert len(labels_color)==X.shape[0]
+    map_lev_to_color, color_type = _trajgood_make_colors_discrete_var(labels_color)
+
+    # One subplot per othervar
+    nsplots = len(list_dims)
+    ncols = 3
+    nrows = int(np.ceil(nsplots/ncols))
+    fig, axes = plt.subplots(nrows, ncols, sharex=True, sharey=True,
+                             figsize=(ncols*SIZE, nrows*SIZE))
+    for ax, dims in zip(axes.flatten(), list_dims):
+        xs = X[:, dims[0]]
+        ys = X[:, dims[1]]
+        ax.set_title(dims)
+
+        trajgood_plot_colorby_scalar_BASE(xs, ys, labels_color, ax,
+                                          map_lev_to_color, color_type,
+                                          overlay_mean, plot_text_over_examples,
+                                          text_to_plot, alpha, SIZE)
+    return fig, axes
+
+
+def trajgood_plot_colorby_scalar_BASE(xs, ys, labels_color, ax,
+                                      map_lev_to_color=None, color_type="discr",
+                                      overlay_mean=False,
+                                      plot_text_over_examples=False, text_to_plot=None,
+                                      alpha=0.5, SIZE=5):
+    """
+    [LOW-LEVEL base plot for scatterplot]
+    Like trajgood_plot_colorby_splotby_scalar, but passing in the raw data directly, instead
+    of dataframe. Here constructs datafrane and runs for you.
+    :param xs: (n, 1)
+    :param ys: (n,1)
+    :param labels_color: len(n) list
+    :param labels_subplot: can be None to skip splitting by subplot
+    :return:
+    """
+    from pythonlib.tools.plottools import plotScatterOverlay
+
+    if len(xs.shape)==1:
+        xs = xs[:, None]
+    if len(ys.shape)==1:
+        ys = ys[:, None]
+    assert xs.shape[1]==1
+    assert ys.shape[1]==1
+
+    X = np.concatenate((xs, ys), axis=1)
+
+    # Overwrite with user inputed
+    if map_lev_to_color is None:
+        map_lev_to_color, color_type = _trajgood_make_colors_discrete_var(labels_color)
+
+    plotScatterOverlay(X, labels_color, alpha=alpha, ax=ax, overlay_mean=overlay_mean,
+                       plot_text_over_examples=plot_text_over_examples,
+                       text_to_plot=text_to_plot, map_lev_to_color=map_lev_to_color,
+                       SIZE=SIZE, color_type=color_type)
+
 def trajgood_plot_colorby_splotby_scalar_helper(xs, ys, labels_color, labels_subplot,
                                                 color_var, subplot_var,
                                                 overlay_mean=False, plot_text_over_examples=False,
-                                             text_to_plot=None,
-                                             alpha=0.5, SIZE=7):
+                                                 text_to_plot=None,
+                                                 alpha=0.5, SIZE=5):
     """
     Like trajgood_plot_colorby_splotby_scalar, but passing in the raw data directly, instead
     of dataframe. Here constructs datafrane and runs for you.
     :param xs: (n, 1)
     :param ys: (n,1)
     :param labels_color: len(n) list
-    :param labels_subplot:
+    :param labels_subplot: can be None to skip splitting by subplot
     :return:
     """
+
+    if len(xs.shape)==1:
+        xs = xs[:, None]
+    if len(ys.shape)==1:
+        ys = ys[:, None]
+
     assert xs.shape[1]==1
     assert ys.shape[1]==1
 
@@ -1251,6 +1362,7 @@ def trajgood_plot_colorby_splotby_scalar_helper(xs, ys, labels_color, labels_sub
                                          overlay_mean, plot_text_over_examples,
                                                 text_to_plot, alpha, SIZE)
 
+
 def trajgood_plot_colorby_splotby_scalar(df, var_color_by, var_subplots,
                                          overlay_mean=False, plot_text_over_examples=False,
                                          text_to_plot=None,
@@ -1261,6 +1373,7 @@ def trajgood_plot_colorby_splotby_scalar(df, var_color_by, var_subplots,
     - df, standard form for holding trajectories, each row holds; one condition:
     --- "x", each a (1,) array, the value to plot on x coord (e.g,, dim1)
     --- "y", see "x"
+    - var_subplots, None if no subplots
     Other columns are flexible, defnining varialbes.
     """
     from pythonlib.tools.plottools import makeColors
@@ -1269,13 +1382,34 @@ def trajgood_plot_colorby_splotby_scalar(df, var_color_by, var_subplots,
     from pythonlib.tools.plottools import plotScatterOverlay
 
     # Color the labels
-    from pythonlib.tools.plottools import makeColors
     # One color for each level of effect var
-    labellist = set(df[var_color_by])
-    pcols = makeColors(len(labellist))
-    map_lev_to_color = {}
-    for lev, pc in zip(labellist, pcols):
-        map_lev_to_color[lev] = pc
+
+    labellist = df[var_color_by].tolist()
+    map_lev_to_color, color_type = _trajgood_make_colors_discrete_var(labellist)
+
+    # # continuous?
+    # from pythonlib.tools.plottools import makeColors
+    # if len(labellist)>50 and isinstance(labellist[0], (int, np.ndarray, float)):
+    #     color_type = "cont"
+    #     # from pythonlib.tools.plottools import map_continuous_var_to_color_range as mcv
+    #     # valmin = min(df[var_color_by])
+    #     # valmax = max(df[var_color_by])
+    #     # def map_continuous_var_to_color_range(vals):
+    #     #     return mcv(vals, valmin, valmax)
+    #     # label_rgbs = map_continuous_var_to_color_range(df[var_color_by])
+    #     map_lev_to_color = None
+    # else:
+    #     color_type = "discr"
+    #     # label_rgbs = None
+    #     pcols = makeColors(len(labellist))
+    #     map_lev_to_color = {}
+    #     for lev, pc in zip(labellist, pcols):
+    #         map_lev_to_color[lev] = pc
+
+    if var_subplots is None:
+        # dummy
+        df["_dummy"] = "dummy"
+        var_subplots = "_dummy"
 
     # One subplot per othervar
     levs_other = sorted(df[var_subplots].unique().tolist())
@@ -1289,17 +1423,57 @@ def trajgood_plot_colorby_splotby_scalar(df, var_color_by, var_subplots,
 
         xs = np.stack(dfthis["x"])
         ys = np.stack(dfthis["y"])
-        X = np.concatenate((xs, ys), axis=1)
-
-        # lab = pd.factorize(dflab[color_var])[0]
-        labels = dfthis[var_color_by].values
-
-        plotScatterOverlay(X, labels, alpha=alpha, ax=ax, overlay_mean=overlay_mean,
-                           plot_text_over_examples=plot_text_over_examples,
-                           text_to_plot=text_to_plot, map_lev_to_color=map_lev_to_color,
-                           SIZE=SIZE)
+        labels_color = dfthis[var_color_by].values
+        trajgood_plot_colorby_scalar_BASE(xs, ys, labels_color, ax,
+                                          map_lev_to_color, color_type,
+                                          overlay_mean, plot_text_over_examples,
+                                          text_to_plot, alpha, SIZE)
 
     return fig, axes
+
+def trajgood_construct_df_from_raw(X, times, labels, labelvars):
+    """
+    Generate df that can pass into all trajgood plotting functions.
+    PARAMS:
+    - X, neural data, shape (chans, trials, times).
+    - times, timestaps, matches X.shape[2]
+    - labels, list of tuples, one for each trial, holding the value of labels for that trial.
+    - labelvars, list of str, the names of the label variables, matching the order within each
+    tuple in labels.
+    RETURNS:
+    - df, standard form for holding trajectories, each row holds; one condition (e.g., shape,location):
+    --- "z", activity (ndims, ntrials, ntimes),
+    --- "z_scalar", scalarized version (ndims, ntrials, 1) in "z_scalar".
+    --- "times", matching ntimes
+    """
+    from pythonlib.tools.pandastools import grouping_append_and_return_inner_items
+
+    assert len(times)==X.shape[2]
+
+    dflab = pd.DataFrame(labels, columns=labelvars)
+
+    # Get indices for each grouping level
+    groupdict = grouping_append_and_return_inner_items(dflab, labelvars, sort_keys=True)
+
+    # Get sliced pa for each grouping level
+    out = []
+    for grp in groupdict:
+        inds = groupdict[grp]
+
+        z = X[:, inds, :]
+        z_scalar = np.mean(z, axis=2, keepdims=True)
+
+        tmp = {}
+        for lev, var in zip(grp, labelvars):
+            tmp[var] = lev
+        tmp["z"] = z
+        tmp["z_scalar"] = z_scalar
+        tmp["times"] = times
+
+        out.append(tmp)
+
+    df = pd.DataFrame(out)
+    return df
 
 
 def trajgood_plot_colorby_splotby(df, var_color_by, var_subplots, dims=(0,1),
@@ -1313,11 +1487,11 @@ def trajgood_plot_colorby_splotby(df, var_color_by, var_subplots, dims=(0,1),
     """ [GOOD], to plot trajectories colored by one variable, and split across subplots by another
     variable.
     PARAMS:
-    - df, standard form for holding trajectories, each row holds; one condition:
+    - df, standard form for holding trajectories, each row holds; one condition (e.g., shape,location):
     --- "z", activity (ndims, ntrials, ntimes),
     --- "z_scalar", scalarized version (ndims, ntrials, 1) in "z_scalar".
     --- "times", matching ntimes
-    Other columns are flexible, defnining varialbes.
+    Other columns are flexible, defnining varialbes. must have var_color_by, var_subplots
     """
     from pythonlib.tools.plottools import makeColors
     from neuralmonkey.population.dimreduction import statespace_plot_single

@@ -187,7 +187,7 @@ def decode_and_plot_iter_hyperparams(MS, DS, LIST_REGIONS, LIST_ALIGN_TO, LIST_Y
 
     """
     from neuralmonkey.analyses.prims_decode import get_traintest_split_conjunction, dftrials_slice_for_model, get_test_data_and_models, plotsummary_confusion_matrix
-    from neuralmonkey.population.classify import _model_fit, _model_score
+    from neuralmonkey.population.classify import _model_fit, _model_score_OBSOLETE
     import pandas as pd
     from pythonlib.tools.pandastools import replaceNone
     import seaborn as sns

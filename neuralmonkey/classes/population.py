@@ -1147,6 +1147,26 @@ class PopAnal():
         
         return ListPA, list_levels
 
+    #######################
+    def dataextract_split_by_label_grp_for_statespace(self, grpvars):
+        """
+        Return a dataframe, where each row is a single level of conjunctive grpvars,
+        holding all trials. Useful for state space traj plotting etc, e.g.,
+        trajgood_plot_colorby_splotby().
+
+        RETURNS:
+        - df, standard form for holding trajectories, each row holds; one condition (e.g., shape,location):
+        --- "z", activity (ndims, ntrials, ntimes),
+        --- "z_scalar", scalarized version (ndims, ntrials, 1) in "z_scalar".
+        --- "times", matching ntimes
+        """
+        from neuralmonkey.analyses.state_space_good import trajgood_construct_df_from_raw
+        labels = self.Xlabels["trials"].loc[:, grpvars]
+        labelvars = grpvars
+        df = trajgood_construct_df_from_raw(self.X, self.Times, labels, labelvars)
+        return df
+
+    #######################
     def reshape_by_splitting(self):
         """
         Reshape self into new PA with PA.X.shape = (1, m*k, t), instead of
@@ -1192,7 +1212,7 @@ class PopAnal():
 
 
     def slice_and_agg_wrapper(self, along_dim, grouping_variables, grouping_values=None,
-            agg_method = "mean", return_group_dict=False):
+            agg_method = "mean", return_group_dict=False, return_list_pa=False):
         """ Flexibly aggregate neural data along any of the three dimensions, using
         any variable, etc. Returns PA where each level of the grouping
         variable is a single "trial" (after averaging over all trials with that level).
@@ -1258,6 +1278,9 @@ class PopAnal():
             dat[var] = vals
         dflab = pd.DataFrame(dat)
         pa_all.Xlabels[along_dim_str] = dflab
+
+        if return_list_pa:
+            return list_pa, list_grplevel
 
         if return_group_dict:
             return pa_all, groupdict
