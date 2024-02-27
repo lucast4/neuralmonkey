@@ -1,3 +1,12 @@
+"""
+For plotting of state space, focus on DPCA, including splitting subplots by one variable and coloring by the other.
+And also scalar plots.
+
+This is good repo of state-space plotting codes.
+
+Notebook: 240128_snippets_demixed_PCA
+"""
+
 from neuralmonkey.classes.snippets import load_and_concat_mult_snippets
 from neuralmonkey.classes.session import load_mult_session_helper
 import os
@@ -290,6 +299,7 @@ def plot_all_results_single(dpca, Z, effect_vars, params_dpca, savedir):
 
 
     ###### SEPARATE SUBPLOTS BY OTHERVAR
+    # NOTE: This should be replaced by trajgood_plot_colorby_splotby().
     for marg, var in map_margstr_to_var.items():
         if marg in Z.keys():
             for var_effect in effect_vars:
@@ -532,25 +542,60 @@ def preprocess_pa_to_frtensor(PA, effect_vars, keep_all_margs=False):
     trialR[:] = np.nan
     print(trialR.shape)
 
+
     grpdict = grouping_append_and_return_inner_items(df, effect_vars)
+
+    # for grp in grpdict:
+    #     print(grp, " -- ", map_grp_to_idx[grp])
+    # assert False
+
+    # sorted([map_grp_to_idx[grp] for grp in grpdict]) ==
+
+    min_len = 100000
     for grp, inds in grpdict.items():
         print(grp, inds)
+
+        assert len(inds)>0
 
         if len(effect_vars)==1:
             print( map_grp_to_idx.keys())
             i = map_grp_to_idx[grp]
             x = PAnorm.X[:, inds, :]
             # print(x.shape)
-            trialR[:len(inds), :, i, :] = np.transpose(x, [1, 0, 2])
-            # print(trialR.shape)
-            # print(np.transpose(x, [1, 0, 2]).shape)
-            # assert False, "Correct?"
+
+            xthis = np.transpose(x, [1, 0, 2])
+            assert ~np.any(np.isnan(xthis))
+            assert xthis.shape[0]==len(inds)
+            assert xthis.shape[1]==trialR.shape[1]
+            assert xthis.shape[2]==trialR.shape[3]
+
+            trialR[:len(inds), :, i, :] = xthis
         elif len(effect_vars)==2:
             i, j = map_grp_to_idx[grp]
             x = PAnorm.X[:, inds, :]
             trialR[:len(inds), :, i, j, :] = np.transpose(x, [1, 0, 2])
         else:
             assert False
+
+        if len(inds)<min_len:
+            min_len = len(inds)
+
+    assert min_len>1, "need at least 2 trails... You should prune to remove this level from data before running"
+
+    # Make sure filled up all trials.
+    assert not np.all(np.isnan(trialR[-1, ...]))
+
+    if len(effect_vars)==1:
+        assert ~np.any(np.isnan(trialR[0, :, 0, 0]))
+        assert ~np.any(np.isnan(trialR[0, 0, :, 0]))
+        assert ~np.any(np.isnan(trialR[0, 0, 0, :]))
+    elif len(effect_vars)==2:
+        assert ~np.any(np.isnan(trialR[0, :, 0, 0, 0]))
+        assert ~np.any(np.isnan(trialR[0, 0, :, 0, 0]))
+        assert ~np.any(np.isnan(trialR[0, 0, 0, :, 0]))
+        assert ~np.any(np.isnan(trialR[0, 0, 0, 0, :]))
+    else:
+        assert False
 
     # trial-average data
     R = np.nanmean(trialR,0)
@@ -607,7 +652,8 @@ def preprocess_pa_to_frtensor(PA, effect_vars, keep_all_margs=False):
         else:
             print(labels)
             assert False
-    n_components = 6
+
+    n_components = 8
 
     params_dpca = {
         "labels":labels,
@@ -694,6 +740,9 @@ if __name__=="__main__":
                                                                 events_keep=events_keep,
                                                                 exclude_bad_areas=exclude_bad_areas)
 
+        for pa in DFallpa["pa"].values:
+            for feat in list_features_extraction:
+                assert feat in pa.Xlabels["trials"].columns
 
         # Bin times if needed
         if bin_by_time_dur is not None:
