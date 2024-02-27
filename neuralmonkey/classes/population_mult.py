@@ -11,13 +11,313 @@ import pandas as pd
 
 # (animal, date, question) --> DFallPA
 
+def dfallpa_combine_trial_strokes_from_already_loaded_DFallpa():
+    """
+
+    :return:
+    """
+    assert False, "ignore, instead use dfallpa_extraction_load_wrapper_combine_trial_strokes"
+    # NOTE: this works, but it is clunky, as does lots of reshaping and slicing in order
+    # to get the pa. Better to extract the stroke PAs separated before concating to tirals.
+
+    # Extract separate pa for each stroke index (from the single PA_STROKE), and place as new rows into the "trial" DFallPA.
+    # Guarantees:
+    # - channels match across all pa for a given brain region.
+    # - checks that shape seuqences are the same (but this only checjs up to the n strokes in sequence stored in the trial PA).
+    # Doesnt guarantee:
+    # - trialcodes may not be aligned between strokes and trials pa. Skipped forcing this, since some trials may lack a stroke index..
+
+
+    RES_DFMULT_NEW = []
+    twind_trial = (-0.6, 0.6)
+    twind_stroke = (-0.6, 0.6)
+    DEBUG = False
+
+    list_br = sorted(DFallpa["bregion"].unique().tolist())
+    assert list_br == sorted(DFallpaSTROKE["bregion"].unique().tolist())
+
+    for bregion in list_br:
+        print(bregion, " .... ")
+        wl = "trial"
+        event_trial = "03_samp" # pick any, this just for the trialcodes...
+        pa_trial = extract_single_pa(DFallpa, bregion, twind_trial, wl, event_trial)
+
+        wl = "stroke"
+        event_stroke = "00_stroke"
+        pa_stroke = extract_single_pa(DFallpaSTROKE, bregion, twind_stroke, wl, event_stroke)
+
+        ##### Check that channels match
+        assert pa_stroke.Chans==pa_trial.Chans
+        # Note: it's ok if time bins dont match.
+
+        print(pa_trial.X.shape)
+        print(pa_stroke.X.shape)
+
+        ##### Visualize the match between trial and stroke pa (print each trialcode one by one).
+        df_trial = pa_trial.Xlabels["trials"]
+        df_stroke = pa_stroke.Xlabels["trials"]
+
+        print("They have identical trialcodes: ", sorted(df_trial["trialcode"].unique().tolist()) == sorted(df_stroke["trialcode"].unique().tolist()))
+
+        list_tc = set(df_trial["trialcode"].tolist() + df_stroke["trialcode"].tolist())
+        for tc in list_tc:
+            a = df_trial.loc[df_trial["trialcode"]==tc, ["seqc_0_shape", "seqc_1_shape"]].values.tolist()
+            b = df_stroke.loc[df_stroke["trialcode"]==tc, ["stroke_index", "shape_oriented"]].values.tolist()
+
+            if DEBUG:
+                s = f"{tc} -- {a} -- {b}"
+                print(s)
+
+            # Check that shapes in order match
+            tmp_b = [bb[1] for bb in b][:2]
+            n = len(tmp_b)
+            tmp_a = a[0][:n]
+            assert tmp_a == tmp_b
+        print("GOOD! trialcodes match exaclty, and sequence of shapes matches, checked to the extent that they are stored in df_trial")
+
+        ##### GET SHARED LABELS (across trial and stroke)
+        # Make a dataframe of variables, each row a trialcode, which maps from trialcode to variables
+        # that will be used in general across trial and stroke level pa.
+        n_strokes_get = 3
+        resthis = []
+        for tc in list_tc:
+
+            resthis.append({
+                "trialcode":tc,
+            })
+
+            map_var_to_value = {}
+            for si_get in range(n_strokes_get):
+                tmp = df_stroke[(df_stroke["trialcode"]==tc) & (df_stroke["stroke_index"]==si_get)]
+                if len(tmp)==0:
+                    sh = "IGN"
+                    loc = ("IGN",)
+                elif len(tmp)==1:
+                    sh = tmp["shape_oriented"].values[0]
+                    loc = tmp["gridloc"].values[0]
+                else:
+                    print(tmp)
+                    assert False
+
+                map_var_to_value[f"seqc_{si_get}_shape"] = sh
+                map_var_to_value[f"seqc_{si_get}_loc"] = loc
+                resthis[-1][f"seqc_{si_get}_shape"] = sh
+                resthis[-1][f"seqc_{si_get}_loc"] = loc
+        dflab = pd.DataFrame(resthis)
+
+        ##### COLLECT - for each stroke index, extract a slice of pa_stroke that is just that stroke index.
+        for stroke_index_get in range(max(df_stroke["stroke_index"])+1):
+            inds_keep = df_stroke[df_stroke["stroke_index"]==stroke_index_get].index.tolist()
+            pa_tmp = pa_stroke.slice_by_dim_indices_wrapper("trials", inds_keep, reset_trial_indices=True)
+            # PA_EACH_STROKE_INDEX[stroke_index_get] = pa_tmp
+
+            # Assign a new column for shape, which matches terminology of "trial" level data
+            pa_tmp.labels_features_input_from_dataframe_merge_append(dflab)
+            # pa_tmp.Xlabels["trials"][f"seqc_{stroke_index_get}_shape"] = pa_tmp.Xlabels["trials"]["shape_oriented"]
+            # pa_tmp.Xlabels["trials"][f"seqc_{stroke_index_get}_loc"] = pa_tmp.Xlabels["trials"]["shape_oriented"]
+
+            RES_DFMULT_NEW.append({
+                "which_level":"trial",
+                "event":f"06_on_STK_{stroke_index_get}",
+                "bregion":bregion,
+                "twind":twind_stroke,
+                "pa":pa_tmp
+            })
+
+        # For every trial-level pa, append the general variables
+        for i, row in DFallpa.iterrows():
+            if row["bregion"] == bregion:
+                try:
+                    row["pa"].labels_features_input_from_dataframe_merge_append(dflab)
+                except Exception as err:
+                    print(row)
+                    print("Probably event_trial should be changed to an event that has all the tcs that exist for this bregion...")
+
+    # Keep all
+    DFallpa = pd.concat([DFallpa, pd.DataFrame(RES_DFMULT_NEW)])
+
+    return DFallpa
+
+
+def dfallpa_extraction_load_wrapper_combine_trial_strokes(animal, date,
+                                                question_trial, question_stroke,
+                                                list_time_windows,
+                                                combine_into_larger_areas = True, exclude_bad_areas=True,
+                                                SPIKES_VERSION="tdt",
+                                                HACK_RENAME_SHAPES = True,
+                                                do_fr_normalization=False,
+                                                  check_that_shapes_match=True,
+                                                  check_that_locs_match=True,
+                                                          ):
+    """
+    Helper to load a single dataset across "trial" and "stroke" levels, and concatenate them
+    into a single DFallPA.
+
+    Will make sure that seqc_{}_shape and loc are present, making sure that seqc_{si}_shape
+    and seqc_{si}_loc are correct (within each stroke pa) and match (across trial and stroke pas).
+
+    GUarantees:
+    - chans will match, within each bregion, across all pa
+    - shapes and locations at each index will matchn between trial and strokes (if check... are both on).
+
+    Otherwise, no guarantee that PAs will have same trials.
+
+    RETURNS:
+    - DFallpaALL, each row a single pa...
+    """
+
+
+    events_keep = ['03_samp', '04_go_cue']
+    DFallpaTRIALS = dfallpa_extraction_load_wrapper(animal, date, question_trial, list_time_windows,
+                                  "trial",
+                                    events_keep, combine_into_larger_areas, exclude_bad_areas,
+                                    SPIKES_VERSION=SPIKES_VERSION,
+                                    HACK_RENAME_SHAPES = HACK_RENAME_SHAPES,
+                                                    do_fr_normalization=do_fr_normalization)
+
+    DFallpaSTROKES = dfallpa_extraction_load_wrapper(animal, date, question_stroke, list_time_windows,
+                                  "stroke",
+                                    None, combine_into_larger_areas, exclude_bad_areas,
+                                    SPIKES_VERSION=SPIKES_VERSION,
+                                    strokes_split_into_multiple_pa=True,
+                                    HACK_RENAME_SHAPES = HACK_RENAME_SHAPES,
+                                                     do_fr_normalization=do_fr_normalization)
+
+
+    # If you want to add general varaibles to all pa in both datasets, then do this, wherever
+    # Snippets is present. Decided to skip this, as is better to make sure variables are
+    # extracted earlier, when extract SP in SP.datasetbeh_preprocess_clean_by_expt.
+
+
+
+    # # For each trialcode, extract beh info that applies across all data
+    #
+    # # - Get one pa at trial level
+    # ev = DFallpa["event"].unique()[0]
+    # pa = DFallpa[DFallpa["event"]==ev]["pa"].values[0]
+    # dflab = pa.Xlabels[]
+    # list_tc = pa
+    # D = SP.datasetbeh_extract_dataset()
+    # D.seqcontext_preprocess()
+    #
+    #
+    # ntake = 5
+    # cols_take = ["trialcode"] + [f"seqc_{i}_shape" for i in range(ntake)] + [f"seqc_{i}_loc" for i in range(ntake)]
+    # dflab_all = D.Dat.loc[:, cols_take]
+    # D.Dat["trialcode"]
+    #
+    # from pythonlib.tools.pandastools import slice_by_row_label
+    # pathis["stroke_index"]
+    # import numpy as np
+    # # for each pa, append the same columns
+    # for i, row in DFallpaSTROKES.iterrows():
+    #     pathis = row["pa"]
+    #     dflab_this = pathis.Xlabels["trials"]
+    #
+    #     tmp = dflab_this["stroke_index"].unique()
+    #     assert len(tmp)==1
+    #     si = tmp[0]
+    #
+    #     tcs = dflab_this["trialcode"].tolist()
+    #
+    #     # Chekc shapes
+    #     shapes_in_dflab_all = slice_by_row_label(dflab_all, "trialcode", tcs, assert_exactly_one_each=True)[f"seqc_{si}_shape"]
+    #     shapes_in_dflab_this = dflab_this["shape_oriented"]
+    #     assert np.all(shapes_in_dflab_all==shapes_in_dflab_this), "probably a stroke was skipped before etraction to DS, therefore it skips an index..."
+    #
+    #     # Chekc locations
+    #     shapes_in_dflab_all = slice_by_row_label(dflab_all, "trialcode", tcs, assert_exactly_one_each=True)[f"seqc_{si}_loc"]
+    #     shapes_in_dflab_this = dflab_this["gridloc"]
+    #     assert np.all(shapes_in_dflab_all==shapes_in_dflab_this), "probably a stroke was skipped before etraction to DS, therefore it skips an index..."
+    #
+    #     # update the columns in pa with the global variables.
+    #     pathis.labels_features_input_from_dataframe_merge_append(dflab_all)
+
+
+    # Check that, for each stroke's pa, its shape is match to the seqc_ shaope from trials.
+    from pythonlib.tools.pandastools import slice_by_row_label
+    import numpy as np
+
+    # For each trialcode, extract beh info that applies across all data
+    # - Get one pa at trial level
+    ev = sorted(DFallpaTRIALS["event"].unique())[0] # take first, its most liekly to have all trialcodes.
+    pa = DFallpaTRIALS[DFallpaTRIALS["event"]==ev]["pa"].values[0]
+    dflab_trial = pa.Xlabels["trials"]
+
+    # for each pa in strokes, check it against dflab_trial
+    for i, row in DFallpaSTROKES.iterrows():
+        pathis = row["pa"]
+        dflab_stroke_this = pathis.Xlabels["trials"]
+
+        tmp = dflab_stroke_this["stroke_index"].unique()
+        assert len(tmp)==1
+        si = tmp[0]
+        tcs = dflab_stroke_this["trialcode"].tolist()
+
+        # Chekc shapes
+        if check_that_shapes_match:
+            shapes_in_dflab_all = slice_by_row_label(dflab_trial, "trialcode", tcs, assert_exactly_one_each=True)[f"seqc_{si}_shape"]
+            shapes_in_dflab_this = dflab_stroke_this["shape_oriented"]
+            shapes_in_dflab_this_2 = dflab_stroke_this[f"seqc_{si}_shape"]
+            if not np.all(shapes_in_dflab_all==shapes_in_dflab_this):
+                for tc, sh1, sh2 in zip(tcs, shapes_in_dflab_all, shapes_in_dflab_this):
+                    if not sh1==sh2:
+                        print(tc, sh1, sh2)
+                assert False, "probably either (i) you need to re-extract Snippets after you have just updated char cluster shapes (resaon: trial-data loads labels anew, while DS uses old labels), or (ii) a stroke was skipped before etraction to DS, therefore it skips an index..."
+            if not np.all(shapes_in_dflab_all==shapes_in_dflab_this_2):
+                for tc, sh1, sh2 in zip(tcs, shapes_in_dflab_all, shapes_in_dflab_this_2):
+                    if not sh1==sh2:
+                        print(tc, sh1, sh2)
+                assert False, "probably either (i) you need to re-extract Snippets after you have just updated char cluster shapes (resaon: trial-data loads labels anew, while DS uses old labels), or (ii) a stroke was skipped before etraction to DS, therefore it skips an index..."
+
+        # Chekc locations
+        if check_that_locs_match:
+            shapes_in_dflab_all = slice_by_row_label(dflab_trial, "trialcode", tcs, assert_exactly_one_each=True)[f"seqc_{si}_loc"]
+            shapes_in_dflab_this = dflab_stroke_this["gridloc"]
+            shapes_in_dflab_this_2 = dflab_stroke_this[f"seqc_{si}_loc"]
+            assert np.all(shapes_in_dflab_all==shapes_in_dflab_this), "probably a stroke was skipped before etraction to DS, therefore it skips an index..."
+            assert np.all(shapes_in_dflab_all==shapes_in_dflab_this_2), "probably a stroke was skipped before etraction to DS, therefore it skips an index..."
+
+    # Check that channels match within each bregions across all datasets.
+    map_br_to_chans = {}
+    for i, row in DFallpaSTROKES.iterrows():
+        br = row["bregion"]
+        if br in map_br_to_chans:
+            if not map_br_to_chans[br] == row["pa"].Chans:
+                print(map_br_to_chans[br])
+                print(row["pa"].Chans)
+                print(row)
+                assert False
+        else:
+            map_br_to_chans[br] = row["pa"].Chans
+    for i, row in DFallpaTRIALS.iterrows():
+        br = row["bregion"]
+        if br in map_br_to_chans:
+            if not map_br_to_chans[br] == row["pa"].Chans:
+                print(map_br_to_chans[br])
+                print(row["pa"].Chans)
+                print(row)
+                assert False
+        else:
+            map_br_to_chans[br] = row["pa"].Chans
+
+    ##### CONCAT
+    DFallpaALL = pd.concat([DFallpaTRIALS, DFallpaSTROKES]).reset_index(drop=True)
+    # call all wl = trial
+    DFallpaALL["which_level"] = "trial"
+
+    return DFallpaALL
+
 def dfallpa_extraction_load_wrapper_from_MS(MS, question, list_time_windows,
                                     which_level = "trial",
                                     events_keep = None,
                                     combine_into_larger_areas = True, exclude_bad_areas=True,
                                     bin_by_time_dur = None, bin_by_time_slide = None,
                                     slice_agg_slices = None, slice_agg_vars_to_split=None, slice_agg_concat_dim="trials",
-                                    HACK_RENAME_SHAPES = True):
+                                    HACK_RENAME_SHAPES = True,
+                                    substrokes_plot_preprocess=True,
+                                    strokes_split_into_multiple_pa=False,
+                                    do_fr_normalization=True):
     """ Wrapper of dfallpa_extraction_load_wrapper for loading given already loaded
     MS,
     From SP (already saved) --> DFallpa
@@ -34,17 +334,53 @@ def dfallpa_extraction_load_wrapper_from_MS(MS, question, list_time_windows,
     SP, SAVEDIR_ALL = load_and_concat_mult_snippets(MS, which_level = which_level,
         DEBUG=False)
 
+    # Dtmp = SP.datasetbeh_extract_dataset()
+    # print("3 dfafasf", Dtmp.TokensVersion)
+
     # Load a question
     DictParamsEachQuestion = rsagood_questions_dict(animal, date, question=question)
     q_params = DictParamsEachQuestion[question]
 
+    print("Question:", question)
+    print("These questions params:")
+    for k, v in q_params.items():
+        print(k, " -- ", v)
+    assert which_level in q_params["list_which_level"], "or else might run into error later."
+
     # Clean up SP and extract features
     D, list_features_extraction = SP.datasetbeh_preprocess_clean_by_expt(
-        ANALY_VER=q_params["ANALY_VER"], vars_extract_append=q_params["effect_vars"])
+        ANALY_VER=q_params["ANALY_VER"], vars_extract_append=q_params["effect_vars"],
+        substrokes_plot_preprocess=substrokes_plot_preprocess)
 
     # Keep only specific events - to make the following faster.
     if events_keep is None:
         events_keep = q_params["events_keep"]
+
+    # If this is "strokes" SP, you have option of renaming events to the stroke index, allowing to
+    # extract separate PA for each stroke index.
+    if SP.Params["which_level"] in ["stroke", "stroke_off"] and strokes_split_into_multiple_pa:
+        from pythonlib.tools.pandastools import applyFunctionToAllRows
+        if SP.Params["which_level"]=="stroke":
+            pref = "06_on_STK"
+        elif SP.Params["which_level"]=="stroke_off":
+            pref = "06_off_STK"
+        else:
+            print(SP.Params)
+            assert False, "code it"
+        # elif SP.Params["which_level"]=="substroke":
+        #     pref = "06_on_SS"
+        # elif SP.Params["which_level"]=="substroke_iff":
+        #     pref = "06_on_SS"
+
+        def F(x):
+            si = x["stroke_index"]
+            ev = f"{pref}_{si}"
+            return ev
+
+        SP.DfScalar = applyFunctionToAllRows(SP.DfScalar, F, "event")
+        SP.DfScalar["event_aligned"] = SP.DfScalar["event"]
+        SP.Params["_list_events"] = sorted(SP.DfScalar["event"].unique().tolist())
+        SP.Params["list_events_uniqnames"] = sorted(SP.DfScalar["event"].unique().tolist())
 
     ## Extract all popanals
     DFallpa = snippets_extract_popanals_split_bregion_twind(SP, list_time_windows,
@@ -91,6 +427,18 @@ def dfallpa_extraction_load_wrapper_from_MS(MS, question, list_time_windows,
             print(pa.Xlabels["trials"]["wl_ev_tw"].value_counts())
             assert isinstance(pa.Xlabels["trials"]["wl_ev_tw"].values[0], str)
 
+    # Firing rates norm
+    if do_fr_normalization:
+        from neuralmonkey.analyses.state_space_good import popanal_preprocess_scalar_normalization
+        # Normalize PA firing rates if needed
+        list_panorm = []
+        for pa in DFallpa["pa"].tolist():
+            PAnorm, PAscal, PAscalagg, fig, axes, groupdict = popanal_preprocess_scalar_normalization(pa,
+                                                                                  None,
+                                                                                            DO_AGG_TRIALS=False)
+            list_panorm.append(PAnorm)
+        DFallpa["pa"] = list_panorm
+
     return DFallpa
 
 
@@ -103,7 +451,9 @@ def dfallpa_extraction_load_wrapper(animal, date, question, list_time_windows,
                                     LOAD_FROM_RSA_ANALY=False, rsa_ver_dist="euclidian_unbiased",
                                     rsa_subtr=None, rsa_agg = True, rsa_invar=None,
                                     SPIKES_VERSION="tdt",
-                                    HACK_RENAME_SHAPES = True):
+                                    HACK_RENAME_SHAPES = True, substrokes_plot_preprocess=True,
+                                    strokes_split_into_multiple_pa=False,
+                                    do_fr_normalization=True):
 
     """ [GOOD] Hihg level to extrqact
     DFallpa, with all preprocessing steps built in, must have already extgracted Snippets.
@@ -141,72 +491,16 @@ def dfallpa_extraction_load_wrapper(animal, date, question, list_time_windows,
 
         ## Load Snippets
         MS = load_mult_session_helper(date, animal, spikes_version=SPIKES_VERSION)
-
         DFallpa = dfallpa_extraction_load_wrapper_from_MS(MS, question, list_time_windows,
                                     which_level, events_keep, combine_into_larger_areas,
                                     exclude_bad_areas, bin_by_time_dur, bin_by_time_slide,
                                     slice_agg_slices, slice_agg_vars_to_split, slice_agg_concat_dim,
-                                    HACK_RENAME_SHAPES)
+                                    HACK_RENAME_SHAPES, substrokes_plot_preprocess=substrokes_plot_preprocess,
+                                  strokes_split_into_multiple_pa=strokes_split_into_multiple_pa,
+                                                          do_fr_normalization=do_fr_normalization)
 
-        # SP, SAVEDIR_ALL = load_and_concat_mult_snippets(MS, which_level = which_level,
-        #     DEBUG=False)
-        #
-        # # Load a question
-        # DictParamsEachQuestion = rsagood_questions_dict(animal, date)
-        # q_params = DictParamsEachQuestion[question]
-        #
-        # # Clean up SP and extract features
-        # D, list_features_extraction = SP.datasetbeh_preprocess_clean_by_expt(
-        #     ANALY_VER=q_params["ANALY_VER"], vars_extract_append=q_params["effect_vars"])
-        #
-        # # Keep only specific events - to make the following faster.
-        # if events_keep is None:
-        #     events_keep = q_params["events_keep"]
-        #
-        # ## Extract all popanals
-        # DFallpa = snippets_extract_popanals_split_bregion_twind(SP, list_time_windows,
-        #                                                 list_features_extraction,
-        #                                                 HACK_RENAME_SHAPES=HACK_RENAME_SHAPES,
-        #                                                 combine_into_larger_areas=combine_into_larger_areas,
-        #                                                 events_keep=events_keep,
-        #                                                 exclude_bad_areas=exclude_bad_areas)
-        #
-        # # Bin times if needed
-        # if bin_by_time_dur is not None:
-        #     list_pa = []
-        #     for pa in DFallpa["pa"].tolist():
-        #         list_pa.append(pa.agg_by_time_windows_binned(bin_by_time_dur, bin_by_time_slide))
-        #     DFallpa["pa"] = list_pa
-        #
-        # # Aggregate PA if needed
-        # from neuralmonkey.classes.population_mult import dfpa_slice_specific_windows, dfpa_group_and_split
-        # if slice_agg_slices is not None:
-        #     # 1) slice
-        #     print(" *** Before dfpa_slice_specific_windows")
-        #     print(DFallpa["which_level"].value_counts())
-        #     print(DFallpa["event"].value_counts())
-        #     print(DFallpa["twind"].value_counts())
-        #     print("slice_agg_slices:", slice_agg_slices)
-        #     DFallpa = dfpa_slice_specific_windows(DFallpa, slice_agg_slices)
-        #
-        #     # 2) agg (one pa per bregion)
-        #     print(" *** Before dfpa_group_and_split")
-        #     print(DFallpa["which_level"].value_counts())
-        #     print(DFallpa["event"].value_counts())
-        #     print(DFallpa["twind"].value_counts())
-        #     print(slice_agg_vars_to_split)
-        #     DFallpa = dfpa_group_and_split(DFallpa, vars_to_split=slice_agg_vars_to_split, concat_dim=slice_agg_concat_dim)
-        #
-        #     print(" *** After dfpa_group_and_split")
-        #     print(DFallpa["which_level"].value_counts())
-        #     print(DFallpa["event"].value_counts())
-        #     print(DFallpa["twind"].value_counts())
-        #     print("Event, within pa:")
-        #
-        #     for pa in DFallpa["pa"].tolist():
-        #         print(pa.Xlabels["trials"]["event"].value_counts())
-        #         print(pa.Xlabels["trials"]["wl_ev_tw"].value_counts())
-        #         assert isinstance(pa.Xlabels["trials"]["wl_ev_tw"].values[0], str)
+    # cleanup
+    # for pa in DFallpa.
 
     return DFallpa
 
@@ -314,7 +608,23 @@ def load_dataset_single(animal, date, which_level):
     }
     return DFallpa, Params
 
+def extract_single_pa(DFallpa, bregion, twind, which_level = "trial", event = "03_samp"):
+    """ Quick, get a isngle pa... failing if not found.
+    """
+    a = DFallpa["which_level"]==which_level
+    b = DFallpa["event"]==event
+    c = DFallpa["bregion"]==bregion
+    d = DFallpa["twind"]==twind
 
+    tmp = DFallpa[a & b & c & d]
+    if not len(tmp)==1:
+        print(tmp)
+        assert False
+    assert len(tmp)==1
+    pa = tmp["pa"].values[0].copy()
+
+    return pa
+    
 def dfpa_extract_single_window(DFallpa, which_level, event, twind):
     """ Return df with multiple pa (rows) all with the same specific
     values for wl, ev, and tw
@@ -365,6 +675,8 @@ def dfpa_group_and_split(DFallpa, vars_to_concat=None, vars_to_split=None,
         pa concated across vars_to_concat. For the columns which were grouped (concatted),
         replaces the value with "dummy", since the old values have been combined. THey
         are still accessible within the PA itself.
+    - if concat across events, then event information will be retained in times, with
+    Times = "event_num|time".
     EXAMPLE:
         vars_to_concat = ["which_level", "event", "twind"]
         vars_to_split = None
@@ -372,16 +684,17 @@ def dfpa_group_and_split(DFallpa, vars_to_concat=None, vars_to_split=None,
     from neuralmonkey.classes.population import concatenate_popanals_flexible
 
     assert concat_dim in ["trials", "times"], "not coded yet"
-    assert "bregion" in vars_to_split, "not sure how best to ###concat bregions, since they have diff chans..."
 
     allvars = ["which_level", "event", "bregion", "twind"]
 
     # They are redundant informations.
     if vars_to_concat is None:
         assert vars_to_split is not None
+        assert "bregion" not in vars_to_split, "For now, must have this, not sure how best to ###concat bregions, since they have diff chans..."
         vars_to_concat = [var for var in allvars if var not in vars_to_split]
     else:
         assert vars_to_split is None
+        assert "bregion" not in vars_to_concat, "For now, must have this, not sure how best to ###concat bregions, since they have diff chans..."
         vars_to_split = [var for var in allvars if var not in vars_to_concat]
 
     # give a new conj var
@@ -389,7 +702,7 @@ def dfpa_group_and_split(DFallpa, vars_to_concat=None, vars_to_split=None,
         # uiseful - a conjucntionv ariable for each tw
         from pythonlib.tools.pandastools import append_col_with_grp_index
         list_pa = DFallpa["pa"].tolist()
-        list_pa_new = []
+        # list_pa_new = []
         for pa in list_pa:
             # print("HERERER", pa.Xlabels["trials"]["twind"].value_counts())
             pa.Xlabels["trials"] = append_col_with_grp_index(pa.Xlabels["trials"],
@@ -418,6 +731,7 @@ def dfpa_group_and_split(DFallpa, vars_to_concat=None, vars_to_split=None,
         # # DFallpa = pd.DataFrame({"pa":tmp})
         # DFallpa = pd.DataFrame({"pa":tmp}, index=tmp.index)
 
+
     # For the other columns which were concated, they are not presnet in output.
     # add them back, with "dummy" value
     # print(vars_to_concat)
@@ -428,6 +742,10 @@ def dfpa_group_and_split(DFallpa, vars_to_concat=None, vars_to_split=None,
     # HACKY, it returns df with column named None insted of pa.
     DFallpa["pa"] = DFallpa[None]
     del DFallpa[None]
+    #
+    # for pa in DFallpa["pa"]:
+    #     print(pa.Xlabels["trials"]["wl_ev_tw"].value_counts())
+    # assert False
 
     # HACKY - Redefine event to be conj varoiable. useful for downstream analy
     if "event" in vars_to_concat:

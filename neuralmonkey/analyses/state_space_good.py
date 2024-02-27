@@ -296,74 +296,13 @@ def snippets_extract_popanals_split_bregion_twind(SP, list_time_windows, vars_ex
     from pythonlib.tools.pandastools import append_col_with_grp_index
 
 
-    if events_keep is None:
+    if events_keep is None or len(events_keep)==0:
         events_keep = SP.Params["list_events_uniqnames"]
 
     if SAVEDIR is None and dosave:
         from pythonlib.globals import PATH_ANALYSIS_OUTCOMES
         SAVEDIR = f"{PATH_ANALYSIS_OUTCOMES}/recordings/main/SAVED_POPANALS"
         os.makedirs(SAVEDIR, exist_ok=True)
-
-    # if vars_extract_append is None:
-    #     EFFECT_VARS = []
-
-    # list_features_extraction_stroke = [
-    #                             "stroke_index", "stroke_index_fromlast", "stroke_index_fromlast_tskstks",
-    #                             "stroke_index_semantic", "stroke_index_semantic_tskstks",
-    #                             "shape_oriented", "gridloc",
-    #                             "CTXT_loc_next", "CTXT_shape_next",
-    #                             "CTXT_loc_prev", "CTXT_shape_prev",
-    #                             "gap_from_prev_angle_binned", "gap_to_next_angle_binned",
-    #                             "gap_from_prev_angle", "gap_to_next_angle",
-    #                             "distcum", "displacement", "circularity"]
-    #
-    # list_features_extraction_trial = ["trialcode", "aborted", "trial_neural", "event_time", "task_kind", "gridsize",
-    #                                   "FEAT_num_strokes_task", "FEAT_num_strokes_beh",
-    #                                   "character", "probe", "supervision_stage_new", "supervision_stage_concise",
-    #                                   "epoch_orig", "epoch", "taskgroup",
-    #                                   "char_seq",
-    #                                   "origin", "donepos"]
-    # n_strok_max = 4
-    # for i in range(n_strok_max):
-    #     for suff in ["shape", "loc", "loc_local"]:
-    #         list_features_extraction_trial.append(f"seqc_{i}_{suff}")
-    # list_features_extraction_trial.append("seqc_nstrokes_beh")
-    # list_features_extraction_trial.append("seqc_nstrokes_task")
-    #
-    # # Features that should always extract (Strokes dat)
-    # if SP.Params["which_level"] in ["stroke", "stroke_off"]:
-    #     list_features_extraction = list_features_extraction_trial + list_features_extraction_stroke
-    # elif SP.Params["which_level"]=="trial":
-    #     list_features_extraction = list_features_extraction_trial
-    # else:
-    #     print(SP.Params["which_level"])
-    #     assert False
-    #
-    # if EFFECT_VARS is None:
-    #     EFFECT_VARS = []
-    #
-    # ######################## PREPPING
-    # # get back all the outliers, since they just a single removed outlier (chan x trial) will throw out the entire trial.
-    # SP.datamod_append_outliers()
-    # SP.datamod_append_unique_indexdatapt()
-    #
-    # # Append variables by hand
-    # # Prep dataset, for later variable extraction
-    # D = SP.datasetbeh_extract_dataset()
-    # if "FEAT_num_strokes_task" not in D.Dat.columns:
-    #     D.extract_beh_features()
-    # if "char_seq" not in D.Dat.columns:
-    #     D.sequence_char_taskclass_assign_char_seq()
-    # if "seqc_nstrokes_task" not in D.Dat.columns:
-    #     D.seqcontext_preprocess()
-    #
-    # # For the rest, try to get automatically.
-    # vars_to_extract = EFFECT_VARS + list_features_extraction
-    # assert SP.datasetbeh_append_column_helper(vars_to_extract, D, stop_if_fail=True)==True # Extract all the vars here
-    #
-    # # Conjunction of stroke index and num strokes in task.
-    # if False:
-    #     SP.DfScalar = append_col_with_grp_index(SP.DfScalar, ["FEAT_num_strokes_task", "stroke_index"], "nstk_stkidx", False)
 
     if HACK_RENAME_SHAPES:
         ############# HACK - rename shapes (lumping)
@@ -375,7 +314,12 @@ def snippets_extract_popanals_split_bregion_twind(SP, list_time_windows, vars_ex
             ["V-2-1-0", "arcdeep-4-1-0", "usquare-1-1-0", "L|arcdeep-4-1-0"],
             ["V-2-3-0", "arcdeep-4-3-0", "usquare-1-3-0"],
             ["V-2-2-0", "arcdeep-4-2-0", "usquare-1-2-0"],
-            ["V-2-4-0", "arcdeep-4-4-0", "usquare-1-4-0", "L|V-2-4-0"]]:
+            ["V-2-4-0", "arcdeep-4-4-0", "usquare-1-4-0", "L|V-2-4-0"],
+            ["squiggle3-3-1-0", "zigzagSq-1-2-0"],
+            ["squiggle3-3-1-1", "zigzagSq-1-2-1"],
+            ["squiggle3-3-2-0", "zigzagSq-1-1-0"],
+            ["squiggle3-3-2-1", "zigzagSq-1-1-1"],
+        ]:
 
             # name it after the first
             name = f"L|{grp[0]}"
@@ -403,10 +347,15 @@ def snippets_extract_popanals_split_bregion_twind(SP, list_time_windows, vars_ex
     # list_features_extraction = list(set(list_features_extraction + EFFECT_VARS))
     list_bregion = SP.bregion_list(combine_into_larger_areas=combine_into_larger_areas)
 
+    if not any([e in SP.DfScalar["event"].unique().tolist() for e in events_keep]):
+        events_keep = sorted(SP.DfScalar["event"].unique().tolist())
+
     # 1) Extract population dataras
     DictEvBrTw_to_PA = {}
+    print("These events:", events_keep)
     for event in events_keep:
         if event in SP.DfScalar["event"].tolist():
+            print(event)
             # assert len(SP.Params["list_events_uniqnames"])==1, "assuming is strokes, just a single event... otherwise iterate"
             # event = SP.Params["list_events_uniqnames"][0]
             PA, _ = SP.dataextract_as_popanal_statespace(SP.Sites, event,
@@ -470,6 +419,8 @@ def snippets_extract_popanals_split_bregion_twind(SP, list_time_windows, vars_ex
                     else:
                         print("Skipping bregion (0 channels): ", bregion)
 
+    assert len(DictEvBrTw_to_PA)>0
+
     # Save it as dataframe
     tmp = []
     for k, v in DictEvBrTw_to_PA.items():
@@ -503,6 +454,12 @@ def snippets_extract_popanals_split_bregion_twind(SP, list_time_windows, vars_ex
     #     if not a==b:
     #         print(a, b)
     #         assert False, "this is old versio before 1/28 -- delete it and regenerate DFallpa"
+
+    # Also note down size of PA, in a column
+    list_shape =[]
+    for i, row in DFallpa.iterrows():
+        list_shape.append(row["pa"].X.shape)
+    DFallpa["pa_x_shape"] = list_shape
 
     ## SAVE
     if dosave:
