@@ -648,7 +648,7 @@ class PopAnal():
     # def bin_time(self):
 
 
-    def slice_by_dim_indices_wrapper(self, dim, inds):
+    def slice_by_dim_indices_wrapper(self, dim, inds, reset_trial_indices=False):
         """ Helper that is standard across the three dims (trials, times, chans),
         to use indices (i.e., not chans, but indices into chans)
         PARAMS:
@@ -656,6 +656,9 @@ class PopAnal():
         - inds: indices into self.Chans or self.Trials, or self.Times.
         (is index, NOT the value itself). if dim=="times", then inds must be len 2,
         the start and ending times, for window, inclusive.
+        - reset_trial_indices, bool, if True, then new PA will have trials 0, 1, 2, ...
+        regardless of initial trials. Useful if trials are just playibg role of index, with
+        no meaning, and meaningful trial indiices are stored in PA.Xlabels["trials"]["trialcode"]
         RETURNS:
         - PopAnal object, , copy
         - OR frmat array (chans, trials, times) if return_only_X==True
@@ -730,6 +733,10 @@ class PopAnal():
         # else:
         #     # copy all dimensions
         #     pa.Xlabels = {dim:df.copy() for dim, df in self.Xlabels.items()}
+
+        if reset_trial_indices:
+            assert dim_str=="trials", "this doesnt make sense otherwise. mistake?"
+            pa.Trials = list(range(pa.X.shape[1]))
 
         return pa
 
@@ -893,7 +900,7 @@ class PopAnal():
         REturna  new PA that has times binned in sliding windows.
         PARAMS:
         - DUR, wiodth of window, in sec
-        - SLIDE, dur to slide window, in sec
+        - SLIDE, dur to slide window, in sec. if slide is DUR then is perfect coverage.
         """
 
         # MAke new times iwndows
@@ -1347,6 +1354,38 @@ class PopAnal():
         """
         return self.labels_input(name, values, dim)
 
+    def labels_features_input_from_dataframe_merge_append(self, dflab):
+        """ Good method to merge all labeles in dflab into self.Xtrials["trials"]
+        PARAMS;
+        - dflab, rows are trialcodes, and must have at least all trialcodes that
+        exist in self.Xtrials["trials"]; can have more
+        Guarantees that trialcodes are matched.
+        If any columns already exist in self,
+        RTEURNS:
+        - appends to self.Xtrials["trials"]
+        """
+        # add the new labels
+        from pythonlib.tools.pandastools import slice_by_row_label
+
+        # Get slice of dflab matching trialcodes in self.
+        tcs = self.Xlabels["trials"]["trialcode"].tolist()
+        dflab_this = slice_by_row_label(dflab, "trialcode", tcs, assert_exactly_one_each=True,
+                           prune_to_values_that_exist_in_df=False)
+
+        # Only append the columns that are new. Also, if not new check that values are identical
+        # in self and dflab
+        cols_keep = []
+        for col in dflab_this:
+            if col in self.Xlabels["trials"] and not col=="trialcode":
+                assert np.all(self.Xlabels["trials"][col] == dflab_this[col])
+            else:
+                cols_keep.append(col)
+
+        # Merge
+        dftmp = self.Xlabels["trials"].merge(dflab_this[cols_keep], "outer", on="trialcode")
+        assert np.all(dftmp["trialcode"] == self.Xlabels["trials"]["trialcode"]), "merge error"
+        self.Xlabels["trials"] = dftmp.reset_index(drop=True)
+
     def labels_features_input_from_dataframe(self, df, list_cols, dim, overwrite=True):
         """ Assign batchwise, labels to self.Xlabels
         PARAMS:
@@ -1498,9 +1537,10 @@ class PopAnal():
         assert len(inds)==2
 
         if time_keep_only_within_window:
-            while self.Times[inds[0]]<twind[0]:
+            # inclusive.
+            while self.Times[inds[0]]<=twind[0]:
                 inds[0]+=1
-            while self.Times[inds[1]]>twind[1]:
+            while self.Times[inds[1]]>=twind[1]:
                 inds[1]-=1
 
         return inds
@@ -1827,6 +1867,13 @@ def concatenate_popanals_flexible(list_pa, concat_dim="trials"):
                                      all_pa_inherit_trials_of_pa_at_this_index=0,
                                      replace_times_with_dummy_variable=False)
 
+    elif concat_dim=="chans":
+        PA = concatenate_popanals(list_pa, "chans",
+                                  all_pa_inherit_trials_of_pa_at_this_index=0)
+    else:
+        print(concat_dim)
+        assert False
+
     # if times were replaced, what is new fake time window?
     twind = (PA.Times[0], PA.Times[-1])
 
@@ -1959,6 +2006,8 @@ def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None,
     # Concatenate Xlabels dataframe
     # - concat the dimension chosen
     from pythonlib.tools.pandastools import concat
+    #
+    # PA.Xlabels = self.Xlabels.copy()
     list_df = [pa.Xlabels[dim_str] for pa in list_pa]
     PA.Xlabels[dim_str] = concat(list_df)
 

@@ -1118,7 +1118,7 @@ def preprocess_rsa_prepare_popanal_wrapper(PA, effect_vars, exclude_last_stroke,
                                            min_taskstrokes,
                                            max_taskstrokes, keep_only_first_stroke=False,
                                            THRESH_clust_sim_max=None, **kwargs):
-    """ This (trial-level) PA, prune it to be ready for input into analyses, based on slicing into
+    """ This (stroke(?)-level) PA, prune it to be ready for input into analyses, based on slicing into
     subset of trials, etc. TAilored for sequence-related analyses (PIG), on datstroke data,
      and  RSA anaysi,
     e.g., including pruning lelvels with few trials, and ekeeping only speicifc tasksets.
@@ -1131,8 +1131,11 @@ def preprocess_rsa_prepare_popanal_wrapper(PA, effect_vars, exclude_last_stroke,
     - min_taskstrokes, only keep if the trial has this many taskstrokes.
     - max_taskstrokes,
     - keep_only_first_stroke, bool, only keep the first strokes.
-
+    RETURNS:
+        - copy of inputted PA, pruned.
     """
+
+    PA = PA.copy()
 
     if keep_only_first_stroke:
         assert exclude_first_stroke==False
@@ -1152,7 +1155,9 @@ def preprocess_rsa_prepare_popanal_wrapper(PA, effect_vars, exclude_last_stroke,
         vals = [v for v in vals if v >0]
         PA = PA.slice_by_labels("trials", "stroke_index", vals) # list(range(-10, -1)) --> [-10, ... , -2]
         assert len(PA.Xlabels["trials"])>0
-    PA = PA.slice_by_labels("trials", "FEAT_num_strokes_task", list(range(min_taskstrokes, max_taskstrokes+1))) # list(range(-10, -1)) --> [-10, ... , -2]
+
+    if min_taskstrokes is not None and max_taskstrokes is not None:
+        PA = PA.slice_by_labels("trials", "FEAT_num_strokes_task", list(range(min_taskstrokes, max_taskstrokes+1))) # list(range(-10, -1)) --> [-10, ... , -2]
     assert len(PA.Xlabels["trials"])>0
 
     # if THRESH_clust_sim_max is not None:
@@ -2791,7 +2796,6 @@ def rsagood_questions_params(question):
         # since main effects are usually differences for first and last (reaching movements), and
         # gridloc is strongly correlated with stroke index... (onset and offset)
 
-
         HACK = False # temporary, just to compare trial to stroke based analy
         # THIS requires up[daing code in analy_rsa_script to rename variables.
         # and update events_keep to include the stroke for trial data
@@ -2946,6 +2950,8 @@ def rsagood_questions_params(question):
         ]
 
     elif question=="CHAR_shape_2":
+        # NOT sure what shape_2 means.
+
         # Consistent modulation by shape across stroke indices (which are a proxy for sequential
         # context
 
@@ -2978,6 +2984,114 @@ def rsagood_questions_params(question):
         plot_pairwise_distmats_variables = ["shape_label", "stroke_index_fromlast"]
         plot_pairwise_distmats_twinds = [
             ("stroke", "00_stroke", (-0.3, -0.1)),
+        ]
+
+    elif question=="CHAR_BASE_trial":
+        # Generic, for characters, trial
+
+        # Base, for extracting PIG strokes and trial
+        effect_vars = ["seqc_0_shape"]
+        list_which_level = ["trial"] # Whihc which_level to keep
+
+        ## For "stroke" and "stroke_off" which_levels
+    # - include all strokes within sequence
+        exclude_last_stroke=False
+        exclude_first_stroke=False
+        keep_only_first_stroke=False
+        min_taskstrokes = 1
+        max_taskstrokes = 20
+
+        ## Optionally, rename variables for speicifc which_level, so that variable
+        # names match across which_level --> Helps since the analy requires all datapts
+        # to use same variable names.
+        map_varname_to_new_varname = None
+
+        ## Params which apply AFTER you have concated across which_level
+        # Which events to prune to
+        events_keep = None
+        ANALY_VER = "chartrial"
+
+        # If this requires slicing and agging DFallpa
+        slice_agg_slices = None
+        slice_agg_vars_to_split = None
+
+        list_subtract_mean_each_level_of_var = [None]
+
+        # Which variables to plot all the pairwise distmats for
+        # Which variables to plot all the pairwise distmats for
+        plot_pairwise_distmats_variables = None
+        plot_pairwise_distmats_twinds = None
+
+    elif question=="CHAR_BASE_stroke":
+        # Generic, for characters, strokes
+
+        # Base, for extracting PIG strokes and trial
+        effect_vars = ["seqc_0_shape"]
+        list_which_level = ["stroke"] # Whihc which_level to keep
+
+        ## For "stroke" and "stroke_off" which_levels
+        # - include all strokes within sequence
+        exclude_last_stroke=False
+        exclude_first_stroke=False
+        keep_only_first_stroke=False
+        min_taskstrokes = 1
+        max_taskstrokes = 20
+
+        ## Optionally, rename variables for speicifc which_level, so that variable
+        # names match across which_level --> Helps since the analy requires all datapts
+        # to use same variable names.
+        map_varname_to_new_varname = None
+
+        ## Params which apply AFTER you have concated across which_level
+        # Which events to prune to
+        events_keep = None
+        ANALY_VER = "charstrokes"
+
+        # If this requires slicing and agging DFallpa
+        slice_agg_slices = None
+        slice_agg_vars_to_split = None
+
+        list_subtract_mean_each_level_of_var = [None]
+
+        # Which variables to plot all the pairwise distmats for
+        # Which variables to plot all the pairwise distmats for
+        plot_pairwise_distmats_variables = None
+        plot_pairwise_distmats_twinds = None
+
+    elif question=="SP_novel_shape":
+        # Novel shapes, test decode, comparing ability to decode novel shapes
+        # vs. learned shapes.
+
+        ## Params which apply across all which_level
+        effect_vars = ["seqc_0_shape", "shape_is_novel_all"]
+        list_which_level = ["trial"] # Whihc which_level to keep
+
+        ## For "stroke" and "stroke_off" which_levels
+        exclude_last_stroke=False
+        exclude_first_stroke=False
+        keep_only_first_stroke=False
+        min_taskstrokes = 1
+        max_taskstrokes = 5
+        THRESH_clust_sim_max = None
+
+        ## Params which apply AFTER you have concated across which_level
+        # Which events to prune to
+        events_keep = [
+            '03_samp',
+            '06_on_strokeidx_0']
+        ANALY_VER = "singleprim"
+
+        # If this requires slicing and agging DFallpa
+        slice_agg_slices = None
+        slice_agg_vars_to_split = None
+
+        list_subtract_mean_each_level_of_var = [None]
+
+        # Which variables to plot all the pairwise distmats for
+        plot_pairwise_distmats_variables = ["seqc_0_shape"]
+        plot_pairwise_distmats_twinds = [
+            ("trial", "06_on_strokeidx_0", (-0.3, -0.1)),
+            ("trial", "03_samp", (0.3, 0.5)),
         ]
 
     elif question=="SP_shape_size":
@@ -3269,7 +3383,7 @@ def rsagood_questions_params(question):
         ## Params which apply AFTER you have concated across which_level
         # Which events to prune to
         events_keep = ['00_substrk']
-        ANALY_VER = "singleprim"
+        ANALY_VER = "substrokes_sp"
 
         # If this requires slicing and agging DFallpa
         slice_agg_slices = None
@@ -3313,6 +3427,114 @@ def rsagood_questions_params(question):
 
         return q_params
 
+    elif question=="PIG_BASE_stroke":
+        # Base, for extracting PIG strokes and trial
+        effect_vars = ["shape_oriented"]
+        list_which_level = ["stroke"] # Whihc which_level to keep
+
+        ## For "stroke" and "stroke_off" which_levels
+        # - include all strokes within sequence
+        exclude_last_stroke=False
+        exclude_first_stroke=False
+        keep_only_first_stroke=False
+        min_taskstrokes = 1
+        max_taskstrokes = 20
+
+        ## Optionally, rename variables for speicifc which_level, so that variable
+        # names match across which_level --> Helps since the analy requires all datapts
+        # to use same variable names.
+        map_varname_to_new_varname = None
+
+        ## Params which apply AFTER you have concated across which_level
+        # Which events to prune to
+        events_keep = None
+        ANALY_VER = "seqcontext"
+
+        # If this requires slicing and agging DFallpa
+        slice_agg_slices = None
+        slice_agg_vars_to_split = None
+
+        list_subtract_mean_each_level_of_var = [None]
+
+        # Which variables to plot all the pairwise distmats for
+        # Which variables to plot all the pairwise distmats for
+        plot_pairwise_distmats_variables = None
+        plot_pairwise_distmats_twinds = None
+
+    elif question=="PIG_BASE_trial":
+        # Base, for extracting PIG strokes and trial
+        effect_vars = ["seqc_0_shape"]
+        list_which_level = ["trial"] # Whihc which_level to keep
+
+        ## For "stroke" and "stroke_off" which_levels
+        # - include all strokes within sequence
+        exclude_last_stroke=False
+        exclude_first_stroke=False
+        keep_only_first_stroke=False
+        min_taskstrokes = 1
+        max_taskstrokes = 20
+
+        ## Optionally, rename variables for speicifc which_level, so that variable
+        # names match across which_level --> Helps since the analy requires all datapts
+        # to use same variable names.
+        map_varname_to_new_varname = None
+
+        ## Params which apply AFTER you have concated across which_level
+        # Which events to prune to
+        events_keep = None
+        ANALY_VER = "seqcontext"
+
+        # If this requires slicing and agging DFallpa
+        slice_agg_slices = None
+        slice_agg_vars_to_split = None
+
+        list_subtract_mean_each_level_of_var = [None]
+
+        # Which variables to plot all the pairwise distmats for
+        # Which variables to plot all the pairwise distmats for
+        plot_pairwise_distmats_variables = None
+        plot_pairwise_distmats_twinds = None
+
+    elif question=="PIG_planning_shape_loc":
+        # Focus on planning period, decoding shapes/locations.
+
+        ## Params which apply across all which_level
+        effect_vars = ["seqc_0_shape", "seqc_0_loc"]
+        list_which_level = ["trial"] # Whihc which_level to keep
+
+        ## For "stroke" and "stroke_off" which_levels
+        exclude_last_stroke=False
+        exclude_first_stroke=False
+        keep_only_first_stroke=False
+        min_taskstrokes = 1
+        max_taskstrokes = 5
+        THRESH_clust_sim_max = None
+
+        ## Params which apply AFTER you have concated across which_level
+        # Which events to prune to
+        # events_keep = [
+        #     '03_samp',
+        #     '04_go_cue',
+        #     '05_first_raise',
+        #     '06_on_strokeidx_0',
+        #     '07_off_stroke_last',
+        #     '08_doneb']
+        events_keep = [
+            '03_samp',
+            '06_on_strokeidx_0']
+        ANALY_VER = "seqcontext"
+
+        # If this requires slicing and agging DFallpa
+        slice_agg_slices = None
+        slice_agg_vars_to_split = None
+
+        list_subtract_mean_each_level_of_var = [None]
+        list_vars_test_invariance_over_dict = [None]
+
+        # Which variables to plot all the pairwise distmats for
+        plot_pairwise_distmats_variables = []
+        plot_pairwise_distmats_twinds = []
+
     else:
         print(question)
         assert False
@@ -3332,6 +3554,9 @@ def rsagood_questions_params(question):
         if len(effect_vars)>2:
             assert len(list_vars_test_invariance_over_dict)>0, "maybe you need? if want to be sure testing invar over specific vars"
 
+    if list_vars_test_invariance_over_dict is None:
+        list_vars_test_invariance_over_dict = [None]
+
     # make sure things that ened to be in "effect_vars" are there
     for vars_test_invariance_over_dict in list_vars_test_invariance_over_dict:
         if vars_test_invariance_over_dict is not None:
@@ -3339,8 +3564,6 @@ def rsagood_questions_params(question):
                 assert var in effect_vars
             for var in vars_test_invariance_over_dict["diff"]:
                 assert var in effect_vars
-    for var in plot_pairwise_distmats_variables:
-        assert var in effect_vars
 
     tmp = []
     for x in list_vars_test_invariance_over_dict:
@@ -3349,6 +3572,10 @@ def rsagood_questions_params(question):
         else:
             tmp.append(x)
     list_vars_test_invariance_over_dict = tmp
+
+    if plot_pairwise_distmats_variables is not None:
+        for var in plot_pairwise_distmats_variables:
+            assert var in effect_vars
 
     q_params = {
         "effect_vars":effect_vars,

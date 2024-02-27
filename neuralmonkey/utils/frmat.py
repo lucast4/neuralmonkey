@@ -19,7 +19,10 @@ def bin_frmat_in_time(frmat, times, time_bin_size, slide=None):
     if slide is None:
         slide = time_bin_size
     else:
-        assert slide<=time_bin_size
+        if slide>time_bin_size:
+            print(time_bin_size, slide)
+            assert False
+
 
     # try:
     #     len(times)

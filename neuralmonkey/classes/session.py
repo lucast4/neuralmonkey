@@ -1483,8 +1483,13 @@ class Session(object):
         paththis = f"{pathdir}/dataset_beh.pkl"
         with open(paththis, "rb") as f:
             self.Datasetbeh = pickle.load(f)
+            # if hasattr(self.Datasetbeh, "TokensVersion"):
+            #     print("1 dfafasf", self.Datasetbeh.TokensVersion)
+            # else:
+            #     print("1 dfafasf", "DOESNT EXIST")
             self.Datasetbeh._cleanup_preprocess_each_time_load_dataset()
 
+        # print("2 dfafasf", self.Datasetbeh.TokensVersion)
         self.Datasetbeh.LockPreprocess = True
         self._generate_mappers_quickly_datasetbeh()
 
