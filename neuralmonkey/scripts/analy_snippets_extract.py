@@ -19,15 +19,16 @@ LIST_SESSIONS = None
 DEBUG = False # runs fast
 SPIKES_VERSION = "tdt" # Still improving ks curation.
 LIST_WHICH_LEVEL = ["trial", "stroke", "stroke_off"]
-
+FORCE_EXTRACT = 0
 if __name__=="__main__":
 
     animal = sys.argv[1]
     DATE = int(sys.argv[2])
-
     if len(sys.argv)>3:
         which_level = sys.argv[3]
         LIST_WHICH_LEVEL = [which_level]
+    if len(sys.argv)>4:
+        FORCE_EXTRACT = int(sys.argv[4])
 
     ####################### EXTRACT PARAMS
     # from neuralmonkey.metadat.analy.anova_params import params_getter_extraction
@@ -47,38 +48,41 @@ if __name__=="__main__":
 
         for which_level in LIST_WHICH_LEVEL:
 
-            try:
-                sp = load_snippet_single(sn, which_level)
-                # Only skip extraction if the sites all match. e.g., maybe Kilosort
-                # has been completed recently, then should redo Snippets.
+            if FORCE_EXTRACT==0:
+                try:
+                    sp = load_snippet_single(sn, which_level)
+                    # Only skip extraction if the sites all match. e.g., maybe Kilosort
+                    # has been completed recently, then should redo Snippets.
 
-                if sorted(sp.Sites) == sn.sitegetterKS_map_region_to_sites_MULTREG():
-                    print("Saved SP has identical sites to SN -- no need to reextract!")
-                    SKIP_EXTRACTION = True
-                else:
-                    print("Saved SP has DIFFERENT sites to SN -- DO REEXTRACT of SP!")
+                    if sorted(sp.Sites) == sn.sitegetterKS_map_region_to_sites_MULTREG():
+                        print("Saved SP has identical sites to SN -- no need to reextract!")
+                        SKIP_EXTRACTION = True
+                    else:
+                        print("Saved SP has DIFFERENT sites to SN -- DO REEXTRACT of SP!")
+                        SKIP_EXTRACTION = False
+                except FileNotFoundError as err:
+                    # Then recompute
+                    print("No saved SP found -- DO EXTRACT of SP!")
                     SKIP_EXTRACTION = False
-            except FileNotFoundError as err:
-                # Then recompute
-                print("No saved SP found -- DO EXTRACT of SP!")
-                SKIP_EXTRACTION = False
-            except NotEnoughDataException as err:
-                # Then SP exists, but it is incompativale with SN, lkekly becuase
-                # SN is now kiloosrt.
-                print("SP incompatioble with SN (kilosoert?) -- DO EXTRACT of SP!")
-                SKIP_EXTRACTION = False
-            except Exception as err:
-                raise err
+                except NotEnoughDataException as err:
+                    # Then SP exists, but it is incompativale with SN, lkekly becuase
+                    # SN is now kiloosrt.
+                    print("SP incompatioble with SN (kilosoert?) -- DO EXTRACT of SP!")
+                    SKIP_EXTRACTION = False
+                except Exception as err:
+                    raise err
 
-            if SKIP_EXTRACTION:
-                print("** SKIPPING EXTRACTION, since was able to load snippets, for: ")
-                print("(animal, DATE, which_level, session)")
-                print(animal, DATE, which_level, session)
-                continue
+                if SKIP_EXTRACTION:
+                    print("** SKIPPING EXTRACTION, since was able to load snippets, for: ")
+                    print("(animal, DATE, which_level, session)")
+                    print(animal, DATE, which_level, session)
+                    continue
+                else:
+                    print("** NOT SKIPPING EXTRACTION, since was not able to load snippets, for: ")
+                    print("(animal, DATE, which_level, session)")
+                    print(animal, DATE, which_level, session)
             else:
-                print("** NOT SKIPPING EXTRACTION, since was not able to load snippets, for: ")
-                print("(animal, DATE, which_level, session)")
-                print(animal, DATE, which_level, session)
+                SKIP_EXTRACTION = False
 
             ###################################
             D = sn.Datasetbeh

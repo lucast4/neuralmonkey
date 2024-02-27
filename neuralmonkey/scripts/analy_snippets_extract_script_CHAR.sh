@@ -7,14 +7,18 @@ animal=$1
 if [[ $animal == Diego ]]; then
   datelist=(231201 231204 231219)
 elif [[ $animal == Pancho ]]; then
-  datelist=(230120 230122 230125 230126 230127)
+#  datelist=(230120 230122 230125 230126 230127)
+  datelist=(230126)
 else
   echo $animal
   echo "Error! Inputed non-existing animal" 1>&2
   exit 1
 fi
 
-which_level_list=(trial stroke stroke_off)
+#which_level_list=(trial stroke stroke_off)
+which_level_list=(trial stroke)
+FORCE_EXTRACT=1
+
 #
 #if [[ $analy == PIG ]]; then
 #  which_level_list=(stroke stroke_off)
@@ -37,8 +41,8 @@ do
     logfile="../logs/log_analy_snippets_extract_${which_level}_${date1}_${animal}.txt"
     touch ${logfile}
     echo ${logfile}
-    taskset --cpu-list 0,1,2,3,4,5,6 python analy_snippets_extract.py ${animal} ${date1} ${which_level} 2>&1 | tee ${logfile} &
+    taskset --cpu-list 0,1,2,3,4,5,6 python analy_snippets_extract.py ${animal} ${date1} ${which_level} ${FORCE_EXTRACT} 2>&1 | tee ${logfile} &
     sleep 5s
   done
-  sleep 5m
+  sleep 2m
 done

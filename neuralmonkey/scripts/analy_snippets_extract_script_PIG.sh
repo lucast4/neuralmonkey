@@ -40,4 +40,5 @@ do
     taskset --cpu-list 0,1,2,3,4,5,6 python analy_snippets_extract.py ${animal} ${date1} ${which_level} 2>&1 | tee ${logfile} &
     sleep 5s
   done
+  sleep 20m
 done
