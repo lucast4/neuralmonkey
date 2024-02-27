@@ -8,7 +8,10 @@ from pythonlib.tools.expttools import writeStringsToFile
 ONLY_ESSENTIAL_VARS = False # then just the first var, assuemd to be most important, for quick analys
 
 ##################
-LIST_ANALYSES = ["rulesw", "ruleswALLDATA", "ruleswERROR", "singleprimvar", "seqcontextvar", "seqcontext", "singleprim", "charstrokes"] # repo of possible analses,
+LIST_ANALYSES = ["rulesw", "rulesingle", "ruleswALLDATA", "ruleswERROR", "singleprimvar", "seqcontextvar", "seqcontext", "singleprim", "charstrokes", "chartrial", "substrokes_sp", "PIG_BASE"] # repo of possible analses,
+
+# - rulesw, rule switching
+# - rulesingle, a single rule, look for draw program representations.
 
 # def exptlist_getter(self):
 
@@ -22,7 +25,7 @@ LIST_ANALYSES = ["rulesw", "ruleswALLDATA", "ruleswERROR", "singleprimvar", "seq
 def _params_score_sequence_ver(animal, DATE, ANALY_VER):
     """ Decide how to score each trial's sequence success, either
     comparing beh to matlab task seuqence or to parses"""
-    if ANALY_VER in ["rulesw", "ruleswERROR", "ruleswALLDATA"]:
+    if ANALY_VER in ["rulesw", "ruleswERROR", "ruleswALLDATA", "rulesingle"]:
         if animal=="Pancho" and DATE in [220913]:
             DO_SCORE_SEQUENCE_VER = "parses"
         elif animal=="Pancho" and DATE in [220812, 220814, 220815, 220816, 220827,
@@ -33,10 +36,14 @@ def _params_score_sequence_ver(animal, DATE, ANALY_VER):
         elif animal=="Diego" and DATE in [230701, 230702, 230703, 230704, 230705, 230706, 230707, 230713, 230717, 230719, 230802]:
             # A single correct sequence
             DO_SCORE_SEQUENCE_VER = "matlab"
+        elif animal=="Diego" and DATE in [230815]:
+            # For chunks analysis (e.g., single rule). Lately (Feb 2024) extracting cjhunks
+            # seems to require parse version...
+            DO_SCORE_SEQUENCE_VER = "parses"
         else:
             print(animal, DATE)
             assert False
-    elif ANALY_VER in ["singleprimvar", "seqcontext", "singleprim", "seqcontextvar", "charstrokes"]:
+    elif ANALY_VER in ["singleprimvar", "seqcontext", "singleprim", "seqcontextvar", "charstrokes", "chartrial", "substrokes_sp", "PIG_BASE"]:
         DO_SCORE_SEQUENCE_VER = None
     else:
         assert False
@@ -591,37 +598,6 @@ def params_getter_plots(animal, DATE, which_level, ANALY_VER, anova_interaction=
         LIST_VAR = LIST_VAR[:2]
         LIST_VARS_CONJUNCTION = LIST_VARS_CONJUNCTION[:2]
 
-    # ################ BEH DATASET PREPROCESS STEPS
-    # # THESE ARE ONLY used for deciding which trials ot keep.
-    # if ANALY_VER in ["rulesw"]:
-    #     preprocess_steps_append = ["remove_repeated_trials", "correct_sequencing_binary_score",
-    #         "one_to_one_beh_task_strokes"]
-    # elif ANALY_VER in ["ruleswALLDATA"]:
-    #     # keep all trials
-    #     preprocess_steps_append = ["remove_repeated_trials"]
-    # elif ANALY_VER in ["ruleswERROR"]:
-    #     # error trials
-    #     preprocess_steps_append = ["remove_repeated_trials", "wrong_sequencing_binary_score"]
-    # elif ANALY_VER in ["seqcontext", "singleprim", "singleprimvar", "seqcontextvar"]:
-    #     preprocess_steps_append = ["remove_repeated_trials", "one_to_one_beh_task_strokes"]
-    # else:
-    #     assert False
-    # preprocess_steps_append.append("beh_strokes_at_least_one")
-
-    # # Remove aborts
-    # if False:
-    #     if ANALY_VER in ["ruleswERROR", "ruleswALLDATA"]:
-    #         # error trials
-    #         remove_aborts = False
-    #     else:
-    #         # correct trials
-    #         remove_aborts = True
-    # else:
-    #     # Never remove aborts. Instead already pruning based on things like one to one, or correct
-    #     # sequence. This so includes cases where complete but abort on the last stroke simply for
-    #     # shape quality.
-    #     remove_aborts = False
-
     ## If you have success as a variable then you cannot prune to only keep success...
     def _vars_including_success_binary(var, vars_others):
         """ Return True if any var or other var cares about performance succes...
@@ -706,55 +682,9 @@ def params_getter_extraction(animal, DATE, which_level, ANALY_VER):
     DO_SCORE_SEQUENCE_VER = _params_score_sequence_ver(animal, DATE, ANALY_VER) 
 
     assert False, "get this from params_getter_dataset_preprocess"
-    # ############### Reassign name to "taskgroup", siimplifying things, especialyl good
-    # # for grid sequence tasks with different probes, want to merge them for larger N.
-    # if ANALY_VER in ["ruleswERROR", "rulesw", "ruleswALLDATA"]:
-    #     taskgroup_reassign_simple_neural = True
-    # else:
-    #     taskgroup_reassign_simple_neural = False
 
     ################ SEQUENCE CONTEXT?
     DO_EXTRACT_CONTEXT = True    
-
-    # ################ BEH DATASET PREPROCESS STEPS
-    # if ANALY_VER in ["rulesw"]:
-    #     preprocess_steps_append = ["sanity_gridloc_identical", "correct_sequencing_binary_score", "one_to_one_beh_task_strokes"]
-    # elif ANALY_VER in ["seqcontext", "singleprim"]:
-    #     preprocess_steps_append = ["sanity_gridloc_identical", "one_to_one_beh_task_strokes"]
-    # else:
-    #     assert False
-
-    # ############### RENAME EPOCHS (to help merge)
-    # if animal=="Pancho" and DATE in  [220928, 220929, 220930, 221002, 221014]:
-    #     # Color-supervision -- ie single epochs which combine
-    #     # random sequence + structured sequence. merge those since
-    #     # the subject doesnt know.
-    #     list_epoch_merge = [
-    #         (["rndstr", "AnBmTR|1", "TR|1"], "rank|1")
-    #     ]
-    #     epoch_merge_key = "epoch"
-    # elif animal=="Pancho" and DATE in  [221102]:
-    #     # Color-supervision, just differnet set of rules/epochs
-    #     list_epoch_merge = [
-    #         (["rndstr", "llV1|1", "L|1"], "rank|1")
-    #     ]
-    #     epoch_merge_key = "epoch"
-    # elif animal =="Pancho" and DATE in [220921]:
-    #     # Sequence mask supervision, i..e, an old version before
-    #     # designed the color supervision mask (so it is rare). ie..
-    #     # in single epoch mixing random + structured sequence. merge those since
-    #     # the subject doesnt know.
-    #     assert False, "include the color strokes binary in the supev string - check this day for how to type it."
-    #     _epochs_to_merge = [("AnBmTR", "mask|0||0"), ("TR", "mask|0||0"), ("rndstr", "mask|0||0")]
-    #     _new_epoch_name = "rank_mask"
-    #     list_epoch_merge = [
-    #         (_epochs_to_merge, _new_epoch_name)
-    #     ]
-    #     # epoch_merge_key = "epoch_superv"
-    #     epoch_merge_key = "epoch"
-    # else:
-    #     list_epoch_merge = []
-    #     epoch_merge_key = None
 
 
     if False:
@@ -793,64 +723,6 @@ def params_getter_extraction(animal, DATE, which_level, ANALY_VER):
             EXTRACT_EPOCHSETS_n_max_epochs = None
 
     assert False, "get from pgdp."
-    # ############ rules will generally need to use this.
-    # if ANALY_VER in ["ruleswERROR", "rulesw", "ruleswALLDATA"]:
-    #     # Label each trial based on its conjunction of character and correct beh sequence.
-    #     DO_CHARSEQ_VER = "task_matlab"
-    #     EXTRACT_EPOCHSETS = True
-    #     EXTRACT_EPOCHSETS_trial_label = "char_seq"
-    #     EXTRACT_EPOCHSETS_n_max_epochs = 3
-    #     EXTRACT_EPOCHSETS_merge_sets = True
-    # elif ANALY_VER in ["singleprimvar"]:
-    #     # Label each trial based on its (shape/loc).
-    #     DO_CHARSEQ_VER = None
-    #     EXTRACT_EPOCHSETS = True
-    #     EXTRACT_EPOCHSETS_trial_label = "seqc_0_loc_shape"
-    #     EXTRACT_EPOCHSETS_n_max_epochs = 10 # make this higher, since these are usually clean expts.
-    #     EXTRACT_EPOCHSETS_merge_sets = True
-    # elif ANALY_VER in ["seqcontextvar"]:
-    #     # Label each trial based on its (task config).
-    #     DO_CHARSEQ_VER = None
-    #     EXTRACT_EPOCHSETS = True
-    #     EXTRACT_EPOCHSETS_trial_label = "taskconfig_shploc"
-    #     EXTRACT_EPOCHSETS_n_max_epochs = 10 # make this higher, since these are usually clean expts.
-    #     EXTRACT_EPOCHSETS_merge_sets = True
-    # else:
-    #     DO_CHARSEQ_VER = None
-    #     EXTRACT_EPOCHSETS = False
-    #     EXTRACT_EPOCHSETS_trial_label = None
-    #     EXTRACT_EPOCHSETS_n_max_epochs = None
-    #     EXTRACT_EPOCHSETS_merge_sets = None
-
-    ################ FEATURES TO EXTRACT
-    # if which_level=="trial":
-    #     if ANALY_VER in ["ruleswALLDATA", "ruleswERROR", "rulesw", "seqcontext", "singleprim", "singleprimvar", "seqcontextvar"]:
-    #         list_features_modulation_append = ["probe", "taskgroup", "character", "trialcode", "epoch",
-    #                                             "epoch_superv",
-    #                                             "task_kind", "supervision_stage_concise"]
-    #     else:
-    #         assert False
-    #
-    #     if DO_EXTRACT_CONTEXT:
-    #         # These are features that are gotten from extracting context
-    #         list_features_modulation_append = list_features_modulation_append + ["seqc_nstrokes_beh", "seqc_nstrokes_task",
-    #                                            "seqc_0_shape", "seqc_0_loc", "seqc_0_loc_shape",
-    #                                            "seqc_1_shape", "seqc_1_loc", "seqc_1_loc_shape",
-    #                                            "seqc_2_shape", "seqc_2_loc", "seqc_2_loc_shape",
-    #                                            "seqc_3_shape", "seqc_3_loc", "seqc_3_loc_shape",
-    #                                            "gridsize"]
-    # elif which_level=="stroke":
-    #     if ANALY_VER in ["ruleswALLDATA", "ruleswERROR", "rulesw", "seqcontext", "singleprim"]:
-    #         list_features_modulation_append = ["probe", "taskgroup", "character", "trialcode", "epoch",
-    #                                             "epoch_superv",
-    #                                             "task_kind", "supervision_stage_concise",
-    #                                             "CTXT_loc_prev", "CTXT_shape_prev", "CTXT_loc_next", "CTXT_shape_next",
-    #                                             "shape_oriented", "gridloc", "stroke_index"]
-    #     else:
-    #         assert False
-    # else:
-    #     print(which_level)
-    #     assert False, "typo?"
 
     ######### FINALLY, FLIP SOME "DO_" FLAGS BASD ONW HAT VAR YOU WANT.
     params_plots = params_getter_plots(animal, DATE, which_level, ANALY_VER)
@@ -1038,7 +910,7 @@ def params_getter_extraction(animal, DATE, which_level, ANALY_VER):
 #     return Dall, dataset_pruned_for_trial_analysis, TRIALCODES_KEEP, params, params_extraction
 
 
-def dataset_apply_params(D, ANALY_VER, animal, DATE):
+def dataset_apply_params(D, DS, ANALY_VER, animal, DATE, save_substroke_preprocess_figures=True):
     """Preprocess dataset in all ways, including pruning, appending/modifying columns, etc.
     PARAMS:
     - ANALY_VER, str, params to use.
@@ -1067,7 +939,9 @@ def dataset_apply_params(D, ANALY_VER, animal, DATE):
     ################# BEH DATASET
     # First, concatenate all D.
     # Becasue dataset can be locked, just replace it with copy
+    # print("5 dfafasf", D.TokensVersion)
     D = D.copy()
+    # print("6 dfafasf", D.TokensVersion)
 
     # Second, do preprocessing to concatted D
     if params["DO_SCORE_SEQUENCE_VER"]=="parses":
@@ -1088,8 +962,11 @@ def dataset_apply_params(D, ANALY_VER, animal, DATE):
         D.sequence_char_taskclass_assign_char_seq(ver=params["DO_CHARSEQ_VER"])
 
     ################ DO SAME THING AS IN EXTRACTION (these dont fail, when use concatted)
+    # print("7 dfafasf", D.TokensVersion)
     D.seqcontext_preprocess()
     D.taskclass_shapes_loc_configuration_assign_column()
+    # NOTE: This might take time, as it requires extract DS...
+    D.shapesemantic_classify_novel_shape()
 
     for this in params["list_epoch_merge"]:
         # D.supervision_epochs_merge_these(["rndstr", "AnBmTR|1", "TR|1"], "rank|1")
@@ -1124,9 +1001,24 @@ def dataset_apply_params(D, ANALY_VER, animal, DATE):
     #             print("THis has no wrong_sequencing_binary_score: ",  params['preprocess_steps_append'])
     #             assert False, "dataset pruning removed >0.75 of data. Are you sure correct? Maybe removing a supervisiuon stage that is actually important?"
 
+    # Append variables by hand
+    # D = self.datasetbeh_extract_dataset()
+    if "FEAT_num_strokes_task" not in D.Dat.columns:
+        D.extract_beh_features()
+    # if "char_seq" not in D.Dat.columns:
+    #     D.sequence_char_taskclass_assign_char_seq()
+    if "seqc_nstrokes_task" not in D.Dat.columns:
+        D.seqcontext_preprocess()
+
+    # Load character clust labels (do this BEFORE prune anything)
+    # This also replaces all seqc_{}_shape labels in D.Dat
+    if params["charclust_dataset_extract_shapes"]:
+        assert False, "IGNORE -- now this is done in dataset defautl preprocesing."
+        D.charclust_shape_labels_extract_presaved_from_DS()
+
     ###### PRUNE DATASET TO GET SUBSET TRIALCODES
     # Only keep subset these trialcodes
-    Dprun = dataset_extract_prune_general_dataset(D,
+    D = dataset_extract_prune_general_dataset(D,
                                               list_superv_keep=params["list_superv_keep"],
                                               preprocess_steps_append=params["preprocess_steps_append"],
                                               remove_aborts=params["remove_aborts"],
@@ -1137,23 +1029,40 @@ def dataset_apply_params(D, ANALY_VER, animal, DATE):
     from neuralmonkey.classes.snippets import datasetstrokes_extract
     if params["datasetstrokes_extract_to_prune_trial"] is not None:
         # Only keep good strokes
-        DS = datasetstrokes_extract(Dprun, params["datasetstrokes_extract_to_prune_trial"])
+        ds = datasetstrokes_extract(D, params["datasetstrokes_extract_to_prune_trial"])
 
         # Remove these trialcodes from original dataset
-        list_tc = DS._dataset_find_trialcodes_incomplete_data(D=Dprun)
-        inds_remove = [Dprun.index_by_trialcode(tc) for tc in list_tc]
-        Dprun.Dat = Dprun.Dat.drop(index = inds_remove).reset_index(drop=True)
+        list_tc = ds._dataset_find_trialcodes_incomplete_data(D=D)
+        inds_remove = [D.index_by_trialcode(tc) for tc in list_tc]
+        D.Dat = D.Dat.drop(index = inds_remove).reset_index(drop=True)
 
-    if params["datasetstrokes_extract_to_prune_stroke"] is not None:
+    if params["datasetstrokes_extract_to_prune_stroke_and_get_features"] is not None:
         # Only keep good strokes
-        DSprun = datasetstrokes_extract(Dprun, params["datasetstrokes_extract_to_prune_stroke"])
-    else:
-        DSprun = None
+        dsprun = datasetstrokes_extract(D, params["datasetstrokes_extract_to_prune_stroke_and_get_features"])
+        DS = dsprun # Replace with newly extracted.
 
-    #################### FINALLY, GOOD TRIALCODES
-    # TRIALCODES_KEEP = Dprun.Dat["trialcode"].tolist()
+    ############### SUBSTROKES
+    if params["substrokes_features_do_extraction"]:
+        from pythonlib.dataset.substrokes import features_motor_extract_and_bin
+        assert params["datasetstrokes_extract_to_prune_stroke_and_get_features"] is None, "they would overwrite each other"
 
-    return Dprun, DSprun, params
+        # Save in substrokes preprocess folder.
+        if save_substroke_preprocess_figures: # Takes too long
+            SAVEDIR = D.make_savedir_for_analysis_figures_BETTER("substrokes_preprocess")
+            plot_save_dir = f"{SAVEDIR}/plots_during_anova_params"
+            os.makedirs(plot_save_dir, exist_ok=True)
+        else:
+            plot_save_dir = None
+
+        # from pythonlib.tools.expttools import writeDictToTxt
+
+        # Extract motor variables (DS)
+        features_motor_extract_and_bin(DS, plot_save_dir=plot_save_dir)
+
+    ###### MAKE SURE DS is None, if you dont want to use it to prune SP.
+    if params["datasetstrokes_extract_to_prune_stroke_and_get_features"] is None and params["substrokes_features_do_extraction"] is None:
+        assert DS is None, "expect this, since the input should have been DS=None..."
+    return D, DS, params
 
 
 def conjunctions_print_plot_all(ListD, SAVEDIR, ANALY_VER, which_level="trial"):
@@ -1198,7 +1107,8 @@ def conjunctions_print_plot_all(ListD, SAVEDIR, ANALY_VER, which_level="trial"):
     D = concatDatasets(ListD)
 
     ### Prep dataset, and extract params
-    Dpruned, DSprun, params = dataset_apply_params(ListD, animal, DATE, which_level, ANALY_VER)
+    assert False, "fix this call to dataset_apply_params"
+    Dpruned, DSprun, params = dataset_apply_params(ListD, DS, animal, DATE, which_level, ANALY_VER)
     # _, Dpruned, TRIALCODES_KEEP, params, params_extraction = dataset_apply_params_OLD(ListD,
     #                                                                                   animal, DATE, which_level, ANALY_VER)
     assert len(Dpruned.Dat)>0
@@ -1338,14 +1248,14 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
 
     ############### Reassign name to "taskgroup", siimplifying things, especialyl good
     # for grid sequence tasks with different probes, want to merge them for larger N.
-    if ANALY_VER in ["ruleswERROR", "rulesw", "ruleswALLDATA"]:
+    if ANALY_VER in ["ruleswERROR", "rulesw", "ruleswALLDATA", "rulesingle"]:
         taskgroup_reassign_simple_neural = True
     else:
         taskgroup_reassign_simple_neural = False
 
     ################ BEH DATASET PREPROCESS STEPS
     # THESE ARE ONLY used for deciding which trials ot keep.
-    if ANALY_VER in ["rulesw"]:
+    if ANALY_VER in ["rulesw", "rulesingle"]:
         preprocess_steps_append = ["correct_sequencing_binary_score",
             "one_to_one_beh_task_strokes_allow_unfinished"]
     elif ANALY_VER in ["ruleswALLDATA"]:
@@ -1354,18 +1264,36 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
     elif ANALY_VER in ["ruleswERROR"]:
         # error trials
         preprocess_steps_append = ["wrong_sequencing_binary_score"]
-    elif ANALY_VER in ["seqcontext", "singleprimvar", "seqcontextvar"]:
+    elif ANALY_VER in ["seqcontext", "singleprimvar", "seqcontextvar", "PIG_BASE"]:
         preprocess_steps_append = ["one_to_one_beh_task_strokes_allow_unfinished"]
     elif ANALY_VER in ["singleprim"]:
         preprocess_steps_append = ["one_to_one_beh_task_strokes", "remove_online_abort"]
-    elif ANALY_VER in ["charstrokes"]:
+    elif ANALY_VER in ["charstrokes", "chartrial"]:
         # Dont carea bout match btw beh and task strokes
         preprocess_steps_append = ["remove_online_abort"]
+    elif ANALY_VER in ["substrokes_sp"]:
+        # Dont do much, since already pruend in extraction of substrokes,a nd these
+        # wont be accurate anyway
+        preprocess_steps_append = ["remove_online_abort"]
     else:
+        print(ANALY_VER)
         assert False
     preprocess_steps_append.append("beh_strokes_at_least_one")
     if False:
         preprocess_steps_append.append("remove_repeated_trials")
+
+    ################ CHARACTER CLUSTER LABELS
+    # if ANALY_VER in ["charstrokes", "chartrial"]:
+    #     # Then, in D, extract shape labels for each stroke (in "character" task_kind only)
+    #     charclust_dataset_extract_shapes = True
+    # else:
+    #     charclust_dataset_extract_shapes = False
+
+    # Should always be false, since now loading D automatically replaces shapes.
+    # INSTEAD, now re-extract Snippets whenever you change the clust labels.
+    # OTherwise is very difficult to update Datset after laoding from Snippets (Session
+    # class holds it)...
+    charclust_dataset_extract_shapes = False
 
     ################## SUPERVISION LEVELS TO KEEP
     ################# OPTIONALLY KEEP ONLY SPECIFIC "FULL" SUPERVISION NAMES
@@ -1386,7 +1314,7 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
 
     ############ rules will generally need to use this.
     DO_EXTRACT_EPOCHKIND = False
-    if ANALY_VER in ["ruleswERROR", "rulesw", "ruleswALLDATA"]:
+    if ANALY_VER in ["ruleswERROR", "rulesw", "ruleswALLDATA", "rulesingle"]:
         # Label each trial based on its conjunction of character and correct beh sequence.
         DO_CHARSEQ_VER = "task_matlab"
         EXTRACT_EPOCHSETS = True
@@ -1408,7 +1336,7 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
         EXTRACT_EPOCHSETS_trial_label = "taskconfig_shploc"
         EXTRACT_EPOCHSETS_n_max_epochs = 10 # make this higher, since these are usually clean expts.
         EXTRACT_EPOCHSETS_merge_sets = True
-    elif ANALY_VER in ["singleprim", "seqcontext", "charstrokes"]:
+    elif ANALY_VER in ["singleprim", "seqcontext", "charstrokes", "chartrial", "substrokes_sp", "PIG_BASE"]:
         DO_CHARSEQ_VER = None
         EXTRACT_EPOCHSETS = False
         EXTRACT_EPOCHSETS_trial_label = None
@@ -1461,62 +1389,48 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
     # see dataset_strokes.preprocess_dataset_to_datstrokes
     # ONLY DO THIS If you want to use info about pruned strokes to
     # then prune entire trials....
-    if ANALY_VER in ["singleprim", "singleprimvar"]:
+    if ANALY_VER in ["substrokes_sp"]:
+        # Ignore, since already pruned at substrokes level.
+        datasetstrokes_extract_to_prune_trial = None
+        datasetstrokes_extract_to_prune_stroke_and_get_features = None
+    elif ANALY_VER in ["singleprim", "singleprimvar"]:
         # Single prim -- most stringent
         datasetstrokes_extract_to_prune_trial = "singleprim"
-        datasetstrokes_extract_to_prune_stroke = None
-    elif ANALY_VER in ["seqcontext"]:
+        datasetstrokes_extract_to_prune_stroke_and_get_features = None
+    elif ANALY_VER in ["seqcontext", "PIG_BASE"]:
         # PIG.
         # Skip this, since you dont want to remove entire trial. This
         # Will be run automatically with snippet extraction.
         datasetstrokes_extract_to_prune_trial = None
-        datasetstrokes_extract_to_prune_stroke = "clean_one_to_one"
-    elif ANALY_VER in ["charstrokes"]:
+        datasetstrokes_extract_to_prune_stroke_and_get_features = "clean_one_to_one"
+    elif ANALY_VER in ["charstrokes", "chartrial"]:
         # Character strokes.
         # Shape labels must be saved and loadable (e..g, from clustering).
         datasetstrokes_extract_to_prune_trial = None
-        datasetstrokes_extract_to_prune_stroke = "clean_chars_load_clusters"
+        # datasetstrokes_extract_to_prune_stroke_and_get_features = "clean_chars_load_clusters" # This would remove all strokes that are not "character" tasks.
+        # datasetstrokes_extract_to_prune_stroke_and_get_features = "chars_load_clusters" #
+        # datasetstrokes_extract_to_prune_stroke_and_get_features = "clean_chars" # now defualt is to preload in D
+        datasetstrokes_extract_to_prune_stroke_and_get_features = "clean_chars_clusters_without_reloading" # Generates
+        # DS anew from D, and uses the clust scores within D to prune strokes.
+
+    elif ANALY_VER in ["rulesingle"]:
+        #
+        datasetstrokes_extract_to_prune_trial = None
+        datasetstrokes_extract_to_prune_stroke_and_get_features = None
     else:
         print(ANALY_VER)
         assert False
 
-    # SKIP, instead this is done automaticlaly in SP.
-    # if which_level=="trial":
-    #     if ANALY_VER in ["ruleswALLDATA", "ruleswERROR", "rulesw", "seqcontext", "singleprim", "singleprimvar", "seqcontextvar"]:
-    #         list_features_modulation_append = ["probe", "taskgroup", "character", "trialcode", "epoch",
-    #                                             "epoch_superv",
-    #                                             "task_kind", "supervision_stage_concise"]
-    #     else:
-    #         assert False
-    #
-    #     if DO_EXTRACT_CONTEXT:
-    #         # These are features that are gotten from extracting context
-    #         list_features_modulation_append = list_features_modulation_append + ["seqc_nstrokes_beh", "seqc_nstrokes_task",
-    #                                            "seqc_0_shape", "seqc_0_loc", "seqc_0_loc_shape",
-    #                                            "seqc_1_shape", "seqc_1_loc", "seqc_1_loc_shape",
-    #                                            "seqc_2_shape", "seqc_2_loc", "seqc_2_loc_shape",
-    #                                            "seqc_3_shape", "seqc_3_loc", "seqc_3_loc_shape",
-    #                                            "gridsize"]
-    # elif which_level=="stroke":
-    #     if ANALY_VER in ["ruleswALLDATA", "ruleswERROR", "rulesw", "seqcontext", "singleprim"]:
-    #         list_features_modulation_append = ["probe", "taskgroup", "character", "trialcode", "epoch",
-    #                                             "epoch_superv",
-    #                                             "task_kind", "supervision_stage_concise",
-    #                                             "CTXT_loc_prev", "CTXT_shape_prev", "CTXT_loc_next", "CTXT_shape_next",
-    #                                             "shape_oriented", "gridloc", "stroke_index"]
-    #     else:
-    #         assert False
-    # else:
-    #     print(which_level)
-    #     assert False, "typo?"
-    #
-    # if DO_CHARSEQ_VER:
-    #     list_features_modulation_append.append("char_seq")
-    # if EXTRACT_EPOCHSETS:
-    #     list_features_modulation_append.append("epochset")
-    # if DO_SCORE_SEQUENCE_VER:
-    #     list_features_modulation_append.append("success_binary_quick")
-    # list_features_modulation_append.append("epochkind")
+    ############ SUBSTROKES, WHETHER TO EXTRACT MOTOR FEATURES
+    if ANALY_VER in ["substrokes_sp"]:
+        substrokes_features_do_extraction = True
+    elif ANALY_VER in ["singleprim", "singleprimvar", "seqcontext",
+                       "charstrokes", "chartrial", "PIG_BASE",
+                       "rulesingle", "rulesw"]:
+        substrokes_features_do_extraction = False
+    else:
+        print(ANALY_VER)
+        assert False
 
     params = {
         "DO_CHARSEQ_VER":DO_CHARSEQ_VER,
@@ -1534,7 +1448,9 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
         "epoch_merge_key":epoch_merge_key,
         "DO_EXTRACT_EPOCHKIND":DO_EXTRACT_EPOCHKIND,
         "datasetstrokes_extract_to_prune_trial":datasetstrokes_extract_to_prune_trial,
-        "datasetstrokes_extract_to_prune_stroke":datasetstrokes_extract_to_prune_stroke
+        "datasetstrokes_extract_to_prune_stroke_and_get_features":datasetstrokes_extract_to_prune_stroke_and_get_features,
+        "substrokes_features_do_extraction":substrokes_features_do_extraction,
+        "charclust_dataset_extract_shapes":charclust_dataset_extract_shapes
     }
 
     return params
