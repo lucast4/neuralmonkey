@@ -926,143 +926,155 @@ def dataset_apply_params(D, DS, ANALY_VER, animal, DATE, save_substroke_preproce
     from pythonlib.dataset.analy_dlist import concatDatasets
     from neuralmonkey.classes.snippets import dataset_extract_prune_general_dataset
 
-    ################################### LOAD PARAMS
-    params = params_getter_dataset_preprocess(ANALY_VER, animal, DATE)
-    # params = params_getter_plots(animal, DATE, which_level, ANALY_VER,
-    #     anova_interaction=anova_interaction)
-    # params_extraction = params_getter_extraction(animal, DATE, which_level, ANALY_VER)
-
-    # assert False, "first concat, then apply..."
-    print("Dataset preprocess, these params:")
-    print(params)
-
-    ################# BEH DATASET
-    # First, concatenate all D.
-    # Becasue dataset can be locked, just replace it with copy
-    # print("5 dfafasf", D.TokensVersion)
     D = D.copy()
-    # print("6 dfafasf", D.TokensVersion)
 
-    # Second, do preprocessing to concatted D
-    if params["DO_SCORE_SEQUENCE_VER"]=="parses":
-        D.grammarparses_successbinary_score()
-    elif params["DO_SCORE_SEQUENCE_VER"]=="matlab":
-        D.grammarmatlab_successbinary_score()
+    if ANALY_VER == "MINIMAL":
+        # This is for when have not inlucded this in params_getter_dataset_preprocess yet, but do minimal cleaning.
+        # (Did for kedar, fixation stuff).
+        D = dataset_extract_prune_general_dataset(D,
+                                                  list_superv_keep=None,
+                                                  preprocess_steps_append=None,
+                                                  remove_aborts=None,
+                                                  list_superv_keep_full=None,
+                                                  )
+        return D, DS, None
     else:
-        # dont score
-        assert params["DO_SCORE_SEQUENCE_VER"] is None
 
-    if params["taskgroup_reassign_simple_neural"]:
-        # do here, so the new taskgroup can be used as a feature.
-        D.taskgroup_reassign_ignoring_whether_is_probe(CLASSIFY_PROBE_DETAILED=False)
-        print("Resulting taskgroup/probe combo, after taskgroup_reassign_simple_neural...")
-        D.grouping_print_n_samples(["taskgroup", "probe"])
+        ################################### LOAD PARAMS
+        params = params_getter_dataset_preprocess(ANALY_VER, animal, DATE)
+        # params = params_getter_plots(animal, DATE, which_level, ANALY_VER,
+        #     anova_interaction=anova_interaction)
+        # params_extraction = params_getter_extraction(animal, DATE, which_level, ANALY_VER)
 
-    if params["DO_CHARSEQ_VER"] is not None:
-        D.sequence_char_taskclass_assign_char_seq(ver=params["DO_CHARSEQ_VER"])
+        # assert False, "first concat, then apply..."
+        print("Dataset preprocess, these params:")
+        print(params)
 
-    ################ DO SAME THING AS IN EXTRACTION (these dont fail, when use concatted)
-    # print("7 dfafasf", D.TokensVersion)
-    D.seqcontext_preprocess()
-    D.taskclass_shapes_loc_configuration_assign_column()
-    # NOTE: This might take time, as it requires extract DS...
-    D.shapesemantic_classify_novel_shape()
+        ################# BEH DATASET
+        # First, concatenate all D.
+        # Becasue dataset can be locked, just replace it with copy
+        # print("5 dfafasf", D.TokensVersion)
 
-    for this in params["list_epoch_merge"]:
-        # D.supervision_epochs_merge_these(["rndstr", "AnBmTR|1", "TR|1"], "rank|1")
-        D.supervision_epochs_merge_these(this[0], this[1], key=params["epoch_merge_key"],
-            assert_list_epochs_exist=False)
-
-    if params["EXTRACT_EPOCHSETS"]:
-        if params["EXTRACT_EPOCHSETS_trial_label"] == "char_seq":
-            # This useful to separate into cases with same first stroke, and also chars present across contexts,
-            # separating out single prims if they exist into their own epochset.
-            versions_ordered = ["char", "same_beh_first_stroke", "same_beh"]
-            D.epochset_apply_sequence_wrapper(versions_ordered=versions_ordered)
+        # Second, do preprocessing to concatted D
+        if params["DO_SCORE_SEQUENCE_VER"]=="parses":
+            D.grammarparses_successbinary_score()
+        elif params["DO_SCORE_SEQUENCE_VER"]=="matlab":
+            D.grammarmatlab_successbinary_score()
         else:
-            # Only apply epochset extraction once.
-            D.epochset_extract_common_epoch_sets(
-                trial_label=params["EXTRACT_EPOCHSETS_trial_label"],
-                n_max_epochs=params["EXTRACT_EPOCHSETS_n_max_epochs"],
-                merge_sets_with_only_single_epoch=params["EXTRACT_EPOCHSETS_merge_sets"],
-                merge_sets_with_only_single_epoch_name = ("LEFTOVER",))
+            # dont score
+            assert params["DO_SCORE_SEQUENCE_VER"] is None
 
-    if params["DO_EXTRACT_EPOCHKIND"]:
-        D.supervision_epochs_extract_epochkind()
+        if params["taskgroup_reassign_simple_neural"]:
+            # do here, so the new taskgroup can be used as a feature.
+            D.taskgroup_reassign_ignoring_whether_is_probe(CLASSIFY_PROBE_DETAILED=False)
+            print("Resulting taskgroup/probe combo, after taskgroup_reassign_simple_neural...")
+            D.grouping_print_n_samples(["taskgroup", "probe"])
 
-    # # Sanity check that didn't remove too much data.
-    # if False:
-    #     if "wrong_sequencing_binary_score" not in params["preprocess_steps_append"]:
-    #         # Skip if is error trials.
-    #         npre = len(D.Dat)
-    #         npost = len(dat_pruned.Dat)
-    #         if npost/npre<0.25 and len(sn.Datasetbeh.Dat)>200: # ie ignore this if it is a small session...
-    #             print(params)
-    #             print("THis has no wrong_sequencing_binary_score: ",  params['preprocess_steps_append'])
-    #             assert False, "dataset pruning removed >0.75 of data. Are you sure correct? Maybe removing a supervisiuon stage that is actually important?"
+        if params["DO_CHARSEQ_VER"] is not None:
+            D.sequence_char_taskclass_assign_char_seq(ver=params["DO_CHARSEQ_VER"])
 
-    # Append variables by hand
-    # D = self.datasetbeh_extract_dataset()
-    if "FEAT_num_strokes_task" not in D.Dat.columns:
-        D.extract_beh_features()
-    # if "char_seq" not in D.Dat.columns:
-    #     D.sequence_char_taskclass_assign_char_seq()
-    if "seqc_nstrokes_task" not in D.Dat.columns:
+        ################ DO SAME THING AS IN EXTRACTION (these dont fail, when use concatted)
+        # print("7 dfafasf", D.TokensVersion)
         D.seqcontext_preprocess()
+        D.taskclass_shapes_loc_configuration_assign_column()
+        # NOTE: This might take time, as it requires extract DS...
+        D.shapesemantic_classify_novel_shape()
 
-    # Load character clust labels (do this BEFORE prune anything)
-    # This also replaces all seqc_{}_shape labels in D.Dat
-    if params["charclust_dataset_extract_shapes"]:
-        assert False, "IGNORE -- now this is done in dataset defautl preprocesing."
-        D.charclust_shape_labels_extract_presaved_from_DS()
+        for this in params["list_epoch_merge"]:
+            # D.supervision_epochs_merge_these(["rndstr", "AnBmTR|1", "TR|1"], "rank|1")
+            D.supervision_epochs_merge_these(this[0], this[1], key=params["epoch_merge_key"],
+                assert_list_epochs_exist=False)
 
-    ###### PRUNE DATASET TO GET SUBSET TRIALCODES
-    # Only keep subset these trialcodes
-    D = dataset_extract_prune_general_dataset(D,
-                                              list_superv_keep=params["list_superv_keep"],
-                                              preprocess_steps_append=params["preprocess_steps_append"],
-                                              remove_aborts=params["remove_aborts"],
-                                              list_superv_keep_full=params["list_superv_keep_full"],
-                                              )
+        if params["EXTRACT_EPOCHSETS"]:
+            if params["EXTRACT_EPOCHSETS_trial_label"] == "char_seq":
+                # This useful to separate into cases with same first stroke, and also chars present across contexts,
+                # separating out single prims if they exist into their own epochset.
+                versions_ordered = ["char", "same_beh_first_stroke", "same_beh"]
+                D.epochset_apply_sequence_wrapper(versions_ordered=versions_ordered)
+            else:
+                # Only apply epochset extraction once.
+                D.epochset_extract_common_epoch_sets(
+                    trial_label=params["EXTRACT_EPOCHSETS_trial_label"],
+                    n_max_epochs=params["EXTRACT_EPOCHSETS_n_max_epochs"],
+                    merge_sets_with_only_single_epoch=params["EXTRACT_EPOCHSETS_merge_sets"],
+                    merge_sets_with_only_single_epoch_name = ("LEFTOVER",))
 
-    ################### PRUNE STROKES --> THEN PRUNE DATASET GIVEN THAT
-    from neuralmonkey.classes.snippets import datasetstrokes_extract
-    if params["datasetstrokes_extract_to_prune_trial"] is not None:
-        # Only keep good strokes
-        ds = datasetstrokes_extract(D, params["datasetstrokes_extract_to_prune_trial"])
+        if params["DO_EXTRACT_EPOCHKIND"]:
+            D.supervision_epochs_extract_epochkind()
 
-        # Remove these trialcodes from original dataset
-        list_tc = ds._dataset_find_trialcodes_incomplete_data(D=D)
-        inds_remove = [D.index_by_trialcode(tc) for tc in list_tc]
-        D.Dat = D.Dat.drop(index = inds_remove).reset_index(drop=True)
+        # # Sanity check that didn't remove too much data.
+        # if False:
+        #     if "wrong_sequencing_binary_score" not in params["preprocess_steps_append"]:
+        #         # Skip if is error trials.
+        #         npre = len(D.Dat)
+        #         npost = len(dat_pruned.Dat)
+        #         if npost/npre<0.25 and len(sn.Datasetbeh.Dat)>200: # ie ignore this if it is a small session...
+        #             print(params)
+        #             print("THis has no wrong_sequencing_binary_score: ",  params['preprocess_steps_append'])
+        #             assert False, "dataset pruning removed >0.75 of data. Are you sure correct? Maybe removing a supervisiuon stage that is actually important?"
 
-    if params["datasetstrokes_extract_to_prune_stroke_and_get_features"] is not None:
-        # Only keep good strokes
-        dsprun = datasetstrokes_extract(D, params["datasetstrokes_extract_to_prune_stroke_and_get_features"])
-        DS = dsprun # Replace with newly extracted.
+        # Append variables by hand
+        # D = self.datasetbeh_extract_dataset()
+        if "FEAT_num_strokes_task" not in D.Dat.columns:
+            D.extract_beh_features()
+        # if "char_seq" not in D.Dat.columns:
+        #     D.sequence_char_taskclass_assign_char_seq()
+        if "seqc_nstrokes_task" not in D.Dat.columns:
+            D.seqcontext_preprocess()
 
-    ############### SUBSTROKES
-    if params["substrokes_features_do_extraction"]:
-        from pythonlib.dataset.substrokes import features_motor_extract_and_bin
-        assert params["datasetstrokes_extract_to_prune_stroke_and_get_features"] is None, "they would overwrite each other"
+        # Load character clust labels (do this BEFORE prune anything)
+        # This also replaces all seqc_{}_shape labels in D.Dat
+        if params["charclust_dataset_extract_shapes"]:
+            assert False, "IGNORE -- now this is done in dataset defautl preprocesing."
+            D.charclust_shape_labels_extract_presaved_from_DS()
 
-        # Save in substrokes preprocess folder.
-        if save_substroke_preprocess_figures: # Takes too long
-            SAVEDIR = D.make_savedir_for_analysis_figures_BETTER("substrokes_preprocess")
-            plot_save_dir = f"{SAVEDIR}/plots_during_anova_params"
-            os.makedirs(plot_save_dir, exist_ok=True)
-        else:
-            plot_save_dir = None
+        ###### PRUNE DATASET TO GET SUBSET TRIALCODES
+        # Only keep subset these trialcodes
+        D = dataset_extract_prune_general_dataset(D,
+                                                  list_superv_keep=params["list_superv_keep"],
+                                                  preprocess_steps_append=params["preprocess_steps_append"],
+                                                  remove_aborts=params["remove_aborts"],
+                                                  list_superv_keep_full=params["list_superv_keep_full"],
+                                                  )
 
-        # from pythonlib.tools.expttools import writeDictToTxt
+        ################### PRUNE STROKES --> THEN PRUNE DATASET GIVEN THAT
+        from neuralmonkey.classes.snippets import datasetstrokes_extract
+        if params["datasetstrokes_extract_to_prune_trial"] is not None:
+            # Only keep good strokes
+            ds = datasetstrokes_extract(D, params["datasetstrokes_extract_to_prune_trial"])
 
-        # Extract motor variables (DS)
-        features_motor_extract_and_bin(DS, plot_save_dir=plot_save_dir)
+            # Remove these trialcodes from original dataset
+            list_tc = ds._dataset_find_trialcodes_incomplete_data(D=D)
+            inds_remove = [D.index_by_trialcode(tc) for tc in list_tc]
+            D.Dat = D.Dat.drop(index = inds_remove).reset_index(drop=True)
 
-    ###### MAKE SURE DS is None, if you dont want to use it to prune SP.
-    if params["datasetstrokes_extract_to_prune_stroke_and_get_features"] is None and params["substrokes_features_do_extraction"] is None:
-        assert DS is None, "expect this, since the input should have been DS=None..."
-    return D, DS, params
+        if params["datasetstrokes_extract_to_prune_stroke_and_get_features"] is not None:
+            # Only keep good strokes
+            dsprun = datasetstrokes_extract(D, params["datasetstrokes_extract_to_prune_stroke_and_get_features"])
+            DS = dsprun # Replace with newly extracted.
+
+        ############### SUBSTROKES
+        if params["substrokes_features_do_extraction"]:
+            from pythonlib.dataset.substrokes import features_motor_extract_and_bin
+            assert params["datasetstrokes_extract_to_prune_stroke_and_get_features"] is None, "they would overwrite each other"
+
+            # Save in substrokes preprocess folder.
+            if save_substroke_preprocess_figures: # Takes too long
+                SAVEDIR = D.make_savedir_for_analysis_figures_BETTER("substrokes_preprocess")
+                plot_save_dir = f"{SAVEDIR}/plots_during_anova_params"
+                os.makedirs(plot_save_dir, exist_ok=True)
+            else:
+                plot_save_dir = None
+
+            # from pythonlib.tools.expttools import writeDictToTxt
+
+            # Extract motor variables (DS)
+            features_motor_extract_and_bin(DS, plot_save_dir=plot_save_dir)
+
+        ###### MAKE SURE DS is None, if you dont want to use it to prune SP.
+        if params["datasetstrokes_extract_to_prune_stroke_and_get_features"] is None and params["substrokes_features_do_extraction"] is None:
+            assert DS is None, "expect this, since the input should have been DS=None..."
+        return D, DS, params
 
 
 def conjunctions_print_plot_all(ListD, SAVEDIR, ANALY_VER, which_level="trial"):

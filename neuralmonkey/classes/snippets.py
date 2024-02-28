@@ -6779,6 +6779,10 @@ class Snippets(object):
                                                                           assert_exactly_one_each=False)
             print("... End len: ", len(self.DfScalar))
 
+        ############### RETURN, IF MINIMAL (kgg, fixations).
+        if ANALY_VER == "MINIMAL":
+            return D, []
+
         ##################################### EXTRACT FEATURES INTO DFSCALAR
         list_features_extraction_stroke = [
                                     "stroke_index", "stroke_index_fromlast", "stroke_index_fromlast_tskstks",
