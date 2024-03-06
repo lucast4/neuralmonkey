@@ -1294,13 +1294,19 @@ class Snippets(object):
         return PA
 
     def _dataextract_as_popanal_conjunction_vars_OLD(self, var, vars_others=None, site=None,
-                                                     event=None, list_cols=None):
+                                                     event=None, list_cols=None,
+                                                     OVERWRITE_n_min=None, OVERWRITE_lenient_n=None,
+                                                     balance_same_levels_across_ovar=False
+                                                     ):
         """ [OLD] extract dict of PAs, one for each level of vars_others,
         where the data within the PA has all levels of var.
         """
 
         assert site is not None, "not coded yet. assumes this for below [site]"
-        _, dict_lev_df, levels_var = self.dataextract_as_df_conjunction_vars(var, vars_others, site, event)
+        _, dict_lev_df, levels_var = self.dataextract_as_df_conjunction_vars(var, vars_others, site, event,
+                                                                             OVERWRITE_n_min=OVERWRITE_n_min, OVERWRITE_lenient_n=OVERWRITE_lenient_n,
+                                                                             balance_same_levels_across_ovar=balance_same_levels_across_ovar)
+
 
         if list_cols is None:
             if vars_others is not None:
@@ -1544,7 +1550,8 @@ class Snippets(object):
         DFTHIS = None, balance_no_missed_conjunctions=False,
         exclude_othervar_levels_missing_any_var_level=False,
         PRINT_AND_SAVE_TO=None,
-        ignore_values_called_ignore=True):
+        ignore_values_called_ignore=True,
+           balance_same_levels_across_ovar=False):
         """ Helper to extract dataframe (i) appending a new column
         with ocnjucntions of desired vars, and (ii) keeping only 
         levels of this vars (vars_others) that has at least n trials for 
@@ -1657,12 +1664,28 @@ class Snippets(object):
             lenient_allow_data_if_has_n_levels = None
 
         # print("n_min, lenient_allow_data_if_has_n_levels:", n_min, lenient_allow_data_if_has_n_levels)
+        if balance_same_levels_across_ovar:
+            # Then prune levels of var, trying to keep all the ovar if possible.
+            balance_no_missed_conjunctions = True
+            balance_force_to_drop_which = 1
+        else:
+            balance_force_to_drop_which = None
+
         dfthis, dict_lev_df = extract_with_levels_of_conjunction_vars(dfthis, var, vars_others, levels_var, n_min,
                                                                       lenient_allow_data_if_has_n_levels=lenient_allow_data_if_has_n_levels,
                                                                       DEBUG=DEBUG_CONJUNCTIONS,
                                                                       balance_no_missed_conjunctions=balance_no_missed_conjunctions,
                                                                       PRINT_AND_SAVE_TO=PRINT_AND_SAVE_TO,
-                                                                      ignore_values_called_ignore=ignore_values_called_ignore)
+                                                                      ignore_values_called_ignore=ignore_values_called_ignore,
+                                                                      balance_force_to_drop_which=balance_force_to_drop_which,
+                                                                      # plot_counts_heatmap_savepath="/tmp/test.png"
+                                                                      )
+        # print(dfthis[var].unique())
+        # print(n_min, lenient_allow_data_if_has_n_levels, balance_no_missed_conjunctions, balance_force_to_drop_which)
+        # print(site, event, len(dfthis))
+        # for k, dfthis in dict_lev_df.items():
+        #     print(k, dfthis[var].unique())
+        # assert False
 
         return dfthis, dict_lev_df, levels_var
 
@@ -5491,7 +5514,9 @@ class Snippets(object):
 
     def _plotgood_smoothfr_average_each_level(self, site, var, vars_others=None,
         event=None, plot_these_levels_of_varsothers=None, plot_on_these_axes=None,
-                                              leave_subplot_empty_if_no_data=False):
+                                              leave_subplot_empty_if_no_data=False,
+                                              OVERWRITE_n_min=None, OVERWRITE_lenient_n=None,
+                                                                                balance_same_levels_across_ovar=False):
         """ Low-level plot, each subplot is a single level of var-Others,
         and within each, plot eachlevel for var.
         Figure is a single level of (site, event)
@@ -5505,7 +5530,13 @@ class Snippets(object):
 
         # Extract data
         dict_lev_pa, levels_var = self._dataextract_as_popanal_conjunction_vars_OLD(var,
-                                                                                    vars_others, site, event=event)
+                                                                                    vars_others, site, event=event,
+                                                                                    OVERWRITE_n_min=OVERWRITE_n_min, OVERWRITE_lenient_n=OVERWRITE_lenient_n,
+                                                                                balance_same_levels_across_ovar=balance_same_levels_across_ovar)
+
+        # for k, pa in dict_lev_pa.items():
+        #     print(k, pa.X.shape, pa.Xlabels["trials"][var].unique())
+        # assert False
 
         # Prune to data you want.
         if plot_these_levels_of_varsothers:
@@ -6080,7 +6111,10 @@ class Snippets(object):
         return fig, axesall
 
     def plotgood_rasters_smfr_each_level_combined(self, site, var, 
-                vars_others=None, event=None, plotvers=("raster", "smfr")):
+                vars_others=None, event=None, plotvers=("raster", "smfr"),
+                                                  OVERWRITE_n_min=None,
+                                                  OVERWRITE_lenient_n=None,
+                                                  balance_same_levels_across_ovar=False):
         """ [Good], plot in a single figure both rasters (top row) and sm fr (bottom), aligned.
         Each column is a level of vars_others. 
         PARAMS;
@@ -6105,13 +6139,16 @@ class Snippets(object):
         #     print(orient)
         #     assert False
 
+        assert event is not None, "or else OVERWRITE_n_min wont work, it will counta cross all event"
 
         # PREPARE plot
         # Extract data, just to see many subplots to make.
-        _, levdat, levels_var = self.dataextract_as_df_conjunction_vars(var, 
-                vars_others, site, event=event)
+        _, levdat, levels_var = self.dataextract_as_df_conjunction_vars(var,
+                vars_others, site, event=event, OVERWRITE_n_min=OVERWRITE_n_min,
+                                                  OVERWRITE_lenient_n=OVERWRITE_lenient_n,
+                                                    balance_same_levels_across_ovar=balance_same_levels_across_ovar)
 
-        # if the other_level names are too long, shorten and use that 
+        # if the other_level names are too long, shorten and use that
         # if max([len(lov) for lov in levdat.keys()])>MAX_TITLE_LENGTH:
         #     # replace with indices and redo
         #     from pythonlib.tools.listtools import map_categoricalvar_to_indices
@@ -6154,7 +6191,9 @@ class Snippets(object):
                 levels_of_varsothers = list(levdat.keys())
                 self._plotgood_smoothfr_average_each_level(site, var, vars_others, event=event,
                                                          plot_these_levels_of_varsothers=levels_of_varsothers,
-                                                         plot_on_these_axes=axes)
+                                                         plot_on_these_axes=axes,
+                                                           OVERWRITE_n_min=OVERWRITE_n_min, OVERWRITE_lenient_n=OVERWRITE_lenient_n,
+                                                                                balance_same_levels_across_ovar=balance_same_levels_across_ovar)
 
             # make sure x axes is same for raster and sm fr
             for i in range(ncols):
