@@ -8,8 +8,158 @@ from pythonlib.globals import PATH_ANALYSIS_OUTCOMES
 import glob
 import pickle
 import pandas as pd
+import numpy as np
+from pythonlib.tools.pandastools import append_col_with_grp_index
 
 # (animal, date, question) --> DFallPA
+
+def dfallpa_preprocess_vars_conjunctions_extract(DFallpa, which_level):
+    """
+    Holding methods for:
+    Modify all PA, extracting new columns that are usually used. A bit hacky, as they are
+    hard-coded things which might be excessive.
+    :param DFallpa:
+    :param which_level:
+    :return:
+    - None, but modifies DFallpa
+    """
+    from pythonlib.tools.nptools import bin_values_by_rank, bin_values
+    from pythonlib.tools.expttools import deconstruct_filename
+    from pythonlib.tools.vectools import bin_angle_by_direction
+
+    if which_level=="trial":
+        pass # is all done in Dataset alrady
+
+        # Extract information about the first stroke (semantic labels)
+        # locations_allpa =[]
+        # angles_allpa =[]
+        # list_i_j = []
+        # for i, pa in enumerate(DFallpa["pa"]):
+        #     dflab = pa.Xlabels["trials"]
+        #
+        #     list_seqc_0_shsem = []
+        #     list_seqc_0_locon = []
+        #     list_seqc_0_shsemcat = []
+        #     for j, row in dflab.iterrows():
+        #
+        #         # To get semantic label for shape, use task token
+        #         assert False, "this is incorrect for char -- should use Tkbeh_stkbeh -- do this in Dataset..."
+        #         Tk = row["Tkbeh_stktask"]
+        #         Tk.features_extract_wrapper(features_get=["shape_semantic"])
+        #         list_seqc_0_shsem.append(Tk.Tokens[0]["shape_semantic"])
+        #
+        #         # Expand shape
+        #         # sh-x-y
+        #         tmp = deconstruct_filename(Tk.Tokens[0]["shape_semantic"])
+        #         shape_semantic_cat = tmp["filename_components_hyphened"][0] # e..g, ['test', '1', '2']
+        #         list_seqc_0_shsemcat.append(shape_semantic_cat)
+        #
+        #         # To get motoro stuff
+        #         Tk = row["Tkbeh_stkbeh"]
+        #         Tk.features_extract_wrapper(features_get=["loc_on", "angle"])
+        #         list_seqc_0_locon.append(Tk.Tokens[0]["loc_on"])
+        #
+        #         # Collect acorss pa
+        #         locations_allpa.append(Tk.Tokens[0]["loc_on"])
+        #         angles_allpa.append(Tk.Tokens[0]["angle"])
+        #         list_i_j.append((i,j))
+        #
+        #     dflab["seqc_0_shapesem"] = list_seqc_0_shsem
+        #     dflab["seqc_0_locon"] = list_seqc_0_locon
+        #     dflab["seqc_0_locx"] = np.array(list_seqc_0_locon)[:,0]
+        #     dflab["seqc_0_locy"] = np.array(list_seqc_0_locon)[:,1]
+        #     dflab["seqc_0_shapesemcat"] = list_seqc_0_shsemcat
+        #
+        #
+        # # BIN LOCATIONS
+        # # Given list of locations, bin them in x and y
+        # tmp = np.stack(locations_allpa)
+        # xs = tmp[:,0]
+        # ys = tmp[:,1]
+        #
+        # # xs_binned = bin_values_by_rank(xs, nbins=2)
+        # # ys_binned = bin_values_by_rank(ys, nbins=2)
+        # xs_binned = bin_values(xs, nbins=2)
+        # ys_binned = bin_values(ys, nbins=2)
+        # locations_allpa_binned = np.stack([xs_binned, ys_binned], axis=1)
+        # # map from (i,j) to locations_binned
+        # map_ij_to_locbinned ={}
+        # assert len(list_i_j)==len(locations_allpa_binned)
+        # for (i,j), loc_binned in zip(list_i_j, locations_allpa_binned):
+        #     map_ij_to_locbinned[(i,j)] = loc_binned
+        # # Place back into pa
+        # colname = "seqc_0_loconbinned"
+        # for i, pa in enumerate(DFallpa["pa"]):
+        #     dflab = pa.Xlabels["trials"]
+        #     vals = []
+        #     for j, row in dflab.iterrows():
+        #         vals.append(tuple(map_ij_to_locbinned[(i,j)].tolist()))
+        #     dflab[colname] = vals
+        #
+        # # BIN ANGLES
+        # angles_binned = bin_angle_by_direction(angles_allpa, num_angle_bins=4)
+        #
+        # map_ij_to_anglebinned ={}
+        # map_ij_to_angle ={}
+        # assert len(list_i_j)==len(angles_binned)
+        # for (i,j), ab, a in zip(list_i_j, angles_binned, angles_allpa):
+        #     map_ij_to_anglebinned[(i,j)] = ab
+        #     map_ij_to_angle[(i,j)] = a
+        #
+        # # Place back into pa
+        # colname = "seqc_0_anglebinned"
+        # for i, pa in enumerate(DFallpa["pa"]):
+        #     dflab = pa.Xlabels["trials"]
+        #     vals = []
+        #     for j, row in dflab.iterrows():
+        #         vals.append(map_ij_to_anglebinned[(i,j)])
+        #     dflab[colname] = vals
+        #
+        # colname = "seqc_0_angle"
+        # for i, pa in enumerate(DFallpa["pa"]):
+        #     dflab = pa.Xlabels["trials"]
+        #     vals = []
+        #     for j, row in dflab.iterrows():
+        #         vals.append(map_ij_to_angle[(i,j)])
+        #     dflab[colname] = vals
+        #
+        # ##### CONJUNCTIONS
+        for i, pa in enumerate(DFallpa["pa"]):
+            dflab = pa.Xlabels["trials"]
+            dflab = append_col_with_grp_index(dflab, ["seqc_0_shape", "seqc_0_loc"], "seqc_0_shapeloc")
+            dflab = append_col_with_grp_index(dflab, ["seqc_1_shape", "seqc_1_loc"], "seqc_1_shapeloc")
+            dflab = append_col_with_grp_index(dflab, ["seqc_2_shape", "seqc_2_loc"], "seqc_2_shapeloc")
+            pa.Xlabels["trials"] = dflab
+
+    elif which_level=="stroke":
+
+        ##### CONJUNCTIONS
+        for i, pa in enumerate(DFallpa["pa"]):
+            dflab = pa.Xlabels["trials"]
+
+            dflab = append_col_with_grp_index(dflab, ["CTXT_shape_prev", "CTXT_loc_prev"], "CTXT_shapeloc_prev", strings_compact=True)
+            dflab = append_col_with_grp_index(dflab, ["CTXT_shape_next", "CTXT_loc_next"], "CTXT_shapeloc_next", strings_compact=True)
+            dflab = append_col_with_grp_index(dflab, ["CTXT_shapeloc_prev", "gridloc", "CTXT_shapeloc_next"], "CTXT_ALL_shape", strings_compact=True)
+
+            dflab = append_col_with_grp_index(dflab, ["gridloc", "stroke_index"], "loc_si")
+            dflab = append_col_with_grp_index(dflab, ["shape", "gridloc"], "shape_loc")
+            dflab = append_col_with_grp_index(dflab, ["CTXT_loc_prev", "CTXT_shape_prev", "gridloc"], "CTXT_present_1")
+            dflab = append_col_with_grp_index(dflab, ["CTXT_loc_prev", "CTXT_shape_prev", "shape"], "CTXT_present_1b")
+            dflab = append_col_with_grp_index(dflab, ["CTXT_loc_prev", "CTXT_shape_prev", "gridloc", "shape"], "CTXT_present_2")
+            dflab = append_col_with_grp_index(dflab, ["CTXT_loc_prev", "CTXT_shape_prev", "shape", "gridloc", "CTXT_loc_next"], "CTXT_ALL_1")
+            dflab = append_col_with_grp_index(dflab, ["CTXT_loc_prev", "CTXT_shape_prev", "shape", "gridloc", "CTXT_shape_next"], "CTXT_ALL_2")
+            dflab = append_col_with_grp_index(dflab, ["CTXT_loc_prev", "CTXT_shape_prev", "shape", "gridloc", "CTXT_loc_next", "CTXT_shape_next"], "CTXT_ALL_MAX")
+            dflab = append_col_with_grp_index(dflab, ["task_kind", "stroke_index"], "tk_si")
+            dflab = append_col_with_grp_index(dflab, ["gridloc", "stroke_index_semantic"], "loc_sis")
+
+            # get location bin within the gridloc bin
+            from pythonlib.dataset.dataset_strokes import DatStrokes
+            ds = DatStrokes()
+            ds.location_redefine_gridloc_locally(2, dflab, False)
+
+            pa.Xlabels["trials"] = dflab
+    else:
+        assert False
 
 def dfallpa_combine_trial_strokes_from_already_loaded_DFallpa():
     """
@@ -338,9 +488,7 @@ def dfallpa_extraction_load_wrapper_from_MS(MS, question, list_time_windows,
     # print("3 dfafasf", Dtmp.TokensVersion)
 
     # Load a question
-    DictParamsEachQuestion = rsagood_questions_dict(animal, date, question=question)
-    q_params = DictParamsEachQuestion[question]
-
+    q_params = rsagood_questions_dict(animal, date, question=question)[question]
     print("Question:", question)
     print("These questions params:")
     for k, v in q_params.items():
@@ -350,7 +498,8 @@ def dfallpa_extraction_load_wrapper_from_MS(MS, question, list_time_windows,
     # Clean up SP and extract features
     D, list_features_extraction = SP.datasetbeh_preprocess_clean_by_expt(
         ANALY_VER=q_params["ANALY_VER"], vars_extract_append=q_params["effect_vars"],
-        substrokes_plot_preprocess=substrokes_plot_preprocess)
+        substrokes_plot_preprocess=substrokes_plot_preprocess,
+        HACK_RENAME_SHAPES=HACK_RENAME_SHAPES)
 
     # Keep only specific events - to make the following faster.
     if events_keep is None:
@@ -385,7 +534,6 @@ def dfallpa_extraction_load_wrapper_from_MS(MS, question, list_time_windows,
     ## Extract all popanals
     DFallpa = snippets_extract_popanals_split_bregion_twind(SP, list_time_windows,
                                                     list_features_extraction,
-                                                    HACK_RENAME_SHAPES=HACK_RENAME_SHAPES,
                                                     combine_into_larger_areas=combine_into_larger_areas,
                                                     events_keep=events_keep,
                                                     exclude_bad_areas=exclude_bad_areas)
