@@ -20,6 +20,7 @@ from pythonlib.tools.expttools import writeDictToYaml
 from pythonlib.tools.pandastools import append_col_with_grp_index, convert_to_2d_dataframe
 from pythonlib.tools.snstools import rotateLabel
 
+LABELS_IGNORE = ["IGN", ("IGN",), "IGNORE", ("IGNORE",)] # values to ignore during dcode.
 
 def _popanal_preprocess_normalize(PA, PLOT=False):
     """ Normalize firing rates so that similar acorss neruons (higha nd low fr) whiel
@@ -274,7 +275,6 @@ def popanal_preprocess_scalar_normalization(PA, grouping_vars, subtract_mean_eac
 
 def snippets_extract_popanals_split_bregion_twind(SP, list_time_windows, vars_extract_from_dfscalar,
                                                   SAVEDIR=None, dosave=False,
-                                                  HACK_RENAME_SHAPES=False,
                                                   combine_into_larger_areas=False,
                                                   events_keep=None,
                                                   exclude_bad_areas=False):
@@ -304,44 +304,45 @@ def snippets_extract_popanals_split_bregion_twind(SP, list_time_windows, vars_ex
         SAVEDIR = f"{PATH_ANALYSIS_OUTCOMES}/recordings/main/SAVED_POPANALS"
         os.makedirs(SAVEDIR, exist_ok=True)
 
-    if HACK_RENAME_SHAPES:
-        ############# HACK - rename shapes (lumping)
-        #### Rename any variable values? Hacky
-        # Lump together (done by hand)
-        map_shapelump_to_shapes = {}
-        map_shape_to_shapelump = {}
-        for grp in [
-            ["V-2-1-0", "arcdeep-4-1-0", "usquare-1-1-0", "L|arcdeep-4-1-0"],
-            ["V-2-3-0", "arcdeep-4-3-0", "usquare-1-3-0"],
-            ["V-2-2-0", "arcdeep-4-2-0", "usquare-1-2-0"],
-            ["V-2-4-0", "arcdeep-4-4-0", "usquare-1-4-0", "L|V-2-4-0"],
-            ["squiggle3-3-1-0", "zigzagSq-1-2-0"],
-            ["squiggle3-3-1-1", "zigzagSq-1-2-1"],
-            ["squiggle3-3-2-0", "zigzagSq-1-1-0"],
-            ["squiggle3-3-2-1", "zigzagSq-1-1-1"],
-        ]:
-
-            # name it after the first
-            name = f"L|{grp[0]}"
-            assert name not in map_shapelump_to_shapes
-            map_shapelump_to_shapes[name] = grp
-
-            for g in grp:
-                assert g not in map_shape_to_shapelump
-                map_shape_to_shapelump[g] = name
-
-        # Replace shape values for all columns that have "shape" in them.
-        shape_keys = [k for k in vars_extract_from_dfscalar if "shape" in k]
-        for sk in shape_keys:
-            if len(SP.DfScalar[sk].unique())>3:
-                print(" -- Lumping shapes (renaming) in SP.DfScalar, for: ", sk)
-                def F(x):
-                    sh = x[sk]
-                    if sh in map_shape_to_shapelump.keys():
-                        return map_shape_to_shapelump[sh]
-                    else:
-                        return sh
-                SP.DfScalar[sk] = SP.DfScalar.apply(F, axis=1)
+    # if HACK_RENAME_SHAPES:
+    #     ############# HACK - rename shapes (lumping)
+    #     #### Rename any variable values? Hacky
+    #     # Lump together (done by hand)
+    #     map_shapelump_to_shapes = {}
+    #     map_shape_to_shapelump = {}
+    #     for grp in [
+    #         ["V-2-1-0", "arcdeep-4-1-0", "usquare-1-1-0", "L|arcdeep-4-1-0"],
+    #         ["V-2-3-0", "arcdeep-4-3-0", "usquare-1-3-0"],
+    #         ["V-2-2-0", "arcdeep-4-2-0", "usquare-1-2-0"],
+    #         ["V-2-4-0", "arcdeep-4-4-0", "usquare-1-4-0", "L|V-2-4-0"],
+    #         ["squiggle3-3-1-0", "zigzagSq-1-2-0"],
+    #         ["squiggle3-3-1-1", "zigzagSq-1-2-1"],
+    #         ["squiggle3-3-2-0", "zigzagSq-1-1-0"],
+    #         ["squiggle3-3-2-1", "zigzagSq-1-1-1"],
+    #     ]:
+    #
+    #         # name it after the first
+    #         name = f"L|{grp[0]}"
+    #         assert name not in map_shapelump_to_shapes
+    #         map_shapelump_to_shapes[name] = grp
+    #
+    #         for g in grp:
+    #             assert g not in map_shape_to_shapelump
+    #             map_shape_to_shapelump[g] = name
+    #
+    #     # Replace shape values for all columns that have "shape" in them.
+    #     shape_keys = [k for k in vars_extract_from_dfscalar if "shape" in k]
+    #     for sk in shape_keys:
+    #         if isinstance(SP.DfScalar.iloc[0][sk], str):
+    #             if len(SP.DfScalar[sk].unique())>3:
+    #                 print(" -- Lumping shapes (renaming) in SP.DfScalar, for: ", sk)
+    #                 def F(x):
+    #                     sh = x[sk]
+    #                     if sh in map_shape_to_shapelump.keys():
+    #                         return map_shape_to_shapelump[sh]
+    #                     else:
+    #                         return sh
+    #                 SP.DfScalar[sk] = SP.DfScalar.apply(F, axis=1)
 
     ####################### EXTRACT DATA
     # list_features_extraction = list(set(list_features_extraction + EFFECT_VARS))
@@ -442,7 +443,7 @@ def snippets_extract_popanals_split_bregion_twind(SP, list_time_windows, vars_ex
     DFallpa = pd.DataFrame(tmp)
 
     if len(DFallpa)==0:
-        print(list_time_windows, vars_extract_from_dfscalar, HACK_RENAME_SHAPES,
+        print(list_time_windows, vars_extract_from_dfscalar,
               combine_into_larger_areas, events_keep, exclude_bad_areas)
         assert False, "probably params not compatible with each other"
 
@@ -1189,10 +1190,17 @@ def _trajgood_make_colors_discrete_var(labels):
     - dict,  mapping from value to color (if discrete), otherw sie None
     - color_type, str, either "cont" or "discrete".
     """
-    labels_color_uniq = sorted(list(set(labels)))
+    labels_color_uniq = sort_mixed_type(list(set(labels)))
 
+    if len(set([type(x) for x in labels_color_uniq]))>1:
+        # more than one type...
+        color_type = "discr"
+        pcols = makeColors(len(labels_color_uniq))
+        _map_lev_to_color = {}
+        for lev, pc in zip(labels_color_uniq, pcols):
+            _map_lev_to_color[lev] = pc
     # continuous?
-    if len(labels_color_uniq)>50 and isinstance(labels_color_uniq[0], (int, np.ndarray, float)):
+    elif len(labels_color_uniq)>50 and isinstance(labels_color_uniq[0], (int)):
         color_type = "cont"
         # from pythonlib.tools.plottools import map_continuous_var_to_color_range as mcv
         # valmin = min(df[var_color_by])
@@ -1200,6 +1208,9 @@ def _trajgood_make_colors_discrete_var(labels):
         # def map_continuous_var_to_color_range(vals):
         #     return mcv(vals, valmin, valmax)
         # label_rgbs = map_continuous_var_to_color_range(df[var_color_by])
+        _map_lev_to_color = None
+    elif len(labels_color_uniq)>8 and isinstance(labels_color_uniq[0], (np.ndarray, float)):
+        color_type = "cont"
         _map_lev_to_color = None
     else:
         color_type = "discr"
@@ -1280,6 +1291,7 @@ def trajgood_plot_colorby_scalar_BASE(xs, ys, labels_color, ax,
         map_lev_to_color, color_type = _trajgood_make_colors_discrete_var(labels_color)
 
     plotScatterOverlay(X, labels_color, alpha=alpha, ax=ax, overlay_mean=overlay_mean,
+                       overlay_ci=False,
                        plot_text_over_examples=plot_text_over_examples,
                        text_to_plot=text_to_plot, map_lev_to_color=map_lev_to_color,
                        SIZE=SIZE, color_type=color_type)
@@ -1288,16 +1300,28 @@ def trajgood_plot_colorby_splotby_scalar_helper(xs, ys, labels_color, labels_sub
                                                 color_var, subplot_var,
                                                 overlay_mean=False, plot_text_over_examples=False,
                                                  text_to_plot=None,
-                                                 alpha=0.5, SIZE=5):
+                                                 alpha=0.5, SIZE=5,
+                                                STROKES_BEH = None,
+                                                STROKES_TASK = None,
+                                                n_strokes_overlay_per_lev = 4,
+                                                skip_subplots_lack_mult_colors = False
+                                                ):
     """
     Like trajgood_plot_colorby_splotby_scalar, but passing in the raw data directly, instead
     of dataframe. Here constructs datafrane and runs for you.
+
+    To ignore any variable, set eithe rhte labels=None or the variable=None
+
     :param xs: (n, 1)
     :param ys: (n,1)
     :param labels_color: len(n) list
     :param labels_subplot: can be None to skip splitting by subplot
+    :param STROKES_BEH and STROKES_TASK: overlays strokes on figure.
+    :params skip_subplots_lack_mult_colors, bool, if True, then only plots subplots if there are >1
+    classes (for categorical variables only).
     :return:
     """
+    from pythonlib.drawmodel.strokePlots import overlay_stroke_on_plot_mult_rand
 
     if len(xs.shape)==1:
         xs = xs[:, None]
@@ -1307,23 +1331,76 @@ def trajgood_plot_colorby_splotby_scalar_helper(xs, ys, labels_color, labels_sub
     assert xs.shape[1]==1
     assert ys.shape[1]==1
 
-    tmp = {
-        color_var:labels_color,
-        subplot_var:labels_subplot,
-        "x":xs.tolist(),
-        "y":ys.tolist()
-    }
+    if labels_subplot is None:
+        subplot_var = None
+        tmp = {
+            color_var:labels_color,
+            "x":xs.tolist(),
+            "y":ys.tolist()
+        }
+    else:
+        tmp = {
+            color_var:labels_color,
+            subplot_var:labels_subplot,
+            "x":xs.tolist(),
+            "y":ys.tolist()
+        }
     dfthis = pd.DataFrame(tmp)
 
-    return trajgood_plot_colorby_splotby_scalar(dfthis, color_var, subplot_var,
+    fig, axes, map_levo_to_ax, map_levo_to_inds = trajgood_plot_colorby_splotby_scalar(dfthis, color_var, subplot_var,
                                          overlay_mean, plot_text_over_examples,
-                                                text_to_plot, alpha, SIZE)
+                                                text_to_plot, alpha, SIZE, skip_subplots_lack_mult_colors=skip_subplots_lack_mult_colors)
+
+    if fig is None:
+        return None, None, None, None
+
+    ### OVERLAY strokes, if passed in
+    LIST_STROKES_PLOT = []
+    if STROKES_BEH is not None:
+        LIST_STROKES_PLOT.append([STROKES_BEH, "onset", "k", n_strokes_overlay_per_lev])
+    if STROKES_TASK is not None:
+        LIST_STROKES_PLOT.append([STROKES_TASK, "center", "m", 1])
+    if len(LIST_STROKES_PLOT)>0:
+        from pythonlib.tools.pandastools import grouping_append_and_return_inner_items
+        # Is this discrete?
+        _, color_type = _trajgood_make_colors_discrete_var(labels_color)
+        if color_type=="discr":
+            dflab = pd.DataFrame({color_var:labels_color, subplot_var:labels_subplot})
+            grpdict = grouping_append_and_return_inner_items(dflab, [color_var, subplot_var])
+            levels_var_color = dflab[color_var].unique().tolist()
+
+            for strokes, align_to, pcol, n_rand in LIST_STROKES_PLOT:
+
+                # Overlay random strokes, sampling within each level of labels_color
+                for levo, ax in map_levo_to_ax.items():
+                    for lev in levels_var_color:
+                        if (lev, levo) in grpdict.keys():
+                            inds = grpdict[(lev, levo)]
+                            overlay_stroke_on_plot_mult_rand([strokes[i] for i in inds], xs[inds], ys[inds], ax,
+                                                             n_rand, align_to, color=pcol)
+        elif color_type=="cont":
+            for strokes, align_to, pcol, n_rand in LIST_STROKES_PLOT:
+                # Continuous -- change colro to not interfere
+                if pcol=="k":
+                    pcol = "g"
+                elif pcol=="m":
+                    pcol = "c"
+                for levo, ax in map_levo_to_ax.items():
+                    # Overlay nplot random strokes
+                    inds = map_levo_to_inds[levo]
+                    nplot = min([30, n_rand*5])
+                    overlay_stroke_on_plot_mult_rand([strokes[i] for i in inds], xs[inds], ys[inds], ax, nplot, align_to, color=pcol)
+        else:
+            assert False
+
+    return fig, axes, map_levo_to_ax, map_levo_to_inds
 
 
 def trajgood_plot_colorby_splotby_scalar(df, var_color_by, var_subplots,
                                          overlay_mean=False, plot_text_over_examples=False,
                                          text_to_plot=None,
-                                         alpha=0.5, SIZE=5):
+                                         alpha=0.5, SIZE=5,
+                                         skip_subplots_lack_mult_colors=False):
     """ [GOOD], to plot scatter of pts, colored by one variable, and split across
     subplots by another variable.
     PARAMS:
@@ -1343,6 +1420,13 @@ def trajgood_plot_colorby_splotby_scalar(df, var_color_by, var_subplots,
 
     labellist = df[var_color_by].tolist()
     map_lev_to_color, color_type = _trajgood_make_colors_discrete_var(labellist)
+
+    # If you pass in continuous variable as othervar, then overwrite that and just plot a single plot.
+    if var_subplots is not None:
+        _, tmp = _trajgood_make_colors_discrete_var(df[var_subplots].tolist())
+        if tmp!="discr":
+            # Overwrite input
+            var_subplots = None
 
     # # continuous?
     # from pythonlib.tools.plottools import makeColors
@@ -1369,24 +1453,56 @@ def trajgood_plot_colorby_splotby_scalar(df, var_color_by, var_subplots,
         var_subplots = "_dummy"
 
     # One subplot per othervar
-    levs_other = sorted(df[var_subplots].unique().tolist())
-    ncols = 3
+    levs_other = sort_mixed_type(df[var_subplots].unique().tolist())
+
+    if skip_subplots_lack_mult_colors and color_type=="discr":
+        # Keep only subplots with >1 color and >n datapts total
+        n_min_per_levo = 4
+        levs_other = [levo for levo in levs_other if len(df[df[var_subplots] == levo][var_color_by].unique())>1]
+        levs_other = [levo for levo in levs_other if len(df[df[var_subplots] == levo][var_color_by])>=n_min_per_levo]
+
+    if len(levs_other)==0:
+        return None, None, None, None
+
+    max_n_subplots = 32
+    if len(levs_other)>max_n_subplots:
+        # sort by n datapts, and take the top n
+        if True:
+            tmp = [(levo, sum(df[var_subplots]==levo)) for levo in levs_other]
+            tmp = sorted(tmp, key = lambda x:-x[1])
+            levs_other = [x[0] for x in tmp][:max_n_subplots]
+        else:
+            import random
+            print("[trajgood_plot_colorby_splotby_scalar], too many subplots", len(levs_other), "...")
+            levs_other = sort_mixed_type(random.sample(levs_other, max_n_subplots))
+            print("... pruned to: ", len(levs_other))
+
+    ncols = 4
     nrows = int(np.ceil(len(levs_other)/ncols))
     fig, axes = plt.subplots(nrows, ncols, sharex=True, sharey=True,
                              figsize=(ncols*SIZE, nrows*SIZE))
+    map_levo_to_inds = {}
+    map_levo_to_ax ={}
     for ax, levo in zip(axes.flatten(), levs_other):
         ax.set_title(levo)
         dfthis = df[df[var_subplots]==levo]
+        map_levo_to_inds[levo] = dfthis.index.tolist()
+        map_levo_to_ax[levo] = ax
 
+        if text_to_plot is not None:
+            # df[df[var_subplots]==levo].index.tolist()
+            text_to_plot_this = np.array(text_to_plot)[df[var_subplots]==levo].tolist()
+        else:
+            text_to_plot_this = None
         xs = np.stack(dfthis["x"])
         ys = np.stack(dfthis["y"])
         labels_color = dfthis[var_color_by].values
         trajgood_plot_colorby_scalar_BASE(xs, ys, labels_color, ax,
                                           map_lev_to_color, color_type,
                                           overlay_mean, plot_text_over_examples,
-                                          text_to_plot, alpha, SIZE)
+                                          text_to_plot_this, alpha, SIZE)
 
-    return fig, axes
+    return fig, axes, map_levo_to_ax, map_levo_to_inds
 
 def trajgood_construct_df_from_raw(X, times, labels, labelvars):
     """
@@ -1457,14 +1573,14 @@ def trajgood_plot_colorby_splotby(df, var_color_by, var_subplots, dims=(0,1),
     from pythonlib.tools.plottools import legend_add_manual
 
     # One color for each level of effect var
-    levs_effect = sorted(df[var_color_by].unique().tolist())
+    levs_effect = sort_mixed_type(df[var_color_by].unique().tolist())
     pcols = makeColors(len(levs_effect))
     map_lev_to_color = {}
     for lev, pc in zip(levs_effect, pcols):
         map_lev_to_color[lev] = pc
 
     # One subplot per othervar
-    levs_other = sorted(df[var_subplots].unique().tolist())
+    levs_other = sort_mixed_type(df[var_subplots].unique().tolist())
     ncols = 3
     nrows = int(np.ceil(len(levs_other)/ncols))
     fig, axes = plt.subplots(nrows, ncols, sharex=True, sharey=True, figsize=(ncols*3.5, nrows*3.5))
@@ -1517,3 +1633,65 @@ def trajgood_plot_colorby_splotby(df, var_color_by, var_subplots, dims=(0,1),
     legend_add_manual(ax, map_lev_to_color.keys(), map_lev_to_color.values(), 0.2)
 
     return fig, axes
+
+def dimredgood_nonlinear_embed_data(X, METHOD="umap", n_components=2, tsne_perp="auto", umap_n_neighbors="auto"):
+    """
+    Good wrapper, holding all methods for dimensionality reduction of X, esp nonlinear methods like tsne and
+    umap, with focus not on leanring parametric space, but instead on returning embedding
+    PARAMS:
+    - X, already-preprocessed data, (nsamps, ndims)
+    RETURNS:
+        - Xredu, (nsamp, n_components)
+    """
+    nsamp = X.shape[0]
+    if METHOD == "tsne":
+        from sklearn.manifold import TSNE
+        if tsne_perp =="auto":
+            perp = int(max([10, min([50, 0.1*nsamp])])) # heuristic
+        else:
+            perp = tsne_perp
+        print("TSNE, Using this perp:", perp, ", nsamp =", nsamp)
+        Xredu = TSNE(n_components=n_components, perplexity=perp, learning_rate="auto", init="pca").fit_transform(X)
+    elif METHOD == "umap":
+        import umap
+        if umap_n_neighbors =="auto":
+            umap_n_neighbors = int(max([10, min([30, 0.05*nsamp])])) # heuristic
+        print("UMAP, Using this n_neighbors:", umap_n_neighbors, ", nsamp =", nsamp)
+        min_dist = 0.1
+        reducer = umap.UMAP(n_components=n_components, n_neighbors=umap_n_neighbors, min_dist=min_dist)
+        # mapper = reducer.fit(X)
+        Xredu = reducer.fit_transform(X)
+    else:
+        assert False
+
+    return Xredu
+
+
+def cleanup_remove_labels_ignore(xs, ys, labels_color, labels_subplot):
+    """
+    Remove trials that have labels those in LABELS_IGNORE, either in
+    labels_color or labels_subplot.
+    PARAMS:
+    - xs, (n,) array
+    - ys, (n,) array
+    - labels_color, list, len trials.
+    - labels_subplot, list, len trials.
+    RETURNS:
+    - xs, ys, labels_color, labels_subplot, pruned copies.
+    """
+
+    inds_keep_1 = [i for i, val in enumerate(labels_color) if val not in LABELS_IGNORE]
+
+    if labels_subplot is not None:
+        inds_keep_2 = [i for i, val in enumerate(labels_subplot) if val not in LABELS_IGNORE]
+    else:
+        inds_keep_2 = []
+
+    inds_keep = sorted(set(inds_keep_1 + inds_keep_2))
+    xs = xs[inds_keep]
+    ys = ys[inds_keep]
+    labels_color = [labels_color[i] for i in inds_keep]
+    if labels_subplot is not None:
+        labels_subplot = [labels_subplot[i] for i in inds_keep]
+
+    return xs, ys, labels_color, labels_subplot

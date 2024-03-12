@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from pythonlib.tools.plottools import savefig
+from pythonlib.tools.listtools import sort_mixed_type
 
 LABELS_IGNORE = ["IGN", ("IGN",), "IGNORE", ("IGNORE",)] # values to ignore during dcode.
 N_MIN_TRIALS = 5 # min trials per level, otherwise throws level out.
@@ -31,7 +32,7 @@ def decode_apply_model_to_test_data(mod, x_test, labels_test,
     """
     from sklearn.metrics import balanced_accuracy_score
 
-    x_test, labels_test = cleanup_remove_labels_ignore(x_test, labels_test)
+    x_test, labels_test, inds_keep = cleanup_remove_labels_ignore(x_test, labels_test)
     assert x_test.shape[0]==len(labels_test)
 
     labels_predicted = mod.predict(x_test)
@@ -73,7 +74,7 @@ def decode_train_model(X_train, labels_train, plot_resampled_data_path_nosuff=No
     assert len(X_train.shape)==2
     assert X_train.shape[0]==len(labels_train)
 
-    X_train, labels_train = cleanup_remove_labels_ignore(X_train, labels_train)
+    X_train, labels_train, inds_keep = cleanup_remove_labels_ignore(X_train, labels_train)
 
     if X_train is None or len(labels_train)==0:
         return None
@@ -158,7 +159,8 @@ def decode_categorical_within_condition(X, dflab, var_decode, vars_conj_conditio
     # First facotrize the l;abels, BNEFORE splitting be,low or else bug.
     labels_all = dflab[var_decode].tolist()
 
-    X, labels_all = cleanup_remove_labels_ignore(X, labels_all)
+    X, labels_all, inds_keep = cleanup_remove_labels_ignore(X, labels_all)
+    dflab = dflab.iloc[inds_keep].copy().reset_index(drop=True)
 
     # Get all levels of conditioned var
     groupdict = grouping_append_and_return_inner_items(dflab, vars_conj_condition)
@@ -233,7 +235,8 @@ def decode_categorical_cross_condition(X, dflab, var_decode, vars_conj_condition
     # labels_all, tmp = pd.factorize(dflab[var_decode])
     # map_int_to_lab = {i:lab for i, lab in enumerate(tmp)}
 
-    X, labels_all = cleanup_remove_labels_ignore(X, labels_all)
+    X, labels_all, inds_keep = cleanup_remove_labels_ignore(X, labels_all)
+    dflab = dflab.iloc[inds_keep].copy().reset_index(drop=True)
 
     # Get all levels of conditioned var
     groupdict = grouping_append_and_return_inner_items(dflab, vars_conj_condition)
@@ -343,7 +346,7 @@ def decode_categorical(X, labels, expected_n_min_across_classes,
     from sklearn.metrics import balanced_accuracy_score
 
     labels = list(labels)
-    X, labels = cleanup_remove_labels_ignore(X, labels)
+    X, labels, inds_keep = cleanup_remove_labels_ignore(X, labels)
 
     ## PREP PARAMS
     # Count the lowest n data across classes.
@@ -455,6 +458,10 @@ def decodewrap_categorical_timeresolved_within_condition(pa, var_decode,
                                                                  plot_counts_heatmap_savepath=plot_counts_heatmap_savepath,
                                                                  balance_no_missed_conjunctions=balance_no_missed_conjunctions)
 
+        if len(dfout)==0:
+            print("all data pruned!!")
+            return None
+
         # Only keep the indices in dfout
         pa = pa.slice_by_dim_indices_wrapper("trials", dfout["_index"].tolist(), True)
         assert len(pa.X)>0, "all data pruned!!"
@@ -479,21 +486,21 @@ def decodewrap_categorical_timeresolved_within_condition(pa, var_decode,
                                                                   do_center=do_center,
                                                                     do_std=do_std,
                                                                    max_nsplits=max_nsplits)
-        assert len(dfres_agg)==1
+        if len(dfresthis)>0:
+            assert len(dfres_agg)==1
 
-        # 3. Collect data
-        res.append({
-            "tbin":tbin,
-            "time":times[tbin],
-            "var_decode":var_decode,
-            "vars_conj_condition":tuple(vars_conj_condition),
-            "score":dfres_agg["score"].values[0],
-            "score_adjusted":dfres_agg["score_adjusted"].values[0],
-        })
+            # 3. Collect data
+            res.append({
+                "tbin":tbin,
+                "time":times[tbin],
+                "var_decode":var_decode,
+                "vars_conj_condition":tuple(vars_conj_condition),
+                "var_decode_and_conj":tuple([var_decode] + vars_conj_condition),
+                "score":dfres_agg["score"].values[0],
+                "score_adjusted":dfres_agg["score_adjusted"].values[0],
+            })
 
     return res
-
-
 
 def decodewrap_categorical_timeresolved_cross_condition(pa, var_decode,
                                                         vars_conj_condition,
@@ -570,18 +577,22 @@ def decodewrap_categorical_timeresolved_cross_condition(pa, var_decode,
                                                                   var_decode,
                                                                   vars_conj_condition,
                                                                   do_center=do_center, do_std=do_std)
-        assert len(dfres_agg)==1
+        if len(dfresthis)>0:
+            # print("---------------")
+            # display(dfresthis)
+            # display(dfres_agg)
+            assert len(dfres_agg)==1
 
-        # 3. Collect data
-        res.append({
-            "tbin":tbin,
-            "time":times[tbin],
-            "var_decode":var_decode,
-            "vars_conj_condition":tuple(vars_conj_condition),
-            "var_decode_and_conj":tuple([var_decode] + vars_conj_condition),
-            "score":dfres_agg["score"].values[0],
-            "score_adjusted":dfres_agg["score_adjusted"].values[0],
-        })
+            # 3. Collect data
+            res.append({
+                "tbin":tbin,
+                "time":times[tbin],
+                "var_decode":var_decode,
+                "vars_conj_condition":tuple(vars_conj_condition),
+                "var_decode_and_conj":tuple([var_decode] + vars_conj_condition),
+                "score":dfres_agg["score"].values[0],
+                "score_adjusted":dfres_agg["score_adjusted"].values[0],
+            })
 
     return res
 
@@ -823,10 +834,107 @@ def decodewrapouterloop_preprocess_extract_params(DFallpa):
 
     return list_br, list_tw, list_ev, n_strokes_max
 
+
+def decodewrapouterloop_categorical_timeresolved_within_condition(DFallpa, list_var_decode,
+                                                                 list_vars_conj,
+                                                                SAVEDIR, time_bin_size=0.1, slide=0.05,
+                                                                  max_nsplits = None,
+                                                                  filtdict = None,
+                                                                  separate_by_task_kind = True):
+    """
+    Wrapper to within-condition decode, for each PA, each time point, separately for each var in list_vars_decode,
+    decode decode separately for each level of othervar, and then averaging decode. Think of this as "controlling"
+    for levels of othervar.
+    :param DFallpa:
+    :param list_vars_decode:
+    :param time_bin_size:
+    :param slide:
+    :param n_min_trials:
+    :return:
+    """
+
+    RES = []
+    already_done = []
+    for i, row in DFallpa.iterrows():
+        br = row["bregion"]
+        tw = row["twind"]
+        ev = row["event"]
+        PA = row["pa"]
+
+        if separate_by_task_kind:
+            PA.Xlabels["trials"]["_task_kind"] = PA.Xlabels["trials"]["task_kind"]
+        else:
+            PA.Xlabels["trials"]["_task_kind"] = "dummy"
+        list_task_kind = PA.Xlabels["trials"]["_task_kind"].unique()
+
+        for task_kind in list_task_kind:
+            pa = PA.slice_by_labels("trials", "_task_kind", [task_kind])
+
+            for var_decode, vars_conj_condition in zip(list_var_decode, list_vars_conj):
+                print(ev, br, tw, task_kind, var_decode)
+
+                if (ev, var_decode, vars_conj_condition, task_kind) not in already_done:
+                    plot_counts_heatmap_savepath = f"{SAVEDIR}/counts_{ev}_{task_kind}-var={var_decode}-varconj={'|'.join(vars_conj_condition)}"
+                    already_done.append((ev, var_decode, vars_conj_condition, task_kind))
+                else:
+                    plot_counts_heatmap_savepath = None
+
+                if filtdict is not None:
+                    pa = pa.copy()
+                    for _var, _levs in filtdict.items():
+                        pa.Xlabels["trials"] = pa.Xlabels["trials"][pa.Xlabels["trials"][_var].isin(_levs)].reset_index(drop=True)
+                        if len(pa.Xlabels["trials"])==0:
+                            print("var:", _var, ", levels keep:", _levs)
+                            print("Filter completely removed all trials... SKIPPING")
+                if len(pa.Xlabels["trials"])==0:
+                    continue
+
+                # 1. Extract the specific pa for this (br, tw)
+                res = decodewrap_categorical_timeresolved_within_condition(pa, var_decode,
+                                                            vars_conj_condition,
+                                                            time_bin_size=time_bin_size, slide=slide,
+                                                            do_center=True, do_std=False,
+                                                            max_nsplits = max_nsplits, plot_counts_heatmap_savepath=plot_counts_heatmap_savepath)
+                if res is not None:
+                    for r in res:
+                        r["bregion"]=br
+                        r["twind"]=tw
+                        r["event"]=ev
+                        r["task_kind"]=task_kind
+                    RES.extend(res)
+    DFRES = pd.DataFrame(RES)
+
+    ### PLOT
+    from pythonlib.tools.pandastools import append_col_with_grp_index
+    import seaborn as sns
+    import matplotlib.pyplot as plt
+
+    if len(DFRES)>0:
+        DFRES = append_col_with_grp_index(DFRES, ["task_kind", "event"], "tk_ev", False)
+        LIST_TASK_KIND = DFRES["task_kind"].unique().tolist()
+        for task_kind in LIST_TASK_KIND:
+            dfthis = DFRES[DFRES["task_kind"] == task_kind]
+            for y in ["score", "score_adjusted"]:
+                # PLOTS
+                fig = sns.relplot(data=dfthis, x="time", y=y, hue="var_decode_and_conj", row="event", col="bregion",
+                                  kind="line", height=4)
+                savefig(fig, f"{SAVEDIR}/splot_bregion-task_kind_{task_kind}-{y}.pdf")
+
+                fig = sns.relplot(data=dfthis, x="time", y=y, hue="bregion", row="event", col="var_decode_and_conj",
+                                  kind="line", height=4)
+                savefig(fig, f"{SAVEDIR}/splot_var_decode-task_kind_{task_kind}-{y}.pdf")
+
+                plt.close("all")
+
+    return DFRES
+
+
 def decodewrapouterloop_categorical_timeresolved_cross_condition(DFallpa, list_var_decode,
                                                                  list_vars_conj,
                                                  SAVEDIR, time_bin_size=0.1, slide=0.05,
-                                                                 subtract_mean_vars_conj=False):
+                                                                 subtract_mean_vars_conj=False,
+                                                                  filtdict = None,
+                                                                 separate_by_task_kind = True):
     """
     Wrapper to cross-condition decode, for each PA, each time point, separately for each var in list_vars_decode,
     scoring decoder generaliation across levels of grouping variables vars_conj_condition
@@ -845,19 +953,36 @@ def decodewrapouterloop_categorical_timeresolved_cross_condition(DFallpa, list_v
         tw = row["twind"]
         ev = row["event"]
         PA = row["pa"]
-        list_task_kind = PA.Xlabels["trials"]["task_kind"].unique()
+
+        if separate_by_task_kind:
+            PA.Xlabels["trials"]["_task_kind"] = PA.Xlabels["trials"]["task_kind"]
+        else:
+            PA.Xlabels["trials"]["_task_kind"] = "dummy"
+        list_task_kind = PA.Xlabels["trials"]["_task_kind"].unique()
 
         for task_kind in list_task_kind:
-            pa = PA.slice_by_labels("trials", "task_kind", [task_kind])
+            pa = PA.slice_by_labels("trials", "_task_kind", [task_kind])
+            # print(pa.Xlabels["trials"]["task_kind"].unique())
+            # assert False
 
             for var_decode, vars_conj_condition in zip(list_var_decode, list_vars_conj):
                 print(ev, br, tw, var_decode)
 
-                if (ev, var_decode, vars_conj_condition) not in already_done:
-                    plot_counts_heatmap_savepath = f"{SAVEDIR}/counts_{ev}_{var_decode}_{'|'.join(vars_conj_condition)}"
-                    already_done.append((ev, var_decode, vars_conj_condition))
+                if (ev, var_decode, vars_conj_condition, task_kind) not in already_done:
+                    plot_counts_heatmap_savepath = f"{SAVEDIR}/counts_{ev}_{task_kind}-var={var_decode}-varconj={'|'.join(vars_conj_condition)}"
+                    already_done.append((ev, var_decode, vars_conj_condition, task_kind))
                 else:
                     plot_counts_heatmap_savepath = None
+
+                if filtdict is not None:
+                    pa = pa.copy()
+                    for _var, _levs in filtdict.items():
+                        pa.Xlabels["trials"] = pa.Xlabels["trials"][pa.Xlabels["trials"][_var].isin(_levs)].reset_index(drop=True)
+                        if len(pa.Xlabels["trials"])==0:
+                            print("var:", _var, ", levels keep:", _levs)
+                            print("Filter completely removed all trials... SKIPPING")
+                if len(pa.Xlabels["trials"])==0:
+                    continue
 
                 # 1. Extract the specific pa for this (br, tw)
                 res = decodewrap_categorical_timeresolved_cross_condition(pa, var_decode,
@@ -1049,6 +1174,10 @@ def decodewrapouterloop_categorical_cross_time_plot_compare_contexts(DFRES_INPUT
     for c in list_diff_tk_diff_ev:
         print(c)
 
+    if len(list_diff_tk_same_ev)==0 and len(list_same_tk_diff_ev)==0 and len(list_diff_tk_diff_ev)==0:
+        # NOT enough data
+        return
+
     # # Collect all
     # inds = []
     # for grp in list_diff_tk_same_ev:
@@ -1223,8 +1352,8 @@ def decodewrapouterloop_categorical_cross_time_plot(DFRES, SAVEDIR):
                     ######### (2) Plots by each variable, across all regions.
                     # For each set of ev_train and ev_test, plot across all bregions.
                     if SEPARATE_VARS_TRAIN_TEST:
-                        A = sorted(set(DFRES["var_decode_train"].tolist()))
-                        B = sorted(set(DFRES["var_decode_test"].tolist()))
+                        A = sort_mixed_type(set(DFRES["var_decode_train"].tolist()))
+                        B = sort_mixed_type(set(DFRES["var_decode_test"].tolist()))
                         list_var_decode_train_test = [(a, b) for a in A for b in B]
 
                         for var_decode_train, var_decode_test in list_var_decode_train_test:
@@ -1247,7 +1376,7 @@ def decodewrapouterloop_categorical_cross_time_plot(DFRES, SAVEDIR):
                                 savefig(fig, f"{SAVEDIR}/tktrain_{task_kind_train}-tktest_{task_kind_test}-fig_by_condition-ev_train={ev_train}-ev_test={ev_test}-var_train={var_decode_train}-var_test={var_decode_test}-score_adjusted-zlims.pdf")
                             plt.close("all")
                     else:
-                        list_var_decode = sorted(set(DFRES["var_decode"].tolist()))
+                        list_var_decode = sort_mixed_type(set(DFRES["var_decode"].tolist()))
                         for var_decode in list_var_decode:
                             print("Plotting var_decode: ", var_decode)
 
@@ -1618,7 +1747,7 @@ def preprocess_extract_X_and_labels(PA, var_decode, time_bin_size=None,
     labels = [labels[i] for i in indskeep]
 
     # Remove ignores
-    X, labels = cleanup_remove_labels_ignore(X, labels)
+    X, labels, inds_keep = cleanup_remove_labels_ignore(X, labels)
 
     if len(labels)==0:
         return None, None, None
@@ -1638,91 +1767,148 @@ def preprocess_factorize_class_labels_ints(DFallpa, savepath=None):
         - (REturns) MAP_LABELS_TO_INT, holding params, including maps from int to class labels.
     """
 
-    labels_to_ignore = LABELS_IGNORE # keeps their class label unchanged.
+
+    ################# GET LIST OF VARIABLES
+    pa = DFallpa["pa"].values[0]
+    dflab = pa.Xlabels["trials"]
+
+    # CODE IN PORGRESS - to extract all vars that should be factorized -- decided to hand code instead, as this wasnt accurate.
+    # pa = DFallpa["pa"].values[0]
+    # dflab = pa.Xlabels["trials"]
+    #
+    # cols_keep = []
+    # for col in dflab.columns:
+    #     # a = ("loc" in col) or ("shape" in col) or ("taskconfig" in col) or ("_binned" in col)
+    #     a = True
+    #     b = ("list" not in col)
+    #     c = ("shape_is_novel_" not in col)
+    #     d = "velocity" not in col
+    #     e = (col!="shape_semantic_labels")
+    #     # f = (isinstance(dflab[col].values[0], str)) or (isinstance(dflab[col].values[0], tuple) and isinstance(dflab[col].values[0][0], (str, int)))
+    #     f = (isinstance(dflab[col].values[0], tuple) and isinstance(dflab[col].values[0][0], (str, int)))
+    #     g = ("locx" not in col)
+    #     h = ("locy" not in col)
+    #     # k = ("locon" not in col)
+    #
+    #     if a & b & c & d & e & f & g & h:
+    #         cols_keep.append(col)
+    #
+    # print(cols_keep)
+
+
+
+    # def _extract_location_variables(dfthis):
+    #     list_variables = [col for col in dfthis.columns if "loc" in col]
+    #     list_variables = [col for col in list_variables if not col=="velocity" and ("list" not in col)]
+    #     list_variables = [var for var in list_variables if not isinstance(dfthis[var].values[0], str)]
+    #     return list_variables
+    #
+    # def _extract_shape_variables(dfthis):
+    #     shape_variables = [col for col in dfthis.columns if ("shape" in col) and ("shape_is_novel_" not in col) and (col!="shape_semantic_labels") and ("list" not in col)]
+    #     shape_variables = [var for var in shape_variables if isinstance(dfthis[var].values[0], str)]
+    #     return shape_variables
+    #
+    # def _extract_taskconfig_variables(dfthis):
+    #     list_variables = [col for col in dfthis.columns if ("taskconfig_" in col) and ("list" not in col)]
+    #     list_variables = [var for var in list_variables if isinstance(dfthis[var].values[0], tuple)]
+    #     return list_variables
+
+    loc_variables = ["gridloc", "loc_this_event", "CTXT_loc_prev", "CTXT_loc_next"]
+    for i in range(10):
+        if f"seqc_{i}_loc" in dflab.columns:
+            loc_variables.append(f"seqc_{i}_loc")
+        if f"seqc_{i}_locon_binned" in dflab.columns:
+            loc_variables.append(f"seqc_{i}_locon_binned")
+        if f"seqc_{i}_locon_bin_in_loc" in dflab.columns:
+            loc_variables.append(f"seqc_{i}_locon_bin_in_loc")
+        if f"seqc_{i}_center_binned" in dflab.columns:
+            loc_variables.append(f"seqc_{i}_center_binned")
+
+    shape_variables = ["shape", "shape_this_event", "shape_oriented", "CTXT_shape_next", "CTXT_shape_prev"]
+    for i in range(10):
+        if f"seqc_{i}_shape" in dflab.columns:
+            shape_variables.append(f"seqc_{i}_shape")
+        if f"seqc_{i}_shapesem" in dflab.columns:
+            shape_variables.append(f"seqc_{i}_shapesem")
+        if f"seqc_{i}_shapesemcat" in dflab.columns:
+            shape_variables.append(f"seqc_{i}_shapesemcat")
+
+    # Is tuples, so must convert.
+    taskconfig_variables = [var for var in dflab.columns if "taskconfig" in var]
+
+    ########################################
+    # def _extract_list_variables_all(df)
+    def _isin(val, list_vals):
+        """ Return True iff val is in list_vals"""
+        from pythonlib.tools.checktools import check_objects_identical
+        for v in list_vals:
+            if check_objects_identical(v, val):
+                return True
+        return False
 
     MAP_LABELS_TO_INT = {}
+    def _replace_labels(name, list_variables):
+        # ------- RUN
+        map_int_to_class = {}
+        ct=0
+        for i, row in DFallpa.iterrows():
+            dflab = row["pa"].Xlabels["trials"]
+            for var in list_variables:
+                if var in dflab.columns:
+                    classes = dflab[var].unique()
+                    for cl in classes:
+                        try:
+                            if cl in LABELS_IGNORE:
+                                if cl not in map_int_to_class:
+                                    map_int_to_class[cl] = cl
+                            else:
+                                if not _isin(cl, list(map_int_to_class.values())):
+                                # if cl not in list(map_int_to_class.values()):
+                                    map_int_to_class[ct] = cl
+                                    ct +=1
+                        except Exception as err:
+                            print(var)
+                            print(list_variables)
+                            print(classes)
+                            print(map_int_to_class.values())
+                            for x in map_int_to_class.values():
+                                print(type(x))
+                            print(cl)
+                            print(type(cl))
+                            print("Issue with  mixed types...?")
+                            raise err
+        map_class_to_int = {cl:i for i, cl in map_int_to_class.items()}
+
+        for k, v in map_class_to_int.items():
+            print(k, " --- ", v)
+        for i, row in DFallpa.iterrows():
+            pathis = row["pa"]
+            dflab = pathis.Xlabels["trials"]
+            for var in list_variables:
+                if var in dflab.columns:
+                    dflab[var] = [map_class_to_int[cl] for cl in dflab[var]]
+        MAP_LABELS_TO_INT[name] = {
+            "labels_to_ignore":LABELS_IGNORE,
+            "map_int_to_class":map_int_to_class,
+            "map_class_to_int":map_class_to_int
+        }
+
+    ### TASKCONFIG (tuples of shape or loc)
+    # collect set of all classes across all data
+    _replace_labels("taskconfig", taskconfig_variables)
 
     ### SHAPE
-
-    # collect set of all classes across all data
-    classes = []
-    map_int_to_class = {}
-    ct=0
-    for i, row in DFallpa.iterrows():
-        dflab = row["pa"].Xlabels["trials"]
-        shape_variables = [col for col in dflab.columns if ("shape" in col) and ("shape_is_novel_" not in col)]
-
-        for var in shape_variables:
-            if var in dflab.columns:
-                classes = dflab[var].unique()
-                for cl in classes:
-                    if cl in labels_to_ignore:
-                        if cl not in map_int_to_class:
-                            map_int_to_class[cl] = cl
-                    else:
-                        if cl not in map_int_to_class.values():
-                            map_int_to_class[ct] = cl
-                            ct +=1
-    map_class_to_int = {cl:i for i, cl in map_int_to_class.items()}
-
-    for i, row in DFallpa.iterrows():
-        pathis = row["pa"]
-        dflab = pathis.Xlabels["trials"]
-        shape_variables = [col for col in dflab.columns if ("shape" in col) and ("shape_is_novel_" not in col)]
-        for var in shape_variables:
-            if var in dflab.columns:
-                dflab[var] = [map_class_to_int[cl] for cl in dflab[var]]
-
-    MAP_LABELS_TO_INT["shape"] = {
-        "labels_to_ignore":labels_to_ignore,
-        "map_int_to_class":map_int_to_class,
-        "map_class_to_int":map_class_to_int
-    }
+    _replace_labels("shape", shape_variables)
 
     ### LOCATION
+    _replace_labels("loc", loc_variables)
 
-    # collect set of all classes across all data
-    classes = []
-    map_int_to_class = {}
-    ct=0
-    for i, row in DFallpa.iterrows():
-        dflab = row["pa"].Xlabels["trials"]
-        list_variables = [col for col in dflab.columns if "loc" in col]
-        list_variables = [col for col in list_variables if not col=="velocity"]
-        for var in list_variables:
-            if var in dflab.columns:
-                classes = dflab[var].unique()
-                for cl in classes:
-                    if cl in labels_to_ignore:
-                        if cl not in map_int_to_class:
-                            map_int_to_class[cl] = cl
-                    else:
-                        if cl not in map_int_to_class.values():
-                            map_int_to_class[ct] = cl
-                            ct +=1
-    map_class_to_int = {cl:i for i, cl in map_int_to_class.items()}
-
-    for i, row in DFallpa.iterrows():
-        pathis = row["pa"]
-        dflab = pathis.Xlabels["trials"]
-        list_variables = [col for col in dflab.columns if "loc" in col]
-        list_variables = [col for col in list_variables if not col=="velocity"]
-        for var in list_variables:
-            if var in dflab.columns:
-                dflab[var] = [map_class_to_int[cl] for cl in dflab[var]]
-
-    MAP_LABELS_TO_INT["loc"] = {
-        "labels_to_ignore":labels_to_ignore,
-        "map_int_to_class":map_int_to_class,
-        "map_class_to_int":map_class_to_int
-    }
-
+    # SAVE
     if savepath is not None:
         from pythonlib.tools.expttools import writeDictToTxt
         writeDictToTxt(MAP_LABELS_TO_INT, savepath)
 
     return MAP_LABELS_TO_INT
-
 
 def cleanup_remove_labels_ignore(X, labels):
     """
@@ -1747,6 +1933,6 @@ def cleanup_remove_labels_ignore(X, labels):
         assert False, "inputed wrong shaep"
     labels = [labels[i] for i in inds_keep]
 
-    return X, labels
+    return X, labels, inds_keep
 
 

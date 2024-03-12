@@ -80,11 +80,9 @@ class PopAnal():
             if isinstance(times, (list, tuple)) and not isinstance(times[0], str):
                 times = np.array(times)
             if isinstance(times, np.ndarray) and len(times.shape)>1:
-                times = times.squeeze()
+                times = times.squeeze(axis=1)
                 assert len(times.shape)==1
             if not len(times)==self.X.shape[2]:
-                print(times)
-                print(self.X.shape)
                 assert False
             self.Times = times
         # print("HERERE", times, len(times))
@@ -607,7 +605,7 @@ class PopAnal():
             return XdataframeAgg
 
     ####################### SLICING
-    def slice_by_dim_values_wrapper(self, dim, values):
+    def slice_by_dim_values_wrapper(self, dim, values, time_keep_only_within_window=True):
         """ Slice based on values (not indices), works for dim =
         times, trials, or chans.
         PARAMS:
@@ -624,7 +622,7 @@ class PopAnal():
             # values are [t1, t2]
             assert len(values)==2
             assert values[1]>values[0]
-            indices = self.index_find_this_time_window(values)
+            indices = self.index_find_this_time_window(values, time_keep_only_within_window=time_keep_only_within_window)
             # indices = self.index_find_these_values(dim, values)
             assert len(indices)==2
         else:
@@ -901,15 +899,28 @@ class PopAnal():
         PARAMS:
         - DUR, wiodth of window, in sec
         - SLIDE, dur to slide window, in sec. if slide is DUR then is perfect coverage.
+        NOTES:
+            - windows designed so at least each window, at least half of it inlcudes data
+            - possible to exclude some data at end, if the dur is small and slide>dur
+
         """
 
         # MAke new times iwndows
         PRE = self.Times[0]
         POST = self.Times[-1]
-        # n = (POST-PRE)/DUR
-        times1 = np.arange(PRE, POST-DUR, SLIDE)
-        times2 = times1+DUR
-        time_windows = np.stack([times1, times2], axis=1)
+        if False:
+            # Failed soemtimes, if dur > amount of data. then time_wind would be []
+            # n = (POST-PRE)/DUR
+            times1 = np.arange(PRE, POST-DUR, SLIDE)
+            times2 = times1+DUR
+            time_windows = np.stack([times1, times2], axis=1)
+        else:
+            times1 = np.arange(PRE, POST-DUR/2, SLIDE) # each window, at least half of it inlcudes data
+            times2 = times1 + DUR
+            time_windows = np.stack([times1, times2], axis=1)
+            assert np.isclose(time_windows[0,0], PRE)
+            # assert time_windows[-1,1]>=post
+            assert time_windows[-1,0]<POST
 
         # print(DUR, SLIDE)
         # print(time_windows)
@@ -934,6 +945,7 @@ class PopAnal():
         - times, array with times, each the mean time in the window, (ntimes, 1)
         """
 
+        assert len(time_windows)>0
         list_xthis = []
         list_time_mean = []
         for wind in time_windows:
@@ -1170,6 +1182,113 @@ class PopAnal():
         return ListPA, list_levels
 
     #######################
+    def dataextract_state_space_decode_flex(self, twind_overall,
+                                            tbin_dur=None, tbin_slide=None,
+                                            reshape_method = "chans_x_trials_x_times",
+                                            pca_reduce=False, pca_frac_var_keep=0.95,
+                                            plot_pca_explained_var=False):
+        """
+        Fleixble methods for extract data for use in population analyses, slicing out a specific time window,
+        and binning by time, and ootionally reshaping to (ntrials, ...), where you can optionally
+        combine the higher dimensions with various methods for reshaping data output.
+        PARAMS:
+        - twind_overall, only keep data within this window (e.g, [0.3, 0.6])
+        - tbin_dur, optional, for binning data (sec)
+        - tbin_slide, optional, if binning, how slide bin
+        - reshape_method, str, defines shape of output.
+        """
+
+        # Slice to desired window
+        pathis = self.slice_by_dim_values_wrapper("times", twind_overall)
+
+        # Bin
+        if tbin_dur is not None:
+            pathis = pathis.agg_by_time_windows_binned(tbin_dur, tbin_slide)
+
+        # Reshape to (ntrials, nchans*ntimes)
+        if reshape_method=="trials_x_chanstimes":
+            nchans, ntrials, ntimes = pathis.X.shape
+            tmp = np.transpose(pathis.X, (1, 0, 2)) # (trials, chans, times)
+            X = np.reshape(tmp, [ntrials, nchans * ntimes]) # (ntrials, nchans*timebins)
+
+            # Sanitych check
+            if False: # no need to check. know it works.
+                trial = 0
+                tmp = np.concatenate([pathis.X[:, trial, i] for i in range(ntimes)])
+                if not np.isclose(np.std(X[trial]), np.std(tmp)):
+                    print(np.std(X[trial]))
+                    print(np.std(tmp))
+                    assert False, "bug in reshaping"
+
+            if pca_reduce:
+                # Prune with PCA
+                from sklearn.decomposition import PCA
+                pca = PCA(n_components=None)
+                Xpca = pca.fit_transform(X) # (ntrials, nchans) --> (ntrials, ndims)
+                cumvar = np.cumsum(pca.explained_variance_ratio_)
+                npcs_keep = np.argwhere(cumvar >= pca_frac_var_keep)[0].item()+1 # the num PCs to take such that cumsum is just above thresh
+                # npcs_keep = np.argmin(np.abs(cumvar - thresh_frac_var))
+                X = Xpca[:, :npcs_keep]
+
+                if False:
+                    fig, ax = plt.subplots()
+                    ax.plot(pca.explained_variance_ratio_)
+                    ax.axvline(npcs_keep, color="r")
+                    savefig(fig, f"{savedir_preprocess}/pca_explainedvar.pdf")
+        elif reshape_method=="chans_x_trials_x_times":
+            # Default.
+            # PCA --> first combines trials x timebins (i.e.,
+            # (ntrials*ntimes, nchans) --> (ntrials*ntimes, ndims)
+
+            nchans, ntrials, ntimes = pathis.X.shape
+
+            if False: # Check passes
+                # Check that reshapes (skipping PCA) dont affect data
+                X = np.reshape(pathis.X, [nchans, ntrials * ntimes]).T
+                # <PCA would be here>
+                X1 = X.T
+                X1 = np.reshape(X1, [nchans, ntrials, ntimes])
+                assert np.all(pathis.X==X1)
+
+            if pca_reduce:
+                # Reshape to pass into PCA
+                X = np.reshape(pathis.X, [nchans, ntrials * ntimes]).T # (ntrials*ntimes, nchans)
+
+                # Prune with PCA
+                from sklearn.decomposition import PCA
+                pca = PCA(n_components=None)
+                Xpca = pca.fit_transform(X) # (ntrials*ntimes, nchans) --> (ntrials*ntimes, ndims)
+                cumvar = np.cumsum(pca.explained_variance_ratio_)
+                npcs_keep = np.argwhere(cumvar >= pca_frac_var_keep)[0].item()+1 # the num PCs to take such that cumsum is just above thresh
+                # npcs_keep = np.argmin(np.abs(cumvar - thresh_frac_var))
+                X = Xpca[:, :npcs_keep] # (ntrials*ntimes, npcs_keep)
+
+                # Reshape back to original
+                X = X.T # (npcs_keep, ntrials*ntimes)
+                X = np.reshape(X, [npcs_keep, ntrials, ntimes]) # (npcs_keep, ntrials*ntimes)
+
+                if plot_pca_explained_var:
+                    fig, axes = plt.subplots(1,2, figsize=(8,3))
+
+                    ax = axes.flatten()[0]
+                    ax.plot(pca.explained_variance_ratio_)
+                    ax.axvline(npcs_keep, color="r")
+                    ax.set_title("frac var, each dim")
+
+                    ax = axes.flatten()[1]
+                    ax.plot(np.cumsum(pca.explained_variance_ratio_))
+                    ax.axvline(npcs_keep, color="r")
+                    ax.set_title("cumulative var, each dim")
+                    # savefig(fig, f"{savedir_preprocess}/pca_explainedvar.pdf")
+            else:
+                X = pathis.X
+        else:
+            assert False
+            if pca_reduce:
+                assert False, "not coded..."
+
+        return X, pathis
+
     def dataextract_split_by_label_grp_for_statespace(self, grpvars):
         """
         Return a dataframe, where each row is a single level of conjunctive grpvars,
@@ -1531,17 +1650,23 @@ class PopAnal():
         """
         Get min and max indices into self.Times, such that all values in self.Times[indices]
         are contained within twind (ie.,a ll less than twind).
+        PARAMS:
+        - time_keep_only_within_window, bool, if True, then the time of the indices must be
+        within twind. If False, then the times are the ones CLOSEST to twind, but they could
+        be larger.
         """
 
         inds = self.index_find_these_values("times", twind)
         assert len(inds)==2
 
         if time_keep_only_within_window:
-            # inclusive.
+            # inclusive, deal with numerical imprecision..
+            # ensuring that indices are entirely contained within twind.
             while self.Times[inds[0]]<=twind[0]:
                 inds[0]+=1
             while self.Times[inds[1]]>=twind[1]:
                 inds[1]-=1
+        assert inds[0]<=inds[1]
 
         return inds
 
