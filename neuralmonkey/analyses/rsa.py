@@ -3177,7 +3177,7 @@ def rsagood_questions_params(question):
         ## Params which apply AFTER you have concated across which_level
         # Which events to prune to
         events_keep = ["00_stroke"]
-        ANALY_VER = "seqcontext"
+        ANALY_VER = "singleprim"
 
         # If this requires slicing and agging DFallpa
         slice_agg_slices = None
@@ -3190,6 +3190,35 @@ def rsagood_questions_params(question):
         plot_pairwise_distmats_twinds = [
             ("stroke", "00_stroke", (-0.3, -0.1)),
         ]
+
+    elif question=="SP_BASE_stroke":
+        # for Single prims, strokes.
+
+        effect_vars = ["shape_oriented"]
+        list_which_level = ["stroke"] # Whihc which_level to keep
+
+        ## For "stroke" and "stroke_off" which_levels
+        # - include all strokes within sequence
+        exclude_last_stroke=False
+        exclude_first_stroke=False
+        keep_only_first_stroke=False
+        min_taskstrokes = 1
+        max_taskstrokes = 10
+
+        ## Params which apply AFTER you have concated across which_level
+        # Which events to prune to
+        events_keep = ["00_stroke"]
+        ANALY_VER = "singleprim"
+
+        # If this requires slicing and agging DFallpa
+        slice_agg_slices = None
+        slice_agg_vars_to_split = None
+
+        list_subtract_mean_each_level_of_var = [None]
+
+        # Which variables to plot all the pairwise distmats for
+        plot_pairwise_distmats_variables = None
+        plot_pairwise_distmats_twinds = None
 
     elif question=="SP_shape_loc_size":
         ## Params which apply across all which_level
