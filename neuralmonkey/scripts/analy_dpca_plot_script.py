@@ -719,8 +719,10 @@ if __name__=="__main__":
         q_params = DictParamsEachQuestion[question]
 
         # Clean up SP and extract features
+        HACK_RENAME_SHAPES = True
         D, list_features_extraction = SP.datasetbeh_preprocess_clean_by_expt(
-            ANALY_VER=q_params["ANALY_VER"], vars_extract_append=q_params["effect_vars"])
+            ANALY_VER=q_params["ANALY_VER"], vars_extract_append=q_params["effect_vars"],
+            HACK_RENAME_SHAPES=HACK_RENAME_SHAPES)
 
 
         ### PARAMS for SP --> PA
@@ -730,12 +732,9 @@ if __name__=="__main__":
         if events_keep is None:
             events_keep = q_params["events_keep"]
 
-        HACK_RENAME_SHAPES = True
-
         # Extract all popanals
         DFallpa = snippets_extract_popanals_split_bregion_twind(SP, list_time_windows,
                                                         list_features_extraction,
-                                                        HACK_RENAME_SHAPES=HACK_RENAME_SHAPES,
                                                                 combine_into_larger_areas=combine_into_larger_areas,
                                                                 events_keep=events_keep,
                                                                 exclude_bad_areas=exclude_bad_areas)
