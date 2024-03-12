@@ -6781,7 +6781,8 @@ class Snippets(object):
 
         # get back all the outliers, since they just a single removed outlier (chan x trial) will throw out the entire trial.
         self.datamod_append_outliers()
-        self.datamod_append_unique_indexdatapt()
+        if ANALY_VER!="MINIMAL":
+            self.datamod_append_unique_indexdatapt()
 
         ########################## PREP/CLEAN DATASET
         D = self.datasetbeh_extract_dataset()
