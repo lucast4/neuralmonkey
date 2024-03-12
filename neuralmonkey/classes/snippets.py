@@ -6206,8 +6206,11 @@ class Snippets(object):
                 ax2 = axesall[1][i]
                 ax2.set_ylim(0)
         else:
-            fig, axesall = plt.subplots(2,1)
-            axesall.flatten()[0].set_title("Not enough data!")
+            if False: # unecessary time.
+                fig, axesall = plt.subplots(2,1)
+                axesall.flatten()[0].set_title("Not enough data!")
+            else:
+                print("SKIPPING RASTER - not enough data", site, " - ", var, " - ", vars_others, " - ", event)
 
         return fig, axesall
 
@@ -6667,6 +6670,67 @@ class Snippets(object):
         print(column)
         self.DfScalar[column] = dfslice[column].tolist()
 
+
+    def datasetbeh_datstrokes_append_column_mult(self, columns, DS=None):
+        """ [Good] Quick extraction of moultiple columns from Datraset,
+        beh dataset (DatStrokes) where each datapt is a specific (trialcode, stroke_index),
+        and append to self.DfScalar, mutating it.
+        PARAMS;
+        - dataset, if None, then uses the one saved in Snippets.
+        """
+        from pythonlib.tools.pandastools import slice_by_row_label
+
+        if len(columns)==0:
+            return None
+        else:
+            # Must be unique, or else big problem
+            columns = list(set(columns))
+            columns = [col for col in columns if col not in self.DfScalar.columns]
+
+        # 1) Extract dataset
+        if DS is None:
+            DS = self.datasetbeh_extract_dataset(kind="datstrokes")
+
+        assert "stroke_index" in self.DfScalar.columns, "you should not call this function if this which_level is 'trials'"
+
+        # 2) get each (trialcode stroke_index) in self... and then get its value for <column>
+        list_tc = self.DfScalar["trialcode"].tolist()
+        list_si = self.DfScalar["stroke_index"].tolist()
+
+        # Get the sliced dataframe
+        dfslice = DS.dataset_slice_by_trialcode_strokeindex(list_tc, list_si)
+        # dfslice = slice_by_row_label(Dataset.Dat, "trialcode", trialcodesthis,
+        #     reset_index=True, assert_exactly_one_each=True)
+
+        # Assign the values to self
+        # self.DfScalar[column] = dfslice[column].tolist()
+        print("Appending thse columns... ", columns)
+        # self.DfScalar = self.DfScalar.drop([v for v in columns if v in self.DfScalar.columns], axis=1)
+        self.DfScalar = self.DfScalar.join(dfslice.loc[:, columns])
+
+    # def datasetbeh_append_column_mult(self, columns, Dataset=None):
+    #     """ Extract values from beh dataset, for this column,
+    #     and append to self.DfScalar, mutating
+    #     PARAMS;
+    #     - dataset, if None, then uses the one saved in Snippets.
+    #     """
+    #     from pythonlib.tools.pandastools import slice_by_row_label
+    #
+    #     # 1) Extract dataset
+    #     if Dataset is None:
+    #         Dataset = self.datasetbeh_extract_dataset()
+    #
+    #     # 2) get each trialcode in self... and then get its value for <column>
+    #     trialcodesthis = self.DfScalar["trialcode"].tolist()
+    #
+    #     # Get the sliced dataframe
+    #     dfslice = slice_by_row_label(Dataset.Dat, "trialcode", trialcodesthis, reset_index=True,
+    #                                  assert_exactly_one_each=True)
+    #
+    #     self.DfScalar = self.DfScalar.drop([v for v in columns if v in self.DfScalar.columns], axis=1)
+    #     self.DfScalar = self.DfScalar.join(dfslice.loc[:, columns])
+
+
     def datasetbeh_append_column_helper(self, list_var, Dataset=None,
                                         DS=None, stop_if_fail=False):
         """ Tries to append each var in list_var, looking thru
@@ -6681,21 +6745,53 @@ class Snippets(object):
             DS = self.datasetbeh_extract_dataset(kind="datstrokes")
 
         success = True
-        for var in list_var:
-            if var not in self.DfScalar.columns:
-                if DS is not None and var in DS.Dat.columns:
-                    print("Appending... ", var)
-                    self.datasetbeh_datstrokes_append_column(var, DS)
-                elif var in Dataset.Dat.columns:
-                    print("Appending... ", var)
-                    self.datasetbeh_append_column(var, Dataset)
-                else:
-                    success = False
-                    print("Failed to find this var:", var)
-                    print("Len D:", len(Dataset.Dat))
-                    print("Len DS:", len(DS.Dat))
-                    if stop_if_fail:
-                        return success
+        if True:
+            # New method, do in bulk. First figure out which column are using
+            # dataset, and whic use datset_strokes. Then run each one time in bulk.
+            columns_dataset = []
+            columns_dataset_strokes = []
+            for var in list_var:
+                if var not in self.DfScalar.columns:
+                    if DS is not None and var in DS.Dat.columns:
+                        columns_dataset_strokes.append(var)
+                    elif var in Dataset.Dat.columns:
+                        columns_dataset.append(var)
+                    else:
+                        success = False
+                        print("Failed to find this var:", var)
+                        print("Len D:", len(Dataset.Dat))
+                        if DS is not None:
+                            print("Len DS:", len(DS.Dat))
+                        if stop_if_fail:
+                            return success
+
+            # Do appending of all
+            if len(columns_dataset)>0:
+                print("... dataset: ", columns_dataset)
+                self.datasetbeh_append_column_mult(columns_dataset, Dataset=Dataset)
+            if len(columns_dataset_strokes)>0:
+                print("... dataset_strokes: ", columns_dataset_strokes)
+                self.datasetbeh_datstrokes_append_column_mult(columns_dataset_strokes, DS=DS)
+        else:
+            # Old method - takes a long time.
+            success = True
+            for var in list_var:
+                if var not in self.DfScalar.columns:
+                    if DS is not None and var in DS.Dat.columns:
+                        print("Appending... ", var)
+                        self.datasetbeh_datstrokes_append_column(var, DS)
+                    elif var in Dataset.Dat.columns:
+                        print("Appending... ", var)
+                        self.datasetbeh_append_column(var, Dataset)
+                    else:
+                        success = False
+                        print("Failed to find this var:", var)
+                        print("Len D:", len(Dataset.Dat))
+                        if DS is not None:
+                            print("Len DS:", len(DS.Dat))
+                        if stop_if_fail:
+                            return success
+
         return success
 
     def datasetbeh_append_column(self, column, Dataset=None):
@@ -6722,6 +6818,47 @@ class Snippets(object):
         print(column)
         self.DfScalar[column] = dfslice[column].tolist()
 
+    def datasetbeh_append_column_mult(self, columns, Dataset=None):
+        """ Good, faster, method for
+        Extract values from beh dataset, for this column,
+        and append to self.DfScalar, mutating
+        PARAMS;
+        - dataset, if None, then uses the one saved in Snippets.
+        """
+        from pythonlib.tools.pandastools import slice_by_row_label
+
+        if len(columns)==0:
+            return None
+        else:
+            columns = list(set(columns))
+            columns = [col for col in columns if col not in self.DfScalar.columns]
+
+        # 1) Extract dataset
+        if Dataset is None:
+            Dataset = self.datasetbeh_extract_dataset()
+
+        # 2) get each trialcode in self... and then get its value for <column>
+        trialcodesthis = self.DfScalar["trialcode"].tolist()
+
+        # Get the sliced dataframe
+        dfslice = slice_by_row_label(Dataset.Dat, "trialcode", trialcodesthis, reset_index=True,
+                                     assert_exactly_one_each=True)
+
+        print("Appending thse columns... ", columns)
+        # self.DfScalar = self.DfScalar.drop([v for v in columns if v in self.DfScalar.columns], axis=1)
+        self.DfScalar = self.DfScalar.join(dfslice.loc[:, columns])
+
+        # # Assign the values to self
+        # print("Updating this column of self.DfScalar with Dataset beh:")
+        # print(column)
+        # if False:
+        #     self.DfScalar[column] = dfslice[column].tolist()
+        # else:
+        #     from pythonlib.tools.pandastools import merge_subset_indices_prioritizing_second
+        #     vars = [column]
+        #     self.DfScalar = self.DfScalar.drop([v for v in vars if v in self.DfScalar.columns], axis=1)
+        #     self.DfScalar = self.DfScalar.join(dfslice.loc[:, [column]])
+        #     # merge_subset_indices_prioritizing_second(self.DfScalar, dfslice.loc[:, column])
     def datasetbeh_extract_dataset(self, kind="dataset"):
         """ Extract Dataset object concated across all sessions, for this Snippets.
         Either trial dataset ("dataset") or strokes ("datstrokes")
@@ -6766,7 +6903,8 @@ class Snippets(object):
             assert False
 
     def datasetbeh_preprocess_clean_by_expt(self, ANALY_VER, vars_extract_append,
-                                            substrokes_plot_preprocess=True):
+                                            substrokes_plot_preprocess=True,
+                                            HACK_RENAME_SHAPES=False):
         """ [GOOD]
         Prune snippets before running any analyses.
         NOTE: removes all trialcodes that miss even just one stroke (as
@@ -6779,8 +6917,13 @@ class Snippets(object):
         """
         from neuralmonkey.metadat.analy.anova_params import dataset_apply_params
 
+        print(" ++++ USING THIS ANALY_VER:", ANALY_VER)
+        print(vars_extract_append, substrokes_plot_preprocess, HACK_RENAME_SHAPES)
         # get back all the outliers, since they just a single removed outlier (chan x trial) will throw out the entire trial.
+        print("Appending outliers...")
         self.datamod_append_outliers()
+        print("Appending index datrapts...")
+        self.datamod_append_unique_indexdatapt()
         if ANALY_VER!="MINIMAL":
             self.datamod_append_unique_indexdatapt()
 
@@ -6794,7 +6937,10 @@ class Snippets(object):
         DS = self.datasetbeh_extract_dataset("datstrokes")
 
         # Preprocess, clean, and prune D
+        print("Running dataset_apply_params...")
         D, DS, params = dataset_apply_params(D, DS, ANALY_VER, animal, date, save_substroke_preprocess_figures=substrokes_plot_preprocess) # prune it
+
+        # print(" *********** ", type(D.Dat["seqc_0_shape"]), type(D.Dat["seqc_0_shape"].values[0]), " -- ", D.Dat["seqc_0_shape"].values[0])
 
         ############################# PRUNE DFSCALAR using Dataset and DatasetStrokes
         # Prune DfScalar to only have trialcodes that remain after pruning.
@@ -6824,53 +6970,64 @@ class Snippets(object):
             return D, []
 
         ##################################### EXTRACT FEATURES INTO DFSCALAR
-        list_features_extraction_stroke = [
-                                    "stroke_index", "stroke_index_fromlast", "stroke_index_fromlast_tskstks",
-                                    "stroke_index_semantic", "stroke_index_semantic_tskstks",
-                                    "shape_oriented", "gridloc",
-                                    "CTXT_loc_next", "CTXT_shape_next",
-                                    "CTXT_loc_prev", "CTXT_shape_prev",
-                                    "gap_from_prev_angle_binned", "gap_to_next_angle_binned",
-                                    "gap_from_prev_angle", "gap_to_next_angle"]
-                                    # "shape_semantic", "shape_is_novel"]
-                                    # "distcum", "displacement", "circularity"]
-                                    # "distcum", "displacement", "circularity"]
-
-        list_features_extraction_trial = ["trialcode", "aborted", "event_time", "task_kind", "gridsize",
+        list_features_extraction_base = ["trialcode", "aborted", "event_time", "task_kind", "gridsize",
                                           "FEAT_num_strokes_task", "FEAT_num_strokes_beh",
                                           "character", "probe", "supervision_stage_concise",
                                           "epoch_orig", "epoch", "taskgroup",
-                                          "origin", "donepos",
-                                          "shape_is_novel_all"
-                                          ]
+                                          "origin", "donepos"]
+
+        list_features_extraction_stroke = [
+                                    "stroke_index", "stroke_index_fromlast", "stroke_index_fromlast_tskstks",
+                                    "stroke_index_semantic", "stroke_index_semantic_tskstks",
+                                    "shape_oriented", "shape", "gridloc",
+                                    "CTXT_loc_next", "CTXT_shape_next",
+                                    "CTXT_loc_prev", "CTXT_shape_prev",
+                                    "gap_from_prev_angle_binned", "gap_to_next_angle_binned",
+                                    "gap_from_prev_angle", "gap_to_next_angle",
+                                    "Stroke", "TokTask"]
+                                    # "shape_semantic", "shape_is_novel"]
+                                    # "distcum", "displacement", "circularity"]
+                                    # "distcum", "displacement", "circularity"]
 
         list_features_extraction_substroke = ["circ_signed", "velocity", "distcum", "angle",
                                               "distcum_binned", "angle_binned", "circ_signed_binned",
                                               "velocity_binned", "di_an_ci_ve_bin",
                                               "ss_this_ctxt", "CTXT_prev_next", "CTXT_prev_this_next"]
         # supervision_stage_new, trial_neural, "char_seq"
-        n_strok_max = 8
+
+        list_features_extraction_trial = ["shape_is_novel_all", "shape_semantic_labels", "shape_is_novel_list",
+                                          "taskconfig_shp", "taskconfig_shploc", "taskconfig_loc",
+                                          "Tkbeh_stkbeh", "Tkbeh_stktask", "Tktask",
+                                          "taskconfig_shp_SHSEM", "taskconfig_shploc_SHSEM",
+                                          ]
+        n_strok_max = 6
         for i in range(n_strok_max):
             # for suff in ["shape", "loc", "loc_local"]:
-            for suff in ["shape", "loc"]:
+            # for suff in ["shape", "loc"]:
+            for suff in ["shape", "loc", "shapesem", "locon", "locx", "locy",
+                         "center_binned", "locon_binned", "shapesemcat", "angle", "angle_binned",
+                         "locon_bin_in_loc"]:
                 list_features_extraction_trial.append(f"seqc_{i}_{suff}")
         list_features_extraction_trial.append("seqc_nstrokes_beh")
         list_features_extraction_trial.append("seqc_nstrokes_task")
 
+        # SANITY CEHCK that there are no identical names ... this leads to ambiguity as to which dataset to get this var from
+        assert not any([f in list_features_extraction_stroke for f in list_features_extraction_trial])
+
         # Features that should always extract (Strokes dat)
         if self.Params["which_level"] in ["substroke", "substroke_off"]:
             print("Using substroke...")
-            list_features_extraction = list_features_extraction_trial + list_features_extraction_stroke + list_features_extraction_substroke
+            list_features_extraction = list_features_extraction_base + list_features_extraction_stroke + list_features_extraction_substroke
             DS_for_feature_extraction = DS
             assert DS is not None
         elif self.Params["which_level"] in ["stroke", "stroke_off"]:
             print("Using stroke...")
-            list_features_extraction = list_features_extraction_trial + list_features_extraction_stroke
+            list_features_extraction = list_features_extraction_base + list_features_extraction_stroke
             DS_for_feature_extraction = DS
             assert DS is not None
         elif self.Params["which_level"]=="trial":
             print("Using trial...")
-            list_features_extraction = list_features_extraction_trial
+            list_features_extraction = list_features_extraction_base + list_features_extraction_trial
             DS_for_feature_extraction = None
         else:
             print(self.Params["which_level"])
@@ -6889,6 +7046,8 @@ class Snippets(object):
 
         # For the rest, try to get automatically.
         list_features_extraction = vars_extract_append + list_features_extraction
+        list_features_extraction = list(set(list_features_extraction))
+
         print("Attempting to extract these features into Snippets:")
         print(list_features_extraction)
 
@@ -6899,6 +7058,11 @@ class Snippets(object):
         # Perform extraction
         assert self.datasetbeh_append_column_helper(list_features_extraction, D, DS=DS_for_feature_extraction, stop_if_fail=True)==True # Extract all the vars here
 
+        for f in list_features_extraction:
+            if f not in self.DfScalar.columns:
+                print(f)
+                print(self.DfScalar.columns)
+                assert False
         # Sanity check that no Nones... Had this issue at one point.
         # if "gridloc" in self.DfScalar.columns:
         #     if sum(self.DfScalar["gridloc"].isna())>0:
@@ -6923,31 +7087,83 @@ class Snippets(object):
         #         print(self.DfScalar.columns)
         #         assert False
 
+        if False:
+            print(" ------------ ")
+            for col in self.DfScalar.columns:
+                print(col, " -- ", type(self.DfScalar[col].values[0]), " -- ", self.DfScalar[col].values[0])
+
+            print(" *********** ", type(D.Dat["seqc_0_shape"]), type(D.Dat["seqc_0_shape"].values[0]), " -- ", D.Dat["seqc_0_shape"].values[0])
+            Dthis = self.datasetbeh_extract_dataset()
+            print(" *********** ", type(Dthis.Dat["seqc_0_shape"]), type(Dthis.Dat["seqc_0_shape"].values[0]), " -- ", Dthis.Dat["seqc_0_shape"].values[0])
+
         ################### OTHER FINAL AD-HOC TOUCHES TO SP DATA.
         # Make a general-purpose "shape" columns applies across trial and stroke data.
-        try:
-            self.DfScalar["size_this_event"] = self.DfScalar["gridsize"]
-            if self.Params["which_level"] == "trial":
-                # trial is isually just up to first stroke...
-                self.DfScalar["shape_this_event"] = self.DfScalar["seqc_0_shape"]
-                self.DfScalar["loc_this_event"] = self.DfScalar["seqc_0_loc"]
-            elif self.Params["which_level"] in ["stroke", "stroke_off"]:
-                self.DfScalar["shape_this_event"] = self.DfScalar["shape_oriented"]
-                self.DfScalar["loc_this_event"] = self.DfScalar["gridloc"]
-            elif self.Params["which_level"] in ["substroke", "substroke_off"]:
-                self.DfScalar["shape_this_event"] = self.DfScalar["shape"]
-                self.DfScalar["loc_this_event"] = self.DfScalar["gridloc"] # HACKY - should actualyl be location of substroke, but not ready
-            else:
-                print(self.Params)
-                print(self.DfScalar.columns)
-                assert False
-            list_features_extraction.append("shape_this_event")
-            list_features_extraction.append("loc_this_event")
-            list_features_extraction.append("size_this_event")
-        except Exception as err:
+        # try:
+        self.DfScalar["size_this_event"] = self.DfScalar["gridsize"]
+        if self.Params["which_level"] == "trial":
+            # trial is isually just up to first stroke...
+            # print("---------------")
+            # print(self.DfScalar["seqc_0_shape"].unique())
+            # print("shape_this_event" in list(self.DfScalar.columns))
+            self.DfScalar["shape_this_event"] = self.DfScalar["seqc_0_shape"]
+            self.DfScalar["loc_this_event"] = self.DfScalar["seqc_0_loc"]
+        elif self.Params["which_level"] in ["stroke", "stroke_off"]:
+            self.DfScalar["shape_this_event"] = self.DfScalar["shape_oriented"]
+            self.DfScalar["loc_this_event"] = self.DfScalar["gridloc"]
+        elif self.Params["which_level"] in ["substroke", "substroke_off"]:
+            self.DfScalar["shape_this_event"] = self.DfScalar["shape"]
+            self.DfScalar["loc_this_event"] = self.DfScalar["gridloc"] # HACKY - should actualyl be location of substroke, but not ready
+        else:
             print(self.Params)
             print(self.DfScalar.columns)
             assert False
+        list_features_extraction.append("shape_this_event")
+        list_features_extraction.append("loc_this_event")
+        list_features_extraction.append("size_this_event")
+        # except Exception as err:
+        #     print(self.Params)
+        #     print(list(self.DfScalar.columns))
+        #     raise err
+
+        if HACK_RENAME_SHAPES:
+            ############# HACK - rename shapes (lumping)
+            #### Rename any variable values? Hacky
+            # Lump together (done by hand)
+            map_shapelump_to_shapes = {}
+            map_shape_to_shapelump = {}
+            for grp in [
+                ["V-2-1-0", "arcdeep-4-1-0", "usquare-1-1-0", "L|arcdeep-4-1-0"],
+                ["V-2-3-0", "arcdeep-4-3-0", "usquare-1-3-0"],
+                ["V-2-2-0", "arcdeep-4-2-0", "usquare-1-2-0"],
+                ["V-2-4-0", "arcdeep-4-4-0", "usquare-1-4-0", "L|V-2-4-0"],
+                ["squiggle3-3-1-0", "zigzagSq-1-2-0"],
+                ["squiggle3-3-1-1", "zigzagSq-1-2-1"],
+                ["squiggle3-3-2-0", "zigzagSq-1-1-0"],
+                ["squiggle3-3-2-1", "zigzagSq-1-1-1"],
+            ]:
+
+                # name it after the first
+                name = f"L|{grp[0]}"
+                assert name not in map_shapelump_to_shapes
+                map_shapelump_to_shapes[name] = grp
+
+                for g in grp:
+                    assert g not in map_shape_to_shapelump
+                    map_shape_to_shapelump[g] = name
+
+            # Replace shape values for all columns that have "shape" in them.
+            shape_keys = [k for k in list_features_extraction if "shape" in k]
+            for sk in shape_keys:
+                if isinstance(self.DfScalar.iloc[0][sk], str):
+                    if len(self.DfScalar[sk].unique())>3:
+                        print(" -- Lumping shapes (renaming) in self.DfScalar, for: ", sk)
+                        def F(x):
+                            sh = x[sk]
+                            if sh in map_shape_to_shapelump.keys():
+                                return map_shape_to_shapelump[sh]
+                            else:
+                                return sh
+                        self.DfScalar[sk] = self.DfScalar.apply(F, axis=1)
 
         return D, list_features_extraction
 

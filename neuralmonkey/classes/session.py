@@ -425,6 +425,9 @@ class Session(object):
         # INitialize empty data
         self.EventsTimeUsingPhd = {}
 
+        # Other flags
+        self._FORCE_GET_TRIALS_ONLY_IN_DATASET = False
+
         # spikes versino (initialize as tdt always)
         self.SPIKES_VERSION = "tdt"
         assert self.SPIKES_VERSION=="tdt", "should always start with this, as it indexes tdt channels"
@@ -640,10 +643,31 @@ class Session(object):
                 self.Datasetbeh.behclass_preprocess_wrapper(skip_if_exists=False)
 
             # sanity check that every neuiral trial has a dataset trial
+            # UPDATE: it is possible for some cached neural trials to not exist in dataset (e.g.,
+            # recent code cleans up strokes in dataset).
+            # Update trials list by pruning trials missing from dataset.
             trials = self.get_trials_list(True)
+            n_trials_missing_from_dataset = 0
             for t in trials:
                 # print(t, sn.datasetbeh_trial_to_datidx(t))
-                assert self.datasetbeh_trial_to_datidx(t) is not None
+                if self.datasetbeh_trial_to_datidx(t) is None:
+                    n_trials_missing_from_dataset += 1
+                    if False: # Older code, would raise error and print info.
+                        tc = self.datasetbeh_trial_to_trialcode(t)
+                        dfcheck = self.Datasetbeh
+                        for _t in self.get_trials_list(True):
+                            print(_t, self.datasetbeh_trial_to_trialcode(_t))
+                        print(tc)
+                        print(t)
+                        print(dfcheck.Dat["trialcode"])
+                        dfthis = dfcheck.Dat[dfcheck.Dat["trialcode"]==tc]
+                        print(dfthis)
+                        assert False
+            if n_trials_missing_from_dataset>0:
+                # Then turn on flag to only keep trials in dataset. Otherwise might have error.
+                assert (n_trials_missing_from_dataset/len(trials)) < 0.05, "threw out >5% trials, missing from dataset. figure out why"
+                self._FORCE_GET_TRIALS_ONLY_IN_DATASET = True
+                self._FORCE_GET_TRIALS_ONLY_IN_DATASET_NTRIALS = len(self.Datasetbeh.Dat) # as sanity check later, to make sure that dataset has not been pruned since now.
 
     def _cleanup(self):
         """ Various things to run at end of each initialization
@@ -4613,6 +4637,7 @@ class Session(object):
         #     print(trial_neural, trialcode, t, t2)
         # assert False
         for trial_neural, trialcode in zip(trials, list_trialcodes):
+            n_failures = 0
             if trialcode not in D.Dat["trialcode"].tolist():
                 # then this is only acceptable if this trial is not succesful fix or touch
                 fd, t = self.beh_get_fd_trial(trial_neural)
@@ -4623,20 +4648,26 @@ class Session(object):
                 touched = mkl.getTrialsTouched(fd, t)
                 # tem = mkl.getTrialsOutcomesWrapper(fd,t)["trial_end_method"]
                 if touched and suc:
-                    print(outcome)
-                    pnuts = mkl.getTrialsStrokesByPeanuts(fd, t)
-                    print(pnuts)
-                    print(list_trialcodes)
-                    print(D.Dat["trialcode"].tolist())
-                    print(trialcode)
-                    assert False, "some neural data not found in beh Dataset..."
+                    n_failures += 1
+                    if False: # Dont' fail, since sometimes dataset can be missing trials (e..g,, pruned strokes).
+                        outcome = mkl.getTrialsOutcomesWrapper(fd, t)
+                        print(outcome)
+                        pnuts = mkl.getTrialsStrokesByPeanuts(fd, t)
+                        print(pnuts)
+                        print(list_trialcodes)
+                        print(D.Dat["trialcode"].tolist())
+                        print(trialcode)
+                        assert False, "some neural data not found in beh Dataset..."
                 else:
                     outcome = mkl.getTrialsOutcomesWrapper(fd, t)
                     print("Removing this trial because it is not in Dataset:", trial_neural, trialcode, t, outcome["beh_evaluation"]["trialnum"])
                     # remove this trial from self.Dat, since it has no parallele in dataset
                     trials_neural_to_remove.append(trial_neural)
+            assert n_failures/len(trials)<0.05, "why so many missing from dataset? figure this out"
+
         # - remove the trials.
         if remove_trials_not_in_dataset:
+            # CAN IGNORE THIS!! it is effectively done in _datasetbeh_cleanup
             assert False, "code it..."
 
         # --
@@ -6676,7 +6707,8 @@ class Session(object):
 
     def smoothedfr_extract_timewindow(self, trials, sites, alignto, 
         pre_dur=-0.1, post_dur=0.1,
-        fail_if_times_outside_existing=True):
+        fail_if_times_outside_existing = True,
+        method_if_not_enough_time: str = "return_none"):
         """ [GOOD] Extract snippet of neural data temporally windows to have same time bins, 
         works even across trials. Time window defined relative to an event marker (alginto).
         TAKES THE FIRST time for alignto, found in the trial.
@@ -6715,88 +6747,10 @@ class Session(object):
 
         PAall, _, _, _ = self.smoothedfr_extract_timewindow_bytimes(trials_gotten, event_times,
                 sites, pre_dur, post_dur, fail_if_times_outside_existing,
-                                                   idx_trialtime_all=None)
+                                                   idx_trialtime_all=None,
+                                                    method_if_not_enough_time=method_if_not_enough_time)
 
-
-        # assert isinstance(pre_dur, (float, int))
-        # assert isinstance(pre_dur, (float, int))
-        # assert len(trials)>0
-        #
-        # list_xslices = []
-        # # 1) extract each trials' PA. Use the slicing tool in PA to extract snippet
-        # trials_gotten = []
-        # for tr in trials:
-        #
-        #     # Skip trial if doesnt have this event
-        #     has_event = self.events_does_trial_include_all_events(tr, [alignto])
-        #     if has_event:
-        #
-        #         time_align = self.events_get_time_using_photodiode(tr, list_events=[alignto])[alignto]
-        #
-        #         # extract popanal
-        #         pa, sampling_period = self.popanal_generate_save_trial(tr, return_sampling_period=True)
-        #
-        #         # slice to desired channels
-        #         pa = pa._slice_by_chan(sites)
-        #
-        #         # slice to time window
-        #         if len(time_align)==0:
-        #             # now its relaly fucked.
-        #             # run this to make the stream plot
-        #             self.events_get_time_using_photodiode(tr, list_events=[alignto], do_reextract_even_if_saved=True, plot_beh_code_stream=True)
-        #             print(sites)
-        #             print(tr)
-        #             print(alignto)
-        #             assert False, "didnt find this ewvent..."
-        #         time_align = time_align[0] # take first time in list of times.
-        #         t1 = time_align + pre_dur
-        #         t2 = time_align + post_dur
-        #
-        #         assert fail_if_times_outside_existing==True, "toehrwise deal with possible change in size of output."
-        #
-        #         try:
-        #             pa = pa._slice_by_time_window(t1, t2, return_as_popanal=True,
-        #                 fail_if_times_outside_existing=fail_if_times_outside_existing,
-        #                 subtract_this_from_times=time_align)
-        #         except NotEnoughDataException as err:
-        #             # not enough data for this time window.
-        #             print(f"[smoothedfr_extract_timewindow] SKIPPING trial {tr}, time window too large (alignto, t1, t2, time_align): {alignto}, {t1}, {t2}, {time_align}")
-        #             continue
-        #
-        #         # save this slice
-        #         list_xslices.append(pa)
-        #         trials_gotten.append(tr)
-        #
-        # # 2) Concatenate all PA into a single PA
-        # if not fail_if_times_outside_existing:
-        #     assert False, "fix this!! if pre_dur extends before first time, then this is incorrect. Should do what?"
-        #
-        # # # Replace all times with this time relative to alignement.
-        # # for pa in list_xslices:
-        # #     TIMES = (pa.Times - pa.Times[0]) + pre_dur*s # times all as [-predur, ..., postdur]
-        # #     pa.Times = TIMES
-        #
-        # # Replace all times with this time relative to alignement.
-        # for pa in list_xslices:
-        #     # sampling period, to acocunt for random variation in alignment across snips.
-        #     TIMES = (pa.Times - pa.Times[0]) + pre_dur + sampling_period/2 # times all as [-predur, ..., postdur]
-        #     pa.Times = TIMES
-        #
-        # # get list of np arrays
-        # if False:
-        #     TIMES = (list_xslices[0].Times - list_xslices[0].Times[0]) + pre_dur*s # times all as [-predur, ..., postdur]
-        #     Xall = np.concatenate([pa.X for pa in list_xslices], axis=1) # concat along trials axis. each one is (nchans, 1, times)
-        #     PAall = PopAnal(Xall, TIMES, sites, trials=trials_gotten)
-        # else:
-        #     from neuralmonkey.classes.population import concatenate_popanals
-        #
-        #     # then concat
-        #     PAall = concatenate_popanals(list_xslices, "trials",
-        #         assert_otherdims_have_same_values=True,
-        #         assert_otherdims_restrict_to_these=("chans", "times"),
-        #         all_pa_inherit_times_of_pa_at_this_index=0)
-
-        return PAall, trials_gotten
+        return PAall, trials_gotten, event_times
 
     def smoothedfr_extract_trials(self, trials, sites=None):
         """ Extract smoothed fr, where each datapt is a single trial (matrix over all sites).
@@ -6959,6 +6913,19 @@ class Session(object):
         """
         if events_that_must_include is None:
             events_that_must_include = []
+
+        if not hasattr(self, "_FORCE_GET_TRIALS_ONLY_IN_DATASET"):
+            self._FORCE_GET_TRIALS_ONLY_IN_DATASET = False
+            self._FORCE_GET_TRIALS_ONLY_IN_DATASET_NTRIALS = len(self.Datasetbeh.Dat)
+
+        if self._FORCE_GET_TRIALS_ONLY_IN_DATASET:
+            only_if_in_dataset = True
+            if self._FORCE_GET_TRIALS_ONLY_IN_DATASET_NTRIALS > len(self.Datasetbeh.Dat):
+                print(self._FORCE_GET_TRIALS_ONLY_IN_DATASET_NTRIALS)
+                print(len(self.Datasetbeh.Dat))
+                print("You have pruned self.Dataset, which means turning on only_if_in_dataset may inadvertently reduce n trials more than you expect")
+                print("Figure out why self.Dataset has been pruned.")
+                assert False
 
         assert not isinstance(only_if_in_dataset, list), "sanity check, becasue I moved order of args..."
 
@@ -8613,7 +8580,7 @@ class Session(object):
 
         assert pre_dur < post_dur
         # 1) Extract the data 
-        pa, _ = self.smoothedfr_extract_timewindow(trials, sites, alignto, pre_dur, post_dur)
+        pa, _, _ = self.smoothedfr_extract_timewindow(trials, sites, alignto, pre_dur, post_dur)
 
         # 2) plot
         if pcol_both is not None:
@@ -9342,7 +9309,7 @@ class Session(object):
         OUT = []
         list_events_uniqnames = []
         for i_e, (e, pre_dur, post_dur) in enumerate(zip(events, list_pre_dur, list_post_dur)):
-                
+
             if i_e<10:
                 idx_str = f"0{i_e}"
             else:
@@ -9352,7 +9319,12 @@ class Session(object):
 
             # Skip if this trial doesnt have this event
             print("Extraction pa for this event... ", e)
-            pa, trials_this_event = self.smoothedfr_extract_timewindow(trials, sites, e, pre_dur, post_dur)
+            method_if_not_enough_time = "return_none"
+            fail_if_times_outside_existing = False
+            pa, trials_this_event, event_times_gotten = self.smoothedfr_extract_timewindow(trials, sites,
+                                                                       e, pre_dur, post_dur,
+                                                                       fail_if_times_outside_existing=fail_if_times_outside_existing,
+                                                                       method_if_not_enough_time=method_if_not_enough_time)
 
             if len(trials_this_event)==0:
                 # Then this event is not exist in this dataset
@@ -9377,17 +9349,19 @@ class Session(object):
                 tc = self.datasetbeh_trial_to_trialcode(t)
                 ind_dataset = self.datasetbeh_trial_to_datidx(t)
 
+                # get eventtime
+                list_event_time = self.events_get_time_helper(e, t)
+                # take the first
+                if len(list_event_time)>0:
+                    event_time = list_event_time[0]
+                else:
+                    print(t, e)
+                    assert False, "no event"
+
+                assert np.isclose(event_times_gotten[i_t], event_time), f"bug?? {event_times_gotten[i_t]}, {event_time}"
+
                 for i_s, s in enumerate(sites):
 
-                    # get eventtime
-                    list_event_time = self.events_get_time_helper(e, t)
-                    # take the first
-                    if len(list_event_time)>0:
-                        event_time = list_event_time[0]
-                    else:
-                        print(t, s, e)
-                        assert False, "no event"
-                    
                     # get spiketimes
                     spike_times = self._snippets_extract_single_snip(s, t, 
                         event_time, pre_dur, post_dur)
@@ -9395,15 +9369,6 @@ class Session(object):
                     # get smoothed fr
                     fr_sm = pa.X[i_s, i_t, :]
                     fr_sm_times = pa.Times
-
-                    # if False:
-                    #     pa = self.smoothedfr_extract_timewindow([t], [s], e, pre_dur, post_dur)
-                    #     fr_sm = pa.X[0, 0,:] # (ntime,)
-                    #     fr_sm_times = pa.Times # (ntime,)
-                    # else:
-                    #     fr_sm = np.array([1])
-                    #     fr_sm_times = np.array([1])
-
 
                     # save it
                     OUT.append({
