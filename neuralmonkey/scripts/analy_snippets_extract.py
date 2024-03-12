@@ -15,11 +15,18 @@ from neuralmonkey.classes.snippets import Snippets, extraction_helper
 from neuralmonkey.classes.snippets import _dataset_extract_prune_general
 from pythonlib.tools.exceptions import NotEnoughDataException
 
-LIST_SESSIONS = None
-DEBUG = False # runs fast
+#### USER PARAMS
 SPIKES_VERSION = "tdt" # Still improving ks curation.
 LIST_WHICH_LEVEL = ["trial", "stroke", "stroke_off"]
 FORCE_EXTRACT = 0
+PRE_DUR = -0.8
+POST_DUR = 0.8
+SAVEDIR_BASE = "/gorilla1/analyses/recordings/main/anova"
+
+#### USUALLY NOT CHANGE PARAMS
+LIST_SESSIONS = None
+DEBUG = False # runs fast
+
 if __name__=="__main__":
 
     animal = sys.argv[1]
@@ -37,7 +44,7 @@ if __name__=="__main__":
     # to help debug if times are misaligned.
     MS = load_mult_session_helper(DATE, animal,
         units_metadat_fail_if_no_exist=True,
-                                  spikes_version=SPIKES_VERSION)
+        spikes_version=SPIKES_VERSION)
 
     # for session in range(len(MS.SessionsList)):
     if LIST_SESSIONS is None:
@@ -60,6 +67,13 @@ if __name__=="__main__":
                     else:
                         print("Saved SP has DIFFERENT sites to SN -- DO REEXTRACT of SP!")
                         SKIP_EXTRACTION = False
+
+                    # Make sure have large enough window.
+                    if (sp.Params["list_pre_dur"][0] > PRE_DUR) or (sp.Params["list_post_dur"][0] < POST_DUR):
+                        SKIP_EXTRACTION = False
+                    else:
+                        SKIP_EXTRACTION = True
+
                 except FileNotFoundError as err:
                     # Then recompute
                     print("No saved SP found -- DO EXTRACT of SP!")
@@ -88,7 +102,7 @@ if __name__=="__main__":
             D = sn.Datasetbeh
 
             ##############################
-            SAVEDIR = f"/gorilla1/analyses/recordings/main/anova/by{which_level}/{animal}-{DATE}-sess_{session}"
+            SAVEDIR = f"{SAVEDIR_BASE}/by{which_level}/{animal}-{DATE}-sess_{session}"
             os.makedirs(SAVEDIR, exist_ok=True)
 
             # if detects already extracted, and can successfully load, then skips.
@@ -108,7 +122,7 @@ if __name__=="__main__":
                 sn._DEBUG_PRUNE_SITES = True
                 dataset_pruned_for_trial_analysis.subsampleTrials(10, 1)
 
-            SP = extraction_helper(sn, which_level, PRE_DUR=-0.6, POST_DUR=0.6)
+            SP = extraction_helper(sn, which_level, PRE_DUR=PRE_DUR, POST_DUR=POST_DUR)
 
             SP.save_v2(SAVEDIR)
 
