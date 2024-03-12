@@ -975,7 +975,7 @@ def dataset_apply_params(D, DS, ANALY_VER, animal, DATE, save_substroke_preproce
             D.sequence_char_taskclass_assign_char_seq(ver=params["DO_CHARSEQ_VER"])
 
         ################ DO SAME THING AS IN EXTRACTION (these dont fail, when use concatted)
-        D.tokens_append_to_dataframe()
+        D.tokens_append_to_dataframe_column()
         # NOTE: This might take time, as it requires extract DS...
         # D.strokes_onsets_offsets_location_append()
         D.shapesemantic_classify_novel_shape()
@@ -1124,7 +1124,7 @@ def dataset_apply_params(D, DS, ANALY_VER, animal, DATE, save_substroke_preproce
         ####### PREPROCESSING FOR DS THAT SHOULD ALWAYS RUN:
         if DS is not None:
             # append Tkbeh_stktask
-            DS.tokens_append(ver="task")
+            DS.tokens_append(ver="beh_using_task_data")
 
         return D, DS, params
 

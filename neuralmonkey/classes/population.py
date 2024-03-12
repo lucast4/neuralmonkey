@@ -1803,7 +1803,7 @@ class PopAnal():
         X = X.reshape(X.shape[0] * X.shape[1], X.shape[2])
         n_time_bins = X.shape[1]
 
-        if len(X)<5:
+        if len(X)<3:
             plot_indiv = True
             plot_summary = False
 
