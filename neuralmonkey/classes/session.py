@@ -23,7 +23,9 @@ if LOCAL_LOADING_MODE:
     # debugging code.
     PATH_DATA_NEURAL_RAW = "/tmp"
 else:
-    assert os.path.exists(PATH_DATA_NEURAL_RAW), "might have to mount servr?"
+    if not os.path.exists(PATH_DATA_NEURAL_RAW):
+        print(PATH_DATA_NEURAL_RAW)
+        assert False, "might have to mount servr?"
 
 _REGIONS_IN_ORDER = ("M1_m", "M1_l", "PMv_l", "PMv_m",
                 "PMd_p", "PMd_a", "dlPFC_p", "dlPFC_a", 
