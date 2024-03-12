@@ -1584,7 +1584,7 @@ def params_getter_decode_vars(which_level):
             ["taskconfig_shp_SHSEM", "seqc_0_shape", "seqc_0_loc", "seqc_1_loc", "task_kind"],
             ["taskconfig_shp_SHSEM", "seqc_0_shape", "seqc_0_loc", "seqc_1_shape", "task_kind"],
             ["taskconfig_shp_SHSEM", "seqc_0_shape", "seqc_0_loc", "task_kind"],
-            ["seqc_0_shape", "seqc_0_locon_binned"],
+            ["seqc_0_shape", "seqc_0_loc"],
             ]
         separate_by_task_kind = True
         filtdict = None
@@ -1601,25 +1601,27 @@ def params_getter_decode_vars(which_level):
             "taskconfig_shp_SHSEM",
             "taskconfig_shp_SHSEM",
             "taskconfig_shp_SHSEM",
-            # "taskconfig_shp_SHSEM",
+            "taskconfig_shp_SHSEM",
             # "taskconfig_shploc_SHSEM",
             # "taskconfig_shploc_SHSEM",
             # "taskconfig_shploc_SHSEM",
             "seqc_1_shape",
             "seqc_2_shape",
             "seqc_3_shape",
+            "seqc_1_shape",
         ]
         list_vars_conj = [
             ["taskconfig_loc", "task_kind"], # minimal control
             ["taskconfig_loc", "seqc_0_shape", "seqc_0_loc", "task_kind"], # control for first action.
             ["seqc_0_shape", "seqc_0_loc", "task_kind"], # control for first action.
-            # ["taskconfig_loc", "character", "task_kind"], # control for image.
+            ["character", "task_kind"], # control for image.
             # ["taskconfig_loc", "task_kind"], # minimal control
             # ["taskconfig_loc", "seqc_0_shape", "seqc_0_loc", "task_kind"], # control for first action.
             # ["taskconfig_loc", "character", "task_kind"], # control for image.
             ["seqc_0_shape", "seqc_0_loc", "task_kind"],
             ["seqc_0_shape", "seqc_0_loc", "task_kind"],
             ["seqc_0_shape", "seqc_0_loc", "task_kind"],
+            ["character", "task_kind"], # control for image.
             ]
         separate_by_task_kind = True
         filtdict = None
@@ -1708,6 +1710,7 @@ def params_getter_decode_vars(which_level):
         # Task kind
         suffix = "taskkind"
         list_var_decode = [
+            "task_kind",
             "task_kind"
         ]
         list_vars_conj = [
