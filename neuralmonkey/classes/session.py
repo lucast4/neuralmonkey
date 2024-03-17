@@ -100,6 +100,22 @@ BEH_CODES = {
 # leave as true, since original datall extraction was also this.
 SAVELOCALCACHED_TRIALS_FIXATION_SUCCESS = True 
 
+# Each event has a hard-coded numerical prefix
+MAP_EVENT_TO_PREFIX = {
+    "stroke":"00",
+    "fixon":"00",
+    "fixcue":"00",
+    "rulecue2":"02",
+    "samp":"03",
+    "go_cue":"04",
+    "first_raise":"05",
+    "on_strokeidx_0":"06",
+    "doneb":"08",
+    "post":"09",
+    "reward_all":"10"
+}
+
+DATASETBEH_CACHED_USE_BEHTOUCH = True
 
 def load_mult_session_helper(DATE, animal, dataset_beh_expt=None, expt = "*", 
     MINIMAL_LOADING=True,
@@ -595,7 +611,7 @@ class Session(object):
 
         # Various cleanups
         self._cleanup()
-        self._datasetbeh_cleanup()
+        self._datasetbeh_remove_neural_trials_missing_beh()
 
         if DEBUG_TIMING:
             ts = makeTimeStamp()
@@ -630,9 +646,9 @@ class Session(object):
         self._SPIKES_VERSION_INPUTED = spikes_version
 
     ####################### PREPROCESS THINGS
-    def _datasetbeh_cleanup(self):
-        """ To run, useful since sometimes (MINIMAL LOADING) loads the cached dataset, which 
-        might have older version of data
+    def _datasetbeh_remove_neural_trials_missing_beh(self):
+        """ Does ONE THING --> removes neural trials which dont exist in dataset.
+        This is useful since dataset beh might prune trials which have bad strokes, etc.
         """
         if self.Datasetbeh is not None:
             if False:
@@ -931,21 +947,28 @@ class Session(object):
                 print("[_sitesdirty_update] skipping! since did not find: ", kind)
         self.SitesDirty = sorted(set(sites_dirty))
 
-
     def _generate_mappers_quickly_datasetbeh(self):
-        """ generate mappers, which are dicts for mapping, e.g.,
-        between indices"""
+        """ Run a single time to generate mappers, which are dicts for mapping
+        between indices for trialcode (datasetbeh) and trial (neural)
+        RETURNS:
+           - Updates self._MapperTrialcode2TrialToTrial
+        """
 
-        # 1) map from trialcode to trial
-        self._MapperTrialcode2TrialToTrial = {}
+        if hasattr(self, "_MapperTrialcode2TrialToTrial") and len(self._MapperTrialcode2TrialToTrial)>0:
+            # SANITY CHECK that it mathes current. if not, then error --> misalign betwene nerual and dataset beh
+            for trial in self.get_trials_list():
+                trialcode = self._datasetbeh_trial_to_trialcode_from_raw(trial)
+                assert self._MapperTrialcode2TrialToTrial[trialcode] == trial
+        else:
+            # Generate from scratch
+            # 1) map from trialcode to trial
+            self._MapperTrialcode2TrialToTrial = {}
 
-        for trial in self.get_trials_list():
-            trialcode = self.datasetbeh_trial_to_trialcode(trial)
-            assert trialcode not in self._MapperTrialcode2TrialToTrial.keys(), "diff trials give same trialcode, not possible."
-            self._MapperTrialcode2TrialToTrial[trialcode] = trial
-        print("Generated self._MapperTrialcode2TrialToTrial!")
-
-
+            for trial in self.get_trials_list():
+                trialcode = self._datasetbeh_trial_to_trialcode_from_raw(trial)
+                assert trialcode not in self._MapperTrialcode2TrialToTrial.keys(), "diff trials give same trialcode, not possible."
+                self._MapperTrialcode2TrialToTrial[trialcode] = trial
+            print("Generated self._MapperTrialcode2TrialToTrial!")
 
     # def _initialize_params(self):
     def _initialize_paths(self, do_if_spikes_incomplete="ignore"):
@@ -1476,7 +1499,7 @@ class Session(object):
         return True
 
 
-    def _savelocalcached_load(self):
+    def _savelocalcached_load(self, dataset_version="raw"):
         """
         Load from disk the cached data (quick).
         """
@@ -1489,12 +1512,16 @@ class Session(object):
                 out = pickle.load(f)
             return out
 
-        # _CachedTrialOnset
+        # Related to neural data
         self._CachedTrialsList = _load_this("trials_list")
         self._CachedTrialOnset = _load_this("trial_onsets")
-        self._CachedStrokes = _load_this("strokes")
-        self._CachedStrokesPeanutsOnly = _load_this("strokes_peanutsonly")
-        self._CachedStrokesTask = _load_this("strokes_task")
+
+        # Related to dataset beh
+        if False:
+            # Don't load this, inastead, code now just reads from Dataset directly.
+            self._CachedStrokes = _load_this("strokes")
+            self._CachedStrokesPeanutsOnly = _load_this("strokes_peanutsonly")
+            self._CachedStrokesTask = _load_this("strokes_task")
         self._CachedTouchData = _load_this("touch_data")
 
         try:
@@ -1506,18 +1533,67 @@ class Session(object):
             # just skip this. old data, didnt save tehse caches.
             pass
 
-        paththis = f"{pathdir}/dataset_beh.pkl"
-        with open(paththis, "rb") as f:
-            self.Datasetbeh = pickle.load(f)
-            # if hasattr(self.Datasetbeh, "TokensVersion"):
-            #     print("1 dfafasf", self.Datasetbeh.TokensVersion)
-            # else:
-            #     print("1 dfafasf", "DOESNT EXIST")
-            self.Datasetbeh._cleanup_preprocess_each_time_load_dataset()
+        if dataset_version=="cached":
+            # Then load cached version
+            paththis = f"{pathdir}/dataset_beh.pkl"
+            with open(paththis, "rb") as f:
+                self.Datasetbeh = pickle.load(f)
+                self.Datasetbeh._cleanup_preprocess_each_time_load_dataset()
+        elif dataset_version=="raw":
+            # Load from scratch. This is useful if dataset beh has changed..
+            # Don't run cleanup, since loading the dataset forces a cleanup.
+            # This is default from 3/13/24 on
+            datasetbeh_exptname = None # None was used orignally during extraction. This means use daily dataset.
+            # self.datasetbeh_load_helper(self.DatasetbehExptname, FORCE_AFTER_MINIMAL=True)
+            self.datasetbeh_load_helper(datasetbeh_exptname, FORCE_AFTER_MINIMAL=True)
+
+            # Clear cached beh data that might now be innacurate.
+            self._CachedStrokesPeanutsOnly = {}
+            self._CachedStrokes = {}
+            self._CachedStrokesTask = {}
+            if not DATASETBEH_CACHED_USE_BEHTOUCH:
+                # This is not affected by dataset preprocessing, so can safely use the cached data
+                self._CachedTouchData = {}
+
+            # Remove events which are using old cached dataset
+            self._events_prune_cached_which_use_datasetbeh()
+
+        else:
+            print(dataset_version)
+            assert False
+
 
         # print("2 dfafasf", self.Datasetbeh.TokensVersion)
         self.Datasetbeh.LockPreprocess = True
         self._generate_mappers_quickly_datasetbeh()
+
+        # Sanity check alignement between dataset beh and neural data
+        from pythonlib.tools.pandastools import _check_index_reseted
+        # 1. Check dataset index formating
+        _check_index_reseted(self.Datasetbeh.Dat)
+        # 2. Most direct check of raw data -- time of go cue, sourced indepednently for the two datasests, so
+        # this is a good test of match.
+        gos1 = []
+        gos2 = []
+        for trial in self.get_trials_list(True):
+            idx = self.datasetbeh_trial_to_datidx(trial)
+            assert self.datasetbeh_trial_to_trialcode(trial) == self.Datasetbeh.Dat.iloc[idx]["trialcode"]
+            self.Datasetbeh.Dat.iloc[idx]["strokes_beh"]
+
+            go1 = self.events_get_time_helper("go", trial, assert_one=True)[0]
+            go2 = self.Datasetbeh.Dat.iloc[idx]["motorevents"]["go_cue"]
+
+            assert go1-go2<1 # emprically, go1 tends to be ~0.15 earlier than go2. There is such high variance in gos across
+            # trials, that a threshold of 1 will surely catch misalignment between neural and beh data.
+
+            gos1.append(go1)
+            gos2.append(go2)
+
+        if False: # Debug, plotting distribution of go times.
+            import matplotlib.pyplot as plt
+            fig, axes = plt.subplots(1,2)
+            axes.flatten()[0].plot(gos1, gos2, "xk")
+            axes.flatten()[1].hist([g1-g2 for g1, g2 in zip(gos1, gos2)], bins=50)
 
     def _savelocalcached_loadextract_datslice(self, trial, site, only_check_if_exists=False):
         """
@@ -3639,6 +3715,12 @@ class Session(object):
 
         return sites_sorted
 
+    def sitegetterKS_all_sites(self):
+        """
+        Return list of all sites
+        """
+        return self.sitegetterKS_map_region_to_sites_MULTREG()
+
     def sitegetterKS_map_region_to_sites_MULTREG(self, list_regions=None, clean=True,
                                                  force_tdt_sites=False):
         """ [KILOSORT_WORKS] Get all sites, in order
@@ -4539,7 +4621,7 @@ class Session(object):
             assert False
             
     ############### Beh Dataset (extracted)
-    def datasetbeh_load_helper(self, dataset_beh_expt):
+    def datasetbeh_load_helper(self, dataset_beh_expt, FORCE_AFTER_MINIMAL=False):
         """ Helps beucase can either be "main" dataset, in which case
         use dataset_beh_expt, or daily datyaset, in which case use the 
         date (gets it auto, doesnt use dataset_beh_expt)
@@ -4556,7 +4638,7 @@ class Session(object):
             try:
                 # If that doesnt work, then use the daily dataset, which 
                 # is generated autmatoiocalyl (after like sep 2022)
-                self.datasetbeh_load(version="daily") # daily 
+                self.datasetbeh_load(version="daily", FORCE_AFTER_MINIMAL=FORCE_AFTER_MINIMAL) # daily
                 print("**Loaded dataset! daily")
             except:
                 # Try loading using "null" rule, which is common
@@ -4570,9 +4652,8 @@ class Session(object):
 
 
     def datasetbeh_load(self, dataset_beh_expt=None, 
-            remove_online_abort=False,
-            remove_trials_not_in_dataset=False,
-            version = "daily"):
+            version = "daily",
+            FORCE_AFTER_MINIMAL=False):
         """ Load pre-extracted beahviuioral dataset and algined
         trial by trial to this recording session. 
         Tries to automtiaclly get the exptname, and rule, but you might
@@ -4584,6 +4665,8 @@ class Session(object):
         PARAMS:
         - version, str, either "main" or "daily". if main, then uses dataset_beh_expt, if
         daily, then uses self.Date
+        - FORCE_AFTER_MINIMAL, if True, then alloows to run this even after you are in MINIMAL_LOADING mode
+        i.e, you don't want to load the cached dataset.
         RETURNS:
         - self.DatasetBeh, and returns
         """
@@ -4591,7 +4674,8 @@ class Session(object):
         from pythonlib.dataset.dataset_preprocess.general import preprocessDat
         from pythonlib.dataset.dataset import load_dataset_notdaily_helper, load_dataset_daily_helper
 
-        assert self.DatAll is not None, "need to load first, run SN.extract_raw_and_spikes_helper()"
+        if not FORCE_AFTER_MINIMAL:
+            assert self.DatAll is not None, "need to load first, run SN.extract_raw_and_spikes_helper()"
 
         # 1) Load Dataset
         if version=="daily":
@@ -4618,6 +4702,8 @@ class Session(object):
         #     D, GROUPING, GROUPING_LEVELS, FEATURE_NAMES, SCORE_COL_NAMES = preprocessDat(D, expt)
 
         # 2) keep only the dataset trials that are included in recordings
+        #TODO: should instead regenerate all trials in neural, since cached trials MAY have thrown out trails
+        # based on older beh dataset.
         if False:
             # old
             trials = self.get_all_existing_site_trial_in_datall("trial")                                               
@@ -4667,10 +4753,10 @@ class Session(object):
                     trials_neural_to_remove.append(trial_neural)
             assert n_failures/len(trials)<0.05, "why so many missing from dataset? figure this out"
 
-        # - remove the trials.
-        if remove_trials_not_in_dataset:
-            # CAN IGNORE THIS!! it is effectively done in _datasetbeh_cleanup
-            assert False, "code it..."
+        # # - remove the trials.
+        # if remove_trials_not_in_dataset:
+        #     # CAN IGNORE THIS!! it is effectively done in _datasetbeh_cleanup
+        #     assert False, "code it..."
 
         # --
         self.Datasetbeh = D
@@ -5000,6 +5086,24 @@ class Session(object):
             print("_loadlocal_events DOESNT EXIST")
             return False
 
+    def _events_prune_cached_which_use_datasetbeh(self):
+        """
+        Useeful if you reload datsetbeh --> exclude cvachced events that are based on strokes which might now
+        be innacurate.
+        :return:
+        """
+        # Keep only events that use photodiode. Events that use beh strokes shold be
+        # regenreated each time.
+        # See this for newnames: map_event_newname_to_oldname
+        print("Pruning events in EventsTimeUsingPhd to exclude those using datasetbeh strokes...")
+        EVENTS_PHOTODIODE_KEEP = ["fixcue", "rulecue2", "samp", "go", "post", "reward_all", "go_cue",
+                                  "stim_onset", "post_screen_onset"]
+        if DATASETBEH_CACHED_USE_BEHTOUCH:
+            EVENTS_PHOTODIODE_KEEP.append(["done_button", "doneb", "fixtch", "first_raisedoneb", "fix_touch"])
+
+        # Excludes:
+        # on_strokeidx_0 first_raise on_stroke_1 on_strokeidx_0 on_stroke_1 seqon off_stroke_last
+        self.EventsTimeUsingPhd = {k:v for k, v in self.EventsTimeUsingPhd.items() if k[1] in EVENTS_PHOTODIODE_KEEP}
 
     def _savelocal_events(self):
         """  Save for faster loading later
@@ -5917,15 +6021,19 @@ class Session(object):
 
         list_events_uniqnames = []
         for i, event in enumerate(list_events):
-            
-            # give event a unique name
-            # Version 2, with indices
-    #         event_unique_name = f"{i}_{event[:3]}_{event[-1]}"
-            if i<10:
-                idx_str = f"0{i}"
+            # Better, so that names are stable
+            if event in MAP_EVENT_TO_PREFIX:
+                pref = MAP_EVENT_TO_PREFIX[event] # "00"
+                event_unique_name = f"{pref}_{event}"
             else:
-                idx_str = f"{i}"
-            event_unique_name = f"{idx_str}_{event}"
+                # give event a unique name
+                # Version 2, with indices
+        #         event_unique_name = f"{i}_{event[:3]}_{event[-1]}"
+                if i<10:
+                    idx_str = f"0{i}"
+                else:
+                    idx_str = f"{i}"
+                event_unique_name = f"{idx_str}_{event}"
             list_events_uniqnames.append(event_unique_name)
 
         return list_events_uniqnames
@@ -6556,7 +6664,7 @@ class Session(object):
         for tr, time_align, idx in zip(trials, times, idx_trialtime_all):
 
             # extract popanal
-            pa, sampling_period = self.popanal_generate_save_trial(tr, return_sampling_period=True)   
+            pa, sampling_period = self.popanal_generate_save_trial(tr, return_sampling_period=True)
 
             # slice to desired channels
             pa = pa._slice_by_chan(sites) 
@@ -7965,15 +8073,26 @@ class Session(object):
         - x, array of x coords (nan if not touchgin)
         - y, array of y coorrds
         """
-        if trial in self._CachedTouchData.keys():
-            return self._CachedTouchData[trial]
-        else:   
+        if DATASETBEH_CACHED_USE_BEHTOUCH: # Then use cached data. Doing this since it is not lile;ly to change
+            # in datset. but this is not ideal
+            if trial in self._CachedTouchData.keys():
+                return self._CachedTouchData[trial]
+            else:
+                print("WARNING - the touch times might have gaps, esp during hold at fixation for Diego...")
+                # Should change base code in drawmonkey, updating how extract touch data (concat touches that are close).
+                fd, trialml = self.beh_get_fd_trial(trial)
+                xyt = mkl.getTrialsTouchData(fd, trialml)
+                # times, touching = mkl.getTrialsTouchingBinary(fd, trialml)
+                return xyt
+                # return xyt[:,2], xyt[:,0], xyt[:,1]
+        else:
+            print("WARNING - the touch times might have gaps, esp during hold at fixation for Diego...")
+            # Should change base code in drawmonkey, updating how extract touch data (concat touches that are close).
             fd, trialml = self.beh_get_fd_trial(trial)
             xyt = mkl.getTrialsTouchData(fd, trialml)
             # times, touching = mkl.getTrialsTouchingBinary(fd, trialml)
             return xyt
             # return xyt[:,2], xyt[:,0], xyt[:,1]
-
 
     def beh_extract_touching_binary(self, trialtdt):
         """ Return time series of whether is touching or not.
@@ -8248,27 +8367,46 @@ class Session(object):
     def strokes_task_extract(self, trial):
         """ Extract the strokes for this task
         """
-        if trial in self._CachedStrokesTask.keys():
-            return self._CachedStrokesTask[trial]
+        if True:
+            # New, always get from dataset, this removes any source of misalignmenet between beh and neural
+            idx = self.datasetbeh_trial_to_datidx(trial)
+            return self.Datasetbeh.Dat.iloc[idx]["strokes_task"]
         else:
-            from ..utils.monkeylogic import getTrialsTaskAsStrokes
-            fd, trialml = self.beh_get_fd_trial(trial)
-            strokestask = getTrialsTaskAsStrokes(fd, trialml)
-            return strokestask
-            # plotDatStrokes(strokestask, ax, clean_task=True)
+            # This is not saved in Datasetbeh. Therefore resort to old methods.
+            # This is not ideal, but it is never used for real analyses..
+            if trial in self._CachedStrokesTask.keys():
+                return self._CachedStrokesTask[trial]
+            else:
+                from ..utils.monkeylogic import getTrialsTaskAsStrokes
+                fd, trialml = self.beh_get_fd_trial(trial)
+                strokestask = getTrialsTaskAsStrokes(fd, trialml)
+                return strokestask
 
     def strokes_extract(self, trialtdt, peanuts_only=False):
-        from ..utils.monkeylogic import getTrialsStrokes, getTrialsStrokesByPeanuts
+        """ [GOOD] The only place where beh strokes are extracted
+        """
         if peanuts_only:
-            if trialtdt in self._CachedStrokesPeanutsOnly.keys():
-                strokes = self._CachedStrokesPeanutsOnly[trialtdt]
+            if True:
+                # New, always get from dataset, this removes any source of misalignmenet between beh and neural
+                idx = self.datasetbeh_trial_to_datidx(trialtdt)
+                strokes = self.Datasetbeh.Dat.iloc[idx]["strokes_beh"]
             else:
-                fd, trialml = self.beh_get_fd_trial(trialtdt)
-                strokes = getTrialsStrokesByPeanuts(fd, trialml)
+                # This is not saved in Datasetbeh. Therefore resort to old methods.
+                # This is not ideal, but it is never used for real analyses..
+                print("WARNING: using non-peanuts strokes, which may be misaligned with strokes in updated Datasetbeh...")
+                # To fix: should force to use getTrialsStrokesByPeanuts, BUT should make sure it applies the preprocessing
+                # that goes into extract strokes to construct datasetbeh
+                from ..utils.monkeylogic import getTrialsStrokes, getTrialsStrokesByPeanuts
+                if trialtdt in self._CachedStrokesPeanutsOnly.keys():
+                    strokes = self._CachedStrokesPeanutsOnly[trialtdt]
+                else:
+                    fd, trialml = self.beh_get_fd_trial(trialtdt)
+                    strokes = getTrialsStrokesByPeanuts(fd, trialml)
         else:
             if trialtdt in self._CachedStrokes.keys():
                 strokes = self._CachedStrokes[trialtdt]
             else:
+                from ..utils.monkeylogic import getTrialsStrokes, getTrialsStrokesByPeanuts
                 fd, trialml = self.beh_get_fd_trial(trialtdt)
                 strokes = getTrialsStrokes(fd, trialml)
         return strokes
@@ -8878,17 +9016,41 @@ class Session(object):
     #     trialcode = f"{date}-{session_ml}-{trial_ml}"
     #     return trialcode
 
-    def datasetbeh_trial_to_trialcode(self, trial):
-        """ get trialcode for this trial(tdt)
+    def _datasetbeh_trial_to_trialcode_from_raw(self, trial):
+        """ Recompute trialcode for this trial(tdt), not from cached.
+        This should only be called when generating _MapperTrialcode2TrialToTrial
         RETURNS:
         - trialcode, a string
         """
         date = self.Date
         index_sess, trial_ml = self._beh_get_fdnum_trial(trial)
-        session_ml = self.BehSessList[index_sess] 
+        session_ml = self.BehSessList[index_sess]
 
         trialcode = f"{date}-{session_ml}-{trial_ml}"
         return trialcode
+
+    def datasetbeh_trial_to_trialcode(self, trial):
+        """ Try to load from cached, get trialcode for this trial(tdt)
+        RETURNS:
+        - trialcode, a string
+        """
+
+        if (not hasattr(self, "_MapperTrialcode2TrialToTrial")) or (len(self._MapperTrialcode2TrialToTrial) == 0):
+            # generate mappers from trialcode to trial
+            self._generate_mappers_quickly_datasetbeh()
+
+        # Return the trialcode
+        idx = list(self._MapperTrialcode2TrialToTrial.values()).index(trial)
+        return list(self._MapperTrialcode2TrialToTrial.keys())[idx]
+
+        # trialcode = self.datasetbeh_trial_to_trialcode_from_raw(trial)
+        #
+        # date = self.Date
+        # index_sess, trial_ml = self._beh_get_fdnum_trial(trial)
+        # session_ml = self.BehSessList[index_sess]
+        #
+        # trialcode = f"{date}-{session_ml}-{trial_ml}"
+        # return trialcode
 
     def datasetbeh_trial_to_datidx(self, trial, dataset_input=None):
         """ returns the index in self.Datasetbeh correspodning to
@@ -8987,85 +9149,63 @@ class Session(object):
             print("  trial - event - event_time")
 
         for i_e, event in enumerate(list_events):
-            if i_e<10:
-                idx_str = f"0{i_e}"
-            else:
-                idx_str = f"{i_e}"
-            event_unique_name = f"{idx_str}_{event}"
+            event_unique_name = self.events_rename_with_ordered_index([event])[0]
+            # if i_e<10:
+            #     idx_str = f"0{i_e}"
+            # else:
+            #     idx_str = f"{i_e}"
+            # event_unique_name = f"{idx_str}_{event}"
             for trial_neural in trials:
+                if trial_neural%50==0:
+                    print(event_unique_name, " - ", trial_neural)
                 list_times = sorted(self.events_get_time_helper(event, trial_neural))
-                
-                #### extracts featurename and featurevals FOR certain custom events (e.g. saccades, fixations)
+
+                # For some events, you want to extract features associated with each event.
                 if event in ["fixon"]:
+                    #### extracts featurename and featurevals FOR certain custom events (e.g. saccades, fixations)
                     # get feature name and list of values
                     feat_name, list_featvals = self.events_get_feature_helper(event, trial_neural)
-
-                    # make sure there is one value per event time
-                    assert len(list_times)==len(list_featvals)
-
-                    # add entry to dataframe
-                    for trial_ind, (event_time, featval) in enumerate(zip(list_times, list_featvals)):
-
-                        if DEBUG:
-                            print(trial_neural, ' - ', event, ' - ' , event_time)
-
-                        trials_all.append(trial_neural)
-                        times_all.append(event_time)
-                        idx_trialtime_all.append(idx_trialtime)
-
-                        for s in sites:
-
-                            # get spiketimes
-                            spike_times = self._snippets_extract_single_snip(s, trial_neural, 
-                                event_time, pre_dur, post_dur)
-
-                            # save it
-                            tc = self.datasetbeh_trial_to_trialcode(trial_neural)
-                            OUT.append({
-                                "trialcode":tc,
-                                "chan":s,
-                                "event_unique_name":event_unique_name,
-                                "event_aligned":event,
-                                "spike_times":spike_times,
-                                "trial_neural":trial_neural,
-                                "event_time":event_time,
-                                feat_name:featval,
-                                "idx_trialtime":idx_trialtime,
-                                "event_idx_within_trial":trial_ind
-                            })
-                        # increment index
-                        idx_trialtime+=1
                 else:
-                    for event_time in list_times:
+                    feat_name = None
+                    list_featvals = [None for _ in range(len(list_times))]
 
-                        if DEBUG:
-                            print(trial_neural, ' - ', event, ' - ' , event_time)
+                # make sure there is one value per event time
+                assert len(list_times)==len(list_featvals)
 
-                        trials_all.append(trial_neural)
-                        times_all.append(event_time)
-                        idx_trialtime_all.append(idx_trialtime)
+                # add entry to dataframe
+                for trial_ind, (event_time, featval) in enumerate(zip(list_times, list_featvals)):
 
-                        for s in sites:
+                    if DEBUG:
+                        print(trial_neural, ' - ', event, ' - ' , event_time)
 
-                            # get spiketimes
-                            spike_times = self._snippets_extract_single_snip(s, trial_neural, 
-                                event_time, pre_dur, post_dur)
+                    trials_all.append(trial_neural)
+                    times_all.append(event_time)
+                    idx_trialtime_all.append(idx_trialtime)
 
-                            # save it
-                            tc = self.datasetbeh_trial_to_trialcode(trial_neural)
-                            OUT.append({
-                                "trialcode":tc,
-                                "chan":s,
-                                "event_unique_name":event_unique_name,
-                                "event_aligned":event,
-                                "spike_times":spike_times,
-                                "trial_neural":trial_neural,
-                                "event_time":event_time,
-                                "idx_trialtime":idx_trialtime
-                            })
-                        # increment index
-                        idx_trialtime+=1
+                    for s in sites:
 
+                        # get spiketimes
+                        spike_times = self._snippets_extract_single_snip(s, trial_neural,
+                            event_time, pre_dur, post_dur)
+
+                        # save it
+                        tc = self.datasetbeh_trial_to_trialcode(trial_neural)
+                        OUT.append({
+                            "trialcode":tc,
+                            "chan":s,
+                            "event_unique_name":event_unique_name,
+                            "event_aligned":event,
+                            "spike_times":spike_times,
+                            "trial_neural":trial_neural,
+                            "event_time":event_time,
+                            # feat_name:featval,
+                            "idx_trialtime":idx_trialtime,
+                            "event_idx_within_trial":trial_ind
+                        })
+                        if feat_name is not None:
+                            OUT[-1][feat_name] = featval
+                    # increment index
+                    idx_trialtime+=1
 
         # Get smoothed fr. this is MUCH faster than computing above.
         print("Extracting smoothed FR for all data...")
@@ -9077,6 +9217,7 @@ class Session(object):
             method_if_not_enough_time=method_if_not_enough_time)
 
         # Prune OUT to just those trials that have full data...
+        # assert sorted(set([O["idx_trialtime"] for O in OUT])) == list(range(len(OUT))), "just checking that I undersatnd what is going on."
         OUT = [O for O in OUT if O["idx_trialtime"] in idx_trialtime_all]
 
         if DEBUG:
@@ -9251,39 +9392,31 @@ class Session(object):
         df = pd.DataFrame(OUT)
 
         # get every column in DS
-        # for col in DS.Dat.columns:
         print("Appending other columns into dataset...")
-        for col in list_cols:
-            df[col] = DS.Dat.iloc[list_ind][col].tolist()
-            # OUT[-1][col] = DS.Dat.iloc[ind][col]
-        for col in features_to_get_extra:
-            df[col] = DS.Dat.iloc[list_ind][col].tolist()
-            # OUT[-1][col] = DS.Dat.iloc[ind][col]
+        if True:
+            # Much faster
+            # for col in DS.Dat.columns:
+            from pythonlib.tools.pandastools import _check_index_reseted, join_dataframes_appending_columns
+            _check_index_reseted(DS.Dat)
+            if len(list_cols)>0:
+                df2 = DS.Dat.loc[list_ind, list_cols].reset_index(drop=True)
+                df = join_dataframes_appending_columns(df, df2, list_cols)
+
+            if len(features_to_get_extra)>0:
+                df2 = DS.Dat.loc[list_ind, features_to_get_extra].reset_index(drop=True)
+                df = join_dataframes_appending_columns(df, df2, features_to_get_extra)
+
+        else:
+            for col in list_cols:
+                df[col] = DS.Dat.iloc[list_ind][col].tolist()
+                # OUT[-1][col] = DS.Dat.iloc[ind][col]
+            for col in features_to_get_extra:
+                df[col] = DS.Dat.iloc[list_ind][col].tolist()
+                # OUT[-1][col] = DS.Dat.iloc[ind][col]
 
         if SANITY_CHECK:
             assert df["trialcode"].tolist() == DS.Dat.iloc[list_ind]["dataset_trialcode"].tolist()
-
-        # # Compute fr scalar
-        # if False:
-        #     # moved to snippets
-        #     dur = post_dur - pre_dur
-        #     def F(x):
-        #         inds = (x["spike_times"]>=pre_dur) & (x["spike_times"]<=post_dur)
-        #         nspk = sum(inds)
-        #         rate = nspk/dur
-        #         return rate
-        #     df = applyFunctionToAllRows(df, F, "fr_scalar_raw")
-        #
-        #     # tgransform the fr if desired
-        #     if fr_which_version=="raw":
-        #         df["fr_scalar"] = df["fr_scalar_raw"]
-        #     elif fr_which_version=="sqrt":
-        #         df["fr_scalar"] = df["fr_scalar_raw"]**0.5
-        #     else:
-        #         print(fr_which_version)
-        #         assert False
-        #
-        #     df["fr_sm_sqrt"] = df["fr_sm"]**0.5
+            assert df["dataset_trialcode"].tolist() == DS.Dat.iloc[list_ind]["dataset_trialcode"].tolist()
 
         return df
 
@@ -9311,12 +9444,12 @@ class Session(object):
         OUT = []
         list_events_uniqnames = []
         for i_e, (e, pre_dur, post_dur) in enumerate(zip(events, list_pre_dur, list_post_dur)):
-
-            if i_e<10:
-                idx_str = f"0{i_e}"
-            else:
-                idx_str = f"{i_e}"
-            event_unique_name = f"{idx_str}_{e}"
+            event_unique_name = self.events_rename_with_ordered_index([e])[0]
+            # if i_e<10:
+            #     idx_str = f"0{i_e}"
+            # else:
+            #     idx_str = f"{i_e}"
+            # event_unique_name = f"{idx_str}_{e}"
             list_events_uniqnames.append(event_unique_name)
 
             # Skip if this trial doesnt have this event
@@ -9333,7 +9466,7 @@ class Session(object):
                 assert pa is None
                 print(f"[SN.snippets_extract_bytrial] SKIPPING event, since no data: {e}")
                 continue
-            else:                
+            else:
                 print(f"[SN.snippets_extract_bytrial] TRIALS extracted for event: {e}: {trials_this_event}")
 
             assert len(trials_this_event)==pa.X.shape[1]
@@ -9365,7 +9498,7 @@ class Session(object):
                 for i_s, s in enumerate(sites):
 
                     # get spiketimes
-                    spike_times = self._snippets_extract_single_snip(s, t, 
+                    spike_times = self._snippets_extract_single_snip(s, t,
                         event_time, pre_dur, post_dur)
 
                     # get smoothed fr
@@ -9386,7 +9519,7 @@ class Session(object):
                         "fr_sm_times":fr_sm_times[None, :]
                     })
 
-                    # get metadat 
+                    # get metadat
                     for col in features_to_get_extra:
                         if col not in OUT[-1].keys():
                             OUT[-1][col] = self.Datasetbeh.Dat.iloc[ind_dataset][col]
