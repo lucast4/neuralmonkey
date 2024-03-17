@@ -1557,94 +1557,47 @@ def _shuffle_dataset_generate_toy_data():
     })
     return df
 
-def _shuffle_dataset_hier(df, list_var_noshuff, list_var_shuff,
-                          maintain_block_temporal_structure=False,
-                          return_in_input_order=True):
-    """ Hierarhical, this means shuffle only the variables in list_var_shuff, within
-    each level of list_var_noshuff. Moreover, all var in lisT_var_shuff will
-    remain correlated. e.g., if want to shuffle all cases of (char, seq) within
-    each epoch, have list_var_noshuff = ["epoch"], and list_var_shuff = ["char", "seq"],
-    which does dfs for each level of "epoch" one by one, and within each one, shuffle
-    the values of ["char", "seq"] (without changing values of other variables), and then
-    concatenate.
-    PARAMS:
-    - return_in_input_order, bool, if True, then the rows match the inpout rows. in this case,
-    will not have "index" column
-    RETURNS:
-        - df, with new column "index" holding the original indices.
-    NOTE: confirmed doesnt mod input. and works correctly, including "index" correctly mapping
-    to original data.
-    """
-
-    # For each group of var, shuffle the othervar
-    list_grp = []
-    for i, grp in df.groupby(list_var_noshuff):
-        if len(list_var_shuff)==1:
-            grp = _shuffle_dataset(grp, list_var_shuff[0], maintain_block_temporal_structure=maintain_block_temporal_structure)
-        else:
-            grp = _shuffle_dataset_varconj(grp, list_var_shuff, maintain_block_temporal_structure=maintain_block_temporal_structure)
-        list_grp.append(grp)
-    if return_in_input_order:
-        df_shuff = pd.concat(list_grp).sort_index()
-    else:
-        df_shuff = pd.concat(list_grp).reset_index()
-
-    return df_shuff
+# def _shuffle_dataset_hier(df, list_var_noshuff, list_var_shuff,
+#                           maintain_block_temporal_structure=False, shift_level="datapt",
+#                           return_in_input_order=True):
+#     """ Hierarhical, this means shuffle only the variables in list_var_shuff, within
+#     each level of list_var_noshuff. Moreover, all var in lisT_var_shuff will
+#     remain correlated. e.g., if want to shuffle all cases of (char, seq) within
+#     each epoch, have list_var_noshuff = ["epoch"], and list_var_shuff = ["char", "seq"],
+#     which does dfs for each level of "epoch" one by one, and within each one, shuffle
+#     the values of ["char", "seq"] (without changing values of other variables), and then
+#     concatenate.
+#     PARAMS:
+#     - return_in_input_order, bool, if True, then the rows match the inpout rows. in this case,
+#     will not have "index" column
+#     RETURNS:
+#         - df, with new column "index" holding the original indices.
+#     NOTE: confirmed doesnt mod input. and works correctly, including "index" correctly mapping
+#     to original data.
+#     """
+#
+#     # For each group of var, shuffle the othervar
+#     list_grp = []
+#     for i, grp in df.groupby(list_var_noshuff):
+#         if len(list_var_shuff)==1:
+#             grp = _shuffle_dataset(grp, list_var_shuff[0], maintain_block_temporal_structure=maintain_block_temporal_structure,
+#                                    shift_level=shift_level)
+#         else:
+#             grp = _shuffle_dataset_varconj(grp, list_var_shuff, maintain_block_temporal_structure=maintain_block_temporal_structure,
+#                                            shift_level=shift_level)
+#         list_grp.append(grp)
+#     if return_in_input_order:
+#         df_shuff = pd.concat(list_grp).sort_index()
+#     else:
+#         df_shuff = pd.concat(list_grp).reset_index()
+#
+#     return df_shuff
 
 def _shuffle_dataset_varconj(df, list_var, maintain_block_temporal_structure=True, 
         shift_level="datapt", DEBUG=False, PRINT=False):
-    """ Like _shuffle_dataset, but allowing you maintain the correlation between
-    multiple varialbes. e..g, if you are doing two-way anova, want to make sure the sample
-    size of conjunction var1xvar2 does not change.
-    Here, does it by making dummy variable that
-    is conjunciton, shuffle using that varaibale, then pull out new var1 and var2 from 
-    dummy
-    PARAMS:
-    - list_var, list of str, 
-    RETURNS:
-    - copy of df, with labels for each var in list_var shuffed
-    """
-    # make a new temp var
-    from pythonlib.tools.pandastools import append_col_with_grp_index, applyFunctionToAllRows, grouping_print_n_samples
-
-    # assert len(list_var)==2, "not yet coded for >2"
-
-    # 1) Make a dummy conjunction variable.
-    dfthis = append_col_with_grp_index(df, list_var, "dummy", use_strings=False)
-
-    # 2) Shuffle
-    dfthis = _shuffle_dataset(dfthis, "dummy", maintain_block_temporal_structure, shift_level, DEBUG)
-
-    # 3) Pull out the var1 and var2
-    # resassign vars
-    for i, varname in enumerate(list_var):
-        def F(x):
-            return x["dummy"][i]
-        dfthis = applyFunctionToAllRows(dfthis, F, varname)
-    #
-    # def F(x):
-    #     return x["dummy"][1]
-    # dfthis = applyFunctionToAllRows(dfthis, F, list_var[1])
-
-    if PRINT:
-        print("=== Original, first 5 inds. SHOULD NOT CHANGE")
-        print(df[list_var[0]][:5])
-        print(df[list_var[1]][:5])
-
-        print("=== Shuffled, first 5 inds. SHOULD CHANGE")
-        print(dfthis[list_var[0]][:5])
-        print(dfthis[list_var[1]][:5])
-
-        print("=== Orig/Shuffled, n for each conj. SHOULD NOT CHANGE")
-        print("-orig")
-        grouping_print_n_samples(df, list_var)
-        print("-shuffled")
-        grouping_print_n_samples(dfthis, list_var)
-
-    if "dummy" in dfthis.columns:
-        del dfthis["dummy"]
-
-    return dfthis
+    from pythonlib.tools.pandastools import shuffle_dataset_varconj
+    return shuffle_dataset_varconj(df, list_var, maintain_block_temporal_structure, shift_level,
+                            DEBUG, PRINT)
 
 def _shuffle_dataset(df, var, maintain_block_temporal_structure=True, 
         shift_level="datapt", DEBUG=False):
@@ -1655,81 +1608,9 @@ def _shuffle_dataset(df, var, maintain_block_temporal_structure=True,
     circular shifting of trials. THis is better if you didn't randopmly interleave 
     trials. It is a better estimate of variance of shuffles. 
     """
-    import random
-    from pythonlib.tools.stringtools import decompose_string
-    from pythonlib.tools.listtools import extract_novel_unique_items_in_order
-    from pythonlib.tools.listtools import list_roll
+    from pythonlib.tools.pandastools import shuffle_dataset_singlevar
+    return shuffle_dataset_singlevar(df, var, maintain_block_temporal_structure, shift_level, DEBUG)
 
-    levels_orig = df[var].tolist()
-    # maintain_block_temporal_structure=False
-    if maintain_block_temporal_structure:
-        # make sure dataframe is in order of trials.
-
-        def tc_to_tupleints(tc):
-            """ 
-            tc "2022-1-10" --> tupleints (2022, 1, 10)
-            """
-            this = decompose_string(tc, "-")
-            return [int(x) for x in this]
-
-        trialcodes = df["trialcode"].tolist()
-        trialcodes_sorted = sorted(trialcodes, key=lambda x: tc_to_tupleints(x))
-        if not trialcodes==trialcodes_sorted:
-            print("Trialcodes, -- , trialcodes_sorted")
-            for t1, t2 in zip(trialcodes, trialcodes_sorted):
-                print(t1, t2)
-            assert False, "ok, you need to code this. sort dataframe"
-        # return the levels in this order
-        # print(trialcodes)
-        # print(sorted(trialcodes))
-        # this = [(x, y) for x, y in zip(levels_orig, trialcodes)]
-
-    # shuffle a copy
-    levels_orig_shuff = [lev for lev in levels_orig]
-    if maintain_block_temporal_structure:
-        if shift_level=="trial":
-            # then shift to not break within-trial correlations
-            possible_shifts = extract_novel_unique_items_in_order(trialcodes)[1]
-            shift = random.sample(possible_shifts, 1)[0]
-        elif shift_level=="datapt":
-            # shift at any datpt.
-            shift = random.randint(0, len(levels_orig)-1) # 0, 1, 2, ... n-1, possible shifts
-        else:
-            print(shift_level)
-            assert False
-
-        # Do shuffle
-        # Dont use this. it converts list of tuples to list of list.
-        # levels_orig_shuff = np.roll(levels_orig_shuff, -shift).tolist() # negative, so that works for trial.
-        levels_orig_shuff = list_roll(levels_orig_shuff, -shift)
-
-        if DEBUG:
-            print("trialcodes, levels(orig):")
-            for t1, t2 in zip(trialcodes, levels_orig):
-                print(t1, t2)   
-            # print(possible_shifts)
-            # print(levels_orig)
-            print(levels_orig_shuff)
-            print(shift)
-            assert False
-    else:
-        # independently shuffle eachj location
-        random.shuffle(levels_orig_shuff)
-
-    dfthis_shuff = df.copy(deep=False)
-    dfthis_shuff[var] = levels_orig_shuff
-
-    if False:
-        # dont need this sanity check
-        if type(levels_orig_shuff[0])!=type(levels_orig[0]):
-            print("orig: ", levels_orig)
-            print("shuffed:", levels_orig_shuff)
-            print(type(levels_orig_shuff[0]))
-            print(type(levels_orig[0]))
-            assert False
-    
-    return dfthis_shuff
-    
 def _calc_mean_fr(frmat):
     """ get mean fr (vector) for frmat (ntrials x ntimes)
     across trials 
