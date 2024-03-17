@@ -164,14 +164,11 @@ if __name__=="__main__":
 
     combine_into_larger_areas = True
     HACK_RENAME_SHAPES = False
-    DFallpa = dfallpa_extraction_load_wrapper(animal, date, question, list_time_windows,
-                                              which_level=which_level,
-                                            bin_by_time_dur = bin_by_time_dur,
-                                            bin_by_time_slide = bin_by_time_slide,
-                                              combine_into_larger_areas = combine_into_larger_areas,
-                                              exclude_bad_areas = exclude_bad_areas,
-                                              SPIKES_VERSION = SPIKES_VERSION,
-                                              HACK_RENAME_SHAPES = HACK_RENAME_SHAPES)
+    DFallpa = dfallpa_extraction_load_wrapper(animal, date, question, list_time_windows, which_level=which_level,
+                                              combine_into_larger_areas=combine_into_larger_areas,
+                                              exclude_bad_areas=exclude_bad_areas, bin_by_time_dur=bin_by_time_dur,
+                                              bin_by_time_slide=bin_by_time_slide, SPIKES_VERSION=SPIKES_VERSION,
+                                              HACK_RENAME_SHAPES=HACK_RENAME_SHAPES)
 
 
 
@@ -308,7 +305,8 @@ if __name__=="__main__":
                         if False:
                             # Dont do this; will do later in context of decoding.
                             pa, res_check_tasksets, res_check_effectvars = preprocess_rsa_prepare_popanal_wrapper(pa, **q_params)
-                        _, panorm_scal, _, _, _, _ = popanal_preprocess_scalar_normalization(pa, None, DO_AGG_TRIALS=False)
+                        _, panorm_scal, _, _, _, _ = popanal_preprocess_scalar_normalization(pa, None,
+                                                                                             DO_AGG_TRIALS=False)
 
                         # PCA
                         trialX = panorm_scal.X.copy()

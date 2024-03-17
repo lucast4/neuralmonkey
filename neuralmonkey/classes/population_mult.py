@@ -10,7 +10,7 @@ import pickle
 import pandas as pd
 import numpy as np
 from pythonlib.tools.pandastools import append_col_with_grp_index
-
+from pythonlib.tools.plottools import savefig
 # (animal, date, question) --> DFallPA
 
 def dfallpa_preprocess_vars_conjunctions_extract(DFallpa, which_level):
@@ -295,7 +295,7 @@ def dfallpa_extraction_load_wrapper_combine_trial_strokes(animal, date,
                                                 combine_into_larger_areas = True, exclude_bad_areas=True,
                                                 SPIKES_VERSION="tdt",
                                                 HACK_RENAME_SHAPES = True,
-                                                do_fr_normalization=False,
+                                                fr_normalization_method="each_time_bin",
                                                   check_that_shapes_match=True,
                                                   check_that_locs_match=True,
                                                           ):
@@ -318,20 +318,18 @@ def dfallpa_extraction_load_wrapper_combine_trial_strokes(animal, date,
 
 
     events_keep = ['03_samp', '04_go_cue']
-    DFallpaTRIALS = dfallpa_extraction_load_wrapper(animal, date, question_trial, list_time_windows,
-                                  "trial",
-                                    events_keep, combine_into_larger_areas, exclude_bad_areas,
-                                    SPIKES_VERSION=SPIKES_VERSION,
-                                    HACK_RENAME_SHAPES = HACK_RENAME_SHAPES,
-                                                    do_fr_normalization=do_fr_normalization)
+    DFallpaTRIALS = dfallpa_extraction_load_wrapper(animal, date, question_trial, list_time_windows, "trial",
+                                                    events_keep, combine_into_larger_areas, exclude_bad_areas,
+                                                    SPIKES_VERSION=SPIKES_VERSION,
+                                                    HACK_RENAME_SHAPES=HACK_RENAME_SHAPES,
+                                                    fr_normalization_method=fr_normalization_method)
 
-    DFallpaSTROKES = dfallpa_extraction_load_wrapper(animal, date, question_stroke, list_time_windows,
-                                  "stroke",
-                                    None, combine_into_larger_areas, exclude_bad_areas,
-                                    SPIKES_VERSION=SPIKES_VERSION,
-                                    strokes_split_into_multiple_pa=True,
-                                    HACK_RENAME_SHAPES = HACK_RENAME_SHAPES,
-                                                     do_fr_normalization=do_fr_normalization)
+    DFallpaSTROKES = dfallpa_extraction_load_wrapper(animal, date, question_stroke, list_time_windows, "stroke", None,
+                                                     combine_into_larger_areas, exclude_bad_areas,
+                                                     SPIKES_VERSION=SPIKES_VERSION,
+                                                     HACK_RENAME_SHAPES=HACK_RENAME_SHAPES,
+                                                     strokes_split_into_multiple_pa=True,
+                                                     fr_normalization_method=fr_normalization_method)
 
 
     # If you want to add general varaibles to all pa in both datasets, then do this, wherever
@@ -458,16 +456,14 @@ def dfallpa_extraction_load_wrapper_combine_trial_strokes(animal, date,
 
     return DFallpaALL
 
-def dfallpa_extraction_load_wrapper_from_MS(MS, question, list_time_windows,
-                                    which_level = "trial",
-                                    events_keep = None,
-                                    combine_into_larger_areas = True, exclude_bad_areas=True,
-                                    bin_by_time_dur = None, bin_by_time_slide = None,
-                                    slice_agg_slices = None, slice_agg_vars_to_split=None, slice_agg_concat_dim="trials",
-                                    HACK_RENAME_SHAPES = True,
-                                    substrokes_plot_preprocess=True,
-                                    strokes_split_into_multiple_pa=False,
-                                    do_fr_normalization=True):
+def dfallpa_extraction_load_wrapper_from_MS(MS, question, list_time_windows, which_level="trial", events_keep=None,
+                                            combine_into_larger_areas=True, exclude_bad_areas=True,
+                                            bin_by_time_dur=None, bin_by_time_slide=None, slice_agg_slices=None,
+                                            slice_agg_vars_to_split=None, slice_agg_concat_dim="trials",
+                                            HACK_RENAME_SHAPES=True, substrokes_plot_preprocess=True,
+                                            strokes_split_into_multiple_pa=False,
+                                            fr_normalization_method="each_time_bin", REGENERATE_SNIPPETS=True,
+                                            path_to_save_example_fr_normalization=None):
     """ Wrapper of dfallpa_extraction_load_wrapper for loading given already loaded
     MS,
     From SP (already saved) --> DFallpa
@@ -480,12 +476,7 @@ def dfallpa_extraction_load_wrapper_from_MS(MS, question, list_time_windows,
 
     animal = MS.animal()
     date = MS.date()
-
-    SP, SAVEDIR_ALL = load_and_concat_mult_snippets(MS, which_level = which_level,
-        DEBUG=False)
-
-    # Dtmp = SP.datasetbeh_extract_dataset()
-    # print("3 dfafasf", Dtmp.TokensVersion)
+    assert isinstance(list_time_windows[0], (list, tuple))
 
     # Load a question
     q_params = rsagood_questions_dict(animal, date, question=question)[question]
@@ -495,15 +486,22 @@ def dfallpa_extraction_load_wrapper_from_MS(MS, question, list_time_windows,
         print(k, " -- ", v)
     assert which_level in q_params["list_which_level"], "or else might run into error later."
 
+    # Keep only specific events - to make the following faster.
+    if events_keep is None:
+        events_keep = q_params["events_keep"]
+
+    # Load previously generated
+    SP, SAVEDIR_ALL = load_and_concat_mult_snippets(MS, which_level = which_level, events_keep=events_keep,
+        DEBUG=False,  REGENERATE_SNIPPETS=REGENERATE_SNIPPETS)
+
+    # Run this early, before run further pruning stuff.
+    SP.datamod_append_outliers()
+
     # Clean up SP and extract features
     D, list_features_extraction = SP.datasetbeh_preprocess_clean_by_expt(
         ANALY_VER=q_params["ANALY_VER"], vars_extract_append=q_params["effect_vars"],
         substrokes_plot_preprocess=substrokes_plot_preprocess,
         HACK_RENAME_SHAPES=HACK_RENAME_SHAPES)
-
-    # Keep only specific events - to make the following faster.
-    if events_keep is None:
-        events_keep = q_params["events_keep"]
 
     # If this is "strokes" SP, you have option of renaming events to the stroke index, allowing to
     # extract separate PA for each stroke index.
@@ -575,33 +573,56 @@ def dfallpa_extraction_load_wrapper_from_MS(MS, question, list_time_windows,
             print(pa.Xlabels["trials"]["wl_ev_tw"].value_counts())
             assert isinstance(pa.Xlabels["trials"]["wl_ev_tw"].values[0], str)
 
-    # Firing rates norm
-    if do_fr_normalization:
+    #################### Normalize PA firing rates if needed
+    if fr_normalization_method is not None:
+        if fr_normalization_method=="each_time_bin":
+            # Then demean in each time bin indepednently
+            subtract_mean_at_each_timepoint = True
+            subtract_mean_across_time_and_trial = False
+        elif fr_normalization_method=="across_time_bins":
+            # ALl time bins subtract the same scalar --> maintains temporal moudlation.
+            subtract_mean_at_each_timepoint = False
+            subtract_mean_across_time_and_trial = True
+        else:
+            print(fr_normalization_method)
+            assert False
+
         from neuralmonkey.analyses.state_space_good import popanal_preprocess_scalar_normalization
-        # Normalize PA firing rates if needed
         list_panorm = []
-        for pa in DFallpa["pa"].tolist():
-            PAnorm, PAscal, PAscalagg, fig, axes, groupdict = popanal_preprocess_scalar_normalization(pa,
-                                                                                  None,
-                                                                                            DO_AGG_TRIALS=False)
+
+        for i, pa in enumerate(DFallpa["pa"].tolist()):
+            if path_to_save_example_fr_normalization is not None and i==0:
+                plot_example_chan_number = pa.Chans[0]
+                if which_level=="trial":
+                    plot_example_split_var_string = "seqc_0_shape"
+                elif which_level=="stroke":
+                    plot_example_split_var_string = "shape"
+                else:
+                    plot_example_split_var_string = q_params["effect_vars"][0]
+            else:
+                plot_example_chan_number = None
+                plot_example_split_var_string = None
+            PAnorm, PAscal, PAscalagg, fig, axes, groupdict = popanal_preprocess_scalar_normalization(pa, None,
+                                                                                              DO_AGG_TRIALS=False,
+                                                                                              plot_example_chan_number=plot_example_chan_number,
+                                                                                                plot_example_split_var_string = plot_example_split_var_string,
+                                                                                              subtract_mean_at_each_timepoint=subtract_mean_at_each_timepoint,
+                                                                                              subtract_mean_across_time_and_trial=subtract_mean_across_time_and_trial)
+            if path_to_save_example_fr_normalization is not None and i==0:
+                savefig(fig, path_to_save_example_fr_normalization)
             list_panorm.append(PAnorm)
         DFallpa["pa"] = list_panorm
 
     return DFallpa
 
-
-def dfallpa_extraction_load_wrapper(animal, date, question, list_time_windows,
-                                    which_level = "trial",
-                                    events_keep = None,
-                                    combine_into_larger_areas = True, exclude_bad_areas=True,
-                                    bin_by_time_dur = None, bin_by_time_slide = None,
-                                    slice_agg_slices = None, slice_agg_vars_to_split=None, slice_agg_concat_dim="trials",
-                                    LOAD_FROM_RSA_ANALY=False, rsa_ver_dist="euclidian_unbiased",
-                                    rsa_subtr=None, rsa_agg = True, rsa_invar=None,
-                                    SPIKES_VERSION="tdt",
-                                    HACK_RENAME_SHAPES = True, substrokes_plot_preprocess=True,
-                                    strokes_split_into_multiple_pa=False,
-                                    do_fr_normalization=True):
+def dfallpa_extraction_load_wrapper(animal, date, question, list_time_windows, which_level="trial", events_keep=None,
+                                    combine_into_larger_areas=True, exclude_bad_areas=True, bin_by_time_dur=None,
+                                    bin_by_time_slide=None, slice_agg_slices=None, slice_agg_vars_to_split=None,
+                                    slice_agg_concat_dim="trials", LOAD_FROM_RSA_ANALY=False,
+                                    rsa_ver_dist="euclidian_unbiased", rsa_subtr=None, rsa_agg=True, rsa_invar=None,
+                                    SPIKES_VERSION="tdt", HACK_RENAME_SHAPES=True, substrokes_plot_preprocess=True,
+                                    strokes_split_into_multiple_pa=False, fr_normalization_method="each_time_bin",
+                                    path_to_save_example_fr_normalization=None):
 
     """ [GOOD] Hihg level to extrqact
     DFallpa, with all preprocessing steps built in, must have already extgracted Snippets.
@@ -639,13 +660,14 @@ def dfallpa_extraction_load_wrapper(animal, date, question, list_time_windows,
 
         ## Load Snippets
         MS = load_mult_session_helper(date, animal, spikes_version=SPIKES_VERSION)
-        DFallpa = dfallpa_extraction_load_wrapper_from_MS(MS, question, list_time_windows,
-                                    which_level, events_keep, combine_into_larger_areas,
-                                    exclude_bad_areas, bin_by_time_dur, bin_by_time_slide,
-                                    slice_agg_slices, slice_agg_vars_to_split, slice_agg_concat_dim,
-                                    HACK_RENAME_SHAPES, substrokes_plot_preprocess=substrokes_plot_preprocess,
-                                  strokes_split_into_multiple_pa=strokes_split_into_multiple_pa,
-                                                          do_fr_normalization=do_fr_normalization)
+        DFallpa = dfallpa_extraction_load_wrapper_from_MS(MS, question, list_time_windows, which_level, events_keep,
+                                                          combine_into_larger_areas, exclude_bad_areas, bin_by_time_dur,
+                                                          bin_by_time_slide, slice_agg_slices, slice_agg_vars_to_split,
+                                                          slice_agg_concat_dim, HACK_RENAME_SHAPES,
+                                                          substrokes_plot_preprocess=substrokes_plot_preprocess,
+                                                          strokes_split_into_multiple_pa=strokes_split_into_multiple_pa,
+                                                          fr_normalization_method=fr_normalization_method,
+                                                          path_to_save_example_fr_normalization=path_to_save_example_fr_normalization)
 
     # cleanup
     # for pa in DFallpa.

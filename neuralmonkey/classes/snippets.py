@@ -47,63 +47,64 @@ def load_snippet_single(sn, which_level):
     sp.load_v2(sdir)
     
     # within this sp, save mapping to its session
+    if "session_idx" in sp.DfScalar.columns:
+        assert np.all(sp.DfScalar["session_idx"]==sess), "new version extracts session_idx directly, while old version loads it"
+
     sp.DfScalar["session_idx"] = sess
 
     sp.datamod_append_outliers()
 
     return sp
 
-def load_and_concat_mult_snippets(MS, which_level, SITES_COMBINE_METHODS = "intersect",
+def concat_mult_snippets(list_sp, MS, SITES_COMBINE_METHODS = "intersect",
     DEBUG = False, prune_low_fr_sites=True):
-    """ previously saved snippets using save_v2
-    PARAMS:
-    - MS, MultSessions, holding all the sessions for which each will
-    load a single snippet.
-    - SITES_COMBINE_METHODS, str, when combining attribtues that are lists, across 
-    sessions, how to deal if they are not same? 
-    --- intersect, union
-    - SAVEDIR, has subdirs like SAVEDIR/amimal_date_sess/DfScalar.pkl
-    RETURNS:
-    - SPall, concatted SP
-    - SAVEDIR_ALL, a newly genreated path
     """
-    
+    Concatenate snippets that represent multiple sessions from a single day, where
+    list_sp could be reloaded or extyracted.
+
+    3/17/24 - Deleteing sp.DS if this is strokes version, becuase some features in DS are
+    from binning with dataset, and these bins would be unrelated across sp. Therefore
+    should regenerate DS.
+    """
     from pythonlib.tools.checktools import check_objects_identical
-    import os
 
-    SAVEDIR = f"/gorilla1/analyses/recordings/main/anova/by{which_level}"
+    if False:
+        tmp = list(set([sp.Params["which_level"] for sp in list_sp]))
+        assert len(tmp)==1
+        which_level = tmp[0]
 
-    # Genreate the seave dir. 
-    # Assumes there is only single animal and date... (not necessary, just 
-    # conven ient for filenames)
-    sesses = "_".join([str(x) for x in list(range(len(MS.SessionsList)))])
-    SAVEDIR_ALL = f"{SAVEDIR}/MULT_SESS/{MS.animal()}-{MS.date()}-{sesses}"
-    # if DEBUG:
-    #     SAVEDIR_ALL = SAVEDIR_ALL + "-DEBUG"
-    os.makedirs(SAVEDIR_ALL, exist_ok=True)
-
-    # list_session = [0,1,2,3]
-    list_sp = []
-    # list_sn = []
-    for i, sn in enumerate(MS.SessionsList):
-
-        sess = sn.RecSession
-        assert i==sess, "confusing... not necessary but best to fix this so not confused later."
-
-        sp = load_snippet_single(sn, which_level)
-
-        # Track its origin
-        sp.DfScalar["session_neural"] = i
-
-        # store
-        list_sp.append(sp)
-        # list_sn.append(sn)
-
-    # 4) concatenate all sessions.
     print("This many vals across loaded session")
     for i, sp in enumerate(list_sp):
+
         print(i, ":", len(sp.DfScalar))
-        
+
+        sn = sp.SN
+
+        # Track its origin
+        sp.DfScalar["session_neural"] = sn.RecSession
+        assert i==sn.RecSession, "confusing... not necessary but best to fix this so not confused later."
+
+    # # list_session = [0,1,2,3]
+    # list_sp = []
+    # # list_sn = []
+    # for i, sn in enumerate(MS.SessionsList):
+    #
+    #     sess = sn.RecSession
+    #     assert i==sess, "confusing... not necessary but best to fix this so not confused later."
+    #
+    #     sp = load_snippet_single(sn, which_level)
+    #
+    #     # Track its origin
+    #     sp.DfScalar["session_neural"] = i
+    #
+    #     # store
+    #     list_sp.append(sp)
+    #     # list_sn.append(sn)
+
+    # # 4) concatenate all sessions.
+    # for i, sp in enumerate(list_sp):
+    #     print(i, ":", len(sp.DfScalar))
+
     # Use the first session
     # sn = MS.session_generate_single_nodata()
     # sn = MS.SessionsList[0]
@@ -200,7 +201,172 @@ def load_and_concat_mult_snippets(MS, which_level, SITES_COMBINE_METHODS = "inte
     if prune_low_fr_sites:
         SPall.prune_low_firing_rate_sites()
 
+        # In case pruned
+        SPall.Sites = sorted(SPall.DfScalar["chan"].unique().tolist())
+
+    return SPall
+
+def load_and_concat_mult_snippets(MS, which_level, events_keep, SITES_COMBINE_METHODS = "intersect",
+    DEBUG = False, prune_low_fr_sites=True, REGENERATE_SNIPPETS=True):
+    """ [GOOD] For both loading pre-saved Snippets and regenerating new Snippets.
+    previously saved snippets using save_v2
+    PARAMS:
+    - MS, MultSessions, holding all the sessions for which each will
+    load a single snippet.
+    - SITES_COMBINE_METHODS, str, when combining attribtues that are lists, across 
+    sessions, how to deal if they are not same? 
+    --- intersect, union
+    - SAVEDIR, has subdirs like SAVEDIR/amimal_date_sess/DfScalar.pkl
+    RETURNS:
+    - SPall, concatted SP
+    - SAVEDIR_ALL, a newly genreated path
+    """
+
+    if REGENERATE_SNIPPETS:
+        from neuralmonkey.scripts.analy_snippets_extract import extract_snippets_all_sessions
+        # EVENTS_KEEP = None
+        # which_level = "trial"
+        # EVENTS_KEEP = ["03_samp", "go_cue"]
+        list_sp = extract_snippets_all_sessions(MS, which_level, events_keep, 1, False)
+        SAVEDIR_ALL = None
+    else:
+        import os
+
+        SAVEDIR = f"/gorilla1/analyses/recordings/main/anova/by{which_level}"
+
+        # Genreate the seave dir.
+        # Assumes there is only single animal and date... (not necessary, just
+        # conven ient for filenames)
+        sesses = "_".join([str(x) for x in list(range(len(MS.SessionsList)))])
+        SAVEDIR_ALL = f"{SAVEDIR}/MULT_SESS/{MS.animal()}-{MS.date()}-{sesses}"
+        # if DEBUG:
+        #     SAVEDIR_ALL = SAVEDIR_ALL + "-DEBUG"
+        os.makedirs(SAVEDIR_ALL, exist_ok=True)
+
+        # list_session = [0,1,2,3]
+        list_sp = []
+        # list_sn = []
+        for i, sn in enumerate(MS.SessionsList):
+
+            sess = sn.RecSession
+            assert i==sess, "confusing... not necessary but best to fix this so not confused later."
+
+            sp = load_snippet_single(sn, which_level)
+
+            # # Track its origin
+            # sp.DfScalar["session_neural"] = i
+
+            # store
+            list_sp.append(sp)
+            # list_sn.append(sn)
+
+    SPall = concat_mult_snippets(list_sp, MS, SITES_COMBINE_METHODS,
+                                              DEBUG, prune_low_fr_sites)
+
     return SPall, SAVEDIR_ALL
+
+    # # 4) concatenate all sessions.
+    # print("This many vals across loaded session")
+    # for i, sp in enumerate(list_sp):
+    #     print(i, ":", len(sp.DfScalar))
+    #
+    # # Use the first session
+    # # sn = MS.session_generate_single_nodata()
+    # # sn = MS.SessionsList[0]
+    #
+    # # 1) initialize SP from SN, without data
+    # SPall = Snippets(None, None, None,
+    #                  None, None,
+    #                  None, None, SKIP_DATA_EXTRACTION=True)
+    # SPall.DfScalar = pd.concat([sp.DfScalar for sp in list_sp]).reset_index(drop=True)
+    #
+    # # Other stuff
+    # # SPall.SN = None
+    # # SPall.ListPA = None
+    # # SPall.DS = None
+    # SPall._CONCATTED_SNIPPETS = True
+    # SPall.SNmult = MS
+    # if True:
+    #     # do concat once here
+    #     from pythonlib.dataset.dataset_strokes import concat_dataset_strokes
+    #     list_ds = [sp.DS for sp in list_sp]
+    #     DS = concat_dataset_strokes(list_ds)
+    #     SPall.DS = DS
+    # else:
+    #     # Old, but this means needs to concat each time read it.
+    #     SPall.DSmult = [sp.DS for sp in list_sp]
+    #
+    # # ind_sess = 0
+    # # trial_within = 0
+    # # ms.index_convert((ind_sess, trial_within))
+    #
+    # # get params that are same for all sp
+    # DEBUG = False
+    # SPall._CONCATTED_SNIPPETS = True
+    #
+    # # 0) Check that DfScalar has same columns
+    # cols_prev = None
+    # for sp in list_sp:
+    #     cols_this = set(sp.DfScalar.columns)
+    #     if cols_prev is not None:
+    #         if cols_prev != cols_this:
+    #             print(cols_prev)
+    #             print(cols_this)
+    #             assert False, "must be identical. you should reextract raw"
+    #     cols_prev = cols_this
+    #
+    #
+    # # 1) check they are ideitncal across sp
+    # list_attr_identical = ["Params", "ParamsGlobals"]
+    # for attr in list_attr_identical:
+    #     items = [getattr(sp, attr) for sp in list_sp]
+    #     for i in range(len(items)):
+    #         for j in range(i+1, len(items)):
+    # #             print(i, j)
+    #             if not DEBUG:
+    #                 assert check_objects_identical(items[i], items[j], PRINT=True)
+    #     item_take = items[0]
+    #     print(f"Assigning to SP.{attr} this item:")
+    #     print(item_take)
+    #     setattr(SPall, attr, item_take)
+    #
+    # # Assign attributes that might be different across sp.
+    # list_attr_union = ["Sites"]
+    # for attr in list_attr_union:
+    #     items = [getattr(sp, attr) for sp in list_sp]
+    #     if SITES_COMBINE_METHODS == "union":
+    #         items_flatten = [x for it in items for x in it]
+    #         print(items_flatten)
+    #         assert False, "confirm correct then remove this."
+    #         items_combine = list(set(items_flatten))
+    #     elif SITES_COMBINE_METHODS == "intersect":
+    #         items_combine = list(set.intersection(*[set(x) for x in items]))
+    #     else:
+    #         print(SITES_COMBINE_METHODS)
+    #         assert False
+    #     setattr(SPall, attr, items_combine)
+    #     # print("items: ", len(items[0]), len(items[1]), SITES_COMBINE_METHODS, ":", len(items_combine))
+    #
+    # SPall.Sites = sorted(SPall.Sites)
+    #
+    # # In data, keep only the sites in self.Sites
+    # SPall.DfScalar = SPall.DfScalar[SPall.DfScalar["chan"].isin(SPall.Sites)].reset_index(drop=True)
+    #
+    # # Remove columns from DfScalar that are ambiguous
+    # # TODO...
+    #
+    # # make sure is numbered
+    # SPall.DfScalar["event"] = SPall.DfScalar["event_aligned"]
+    #
+    # # Cleanups of DS
+    # if SPall.DS is not None:
+    #     SPall.DS.clean_preprocess_if_reloaded()
+    #
+    # # Only keep sites with high fr
+    # if prune_low_fr_sites:
+    #     SPall.prune_low_firing_rate_sites()
+    #
+    # return SPall, SAVEDIR_ALL
 
 
 class Snippets(object):
@@ -258,7 +424,7 @@ class Snippets(object):
         self._SanityFrSmTimesIdentical = None
 
         if fail_if_times_outside_existing==False:
-            assert which_level=="flex", "only coded for this level... just add it below."
+            assert which_level in ["trial", "flex"], "only coded for this level... just add it below."
             
         if SKIP_DATA_EXTRACTION:
             # Then useful if tyou want to load old data.
@@ -322,7 +488,7 @@ class Snippets(object):
                 events_that_must_include = events_that_must_include)
             print("\n == extracting these trials: ", trials)
             trialcodes = [SN.datasetbeh_trial_to_trialcode(t) for t in trials]
-            DS.Dat = DS.Dat[DS.Dat["trialcode"].isin(trialcodes)].reset_index(drop=True)
+            DS.dataset_prune_by_trialcodes(trialcodes)
 
             print("Extracting, SN.snippets_extract_bystroke...")
             for var in list_features_extraction:
@@ -467,15 +633,35 @@ class Snippets(object):
                         print(SN.Datasetbeh.columns)
                         assert False, "get this feature"
 
-                DfScalar, list_events_uniqnames = SN.snippets_extract_bytrial(sites_keep, trials,
-                    list_events, list_pre_dur, list_post_dur,
-                    features_to_get_extra=list_features_extraction)
+                if True:
+                    # Use flex method. THis should be identical, except (i) faster, and (ii) if multipel instances of event exists in
+                    # a trial, this gets all (previously only got the first), and (iii) the former can use diff pre/postdur for each
+                    # event, wheras now uses a single one..
+                    assert len(set(list_pre_dur))==1, "see not above."
+                    assert len(set(list_post_dur))==1
+                    pre_dur = list_pre_dur[0]
+                    post_dur = list_post_dur[0]
+
+                    DfScalar = SN.snippets_extract_by_event_flexible(sites_keep, trials,
+                        list_events, pre_dur, post_dur,
+                        features_to_get_extra=None, fr_which_version="sqrt", DEBUG=False,
+                        fail_if_times_outside_existing=fail_if_times_outside_existing)
+
+                    # Fill in dummy variables
+                    DfScalar["event"] = DfScalar["event_unique_name"]  # "00_go"
+                    DfScalar["event_aligned"] = DfScalar["event_unique_name"]  # "00_go"
+                    list_events_uniqnames = sorted(list(DfScalar["event"].unique()))
+                else:
+                    DfScalar, list_events_uniqnames = SN.snippets_extract_bytrial(sites_keep, trials,
+                        list_events, list_pre_dur, list_post_dur,
+                        features_to_get_extra=list_features_extraction)
+                    DfScalar["event"] = DfScalar["event_aligned"]
+
                 ListPA = None
             else:
                 ListPA, list_events_uniqnames = self.extract_snippets_trials(trials, sites_keep, list_events, list_pre_dur, list_post_dur,
                     list_features_extraction)
 
-            DfScalar["event"] = DfScalar["event_aligned"]
 
         elif which_level == "flex":
             # Flexible, based on event markers (abstract, or timestamp, can work).
@@ -570,7 +756,9 @@ class Snippets(object):
             self.DfScalar = self.datamod_compute_fr_scalar(self.DfScalar)
             # SKIP, not using it. can compute on fly.
             self.DfScalar["fr_sm_sqrt"] = self.DfScalar["fr_sm"]**0.5
+            self.DfScalar["session_idx"] = SN.RecSession
         else:
+            assert False, "dont use"
             if False:
                 # Old version
                 print("\n == listpa_convert_to_scalars")
@@ -599,10 +787,12 @@ class Snippets(object):
         self.Params["map_var_to_levels"] = map_var_to_levels
 
         print(f"** Generated Snippets, (ver {which_level}). Final length of SP.DfScalar: {len(self.DfScalar)}")
-         
+
         # self.DfScalar["event"] = self.DfScalar["event_aligned"]
         # 1/4/23 - used to do it, but this takes lot of space t
-        self.datamod_remove_outliers()
+        if False:
+            # only do this if needed
+            self.datamod_remove_outliers()
 
     def globals_initialize(self):
         """ Initialize self.ParamsGlobals to defaults"""
@@ -1158,7 +1348,14 @@ class Snippets(object):
         ct = 0
         for idx in list_idx:
             dfthis = DF[(DF[var_trial]==idx)] # len num sites
-            assert len(dfthis)==len(chans_needed)
+            if not len(dfthis)==len(chans_needed):
+                print("------------", idx)
+                print(len(chans_needed))
+                print(chans_needed)
+                print(len(dfthis))
+                print(dfthis["chan"].tolist())
+                assert False, "probably because removed outliers"
+
             # if len(dfthis)>1:
             #     print(len(dfthis))
             #     print(dfthis["event"])
@@ -6211,6 +6408,7 @@ class Snippets(object):
                 axesall.flatten()[0].set_title("Not enough data!")
             else:
                 print("SKIPPING RASTER - not enough data", site, " - ", var, " - ", vars_others, " - ", event)
+                fig, axesall = None, None
 
         return fig, axesall
 
@@ -6772,6 +6970,18 @@ class Snippets(object):
             if len(columns_dataset_strokes)>0:
                 print("... dataset_strokes: ", columns_dataset_strokes)
                 self.datasetbeh_datstrokes_append_column_mult(columns_dataset_strokes, DS=DS)
+
+            # # Code to test that this new method is idnetical results to old method (but much faster)
+            # columns = ["seqc_0_shape", "seqc_0_loc", "taskconfig_loc", "shape_semantic_labels"]
+            # SP.DfScalar.loc[:, columns]
+            # df1 = SP.DfScalar.loc[:, columns].copy()
+            # for col in columns:
+            #     del SP.DfScalar[col]
+            #
+            # for col in columns:
+            #     SP.datasetbeh_append_column(col, Dataset=Dgood)
+            # df2 = SP.DfScalar.loc[:, columns].copy()
+            # assert np.all(df1==df2)
         else:
             # Old method - takes a long time.
             success = True
@@ -6861,7 +7071,9 @@ class Snippets(object):
         #     # merge_subset_indices_prioritizing_second(self.DfScalar, dfslice.loc[:, column])
     def datasetbeh_extract_dataset(self, kind="dataset"):
         """ Extract Dataset object concated across all sessions, for this Snippets.
-        Either trial dataset ("dataset") or strokes ("datstrokes")
+        Either trial dataset ("dataset") or strokes ("datstrokes").
+        If which_level=="trial", then no DS.
+        If which_level=="stroke", then D is from sn and DS is that used to construct SP.
         RETURNS:
         - Dall, a single Dataset (a copy)
         """
@@ -6984,7 +7196,11 @@ class Snippets(object):
                                     "CTXT_loc_prev", "CTXT_shape_prev",
                                     "gap_from_prev_angle_binned", "gap_to_next_angle_binned",
                                     "gap_from_prev_angle", "gap_to_next_angle",
-                                    "Stroke", "TokTask"]
+                                    "Stroke", "TokTask",
+                                    "stroke_index_is_first",
+                                    "loc_on_clust", "CTXT_loconclust_prev", "CTXT_loconclust_next",
+                                    "loc_off_clust", "CTXT_locoffclust_prev", "CTXT_locoffclust_next"
+                                ]
                                     # "shape_semantic", "shape_is_novel"]
                                     # "distcum", "displacement", "circularity"]
                                     # "distcum", "displacement", "circularity"]
@@ -7519,7 +7735,8 @@ class Snippets(object):
 
 def extraction_helper(SN, which_level="trial", list_features_modulation_append=None,
     dataset_pruned_for_trial_analysis = None, NEW_VERSION=True, PRE_DUR = -0.6,
-    POST_DUR = 0.6, PRE_DUR_FIXCUE=None, remove_low_fr_sites=True):
+    POST_DUR = 0.6, PRE_DUR_FIXCUE=None, remove_low_fr_sites=True,
+                      EVENTS_KEEP=None):
     """ Helper to extract Snippets for this session
     PARAMS;
     - list_features_modulation_append, eitehr None (do nothing) or list of str,
@@ -7592,6 +7809,33 @@ def extraction_helper(SN, which_level="trial", list_features_modulation_append=N
         assert isinstance(list_features_modulation_append, list)
         list_features_extraction = list_features_extraction + list_features_modulation_append
         list_features_get_conjunction = list_features_get_conjunction + list_features_modulation_append
+
+    #### Subsample events
+    if EVENTS_KEEP is not None:
+        # Firest, remove numbers, e.g,, ['03_samp', 'go_cue'] --> ['samp', 'go_cue']
+        tmp = []
+        for ev in EVENTS_KEEP:
+            try:
+                int(ev[:2])
+                a = True
+            except ValueError as err:
+                a = False
+            except Exception as err:
+                raise err
+            if a==True and ev[2]=="_":
+                # Then is like "03_samp"
+                tmp.append(ev[3:])
+            else:
+                tmp.append(ev)
+        EVENTS_KEEP = tmp
+        # Second, keep only desired events.
+        inds_keep = [i for i, ev in enumerate(list_events) if ev in EVENTS_KEEP]
+        list_events = [list_events[i] for i in inds_keep]
+        if len(list_pre_dur)>1:
+            list_pre_dur = [list_pre_dur[i] for i in inds_keep]
+            list_post_dur = [list_post_dur[i] for i in inds_keep]
+
+    print("Kept these events: ", list_events)
 
     SP = Snippets(SN,
         which_level,

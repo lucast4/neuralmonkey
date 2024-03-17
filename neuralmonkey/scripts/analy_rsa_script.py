@@ -65,12 +65,12 @@ def rsa_pipeline(MS, question, q_params):
         slice_agg_slices = q_params["slice_agg_slices"]
         slice_agg_vars_to_split = q_params["slice_agg_vars_to_split"]
         list_time_windows = q_params["list_time_windows"]
-        dfallpa = dfallpa_extraction_load_wrapper_from_MS(MS, question, list_time_windows,
-                                    which_level = wl, events_keep = q_params["events_keep"],
-                                    combine_into_larger_areas = combine_into_larger_areas,
-                                    exclude_bad_areas=False, slice_agg_slices = None,
-                                    slice_agg_vars_to_split= None,
-                                    HACK_RENAME_SHAPES = HACK_RENAME_SHAPES)
+        dfallpa = dfallpa_extraction_load_wrapper_from_MS(MS, question, list_time_windows, which_level=wl,
+                                                          events_keep=q_params["events_keep"],
+                                                          combine_into_larger_areas=combine_into_larger_areas,
+                                                          exclude_bad_areas=False, slice_agg_slices=None,
+                                                          slice_agg_vars_to_split=None,
+                                                          HACK_RENAME_SHAPES=HACK_RENAME_SHAPES)
 
         # # Load Snippets
         # SP, _ = load_and_concat_mult_snippets(MS, which_level = wl)

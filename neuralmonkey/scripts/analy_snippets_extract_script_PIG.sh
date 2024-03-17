@@ -7,11 +7,11 @@ animal=$1
 if [[ $animal == Diego ]]; then
 #  datelist=(230630 230628) #
   datelist=(230624 230625 230626 230627 230629) # extra (3/2/24)
-  datelist=(230629 230630) # best days for online decode sequential context
+  datelist=(230629 230630) # best days for online decode sequential context (also 230627?)
 elif [[ $animal == Pancho ]]; then
 #  datelist=(230623 230666)
   datelist=(230615 230615 230620 230621 230622) # extra (3/2/24)
-  datelist=(230622 230626) # best days for online decode sequential context
+  datelist=(230622 230626) # best days for online decode sequential context (also 230623?)
 else
   echo $animal
   echo "Error! Inputed non-existing animal" 1>&2

@@ -501,11 +501,11 @@ def preprocess_pa_to_frtensor(PA, effect_vars, keep_all_margs=False):
     subtract_mean_each_level_of_var = None
     subtract_mean_at_each_timepoint = False
     PAnorm, PAscal, PAscalagg, fig, axes, groupdict = popanal_preprocess_scalar_normalization(PA, effect_vars,
-                                                                                  subtract_mean_each_level_of_var,
-                                                                                  plot_example_chan=None,
-                                                                                  plot_example_split_var=None,
-                                                                                  DO_AGG_TRIALS=False,
-                                                                                  subtract_mean_at_each_timepoint=subtract_mean_at_each_timepoint)
+                                                                                              subtract_mean_each_level_of_var,
+                                                                                              plot_example_chan_number=None,
+                                                                                              plot_example_split_var_string=None,
+                                                                                              DO_AGG_TRIALS=False,
+                                                                                              subtract_mean_at_each_timepoint=subtract_mean_at_each_timepoint)
     # (2) Shape into (trials, neurons, feat1, feat2, ...)
     # ie (trials, neurons, shape, loc, times)
     # currently (neurons, trials, times)
@@ -709,7 +709,7 @@ if __name__=="__main__":
         combine_into_larger_areas = True
         MS = load_mult_session_helper(date, animal, spikes_version=SPIKES_VERSION)
 
-        SP, SAVEDIR_ALL = load_and_concat_mult_snippets(MS, which_level = which_level,
+        SP, SAVEDIR_ALL = load_and_concat_mult_snippets(MS, which_level = which_level, events_keep=events_keep,
             DEBUG=False)
 
         from neuralmonkey.analyses.rsa import rsagood_questions_dict

@@ -105,6 +105,7 @@ if __name__=="__main__":
     #     PLOT_1, PLOT_2, PLOT_3, PLOT_4 = True, True, True, True
 
     ############### PARAMS
+    fr_normalization_method = "each_time_bin"
     exclude_bad_areas = True
     SPIKES_VERSION = "tdt" # since Snippets not yet extracted for ks
     combine_into_larger_areas = False
@@ -144,16 +145,14 @@ if __name__=="__main__":
                                                    exclude_bad_areas=exclude_bad_areas,
                                                     SPIKES_VERSION=SPIKES_VERSION,
                                                     HACK_RENAME_SHAPES = HACK_RENAME_SHAPES,
-                                                   do_fr_normalization=True)
+                                                   do_fr_normalization=fr_normalization_method)
     else:
         from neuralmonkey.classes.population_mult import dfallpa_extraction_load_wrapper
-        DFallpa = dfallpa_extraction_load_wrapper(animal, date, question, list_time_windows,
-                                                  which_level=which_level, events_keep=events_keep,
-                                                  combine_into_larger_areas = combine_into_larger_areas,
-                                                  exclude_bad_areas = exclude_bad_areas,
-                                                  SPIKES_VERSION = SPIKES_VERSION,
-                                                  HACK_RENAME_SHAPES = HACK_RENAME_SHAPES,
-                                                  do_fr_normalization=True)
+        DFallpa = dfallpa_extraction_load_wrapper(animal, date, question, list_time_windows, which_level=which_level,
+                                                  events_keep=events_keep,
+                                                  combine_into_larger_areas=combine_into_larger_areas,
+                                                  exclude_bad_areas=exclude_bad_areas, SPIKES_VERSION=SPIKES_VERSION,
+                                                  HACK_RENAME_SHAPES=HACK_RENAME_SHAPES, fr_normalization_method=fr_normalization_method)
 
     #################### HACKY, for wl=="trial", extract motor and other variables for first stroke.
     from neuralmonkey.classes.population_mult import dfallpa_preprocess_vars_conjunctions_extract

@@ -42,7 +42,7 @@ from neuralmonkey.classes.snippets import load_and_concat_mult_snippets
 #     # trial level, new
 #     SAVEDIR = "/gorilla1/analyses/recordings/main/anova/bytrial"
 which_level="trial"    
-SP, SAVEDIR_ALL = load_and_concat_mult_snippets(MS, which_level=which_level)
+SP, SAVEDIR_ALL = load_and_concat_mult_snippets(MS, which_level=which_level, events_keep=events_keep)
 
 
 assert False, "replace with RSA code"

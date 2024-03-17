@@ -25,7 +25,7 @@ from neuralmonkey.analyses.decode_good import preprocess_extract_X_and_labels
 from neuralmonkey.analyses.state_space_good import dimredgood_nonlinear_embed_data
 from pythonlib.tools.pandastools import append_col_with_grp_index
 
-
+fr_normalization_method = "across_time_bins"
 # LIST_METHOD = ["umap", "tsne"]
 LIST_METHOD = ["umap"]
 # LIST_UMAP_N_NEIGHBORS = [10, 30, 50]
@@ -125,16 +125,14 @@ if __name__=="__main__":
                                                    exclude_bad_areas=exclude_bad_areas,
                                                     SPIKES_VERSION=SPIKES_VERSION,
                                                     HACK_RENAME_SHAPES = HACK_RENAME_SHAPES,
-                                                   do_fr_normalization=True)
+                                                   do_fr_normalization=fr_normalization_method)
     else:
         from neuralmonkey.classes.population_mult import dfallpa_extraction_load_wrapper
-        DFallpa = dfallpa_extraction_load_wrapper(animal, date, question, list_time_windows,
-                                                  which_level=which_level,
-                                                  combine_into_larger_areas = combine_into_larger_areas,
-                                                  exclude_bad_areas = exclude_bad_areas,
-                                                  SPIKES_VERSION = SPIKES_VERSION,
-                                                  HACK_RENAME_SHAPES = HACK_RENAME_SHAPES,
-                                                  do_fr_normalization=True, events_keep=events_keep)
+        DFallpa = dfallpa_extraction_load_wrapper(animal, date, question, list_time_windows, which_level=which_level,
+                                                  events_keep=events_keep,
+                                                  combine_into_larger_areas=combine_into_larger_areas,
+                                                  exclude_bad_areas=exclude_bad_areas, SPIKES_VERSION=SPIKES_VERSION,
+                                                  HACK_RENAME_SHAPES=HACK_RENAME_SHAPES, fr_normalization_method=fr_normalization_method)
 
     ################################ PLOTS
     # list_br = DFallpa["bregion"].unique().tolist()
@@ -149,7 +147,7 @@ if __name__=="__main__":
     from neuralmonkey.classes.population_mult import dfallpa_preprocess_vars_conjunctions_extract
     dfallpa_preprocess_vars_conjunctions_extract(DFallpa, which_level=which_level)
 
-    from neuralmonkey.analyses.state_space_good import trajgood_construct_df_from_raw, trajgood_plot_colorby_splotby, trajgood_plot_colorby_splotby_scalar_helper
+    from neuralmonkey.analyses.state_space_good import trajgood_construct_df_from_raw, trajgood_plot_colorby_splotby, trajgood_plot_colorby_splotby_scalar
     from pythonlib.tools.plottools import savefig
     from pythonlib.globals import PATH_ANALYSIS_OUTCOMES
     import os
@@ -191,7 +189,7 @@ if __name__=="__main__":
         for twind_overall in list_twind_overall:
 
             # Extract data
-            X, pathis = pa.dataextract_state_space_decode_flex(twind_overall, tbin_dur, tbin_slide, reshape_method,
+            X, _, pathis, _ = pa.dataextract_state_space_decode_flex(twind_overall, tbin_dur, tbin_slide, reshape_method,
                                                                pca_reduce=True, pca_frac_var_keep=pca_frac_var_keep)
             dflab = pathis.Xlabels["trials"]
 
@@ -328,7 +326,7 @@ if __name__=="__main__":
                         list_var_color_var_subplot.append(["shape", ("CTXT_loc_prev", "gridloc", "task_kind")])
                         # list_var_color_var_subplot.append(["shape", ("stroke_index", "gridloc", "task_kind")]) # effect of stroke index
                         list_var_color_var_subplot.append(["shape", ("stroke_index", "task_kind")]) # important
-                        list_var_color_var_subplot.append(["shape", ("stroke_index", "stroke_index_fromlast", "task_kind")]) # (1) PMv, shape is invariant, but different for first stroke, (2) preSMA, encode SI indep of shape.
+                        list_var_color_var_subplot.append(["shape", ("stroke_index", "stroke_index_fromlast_tskstks", "task_kind")]) # (1) PMv, shape is invariant, but different for first stroke, (2) preSMA, encode SI indep of shape.
                         list_var_color_var_subplot.append(["shape", "task_kind"])
 
                         # shape (invariance)
@@ -376,26 +374,30 @@ if __name__=="__main__":
                         # list_var_color_var_subplot.append(["stroke_index", ("shape", "gridloc", "CTXT_shapeloc_next", "task_kind")])
                         list_var_color_var_subplot.append(["stroke_index", ("CTXT_loc_prev", "shape", "gridloc", "task_kind")])
                         list_var_color_var_subplot.append(["stroke_index", ("stroke_index_semantic", "task_kind")]) # Important: showing that PMv has no stroke effect if exclude first stroke
+                        list_var_color_var_subplot.append(["stroke_index", ("FEAT_num_strokes_task", "task_kind")]) # Important: is counting, or internal ,etc.
                         list_var_color_var_subplot.append(["stroke_index", "task_kind"])
 
-                        # list_var_color_var_subplot.append(["stroke_index_fromlast", ("CTXT_shapeloc_prev", "shape", "gridloc", "CTXT_shapeloc_next", "task_kind")]) # SI - Good (strongest control)
-                        list_var_color_var_subplot.append(["stroke_index_fromlast", ("CTXT_loc_prev", "shape", "gridloc", "task_kind")])
-                        list_var_color_var_subplot.append(["stroke_index_fromlast", ("stroke_index_semantic", "task_kind")]) # Important: showing that PMv has no stroke effect if exclude first stroke
-                        list_var_color_var_subplot.append(["stroke_index_fromlast", "task_kind"])
+                        # list_var_color_var_subplot.append(["stroke_index_fromlast_tskstks", ("CTXT_shapeloc_prev", "shape", "gridloc", "CTXT_shapeloc_next", "task_kind")]) # SI - Good (strongest control)
+                        list_var_color_var_subplot.append(["stroke_index_fromlast_tskstks", ("CTXT_loc_prev", "shape", "gridloc", "task_kind")])
+                        list_var_color_var_subplot.append(["stroke_index_fromlast_tskstks", ("stroke_index_semantic", "task_kind")]) # Important: showing that PMv has no stroke effect if exclude first stroke
+                        list_var_color_var_subplot.append(["stroke_index_fromlast_tskstks", "task_kind"])
 
-                        list_var_color_var_subplot.append(["CTXT_ALL_MAX", ("stroke_index_fromlast", "task_kind")]) # Strong, test context vs. SI
-                        list_var_color_var_subplot.append(["CTXT_shapeloc_next", ("CTXT_shapeloc_prev", "stroke_index_fromlast", "task_kind")]) # Strong, test context vs. SI
+                        list_var_color_var_subplot.append(["CTXT_ALL_MAX", ("stroke_index_fromlast_tskstks", "task_kind")]) # Strong, test context vs. SI
+                        list_var_color_var_subplot.append(["CTXT_shapeloc_next", ("CTXT_shapeloc_prev", "stroke_index_fromlast_tskstks", "task_kind")]) # Strong, test context vs. SI
 
                         # stroke index (invariance)
                         list_var_color_var_subplot.append(["shape_loc", ("stroke_index", "task_kind")]) # (1) Stroke index invariant to shape/loc (2) Consistent across task_kind
 
                         # contrast stroke index vs. stroke index from last
                         if False: # too messy
-                            list_var_color_var_subplot.append(["stroke_index", ("shape", "gridloc", "stroke_index_fromlast", "task_kind")])
-                            list_var_color_var_subplot.append(["stroke_index_fromlast", ("shape", "gridloc", "stroke_index", "task_kind")])
+                            list_var_color_var_subplot.append(["stroke_index", ("shape", "gridloc", "stroke_index_fromlast_tskstks", "task_kind")])
+                            list_var_color_var_subplot.append(["stroke_index_fromlast_tskstks", ("shape", "gridloc", "stroke_index", "task_kind")])
 
                         # task kind
                         list_var_color_var_subplot.append(["task_kind", ("shape", "gridloc", "CTXT_shapeloc_prev")])
+
+                        # num strokes in task
+                        list_var_color_var_subplot.append(["FEAT_num_strokes_task", ("shape", "gridloc", "CTXT_shapeloc_prev")])
 
                     else:
                         print(which_level)
@@ -420,47 +422,52 @@ if __name__=="__main__":
                         pathis_meaned = pathis.slice_and_agg_wrapper("trials", effect_vars)
 
                     for var_color, var_subplot in list_var_color_var_subplot:
-                        xs = Xredu[:,0]
-                        ys = Xredu[:,1]
-                        labels_color = dflab[var_color].tolist()
-                        # text_to_plot = labels_color
-                        text_to_plot = None
+                        from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_scalar_WRAPPER
+                        trajgood_plot_colorby_splotby_scalar_WRAPPER(Xredu, dflab, var_color, savedir,
+                                                 vars_subplot=var_subplot, list_dims=[(0,1)],
+                                                 STROKES_BEH=STROKES_BEH, STROKES_TASK=STROKES_TASK)
 
-                        if var_subplot is None:
-                            labels_subplot = None
-                        else:
-                            if isinstance(var_subplot, tuple):
-                                # is a conjunctive var
-                                dflab = append_col_with_grp_index(dflab, var_subplot, "_tmp", strings_compact=True)
-                                labels_subplot = dflab["_tmp"].tolist()
-                                var_subplot = "|".join(var_subplot)
-                            else:
-                                labels_subplot = dflab[var_subplot].tolist()
-
-                        from neuralmonkey.analyses.state_space_good import cleanup_remove_labels_ignore
-                        xs, ys, labels_color, labels_subplot = cleanup_remove_labels_ignore(xs, ys, labels_color, labels_subplot)
-
-                        if len(xs)==0:
-                            continue
-
-                        # Without overlaid drawings.
-                        fig, axes, map_levo_to_ax, map_levo_to_inds = trajgood_plot_colorby_splotby_scalar_helper(xs, ys,
-                                                                              labels_color, labels_subplot, var_color,
-                                                                               var_subplot, SIZE=7,
-                                                                               overlay_mean=False, text_to_plot=text_to_plot,
-                                                                                  skip_subplots_lack_mult_colors=True)
-                        if fig is not None:
-                            savefig(fig, f"{savedir}/color={var_color}-sub={var_subplot}.pdf")
-
-                        # With drawings
-                        fig, axes, map_levo_to_ax, map_levo_to_inds = trajgood_plot_colorby_splotby_scalar_helper(xs, ys,
-                                                                              labels_color, labels_subplot, var_color,
-                                                                               var_subplot, SIZE=7, alpha=0.2,
-                                                                               overlay_mean=False, text_to_plot=text_to_plot,
-                                                                               STROKES_BEH=STROKES_BEH, STROKES_TASK=STROKES_TASK,
-                                                                               n_strokes_overlay_per_lev=3,
-                                                                                  skip_subplots_lack_mult_colors=True)
-                        if fig is not None:
-                            savefig(fig, f"{savedir}/color={var_color}-sub={var_subplot}-STROKES_OVERLAY.pdf")
-
-                        plt.close("all")
+                        # xs = Xredu[:,0]
+                        # ys = Xredu[:,1]
+                        # labels_color = dflab[var_color].tolist()
+                        # # text_to_plot = labels_color
+                        # text_to_plot = None
+                        #
+                        # if var_subplot is None:
+                        #     labels_subplot = None
+                        # else:
+                        #     if isinstance(var_subplot, tuple):
+                        #         # is a conjunctive var
+                        #         dflab = append_col_with_grp_index(dflab, var_subplot, "_tmp", strings_compact=True)
+                        #         labels_subplot = dflab["_tmp"].tolist()
+                        #         var_subplot = "|".join(var_subplot)
+                        #     else:
+                        #         labels_subplot = dflab[var_subplot].tolist()
+                        #
+                        # from neuralmonkey.analyses.state_space_good import cleanup_remove_labels_ignore
+                        # xs, ys, labels_color, labels_subplot = cleanup_remove_labels_ignore(xs, ys, labels_color, labels_subplot)
+                        #
+                        # if len(xs)==0:
+                        #     continue
+                        #
+                        # # Without overlaid drawings.
+                        # fig, axes, map_levo_to_ax, map_levo_to_inds = trajgood_plot_colorby_splotby_scalar(xs, ys,
+                        #                                                                                    labels_color, labels_subplot, var_color,
+                        #                                                                                    var_subplot, SIZE=7,
+                        #                                                                                    overlay_mean=False, text_to_plot=text_to_plot,
+                        #                                                                                    skip_subplots_lack_mult_colors=True)
+                        # if fig is not None:
+                        #     savefig(fig, f"{savedir}/color={var_color}-sub={var_subplot}.pdf")
+                        #
+                        # # With drawings
+                        # fig, axes, map_levo_to_ax, map_levo_to_inds = trajgood_plot_colorby_splotby_scalar(xs, ys,
+                        #                                                                                    labels_color, labels_subplot, var_color,
+                        #                                                                                    var_subplot, SIZE=7, alpha=0.2,
+                        #                                                                                    overlay_mean=False, text_to_plot=text_to_plot,
+                        #                                                                                    STROKES_BEH=STROKES_BEH, STROKES_TASK=STROKES_TASK,
+                        #                                                                                    n_strokes_overlay_per_lev=3,
+                        #                                                                                    skip_subplots_lack_mult_colors=True)
+                        # if fig is not None:
+                        #     savefig(fig, f"{savedir}/color={var_color}-sub={var_subplot}-STROKES_OVERLAY.pdf")
+                        #
+                        # plt.close("all")
