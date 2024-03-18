@@ -1,4 +1,7 @@
 """ New ANOVA, aligned to strokes.
+
+IGNORE - just keeping as note for old way of extracting chunk information
+
 """
 
 from neuralmonkey.classes.session import Session

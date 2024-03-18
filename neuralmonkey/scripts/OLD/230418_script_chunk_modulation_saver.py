@@ -1,4 +1,7 @@
 """ just for saving snippets for each session
+
+IGNORE - just keeping as note for old way of extracting chunk information
+
 """
 
 assert False, 'use chunk_moudlation!'
