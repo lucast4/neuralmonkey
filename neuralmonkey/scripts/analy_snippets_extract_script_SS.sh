@@ -5,28 +5,17 @@ animal=$1
 #analy=$2
 
 if [[ $animal == Diego ]]; then
-#  datelist=(230630 230628) #
-  datelist=(230624 230625 230626 230627 230629) # extra (3/2/24)
-  datelist=(230629 230630) # best days for online decode sequential context (also 230627?)
+  datelist=(230616 230615 230618 230619) # good ones, temp
 elif [[ $animal == Pancho ]]; then
-#  datelist=(230623 230666)
-  datelist=(230615 230615 230620 230621 230622) # extra (3/2/24)
-  datelist=(230622 230626) # best days for online decode sequential context (also 230623?)
+  datelist=(220716 220715 220718 220719 220918 221217) # 2/7/24 - cases with good variety of shapes.
+
 else
   echo $animal
   echo "Error! Inputed non-existing animal" 1>&2
   exit 1
 fi
 
-which_level_list=(trial stroke stroke_off)
-#
-#if [[ $analy == PIG ]]; then
-#  which_level_list=(stroke stroke_off)
-#else
-#  echo $analy
-#  echo "Error! Inputed non-existing analy" 1>&2
-#  exit 1
-#fi
+which_level_list=(substroke)
 
 echo "This animal: $animal"
 #echo "This analy: $analy"
@@ -42,7 +31,7 @@ do
     touch ${logfile}
     echo ${logfile}
     taskset --cpu-list 0,1,2,3,4,5,6 python analy_snippets_extract.py ${animal} ${date1} ${which_level} 2>&1 | tee ${logfile} &
-    sleep 10s
+    sleep 5s
   done
-  sleep 30m
+  sleep 5m
 done

@@ -31,6 +31,31 @@ def datamod_reorder_by_bregion(df, col="bregion"):
         return [map_region_to_index[xx] for xx in x] # list of ints
     return df.sort_values(by=col, key=lambda x:F(x))
 
+def mapper_combinedbregion_to_meanlocation():
+    """
+    Map from combined bregion (e..g, "M1") to np array (x,y) coords (2,) shape.
+    Note that bregion has no num prefix.
+    :return:
+    """
+    from  neuralmonkey.classes.session import MAP_COMBINED_REGION_TO_REGION
+
+    # 1) MAke map from region (no prefix num) to location
+    mapper = mapper_bregion_to_location()
+    map_bregion_location = {}
+    for k, v in mapper.items():
+        map_bregion_location[k[3:]] = v
+
+    # 2) Make map from conbined region to mean loc.
+    map_combinedbr_locmean = {}
+    for combined_region in MAP_COMBINED_REGION_TO_REGION.keys():
+        vals = [map_bregion_location[reg] for reg in MAP_COMBINED_REGION_TO_REGION[combined_region]]
+        import numpy as np
+        vals = np.stack(vals) # (nreg, 2)
+        coord_mean = np.mean(vals, axis=0)
+        map_combinedbr_locmean[combined_region] = coord_mean
+
+    return map_combinedbr_locmean
+
 def mapper_bregion_to_location():
     map_bregion_to_location = {}
     map_bregion_to_location["00_M1_m"] = [0, 1.3]
@@ -123,6 +148,7 @@ def plot_df_from_wideform(dfthis_agg_2d, savedir=None, col1_name="bregion", # ju
     from pythonlib.tools.snstools import heatmap
 
     map_bregion_to_location = mapper_bregion_to_location()
+    map_combinedbr_to_location = mapper_combinedbregion_to_meanlocation()
 
     # Plot heatmap
     annotate_heatmap = False
@@ -143,9 +169,15 @@ def plot_df_from_wideform(dfthis_agg_2d, savedir=None, col1_name="bregion", # ju
         map_bregion_to_location[k] = [xoffset + xmult*v[0], yoffset + ymult*v[1]]
     rad = (xmult + ymult)/4
 
+    for k, v in map_combinedbr_to_location.items():
+        map_combinedbr_to_location[k] = [xoffset + xmult*v[0], yoffset + ymult*v[1]]
+    rad = (xmult + ymult)/4
+
     def _find_region_location(region):
         if region in map_bregion_to_location.keys():
             return map_bregion_to_location[region]
+        elif region in map_combinedbr_to_location.keys():
+            return map_combinedbr_to_location[region]
         else:
             # assume region is like "M1_m" and keys are like "00_M1_m"
             v = None

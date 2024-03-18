@@ -5,6 +5,7 @@
     <orderEntry type="jdk" jdkName="drag2_matlab" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
     <orderEntry type="module" module-name="pythonlib" />
+    <orderEntry type="module" module-name="notebooks_datasets" />
   </component>
   <component name="PyDocumentationSettings">
     <option name="format" value="PLAIN" />

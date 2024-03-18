@@ -19,21 +19,33 @@ def bin_frmat_in_time(frmat, times, time_bin_size, slide=None):
     if slide is None:
         slide = time_bin_size
     else:
-        assert slide<=time_bin_size
+        if slide>time_bin_size:
+            print(time_bin_size, slide)
+            assert False
 
-    try:
-        len(times)
-        assert len(frmat.shape)==2
-        assert len(frmat)>0
-        assert frmat.shape[1]==len(times)
-    except Exception as err:
-        print(times)
-        print(type(times))
-        raise err
 
-    X = frmat[:frmat.shape[0], None, :frmat.shape[1]] # (nchans, 1, times)
-    assert X.shape[0]==frmat.shape[0]
-    assert X.shape[2]==frmat.shape[1]
+    # try:
+    #     len(times)
+    #     assert len(frmat.shape)==2
+    #     assert len(frmat)>0
+    #     assert frmat.shape[1]==len(times)
+    # except Exception as err:
+    #     print(times)
+    #     print(type(times))
+    #     raise err
+
+    # Convert frmat to (:, :, times)
+    INPUT_NDIMS = len(frmat.shape)
+    if len(frmat.shape)==2:
+        X = frmat[:frmat.shape[0], None, :frmat.shape[1]] # (nchans, 1, times)
+        assert X.shape[0]==frmat.shape[0]
+        assert X.shape[2]==frmat.shape[1]
+    elif len(frmat.shape)==3:
+        X = frmat
+    else:
+        print(frmat.shape)
+        assert False
+
     pa = PopAnal(X, times)
     try:
         pa = pa.agg_by_time_windows_binned(time_bin_size, slide)
@@ -45,7 +57,13 @@ def bin_frmat_in_time(frmat, times, time_bin_size, slide=None):
         print(slide)
         raise err
 
-    frmat = pa.X[:, 0, :]
+    if INPUT_NDIMS==2:
+        frmat = pa.X[:, 0, :]
+    elif INPUT_NDIMS==3:
+        frmat = pa.X
+    else:
+        assert False
+
     times = pa.Times
 
     return frmat, times

@@ -19,21 +19,102 @@ from pythonlib.tools.plottools import makeColors, legend_add_manual, savefig, ro
 from pythonlib.tools.expttools import writeDictToYaml
 from pythonlib.tools.pandastools import append_col_with_grp_index, convert_to_2d_dataframe
 from pythonlib.tools.snstools import rotateLabel
+from pythonlib.tools.plottools import savefig
+
+LABELS_IGNORE = ["IGN", ("IGN",), "IGNORE", ("IGNORE",)] # values to ignore during dcode.
+
+def _popanal_preprocess_normalize(PA, PLOT=False):
+    """ Normalize firing rates so that similar acorss neruons (higha nd low fr) whiel
+    still having higher for high fr.
+    Similar to "soft normalization" used by Churchland group.
+    """
+
+    x = PA.X.reshape(PA.X.shape[0], -1)
+
+    # STD (across all trials and times)
+    normvec = np.std(x, axis=1)
+    assert len(normvec.shape)==1
+    normvec = np.reshape(normvec, [normvec.shape[0], 1,1]) # (chans, 1, 1) # std for each chan, across (times, trials).
+    normmin = np.percentile(normvec, [2.5]) # get the min (std fr across time/conditions) across channels, add this on to still have
+
+    # min fr, to make this a "soft" normalization
+    frmean_each_chan = np.mean(x, axis=1) # (chans, 1, 1) # std for each chan, across (times, trials).
+    frmin = np.min(frmean_each_chan) # (chans, 1, 1)) # min (mean fr across time/condition) across chans
+    # frmin = np.min(np.mean(np.mean(PA.X, axis=1, keepdims=True), axis=2, keepdims=True)) # (chans, 1, 1)) # min (mean fr across time/condition) across chans
+
+    # to further help making this "soft"
+    abs_fr_min = 3 # any fr around this low, want to penalize drastically, effectively making it not contyribute much to population activit.
+
+    # DENOM = (normvec+normmin)
+    # DENOM = (normvec + normmin + frmin + abs_fr_min) # To further lower infleunce of low FR neurons (started 2/8/24, 2:55pm)
+    DENOM = (normvec + frmin + abs_fr_min) # To make more similar across chans. (started 2/11/24)
+
+    # Do normalization.
+    PAnorm = PA.copy()
+    PAnorm.X = PAnorm.X/DENOM
+
+    if PLOT:
+        from pythonlib.tools.plottools import plotScatter45
+        x = PA.X.reshape(PA.X.shape[0], -1)
+        frmean_base = np.mean(x, axis=1)
+        frstd_base = np.std(x, axis=1)
+
+        x = PAnorm.X.reshape(PAnorm.X.shape[0], -1)
+        frmean_norm = np.mean(x, axis=1)
+        frstd_norm = np.std(x, axis=1)
+
+        fig, axes = plt.subplots(2,3, figsize=(10, 8))
+
+        ax = axes.flatten()[0]
+        ax.plot(frmean_base, frmean_norm, "ok")
+        ax.plot(0,0, "wx")
+        ax.set_xlabel("frmean_base")
+        ax.set_ylabel("frmean_normed")
+
+        ax = axes.flatten()[1]
+        ax.plot(frstd_base, frstd_norm, "ok")
+        ax.plot(0,0, "wx")
+        ax.set_xlabel("frstd_base")
+        ax.set_ylabel("frstd_normed")
+
+        ax = axes.flatten()[2]
+        plotScatter45(frmean_base, frstd_base, ax=ax)
+        ax.set_xlabel("frmean_base")
+        ax.set_ylabel("frstd_base")
+
+        ax = axes.flatten()[3]
+        plotScatter45(frmean_norm, frstd_norm, ax=ax)
+        ax.set_xlabel("frmean_norm")
+        ax.set_ylabel("frstd_norm")
+
+        ax = axes.flatten()[4]
+        plotScatter45(frmean_base, DENOM.squeeze(), ax=ax)
+        ax.set_xlabel("mean fr (baseline)")
+        ax.set_ylabel("denom for norm")
+
+        ax = axes.flatten()[5]
+        plotScatter45(frstd_base, DENOM.squeeze(), ax=ax)
+        ax.set_xlabel("std fr (baseline)")
+        ax.set_ylabel("denom for norm")
+    else:
+        fig = None
+
+    return PAnorm, fig
 
 
-def popanal_preprocess_scalar_normalization(PA, grouping_vars, subtract_mean_each_level_of_var ="IGNORE",
-                                            plot_example_chan=None,
-                                            plot_example_split_var=None,
-                                            DO_AGG_TRIALS=True,
-                                            subtract_mean_at_each_timepoint=True):
+def popanal_preprocess_scalar_normalization(PA, grouping_vars, subtract_mean_each_level_of_var="IGNORE",
+                                            plot_example_chan_number=None, plot_example_split_var_string=None,
+                                            DO_AGG_TRIALS=True, subtract_mean_at_each_timepoint=True,
+                                            subtract_mean_across_time_and_trial=False):
     """ Preprocess PA, with different options for normalization ,etc
     PARAMS:
     - subtract_mean_each_level_of_var, eitehr None (ignore) or str, in which case will
     find mean fr for each level of this var, then subtract this mean from all datpts that
     have this level for this var. e.g., if subtract_mean_each_level_of_var=="gridloc", then
     de-means for each location.
+    RETURNS:
+        - new PA, without modifiying input PA
     """
-
     # if plot_example_chan==False:
     #     plot_example_chan = None
     # assert isinstance(plot_example_chan, bool) or isinstance(plot_example_chan, int)
@@ -41,28 +122,35 @@ def popanal_preprocess_scalar_normalization(PA, grouping_vars, subtract_mean_eac
     if subtract_mean_each_level_of_var is None:
         subtract_mean_each_level_of_var = "IGNORE"
     else:
-        print(subtract_mean_each_level_of_var)
-
         assert isinstance(subtract_mean_each_level_of_var, str)
 
     # 1) First, rescale all FR (as in Churchland stuff), but isntead of using
     # range, use std (like z-score)
-    if False:
-        # FR
-        normvec = np.mean(np.mean(PA.X, axis=1, keepdims=True), axis=2, keepdims=True) # (chans, 1, 1)
-    else:
-        # STD (across all trials and times)
-        normvec = np.std(np.reshape(PA.X, (PA.X.shape[0], -1)), axis=1) # (chans, 1, 1)
-        assert len(normvec.shape)==1
-        normvec = np.reshape(normvec, [normvec.shape[0], 1,1])
-    normmin = np.percentile(normvec, [2.5]) # get the min, add this on to still have
-    # higher FR neurons more important
-    PAnorm = PA.copy()
-    PAnorm.X = PAnorm.X/(normvec+normmin)
+    PAnorm_pre, _ = _popanal_preprocess_normalize(PA)
+    PAnorm = PAnorm_pre.copy()
+
+    # if False:
+    #     # FR
+    #     normvec = np.mean(np.mean(PA.X, axis=1, keepdims=True), axis=2, keepdims=True) # (chans, 1, 1)
+    # else:
+    #     # STD (across all trials and times)
+    #     normvec = np.std(np.reshape(PA.X, (PA.X.shape[0], -1)), axis=1) # (chans, 1, 1)
+    #     assert len(normvec.shape)==1
+    #     normvec = np.reshape(normvec, [normvec.shape[0], 1,1])
+    # normmin = np.percentile(normvec, [2.5]) # get the min across channels, add this on to still have
+    # # higher FR neurons more important
+    # # DENOM = (normvec+normmin)
+    # tmp = np.min(np.mean(np.mean(PA.X, axis=1, keepdims=True), axis=2, keepdims=True)) # (chans, 1, 1)) # min mean fr across chans
+    # DENOM = (normvec + normmin + 3 + tmp) # To further lower infleunce of low FR neurons (started 2/8/24, 2:55pm)
+    # PAnorm = PA.copy()
+    # PAnorm.X = PAnorm.X/DENOM
 
     if subtract_mean_at_each_timepoint:
         # 1) subtract global mean (i.e., at each time bin)
         PAnorm = PAnorm.norm_subtract_trial_mean_each_timepoint()
+
+    if subtract_mean_across_time_and_trial:
+        PAnorm = PAnorm.norm_subtract_mean_each_chan()
 
     if False: # Replaced with rescale step above
         # 2) rescale (for each time bin, across all trials
@@ -112,13 +200,14 @@ def popanal_preprocess_scalar_normalization(PA, grouping_vars, subtract_mean_eac
     # PAagg = PAagg.agg_wrapper("times") # mean over time --> (chans, trials)
 
     ######## PLOTS
-    if plot_example_chan is not None:
+    if plot_example_chan_number is not None:
         add_legend = True
         fig, axes = plt.subplots(2,2, figsize=(8,8))
-
-        for pathis, ax in zip([PA, PAnorm, PAscalagg], axes.flatten()):
-            pathis.plotwrapper_smoothed_fr_split_by_label("trials", plot_example_split_var,
-                ax=ax, add_legend=add_legend, chan=plot_example_chan)
+        titles = ["PA - raw", "PAnorm_pre - after churchland norm", "PAnorm - final norm", "PAscalagg"]
+        for pathis, ax, tit in zip([PA, PAnorm_pre, PAnorm, PAscalagg], axes.flatten(), titles):
+            pathis.plotwrapper_smoothed_fr_split_by_label("trials", plot_example_split_var_string,
+                                                          ax=ax, add_legend=add_legend, chan=plot_example_chan_number)
+            ax.set_title(tit)
             ax.axhline(0)
     else:
         fig, axes = None, None
@@ -193,7 +282,6 @@ def popanal_preprocess_scalar_normalization(PA, grouping_vars, subtract_mean_eac
 
 def snippets_extract_popanals_split_bregion_twind(SP, list_time_windows, vars_extract_from_dfscalar,
                                                   SAVEDIR=None, dosave=False,
-                                                  HACK_RENAME_SHAPES=False,
                                                   combine_into_larger_areas=False,
                                                   events_keep=None,
                                                   exclude_bad_areas=False):
@@ -214,8 +302,10 @@ def snippets_extract_popanals_split_bregion_twind(SP, list_time_windows, vars_ex
     """
     from pythonlib.tools.pandastools import append_col_with_grp_index
 
+    # SInce this is population, make sure all channels are present (no outliers removed)
+    SP.datamod_append_outliers()
 
-    if events_keep is None:
+    if events_keep is None or len(events_keep)==0:
         events_keep = SP.Params["list_events_uniqnames"]
 
     if SAVEDIR is None and dosave:
@@ -223,109 +313,19 @@ def snippets_extract_popanals_split_bregion_twind(SP, list_time_windows, vars_ex
         SAVEDIR = f"{PATH_ANALYSIS_OUTCOMES}/recordings/main/SAVED_POPANALS"
         os.makedirs(SAVEDIR, exist_ok=True)
 
-    # if vars_extract_append is None:
-    #     EFFECT_VARS = []
-
-    # list_features_extraction_stroke = [
-    #                             "stroke_index", "stroke_index_fromlast", "stroke_index_fromlast_tskstks",
-    #                             "stroke_index_semantic", "stroke_index_semantic_tskstks",
-    #                             "shape_oriented", "gridloc",
-    #                             "CTXT_loc_next", "CTXT_shape_next",
-    #                             "CTXT_loc_prev", "CTXT_shape_prev",
-    #                             "gap_from_prev_angle_binned", "gap_to_next_angle_binned",
-    #                             "gap_from_prev_angle", "gap_to_next_angle",
-    #                             "distcum", "displacement", "circularity"]
-    #
-    # list_features_extraction_trial = ["trialcode", "aborted", "trial_neural", "event_time", "task_kind", "gridsize",
-    #                                   "FEAT_num_strokes_task", "FEAT_num_strokes_beh",
-    #                                   "character", "probe", "supervision_stage_new", "supervision_stage_concise",
-    #                                   "epoch_orig", "epoch", "taskgroup",
-    #                                   "char_seq",
-    #                                   "origin", "donepos"]
-    # n_strok_max = 4
-    # for i in range(n_strok_max):
-    #     for suff in ["shape", "loc", "loc_local"]:
-    #         list_features_extraction_trial.append(f"seqc_{i}_{suff}")
-    # list_features_extraction_trial.append("seqc_nstrokes_beh")
-    # list_features_extraction_trial.append("seqc_nstrokes_task")
-    #
-    # # Features that should always extract (Strokes dat)
-    # if SP.Params["which_level"] in ["stroke", "stroke_off"]:
-    #     list_features_extraction = list_features_extraction_trial + list_features_extraction_stroke
-    # elif SP.Params["which_level"]=="trial":
-    #     list_features_extraction = list_features_extraction_trial
-    # else:
-    #     print(SP.Params["which_level"])
-    #     assert False
-    #
-    # if EFFECT_VARS is None:
-    #     EFFECT_VARS = []
-    #
-    # ######################## PREPPING
-    # # get back all the outliers, since they just a single removed outlier (chan x trial) will throw out the entire trial.
-    # SP.datamod_append_outliers()
-    # SP.datamod_append_unique_indexdatapt()
-    #
-    # # Append variables by hand
-    # # Prep dataset, for later variable extraction
-    # D = SP.datasetbeh_extract_dataset()
-    # if "FEAT_num_strokes_task" not in D.Dat.columns:
-    #     D.extract_beh_features()
-    # if "char_seq" not in D.Dat.columns:
-    #     D.sequence_char_taskclass_assign_char_seq()
-    # if "seqc_nstrokes_task" not in D.Dat.columns:
-    #     D.seqcontext_preprocess()
-    #
-    # # For the rest, try to get automatically.
-    # vars_to_extract = EFFECT_VARS + list_features_extraction
-    # assert SP.datasetbeh_append_column_helper(vars_to_extract, D, stop_if_fail=True)==True # Extract all the vars here
-    #
-    # # Conjunction of stroke index and num strokes in task.
-    # if False:
-    #     SP.DfScalar = append_col_with_grp_index(SP.DfScalar, ["FEAT_num_strokes_task", "stroke_index"], "nstk_stkidx", False)
-
-    if HACK_RENAME_SHAPES:
-        ############# HACK - rename shapes (lumping)
-        #### Rename any variable values? Hacky
-        # Lump together (done by hand)
-        map_shapelump_to_shapes = {}
-        map_shape_to_shapelump = {}
-        for grp in [
-            ["V-2-1-0", "arcdeep-4-1-0", "usquare-1-1-0", "L|arcdeep-4-1-0"],
-            ["V-2-3-0", "arcdeep-4-3-0", "usquare-1-3-0"],
-            ["V-2-2-0", "arcdeep-4-2-0", "usquare-1-2-0"],
-            ["V-2-4-0", "arcdeep-4-4-0", "usquare-1-4-0", "L|V-2-4-0"]]:
-
-            # name it after the first
-            name = f"L|{grp[0]}"
-            assert name not in map_shapelump_to_shapes
-            map_shapelump_to_shapes[name] = grp
-
-            for g in grp:
-                assert g not in map_shape_to_shapelump
-                map_shape_to_shapelump[g] = name
-
-        # Replace shape values for all columns that have "shape" in them.
-        shape_keys = [k for k in vars_extract_from_dfscalar if "shape" in k]
-        for sk in shape_keys:
-            if len(SP.DfScalar[sk].unique())>3:
-                print(" -- Lumping shapes (renaming) in SP.DfScalar, for: ", sk)
-                def F(x):
-                    sh = x[sk]
-                    if sh in map_shape_to_shapelump.keys():
-                        return map_shape_to_shapelump[sh]
-                    else:
-                        return sh
-                SP.DfScalar[sk] = SP.DfScalar.apply(F, axis=1)
-
     ####################### EXTRACT DATA
     # list_features_extraction = list(set(list_features_extraction + EFFECT_VARS))
     list_bregion = SP.bregion_list(combine_into_larger_areas=combine_into_larger_areas)
 
+    if not any([e in SP.DfScalar["event"].unique().tolist() for e in events_keep]):
+        events_keep = sorted(SP.DfScalar["event"].unique().tolist())
+
     # 1) Extract population dataras
     DictEvBrTw_to_PA = {}
+    print("These events:", events_keep)
     for event in events_keep:
         if event in SP.DfScalar["event"].tolist():
+            print(event)
             # assert len(SP.Params["list_events_uniqnames"])==1, "assuming is strokes, just a single event... otherwise iterate"
             # event = SP.Params["list_events_uniqnames"][0]
             PA, _ = SP.dataextract_as_popanal_statespace(SP.Sites, event,
@@ -389,6 +389,8 @@ def snippets_extract_popanals_split_bregion_twind(SP, list_time_windows, vars_ex
                     else:
                         print("Skipping bregion (0 channels): ", bregion)
 
+    assert len(DictEvBrTw_to_PA)>0
+
     # Save it as dataframe
     tmp = []
     for k, v in DictEvBrTw_to_PA.items():
@@ -409,6 +411,11 @@ def snippets_extract_popanals_split_bregion_twind(SP, list_time_windows, vars_ex
         })
     DFallpa = pd.DataFrame(tmp)
 
+    if len(DFallpa)==0:
+        print(list_time_windows, vars_extract_from_dfscalar,
+              combine_into_larger_areas, events_keep, exclude_bad_areas)
+        assert False, "probably params not compatible with each other"
+
     # # Sanity check
     # for i, row in DFallpa.iterrows():
     #     a = row["twind"]
@@ -417,6 +424,12 @@ def snippets_extract_popanals_split_bregion_twind(SP, list_time_windows, vars_ex
     #     if not a==b:
     #         print(a, b)
     #         assert False, "this is old versio before 1/28 -- delete it and regenerate DFallpa"
+
+    # Also note down size of PA, in a column
+    list_shape =[]
+    for i, row in DFallpa.iterrows():
+        list_shape.append(row["pa"].X.shape)
+    DFallpa["pa_x_shape"] = list_shape
 
     ## SAVE
     if dosave:
@@ -1135,6 +1148,450 @@ def plot_variance_explained_timecourse(SP, animal, DATE, pca_trial_agg_grouping,
         plt.close("all")
 
 
+def _trajgood_make_colors_discrete_var(labels):
+    """
+    Helper to make colors for plotting, mapping from unque item
+    in labels to rgba color. Can be continuous or discrete (and will
+    check this automatically).
+    PARAMS:
+    - labels, values, either cont or discrete.
+    RETURNS:
+    - dict,  mapping from value to color (if discrete), otherw sie None
+    - color_type, str, either "cont" or "discrete".
+    """
+    labels_color_uniq = sort_mixed_type(list(set(labels)))
+
+    if len(set([type(x) for x in labels_color_uniq]))>1:
+        # more than one type...
+        color_type = "discr"
+        pcols = makeColors(len(labels_color_uniq))
+        _map_lev_to_color = {}
+        for lev, pc in zip(labels_color_uniq, pcols):
+            _map_lev_to_color[lev] = pc
+    # continuous?
+    elif len(labels_color_uniq)>50 and isinstance(labels_color_uniq[0], (int)):
+        color_type = "cont"
+        # from pythonlib.tools.plottools import map_continuous_var_to_color_range as mcv
+        # valmin = min(df[var_color_by])
+        # valmax = max(df[var_color_by])
+        # def map_continuous_var_to_color_range(vals):
+        #     return mcv(vals, valmin, valmax)
+        # label_rgbs = map_continuous_var_to_color_range(df[var_color_by])
+        _map_lev_to_color = None
+    elif len(labels_color_uniq)>8 and isinstance(labels_color_uniq[0], (np.ndarray, float)):
+        color_type = "cont"
+        _map_lev_to_color = None
+    else:
+        color_type = "discr"
+        # label_rgbs = None
+        pcols = makeColors(len(labels_color_uniq))
+        _map_lev_to_color = {}
+        for lev, pc in zip(labels_color_uniq, pcols):
+            _map_lev_to_color[lev] = pc
+
+    return _map_lev_to_color, color_type
+
+def trajgood_plot_colorby_splotbydims_scalar(X, labels_color, list_dims,
+                                         overlay_mean=False, plot_text_over_examples=False,
+                                         text_to_plot=None,
+                                         alpha=0.5, SIZE=5):
+    """ [GOOD], to plot scatter of pts, colored by one variable, and split across
+    different slices (pairs of dimensions).
+    PARAMS:
+    - X, (npts, ndims)
+    - labels_color, (npts,) discrete labels for coloring.
+    - list_dims, list of 2-length iterables, holding dimensions .e,g [(0,1), (2,3)]
+    Other columns are flexible, defnining varialbes.
+    """
+    from pythonlib.tools.plottools import makeColors
+    from neuralmonkey.population.dimreduction import statespace_plot_single
+    from pythonlib.tools.plottools import legend_add_manual
+    from pythonlib.tools.plottools import plotScatterOverlay
+
+    assert len(labels_color)==X.shape[0]
+    map_lev_to_color, color_type = _trajgood_make_colors_discrete_var(labels_color)
+
+    # One subplot per othervar
+    nsplots = len(list_dims)
+    ncols = 3
+    nrows = int(np.ceil(nsplots/ncols))
+    fig, axes = plt.subplots(nrows, ncols, sharex=True, sharey=True,
+                             figsize=(ncols*SIZE, nrows*SIZE))
+    for ax, dims in zip(axes.flatten(), list_dims):
+        xs = X[:, dims[0]]
+        ys = X[:, dims[1]]
+        ax.set_title(dims)
+
+        trajgood_plot_colorby_scalar_BASE(xs, ys, labels_color, ax,
+                                          map_lev_to_color, color_type,
+                                          overlay_mean, plot_text_over_examples,
+                                          text_to_plot, alpha, SIZE)
+    return fig, axes
+
+
+def trajgood_plot_colorby_scalar_BASE(xs, ys, labels_color, ax,
+                                      map_lev_to_color=None, color_type="discr",
+                                      overlay_mean=False,
+                                      plot_text_over_examples=False, text_to_plot=None,
+                                      alpha=0.5, SIZE=5):
+    """
+    [LOW-LEVEL base plot for scatterplot]
+    Like trajgood_plot_colorby_splotby_scalar, but passing in the raw data directly, instead
+    of dataframe. Here constructs datafrane and runs for you.
+    :param xs: (n, 1)
+    :param ys: (n,1)
+    :param labels_color: len(n) list
+    :param labels_subplot: can be None to skip splitting by subplot
+    :return:
+    """
+    from pythonlib.tools.plottools import plotScatterOverlay
+
+    if len(xs.shape)==1:
+        xs = xs[:, None]
+    if len(ys.shape)==1:
+        ys = ys[:, None]
+    assert xs.shape[1]==1
+    assert ys.shape[1]==1
+
+    X = np.concatenate((xs, ys), axis=1)
+
+    # Overwrite with user inputed
+    if map_lev_to_color is None:
+        map_lev_to_color, color_type = _trajgood_make_colors_discrete_var(labels_color)
+
+    plotScatterOverlay(X, labels_color, alpha=alpha, ax=ax, overlay_mean=overlay_mean,
+                       overlay_ci=False,
+                       plot_text_over_examples=plot_text_over_examples,
+                       text_to_plot=text_to_plot, map_lev_to_color=map_lev_to_color,
+                       SIZE=SIZE, color_type=color_type)
+
+def trajgood_plot_colorby_splotby_scalar_WRAPPER(X, dflab, var_color, savedir,
+                                                 vars_subplot=None, list_dims=None,
+                                                 STROKES_BEH=None, STROKES_TASK=None):
+    """
+    Final wrapper to make many plots, each figure showing supblots one for each levv of otehr var, colored
+    by levels of var. Across figures, show different projections to dim pairs. And plot sepraerpte figuers for
+    with and without strokes overlaid.
+
+    :param X: scalar data, (ndat, nfeat)
+    :param dflab:
+    :param var_color:
+    :param savedir:
+    :param vars_subplot:
+    :param list_dims:
+    :param STROKES_BEH:
+    :param STROKES_TASK:
+    :return:
+    """
+    from neuralmonkey.analyses.state_space_good import cleanup_remove_labels_ignore
+
+    assert len(X.shape)==2
+    assert len(X)==len(dflab)
+
+    if list_dims is None:
+        list_dims = [(0,1)]
+
+    if isinstance(vars_subplot, str):
+        vars_subplot = [vars_subplot]
+
+    # One figure for each pair of dims
+    for dim1, dim2 in list_dims:
+        xs = X[:, dim1]
+        ys = X[:, dim2]
+        labels_color = dflab[var_color].tolist()
+        # text_to_plot = labels_color
+        text_to_plot = None
+
+        if vars_subplot is None:
+            labels_subplot = None
+        else:
+            # is a conjunctive var
+            dflab = append_col_with_grp_index(dflab, vars_subplot, "_tmp", strings_compact=True)
+            labels_subplot = dflab["_tmp"].tolist()
+            vars_subplot_string = "|".join(vars_subplot)
+
+        # Remove ignored labels.
+        xs, ys, labels_color, labels_subplot = cleanup_remove_labels_ignore(xs, ys, labels_color, labels_subplot)
+
+        if len(xs)==0:
+            continue
+
+        # Without overlaid drawings.
+        fig, axes, map_levo_to_ax, map_levo_to_inds = trajgood_plot_colorby_splotby_scalar(xs, ys,
+                                                                                           labels_color, labels_subplot, var_color,
+                                                                                           vars_subplot_string, SIZE=7,
+                                                                                           overlay_mean=False, text_to_plot=text_to_plot,
+                                                                                           skip_subplots_lack_mult_colors=True)
+        if fig is not None:
+            savefig(fig, f"{savedir}/color={var_color}-sub={vars_subplot_string}-dims={dim1, dim2}.pdf")
+
+        # With drawings
+        if STROKES_BEH is not None or STROKES_TASK is not None:
+            fig, axes, map_levo_to_ax, map_levo_to_inds = trajgood_plot_colorby_splotby_scalar(xs, ys,
+                                                                                               labels_color, labels_subplot, var_color,
+                                                                                               vars_subplot_string, SIZE=7, alpha=0.2,
+                                                                                               overlay_mean=False, text_to_plot=text_to_plot,
+                                                                                               STROKES_BEH=STROKES_BEH, STROKES_TASK=STROKES_TASK,
+                                                                                               n_strokes_overlay_per_lev=3,
+                                                                                               skip_subplots_lack_mult_colors=True)
+            if fig is not None:
+                savefig(fig, f"{savedir}/color={var_color}-sub={vars_subplot_string}-dims={dim1, dim2}-STROKES_OVERLAY.pdf")
+
+        plt.close("all")
+
+
+def trajgood_plot_colorby_splotby_scalar(xs, ys, labels_color, labels_subplot,
+                                         color_var, subplot_var,
+                                         overlay_mean=False, plot_text_over_examples=False,
+                                         text_to_plot=None,
+                                         alpha=0.5, SIZE=5,
+                                         STROKES_BEH = None,
+                                         STROKES_TASK = None,
+                                         n_strokes_overlay_per_lev = 4,
+                                         skip_subplots_lack_mult_colors = False
+                                         ):
+    """
+    Like trajgood_plot_colorby_splotby_scalar, but passing in the raw data directly, instead
+    of dataframe. Here constructs datafrane and runs for you.
+
+    To ignore any variable, set eithe rhte labels=None or the variable=None
+
+    :param xs: (n, 1)
+    :param ys: (n,1)
+    :param labels_color: len(n) list
+    :param labels_subplot: can be None to skip splitting by subplot
+    :param STROKES_BEH and STROKES_TASK: overlays strokes on figure.
+    :params skip_subplots_lack_mult_colors, bool, if True, then only plots subplots if there are >1
+    classes (for categorical variables only).
+    :return:
+    """
+    from pythonlib.drawmodel.strokePlots import overlay_stroke_on_plot_mult_rand
+
+    if len(xs.shape)==1:
+        xs = xs[:, None]
+    if len(ys.shape)==1:
+        ys = ys[:, None]
+
+    assert xs.shape[1]==1
+    assert ys.shape[1]==1
+
+    if labels_subplot is None:
+        subplot_var = None
+        tmp = {
+            color_var:labels_color,
+            "x":xs.tolist(),
+            "y":ys.tolist()
+        }
+    else:
+        tmp = {
+            color_var:labels_color,
+            subplot_var:labels_subplot,
+            "x":xs.tolist(),
+            "y":ys.tolist()
+        }
+    dfthis = pd.DataFrame(tmp)
+
+    fig, axes, map_levo_to_ax, map_levo_to_inds = _trajgood_plot_colorby_splotby_scalar(dfthis, color_var, subplot_var,
+                                         overlay_mean, plot_text_over_examples,
+                                                text_to_plot, alpha, SIZE, skip_subplots_lack_mult_colors=skip_subplots_lack_mult_colors)
+
+    if fig is None:
+        return None, None, None, None
+
+    ### OVERLAY strokes, if passed in
+    LIST_STROKES_PLOT = []
+    if STROKES_BEH is not None:
+        LIST_STROKES_PLOT.append([STROKES_BEH, "onset", "k", n_strokes_overlay_per_lev])
+    if STROKES_TASK is not None:
+        LIST_STROKES_PLOT.append([STROKES_TASK, "center", "m", 1])
+    if len(LIST_STROKES_PLOT)>0:
+        from pythonlib.tools.pandastools import grouping_append_and_return_inner_items
+        # Is this discrete?
+        _, color_type = _trajgood_make_colors_discrete_var(labels_color)
+        if color_type=="discr":
+            dflab = pd.DataFrame({color_var:labels_color, subplot_var:labels_subplot})
+            grpdict = grouping_append_and_return_inner_items(dflab, [color_var, subplot_var])
+            levels_var_color = dflab[color_var].unique().tolist()
+
+            for strokes, align_to, pcol, n_rand in LIST_STROKES_PLOT:
+
+                # Overlay random strokes, sampling within each level of labels_color
+                for levo, ax in map_levo_to_ax.items():
+                    for lev in levels_var_color:
+                        if (lev, levo) in grpdict.keys():
+                            inds = grpdict[(lev, levo)]
+                            overlay_stroke_on_plot_mult_rand([strokes[i] for i in inds], xs[inds], ys[inds], ax,
+                                                             n_rand, align_to, color=pcol)
+        elif color_type=="cont":
+            for strokes, align_to, pcol, n_rand in LIST_STROKES_PLOT:
+                # Continuous -- change colro to not interfere
+                if pcol=="k":
+                    pcol = "g"
+                elif pcol=="m":
+                    pcol = "c"
+                for levo, ax in map_levo_to_ax.items():
+                    # Overlay nplot random strokes
+                    inds = map_levo_to_inds[levo]
+                    nplot = min([30, n_rand*5])
+                    overlay_stroke_on_plot_mult_rand([strokes[i] for i in inds], xs[inds], ys[inds], ax, nplot, align_to, color=pcol)
+        else:
+            assert False
+
+    return fig, axes, map_levo_to_ax, map_levo_to_inds
+
+
+def _trajgood_plot_colorby_splotby_scalar(df, var_color_by, var_subplots,
+                                         overlay_mean=False, plot_text_over_examples=False,
+                                         text_to_plot=None,
+                                         alpha=0.5, SIZE=5,
+                                         skip_subplots_lack_mult_colors=False):
+    """ [GOOD], to plot scatter of pts, colored by one variable, and split across
+    subplots by another variable.
+    PARAMS:
+    - df, standard form for holding trajectories, each row holds; one condition:
+    --- "x", each a (1,) array, the value to plot on x coord (e.g,, dim1)
+    --- "y", see "x"
+    - var_subplots, None if no subplots
+    Other columns are flexible, defnining varialbes.
+    """
+    from pythonlib.tools.plottools import makeColors
+    from neuralmonkey.population.dimreduction import statespace_plot_single
+    from pythonlib.tools.plottools import legend_add_manual
+    from pythonlib.tools.plottools import plotScatterOverlay
+
+    # Color the labels
+    # One color for each level of effect var
+
+    labellist = df[var_color_by].tolist()
+    map_lev_to_color, color_type = _trajgood_make_colors_discrete_var(labellist)
+
+    # If you pass in continuous variable as othervar, then overwrite that and just plot a single plot.
+    if var_subplots is not None:
+        _, tmp = _trajgood_make_colors_discrete_var(df[var_subplots].tolist())
+        if tmp!="discr":
+            # Overwrite input
+            var_subplots = None
+
+    # # continuous?
+    # from pythonlib.tools.plottools import makeColors
+    # if len(labellist)>50 and isinstance(labellist[0], (int, np.ndarray, float)):
+    #     color_type = "cont"
+    #     # from pythonlib.tools.plottools import map_continuous_var_to_color_range as mcv
+    #     # valmin = min(df[var_color_by])
+    #     # valmax = max(df[var_color_by])
+    #     # def map_continuous_var_to_color_range(vals):
+    #     #     return mcv(vals, valmin, valmax)
+    #     # label_rgbs = map_continuous_var_to_color_range(df[var_color_by])
+    #     map_lev_to_color = None
+    # else:
+    #     color_type = "discr"
+    #     # label_rgbs = None
+    #     pcols = makeColors(len(labellist))
+    #     map_lev_to_color = {}
+    #     for lev, pc in zip(labellist, pcols):
+    #         map_lev_to_color[lev] = pc
+
+    if var_subplots is None:
+        # dummy
+        df["_dummy"] = "dummy"
+        var_subplots = "_dummy"
+
+    # One subplot per othervar
+    levs_other = sort_mixed_type(df[var_subplots].unique().tolist())
+
+    if skip_subplots_lack_mult_colors and color_type=="discr":
+        # Keep only subplots with >1 color and >n datapts total
+        n_min_per_levo = 4
+        levs_other = [levo for levo in levs_other if len(df[df[var_subplots] == levo][var_color_by].unique())>1]
+        levs_other = [levo for levo in levs_other if len(df[df[var_subplots] == levo][var_color_by])>=n_min_per_levo]
+
+    if len(levs_other)==0:
+        return None, None, None, None
+
+    max_n_subplots = 32
+    if len(levs_other)>max_n_subplots:
+        # sort by n datapts, and take the top n
+        if True:
+            tmp = [(levo, sum(df[var_subplots]==levo)) for levo in levs_other]
+            tmp = sorted(tmp, key = lambda x:-x[1])
+            levs_other = [x[0] for x in tmp][:max_n_subplots]
+        else:
+            import random
+            print("[trajgood_plot_colorby_splotby_scalar], too many subplots", len(levs_other), "...")
+            levs_other = sort_mixed_type(random.sample(levs_other, max_n_subplots))
+            print("... pruned to: ", len(levs_other))
+
+    ncols = 4
+    nrows = int(np.ceil(len(levs_other)/ncols))
+    fig, axes = plt.subplots(nrows, ncols, sharex=True, sharey=True,
+                             figsize=(ncols*SIZE, nrows*SIZE))
+    map_levo_to_inds = {}
+    map_levo_to_ax ={}
+    for ax, levo in zip(axes.flatten(), levs_other):
+        ax.set_title(levo)
+        dfthis = df[df[var_subplots]==levo]
+        map_levo_to_inds[levo] = dfthis.index.tolist()
+        map_levo_to_ax[levo] = ax
+
+        if text_to_plot is not None:
+            # df[df[var_subplots]==levo].index.tolist()
+            text_to_plot_this = np.array(text_to_plot)[df[var_subplots]==levo].tolist()
+        else:
+            text_to_plot_this = None
+        xs = np.stack(dfthis["x"])
+        ys = np.stack(dfthis["y"])
+        labels_color = dfthis[var_color_by].values
+        trajgood_plot_colorby_scalar_BASE(xs, ys, labels_color, ax,
+                                          map_lev_to_color, color_type,
+                                          overlay_mean, plot_text_over_examples,
+                                          text_to_plot_this, alpha, SIZE)
+
+    return fig, axes, map_levo_to_ax, map_levo_to_inds
+
+def trajgood_construct_df_from_raw(X, times, labels, labelvars):
+    """
+    Generate df that can pass into all trajgood plotting functions.
+    PARAMS:
+    - X, neural data, shape (chans, trials, times).
+    - times, timestaps, matches X.shape[2]
+    - labels, list of tuples, one for each trial, holding the value of labels for that trial.
+    - labelvars, list of str, the names of the label variables, matching the order within each
+    tuple in labels.
+    RETURNS:
+    - df, standard form for holding trajectories, each row holds; one condition (e.g., shape,location):
+    --- "z", activity (ndims, ntrials, ntimes),
+    --- "z_scalar", scalarized version (ndims, ntrials, 1) in "z_scalar".
+    --- "times", matching ntimes
+    """
+    from pythonlib.tools.pandastools import grouping_append_and_return_inner_items
+
+    assert len(times)==X.shape[2]
+
+    dflab = pd.DataFrame(labels, columns=labelvars)
+
+    # Get indices for each grouping level
+    groupdict = grouping_append_and_return_inner_items(dflab, labelvars, sort_keys=True)
+
+    # Get sliced pa for each grouping level
+    out = []
+    for grp in groupdict:
+        inds = groupdict[grp]
+
+        z = X[:, inds, :]
+        z_scalar = np.mean(z, axis=2, keepdims=True)
+
+        tmp = {}
+        for lev, var in zip(grp, labelvars):
+            tmp[var] = lev
+        tmp["z"] = z
+        tmp["z_scalar"] = z_scalar
+        tmp["times"] = times
+
+        out.append(tmp)
+
+    df = pd.DataFrame(out)
+    return df
+
 
 def trajgood_plot_colorby_splotby(df, var_color_by, var_subplots, dims=(0,1),
                                   traj_or_scalar="traj", mean_over_trials=True,
@@ -1143,29 +1600,31 @@ def trajgood_plot_colorby_splotby(df, var_color_by, var_subplots, dims=(0,1),
                                    time_bin_size=None,
                                    markersize=6, marker="o",
                                    text_plot_pt1=None,
-                                   alpha=0.2):
+                                   alpha=0.5,
+                                   ntrials=5):
     """ [GOOD], to plot trajectories colored by one variable, and split across subplots by another
     variable.
     PARAMS:
-    - df, standard form for holding trajectories, each row holds; one condition:
+    - df, standard form for holding trajectories, each row holds; one condition (e.g., shape,location):
     --- "z", activity (ndims, ntrials, ntimes),
     --- "z_scalar", scalarized version (ndims, ntrials, 1) in "z_scalar".
     --- "times", matching ntimes
-    Other columns are flexible, defnining varialbes.
+    - mean_over_trials, bool, if True, then plots mean, if False, plots ntrials random trials.
+    Other columns are flexible, defnining varialbes. must have var_color_by, var_subplots
     """
     from pythonlib.tools.plottools import makeColors
     from neuralmonkey.population.dimreduction import statespace_plot_single
     from pythonlib.tools.plottools import legend_add_manual
 
     # One color for each level of effect var
-    levs_effect = sorted(df[var_color_by].unique().tolist())
+    levs_effect = sort_mixed_type(df[var_color_by].unique().tolist())
     pcols = makeColors(len(levs_effect))
     map_lev_to_color = {}
     for lev, pc in zip(levs_effect, pcols):
         map_lev_to_color[lev] = pc
 
     # One subplot per othervar
-    levs_other = sorted(df[var_subplots].unique().tolist())
+    levs_other = sort_mixed_type(df[var_subplots].unique().tolist())
     ncols = 3
     nrows = int(np.ceil(len(levs_other)/ncols))
     fig, axes = plt.subplots(nrows, ncols, sharex=True, sharey=True, figsize=(ncols*3.5, nrows*3.5))
@@ -1183,23 +1642,211 @@ def trajgood_plot_colorby_splotby(df, var_color_by, var_subplots, dims=(0,1),
                 # times_to_mark_markers = ["d"]
                 # time_bin_size = 0.05
 
+            times = row["times"]
+            color_for_trajectory = map_lev_to_color[row[var_color_by]]
+
             if mean_over_trials:
                 x = X[dims, :] # (dims, trials, times)
                 assert len(x.shape)==3
                 x = np.mean(x, axis=1)
-            else:
-                x = X[dims, :] # (dims, trials, times)
-                assert False, "iterate over trials and plot each one."
 
-            times = row["times"]
-            color_for_trajectory = map_lev_to_color[row[var_color_by]]
-            statespace_plot_single(x, ax, color_for_trajectory,
-                                   times, times_to_mark, times_to_mark_markers,
-                                   time_bin_size = time_bin_size,
-                                   markersize=markersize, marker=marker,
-                                   text_plot_pt1=text_plot_pt1, alpha=alpha)
+                statespace_plot_single(x, ax, color_for_trajectory,
+                                       times, times_to_mark, times_to_mark_markers,
+                                       time_bin_size = time_bin_size,
+                                       markersize=markersize, marker=marker,
+                                       text_plot_pt1=text_plot_pt1, alpha=alpha)
+            else:
+                # Loop over all trials
+                # Pick subset of trials
+                n = X.shape[1]
+                if n>ntrials:
+                    import random
+                    trials_get = random.sample(range(n), ntrials)
+                else:
+                    trials_get = range(n)
+
+                for tr in trials_get:
+                    x = X[dims, tr, :] # (dims, times)
+                    statespace_plot_single(x, ax, color_for_trajectory,
+                                           times, times_to_mark, times_to_mark_markers,
+                                           time_bin_size = time_bin_size,
+                                           markersize=markersize, marker=marker,
+                                           text_plot_pt1=text_plot_pt1, alpha=alpha)
 
     # Add legend to the last axis
     legend_add_manual(ax, map_lev_to_color.keys(), map_lev_to_color.values(), 0.2)
 
     return fig, axes
+
+def dimredgood_nonlinear_embed_data(X, METHOD="umap", n_components=2, tsne_perp="auto", umap_n_neighbors="auto"):
+    """
+    Good wrapper, holding all methods for dimensionality reduction of X, esp nonlinear methods like tsne and
+    umap, with focus not on leanring parametric space, but instead on returning embedding
+    PARAMS:
+    - X, already-preprocessed data, (nsamps, ndims)
+    RETURNS:
+        - Xredu, (nsamp, n_components)
+    """
+    nsamp = X.shape[0]
+    if METHOD == "tsne":
+        from sklearn.manifold import TSNE
+        if tsne_perp =="auto":
+            perp = int(max([10, min([50, 0.1*nsamp])])) # heuristic
+        else:
+            perp = tsne_perp
+        print("TSNE, Using this perp:", perp, ", nsamp =", nsamp)
+        Xredu = TSNE(n_components=n_components, perplexity=perp, learning_rate="auto", init="pca").fit_transform(X)
+    elif METHOD == "umap":
+        import umap
+        if umap_n_neighbors =="auto":
+            umap_n_neighbors = int(max([10, min([30, 0.05*nsamp])])) # heuristic
+        print("UMAP, Using this n_neighbors:", umap_n_neighbors, ", nsamp =", nsamp)
+        min_dist = 0.1
+        reducer = umap.UMAP(n_components=n_components, n_neighbors=umap_n_neighbors, min_dist=min_dist)
+        # mapper = reducer.fit(X)
+        Xredu = reducer.fit_transform(X)
+    else:
+        assert False
+
+    return Xredu
+
+
+def dimredgood_pca(X, n_components=None,
+                   how_decide_npcs_keep = "cumvar",
+                   pca_frac_var_keep=0.85, pca_frac_min_keep=0.01,
+                   plot_pca_explained_var_path=None, plot_loadings_path=None,
+                   plot_loadings_feature_labels=None,
+                   method="svd", npcs_keep_force=None):
+    """
+    Holds All things related to applying PCA, and plots.
+    :param X: data (ndat, nfeats)
+    :param n_components:
+    :param pca_frac_var_keep:
+    :param plot_pca_explained_var_path:
+    :param plot_loadings_path:
+    :param plot_loadings_feature_labels:
+    :param method:
+        using "svd" so that it does not recenter.
+    :param npcs_keep_force: int (take this many of the top pcs) or None (use auto method, one of the abbove
+    :return:
+    """
+
+    assert len(X.shape)==2
+
+    if method=="sklearn":
+        # Recenters (but not rescales)
+        from sklearn.decomposition import PCA
+        pca = PCA(n_components=n_components)
+        Xpca = pca.fit_transform(X) # (ntrials, nchans) --> (ntrials, ndims)
+        explained_variance_ratio_ = pca.explained_variance_ratio_
+        components_ = pca.components_
+    elif method=="svd":
+        # No recenter or rescale. Otehrwise owrks identically to above (tested).
+        # Copied from sklearn.decomposion._pca._fit()
+
+        if False:
+            # If do this, thens hould be identical to sklearn (tested).
+            X = X.copy()
+            X -= np.mean(X, axis=0)
+
+        from sklearn.utils.extmath import svd_flip
+        U, S, Vt = np.linalg.svd(X, full_matrices=False)
+
+        # flip eigenvectors' sign to enforce deterministic output
+        U, Vt = svd_flip(U, Vt)
+
+        components_ = Vt
+
+        # Get variance explained by singular values
+        explained_variance_ = (S**2) / (X.shape[0] - 1)
+        explained_variance_ratio_ = explained_variance_ / explained_variance_.sum()
+        # singular_values_ = S.copy()  # Store the singular values.
+
+        Xpca = np.dot(X, components_.T)
+
+        pca = None
+    else:
+        assert False
+
+    # DEcide how many dimensions to keep
+    if npcs_keep_force is None:
+        if how_decide_npcs_keep=="cumvar":
+            # 1. cumvar
+            cumvar = np.cumsum(explained_variance_ratio_)
+            npcs_keep = np.argwhere(cumvar >= pca_frac_var_keep)[0].item()+1 # the num PCs to take such that cumsum is just above thresh
+        elif how_decide_npcs_keep=="minvar":
+            # 2. cutoff dims that expalin less than this frac variance
+            if np.all(explained_variance_ratio_ >= pca_frac_min_keep):
+                npcs_keep = len(explained_variance_ratio_)
+            else:
+                npcs_keep = np.argwhere(explained_variance_ratio_ < pca_frac_min_keep)[0].item()
+        else:
+            print(how_decide_npcs_keep)
+            assert False
+    else:
+        # Use the forced N.
+        npcs_keep = min([len(explained_variance_ratio_), npcs_keep_force])
+
+    Xpcakeep = Xpca[:, :npcs_keep]
+
+    if plot_pca_explained_var_path is not None:
+        fig, axes = plt.subplots(1,2, figsize=(8,3))
+
+        ax = axes.flatten()[0]
+        ax.plot(explained_variance_ratio_)
+        if how_decide_npcs_keep=="minvar":
+            ax.axhline(pca_frac_min_keep, color="g", label="pca_frac_min_keep")
+        ax.axvline(npcs_keep, color="r", label="npcs_keep")
+        ax.set_title("frac var, each dim")
+        ax.legend()
+
+        ax = axes.flatten()[1]
+        ax.plot(np.cumsum(explained_variance_ratio_))
+        if how_decide_npcs_keep=="cumvar":
+            ax.axhline(pca_frac_var_keep, color="g", label="pca_frac_var_keep")
+        ax.axvline(npcs_keep, color="r", label="npcs_keep")
+        ax.set_title("frac var, each dim")
+        ax.set_title("cumulative var, each dim")
+        ax.legend()
+
+        savefig(fig, plot_pca_explained_var_path)
+
+    if plot_loadings_path is not None:
+        from pythonlib.tools.snstools import heatmap_mat
+        fig, ax = plt.subplots(figsize=(20, 15))
+        heatmap_mat(components_, ax, diverge=True, annotate_heatmap=False, labels_col=plot_loadings_feature_labels) # (n_components, n_features)
+        ax.set_ylabel("pcs")
+        ax.set_xlabel("features (chans x twind)")
+        savefig(fig, plot_loadings_path)
+
+    return Xpcakeep, Xpca, pca
+
+
+def cleanup_remove_labels_ignore(xs, ys, labels_color, labels_subplot):
+    """
+    Remove trials that have labels those in LABELS_IGNORE, either in
+    labels_color or labels_subplot.
+    PARAMS:
+    - xs, (n,) array
+    - ys, (n,) array
+    - labels_color, list, len trials.
+    - labels_subplot, list, len trials.
+    RETURNS:
+    - xs, ys, labels_color, labels_subplot, pruned copies.
+    """
+
+    inds_keep_1 = [i for i, val in enumerate(labels_color) if val not in LABELS_IGNORE]
+
+    if labels_subplot is not None:
+        inds_keep_2 = [i for i, val in enumerate(labels_subplot) if val not in LABELS_IGNORE]
+    else:
+        inds_keep_2 = []
+
+    inds_keep = sorted(set(inds_keep_1 + inds_keep_2))
+    xs = xs[inds_keep]
+    ys = ys[inds_keep]
+    labels_color = [labels_color[i] for i in inds_keep]
+    if labels_subplot is not None:
+        labels_subplot = [labels_subplot[i] for i in inds_keep]
+
+    return xs, ys, labels_color, labels_subplot

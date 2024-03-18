@@ -42,7 +42,7 @@ from neuralmonkey.classes.snippets import load_and_concat_mult_snippets
 #     # trial level, new
 #     SAVEDIR = "/gorilla1/analyses/recordings/main/anova/bytrial"
 which_level="trial"    
-SP, SAVEDIR_ALL = load_and_concat_mult_snippets(MS, which_level=which_level)
+SP, SAVEDIR_ALL = load_and_concat_mult_snippets(MS, which_level=which_level, events_keep=events_keep)
 
 
 assert False, "replace with RSA code"
@@ -161,8 +161,8 @@ if which_level=="trial":
         trialcodesthis = SP.DfScalar["trialcode"].tolist()
 
         # Get the sliced dataframe
-        dfslice = slice_by_row_label(Dall.Dat, "trialcode", trialcodesthis,
-            reset_index=True, assert_exactly_one_each=True)
+        dfslice = slice_by_row_label(Dall.Dat, "trialcode", trialcodesthis, reset_index=True,
+                                     assert_exactly_one_each=True)
 
         # Assign the values to SP
         print("Updating this column of SP.DfScalar with Dataset beh:")

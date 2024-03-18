@@ -963,10 +963,11 @@ def plotwrapper_contrasts(DF_VAR, var_contrast, grouping, _PARAMS, PRINT=False,
         print(levels)
         grouping_print_n_samples(DF_VAR_AGG, ["exptgrp", "META_trial_or_block"])
 
-    DF_VAR_AGG, _ = extract_with_levels_of_conjunction_vars(DF_VAR_AGG, var_contrast, ["exptgrp"], levels, n_min, 
-        lenient_allow_data_if_has_n_levels=2, PRINT=PRINT)
-    DF_VAR_AGG_EXPT, _ = extract_with_levels_of_conjunction_vars(DF_VAR_AGG_EXPT, var_contrast, ["exptgrp"], levels, n_min, 
-        lenient_allow_data_if_has_n_levels=2, PRINT=PRINT)
+    DF_VAR_AGG, _ = extract_with_levels_of_conjunction_vars(DF_VAR_AGG, var_contrast, ["exptgrp"], levels, n_min,
+                                                            PRINT=PRINT, lenient_allow_data_if_has_n_levels=2)
+    DF_VAR_AGG_EXPT, _ = extract_with_levels_of_conjunction_vars(DF_VAR_AGG_EXPT, var_contrast, ["exptgrp"], levels,
+                                                                 n_min, PRINT=PRINT,
+                                                                 lenient_allow_data_if_has_n_levels=2)
 
     ## Plots
     eventsemantic_ordered = _plot_get_eventsemantic_ordered(DF_VAR)

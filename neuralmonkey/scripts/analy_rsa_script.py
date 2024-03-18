@@ -18,10 +18,8 @@ from neuralmonkey.analyses.state_space_good import snippets_extract_popanals_spl
 import pandas as pd
 from neuralmonkey.analyses.rsa import rsagood_score_wrapper, rsagood_pa_effectsize_plot_summary, rsagood_pa_vs_theor_samecontextctrl, rsagood_pa_vs_theor_plot_results, rsagood_pa_vs_theor_plot_pairwise_distmats, rsagood_score_vs_shuff_wrapper
 from neuralmonkey.classes.population_mult import dfpa_slice_specific_windows, dfpa_group_and_split
+from neuralmonkey.classes.population_mult import dfallpa_extraction_load_wrapper_from_MS
 
-
-
-assert False, "repalce with dfallpa_extraction_load_wrapper"
 
 # list_time_windows = [
 #     (-0.6, -0.4),
@@ -36,13 +34,13 @@ assert False, "repalce with dfallpa_extraction_load_wrapper"
 #     (0.3, 0.5),
 #     (0.4, 0.6),
 #     ]
-list_time_windows = [
-    (-0.5, -0.3),
-    (-0.3, -0.1),
-    (-0.1, 0.1),
-    (0.1, 0.3),
-    (0.3, 0.5),
-    ]
+# list_time_windows = [
+#     (-0.5, -0.3),
+#     (-0.3, -0.1),
+#     (-0.1, 0.1),
+#     (0.1, 0.3),
+#     (0.3, 0.5),
+#     ]
 # list_time_windows = [
 #     (-0.5, -0.25),
 #     (-0.25, 0.),
@@ -54,6 +52,7 @@ list_time_windows = [
 version_distance = "euclidian_unbiased"
 HACK_RENAME_SHAPES = True
 SPIKES_VERSION = "tdt"
+combine_into_larger_areas = False
 
 def rsa_pipeline(MS, question, q_params):
     """ Computes and plots all for this question
@@ -62,55 +61,66 @@ def rsa_pipeline(MS, question, q_params):
     # Collect PA across all wls.
     outs = []
     for wl in q_params["list_which_level"]:
-        # Load Snippets
-        SP, _ = load_and_concat_mult_snippets(MS, which_level = wl)
 
-        # Clean up SP and extract features
-        D, list_features_extraction = SP.datasetbeh_preprocess_clean_by_expt(
-            ANALY_VER=q_params["ANALY_VER"], vars_extract_append=q_params["effect_vars"])
+        slice_agg_slices = q_params["slice_agg_slices"]
+        slice_agg_vars_to_split = q_params["slice_agg_vars_to_split"]
+        list_time_windows = q_params["list_time_windows"]
+        dfallpa = dfallpa_extraction_load_wrapper_from_MS(MS, question, list_time_windows, which_level=wl,
+                                                          events_keep=q_params["events_keep"],
+                                                          combine_into_larger_areas=combine_into_larger_areas,
+                                                          exclude_bad_areas=False, slice_agg_slices=None,
+                                                          slice_agg_vars_to_split=None,
+                                                          HACK_RENAME_SHAPES=HACK_RENAME_SHAPES)
 
-        assert "epoch" in list_features_extraction, "sanity check"
-
-        # Prune to just the events of interest
-        # if q_params["events_keep"] is not None:
-        #     events_in = SP.DfScalar["event"].unique().tolist()
-        #     SP.DfScalar = SP.DfScalar[SP.DfScalar["event"].isin(q_params["events_keep"])].reset_index(drop=True)
-        #     if len(SP.DfScalar)==0:
-        #         print(q_params["events_keep"])
-        #         print(events_in)
-        #         assert False
-
-        # Prune to just specific var:level combinations of interest
-        if q_params["dict_vars_levels_prune"] is not None:
-            print("Pruning data from SP.DfScalar (dict_vars_levels_prune is not None):")
-            for var, levs in q_params["dict_vars_levels_prune"].items():
-                # For example:
-                # var = "epoch"
-                # levs = ["oneshp_varyloc"]
-
-                print(var, ", these levels keep: ", levs)
-                SP.DfScalar = SP.DfScalar[SP.DfScalar[var].isin(levs)].reset_index(drop=True)
-                if len(SP.DfScalar)==0:
-                    print(q_params["events_keep"])
-                    print(events_in)
-                    assert False
-
-        # Extract all popanals
-        dfallpa = snippets_extract_popanals_split_bregion_twind(SP, list_time_windows,
-                                                        list_features_extraction,
-                                                        HACK_RENAME_SHAPES=HACK_RENAME_SHAPES,
-                                                        events_keep=q_params["events_keep"])
-
-        assert "epoch" in list_features_extraction, "sanity check"
-        list_pa = dfallpa["pa"].tolist()
-        for pa in list_pa:
-            for var in list_features_extraction:
-                if var not in pa.Xlabels["trials"].columns:
-                    print(q_params)
-                    print(pa.Xlabels["trials"])
-                    print(pa.Xlabels["trials"].columns)
-                    print(list_features_extraction)
-                    assert False
+        # # Load Snippets
+        # SP, _ = load_and_concat_mult_snippets(MS, which_level = wl)
+        #
+        # # Clean up SP and extract features
+        # D, list_features_extraction = SP.datasetbeh_preprocess_clean_by_expt(
+        #     ANALY_VER=q_params["ANALY_VER"], vars_extract_append=q_params["effect_vars"])
+        #
+        # assert "epoch" in list_features_extraction, "sanity check"
+        #
+        # # Prune to just the events of interest
+        # # if q_params["events_keep"] is not None:
+        # #     events_in = SP.DfScalar["event"].unique().tolist()
+        # #     SP.DfScalar = SP.DfScalar[SP.DfScalar["event"].isin(q_params["events_keep"])].reset_index(drop=True)
+        # #     if len(SP.DfScalar)==0:
+        # #         print(q_params["events_keep"])
+        # #         print(events_in)
+        # #         assert False
+        #
+        # # Prune to just specific var:level combinations of interest
+        # if q_params["dict_vars_levels_prune"] is not None:
+        #     print("Pruning data from SP.DfScalar (dict_vars_levels_prune is not None):")
+        #     for var, levs in q_params["dict_vars_levels_prune"].items():
+        #         # For example:
+        #         # var = "epoch"
+        #         # levs = ["oneshp_varyloc"]
+        #
+        #         print(var, ", these levels keep: ", levs)
+        #         SP.DfScalar = SP.DfScalar[SP.DfScalar[var].isin(levs)].reset_index(drop=True)
+        #         if len(SP.DfScalar)==0:
+        #             print(q_params["events_keep"])
+        #             print(events_in)
+        #             assert False
+        #
+        # # Extract all popanals
+        # dfallpa = snippets_extract_popanals_split_bregion_twind(SP, list_time_windows,
+        #                                                 list_features_extraction,
+        #                                                 HACK_RENAME_SHAPES=HACK_RENAME_SHAPES,
+        #                                                 events_keep=q_params["events_keep"])
+        #
+        # assert "epoch" in list_features_extraction, "sanity check"
+        # list_pa = dfallpa["pa"].tolist()
+        # for pa in list_pa:
+        #     for var in list_features_extraction:
+        #         if var not in pa.Xlabels["trials"].columns:
+        #             print(q_params)
+        #             print(pa.Xlabels["trials"])
+        #             print(pa.Xlabels["trials"].columns)
+        #             print(list_features_extraction)
+        #             assert False
 
         # Collect
         outs.append(dfallpa)
@@ -119,7 +129,7 @@ def rsa_pipeline(MS, question, q_params):
     DFallpa = pd.concat(outs).reset_index(drop=True)
 
     # Clear memory
-    del SP
+    # del SP
 
     # Optionally, slice and agg.
     if q_params["slice_agg_slices"] is not None:
@@ -174,6 +184,23 @@ def rsa_pipeline(MS, question, q_params):
                 print(list_features_extraction)
                 assert False
 
+
+    ####### Clean up PA
+    # Normalize, etc
+    # Clean up DFallpa
+    from neuralmonkey.analyses.rsa import preprocess_rsa_prepare_popanal_wrapper, popanal_preprocess_scalar_normalization
+
+    list_pa =[]
+    # list_panorm = []
+    for pa in DFallpa["pa"].tolist():
+        pa, res_check_tasksets, res_check_effectvars = preprocess_rsa_prepare_popanal_wrapper(pa, **q_params)
+        # panorm, _, _, _, _, _ = popanal_preprocess_scalar_normalization(pa, q_params["effect_vars"],
+        #                                                                               subtract_mean_each_level_of_var)
+        list_pa.append(pa)
+        # list_panorm.append(panorm)
+    DFallpa["pa"] = list_pa
+    # DFallpa["pa_norm"] = list_panorm
+
     for subtract_mean_each_level_of_var in list_subtract_mean_each_level_of_var:
         for vars_test_invariance_over_dict in list_vars_test_invariance_over_dict:
 
@@ -185,6 +212,8 @@ def rsa_pipeline(MS, question, q_params):
                                       subtract_mean_each_level_of_var,
                                       vars_test_invariance_over_dict,
                                       DO_AGG_TRIALS=DO_AGG_TRIALS, PLOT_INDIV=PLOT_INDIV)
+
+            assert len(DFRES_THEOR)>0, "No idea..."
 
             ########################### RSA PLOTS
             # DFRES_THEOR, DFallpa, Params, savedir = rsagood_pa_vs_theor_wrapper_loadresults(animal, date, question, version_distance, DO_AGG_TRIALS, subtract_mean_each_level_of_var)
@@ -205,7 +234,7 @@ def rsa_pipeline(MS, question, q_params):
             variables_plot = question_params["plot_pairwise_distmats_variables"]
             list_wl_ev_tw_plot = question_params["plot_pairwise_distmats_twinds"]
             vars_test_invariance_over_dict_THIS = None # becuase here is looking at pairwise distmats, so would fail
-            rsagood_pa_vs_theor_plot_pairwise_distmats(DFallpa, Params, savedir, variables_plot,
+            rsagood_pa_vs_theor_plot_pairwise_distmats(DFallpa, Params["version_distance"], savedir, variables_plot,
                                                        list_wl_ev_tw_plot, vars_test_invariance_over_dict_THIS,
                                                        DO_AGG_TRIALS_PLOT=True)
 
@@ -228,10 +257,15 @@ if __name__ == "__main__":
 
     animal = sys.argv[1]
     date = int(sys.argv[2])
+    if len(sys.argv)>3:
+        question_do = sys.argv[3]
+    else:
+        question_do = None
+
     MS = load_mult_session_helper(date, animal, spikes_version=SPIKES_VERSION)
     MULTI = False
 
-    DictParamsEachQuestion = rsagood_questions_dict(animal, date)
+    DictParamsEachQuestion = rsagood_questions_dict(animal, date, question=question_do)
 
     questions = [q for q in DictParamsEachQuestion.keys()]
     q_params_s = [qp for qp in DictParamsEachQuestion.values()]
@@ -244,6 +278,5 @@ if __name__ == "__main__":
             pool.starmap(rsa_pipeline, zip(MSs, questions, q_params_s))
     else:
         for question, q_params in DictParamsEachQuestion.items():
-            rsa_pipeline(MS, question, q_params)
-
-
+            if (question_do is None) or (question==question_do):
+                rsa_pipeline(MS, question, q_params)

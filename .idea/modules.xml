@@ -3,6 +3,7 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/.idea/neuralmonkey.iml" filepath="$PROJECT_DIR$/.idea/neuralmonkey.iml" />
+      <module fileurl="file://$USER_HOME$/code/drawmonkey/notebooks_datasets/.idea/notebooks_datasets.iml" filepath="$USER_HOME$/code/drawmonkey/notebooks_datasets/.idea/notebooks_datasets.iml" />
       <module fileurl="file://$PROJECT_DIR$/../pythonlib/.idea/pythonlib.iml" filepath="$PROJECT_DIR$/../pythonlib/.idea/pythonlib.iml" />
     </modules>
   </component>
