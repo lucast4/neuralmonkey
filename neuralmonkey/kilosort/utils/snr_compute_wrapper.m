@@ -17,7 +17,7 @@ function [snr_final, snr_new, peak_to_trough, waveforms_running_std, snr_old, pe
             % no ned to remove outlsier
         case 'mean'
             % rmeov outlseir
-            [waveforms, ~] = waveforms_remove_outliers(waveforms);
+            [waveforms] = waveforms_remove_outliers(waveforms);
         otherwise
             assert(false);
     end 
