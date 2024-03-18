@@ -29,11 +29,12 @@ DEBUG = False
 # balance_same_levels_across_ovar = True # Then prunes levs of var so that all levels of ovar have same levels of var.
 
 # -- Generic
-OVERWRITE_n_min = 3 # n min samp per level-otherlev conjunction
+OVERWRITE_n_min = 5 # n min samp per level-otherlev conjunction
 OVERWRITE_lenient_n = 2
 balance_same_levels_across_ovar = False # Then prunes levs of var so that all levels of ovar have same levels of var.
 
 SPIKES_VERSION = "tdt" # since Snippets not yet extracted for ks
+prune_low_fr_sites = True
 
 def get_events_keep(which_level):
     if which_level=="trial":
@@ -55,7 +56,7 @@ if __name__=="__main__":
     question = sys.argv[3]
 
     ############# MODIFY THESE PARAMS
-    if "CHAR" in question:
+    if "CHAR_BASE_trial" in question:
         # Often not enough data for each shape x loc for single prims...
         # LIST_VAR = [
         #     "seqc_0_shape",
@@ -63,19 +64,57 @@ if __name__=="__main__":
         # LIST_VARS_OTHERS = [
         #     ["task_kind"],
         # ]
+
+        # - 3/12/24 - Parse (vlPFC?)
         LIST_VAR = [
+            "seqc_1_shape",
+            "seqc_1_shape",
+            "taskconfig_shp_SHSEM",
             "taskconfig_shp_SHSEM",
         ]
         LIST_VARS_OTHERS = [
+            ["character", "task_kind"], # control for image.
+            ["seqc_0_shape", "seqc_0_loc", "task_kind"],
+            ["taskconfig_loc", "seqc_0_shape", "seqc_0_loc", "task_kind"], # control for first action.
             ["character"],
         ]
     else:
+        # # - PIG (trial, decode first stroke)
+        # LIST_VAR = [
+        #     "seqc_0_shape",
+        # ]
+        # LIST_VARS_OTHERS = [
+        #     ["task_kind", "seqc_0_loc"],
+        # ]
+
+        # - PIG decode online context [3/12/24]
         LIST_VAR = [
-            "seqc_0_shape",
+            "CTXT_loc_next",
+            "CTXT_shape_next",
+            "task_kind",
+            # "stroke_index_fromlast_tskstks",
+            "stroke_index",
+            "FEAT_num_strokes_task",
+            "shape",
         ]
+        # LIST_VARS_OTHERS = [
+        #     ["task_kind", "CTXT_loc_prev", "shape", "gridloc", "CTXT_shape_next"],
+        #     ["task_kind", "CTXT_loc_prev", "shape", "gridloc", "CTXT_loc_next"],
+        #     ["shape", "gridloc", "CTXT_loc_prev"],
+        #     ["task_kind", "FEAT_num_strokes_task", "CTXT_loc_prev", "shape", "gridloc"],
+        #     ["task_kind", "FEAT_num_strokes_task", "CTXT_loc_prev", "shape", "gridloc"],
+        #     ["CTXT_loc_prev", "shape", "gridloc"],
+        #     ]
+        # More restrictive
         LIST_VARS_OTHERS = [
-            ["task_kind", "seqc_0_loc"],
-        ]
+            ["task_kind", "CTXT_shape_prev", "CTXT_loc_prev", "shape", "gridloc", "CTXT_shape_next"],
+            ["task_kind", "CTXT_shape_prev", "CTXT_loc_prev", "shape", "gridloc", "CTXT_loc_next"],
+            ["shape", "gridloc", "CTXT_shape_prev", "CTXT_loc_prev"],
+            # ["task_kind", "FEAT_num_strokes_task", "CTXT_shape_prev", "CTXT_loc_prev", "shape", "gridloc"],
+            ["task_kind", "FEAT_num_strokes_task", "CTXT_shape_prev", "CTXT_loc_prev", "shape", "gridloc"],
+            ["CTXT_shape_prev", "CTXT_loc_prev", "shape", "gridloc"],
+            ["task_kind", "FEAT_num_strokes_task", "stroke_index_fromlast_tskstks"],
+            ]
 
     ############# USUALYL HARD-CODED PARAMS
     # Load q_params
@@ -100,8 +139,12 @@ if __name__=="__main__":
 
     ################## LOAD DATA
     MS = load_mult_session_helper(date, animal, spikes_version=SPIKES_VERSION)
-    SP, SAVEDIR_ALL = load_and_concat_mult_snippets(MS, which_level = which_level,
+    SP, SAVEDIR_ALL = load_and_concat_mult_snippets(MS, which_level = which_level, events_keep=EVENTS_KEEP,
         DEBUG=DEBUG)
+
+    # Prune low FR?
+    if prune_low_fr_sites:
+        SP.prune_low_firing_rate_sites()
 
     # Clean up SP and extract features
     D, list_features_extraction = SP.datasetbeh_preprocess_clean_by_expt(
@@ -175,9 +218,10 @@ if __name__=="__main__":
                                                                                 OVERWRITE_n_min=OVERWRITE_n_min,
                                                                                 OVERWRITE_lenient_n=OVERWRITE_lenient_n,
                                                                                 balance_same_levels_across_ovar=balance_same_levels_across_ovar)
-                    savefig(fig, path)
-                    print("Saved rasters to: ", path)
-                    plt.close("all")
+                    if fig is not None:
+                        savefig(fig, path)
+                        print("Saved rasters to: ", path)
+                        plt.close("all")
                 else:
                     print("Skipped rasters (already exists): ", path)
 
