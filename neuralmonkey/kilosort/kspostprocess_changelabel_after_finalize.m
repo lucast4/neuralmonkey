@@ -110,7 +110,7 @@ map_indnew_to_indold = struct_inds_changed.(change_kind);
 
 %% Given a list of indices (new) collect the original indices
 
-SANITY = false
+SANITY = false;
 
 if strcmp(change_kind, 'mua_noise')
     assert_label_old = 'noise';
@@ -134,6 +134,7 @@ for i=1:length(list_idxs_new)
     
     % Chek that this index doesnt already exist
     if any(ismember(cellfun(@(x)x{1}, MANUALCHANGES_TO_LABEL), idx_old))
+        disp(i);
         disp(idx_new);
         disp(idx_old);
         disp(cellfun(@(x)x{1}, MANUALCHANGES_TO_LABEL));
