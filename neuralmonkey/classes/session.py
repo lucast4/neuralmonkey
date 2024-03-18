@@ -3617,8 +3617,7 @@ class Session(object):
         #         combine_into_larger_areas=True, force_tdt_sites=force_tdt_sites)
 
         sites_or_clusts = mapper[region]
-
-        if self._DEBUG_PRUNE_SITES:
+        if self._DEBUG_PRUNE_SITES and len(sites_or_clusts)>0:
             sites_or_clusts = [sites_or_clusts[0]]
 
         return sites_or_clusts
@@ -4671,7 +4670,6 @@ class Session(object):
         - self.DatasetBeh, and returns
         """
         from pythonlib.dataset.dataset import Dataset
-        from pythonlib.dataset.dataset_preprocess.general import preprocessDat
         from pythonlib.dataset.dataset import load_dataset_notdaily_helper, load_dataset_daily_helper
 
         if not FORCE_AFTER_MINIMAL:

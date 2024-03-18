@@ -121,16 +121,24 @@ def concat_mult_snippets(list_sp, MS, SITES_COMBINE_METHODS = "intersect",
     # SPall.DS = None
     SPall._CONCATTED_SNIPPETS = True
     SPall.SNmult = MS
+
+    # Deleted DS, and regenrate, so that tbinned variables are using entire Datast
+    # New version, where you don't load old snippets.
     if True:
+        for sp in list_sp:
+            sp.DS = None
+        SPall.DS = None
+    else:
         # do concat once here
+        # This has problems if do computation in D, should then extract DS from D
         from pythonlib.dataset.dataset_strokes import concat_dataset_strokes
         list_ds = [sp.DS for sp in list_sp]
         DS = concat_dataset_strokes(list_ds)
         SPall.DS = DS
-    else:
-        # Old, but this means needs to concat each time read it.
-        SPall.DSmult = [sp.DS for sp in list_sp]
-    
+    # else:
+    #     # Old, but this means needs to concat each time read it.
+    #     SPall.DSmult = [sp.DS for sp in list_sp]
+
     # ind_sess = 0
     # trial_within = 0 
     # ms.index_convert((ind_sess, trial_within))
@@ -149,7 +157,6 @@ def concat_mult_snippets(list_sp, MS, SITES_COMBINE_METHODS = "intersect",
                 print(cols_this)
                 assert False, "must be identical. you should reextract raw"
         cols_prev = cols_this
-
 
     # 1) check they are ideitncal across sp
     list_attr_identical = ["Params", "ParamsGlobals"]
@@ -7097,15 +7104,82 @@ class Snippets(object):
                 # Around 5ms if do _check_if_got_all_trialcodes, and 200ns if not
                 return self.Datasetbeh
             else:
+                print("Snippets -- extracting beh dataset for first time! (concatting and tokens preprocess)")
+                # Do concat and preprocessing, one time.
                 from pythonlib.dataset.analy_dlist import concatDatasets
                 list_sn = self._session_extract_all()
                 Dall = concatDatasets([sn.Datasetbeh for sn in list_sn])
+
+                # Preprocess dataset
+                if False:
+                    # No need, since these datasets have each already been preprocessed...
+                    Dall._cleanup_preprocess_each_time_load_dataset()
+
+                # Preprocess to get all toekns-related variables, etc.
+                Dall.tokens_preprocess_wrapper_good()
+
                 self.Datasetbeh = Dall
                 return self.Datasetbeh
         elif kind=="datstrokes":
             # each row is stroke
             # if self.DS is not None:
-            return self.DS
+
+            # 3/17/24 - New version, insetaed of using cached, regnerate it. This should be same as what is in DfScalar, since
+            # I am not saving and loading old SP anymore.
+
+            if self.Params["which_level"]=="trial":
+                # Then no DS is possible.
+                return None
+            else:
+                if self.DS is None:
+                    print("GENERATING DS FOR THE FIRST TIME...")
+
+                    # Then generate for the first time
+                    D = self.datasetbeh_extract_dataset()
+                    trialcodes = self.DfScalar["trialcode"].unique().tolist()
+
+                    if self.Params["which_level"] in ["stroke", "stroke_off"]:
+                        # Just get DS without any pruning.
+                        DS = datasetstrokes_extract(D, "all_no_clean")
+
+                    elif self.Params["which_level"] in ["substroke", "substroke_off"]:
+                        # Instead of running pipeline, run previously adn sthen load here. This
+                        # important -- combines across sessions for computing, which reduces noise a
+                        # lot.
+                        from pythonlib.dataset.substrokes import load_presaved_using_pipeline
+                        DS, _ = load_presaved_using_pipeline(D)
+
+                    else:
+                        print(self.Params["which_level"])
+                        assert False
+
+                    # Filter the trials
+                    DS.dataset_prune_by_trialcodes(trialcodes)
+
+                    # Sanity check that all rows in SP match the row in DS (tc, si) --> event_time
+                    dftmp = self.DfScalar.groupby(["trialcode", "stroke_index"])["event_time"].mean().reset_index()
+
+                    if self.Params["which_level"] in ["stroke", "substroke"]:
+                        col = "time_onset"
+                    elif self.Params["which_level"] in ["stroke_off", "substroke_off"]:
+                        col = "time_offset"
+                    else:
+                        assert False
+                    onsets_ds = DS.dataset_slice_by_trialcode_strokeindex(dftmp.loc[:, "trialcode"].tolist(), dftmp.loc[:, "stroke_index"].tolist())[col]
+
+                    times1 = np.array(dftmp["event_time"])
+                    times2 = np.array(onsets_ds)
+
+                    from pythonlib.tools.nptools import isnear
+                    if not isnear(times1, times2):
+                        print(np.argwhere((times2 - times1)>0.01))
+                        assert False, "times in SP and DS do not match! explanations: (i) you loaded old SP. do not do that. (ii) weirndess due to substrokes?"
+
+                    self.DS = DS
+                    return self.DS
+                else:
+                    return self.DS
+
             # else:
             #     from pythonlib.dataset.dataset_strokes import concat_dataset_strokes
             #     list_ds = [ds for ds in self.DSmult]
@@ -7134,8 +7208,10 @@ class Snippets(object):
         # get back all the outliers, since they just a single removed outlier (chan x trial) will throw out the entire trial.
         print("Appending outliers...")
         self.datamod_append_outliers()
+
         print("Appending index datrapts...")
         self.datamod_append_unique_indexdatapt()
+
         if ANALY_VER!="MINIMAL":
             self.datamod_append_unique_indexdatapt()
 
@@ -7176,6 +7252,37 @@ class Snippets(object):
             self.DfScalar = DS.dataset_slice_by_trialcode_strokeindex(tcs, sis, df=self.DfScalar,
                                                                           assert_exactly_one_each=False)
             print("... End len: ", len(self.DfScalar))
+
+        ###################### EXTRACT FINAL DS THAT PLACE INTO SP, which will be used to extract featues. THis must run
+        # (New, since I am now extracting SP anew, instead of loading previously saved).
+        # after all preprocessing of D is done.
+        self.Datasetbeh = D # Replace
+        # Generate DS newly, from D
+        self.DS = None
+        DS = self.datasetbeh_extract_dataset("datstrokes")
+
+        ################ CHUNKS, STROKES (e.g., singlerule, AnBm)
+        if params["datasetstrokes_extract_chunks_variables"]:
+            # First extract within Dataset, then to DS.
+            # (note: DS.Dataset and D are identical objects).
+
+            if False:
+                # First, place preprocessed D (from above) into DS.
+                DS.dataset_replace_dataset(D)
+                # Then prune DS to match D.
+                DS.dataset_prune_self_to_match_dataset()
+
+            # Second, extract chunk variables from Dataset
+            for i in range(len(DS.Dataset.Dat)):
+                DS.Dataset.grammarparses_taskclass_tokens_assign_chunk_state_each_stroke(i)
+
+            # Third, extract variables to strokes
+            DS.context_chunks_assign_columns()
+
+        ####### PREPROCESSING FOR DS THAT SHOULD ALWAYS RUN:
+        if DS is not None:
+            # append Tkbeh_stktask
+            DS.tokens_append(ver="beh_using_task_data")
 
         ############### RETURN, IF MINIMAL (kgg, fixations).
         if ANALY_VER == "MINIMAL":
@@ -7259,6 +7366,12 @@ class Snippets(object):
         if params["datasetstrokes_extract_to_prune_stroke_and_get_features"] in ["chars_load_clusters", "clean_chars_load_clusters"]  and not self.Params["which_level"]=="trial":
             # Then dataset_strokes lloaded char labels
             list_features_extraction = list_features_extraction + ["shape_label", "clust_sim_max", "clust_sim_max_colname"]
+
+        if params["datasetstrokes_extract_chunks_variables"]:
+            # Then dataset_strokes lloaded chunk variables, e.g,
+            list_features_extraction = list_features_extraction + ["chunk_rank", "chunk_within_rank",
+                                                        "chunk_within_rank_fromlast", "chunk_n_in_chunk"
+                                                        "chunk_diff_from_prev"]
 
         # For the rest, try to get automatically.
         list_features_extraction = vars_extract_append + list_features_extraction
