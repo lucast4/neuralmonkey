@@ -37,7 +37,7 @@ def _params_score_sequence_ver(animal, DATE, ANALY_VER):
         elif animal=="Diego" and DATE in [230701, 230702, 230703, 230704, 230705, 230706, 230707, 230713, 230717, 230719, 230802]:
             # A single correct sequence
             DO_SCORE_SEQUENCE_VER = "matlab"
-        elif animal=="Diego" and DATE in [230815]:
+        elif animal=="Diego" and DATE in [230815, 230817]:
             # For chunks analysis (e.g., single rule). Lately (Feb 2024) extracting cjhunks
             # seems to require parse version...
             DO_SCORE_SEQUENCE_VER = "parses"
@@ -975,10 +975,13 @@ def dataset_apply_params(D, DS, ANALY_VER, animal, DATE, save_substroke_preproce
             D.sequence_char_taskclass_assign_char_seq(ver=params["DO_CHARSEQ_VER"])
 
         ################ DO SAME THING AS IN EXTRACTION (these dont fail, when use concatted)
-        D.tokens_append_to_dataframe_column()
+        # D.tokens_append_to_dataframe_column()
         # NOTE: This might take time, as it requires extract DS...
-        # D.strokes_onsets_offsets_location_append()
-        D.shapesemantic_classify_novel_shape()
+        if False: # done in general prerpocessing
+            D.shapesemantic_classify_novel_shape()
+            D.strokes_onsets_offsets_location_append()
+            D.tokens_cluster_touch_onset_loc_across_all_data() # cluster location of storke onests --> tok["loc_on_clust"]
+            D.tokens_cluster_touch_offset_loc_across_all_data() # Cluster offset locations --> tok["loc_off_clust"]
         if False:
             # Older, works, but decide to do waht I do for characters (below) more genrelaiy.
             D.seqcontext_preprocess()
@@ -986,44 +989,45 @@ def dataset_apply_params(D, DS, ANALY_VER, animal, DATE, save_substroke_preproce
             ########################### CHARACTERS, stuff related to (i) image parse and (ii) beh sequence
             # (1) Extract Vraibles defined within each stroke
             # (1) Extract Vraibles defined within each stroke
-            for ind in range(len(D.Dat)):
-                # Beh strokes
-                Tk_behdata = D.taskclass_tokens_extract_wrapper(ind, "beh_using_beh_data", return_as_tokensclass=True)
-                Tk_behdata.features_extract_wrapper(["loc_on", "angle"])
+            if False: # done in general prerpocessing
+                for ind in range(len(D.Dat)):
+                    # Beh strokes
+                    Tk_behdata = D.taskclass_tokens_extract_wrapper(ind, "beh_using_beh_data", return_as_tokensclass=True)
+                    Tk_behdata.features_extract_wrapper(["loc_on", "angle"])
 
-                Tk_behdata = D.taskclass_tokens_extract_wrapper(ind, "beh_using_task_data", return_as_tokensclass=True)
-                Tk_behdata.features_extract_wrapper(["shape_semantic"])
+                    Tk_behdata = D.taskclass_tokens_extract_wrapper(ind, "beh_using_task_data", return_as_tokensclass=True)
+                    Tk_behdata.features_extract_wrapper(["shape_semantic"])
 
-                # Task strokes (ignore beh)
-                Tk_taskdata = D.taskclass_tokens_extract_wrapper(ind, "task", return_as_tokensclass=True)
-                Tk_taskdata.features_extract_wrapper(["shape_semantic"])
+                    # Task strokes (ignore beh)
+                    Tk_taskdata = D.taskclass_tokens_extract_wrapper(ind, "task", return_as_tokensclass=True)
+                    Tk_taskdata.features_extract_wrapper(["shape_semantic"])
 
-            # (2) Compute all binned data, using beh data
-            PLOT = False
-            nbins = 3 # 2 or 3...
-            D.tokens_bin_feature_across_all_data("loc_on", "beh_using_beh_data", nbins=nbins, PLOT=PLOT)
-            D.tokens_bin_feature_across_all_data("angle", "beh_using_beh_data", nbins=nbins, PLOT=PLOT)
+                # (2) Compute all binned data, using beh data
+                PLOT = False
+                nbins = 3 # 2 or 3...
+                D.tokens_bin_feature_across_all_data("loc_on", "beh_using_beh_data", nbins=nbins, PLOT=PLOT)
+                D.tokens_bin_feature_across_all_data("angle", "beh_using_beh_data", nbins=nbins, PLOT=PLOT)
 
-            D.tokens_bin_feature_across_all_data("center", "beh_using_beh_data", nbins=nbins, PLOT=PLOT)
-            D.tokens_bin_feature_across_all_data("center", "beh_using_task_data", nbins=nbins, PLOT=PLOT)
-            D.tokens_bin_feature_across_all_data("center", "task", nbins=nbins, PLOT=PLOT)
+                D.tokens_bin_feature_across_all_data("center", "beh_using_beh_data", nbins=nbins, PLOT=PLOT)
+                D.tokens_bin_feature_across_all_data("center", "beh_using_task_data", nbins=nbins, PLOT=PLOT)
+                D.tokens_bin_feature_across_all_data("center", "task", nbins=nbins, PLOT=PLOT)
 
-            # Get locon_bin_in_loc
-            D.tokens_sequence_bin_location_within_gridloc()
+                # Get locon_bin_in_loc
+                D.tokens_sequence_bin_location_within_gridloc()
 
-            # Replace loc, for char, with loc within gridloc.
-            # And then get shape_loc conjunctions
-            D.tokens_gridloc_replace_with_recomputed_loc_chars()
+                # Replace loc, for char, with loc within gridloc.
+                # And then get shape_loc conjunctions
+                D.tokens_gridloc_replace_with_recomputed_loc_chars()
 
-            # (3) IMAGE PARSE
-            D.taskclass_shapes_loc_configuration_assign_column()
-            # 1. specific
-            D.taskclass_shapes_loc_configuration_assign_column(version="char", shape_ver="shape_semantic", suffix="SHSEM", plot_examples=PLOT)
-            # 2. more lenient
-            D.taskclass_shapes_loc_configuration_assign_column(version="char", shape_ver="shape_semantic_cat", suffix="SHSEMCAT", plot_examples=PLOT)
+                # (3) IMAGE PARSE
+                D.taskclass_shapes_loc_configuration_assign_column()
+                # 1. specific
+                D.taskclass_shapes_loc_configuration_assign_column(version="char", shape_ver="shape_semantic", suffix="SHSEM", plot_examples=PLOT)
+                # 2. more lenient
+                D.taskclass_shapes_loc_configuration_assign_column(version="char", shape_ver="shape_semantic_cat", suffix="SHSEMCAT", plot_examples=PLOT)
 
-            # (4) LAST: Extract new seq context variables, based on variables in tokens.
-            D.seqcontext_preprocess(plot_examples=PLOT, force_run=True)
+                # (4) LAST: Extract new seq context variables, based on variables in tokens.
+                D.seqcontext_preprocess(plot_examples=PLOT, force_run=True)
             ########################### (end)
 
         for this in params["list_epoch_merge"]:
@@ -1116,6 +1120,23 @@ def dataset_apply_params(D, DS, ANALY_VER, animal, DATE, save_substroke_preproce
 
             # Extract motor variables (DS)
             features_motor_extract_and_bin(DS, plot_save_dir=plot_save_dir)
+
+        # ################ CHUNKS, STROKES (e.g., singlerule, AnBm)
+        # if params["datasetstrokes_extract_chunks_variables"]:
+        #     # First extract within Dataset, then to DS.
+        #     # (note: DS.Dataset and D are identical objects).
+        #
+        #     # First, place preprocessed D (from above) into DS.
+        #     DS.dataset_replace_dataset(D)
+        #     # Then prune DS to match D.
+        #     DS.dataset_prune_self_to_match_dataset()
+        #
+        #     # Second, extract chunk variables from Dataset
+        #     for i in range(len(DS.Dataset.Dat)):
+        #         DS.Dataset.grammarparses_taskclass_tokens_assign_chunk_state_each_stroke(i)
+        #
+        #     # Third, extract variables to strokes
+        #     DS.context_chunks_assign_columns()
 
         ###### MAKE SURE DS is None, if you dont want to use it to prune SP.
         if params["datasetstrokes_extract_to_prune_stroke_and_get_features"] is None and params["substrokes_features_do_extraction"] is None:
@@ -1312,16 +1333,22 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
 
     ############### Reassign name to "taskgroup", siimplifying things, especialyl good
     # for grid sequence tasks with different probes, want to merge them for larger N.
-    if ANALY_VER in ["ruleswERROR", "rulesw", "ruleswALLDATA", "rulesingle"]:
+    if ANALY_VER in ["ruleswERROR", "rulesw", "ruleswALLDATA"]:
         taskgroup_reassign_simple_neural = True
+    elif ANALY_VER in ["rulesingle"]:
+        # Skip for now, since it takes long time and not necessary, but in future maybe move to True
+        taskgroup_reassign_simple_neural = False
     else:
         taskgroup_reassign_simple_neural = False
 
     ################ BEH DATASET PREPROCESS STEPS
     # THESE ARE ONLY used for deciding which trials ot keep.
-    if ANALY_VER in ["rulesw", "rulesingle"]:
+    if ANALY_VER in ["rulesw"]:
         preprocess_steps_append = ["correct_sequencing_binary_score",
             "one_to_one_beh_task_strokes_allow_unfinished"]
+    elif ANALY_VER in ["rulesingle"]:
+        preprocess_steps_append = ["correct_sequencing_binary_score",
+            "one_to_one_beh_task_strokes"]
     elif ANALY_VER in ["ruleswALLDATA"]:
         # keep all trials
         preprocess_steps_append = []
@@ -1478,7 +1505,7 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
         # DS anew from D, and uses the clust scores within D to prune strokes.
 
     elif ANALY_VER in ["rulesingle"]:
-        #
+        # Rule grid tasks, ignore stroke qualtiy
         datasetstrokes_extract_to_prune_trial = None
         datasetstrokes_extract_to_prune_stroke_and_get_features = None
     else:
@@ -1495,6 +1522,14 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
     else:
         print(ANALY_VER)
         assert False
+
+    ######## CHUNKS, e.g., AnBm, wherther to extract state, e.g.,, n in chunk, and so on.
+    if ANALY_VER in ["rulesingle"]:
+        # This operates on DS only.
+        datasetstrokes_extract_chunks_variables = True
+    else:
+        datasetstrokes_extract_chunks_variables = False
+
 
     params = {
         "DO_CHARSEQ_VER":DO_CHARSEQ_VER,
@@ -1514,7 +1549,8 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
         "datasetstrokes_extract_to_prune_trial":datasetstrokes_extract_to_prune_trial,
         "datasetstrokes_extract_to_prune_stroke_and_get_features":datasetstrokes_extract_to_prune_stroke_and_get_features,
         "substrokes_features_do_extraction":substrokes_features_do_extraction,
-        "charclust_dataset_extract_shapes":charclust_dataset_extract_shapes
+        "charclust_dataset_extract_shapes":charclust_dataset_extract_shapes,
+        "datasetstrokes_extract_chunks_variables":datasetstrokes_extract_chunks_variables
     }
 
     return params
@@ -1792,7 +1828,7 @@ def params_getter_decode_vars(which_level):
                 ]
             separate_by_task_kind = True
             filtdict = {
-                "stroke_index_fromlast":[-7, -6, -5, -4, -3, -2]
+                "stroke_index_fromlast_tskstks":[-7, -6, -5, -4, -3, -2]
             }
             # ------
             LIST_VAR_DECODE.append(list_var_decode)
@@ -1823,20 +1859,21 @@ def params_getter_decode_vars(which_level):
             # # Strong, test context vs. SI
             # list_var_decode = ["CTXT_ALL_MAX"]
             # list_vars_conj = [
-            #     ["stroke_index_fromlast", "task_kind"],
+            #     ["stroke_index_fromlast_tskstks", "task_kind"],
             #     ]
             #
 
         # Stroke index
         suffix = "strokeindex_exclude_first_stroke"
         list_var_decode = [
-            # "stroke_index_fromlast",
+            # "stroke_index_fromlast_tskstks",
             # "stroke_index",
-            "stroke_index_fromlast",
+            "stroke_index_fromlast_tskstks",
             "stroke_index",
-            "stroke_index_fromlast",
+            "stroke_index_fromlast_tskstks",
             "stroke_index",
-            # "stroke_index_fromlast",
+            "stroke_index",
+            # "stroke_index_fromlast_tskstks",
             # "stroke_index",
         ]
         list_vars_conj = [
@@ -1846,6 +1883,7 @@ def params_getter_decode_vars(which_level):
             ["CTXT_loc_prev", "shape", "gridloc", "task_kind"],
             ["shape", "gridloc", "gridloc_within", "task_kind"],
             ["shape", "gridloc", "gridloc_within", "task_kind"],
+            ["FEAT_num_strokes_task", "CTXT_loc_prev", "shape", "gridloc", "task_kind"],
             # ["CTXT_shapeloc_prev", "shape", "gridloc", "CTXT_shapeloc_next", "task_kind"],
             # ["CTXT_shapeloc_prev", "shape", "gridloc", "CTXT_shapeloc_next", "task_kind"],
             ]
@@ -1864,9 +1902,9 @@ def params_getter_decode_vars(which_level):
         # Stroke index
         suffix = "strokeindex"
         list_var_decode = [
-            "stroke_index_fromlast",
+            "stroke_index_fromlast_tskstks",
             "stroke_index",
-            "stroke_index_fromlast",
+            "stroke_index_fromlast_tskstks",
             "stroke_index",
         ]
         list_vars_conj = [
