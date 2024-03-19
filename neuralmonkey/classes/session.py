@@ -2439,6 +2439,159 @@ class Session(object):
 
         return self.DatAll
 
+    # generates necessary files for Snippets.events_time_helper to extract clusterfix fixations.
+    def extract_clusterfix_fixations(self):
+        #### HELPER FUNCTIONS #####
+        # get a list of successful trialcodes
+        def _getSuccessfulTrialCodes(self):
+            Dcopy = self.Datasetbeh.copy()
+            Dcopy.preprocessGood(params=["one_to_one_beh_task_strokes"]) # prunes Dcopy to keep only successful trials
+            return Dcopy.Dat['trialcode'].tolist()
+
+        # from the list of trialcodes, get matching list of NEURAL trials
+        def _getNeuralTrialNumsFromTrialCodes(self, trialcode_list):
+            D = self.Datasetbeh
+            trialnums = []
+            for tc in trialcode_list:
+                # pull out these datapoints from trial-level dataset
+                t = self.datasetbeh_trialcode_to_trial(tc)
+                trialnums.append(t)
+            return trialnums
+
+        # get a list of successful trialnums
+        def _getSuccessfulNeuralTrialNums(self):
+            trialcodes = getSuccessfulTrialCodes(self)
+            return getNeuralTrialNumsFromTrialCodes(self, trialcodes)
+
+        #### STEP 1: EXPORT TRIAL DATA TO .mat FOR CLUSTERFIX ####
+        success_neural_trials = getSuccessfulNeuralTrialNums(self)
+        neuraltnums = []
+        tcodes = []
+
+        # loop thru trials and save xy data
+        for ntrial in success_neural_trials:
+            # get sampling rate
+            t,v,fs_raw = sn.extract_data_tank_streams("eyex", ntrial, ploton=False)
+
+            # get XY smoothed / transformed on eye calibration matrix
+            x_raw,y_raw,times_raw = getEyeXYSmoothedAndTransformed(sn, ntrial, False)
+
+            # resample x, y, times using integer sampling rate
+            fs_new = 200
+            stroke_raw = [np.array([x_raw, y_raw, times_raw]).T] # dummy stroke list
+            stroke_intp = strokesInterpolate2(stroke_raw, ["fsnew", fs_new, fs_raw])
+            stroke_resampled = stroke_intp[0]
+            x_rs = stroke_resampled[:,0]
+            y_rs = stroke_resampled[:,1]
+            times_rs = stroke_resampled[:,2]
+            
+            # save data to be loaded into MATLAB
+            fname = "ntrial" + str(ntrial) + ".mat"
+            scipy.io.savemat(fname, dict(x=x_rs, y=y_rs, times=times_rs, fs_hz=fs_new))
+
+            # save neuraltnums, tcodes
+            neuraltnums.append(ntrial)
+            tcodes.append(sn.datasetbeh_trial_to_trialcode(ntrial))
+
+            # save trial numbers for later use in MATLAB
+            scipy.io.savemat("all_ntrialnums.mat", dict(neuraltrialnums=neuraltnums))
+
+            # save trialcodes for later use in MATLAB
+            scipy.io.savemat("all_trialcodes.mat", dict(trialcodes=tcodes))
+    
+        #### STEP 2: RUN CLUSTERFIX IN MATLAB ####
+        # todo: use matlab command from drawmonkey/preprocess.py
+
+        #### STEP 3: SAVE CLUSTERFIX_RESULTS INTO DATAFRAME
+        # load in results and add to dataframe
+        mat = scipy.io.loadmat('clusterfix_results.mat')
+        mat_vars = ['neuraltrialnum', 'trialcode', 'fs', 'x', 'y', 'times', 'fixation_start_inds',
+                    'fixation_end_inds', 'fixation_centroids_x', 'fixation_centroids_y', 
+                    'saccade_start_inds', 'saccade_end_inds']
+        tmp = []
+        for i in range(len(mat['RESULTS'][0])):
+            neuraltrialnum = mat['RESULTS'][0]['neuraltrialnum'][i][0,0]
+            tcode = mat['RESULTS'][0]['trialcode'][i][0]
+            fs = mat['RESULTS'][0]['fs'][i][0,0]
+            x = mat['RESULTS'][0]['x'][i][0]
+            y = mat['RESULTS'][0]['y'][i][0]
+            times = mat['RESULTS'][0]['times'][i][0]
+            
+            # get start, end inds for fixations/saccades
+            fixation_start_inds = mat['RESULTS'][0]['fixation_inds'][i][0]
+            fixation_end_inds = mat['RESULTS'][0]['fixation_inds'][i][1]
+            saccade_start_inds = mat['RESULTS'][0]['saccade_inds'][i][0]
+            saccade_end_inds = mat['RESULTS'][0]['saccade_inds'][i][1]
+            
+            # get centroids x,y
+            fixation_centroids_x = mat['RESULTS'][0]['fixation_centroids'][i][0]
+            fixation_centroids_y = mat['RESULTS'][0]['fixation_centroids'][i][1]
+            
+            dat = [neuraltrialnum, tcode, fs, x, y, times, fixation_start_inds, fixation_end_inds,
+                    fixation_centroids_x, fixation_centroids_y, saccade_start_inds, saccade_end_inds]
+            tmp.append({})
+            for v, d in zip(mat_vars, dat):
+                tmp[-1][v]=d
+                
+        clusterfix_results = pd.DataFrame(tmp, columns=mat_vars)
+        # TODO: add column to clusterfix_results which indicates if outlier or not
+
+        #### STEP 4: FROM CLUSTERFIX_RESULTS, SAVE fixation.csv AND saccade.csv FILES
+        from numpy import savetxt
+
+        #for i in range(len(neuraltnums)):
+        for index, row in clusterfix_results.iterrows():
+            tnum = row['neuraltrialnum']
+            print("tnum", tnum)
+            tcode = row['trialcode']
+            print("tcode", tcode)
+            
+            x_t = row['x']
+            y_t = row['y']
+            times_t = row['times']
+            
+            # get the FIXATIONS belonging to this trial
+            fixation_start_inds = row['fixation_start_inds']
+            fixation_end_inds = row['fixation_end_inds']
+            fixation_centroids_x = row['fixation_centroids_x']
+            fixation_centroids_y = row['fixation_centroids_y']
+            centroid_pairs = [[x,y] for x,y in zip(fixation_centroids_x, fixation_centroids_y)]
+            
+            # get the times of the FIXATIONS
+            fixation_start_times = times_t[fixation_start_inds]
+            fixation_end_times = times_t[fixation_end_inds]
+            print("fixation start times", fixation_start_times)
+            print("fixation end times", fixation_end_times)
+
+            # TODO: remove any fixations that contain outlier times... (must compute bounding box)
+                
+            # save fixation start times using TRIALCODE, to load into session.py
+            fname = f"{tcode}-fixation-onsets.csv"
+            savetxt(fname, fixation_start_times, delimiter=',')
+            
+            # save fixation centroids using TRIALCODE, to load into session.py
+            fname = f"{tcode}-fixation-centroids.csv"
+            savetxt(fname, centroid_pairs, delimiter=",")
+                
+            # get the times of the SACCADES
+            saccade_start_inds = row['saccade_start_inds']
+            saccade_end_inds = row['saccade_end_inds']
+            saccade_start_times = times_t[saccade_start_inds]
+            saccade_end_times = times_t[saccade_end_inds]
+            
+            print("saccade start times", saccade_start_times)
+            print("saccade end times", saccade_end_times)
+                        
+            # save saccade start times using TRIALCODE, to load into session.py
+            fname = f"{tcode}-saccade-onsets.csv"
+            savetxt(fname, saccade_start_times, delimiter=',')
+
+
+        # todo: check file paths, change to save on server
+        # with csv's generated, then Snippets.events_get_time_helper will take over from there
+
+
+
     ##################### DEBUGGING
     def debug_event_photodiode_detection(self):
         assert False, "just notes here"
@@ -7403,7 +7556,7 @@ class Session(object):
     def plot_raster_trials(self, ax, list_trials, site, alignto=None,
         raster_linelengths=0.9, alpha_raster = 0.9, overlay_trial_events=True,
         ylabel_trials=True, plot_rasters=True, xmin = None, xmax = None,
-        overlay_strokes=True):
+        overlay_strokes=True, which_events=None):
         """ Plot raster, for these trials, on this axis.
         PARAMS:
         - list_trials, list of indices into self. will plot them in order, from bottom to top
@@ -7434,7 +7587,8 @@ class Session(object):
 
             if overlay_trial_events:
                 self.plotmod_overlay_trial_events_mult(ax, list_trials, list_align_time,
-                    ylabel_trials, xmin=xmin, xmax=xmax, overlay_strokes=overlay_strokes)
+                    ylabel_trials, xmin=xmin, xmax=xmax, overlay_strokes=overlay_strokes,
+                    which_events=which_events)
         
             if site is not None:
                 ax.set_title(self.sitegetter_summarytext(site)) 
@@ -7606,7 +7760,7 @@ class Session(object):
 
     def plotmod_overlay_trial_events_mult(self, ax, list_trials, list_align_time,
         ylabel_trials=None, list_yvals=None, xmin=None, xmax =None, overlay_strokes=True,
-        clear_old_yticks = True):
+        clear_old_yticks = True, which_events=None):
         """
         Flexible helper to plot events for specified trials, at specific alignemnet times.
         PARAMS:
@@ -7627,6 +7781,9 @@ class Session(object):
         else:
             assert len(ylabel_trials)==len(list_trials)
 
+        if which_events is None:
+            which_events = ["key_events_correct"]
+
         for i, (yval, trial, alignto_time) in enumerate(zip(list_yvals, list_trials, list_align_time)):
 
             # - overlay beh things
@@ -7640,7 +7797,7 @@ class Session(object):
             else:
                 include_text = False
             self.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, only_on_edge="bottom", 
-                                            YLIM=[yval-0.3, yval+0.5], which_events=["key_events_correct"], 
+                                            YLIM=[yval-0.3, yval+0.5], which_events=which_events, 
                                             include_text=include_text, text_yshift = -0.5, alpha=ALPHA_MARKERS,
                                             xmin = xmin, xmax =xmax
                                             )
@@ -7707,7 +7864,11 @@ class Session(object):
             alpha_st = 0.2 
 
         for ev in which_events:
-            assert ev in ["behcodes", "key_events_correct", "strokes"], "doesnt exist..."
+            assert ev in ["fixon", "behcodes", "key_events_correct", "strokes"], "doesnt exist..."
+
+        # if "fixon" in which_events:
+        #     assert len(which_events)==1, "currently, if fixon is an event, then it will overwrite all other events... Change code to append the time instead"
+
         ###### 1) behcodes, old version whcih used specific sequenc eof codes. this is not perfectly accurate.
         # so is replaced by key_events_correct
         if "behcodes" in which_events:
@@ -7723,6 +7884,13 @@ class Session(object):
             times_codes = np.array([])
             names_codes = [] 
             colors_codes = []
+
+        if "fixon" in which_events:
+            times = self.events_get_time_helper("fixon", trial0)
+            # feat_name, list_featvals = self.events_get_feature_helper("fixon", trial0)
+            times_codes = times
+            names_codes = ["fixon" for _ in range(len(times_codes))]
+            colors_codes = ["r" for _ in range(len(times_codes))]
 
         ###### 2) key events, determeined using actual voltage clock signals or touch, etc.
         if "key_events_correct" in which_events:
@@ -8358,7 +8526,8 @@ class Session(object):
             raster_linelengths=0.9,
             overlay_trial_events=True,
             ylabel_trials=True, overlay_strokes=True, 
-            nrand_trials = 20):
+            nrand_trials = 20,
+            which_events=None):
         """ Plot one site, mult trials, overlaying for each trial its major events
         PARAMS:
         - list_trials, list of int. if None, then plots 20 random
@@ -8393,7 +8562,8 @@ class Session(object):
 
         self.plot_raster_trials(ax, list_trials, site, alignto,
             raster_linelengths, alpha_raster, overlay_trial_events, 
-            ylabel_trials, plot_rasters, xmin, xmax, overlay_strokes=overlay_strokes)
+            ylabel_trials, plot_rasters, xmin, xmax, overlay_strokes=overlay_strokes,
+            which_events=which_events)
 
         # Final drawing
             #     ax = axes.flatten()[2*i + 1]
