@@ -8,8 +8,158 @@ from pythonlib.globals import PATH_ANALYSIS_OUTCOMES
 import glob
 import pickle
 import pandas as pd
-
+import numpy as np
+from pythonlib.tools.pandastools import append_col_with_grp_index
+from pythonlib.tools.plottools import savefig
 # (animal, date, question) --> DFallPA
+
+def dfallpa_preprocess_vars_conjunctions_extract(DFallpa, which_level):
+    """
+    Holding methods for:
+    Modify all PA, extracting new columns that are usually used. A bit hacky, as they are
+    hard-coded things which might be excessive.
+    :param DFallpa:
+    :param which_level:
+    :return:
+    - None, but modifies DFallpa
+    """
+    from pythonlib.tools.nptools import bin_values_by_rank, bin_values
+    from pythonlib.tools.expttools import deconstruct_filename
+    from pythonlib.tools.vectools import bin_angle_by_direction
+
+    if which_level=="trial":
+        pass # is all done in Dataset alrady
+
+        # Extract information about the first stroke (semantic labels)
+        # locations_allpa =[]
+        # angles_allpa =[]
+        # list_i_j = []
+        # for i, pa in enumerate(DFallpa["pa"]):
+        #     dflab = pa.Xlabels["trials"]
+        #
+        #     list_seqc_0_shsem = []
+        #     list_seqc_0_locon = []
+        #     list_seqc_0_shsemcat = []
+        #     for j, row in dflab.iterrows():
+        #
+        #         # To get semantic label for shape, use task token
+        #         assert False, "this is incorrect for char -- should use Tkbeh_stkbeh -- do this in Dataset..."
+        #         Tk = row["Tkbeh_stktask"]
+        #         Tk.features_extract_wrapper(features_get=["shape_semantic"])
+        #         list_seqc_0_shsem.append(Tk.Tokens[0]["shape_semantic"])
+        #
+        #         # Expand shape
+        #         # sh-x-y
+        #         tmp = deconstruct_filename(Tk.Tokens[0]["shape_semantic"])
+        #         shape_semantic_cat = tmp["filename_components_hyphened"][0] # e..g, ['test', '1', '2']
+        #         list_seqc_0_shsemcat.append(shape_semantic_cat)
+        #
+        #         # To get motoro stuff
+        #         Tk = row["Tkbeh_stkbeh"]
+        #         Tk.features_extract_wrapper(features_get=["loc_on", "angle"])
+        #         list_seqc_0_locon.append(Tk.Tokens[0]["loc_on"])
+        #
+        #         # Collect acorss pa
+        #         locations_allpa.append(Tk.Tokens[0]["loc_on"])
+        #         angles_allpa.append(Tk.Tokens[0]["angle"])
+        #         list_i_j.append((i,j))
+        #
+        #     dflab["seqc_0_shapesem"] = list_seqc_0_shsem
+        #     dflab["seqc_0_locon"] = list_seqc_0_locon
+        #     dflab["seqc_0_locx"] = np.array(list_seqc_0_locon)[:,0]
+        #     dflab["seqc_0_locy"] = np.array(list_seqc_0_locon)[:,1]
+        #     dflab["seqc_0_shapesemcat"] = list_seqc_0_shsemcat
+        #
+        #
+        # # BIN LOCATIONS
+        # # Given list of locations, bin them in x and y
+        # tmp = np.stack(locations_allpa)
+        # xs = tmp[:,0]
+        # ys = tmp[:,1]
+        #
+        # # xs_binned = bin_values_by_rank(xs, nbins=2)
+        # # ys_binned = bin_values_by_rank(ys, nbins=2)
+        # xs_binned = bin_values(xs, nbins=2)
+        # ys_binned = bin_values(ys, nbins=2)
+        # locations_allpa_binned = np.stack([xs_binned, ys_binned], axis=1)
+        # # map from (i,j) to locations_binned
+        # map_ij_to_locbinned ={}
+        # assert len(list_i_j)==len(locations_allpa_binned)
+        # for (i,j), loc_binned in zip(list_i_j, locations_allpa_binned):
+        #     map_ij_to_locbinned[(i,j)] = loc_binned
+        # # Place back into pa
+        # colname = "seqc_0_loconbinned"
+        # for i, pa in enumerate(DFallpa["pa"]):
+        #     dflab = pa.Xlabels["trials"]
+        #     vals = []
+        #     for j, row in dflab.iterrows():
+        #         vals.append(tuple(map_ij_to_locbinned[(i,j)].tolist()))
+        #     dflab[colname] = vals
+        #
+        # # BIN ANGLES
+        # angles_binned = bin_angle_by_direction(angles_allpa, num_angle_bins=4)
+        #
+        # map_ij_to_anglebinned ={}
+        # map_ij_to_angle ={}
+        # assert len(list_i_j)==len(angles_binned)
+        # for (i,j), ab, a in zip(list_i_j, angles_binned, angles_allpa):
+        #     map_ij_to_anglebinned[(i,j)] = ab
+        #     map_ij_to_angle[(i,j)] = a
+        #
+        # # Place back into pa
+        # colname = "seqc_0_anglebinned"
+        # for i, pa in enumerate(DFallpa["pa"]):
+        #     dflab = pa.Xlabels["trials"]
+        #     vals = []
+        #     for j, row in dflab.iterrows():
+        #         vals.append(map_ij_to_anglebinned[(i,j)])
+        #     dflab[colname] = vals
+        #
+        # colname = "seqc_0_angle"
+        # for i, pa in enumerate(DFallpa["pa"]):
+        #     dflab = pa.Xlabels["trials"]
+        #     vals = []
+        #     for j, row in dflab.iterrows():
+        #         vals.append(map_ij_to_angle[(i,j)])
+        #     dflab[colname] = vals
+        #
+        # ##### CONJUNCTIONS
+        for i, pa in enumerate(DFallpa["pa"]):
+            dflab = pa.Xlabels["trials"]
+            dflab = append_col_with_grp_index(dflab, ["seqc_0_shape", "seqc_0_loc"], "seqc_0_shapeloc")
+            dflab = append_col_with_grp_index(dflab, ["seqc_1_shape", "seqc_1_loc"], "seqc_1_shapeloc")
+            dflab = append_col_with_grp_index(dflab, ["seqc_2_shape", "seqc_2_loc"], "seqc_2_shapeloc")
+            pa.Xlabels["trials"] = dflab
+
+    elif which_level=="stroke":
+
+        ##### CONJUNCTIONS
+        for i, pa in enumerate(DFallpa["pa"]):
+            dflab = pa.Xlabels["trials"]
+
+            dflab = append_col_with_grp_index(dflab, ["CTXT_shape_prev", "CTXT_loc_prev"], "CTXT_shapeloc_prev", strings_compact=True)
+            dflab = append_col_with_grp_index(dflab, ["CTXT_shape_next", "CTXT_loc_next"], "CTXT_shapeloc_next", strings_compact=True)
+            dflab = append_col_with_grp_index(dflab, ["CTXT_shapeloc_prev", "gridloc", "CTXT_shapeloc_next"], "CTXT_ALL_shape", strings_compact=True)
+
+            dflab = append_col_with_grp_index(dflab, ["gridloc", "stroke_index"], "loc_si")
+            dflab = append_col_with_grp_index(dflab, ["shape", "gridloc"], "shape_loc")
+            dflab = append_col_with_grp_index(dflab, ["CTXT_loc_prev", "CTXT_shape_prev", "gridloc"], "CTXT_present_1")
+            dflab = append_col_with_grp_index(dflab, ["CTXT_loc_prev", "CTXT_shape_prev", "shape"], "CTXT_present_1b")
+            dflab = append_col_with_grp_index(dflab, ["CTXT_loc_prev", "CTXT_shape_prev", "gridloc", "shape"], "CTXT_present_2")
+            dflab = append_col_with_grp_index(dflab, ["CTXT_loc_prev", "CTXT_shape_prev", "shape", "gridloc", "CTXT_loc_next"], "CTXT_ALL_1")
+            dflab = append_col_with_grp_index(dflab, ["CTXT_loc_prev", "CTXT_shape_prev", "shape", "gridloc", "CTXT_shape_next"], "CTXT_ALL_2")
+            dflab = append_col_with_grp_index(dflab, ["CTXT_loc_prev", "CTXT_shape_prev", "shape", "gridloc", "CTXT_loc_next", "CTXT_shape_next"], "CTXT_ALL_MAX")
+            dflab = append_col_with_grp_index(dflab, ["task_kind", "stroke_index"], "tk_si")
+            dflab = append_col_with_grp_index(dflab, ["gridloc", "stroke_index_semantic"], "loc_sis")
+
+            # get location bin within the gridloc bin
+            from pythonlib.dataset.dataset_strokes import DatStrokes
+            ds = DatStrokes()
+            ds.location_redefine_gridloc_locally(2, dflab, False)
+
+            pa.Xlabels["trials"] = dflab
+    else:
+        assert False
 
 def dfallpa_combine_trial_strokes_from_already_loaded_DFallpa():
     """
@@ -145,7 +295,7 @@ def dfallpa_extraction_load_wrapper_combine_trial_strokes(animal, date,
                                                 combine_into_larger_areas = True, exclude_bad_areas=True,
                                                 SPIKES_VERSION="tdt",
                                                 HACK_RENAME_SHAPES = True,
-                                                do_fr_normalization=False,
+                                                fr_normalization_method="each_time_bin",
                                                   check_that_shapes_match=True,
                                                   check_that_locs_match=True,
                                                           ):
@@ -168,20 +318,18 @@ def dfallpa_extraction_load_wrapper_combine_trial_strokes(animal, date,
 
 
     events_keep = ['03_samp', '04_go_cue']
-    DFallpaTRIALS = dfallpa_extraction_load_wrapper(animal, date, question_trial, list_time_windows,
-                                  "trial",
-                                    events_keep, combine_into_larger_areas, exclude_bad_areas,
-                                    SPIKES_VERSION=SPIKES_VERSION,
-                                    HACK_RENAME_SHAPES = HACK_RENAME_SHAPES,
-                                                    do_fr_normalization=do_fr_normalization)
+    DFallpaTRIALS = dfallpa_extraction_load_wrapper(animal, date, question_trial, list_time_windows, "trial",
+                                                    events_keep, combine_into_larger_areas, exclude_bad_areas,
+                                                    SPIKES_VERSION=SPIKES_VERSION,
+                                                    HACK_RENAME_SHAPES=HACK_RENAME_SHAPES,
+                                                    fr_normalization_method=fr_normalization_method)
 
-    DFallpaSTROKES = dfallpa_extraction_load_wrapper(animal, date, question_stroke, list_time_windows,
-                                  "stroke",
-                                    None, combine_into_larger_areas, exclude_bad_areas,
-                                    SPIKES_VERSION=SPIKES_VERSION,
-                                    strokes_split_into_multiple_pa=True,
-                                    HACK_RENAME_SHAPES = HACK_RENAME_SHAPES,
-                                                     do_fr_normalization=do_fr_normalization)
+    DFallpaSTROKES = dfallpa_extraction_load_wrapper(animal, date, question_stroke, list_time_windows, "stroke", None,
+                                                     combine_into_larger_areas, exclude_bad_areas,
+                                                     SPIKES_VERSION=SPIKES_VERSION,
+                                                     HACK_RENAME_SHAPES=HACK_RENAME_SHAPES,
+                                                     strokes_split_into_multiple_pa=True,
+                                                     fr_normalization_method=fr_normalization_method)
 
 
     # If you want to add general varaibles to all pa in both datasets, then do this, wherever
@@ -308,16 +456,14 @@ def dfallpa_extraction_load_wrapper_combine_trial_strokes(animal, date,
 
     return DFallpaALL
 
-def dfallpa_extraction_load_wrapper_from_MS(MS, question, list_time_windows,
-                                    which_level = "trial",
-                                    events_keep = None,
-                                    combine_into_larger_areas = True, exclude_bad_areas=True,
-                                    bin_by_time_dur = None, bin_by_time_slide = None,
-                                    slice_agg_slices = None, slice_agg_vars_to_split=None, slice_agg_concat_dim="trials",
-                                    HACK_RENAME_SHAPES = True,
-                                    substrokes_plot_preprocess=True,
-                                    strokes_split_into_multiple_pa=False,
-                                    do_fr_normalization=True):
+def dfallpa_extraction_load_wrapper_from_MS(MS, question, list_time_windows, which_level="trial", events_keep=None,
+                                            combine_into_larger_areas=True, exclude_bad_areas=True,
+                                            bin_by_time_dur=None, bin_by_time_slide=None, slice_agg_slices=None,
+                                            slice_agg_vars_to_split=None, slice_agg_concat_dim="trials",
+                                            HACK_RENAME_SHAPES=True, substrokes_plot_preprocess=True,
+                                            strokes_split_into_multiple_pa=False,
+                                            fr_normalization_method="each_time_bin", REGENERATE_SNIPPETS=True,
+                                            path_to_save_example_fr_normalization=None):
     """ Wrapper of dfallpa_extraction_load_wrapper for loading given already loaded
     MS,
     From SP (already saved) --> DFallpa
@@ -330,31 +476,32 @@ def dfallpa_extraction_load_wrapper_from_MS(MS, question, list_time_windows,
 
     animal = MS.animal()
     date = MS.date()
-
-    SP, SAVEDIR_ALL = load_and_concat_mult_snippets(MS, which_level = which_level,
-        DEBUG=False)
-
-    # Dtmp = SP.datasetbeh_extract_dataset()
-    # print("3 dfafasf", Dtmp.TokensVersion)
+    assert isinstance(list_time_windows[0], (list, tuple))
 
     # Load a question
-    DictParamsEachQuestion = rsagood_questions_dict(animal, date, question=question)
-    q_params = DictParamsEachQuestion[question]
-
+    q_params = rsagood_questions_dict(animal, date, question=question)[question]
     print("Question:", question)
     print("These questions params:")
     for k, v in q_params.items():
         print(k, " -- ", v)
     assert which_level in q_params["list_which_level"], "or else might run into error later."
 
-    # Clean up SP and extract features
-    D, list_features_extraction = SP.datasetbeh_preprocess_clean_by_expt(
-        ANALY_VER=q_params["ANALY_VER"], vars_extract_append=q_params["effect_vars"],
-        substrokes_plot_preprocess=substrokes_plot_preprocess)
-
     # Keep only specific events - to make the following faster.
     if events_keep is None:
         events_keep = q_params["events_keep"]
+
+    # Load previously generated
+    SP, SAVEDIR_ALL = load_and_concat_mult_snippets(MS, which_level = which_level, events_keep=events_keep,
+        DEBUG=False,  REGENERATE_SNIPPETS=REGENERATE_SNIPPETS)
+
+    # Run this early, before run further pruning stuff.
+    SP.datamod_append_outliers()
+
+    # Clean up SP and extract features
+    D, list_features_extraction = SP.datasetbeh_preprocess_clean_by_expt(
+        ANALY_VER=q_params["ANALY_VER"], vars_extract_append=q_params["effect_vars"],
+        substrokes_plot_preprocess=substrokes_plot_preprocess,
+        HACK_RENAME_SHAPES=HACK_RENAME_SHAPES)
 
     # If this is "strokes" SP, you have option of renaming events to the stroke index, allowing to
     # extract separate PA for each stroke index.
@@ -385,7 +532,6 @@ def dfallpa_extraction_load_wrapper_from_MS(MS, question, list_time_windows,
     ## Extract all popanals
     DFallpa = snippets_extract_popanals_split_bregion_twind(SP, list_time_windows,
                                                     list_features_extraction,
-                                                    HACK_RENAME_SHAPES=HACK_RENAME_SHAPES,
                                                     combine_into_larger_areas=combine_into_larger_areas,
                                                     events_keep=events_keep,
                                                     exclude_bad_areas=exclude_bad_areas)
@@ -427,33 +573,56 @@ def dfallpa_extraction_load_wrapper_from_MS(MS, question, list_time_windows,
             print(pa.Xlabels["trials"]["wl_ev_tw"].value_counts())
             assert isinstance(pa.Xlabels["trials"]["wl_ev_tw"].values[0], str)
 
-    # Firing rates norm
-    if do_fr_normalization:
+    #################### Normalize PA firing rates if needed
+    if fr_normalization_method is not None:
+        if fr_normalization_method=="each_time_bin":
+            # Then demean in each time bin indepednently
+            subtract_mean_at_each_timepoint = True
+            subtract_mean_across_time_and_trial = False
+        elif fr_normalization_method=="across_time_bins":
+            # ALl time bins subtract the same scalar --> maintains temporal moudlation.
+            subtract_mean_at_each_timepoint = False
+            subtract_mean_across_time_and_trial = True
+        else:
+            print(fr_normalization_method)
+            assert False
+
         from neuralmonkey.analyses.state_space_good import popanal_preprocess_scalar_normalization
-        # Normalize PA firing rates if needed
         list_panorm = []
-        for pa in DFallpa["pa"].tolist():
-            PAnorm, PAscal, PAscalagg, fig, axes, groupdict = popanal_preprocess_scalar_normalization(pa,
-                                                                                  None,
-                                                                                            DO_AGG_TRIALS=False)
+
+        for i, pa in enumerate(DFallpa["pa"].tolist()):
+            if path_to_save_example_fr_normalization is not None and i==0:
+                plot_example_chan_number = pa.Chans[0]
+                if which_level=="trial":
+                    plot_example_split_var_string = "seqc_0_shape"
+                elif which_level=="stroke":
+                    plot_example_split_var_string = "shape"
+                else:
+                    plot_example_split_var_string = q_params["effect_vars"][0]
+            else:
+                plot_example_chan_number = None
+                plot_example_split_var_string = None
+            PAnorm, PAscal, PAscalagg, fig, axes, groupdict = popanal_preprocess_scalar_normalization(pa, None,
+                                                                                              DO_AGG_TRIALS=False,
+                                                                                              plot_example_chan_number=plot_example_chan_number,
+                                                                                                plot_example_split_var_string = plot_example_split_var_string,
+                                                                                              subtract_mean_at_each_timepoint=subtract_mean_at_each_timepoint,
+                                                                                              subtract_mean_across_time_and_trial=subtract_mean_across_time_and_trial)
+            if path_to_save_example_fr_normalization is not None and i==0:
+                savefig(fig, path_to_save_example_fr_normalization)
             list_panorm.append(PAnorm)
         DFallpa["pa"] = list_panorm
 
     return DFallpa
 
-
-def dfallpa_extraction_load_wrapper(animal, date, question, list_time_windows,
-                                    which_level = "trial",
-                                    events_keep = None,
-                                    combine_into_larger_areas = True, exclude_bad_areas=True,
-                                    bin_by_time_dur = None, bin_by_time_slide = None,
-                                    slice_agg_slices = None, slice_agg_vars_to_split=None, slice_agg_concat_dim="trials",
-                                    LOAD_FROM_RSA_ANALY=False, rsa_ver_dist="euclidian_unbiased",
-                                    rsa_subtr=None, rsa_agg = True, rsa_invar=None,
-                                    SPIKES_VERSION="tdt",
-                                    HACK_RENAME_SHAPES = True, substrokes_plot_preprocess=True,
-                                    strokes_split_into_multiple_pa=False,
-                                    do_fr_normalization=True):
+def dfallpa_extraction_load_wrapper(animal, date, question, list_time_windows, which_level="trial", events_keep=None,
+                                    combine_into_larger_areas=True, exclude_bad_areas=True, bin_by_time_dur=None,
+                                    bin_by_time_slide=None, slice_agg_slices=None, slice_agg_vars_to_split=None,
+                                    slice_agg_concat_dim="trials", LOAD_FROM_RSA_ANALY=False,
+                                    rsa_ver_dist="euclidian_unbiased", rsa_subtr=None, rsa_agg=True, rsa_invar=None,
+                                    SPIKES_VERSION="tdt", HACK_RENAME_SHAPES=True, substrokes_plot_preprocess=True,
+                                    strokes_split_into_multiple_pa=False, fr_normalization_method="each_time_bin",
+                                    path_to_save_example_fr_normalization=None):
 
     """ [GOOD] Hihg level to extrqact
     DFallpa, with all preprocessing steps built in, must have already extgracted Snippets.
@@ -491,13 +660,14 @@ def dfallpa_extraction_load_wrapper(animal, date, question, list_time_windows,
 
         ## Load Snippets
         MS = load_mult_session_helper(date, animal, spikes_version=SPIKES_VERSION)
-        DFallpa = dfallpa_extraction_load_wrapper_from_MS(MS, question, list_time_windows,
-                                    which_level, events_keep, combine_into_larger_areas,
-                                    exclude_bad_areas, bin_by_time_dur, bin_by_time_slide,
-                                    slice_agg_slices, slice_agg_vars_to_split, slice_agg_concat_dim,
-                                    HACK_RENAME_SHAPES, substrokes_plot_preprocess=substrokes_plot_preprocess,
-                                  strokes_split_into_multiple_pa=strokes_split_into_multiple_pa,
-                                                          do_fr_normalization=do_fr_normalization)
+        DFallpa = dfallpa_extraction_load_wrapper_from_MS(MS, question, list_time_windows, which_level, events_keep,
+                                                          combine_into_larger_areas, exclude_bad_areas, bin_by_time_dur,
+                                                          bin_by_time_slide, slice_agg_slices, slice_agg_vars_to_split,
+                                                          slice_agg_concat_dim, HACK_RENAME_SHAPES,
+                                                          substrokes_plot_preprocess=substrokes_plot_preprocess,
+                                                          strokes_split_into_multiple_pa=strokes_split_into_multiple_pa,
+                                                          fr_normalization_method=fr_normalization_method,
+                                                          path_to_save_example_fr_normalization=path_to_save_example_fr_normalization)
 
     # cleanup
     # for pa in DFallpa.

@@ -20,6 +20,7 @@ from neuralmonkey.classes.snippets import load_and_concat_mult_snippets
 
 import sys
 spikes_version = "tdt"
+assert False, "must add event as argument to plotgood_rasters_smfr_each_level_combined"
 
 if __name__=="__main__":
 

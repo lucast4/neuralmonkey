@@ -80,11 +80,9 @@ class PopAnal():
             if isinstance(times, (list, tuple)) and not isinstance(times[0], str):
                 times = np.array(times)
             if isinstance(times, np.ndarray) and len(times.shape)>1:
-                times = times.squeeze()
+                times = times.squeeze(axis=1)
                 assert len(times.shape)==1
             if not len(times)==self.X.shape[2]:
-                print(times)
-                print(self.X.shape)
                 assert False
             self.Times = times
         # print("HERERE", times, len(times))
@@ -193,7 +191,7 @@ class PopAnal():
         - saves in cache the axes, self.Saved["pca"]
         """
         
-        self.centerAndStack()
+        self.centerAndStack() # (nchans, ..)
 
         if ver=="svd":
 
@@ -607,7 +605,7 @@ class PopAnal():
             return XdataframeAgg
 
     ####################### SLICING
-    def slice_by_dim_values_wrapper(self, dim, values):
+    def slice_by_dim_values_wrapper(self, dim, values, time_keep_only_within_window=True):
         """ Slice based on values (not indices), works for dim =
         times, trials, or chans.
         PARAMS:
@@ -624,7 +622,7 @@ class PopAnal():
             # values are [t1, t2]
             assert len(values)==2
             assert values[1]>values[0]
-            indices = self.index_find_this_time_window(values)
+            indices = self.index_find_this_time_window(values, time_keep_only_within_window=time_keep_only_within_window)
             # indices = self.index_find_these_values(dim, values)
             assert len(indices)==2
         else:
@@ -901,15 +899,31 @@ class PopAnal():
         PARAMS:
         - DUR, wiodth of window, in sec
         - SLIDE, dur to slide window, in sec. if slide is DUR then is perfect coverage.
+        NOTES:
+            - windows designed so at least each window, at least half of it inlcudes data
+            - possible to exclude some data at end, if the dur is small and slide>dur
+
         """
+
+        if SLIDE is None:
+            SLIDE = DUR
 
         # MAke new times iwndows
         PRE = self.Times[0]
         POST = self.Times[-1]
-        # n = (POST-PRE)/DUR
-        times1 = np.arange(PRE, POST-DUR, SLIDE)
-        times2 = times1+DUR
-        time_windows = np.stack([times1, times2], axis=1)
+        if False:
+            # Failed soemtimes, if dur > amount of data. then time_wind would be []
+            # n = (POST-PRE)/DUR
+            times1 = np.arange(PRE, POST-DUR, SLIDE)
+            times2 = times1+DUR
+            time_windows = np.stack([times1, times2], axis=1)
+        else:
+            times1 = np.arange(PRE, POST-DUR/2, SLIDE) # each window, at least half of it inlcudes data
+            times2 = times1 + DUR
+            time_windows = np.stack([times1, times2], axis=1)
+            assert np.isclose(time_windows[0,0], PRE)
+            # assert time_windows[-1,1]>=post
+            assert time_windows[-1,0]<POST
 
         # print(DUR, SLIDE)
         # print(time_windows)
@@ -934,6 +948,7 @@ class PopAnal():
         - times, array with times, each the mean time in the window, (ntimes, 1)
         """
 
+        assert len(time_windows)>0
         list_xthis = []
         list_time_mean = []
         for wind in time_windows:
@@ -1069,6 +1084,27 @@ class PopAnal():
     #     # pa = self.slice_by_dim_indices_wrapper(dim_str, inds)
     #     # return pa
 
+    def norm_subtract_mean_each_chan(self):
+        """
+        For each channel, subtract its mean fr (single scalar fr mean across all time bins and trials) from
+        all (time bin, trials). i.e, subract from X a vector that is (nchans, 1, 1).
+        :return: PA, a copyu of self.
+        """
+
+        pamean = self.agg_wrapper("trials")
+        pamean = pamean.agg_wrapper("times")
+
+        assert pamean.X.shape[0]==self.X.shape[0]
+        assert pamean.X.shape[1]==1
+        assert pamean.X.shape[2]==1
+
+        PA = self.copy()
+        PA.X = PA.X - pamean.X
+
+        assert PA.X.shape == self.X.shape
+
+        return PA
+
     def norm_subtract_trial_mean_each_timepoint(self, dim="trials"):
         """ Take mean over one of the dims, and return data subtracting
         that out. e..g, if dim=="trials", for each (chan, timepoint), subtract the mean
@@ -1170,6 +1206,219 @@ class PopAnal():
         return ListPA, list_levels
 
     #######################
+    # def dataextract_as_clusters_after_conj_grouping(self, vars_grp_and_extract, do_agg_by_grouping=False):
+    #     """
+    #     Extract clusters represntation of PA.X, which is (
+    #     :param vars_grp_and_extract:
+    #     :param do_agg_by_grouping:
+    #     :return:
+    #     """
+    #     from pythonlib.cluster.clustclass import Clusters
+    #
+    #     if agg_by_grouping:
+    #         pa = self.slice_and_agg_wrapper("trials", vars_grp_and_extract)
+    #     else:
+    #         pa = self.copy()
+    #
+    #     label_vars = vars_grp_and_extract
+    #     dflab = pa.Xlabels["trials"]
+    #     labels_rows = dflab.loc[:, label_vars].values.tolist()
+    #     labels_rows = [tuple(x) for x in labels_rows] # list of tuples
+    #     params = {
+    #         "label_vars":label_vars,
+    #     }
+    #
+    #     # If >1 time dimension, take mean over time.
+    #     if pa.X.shape[2]>1:
+    #         pa = pa.agg_wrapper("times")
+    #
+    #     Cl = Clusters(pa.X, labels_rows, ver="rsa", params=params)
+    #
+    #     return Cl
+
+    def dataextract_state_space_decode_flex(self, twind_overall=None,
+                                            tbin_dur=None, tbin_slide=None,
+                                            reshape_method = "chans_x_trials_x_times",
+                                            pca_reduce=False,
+                                            how_decide_npcs_keep = "cumvar",
+                                            pca_frac_var_keep = 0.9, pca_frac_min_keep=0.01,
+                                            plot_pca_explained_var_path=None, plot_loadings_path=None,
+                                            pca_method="svd",
+                                            norm_subtract_single_mean_each_chan=True,
+                                            npcs_keep_force=None):
+        """
+        Fleixble methods for extract data for use in population analyses, slicing out a specific time window,
+        and binning by time, and ootionally reshaping to (ntrials, ...), where you can optionally
+        combine the higher dimensions with various methods for reshaping data output.
+
+        In general, will demean within each channel (subtract single scalar fr across time bins), so maintaining temporal
+        structure within each channel, and then doing PCA on that (nchans x ntimes vector).
+
+        Keeps top N dimensions by criteriion either based on cumvar or minvar.
+
+        PARAMS:
+        - twind_overall, only keep data within this window (e.g, [0.3, 0.6])
+        - tbin_dur, optional, for binning data (sec)
+        - tbin_slide, optional, if binning, how slide bin
+        - reshape_method, str, defines shape of output.
+        - pca_method, str, either
+        --- "sklearn" : centers each time bin!
+        --- "svd" : same method as sklearn, but does not do any centering.
+        RETURNS:
+        - X, PApca, PAslice, pca
+        """
+
+        PAslice = self.copy()
+
+        # Slice to desired window
+        if twind_overall is not None:
+            PAslice = PAslice.slice_by_dim_values_wrapper("times", twind_overall)
+
+        # Bin
+        if tbin_dur is None:
+            # Then take mean
+            PAslice = PAslice.agg_wrapper("times") # (chans, trials, 1)
+        else:
+            PAslice = PAslice.agg_by_time_windows_binned(tbin_dur, tbin_slide)
+
+        if norm_subtract_single_mean_each_chan:
+            # Normalize activity before doing pca?
+            # - at very least, always subtract mean within each channel (not going as far as subtracting mean
+            # within eahc time point of each channel).
+            PAslice = PAslice.norm_subtract_mean_each_chan()
+
+        nchans, ntrials, ntimes = PAslice.X.shape
+        if reshape_method=="trials_x_chanstimes":
+            # Reshape to (ntrials, nchans*ntimes)
+            tmp = np.transpose(PAslice.X, (1, 0, 2)) # (trials, chans, times)
+            X = np.reshape(tmp, [ntrials, nchans * ntimes]) # (ntrials, nchans*timebins)
+
+            # Sanitych check
+            if False: # no need to check. know it works.
+                trial = 0
+                tmp = np.concatenate([PAslice.X[:, trial, i] for i in range(ntimes)])
+                if not np.isclose(np.std(X[trial]), np.std(tmp)):
+                    print(np.std(X[trial]))
+                    print(np.std(tmp))
+                    assert False, "bug in reshaping"
+
+            if pca_reduce:
+                from neuralmonkey.analyses.state_space_good import dimredgood_pca
+                # Make labels (chans x timebins)
+                ntimes = len(PAslice.Times)
+                col_labels = []
+                for ch in PAslice.Chans:
+                    for t in range(ntimes):
+                        col_labels.append((ch, t))
+                X, _, pca = dimredgood_pca(X,
+                                           how_decide_npcs_keep = how_decide_npcs_keep,
+                                           pca_frac_var_keep=pca_frac_var_keep, pca_frac_min_keep=pca_frac_min_keep,
+                                           plot_pca_explained_var_path=plot_pca_explained_var_path,
+                                           plot_loadings_path=plot_loadings_path,
+                                           plot_loadings_feature_labels=col_labels,
+                                           method=pca_method,
+                                           npcs_keep_force=npcs_keep_force) # (ntrials, nchans) --> (ntrials, ndims)
+
+                #
+                # # Prune with PCA
+                # from sklearn.decomposition import PCA
+                # pca = PCA(n_components=None)
+                # Xpca = pca.fit_transform(X) # (ntrials, nchans) --> (ntrials, ndims)
+                # cumvar = np.cumsum(pca.explained_variance_ratio_)
+                # npcs_keep = np.argwhere(cumvar >= pca_frac_var_keep)[0].item()+1 # the num PCs to take such that cumsum is just above thresh
+                # # npcs_keep = np.argmin(np.abs(cumvar - thresh_frac_var))
+                # X = Xpca[:, :npcs_keep]
+                #
+                # if plot_pca_explained_var:
+                #     fig, axes = plt.subplots(1,2, figsize=(8,3))
+                #
+                #     ax = axes.flatten()[0]
+                #     ax.plot(pca.explained_variance_ratio_)
+                #     ax.axvline(npcs_keep, color="r")
+                #     ax.set_title("frac var, each dim")
+                #
+                #     ax = axes.flatten()[1]
+                #     ax.plot(np.cumsum(pca.explained_variance_ratio_))
+                #     ax.axvline(npcs_keep, color="r")
+                #     ax.set_title("cumulative var, each dim")
+                #     # savefig(fig, f"{savedir_preprocess}/pca_explainedvar.pdf")
+
+        elif reshape_method=="chans_x_trials_x_times":
+            # Default.
+            # PCA --> first combines trials x timebins (i.e.,
+            # (ntrials*ntimes, nchans) --> (ntrials*ntimes, ndims)
+
+            if False: # Check passes
+                # Check that reshapes (skipping PCA) dont affect data
+                X = np.reshape(PAslice.X, [nchans, ntrials * ntimes]).T
+                # <PCA would be here>
+                X1 = X.T
+                X1 = np.reshape(X1, [nchans, ntrials, ntimes])
+                assert np.all(PAslice.X==X1)
+
+            if pca_reduce:
+                # Reshape to pass into PCA
+                X = np.reshape(PAslice.X, [nchans, ntrials * ntimes]).T # (ntrials*ntimes, nchans)
+
+                from neuralmonkey.analyses.state_space_good import dimredgood_pca
+                # Make labels (chans x timebins)
+                ntimes = len(PAslice.Times)
+                col_labels = []
+                for ch in PAslice.Chans:
+                    for t in range(ntimes):
+                        col_labels.append((ch, t))
+                X, _, pca = dimredgood_pca(X,
+                                           how_decide_npcs_keep = how_decide_npcs_keep,
+                                           pca_frac_var_keep=pca_frac_var_keep, pca_frac_min_keep=pca_frac_min_keep,
+                                           plot_pca_explained_var_path=plot_pca_explained_var_path,
+                                           plot_loadings_path=plot_loadings_path,
+                                           plot_loadings_feature_labels=col_labels,
+                                           method=pca_method,
+                                           npcs_keep_force=npcs_keep_force) # (ntrials, nchans) --> (ntrials, ndims)
+
+                # # Prune with PCA
+                # from sklearn.decomposition import PCA
+                # pca = PCA(n_components=None)
+                # Xpca = pca.fit_transform(X) # (ntrials*ntimes, nchans) --> (ntrials*ntimes, ndims)
+                # cumvar = np.cumsum(pca.explained_variance_ratio_)
+                # npcs_keep = np.argwhere(cumvar >= pca_frac_var_keep)[0].item()+1 # the num PCs to take such that cumsum is just above thresh
+                # # npcs_keep = np.argmin(np.abs(cumvar - thresh_frac_var))
+                # X = Xpca[:, :npcs_keep] # (ntrials*ntimes, npcs_keep)
+
+                # if plot_pca_explained_var:
+                #     fig, axes = plt.subplots(1,2, figsize=(8,3))
+                #
+                #     ax = axes.flatten()[0]
+                #     ax.plot(pca.explained_variance_ratio_)
+                #     ax.axvline(npcs_keep, color="r")
+                #     ax.set_title("frac var, each dim")
+                #
+                #     ax = axes.flatten()[1]
+                #     ax.plot(np.cumsum(pca.explained_variance_ratio_))
+                #     ax.axvline(npcs_keep, color="r")
+                #     ax.set_title("cumulative var, each dim")
+                #     # savefig(fig, f"{savedir_preprocess}/pca_explainedvar.pdf")
+
+                # Reshape back to original
+                X = X.T # (npcs_keep, ntrials*ntimes)
+                X = np.reshape(X, [npcs_keep, ntrials, ntimes]) # (npcs_keep, ntrials*ntimes)
+            else:
+                X = PAslice.X
+        else:
+            assert False
+            if pca_reduce:
+                assert False, "not coded..."
+
+        if not pca_reduce:
+            pca = None
+
+        # Represent X in PopAnal
+        PApca = PopAnal(X.T[:, :, None].copy(), [0])  # (ndimskeep, ntrials, 1)
+        PApca.Xlabels = {dim:df.copy() for dim, df in PAslice.Xlabels.items()}
+        assert len(PApca.Xlabels["trials"])==PApca.X.shape[1]
+
+        return X, PApca, PAslice, pca
+
     def dataextract_split_by_label_grp_for_statespace(self, grpvars):
         """
         Return a dataframe, where each row is a single level of conjunctive grpvars,
@@ -1503,7 +1752,7 @@ class PopAnal():
         RETURNS;
         - index, see above
         """
-
+        assert isinstance(chan, int)
         return self.Chans.index(chan)
         # for i, ch in enumerate(self.Chans):
         #     if ch==chan:
@@ -1518,6 +1767,7 @@ class PopAnal():
         RETURNS;
         - index, see above
         """
+        assert isinstance(trial, int)
         return self.Trials.index(trial)
 
     def index_find_this_time(self, time):
@@ -1531,17 +1781,23 @@ class PopAnal():
         """
         Get min and max indices into self.Times, such that all values in self.Times[indices]
         are contained within twind (ie.,a ll less than twind).
+        PARAMS:
+        - time_keep_only_within_window, bool, if True, then the time of the indices must be
+        within twind. If False, then the times are the ones CLOSEST to twind, but they could
+        be larger.
         """
 
         inds = self.index_find_these_values("times", twind)
         assert len(inds)==2
 
         if time_keep_only_within_window:
-            # inclusive.
+            # inclusive, deal with numerical imprecision..
+            # ensuring that indices are entirely contained within twind.
             while self.Times[inds[0]]<=twind[0]:
                 inds[0]+=1
             while self.Times[inds[1]]>=twind[1]:
                 inds[1]-=1
+        assert inds[0]<=inds[1]
 
         return inds
 

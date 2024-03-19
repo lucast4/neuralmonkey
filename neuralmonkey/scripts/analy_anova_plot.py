@@ -53,7 +53,7 @@ if __name__=="__main__":
     ######################################## RUN
     # to help debug if times are misaligned.
     MS = load_mult_session_helper(DATE, animal)
-    SP, SAVEDIR_ALL = load_and_concat_mult_snippets(MS, which_level = which_level,
+    SP, SAVEDIR_ALL = load_and_concat_mult_snippets(MS, which_level = which_level, events_keep=events_keep,
         DEBUG=DEBUG)
 
     if DEBUG:

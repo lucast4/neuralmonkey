@@ -1,6 +1,7 @@
 clear all; close all; 
-ANIMAL = 'Diego';
-DATE = 231219;
+
+ANIMAL = 'Pancho';
+DATE = 230620;
 
 %%
 SKIP_LOADING_DATSTRUCT = true;
@@ -21,6 +22,7 @@ ANIMAL = 'Diego';
 
 %DATES = [220829 220830 220831];
 DATES = [231207 231211 231213 231218 231219];
+
 for i=1:length(DATES)
     DATE = DATES(i);
     

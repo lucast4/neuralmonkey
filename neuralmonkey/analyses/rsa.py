@@ -227,7 +227,8 @@ def rsagood_score_vs_shuff_wrapper(DFallpa, animal, date, question, q_params,
     DFRES_THEOR = append_col_with_grp_index(DFRES_THEOR, ["which_level", "twind"], "wl_tw", use_strings=False)
 
     ##################### GET A SINGLE SHUFFLE
-    from neuralmonkey.metrics.scalar import _shuffle_dataset_hier
+    # from neuralmonkey.metrics.scalar import _shuffle_dataset_hier
+    from pythonlib.tools.pandastools import shuffle_dataset_hierarchical
     for var in effect_vars:
         list_pa_shuff = []
         for pa in DFallpa["pa"].tolist():
@@ -235,7 +236,8 @@ def rsagood_score_vs_shuff_wrapper(DFallpa, animal, date, question, q_params,
             vars_shuffle = [v for v in effect_vars if not v==var]
 
             df = pa.Xlabels["trials"]
-            df_shuff = _shuffle_dataset_hier(df, [var], vars_shuffle)
+            df_shuff = shuffle_dataset_hierarchical(df, vars_shuffle, [var])
+            # df_shuff = _shuffle_dataset_hier(df, [var], vars_shuffle)
             assert(np.all(df[var] == df_shuff[var]))
             assert(np.all(df["index_datapt"] == df_shuff["index_datapt"]))
 
@@ -587,8 +589,8 @@ def rsagood_pa_samediff_single(PA, effect_vars, subtract_mean_each_level_of_var,
     """
 
     _, _, PAagg, fig, axes, groupdict = popanal_preprocess_scalar_normalization(PA, effect_vars,
-                                                              subtract_mean_each_level_of_var = subtract_mean_each_level_of_var,
-                                                              DO_AGG_TRIALS=DO_AGG_TRIALS)
+                                                                                subtract_mean_each_level_of_var=subtract_mean_each_level_of_var,
+                                                                                DO_AGG_TRIALS=DO_AGG_TRIALS)
 
     Clraw, Clsim = _rsagood_convert_PA_to_Cl(PAagg, effect_vars, version_distance,
                                              DO_AGG_TRIALS)
@@ -659,9 +661,8 @@ def rsagood_pa_effectsize_single(PA, grouping_vars, subtract_mean_each_level_of_
     # (1) Marginals, one value for each lev of each var
     list_df = []
     for var in grouping_vars:
-        _, _, PAagg, _, _, _ = popanal_preprocess_scalar_normalization(PA, [var],
-                                                                                      subtract_mean_each_level_of_var,
-                                                                                      DO_AGG_TRIALS=DO_AGG_TRIALS)
+        _, _, PAagg, _, _, _ = popanal_preprocess_scalar_normalization(PA, [var], subtract_mean_each_level_of_var,
+                                                                       DO_AGG_TRIALS=DO_AGG_TRIALS)
         # get norm -- i.e., mean over units
         norm = np.linalg.norm(PAagg.X, axis=0).squeeze() # (nlevs, )
 
@@ -675,9 +676,8 @@ def rsagood_pa_effectsize_single(PA, grouping_vars, subtract_mean_each_level_of_
     DF_EFFECT_MARG = pd.concat(list_df)
 
     # (2) Conjucntions, one value for each conjucntion var
-    _, _, PAagg, _, _, _ = popanal_preprocess_scalar_normalization(PA, grouping_vars,
-                                                                                  subtract_mean_each_level_of_var,
-                                                                                  DO_AGG_TRIALS=DO_AGG_TRIALS)
+    _, _, PAagg, _, _, _ = popanal_preprocess_scalar_normalization(PA, grouping_vars, subtract_mean_each_level_of_var,
+                                                                   DO_AGG_TRIALS=DO_AGG_TRIALS)
     # get norm -- i.e., mean over units
     norm = np.linalg.norm(PAagg.X, axis=0).squeeze() # (nlevs, )
 
@@ -731,10 +731,10 @@ def rsagood_pa_vs_theor_single(PA, grouping_vars, version_distance, subtract_mea
     else:
         _gv = None
     _, PAscal, PAscalagg, fig, axes, groupdict = popanal_preprocess_scalar_normalization(PA, _gv,
-                                                                                  subtract_mean_each_level_of_var,
-                                                                                  plot_example_chan=plot_example_chan,
-                                                                                  plot_example_split_var=plot_example_split_var,
-                                                                                  DO_AGG_TRIALS=DO_AGG_TRIALS)
+                                                                                         subtract_mean_each_level_of_var,
+                                                                                         plot_example_chan_number=plot_example_chan,
+                                                                                         plot_example_split_var_string=plot_example_split_var,
+                                                                                         DO_AGG_TRIALS=DO_AGG_TRIALS)
     PAagg = PAscalagg
 
     if PLOT:
@@ -1146,9 +1146,9 @@ def preprocess_rsa_prepare_popanal_wrapper(PA, effect_vars, exclude_last_stroke,
         PA = PA.slice_by_labels("trials", "stroke_index", vals) # list(range(-10, -1)) --> [-10, ... , -2]
         assert len(PA.Xlabels["trials"])>0
     if exclude_last_stroke:
-        vals = PA.Xlabels["trials"]["stroke_index_fromlast"].unique().tolist()
+        vals = PA.Xlabels["trials"]["stroke_index_fromlast_tskstks"].unique().tolist()
         vals = [v for v in vals if v <-1]
-        PA = PA.slice_by_labels("trials", "stroke_index_fromlast", vals) # list(range(-10, -1)) --> [-10, ... , -2]
+        PA = PA.slice_by_labels("trials", "stroke_index_fromlast_tskstks", vals) # list(range(-10, -1)) --> [-10, ... , -2]
         assert len(PA.Xlabels["trials"])>0
     if exclude_first_stroke:
         vals = PA.Xlabels["trials"]["stroke_index"].unique().tolist()
@@ -1523,9 +1523,9 @@ def OBS_load_single_data(RES, bregion, twind, which_level, recompute_sim_mats=Fa
         version_distance = res["version_distance"]
         DO_AGG_TRIALS = res["DO_AGG_TRIALS"]
         _, _, PAagg, fig, axes, groupdict = popanal_preprocess_scalar_normalization(PA, EFFECT_VARS,
-                                                                                      subtract_mean_each_level_of_var,
-                                                                                      plot_example_chan=None,
-                                                                                      DO_AGG_TRIALS=DO_AGG_TRIALS)
+                                                                                    subtract_mean_each_level_of_var,
+                                                                                    plot_example_chan_number=None,
+                                                                                    DO_AGG_TRIALS=DO_AGG_TRIALS)
         Clraw, Clsim = _rsagood_convert_PA_to_Cl(PAagg, EFFECT_VARS, version_distance, DO_AGG_TRIALS)
 
     return res, PA, Clraw, Clsim
@@ -2956,7 +2956,7 @@ def rsagood_questions_params(question):
         # context
 
         ## Params which apply across all which_level
-        effect_vars = ["shape_label", "stroke_index_fromlast", "velmean_thbin"]
+        effect_vars = ["shape_label", "stroke_index_fromlast_tskstks", "velmean_thbin"]
         list_which_level = ["stroke"] # Whihc which_level to keep
 
         ## For "stroke" and "stroke_off" which_levels
@@ -2977,11 +2977,11 @@ def rsagood_questions_params(question):
         slice_agg_slices = None
         slice_agg_vars_to_split = None
 
-        list_subtract_mean_each_level_of_var = [None, "stroke_index_fromlast"]
+        list_subtract_mean_each_level_of_var = [None, "stroke_index_fromlast_tskstks"]
 
         # Which variables to plot all the pairwise distmats for
         # Which variables to plot all the pairwise distmats for
-        plot_pairwise_distmats_variables = ["shape_label", "stroke_index_fromlast"]
+        plot_pairwise_distmats_variables = ["shape_label", "stroke_index_fromlast_tskstks"]
         plot_pairwise_distmats_twinds = [
             ("stroke", "00_stroke", (-0.3, -0.1)),
         ]
@@ -3177,7 +3177,7 @@ def rsagood_questions_params(question):
         ## Params which apply AFTER you have concated across which_level
         # Which events to prune to
         events_keep = ["00_stroke"]
-        ANALY_VER = "seqcontext"
+        ANALY_VER = "singleprim"
 
         # If this requires slicing and agging DFallpa
         slice_agg_slices = None
@@ -3190,6 +3190,35 @@ def rsagood_questions_params(question):
         plot_pairwise_distmats_twinds = [
             ("stroke", "00_stroke", (-0.3, -0.1)),
         ]
+
+    elif question=="SP_BASE_stroke":
+        # for Single prims, strokes.
+
+        effect_vars = ["shape_oriented"]
+        list_which_level = ["stroke"] # Whihc which_level to keep
+
+        ## For "stroke" and "stroke_off" which_levels
+        # - include all strokes within sequence
+        exclude_last_stroke=False
+        exclude_first_stroke=False
+        keep_only_first_stroke=False
+        min_taskstrokes = 1
+        max_taskstrokes = 10
+
+        ## Params which apply AFTER you have concated across which_level
+        # Which events to prune to
+        events_keep = ["00_stroke"]
+        ANALY_VER = "singleprim"
+
+        # If this requires slicing and agging DFallpa
+        slice_agg_slices = None
+        slice_agg_vars_to_split = None
+
+        list_subtract_mean_each_level_of_var = [None]
+
+        # Which variables to plot all the pairwise distmats for
+        plot_pairwise_distmats_variables = None
+        plot_pairwise_distmats_twinds = None
 
     elif question=="SP_shape_loc_size":
         ## Params which apply across all which_level

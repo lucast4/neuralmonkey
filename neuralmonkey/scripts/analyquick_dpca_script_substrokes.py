@@ -32,7 +32,7 @@ from neuralmonkey.scripts.analy_dpca_script_quick import plot_statespace_2d_over
 
 # Get results for a single pa
 from neuralmonkey.scripts.analy_dpca_script_quick import plothelper_get_variables
-from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_scalar, trajgood_plot_colorby_splotby_scalar_helper
+from neuralmonkey.analyses.state_space_good import  trajgood_plot_colorby_splotby_scalar
 
 from pythonlib.tools.plottools import savefig
 from pythonlib.tools.pandastools import append_col_with_grp_index
@@ -296,9 +296,9 @@ if __name__=="__main__":
 
                     DFallpa = dfallpa_extraction_load_wrapper(animal, date, question, list_time_windows,
                                                               which_level=which_level,
-                                                            bin_by_time_dur = bin_by_time_dur,
-                                                            bin_by_time_slide = bin_by_time_slide,
                                                               combine_into_larger_areas=combine_into_larger_areas,
+                                                              bin_by_time_dur=bin_by_time_dur,
+                                                              bin_by_time_slide=bin_by_time_slide,
                                                               HACK_RENAME_SHAPES=HACK_RENAME_SHAPES)
 
 
@@ -374,7 +374,7 @@ if __name__=="__main__":
 
                                     labels = dflab[color_var]
 
-                                    fig, axes = trajgood_plot_colorby_splotby_scalar_helper(xs, ys, labels, dflab[subplot_var],
+                                    fig, axes = trajgood_plot_colorby_splotby_scalar(xs, ys, labels, dflab[subplot_var],
                                                                                 color_var, subplot_var, overlay_mean=False, SIZE=6)
                                     savefig(fig, f"{savedir}/{br}-color_{color_var}-splot_{subplot_var}.pdf")
 

@@ -501,11 +501,11 @@ def preprocess_pa_to_frtensor(PA, effect_vars, keep_all_margs=False):
     subtract_mean_each_level_of_var = None
     subtract_mean_at_each_timepoint = False
     PAnorm, PAscal, PAscalagg, fig, axes, groupdict = popanal_preprocess_scalar_normalization(PA, effect_vars,
-                                                                                  subtract_mean_each_level_of_var,
-                                                                                  plot_example_chan=None,
-                                                                                  plot_example_split_var=None,
-                                                                                  DO_AGG_TRIALS=False,
-                                                                                  subtract_mean_at_each_timepoint=subtract_mean_at_each_timepoint)
+                                                                                              subtract_mean_each_level_of_var,
+                                                                                              plot_example_chan_number=None,
+                                                                                              plot_example_split_var_string=None,
+                                                                                              DO_AGG_TRIALS=False,
+                                                                                              subtract_mean_at_each_timepoint=subtract_mean_at_each_timepoint)
     # (2) Shape into (trials, neurons, feat1, feat2, ...)
     # ie (trials, neurons, shape, loc, times)
     # currently (neurons, trials, times)
@@ -709,7 +709,7 @@ if __name__=="__main__":
         combine_into_larger_areas = True
         MS = load_mult_session_helper(date, animal, spikes_version=SPIKES_VERSION)
 
-        SP, SAVEDIR_ALL = load_and_concat_mult_snippets(MS, which_level = which_level,
+        SP, SAVEDIR_ALL = load_and_concat_mult_snippets(MS, which_level = which_level, events_keep=events_keep,
             DEBUG=False)
 
         from neuralmonkey.analyses.rsa import rsagood_questions_dict
@@ -719,8 +719,10 @@ if __name__=="__main__":
         q_params = DictParamsEachQuestion[question]
 
         # Clean up SP and extract features
+        HACK_RENAME_SHAPES = True
         D, list_features_extraction = SP.datasetbeh_preprocess_clean_by_expt(
-            ANALY_VER=q_params["ANALY_VER"], vars_extract_append=q_params["effect_vars"])
+            ANALY_VER=q_params["ANALY_VER"], vars_extract_append=q_params["effect_vars"],
+            HACK_RENAME_SHAPES=HACK_RENAME_SHAPES)
 
 
         ### PARAMS for SP --> PA
@@ -730,12 +732,9 @@ if __name__=="__main__":
         if events_keep is None:
             events_keep = q_params["events_keep"]
 
-        HACK_RENAME_SHAPES = True
-
         # Extract all popanals
         DFallpa = snippets_extract_popanals_split_bregion_twind(SP, list_time_windows,
                                                         list_features_extraction,
-                                                        HACK_RENAME_SHAPES=HACK_RENAME_SHAPES,
                                                                 combine_into_larger_areas=combine_into_larger_areas,
                                                                 events_keep=events_keep,
                                                                 exclude_bad_areas=exclude_bad_areas)

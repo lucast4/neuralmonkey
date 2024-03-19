@@ -15,7 +15,8 @@ elif [[ $animal == Pancho ]]; then
 #  datelist=(220606 220608 220609 220610) # (shape, loc, size)
 #  datelist=(230612 230613) # complexvar
 #  datelist=(220718 221217) # large N prims (including edgy)
-  datelist=(221220 230103 230104) # novel prims
+#  datelist=(221220 230103 230104) # novel prims
+  datelist=(220719) # bug, reextracting
 else
   echo $animal
   echo "Error! Inputed non-existing animal" 1>&2
@@ -49,5 +50,5 @@ do
     taskset --cpu-list 0,1,2,3,4,5,6 python analy_snippets_extract.py ${animal} ${date1} ${which_level} 2>&1 | tee ${logfile} &
     sleep 5s
   done
-  sleep 12m
+  sleep 1m
 done

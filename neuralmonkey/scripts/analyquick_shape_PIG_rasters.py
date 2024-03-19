@@ -18,7 +18,7 @@ import os
 #     "Pancho":["230623", "230626"],
 # }
 
-
+assert False, "must add event as argument to plotgood_rasters_smfr_each_level_combined"
 
 if __name__=="__main__":
     dict_dates = {
