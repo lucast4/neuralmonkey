@@ -9,7 +9,7 @@ class PopAnal():
     """ for analysis of population state spaces
     """
 
-    def __init__(self, X, times, chans=None, dim_units=0, 
+    def __init__(self, X, times=None, chans=None, dim_units=0,
         stack_trials_ver="append_nan", 
         feature_list = None, spike_trains=None,
         print_shape_confirmation = False, trials=None):
@@ -863,6 +863,34 @@ class PopAnal():
             return PA
         else:
             return X
+
+    def copy_replacing_X(self, X, times=None, chans=None):
+        """
+        Retyrns a copy, with a new X that has same n trials (so that can copy the labels from self,
+        self.Xlabels), but potentialyl diff n chans and times.
+        NOTE: if X has any dimensions matching self.X, then assumes the labels are the same for that dim,
+        (if that input (e.g., times) is NOne)
+        :return:
+        """
+
+        assert X.shape[1]==self.X.shape[1], "assumes trials are matches, to get labels"
+        trials = self.Trials
+
+        if chans is None and (X.shape[0]==self.X.shape[0]):
+            chans = self.X.Chans
+
+        if times is None and (X.shape[2]==self.X.shape[2]):
+            chans = self.X.Times
+
+        pa = PopAnal(X, times=times, chans=chans, trials=trials)
+
+        # pa.Xlabels = {dim:df.copy() for dim, df in self.Xlabels.items()}
+        pa.Xlabels = {}
+        pa.Xlabels["trials"] = self.Xlabels["trials"].copy()
+        pa.Xlabels["chans"] = pd.DataFrame()
+        pa.Xlabels["times"] = pd.DataFrame()
+
+        return pa
 
     def copy(self):
         """ Returns a copy.
@@ -1875,6 +1903,21 @@ class PopAnal():
         else:
             print(version)
             assert False
+    def extract_activity_copy_all(self):
+        """
+        Copy and return all data from self.
+        :return: data, dict.
+        """
+        data = {
+            "X":self.X.copy(),
+            "dflab":self.Xlabels["trials"].copy(),
+            "Times":self.Times,
+            "Chans":self.Chans,
+            "Trials":self.Trials,
+        }
+
+        return data
+
 
     def help_get_dimensions(self, dim):
         """ Hleper to convert between types for dim (int or str)
