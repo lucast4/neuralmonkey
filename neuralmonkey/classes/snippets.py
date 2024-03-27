@@ -12,7 +12,6 @@ from pythonlib.tools.plottools import savefig
 from pythonlib.tools.snstools import rotateLabel
 
 SAVEDIR_SNIPPETS_STROKE = "/gorilla1/analyses/recordings/main/anova/bystroke" # for snippets
-# SAVEDIR_SNIPPETS_STROKE = "/gorilla1/analyses/recordings/main/chunks_modulation" # for snippets
 SAVEDIR_SNIPPETS_TRIAL = "/gorilla1/analyses/recordings/main/anova/bytrial" # for snippets
 
 # LIST_SUPERV_NOT_TRAINING = ["off|0||0", "off|1|solid|0", "off|1|rank|0"] # Dont use this. use D.preprocessGood(no supervision) insetead
@@ -1521,9 +1520,8 @@ class Snippets(object):
 
         dict_lev_pa = {}
         for lev_other, dfthis in dict_lev_df.items():
-            if len(dfthis) >0:
-                pa = self._dataextract_as_popanal_singlesite_OLD(dfthis, [site], list_cols=list_cols)
-                dict_lev_pa[lev_other] = pa
+            pa = self._dataextract_as_popanal_singlesite_OLD(dfthis, [site], list_cols=list_cols)
+            dict_lev_pa[lev_other] = pa
 
         return dict_lev_pa, levels_var 
 
@@ -1796,6 +1794,9 @@ class Snippets(object):
 
         if balance_no_missed_conjunctions:
             assert vars_others is not None, "need this, or else not sure what to balance.."
+
+        if isinstance(vars_others, tuple):
+            vars_others = list(vars_others)
 
         if DFTHIS is None:
             DFTHIS = self.DfScalar
@@ -5738,8 +5739,7 @@ class Snippets(object):
                                                                                     vars_others, site, event=event,
                                                                                     OVERWRITE_n_min=OVERWRITE_n_min, OVERWRITE_lenient_n=OVERWRITE_lenient_n,
                                                                                 balance_same_levels_across_ovar=balance_same_levels_across_ovar)
-        if len(dict_lev_pa)==0:
-            return None, None
+
         # for k, pa in dict_lev_pa.items():
         #     print(k, pa.X.shape, pa.Xlabels["trials"][var].unique())
         # assert False
@@ -5816,13 +5816,43 @@ class Snippets(object):
         return fig, axes
 
         # else:
-        #     for lev_other, ax in zip(plot_these_levels_of_varsothers, plot_on_these_axes):
-        #         pathis = dict_lev_pa[lev_other]
-        #         pathis.plotwrapper_smoothed_fr_split_by_label("trials", var, ax, event_bounds=event_bounds);
-        #         ax.set_title(lev_other, fontsize=8)
-        #         ax.set_ylim([0, 1.1*YMAX])
-        #         ax.axvline(0, color="m")   
-        #     return None, None
+        #     fig = None
+        #     axes = plot_on_these_axes
+        #     assert len(axes)>=len(dict_lev_pa), "not enough axes"
+        #
+        # # joint he axes
+        # if len(axes.flatten())>0:
+        #     from pythonlib.tools.plottools import share_axes
+        #     share_axes(axes, "y")
+        #
+        # # Make plots
+        # _legend_added = False
+        # for ax, (lev_other, pathis) in zip(axes.flatten(), dict_lev_pa.items()):
+        #     if pathis is not None:
+        #         # plot
+        #         if _legend_added==False:
+        #             ADD_LEGEND = not len(levels_var_exist)>16
+        #             _legend_added=True
+        #         else:
+        #             ADD_LEGEND = False
+        #         pathis.plotwrapper_smoothed_fr_split_by_label("trials", var, ax,
+        #             event_bounds=event_bounds, legend_levels=levels_var_exist,
+        #             add_legend=ADD_LEGEND)
+        #     #     self._plotgood_rasters_split_by_feature_levels(ax, dfthis, var, xmin=xmin, xmax=xmax)
+        #         ax.set_title(lev_other, fontsize=6, wrap=True)
+        #         # ax.set_ylim([0, 1.2*YMAX])
+        #         ax.axvline(0, color="m")
+        #
+        # return fig, axes
+        #
+        # # else:
+        # #     for lev_other, ax in zip(plot_these_levels_of_varsothers, plot_on_these_axes):
+        # #         pathis = dict_lev_pa[lev_other]
+        # #         pathis.plotwrapper_smoothed_fr_split_by_label("trials", var, ax, event_bounds=event_bounds);
+        # #         ax.set_title(lev_other, fontsize=8)
+        # #         ax.set_ylim([0, 1.1*YMAX])
+        # #         ax.axvline(0, color="m")
+        # #     return None, None
 
 
 
@@ -6325,6 +6355,7 @@ class Snippets(object):
         Each column is a level of vars_others. 
         PARAMS;
         - var, str, the variable, e.g, epoch"
+        --- or list of str, which will be interpreted as conjunction var.
         NOTE:
         - this could be made flexible so that each column is anyting, such as events.
 
@@ -6346,6 +6377,14 @@ class Snippets(object):
         #     assert False
 
         assert event is not None, "or else OVERWRITE_n_min wont work, it will counta cross all event"
+
+        if isinstance(var, (tuple, list)):
+            from pythonlib.tools.pandastools import append_col_with_grp_index
+            self.DfScalar = append_col_with_grp_index(self.DfScalar, var, "_tmp")
+            var = "_tmp"
+
+        if isinstance(vars_others, tuple):
+            vars_others = list(vars_others)
 
         # PREPARE plot
         # Extract data, just to see many subplots to make.
@@ -6381,7 +6420,7 @@ class Snippets(object):
                                                                            reduce_height_for_sm_fr=True)
  
             # 1) Plot the rasters ont he top row.
-            if "raster" in plotvers:
+            if "raster" in plotvers or "rasters" in plotvers:
                 axes = axesall[0]
                 for ax, (lev_other, dfthis) in zip(axes.flatten(), levdat.items()):
                     self._plotgood_rasters_split_by_feature_levels(ax, dfthis, var, event=event,
@@ -6391,7 +6430,7 @@ class Snippets(object):
                     ax.set_ylabel(map_level_to_idx[lev_other], fontsize=FONTSIZE, wrap=True)
                     ax.axvline(0, color="m")
 
-            # 2) Plot the sm fr on the lower row
+            # # 2) Plot the sm fr on the lower row
             if "smfr" in plotvers:
                 axes = axesall[1]
                 levels_of_varsothers = list(levdat.keys())
@@ -7122,7 +7161,7 @@ class Snippets(object):
 
                 self.Datasetbeh = Dall
                 return self.Datasetbeh
-        elif kind=="datstrokes":
+        elif kind in ["datstrokes", "datasetstrokes", "datstroke", "dat_strokes"]:
             # each row is stroke
             # if self.DS is not None:
 
@@ -7264,7 +7303,7 @@ class Snippets(object):
         DS = self.datasetbeh_extract_dataset("datstrokes")
 
         ################ CHUNKS, STROKES (e.g., singlerule, AnBm)
-        if params["datasetstrokes_extract_chunks_variables"]:
+        if params["datasetstrokes_extract_chunks_variables"] and self.Params["which_level"] == "stroke":
             # First extract within Dataset, then to DS.
             # (note: DS.Dataset and D are identical objects).
 
@@ -7273,10 +7312,6 @@ class Snippets(object):
                 DS.dataset_replace_dataset(D)
                 # Then prune DS to match D.
                 DS.dataset_prune_self_to_match_dataset()
-
-            # Second, extract chunk variables from Dataset
-            for i in range(len(DS.Dataset.Dat)):
-                DS.Dataset.grammarparses_taskclass_tokens_assign_chunk_state_each_stroke(i)
 
             # Third, extract variables to strokes
             DS.context_chunks_assign_columns()
@@ -7293,20 +7328,20 @@ class Snippets(object):
         ##################################### EXTRACT FEATURES INTO DFSCALAR
         list_features_extraction_base = ["trialcode", "aborted", "event_time", "task_kind", "gridsize",
                                           "FEAT_num_strokes_task", "FEAT_num_strokes_beh",
-                                          "character", "probe", "supervision_stage_concise",
-                                          "epoch_orig", "epoch", "taskgroup",
+                                          "character", "probe", "supervision_stage_concise", "superv_COLOR_METHOD",
+                                         "INSTRUCTION_COLOR", "epoch_orig", "epoch", "taskgroup", "epochset",
                                           "origin", "donepos"]
 
         list_features_extraction_stroke = [
                                     "stroke_index", "stroke_index_fromlast", "stroke_index_fromlast_tskstks",
                                     "stroke_index_semantic", "stroke_index_semantic_tskstks",
-                                    "shape_oriented", "shape", "gridloc",
+                                    "shape_oriented", "shape", "gridloc", "gridloc_x", "gridloc_y",
                                     "CTXT_loc_next", "CTXT_shape_next",
                                     "CTXT_loc_prev", "CTXT_shape_prev",
                                     "gap_from_prev_angle_binned", "gap_to_next_angle_binned",
                                     "gap_from_prev_angle", "gap_to_next_angle",
                                     "Stroke", "TokTask",
-                                    "stroke_index_is_first",
+                                    "stroke_index_is_first", "stroke_index_is_last_tskstks",
                                     "loc_on_clust", "CTXT_loconclust_prev", "CTXT_loconclust_next",
                                     "loc_off_clust", "CTXT_locoffclust_prev", "CTXT_locoffclust_next"
                                 ]
@@ -7323,15 +7358,15 @@ class Snippets(object):
         list_features_extraction_trial = ["shape_is_novel_all", "shape_semantic_labels", "shape_is_novel_list",
                                           "taskconfig_shp", "taskconfig_shploc", "taskconfig_loc",
                                           "Tkbeh_stkbeh", "Tkbeh_stktask", "Tktask",
-                                          "taskconfig_shp_SHSEM", "taskconfig_shploc_SHSEM",
-                                          ]
+                                          "taskconfig_shp_SHSEM", "taskconfig_shploc_SHSEM"]
         n_strok_max = 6
         for i in range(n_strok_max):
             # for suff in ["shape", "loc", "loc_local"]:
             # for suff in ["shape", "loc"]:
             for suff in ["shape", "loc", "shapesem", "locon", "locx", "locy",
                          "center_binned", "locon_binned", "shapesemcat", "angle", "angle_binned",
-                         "locon_bin_in_loc"]:
+                         "loc_on_clust"]:
+                # locon_bin_in_loc
                 list_features_extraction_trial.append(f"seqc_{i}_{suff}")
         list_features_extraction_trial.append("seqc_nstrokes_beh")
         list_features_extraction_trial.append("seqc_nstrokes_task")
@@ -7369,11 +7404,11 @@ class Snippets(object):
             # Then dataset_strokes lloaded char labels
             list_features_extraction = list_features_extraction + ["shape_label", "clust_sim_max", "clust_sim_max_colname"]
 
-        if params["datasetstrokes_extract_chunks_variables"]:
+        if params["datasetstrokes_extract_chunks_variables"] and self.Params["which_level"] == "stroke":
             # Then dataset_strokes lloaded chunk variables, e.g,
-            list_features_extraction = list_features_extraction + ["chunk_rank", "chunk_within_rank",
-                                                        "chunk_within_rank_fromlast", "chunk_n_in_chunk"
-                                                        "chunk_diff_from_prev"]
+            list_features_extraction = list_features_extraction + ["chunk_rank", "chunk_within_rank", "chunk_within_rank_semantic",
+                                                        "chunk_within_rank_fromlast", "chunk_n_in_chunk",
+                                                        "chunk_diff_from_prev"] + ["taskcat_by_rule"]
 
         # For the rest, try to get automatically.
         list_features_extraction = vars_extract_append + list_features_extraction
