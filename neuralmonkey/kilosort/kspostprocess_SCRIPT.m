@@ -1,14 +1,20 @@
-%clear all; close all; 
-%ANIMAL = 'Pancho';
-%DATE = 220609;
-%SKIP_RAW_PLOTS_EACH_CLUST = true;
+
+clear all; close all; 
+ANIMAL = 'Pancho';
+DATE = 220609;
+SKIP_RAW_PLOTS_EACH_CLUST = true;
+SKIP_LOADING_DATSTRUCT=true;
 
 % Run these, no without human intervention
 %kspostprocess_extract(ANIMAL, DATE);
 %kspostprocess_metrics_and_label(ANIMAL, DATE, SKIP_RAW_PLOTS_EACH_CLUST);
     
 % This is the human manual curation step.
-%kspostprocess_manual_curate_merge(ANIMAL, DATE);
+kspostprocess_manual_curate_merge(ANIMAL, DATE, SKIP_LOADING_DATSTRUCT);
+
+% After curating, run this to finalize saved data
+kspostprocess_finalize_after_manual(ANIMAL, DATE)
+
 
 % Done!
 
@@ -43,6 +49,18 @@ change_to_this_label = 'mua'; % what you want to change the label to.
 %%% Finally, rerun the finalize script to redo all finalizing, but this
 %%% time incorproating the chagnes above.
 % See the code starting with "APPLYING MANUAL CHANGES"
+kspostprocess_finalize_after_manual(ANIMAL, DATE)
+
+%%%
+DATE = 230915;
+list_idxs_new = [47 41 54 62 60 74 94 98 163 114 126 133 138 146 153 162 172 173];
+kspostprocess_changelabel_after_finalize(ANIMAL, DATE, list_idxs_new, change_kind, change_to_this_label);
+kspostprocess_finalize_after_manual(ANIMAL, DATE)
+
+DATE = 230924;
+list_idxs_new = [6 11 16 17 18 40 28 31 41 78 91 92 99 112 137 138 139 159 163 175 180 182 193 194 208 206];
+kspostprocess_changelabel_after_finalize(ANIMAL, DATE, list_idxs_new, change_kind, change_to_this_label);
+kspostprocess_finalize_after_manual(ANIMAL, DATE)
 %kspostprocess_finalize_after_manual(ANIMAL, DATE)
 
 for i=1:length(DATES)

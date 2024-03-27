@@ -1521,8 +1521,9 @@ class Snippets(object):
 
         dict_lev_pa = {}
         for lev_other, dfthis in dict_lev_df.items():
-            pa = self._dataextract_as_popanal_singlesite_OLD(dfthis, [site], list_cols=list_cols)
-            dict_lev_pa[lev_other] = pa
+            if len(dfthis) >0:
+                pa = self._dataextract_as_popanal_singlesite_OLD(dfthis, [site], list_cols=list_cols)
+                dict_lev_pa[lev_other] = pa
 
         return dict_lev_pa, levels_var 
 
@@ -5737,7 +5738,8 @@ class Snippets(object):
                                                                                     vars_others, site, event=event,
                                                                                     OVERWRITE_n_min=OVERWRITE_n_min, OVERWRITE_lenient_n=OVERWRITE_lenient_n,
                                                                                 balance_same_levels_across_ovar=balance_same_levels_across_ovar)
-
+        if len(dict_lev_pa)==0:
+            return None, None
         # for k, pa in dict_lev_pa.items():
         #     print(k, pa.X.shape, pa.Xlabels["trials"][var].unique())
         # assert False
