@@ -1087,3 +1087,58 @@ def dfpa_group_and_split(DFallpa, vars_to_concat=None, vars_to_split=None,
     #
     # pa = DictBregionTwindPA[key]
     # pa.Xlabels["trials"]["event"].value_counts()
+
+def data_extract_raw_and_save(DFallpa, savepath):
+    """
+    Helper to extrat raw data (so that no dependencies on PA libarray) and
+    save to savepath as pickle.
+    :param DFallpa:
+    :param savepath, usually should have "DFallpa_raw.pkl"
+    :return:
+    """
+
+    # 1. Extract raw data for each row
+    datas = []
+    chans = []
+    times = []
+    trials = []
+    labels = []
+    for pa in DFallpa["pa"]:
+        d = pa.extract_activity_copy_all()
+        datas.append(d["X"])
+        chans.append(d["Chans"])
+        times.append(d["Times"])
+        trials.append(d["Trials"])
+        labels.append(d["dflab"])
+
+    # 2. Make a copy and append new columns
+    DFallpa_raw = DFallpa.copy()
+    DFallpa_raw["DATA_chan_trial_time"] = datas
+    DFallpa_raw["chans"] = chans
+    DFallpa_raw["times"] = times
+    DFallpa_raw["trials"] = trials
+    DFallpa_raw["labels"] = labels
+
+    # 3. Drop columns that use PA class
+    DFallpa_raw = DFallpa_raw.drop(["pa", "pa_x_shape"], axis=1)
+
+    # 4. Remove label columns which use custom class objects
+    list_labels = []
+    for dflab in DFallpa_raw["labels"]:
+        keys_remove = []
+        for k in dflab.keys():
+            # print(k, " -- ", type(dflab[k].values[0]))
+            if "Tkbeh" in k or "Tktask" in k:
+                keys_remove.append(k)
+        print("Removing these custom class columns from labels: ", keys_remove)
+        dflab_raw = dflab.drop(keys_remove, axis=1)
+
+        list_labels.append(dflab_raw)
+    DFallpa_raw["labels"] = list_labels
+
+    # 5. Save
+    import pickle
+    # # path = "/gorilla4/Dropbox/SCIENCE/FREIWALD_LAB/DATA/DFallpa.pkl"
+    # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/DFallpa.pkl"
+    pd.to_pickle(DFallpa_raw, savepath)
+    print("Saved to path:", savepath)
