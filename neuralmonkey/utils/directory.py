@@ -390,11 +390,6 @@ def rec_session_durations_extract_kilosort(animal, date):
         duration_total_by_summing_rs4_dict[rs] = sum(durations_each_sess_rs4_keyed_by_rs[rs])
         # duration_total_by_summing_rs4_dict[rs] = sum([durations_each_sess_rs4_keyed_by_sessnum_rs_dict[(s, rs)] for s in sessnums])
 
-    print("These durations gotten for sessions...")
-    print("... durations_each_sess_rs4_keyed_by_rs", durations_each_sess_rs4_keyed_by_rs)
-    print("... _durations_each_sess_using_tank", _durations_each_sess_using_tank)
-    print("... duration_total_by_summing_rs4_dict", duration_total_by_summing_rs4_dict)
-
     ## Sanity check, durations for each sess add up to the total duration
     for rs in [2,3]:
         assert duration_total_by_summing_rs4_dict[rs] - duration_total_kilosort_dict_each_rs[rs]<0.001
@@ -403,7 +398,7 @@ def rec_session_durations_extract_kilosort(animal, date):
     for rs in [2,3]:
         durations = durations_each_sess_rs4_keyed_by_rs[rs]
         for dur1, dur2 in zip(_durations_each_sess_using_tank, durations):
-            assert dur1-dur2 < 0.2, "Problem probably in getting durations from RSn2_log, in the string parsing part?"
+            assert dur1-dur2 < 0.15, "Problem probably in getting durations from RSn2_log, in the string parsing part?"
 
     # Get onset time of session, using RS4 log data for each session.
     onsets_using_rs4_each_rs ={}
@@ -429,6 +424,15 @@ def rec_session_durations_extract_kilosort(animal, date):
         "duration_total_kilosort_dict_each_rs":duration_total_kilosort_dict_each_rs,
         "duration_total_by_summing_rs4_dict":duration_total_by_summing_rs4_dict,
     }
+
+    print("These durations gotten for sessions...")
+    for k, v in out.items():
+        print("... ", k, ":", v)
+    # print("... durations_each_sess_rs4_keyed_by_rs", durations_each_sess_rs4_keyed_by_rs)
+    # print("... _durations_each_sess_using_tank", _durations_each_sess_using_tank)
+    # print("... duration_total_by_summing_rs4_dict", duration_total_by_summing_rs4_dict)
+
+
     return out
 
 

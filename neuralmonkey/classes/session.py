@@ -1994,6 +1994,20 @@ class Session(object):
              'site': 2,
              'clustnum_glob': 0}
         - self._MapperKsortSiteToClustids, map from site(1-512) to list of clust ids
+
+        TODO: Currently for sess>0 sometimes like1-2ms mmisalignement between ks spike times and spike wavefporms.
+        Should solve this by either (i) forcing alignement to tdt spikes (ii) figureing out more carefully why this happen,
+        my guesss is that tank and rs4 are slightly off. timestamps from from tank, so this would expalin the problem
+        (solution: read the dupl from tank and do align of neural to dupl. OR see if duration of dupl or other trace
+        reveals the alignment problem). ACTUALLY doesnt seem liek this can expalin, since tank durations are usually
+        very diff (~100ms) from RS4...
+        Can see this if run
+
+            twind_plot = None
+            twind_plot = [0.2, 0.25]
+            sn_KS.plot_raw_overlay_spikes_on_raw_filtered(site, trial, twind_plot)
+            sn_KS.ks_plot_compare_overlaying_spikes_on_raw_filtered(site, trial)
+
         """
         assert self.SPIKES_VERSION=="tdt", "if not, might have circular error, as assues that sites means tdt site"
 
