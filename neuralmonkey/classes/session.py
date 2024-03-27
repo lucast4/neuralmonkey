@@ -371,12 +371,6 @@ class Session(object):
         else:
             assert False
 
-        # Only do kilosort if this is MINIMAL loading -- ie. meaning
-        # that all preprocessing and local stuff has been completed.
-        # Needs it to be TDT to complete preprocessing (I think?).
-        if not self._LOAD_VERSION == "MINIMAL_LOADING":
-            spikes_version = "tdt"
-
         if DEBUG_TIMING:
             ts = makeTimeStamp()
             print("@@@@ DEBUG TIMING, STARTING AT",  ts)
@@ -446,6 +440,20 @@ class Session(object):
         # Other flags
         self._FORCE_GET_TRIALS_ONLY_IN_DATASET = False
 
+        # WHICH SPIKES VERSION - store this in spikes_version
+        if not self._LOAD_VERSION == "MINIMAL_LOADING":
+            # Only do kilosort if this is MINIMAL loading -- ie. meaning
+            # that all preprocessing and local stuff has been completed.
+            # Needs it to be TDT to complete preprocessing (I think?).
+            spikes_version = "tdt"
+        else:
+            if spikes_version=="kilosort_if_exists":
+                # Check if ks exists.
+                if self.spiketimes_ks_check_if_exists():
+                    spikes_version = "kilosort"
+                else:
+                    spikes_version = "tdt"
+
         # spikes versino (initialize as tdt always)
         self.SPIKES_VERSION = "tdt"
         assert self.SPIKES_VERSION=="tdt", "should always start with this, as it indexes tdt channels"
@@ -475,7 +483,13 @@ class Session(object):
         # Metadat about good sites, etc. Run this first before other things.
         assert sites_garbage is None, "use metadata instead"
         # then look for metadata
-        self.load_metadata_sites(fail_if_no_exist=units_metadat_fail_if_no_exist)
+        if spikes_version=="tdt":
+            do_sitesdirty_update = True
+        else:
+            # Then no need.
+            do_sitesdirty_update = False
+        self.load_metadata_sites(fail_if_no_exist=units_metadat_fail_if_no_exist,
+                                 do_sitesdirty_update=do_sitesdirty_update)
         if DEBUG_TIMING:
             ts = makeTimeStamp()
             print("@@@@ DEBUG TIMING, COMPLETED:", "self.load_metadata_sites()", ts)
@@ -564,6 +578,11 @@ class Session(object):
                 print("@@@@ DEBUG TIMING, COMPLETED", "self._beh_validate_trial_mapping()", ts)
                 print("@@@@ DEBUG TIMING, COMPLETED", "self._beh_validate_trial_number()", ts)
 
+            # Load beh dataset
+            # (Run here early, since it is needed for downstream stuff).
+            print("RUNNIGN datasetbeh_load_helper")
+            self.datasetbeh_load_helper(dataset_beh_expt)
+
             if do_all_copy_to_local:
                 # Copy spike waveforms saved during tdt thresholding and extraction
                 self.load_and_save_spike_waveform_images()
@@ -605,13 +624,13 @@ class Session(object):
                     ts = makeTimeStamp()
                     print("@@@@ DEBUG TIMING, COMPLETED", "self.spiketrain_as_elephant_batch()", ts)
 
-            # Load beh dataset
-            print("RUNNIGN datasetbeh_load_helper")
-            self.datasetbeh_load_helper(dataset_beh_expt)            
+            # # Load beh dataset
+            # print("RUNNIGN datasetbeh_load_helper")
+            # self.datasetbeh_load_helper(dataset_beh_expt)
 
         # Various cleanups
         self._cleanup()
-        self._datasetbeh_remove_neural_trials_missing_beh()
+        # self._datasetbeh_remove_neural_trials_missing_beh()
 
         if DEBUG_TIMING:
             ts = makeTimeStamp()
@@ -621,12 +640,12 @@ class Session(object):
         self.MapSiteToRegionCombined = {}
         self.MapSiteToRegion = {}
 
-        # Check if ks exists.
-        if spikes_version=="kilosort_if_exists":
-            if self.spiketimes_ks_check_if_exists():
-                spikes_version = "kilosort"
-            else:
-                spikes_version = "tdt"
+        # # Check if ks exists.
+        # if spikes_version=="kilosort_if_exists":
+        #     if self.spiketimes_ks_check_if_exists():
+        #         spikes_version = "kilosort"
+        #     else:
+        #         spikes_version = "tdt"
 
         # Extract spikes if needed/.
         if spikes_version=="tdt":
@@ -802,14 +821,15 @@ class Session(object):
         return check_dict
 
 
-    def load_metadata_sites(self, fail_if_no_exist=True):
+    def load_metadata_sites(self, fail_if_no_exist=True, do_sitesdirty_update=True):
         """ Load info about which sites are garbage, hand coded
         PARAMS:
         """
         from pythonlib.tools.expttools import load_yaml_config
         import os
 
-        path = f"{self.Paths['metadata_units']}/{self.Date}.yaml"
+        # path = f"{self.Paths['metadata_units']}/{self.Date}.yaml"
+        path = f"{PATH_NEURALMONKEY}/metadat/units/{self.Date}.yaml"
         if os.path.exists(path):
             print("Found! metada path : ", path)
             out = load_yaml_config(path)
@@ -836,8 +856,14 @@ class Session(object):
             print("Sites metada path doesnt exist: ", path)
             if fail_if_no_exist:
                 assert False, "make the /metadat/units/<date>.yaml file by hand."
-
-        self._sitesdirty_update()
+        
+        if do_sitesdirty_update:
+            # Auto.
+            dirty_kinds = None
+        else:
+            # Skip.
+            dirty_kinds = []
+        self._sitesdirty_update(dirty_kinds=dirty_kinds)
 
     def sitesdirty_filter_by_spike_magnitude(self, 
             # MIN_THRESH = 90, # before 2/12/23
@@ -920,7 +946,11 @@ class Session(object):
         return dfthis
 
     def _sitesdirty_update(self, dirty_kinds = None):
-
+        """
+        Filter sites to find those that are "dirty" based on flexibly criteria (dirty_kinds).
+        :param dirty_kinds:
+        :return:
+        """
         if dirty_kinds is None:
             # dirty_kinds = ("sites_garbage", "sites_low_fr",  # before 2/13/23
             #     "sites_error_spikes", "sites_low_spk_magn")
@@ -1545,7 +1575,7 @@ class Session(object):
             # This is default from 3/13/24 on
             datasetbeh_exptname = None # None was used orignally during extraction. This means use daily dataset.
             # self.datasetbeh_load_helper(self.DatasetbehExptname, FORCE_AFTER_MINIMAL=True)
-            self.datasetbeh_load_helper(datasetbeh_exptname, FORCE_AFTER_MINIMAL=True)
+            self.datasetbeh_load_helper(datasetbeh_exptname)
 
             # Clear cached beh data that might now be innacurate.
             self._CachedStrokesPeanutsOnly = {}
@@ -1577,6 +1607,12 @@ class Session(object):
         gos2 = []
         for trial in self.get_trials_list(True):
             idx = self.datasetbeh_trial_to_datidx(trial)
+            if idx is None:
+                # Then this trial is not in dtaset
+                print(trial)
+                print(self.datasetbeh_trial_to_trialcode(trial))
+                print(self.Datasetbeh.Dat["trialcode"].tolist())
+                assert False, "dataset misising this trialcode.."
             assert self.datasetbeh_trial_to_trialcode(trial) == self.Datasetbeh.Dat.iloc[idx]["trialcode"]
             self.Datasetbeh.Dat.iloc[idx]["strokes_beh"]
 
@@ -1675,6 +1711,8 @@ class Session(object):
 
         assert self.SPIKES_VERSION=="kilosort"
 
+        os.makedirs(sdir, exist_ok=True)
+
         try:
             self._IGNORE_SANITY_CHECKS = True
 
@@ -1709,7 +1747,7 @@ class Session(object):
                 # tdt
                 self.SPIKES_VERSION="tdt"
                 ax = axes.flatten()[0]
-                self.plot_raster_trials(ax, trials, site_tdt, alignto="go", xmin=-2, xmax=6, alpha_raster=0.5)
+                self.plot_raster_trials(ax, trials, site_tdt, alignto="go", xmin=-3, xmax=7, alpha_raster=0.5)
                 ax.set_ylabel("TDT")
 
                 # ks
@@ -1719,7 +1757,7 @@ class Session(object):
                     ax = axes.flatten()[i+1]
                     label = self.DatSpikesSessByClust[clust]["label_final"]
                     print(label)
-                    self.plot_raster_trials(ax, trials, clust, alignto="go", xmin=-2, xmax=6, alpha_raster=0.5)
+                    self.plot_raster_trials(ax, trials, clust, alignto="go", xmin=-3, xmax=7, alpha_raster=0.5)
                     ax.set_ylabel(f"KILOSORT - {label}")
 
                 fig.savefig(f"{sdir}/site_tdt_{site_tdt}.png")
@@ -1755,6 +1793,19 @@ class Session(object):
         clusters_final = f"{BASEDIR}/{self.Animal}/{self.Date}/DATSTRUCT_CLEAN_MERGED.mat"
         from os.path import isfile
         return isfile(clusters_final)
+
+    def spiketimes_ks_compute_timeglobal_thissession_start(self):
+        """ Return the global time (i.e. after concatting multiple sessions)
+        that the rec for this rec session srtarted, based on log files in RS4 data stores.
+        RETURNS:
+            - {rs:onset}
+        """
+        from neuralmonkey.utils.directory import rec_session_durations_extract_kilosort
+        # time_onset_this_session = out["onsets"][self.RecSession]
+        # return time_onset_this_session
+        # return out["onsets_using_rs4_each_rs"]
+        out = rec_session_durations_extract_kilosort(self.Animal, self.Date)
+        return {rs:onsets[self.RecSession] for rs, onsets in out["onsets_using_rs4_each_rs"].items()}
 
     def spiketimes_ks_load(self, PRINT=False, SANITY=True):
         """ Load all kilosort data fro this session. This is manually curated and
@@ -1814,6 +1865,31 @@ class Session(object):
         res = mat73.loadmat(clusters_final, use_attrdict=True)
         DATSTRUCT = res["DATSTRUCT"]
 
+        # Sanity check: DATSETUCT is dict of lists, each len num clust
+        n = None
+        for k,v in DATSTRUCT.items():
+            if n is not None:
+                assert len(v) == n
+            n = len(v)
+
+        #### SPIKE TIMES --> SUBTRACT duration in previous sessions, so that the start of this session
+        # corresponds to timepoint 0. THis only matters for sessions 1+.
+        # get time of this session onset
+        # time_global_start_of_this_session = self.spiketimes_ks_compute_timeglobal_thissession_start()
+        onsets_using_rs4_each_rs = self.spiketimes_ks_compute_timeglobal_thissession_start()
+
+        # assert isinstance(DATSTRUCT["times_sec_all"], list), "i am assuming this... for this code below."
+        list_times = []
+        for times, rs in zip(DATSTRUCT["times_sec_all"], DATSTRUCT["RSn"]):
+            times = times - onsets_using_rs4_each_rs[int(rs)]
+            times = times[times>=0]
+            assert len(times)>0, "why no spikes"
+            list_times.append(times)
+        DATSTRUCT["times_sec_all"] = list_times
+        # DATSTRUCT["times_sec_all"] = [times - time_global_start_of_this_session for times in DATSTRUCT["times_sec_all"]]
+        # for ind, times in enumerate(DATSTRUCT["times_sec_all"]):
+        #     DATSTRUCT["times_sec_all"][ind] = times - time_global_start_of_this_session
+
         # Some metadata
         nbatches = int(np.max(DATSTRUCT["batch"]))
         chans_per_batch = 256/nbatches
@@ -1827,9 +1903,8 @@ class Session(object):
 
         # keys_extract = [k for k in DATSTRUCT.keys() if k not in ["chan_global", "clust"]]
         keys_extract = DATSTRUCT.keys()
-        keys_exclude = ["GOOD", "clust", "clust_before_merge", "clust_group_id", "clust_group_name",  
-            'index', 'index_before_merge', 'times_sec_all_BEFORE_REMOVE_DOUBLE', 'waveforms',
-            'chan']
+        keys_exclude = ["GOOD", "clust", "clust_before_merge", "clust_group_id", "clust_group_name",
+            'index', 'index_before_merge', 'times_sec_all_BEFORE_REMOVE_DOUBLE', 'waveforms']
         keys_convert_to_int = ["RSn", "batch", "chan", "chan_global", "label_final_int"]
 
         # index by a global cluster id
@@ -1876,6 +1951,7 @@ class Session(object):
             chan_within_batch_1indexed = int(DATSTRUCT["chan"][ind])
             rs = int(DATSTRUCT["RSn"][ind])
             batch_1indexed = int(DATSTRUCT["batch"][ind])
+            chan_within_batch = int(DATSTRUCT["chan"][ind]) # e.g, 1-64
             
             # convert to global chan
             site = 256*(rs-2) + chans_per_batch*(batch_1indexed-1) + chan_within_batch_1indexed
@@ -1883,6 +1959,9 @@ class Session(object):
 
             self.DatSpikesSessByClust[key]["chan_within_batch_1indexed"] = chan_within_batch_1indexed
             self.DatSpikesSessByClust[key]["chan_within_rs"] = chan_within_rs
+            self.DatSpikesSessByClust[key]["batch_1indexed"] = batch_1indexed
+            self.DatSpikesSessByClust[key]["chan_within_batch"] = chan_within_batch
+
             if SANITY:
                 
                 # saved global chan
@@ -1945,7 +2024,8 @@ class Session(object):
                 
                 # Given a trial, extract slice
                 spike_times, time_dur, time_on, time_off = self._datspikes_slice_single(datthis["spike_times"], trial)
-                
+                # assert len(spike_times)>0, "is it possible, not a single spike?"
+
                 # save this (trial, clust) combo
                 key = (clust, trial)
                 DatSliceAll[key] = {}                
@@ -1965,7 +2045,9 @@ class Session(object):
                 DatSliceAll[key]["clustnum_glob"] = clust
                 DatSliceAll[key]["label_final"] = datthis["label_final"]
                 DatSliceAll[key]["snr_final"] = datthis["snr_final"]
-                
+                DatSliceAll[key]["batch_1indexed"] = datthis["batch_1indexed"]
+                DatSliceAll[key]["chan_within_batch"] = datthis["chan_within_batch"]
+
                 # DatSliceAll.append(datslice)
                 
         #         # save the index
@@ -2097,6 +2179,8 @@ class Session(object):
         hodler but doesnt load. 
         """
 
+        for ch in chans:
+            assert ch <=256, "Inpout chan (1-256)"
         TIME_ML2_TRIALON = self.ml2_get_trial_onset(trialtdt = trial0)
         def extract_raw_(rs, chans, trial0):
             """ Extract raw data for this trial, across any number of chans,
@@ -2405,7 +2489,7 @@ class Session(object):
         return times, vals
 
     def extract_raw_and_spikes_helper(self, trials=None, sites=None, 
-        get_raw=False, save=True):
+        get_raw=False, get_spikes=True, save=True):
         """ to quickly get a subset of trials, all sites, etc.
         PARAMS:
         - trials, list of ints, if None, then gets all.
@@ -2465,7 +2549,7 @@ class Session(object):
 
             for t in trials:
                 print(f"Extrcting data for trial {t}")
-                self._extract_raw_and_spikes(rss, chans, t, get_raw=get_raw) 
+                self._extract_raw_and_spikes(rss, chans, t, get_raw=get_raw, get_spikes=get_spikes)
 
             # generate mapper, slice each one and this will autoamtically extract
             self.mapper_extract("sitetrial_to_datallind", save=save)
@@ -2475,7 +2559,7 @@ class Session(object):
                 self._savelocal_datall()
 
 
-    def _extract_raw_and_spikes(self, rss, chans, trialtdt, get_raw = False):
+    def _extract_raw_and_spikes(self, rss, chans, trialtdt, get_raw = False, get_spikes=True):
         """ [GET ALL DATA] Extract raw (unfiltered) and spikes for this trial
         PARAMS:
         - rss, list of ints for rs
@@ -2487,14 +2571,15 @@ class Session(object):
         
         # raw (get all chans) [from disk]
         DatRaw = self.load_raw(rss, chans, trialtdt, get_raw=get_raw)
-        
-        # spikes (from pre-extracted spikes)
-        for i, d in enumerate(DatRaw):
-            spike_times, time_dur, time_on, time_off = self.datspikes_slice_single(d["rs"], d["chan"], trial0=trialtdt)
-            d["spike_times"] = spike_times 
-            d["time_dur"] = time_dur
-            d["time_on"] = time_on
-            d["time_off"] = time_off 
+
+        if get_spikes:
+            # spikes (from pre-extracted spikes)
+            for i, d in enumerate(DatRaw):
+                spike_times, time_dur, time_on, time_off = self.datspikes_slice_single(d["rs"], d["chan"], trial0=trialtdt)
+                d["spike_times"] = spike_times
+                d["time_dur"] = time_dur
+                d["time_on"] = time_on
+                d["time_off"] = time_off
 
 
         def _dat_replace_single(self, rs, chan, trial0, Dnew):
@@ -2540,159 +2625,6 @@ class Session(object):
                         assert self._MapperSiteTrial2DatAllInd[(site, trial)] == index
 
         return self.DatAll
-
-    # generates necessary files for Snippets.events_time_helper to extract clusterfix fixations.
-    def extract_clusterfix_fixations(self):
-        #### HELPER FUNCTIONS #####
-        # get a list of successful trialcodes
-        def _getSuccessfulTrialCodes(self):
-            Dcopy = self.Datasetbeh.copy()
-            Dcopy.preprocessGood(params=["one_to_one_beh_task_strokes"]) # prunes Dcopy to keep only successful trials
-            return Dcopy.Dat['trialcode'].tolist()
-
-        # from the list of trialcodes, get matching list of NEURAL trials
-        def _getNeuralTrialNumsFromTrialCodes(self, trialcode_list):
-            D = self.Datasetbeh
-            trialnums = []
-            for tc in trialcode_list:
-                # pull out these datapoints from trial-level dataset
-                t = self.datasetbeh_trialcode_to_trial(tc)
-                trialnums.append(t)
-            return trialnums
-
-        # get a list of successful trialnums
-        def _getSuccessfulNeuralTrialNums(self):
-            trialcodes = getSuccessfulTrialCodes(self)
-            return getNeuralTrialNumsFromTrialCodes(self, trialcodes)
-
-        #### STEP 1: EXPORT TRIAL DATA TO .mat FOR CLUSTERFIX ####
-        success_neural_trials = getSuccessfulNeuralTrialNums(self)
-        neuraltnums = []
-        tcodes = []
-
-        # loop thru trials and save xy data
-        for ntrial in success_neural_trials:
-            # get sampling rate
-            t,v,fs_raw = sn.extract_data_tank_streams("eyex", ntrial, ploton=False)
-
-            # get XY smoothed / transformed on eye calibration matrix
-            x_raw,y_raw,times_raw = getEyeXYSmoothedAndTransformed(sn, ntrial, False)
-
-            # resample x, y, times using integer sampling rate
-            fs_new = 200
-            stroke_raw = [np.array([x_raw, y_raw, times_raw]).T] # dummy stroke list
-            stroke_intp = strokesInterpolate2(stroke_raw, ["fsnew", fs_new, fs_raw])
-            stroke_resampled = stroke_intp[0]
-            x_rs = stroke_resampled[:,0]
-            y_rs = stroke_resampled[:,1]
-            times_rs = stroke_resampled[:,2]
-            
-            # save data to be loaded into MATLAB
-            fname = "ntrial" + str(ntrial) + ".mat"
-            scipy.io.savemat(fname, dict(x=x_rs, y=y_rs, times=times_rs, fs_hz=fs_new))
-
-            # save neuraltnums, tcodes
-            neuraltnums.append(ntrial)
-            tcodes.append(sn.datasetbeh_trial_to_trialcode(ntrial))
-
-            # save trial numbers for later use in MATLAB
-            scipy.io.savemat("all_ntrialnums.mat", dict(neuraltrialnums=neuraltnums))
-
-            # save trialcodes for later use in MATLAB
-            scipy.io.savemat("all_trialcodes.mat", dict(trialcodes=tcodes))
-    
-        #### STEP 2: RUN CLUSTERFIX IN MATLAB ####
-        # todo: use matlab command from drawmonkey/preprocess.py
-
-        #### STEP 3: SAVE CLUSTERFIX_RESULTS INTO DATAFRAME
-        # load in results and add to dataframe
-        mat = scipy.io.loadmat('clusterfix_results.mat')
-        mat_vars = ['neuraltrialnum', 'trialcode', 'fs', 'x', 'y', 'times', 'fixation_start_inds',
-                    'fixation_end_inds', 'fixation_centroids_x', 'fixation_centroids_y', 
-                    'saccade_start_inds', 'saccade_end_inds']
-        tmp = []
-        for i in range(len(mat['RESULTS'][0])):
-            neuraltrialnum = mat['RESULTS'][0]['neuraltrialnum'][i][0,0]
-            tcode = mat['RESULTS'][0]['trialcode'][i][0]
-            fs = mat['RESULTS'][0]['fs'][i][0,0]
-            x = mat['RESULTS'][0]['x'][i][0]
-            y = mat['RESULTS'][0]['y'][i][0]
-            times = mat['RESULTS'][0]['times'][i][0]
-            
-            # get start, end inds for fixations/saccades
-            fixation_start_inds = mat['RESULTS'][0]['fixation_inds'][i][0]
-            fixation_end_inds = mat['RESULTS'][0]['fixation_inds'][i][1]
-            saccade_start_inds = mat['RESULTS'][0]['saccade_inds'][i][0]
-            saccade_end_inds = mat['RESULTS'][0]['saccade_inds'][i][1]
-            
-            # get centroids x,y
-            fixation_centroids_x = mat['RESULTS'][0]['fixation_centroids'][i][0]
-            fixation_centroids_y = mat['RESULTS'][0]['fixation_centroids'][i][1]
-            
-            dat = [neuraltrialnum, tcode, fs, x, y, times, fixation_start_inds, fixation_end_inds,
-                    fixation_centroids_x, fixation_centroids_y, saccade_start_inds, saccade_end_inds]
-            tmp.append({})
-            for v, d in zip(mat_vars, dat):
-                tmp[-1][v]=d
-                
-        clusterfix_results = pd.DataFrame(tmp, columns=mat_vars)
-        # TODO: add column to clusterfix_results which indicates if outlier or not
-
-        #### STEP 4: FROM CLUSTERFIX_RESULTS, SAVE fixation.csv AND saccade.csv FILES
-        from numpy import savetxt
-
-        #for i in range(len(neuraltnums)):
-        for index, row in clusterfix_results.iterrows():
-            tnum = row['neuraltrialnum']
-            print("tnum", tnum)
-            tcode = row['trialcode']
-            print("tcode", tcode)
-            
-            x_t = row['x']
-            y_t = row['y']
-            times_t = row['times']
-            
-            # get the FIXATIONS belonging to this trial
-            fixation_start_inds = row['fixation_start_inds']
-            fixation_end_inds = row['fixation_end_inds']
-            fixation_centroids_x = row['fixation_centroids_x']
-            fixation_centroids_y = row['fixation_centroids_y']
-            centroid_pairs = [[x,y] for x,y in zip(fixation_centroids_x, fixation_centroids_y)]
-            
-            # get the times of the FIXATIONS
-            fixation_start_times = times_t[fixation_start_inds]
-            fixation_end_times = times_t[fixation_end_inds]
-            print("fixation start times", fixation_start_times)
-            print("fixation end times", fixation_end_times)
-
-            # TODO: remove any fixations that contain outlier times... (must compute bounding box)
-                
-            # save fixation start times using TRIALCODE, to load into session.py
-            fname = f"{tcode}-fixation-onsets.csv"
-            savetxt(fname, fixation_start_times, delimiter=',')
-            
-            # save fixation centroids using TRIALCODE, to load into session.py
-            fname = f"{tcode}-fixation-centroids.csv"
-            savetxt(fname, centroid_pairs, delimiter=",")
-                
-            # get the times of the SACCADES
-            saccade_start_inds = row['saccade_start_inds']
-            saccade_end_inds = row['saccade_end_inds']
-            saccade_start_times = times_t[saccade_start_inds]
-            saccade_end_times = times_t[saccade_end_inds]
-            
-            print("saccade start times", saccade_start_times)
-            print("saccade end times", saccade_end_times)
-                        
-            # save saccade start times using TRIALCODE, to load into session.py
-            fname = f"{tcode}-saccade-onsets.csv"
-            savetxt(fname, saccade_start_times, delimiter=',')
-
-
-        # todo: check file paths, change to save on server
-        # with csv's generated, then Snippets.events_get_time_helper will take over from there
-
-
 
     ##################### DEBUGGING
     def debug_event_photodiode_detection(self):
@@ -2804,9 +2736,14 @@ class Session(object):
 
 
     ###################### WINDOW THE DATA based on trials, etc
-    def extract_windowed_data(self, times, twind, vals=None, recompute_time_rel_onset=True, time_to_add=0.):
+    def _timewindow_window_this_data(self, times, twind, vals=None, recompute_time_rel_onset=True, time_to_add=0.):
+        return self._extract_windowed_data(times, twind, vals, recompute_time_rel_onset, time_to_add)
+
+    def _extract_windowed_data(self, times, twind, vals=None, recompute_time_rel_onset=True, time_to_add=0.):
         """ Prune data (time, vals) to include only those with
-        times within twind. Also changes times to be relative to twind[0]
+        times within twind. Also changes times to be relative to twind[0]. Does not do anything clever!
+        NOTE: This will NOT be accurate if you want to get relative tiems for trials. To do so,
+        use extract_windowed_data_bytrial
         RETURNS:
         - times, eitehr:
         --- in original time base (if recompute_time_rel_onset is False)
@@ -2863,7 +2800,7 @@ class Session(object):
         """
 
         assert recompute_time_rel_onset==True, "some code assumes this true. I dont see any reason to change this. if want to change, then make new function that does this"
-        
+        assert PRE_DUR_TRIAL==1 and POST_DUR_TRIAL==1, "all data has this hard coded;.."
         # Get window
         t1, t2 = self.extract_timerange_trial(trial0, pre_dur, post_dur)
         TIME_ML2_TRIALON = self.ml2_get_trial_onset(trialtdt = trial0)
@@ -2873,7 +2810,7 @@ class Session(object):
         time_to_add = time_to_add - TIME_ML2_TRIALON
 
         if len(times)>0:
-            times, vals, time_dur, time_on, time_off = self.extract_windowed_data(times, [t1, t2], vals, recompute_time_rel_onset, time_to_add = time_to_add)
+            times, vals, time_dur, time_on, time_off = self._extract_windowed_data(times, [t1, t2], vals, recompute_time_rel_onset, time_to_add = time_to_add)
         else:
             time_dur, time_on, time_off = self._extract_windowed_data_get_time_bounds([t1, t2], recompute_time_rel_onset, time_to_add = time_to_add)
 
@@ -3050,7 +2987,7 @@ class Session(object):
 
         if twind is not None:
             assert trial0 is None
-            spiketimes, _, time_dur, time_on, time_off = self.extract_windowed_data(spiketimes_sess, twind)
+            spiketimes, _, time_dur, time_on, time_off = self._extract_windowed_data(spiketimes_sess, twind)
         elif trial0 is not None:
             assert twind is None
             spiketimes, _, time_dur, time_on, time_off = self.extract_windowed_data_bytrial(spiketimes_sess, trial0)    
@@ -4773,7 +4710,7 @@ class Session(object):
             assert False
             
     ############### Beh Dataset (extracted)
-    def datasetbeh_load_helper(self, dataset_beh_expt, FORCE_AFTER_MINIMAL=False):
+    def datasetbeh_load_helper(self, dataset_beh_expt):
         """ Helps beucase can either be "main" dataset, in which case
         use dataset_beh_expt, or daily datyaset, in which case use the 
         date (gets it auto, doesnt use dataset_beh_expt)
@@ -4790,10 +4727,12 @@ class Session(object):
             try:
                 # If that doesnt work, then use the daily dataset, which 
                 # is generated autmatoiocalyl (after like sep 2022)
-                self.datasetbeh_load(version="daily", FORCE_AFTER_MINIMAL=FORCE_AFTER_MINIMAL) # daily
+                # self.datasetbeh_load(version="daily", FORCE_AFTER_MINIMAL=FORCE_AFTER_MINIMAL) # daily
+                self.datasetbeh_load(version="daily") # daily
                 print("**Loaded dataset! daily")
-            except:
+            except Exception as err:
                 # Try loading using "null" rule, which is common
+                print("This err, when try to load datset:",  err)
                 assert dataset_beh_expt is not None, "assuming you wanted to get daily, but somehow failed and got to here... check that daily dataset actually exists."
                 self.datasetbeh_load(dataset_beh_expt=dataset_beh_expt, 
                     version="main")
@@ -4804,8 +4743,7 @@ class Session(object):
 
 
     def datasetbeh_load(self, dataset_beh_expt=None, 
-            version = "daily",
-            FORCE_AFTER_MINIMAL=False):
+            version = "daily"):
         """ Load pre-extracted beahviuioral dataset and algined
         trial by trial to this recording session. 
         Tries to automtiaclly get the exptname, and rule, but you might
@@ -4825,8 +4763,8 @@ class Session(object):
         from pythonlib.dataset.dataset import Dataset
         from pythonlib.dataset.dataset import load_dataset_notdaily_helper, load_dataset_daily_helper
 
-        if not FORCE_AFTER_MINIMAL:
-            assert self.DatAll is not None, "need to load first, run SN.extract_raw_and_spikes_helper()"
+        # if not FORCE_AFTER_MINIMAL:
+        #     assert self.DatAll is not None, "need to load first, run SN.extract_raw_and_spikes_helper()"
 
         # 1) Load Dataset
         if version=="daily":
@@ -4842,6 +4780,7 @@ class Session(object):
         else:
             print(version)
             assert False
+        self.Datasetbeh = D
 
         # print("Loading this dataset: ", self.Animal, expt, dataset_beh_rule)
         # D = Dataset([], remove_online_abort=remove_online_abort)
@@ -4858,13 +4797,17 @@ class Session(object):
         if False:
             # old
             trials = self.get_all_existing_site_trial_in_datall("trial")                                               
-        else:
+        elif False:
             trials = self.get_trials_list(True, True)
+        else:
+            # Cannot be True, since that looks for datasetbeh will fail.
+            trials = self.get_trials_list(False, True)
+            trials = [t for t in trials if self.datasetbeh_trial_to_datidx(t) is not None]
         list_trialcodes = [self.datasetbeh_trial_to_trialcode(t) for t in trials]
         print("- Keeping only dataset trials that exist in self.Dat")
-        print("Starting length: ", len(D.Dat))
-        D.filterPandas({"trialcode":list_trialcodes}, "modify")
-        print("Ending length: ", len(D.Dat))
+        print("Starting length: ", len(self.Datasetbeh.Dat))
+        self.Datasetbeh.filterPandas({"trialcode":list_trialcodes}, "modify")
+        print("Ending length: ", len(self.Datasetbeh.Dat))
 
         # 3) Prune trials in self to remove trials that dont have succesfuly fix and touch.
         trials_neural_to_remove = []
@@ -4877,7 +4820,7 @@ class Session(object):
         # assert False
         for trial_neural, trialcode in zip(trials, list_trialcodes):
             n_failures = 0
-            if trialcode not in D.Dat["trialcode"].tolist():
+            if trialcode not in self.Datasetbeh.Dat["trialcode"].tolist():
                 # then this is only acceptable if this trial is not succesful fix or touch
                 fd, t = self.beh_get_fd_trial(trial_neural)
                 suc = mkl.getTrialsFixationSuccess(fd, t)
@@ -4894,7 +4837,7 @@ class Session(object):
                         pnuts = mkl.getTrialsStrokesByPeanuts(fd, t)
                         print(pnuts)
                         print(list_trialcodes)
-                        print(D.Dat["trialcode"].tolist())
+                        print(self.Datasetbeh.Dat["trialcode"].tolist())
                         print(trialcode)
                         assert False, "some neural data not found in beh Dataset..."
                 else:
@@ -4904,13 +4847,11 @@ class Session(object):
                     trials_neural_to_remove.append(trial_neural)
             assert n_failures/len(trials)<0.05, "why so many missing from dataset? figure this out"
 
-        # # - remove the trials.
-        # if remove_trials_not_in_dataset:
-        #     # CAN IGNORE THIS!! it is effectively done in _datasetbeh_cleanup
-        #     assert False, "code it..."
+        # (1) Remove all neural trials which are missing from datasetbeh.
+        self._datasetbeh_remove_neural_trials_missing_beh()
 
         # --
-        self.Datasetbeh = D
+        # self.Datasetbeh = D
         self.Datasetbeh.LockPreprocess = True
         return self.Datasetbeh
 
@@ -7631,7 +7572,7 @@ class Session(object):
     def plot_raster_trials(self, ax, list_trials, site, alignto=None,
         raster_linelengths=0.9, alpha_raster = 0.9, overlay_trial_events=True,
         ylabel_trials=True, plot_rasters=True, xmin = None, xmax = None,
-        overlay_strokes=True, which_events=None):
+        overlay_strokes=True):
         """ Plot raster, for these trials, on this axis.
         PARAMS:
         - list_trials, list of indices into self. will plot them in order, from bottom to top
@@ -7662,8 +7603,7 @@ class Session(object):
 
             if overlay_trial_events:
                 self.plotmod_overlay_trial_events_mult(ax, list_trials, list_align_time,
-                    ylabel_trials, xmin=xmin, xmax=xmax, overlay_strokes=overlay_strokes,
-                    which_events=which_events)
+                    ylabel_trials, xmin=xmin, xmax=xmax, overlay_strokes=overlay_strokes)
         
             if site is not None:
                 ax.set_title(self.sitegetter_summarytext(site)) 
@@ -7733,7 +7673,7 @@ class Session(object):
 
 
     def _plot_raster_line(self, ax, times, yval, color='k', alignto_time=None,
-        linelengths = 0.85, alpha=0.4):
+        linelengths = 0.85, alpha=0.4, linewidths=None):
         """ plot a single raster line at times at row yval
         PARAMS:
         - alignto_time, in sec, this becomes new 0
@@ -7746,7 +7686,8 @@ class Session(object):
     #     ax.plot(times, yval*np.ones(time.shape), '.', color=color, alpha=0.55)
 
         y = yval*np.ones(t.shape)
-        ax.eventplot([t], lineoffsets=yval, color=color, alpha=alpha, linelengths=linelengths)
+        ax.eventplot([t], lineoffsets=yval, color=color, alpha=alpha, linelengths=linelengths,
+                     linewidths=linewidths)
         
         # plot as hashes
         
@@ -7835,7 +7776,7 @@ class Session(object):
 
     def plotmod_overlay_trial_events_mult(self, ax, list_trials, list_align_time,
         ylabel_trials=None, list_yvals=None, xmin=None, xmax =None, overlay_strokes=True,
-        clear_old_yticks = True, which_events=None):
+        clear_old_yticks = True):
         """
         Flexible helper to plot events for specified trials, at specific alignemnet times.
         PARAMS:
@@ -7856,9 +7797,6 @@ class Session(object):
         else:
             assert len(ylabel_trials)==len(list_trials)
 
-        if which_events is None:
-            which_events = ["key_events_correct"]
-
         for i, (yval, trial, alignto_time) in enumerate(zip(list_yvals, list_trials, list_align_time)):
 
             # - overlay beh things
@@ -7872,7 +7810,7 @@ class Session(object):
             else:
                 include_text = False
             self.plotmod_overlay_trial_events(ax, trial, alignto_time=alignto_time, only_on_edge="bottom", 
-                                            YLIM=[yval-0.3, yval+0.5], which_events=which_events, 
+                                            YLIM=[yval-0.3, yval+0.5], which_events=["key_events_correct"], 
                                             include_text=include_text, text_yshift = -0.5, alpha=ALPHA_MARKERS,
                                             xmin = xmin, xmax =xmax
                                             )
@@ -7939,11 +7877,7 @@ class Session(object):
             alpha_st = 0.2 
 
         for ev in which_events:
-            assert ev in ["fixon", "behcodes", "key_events_correct", "strokes"], "doesnt exist..."
-
-        # if "fixon" in which_events:
-        #     assert len(which_events)==1, "currently, if fixon is an event, then it will overwrite all other events... Change code to append the time instead"
-
+            assert ev in ["behcodes", "key_events_correct", "strokes"], "doesnt exist..."
         ###### 1) behcodes, old version whcih used specific sequenc eof codes. this is not perfectly accurate.
         # so is replaced by key_events_correct
         if "behcodes" in which_events:
@@ -7959,13 +7893,6 @@ class Session(object):
             times_codes = np.array([])
             names_codes = [] 
             colors_codes = []
-
-        if "fixon" in which_events:
-            times = self.events_get_time_helper("fixon", trial0)
-            # feat_name, list_featvals = self.events_get_feature_helper("fixon", trial0)
-            times_codes = times
-            names_codes = ["fixon" for _ in range(len(times_codes))]
-            colors_codes = ["r" for _ in range(len(times_codes))]
 
         ###### 2) key events, determeined using actual voltage clock signals or touch, etc.
         if "key_events_correct" in which_events:
@@ -8631,8 +8558,7 @@ class Session(object):
             raster_linelengths=0.9,
             overlay_trial_events=True,
             ylabel_trials=True, overlay_strokes=True, 
-            nrand_trials = 20,
-            which_events=None):
+            nrand_trials = 20):
         """ Plot one site, mult trials, overlaying for each trial its major events
         PARAMS:
         - list_trials, list of int. if None, then plots 20 random
@@ -8667,8 +8593,7 @@ class Session(object):
 
         self.plot_raster_trials(ax, list_trials, site, alignto,
             raster_linelengths, alpha_raster, overlay_trial_events, 
-            ylabel_trials, plot_rasters, xmin, xmax, overlay_strokes=overlay_strokes,
-            which_events=which_events)
+            ylabel_trials, plot_rasters, xmin, xmax, overlay_strokes=overlay_strokes)
 
         # Final drawing
             #     ax = axes.flatten()[2*i + 1]
@@ -9116,6 +9041,74 @@ class Session(object):
             path= f"{sdir}/dataframe-code_{behcode}-codename_{self.behcode_convert(codenum=behcode, shorthand=True)}-stream_{stream}.pkl"
             dfthis.to_pickle(path)
 
+    def ks_plot_compare_overlaying_spikes_on_raw_filtered(self, site, trial, twind_plot=None):
+        """
+        Make two debugging plots, both overlaying spikes on raw filt data, but one KS other TDT.
+        :param site:
+        :param trial:
+        :param twind_plot:
+        :return:
+        """
+        assert self.SPIKES_VERSION == "kilosort"
+
+        # 1. Plot current, e.g., kilosort.
+        self.plot_raw_overlay_spikes_on_raw_filtered(site, trial, twind_plot)
+
+        # 2. Plot tdt.
+        try:
+            site_tdt = self.sitegetterKS_thissite_info(site)["site_tdt"]
+            self.SPIKES_VERSION = "tdt"
+            self._SPIKES_VERSION_INPUTED = "tdt"
+            self.plot_raw_overlay_spikes_on_raw_filtered(site_tdt, trial, twind_plot)
+            self.SPIKES_VERSION = "kilosort"
+            self._SPIKES_VERSION_INPUTED = "kilosort"
+        except Exception as err:
+            self.SPIKES_VERSION = "kilosort"
+            self._SPIKES_VERSION_INPUTED = "kilosort"
+
+    def plot_raw_overlay_spikes_on_raw_filtered(self, site, trial, twind_plot=None):
+        """
+        Plot raw neural data (filtered) and overlying rasters on that.
+        Useful for debugging, seeing results of spike clustering.
+        :return:
+        """
+        import elephant as el
+
+        if twind_plot is None:
+            twind_plot = [0, 0.5]
+
+        # 1. Extract spikes data for this trial, site
+        datspikes = self.datall_TDT_KS_slice_single_bysite(site, trial)
+        st = datspikes["spike_times"]
+
+        # 2. Extract raw data
+        chan = self.sitegetterKS_thissite_info(site)["chan"]
+        rs = self.sitegetterKS_thissite_info(site)["rs"]
+        tmp = self.load_raw([rs], [chan], trial, get_raw=True)
+        assert len(tmp)==1
+        datraw = tmp[0]
+        raw = datraw["raw"]
+        times = datraw["tbins0"]
+        fs = datraw["fs"]
+
+        # 3. Filter the neural singnal
+        raw_filt = el.signal_processing.butter(raw, highpass_frequency=300, lowpass_frequency=3000,  sampling_frequency=fs)
+
+        # 4. Make sure signal is relative to trial
+        # print(times)
+        # times, raw_filt, _, _, _ = self.extract_windowed_data_bytrial(times, trial, raw_filt)
+        # print(times)
+        # assert False
+
+        # 4. Plot a specific time window
+        times_this, raw_filt_this, _, _, _ = self._timewindow_window_this_data(times, twind_plot, raw_filt)
+        st_this, _, _, _, _ = self._timewindow_window_this_data(st, twind_plot)
+
+        fig, ax = plt.subplots(figsize=(25,5))
+        ax.plot(times_this, raw_filt_this)
+        self._plot_raster_line(ax, st_this, -50, alpha=1, linelengths=10, linewidths=2, color="r")
+
+        return fig, ax
 
     def plot_raw_dupl_sanity_check(self, trial = 0):
         """ Plot dupl (saved in TDT tank) on top of raw (RS4)
@@ -9234,6 +9227,7 @@ class Session(object):
             dfcheck = self.Datasetbeh
         else:
             dfcheck = dataset_input
+        assert dfcheck is not None
 
         dfthis = dfcheck.Dat[dfcheck.Dat["trialcode"]==tc]
 
