@@ -995,6 +995,8 @@ class Snippets(object):
             # Then is a concatted.
             assert self._CONCATTED_SNIPPETS
             sn_idx = self.DfScalar.iloc[ind_df]["session_idx"]
+            sn_neural = self.DfScalar.iloc[ind_df]["session_neural"]
+            assert sn_idx==sn_neural, "sn_idx and sn_neural differ..."
             sn = self.SNmult.SessionsList[sn_idx]
 
             # sanity check
@@ -2127,6 +2129,8 @@ class Snippets(object):
                 grp = ["trialcode"]
             elif self.Params["which_level"] in ["stroke", "stroke_off", "substroke", "substroke_off"]:
                 grp = ["trialcode", "stroke_index"]
+            elif self.Params["which_level"] in ["saccade_fix_on", "fixon", "flex"]:
+                grp = ["trialcode", "event_idx_within_trial"]
             else:
                 assert False
 
@@ -7093,12 +7097,14 @@ class Snippets(object):
 
         # 1) Extract dataset
         if Dataset is None:
+            print(" ** extravcting dataset")
             Dataset = self.datasetbeh_extract_dataset()
 
         # 2) get each trialcode in self... and then get its value for <column>
         trialcodesthis = self.DfScalar["trialcode"].tolist()
 
         # Get the sliced dataframe
+        print(" ** slice_by_row_label")
         dfslice = slice_by_row_label(Dataset.Dat, "trialcode", trialcodesthis, reset_index=True,
                                      assert_exactly_one_each=True)
 
@@ -7160,6 +7166,14 @@ class Snippets(object):
                 Dall.tokens_preprocess_wrapper_good()
 
                 self.Datasetbeh = Dall
+
+                # use this same dataset for all sessions, to that can clear memory
+                HACK_KEDAR = True
+                if HACK_KEDAR:
+                    for sn in list_sn:
+                        del sn.Datasetbeh
+                        sn.Datasetbeh = self.Datasetbeh
+
                 return self.Datasetbeh
         elif kind in ["datstrokes", "datasetstrokes", "datstroke", "dat_strokes"]:
             # each row is stroke
@@ -7168,7 +7182,7 @@ class Snippets(object):
             # 3/17/24 - New version, insetaed of using cached, regnerate it. This should be same as what is in DfScalar, since
             # I am not saving and loading old SP anymore.
 
-            if self.Params["which_level"]=="trial":
+            if self.Params["which_level"] in ["trial", "saccade_fix_on", "fixon", "flex"]:
                 # Then no DS is possible.
                 return None
             else:
@@ -7302,6 +7316,11 @@ class Snippets(object):
         self.DS = None
         DS = self.datasetbeh_extract_dataset("datstrokes")
 
+        # Delete other places where copies of D might exist
+        if False: # not good, since you might need D in sn later
+            for sn in self.SNmult.SessionsList:
+                del sn.Datasetbeh
+
         ################ CHUNKS, STROKES (e.g., singlerule, AnBm)
         if params["datasetstrokes_extract_chunks_variables"] and self.Params["which_level"] == "stroke":
             # First extract within Dataset, then to DS.
@@ -7389,6 +7408,9 @@ class Snippets(object):
             print("Using trial...")
             list_features_extraction = list_features_extraction_base + list_features_extraction_trial
             DS_for_feature_extraction = None
+        elif self.Params["which_level"] in ["saccade_fix_on", "fixon", "flex"]:
+            list_features_extraction = list_features_extraction_base
+            DS_for_feature_extraction = None
         else:
             print(self.Params["which_level"])
             assert False
@@ -7418,120 +7440,355 @@ class Snippets(object):
         print(list_features_extraction)
 
         # HACKY - remove all None from gridloc.
+        print("cleanpreprocessifreloaded")
         if DS_for_feature_extraction is not None:
             DS_for_feature_extraction.clean_preprocess_if_reloaded()
 
         # Perform extraction
-        assert self.datasetbeh_append_column_helper(list_features_extraction, D, DS=DS_for_feature_extraction, stop_if_fail=True)==True # Extract all the vars here
+        print("assert datasetbehappcolhelp")
+        HACK=False # was crashing because of memory issues
+        if HACK:
+            assert self.datasetbeh_append_column_helper(list_features_extraction, D, DS=DS_for_feature_extraction, stop_if_fail=True)==True # Extract all the vars here
 
-        for f in list_features_extraction:
-            if f not in self.DfScalar.columns:
-                print(f)
+            print("listfeaturesextraction")
+            for f in list_features_extraction:
+                if f not in self.DfScalar.columns:
+                    print(f)
+                    print(self.DfScalar.columns)
+                    assert False
+            # Sanity check that no Nones... Had this issue at one point.
+            # if "gridloc" in self.DfScalar.columns:
+            #     if sum(self.DfScalar["gridloc"].isna())>0:
+            #         from pythonlib.tools.pandastools import replace_values_with_this
+            #         replace_values_with_this(self.DfScalar, "gridloc", None, ("IGN", "IGN"))
+            #         # print("DS:", DS_for_feature_extraction)
+            #         # print(DS_for_feature_extraction.Dat["gridloc"].value_counts())
+            #         # print(sum(DS_for_feature_extraction.Dat["gridloc"].isna()))
+            #         # print(DS_for_feature_extraction.Dat[DS_for_feature_extraction.Dat["gridloc"].isna()])
+            #         # assert False, "Fix this above... see what is done in DatStrokes.clean_preprocess_if_reloaded."
+            print("replacevaluesgridseqc")
+            from pythonlib.tools.pandastools import replace_values_with_this
+            if "gridloc" in self.DfScalar.columns:
+                replace_values_with_this(self.DfScalar, "gridloc", None, ("IGN", "IGN"))
+            if "seqc_0_loc" in self.DfScalar.columns:
+                replace_values_with_this(self.DfScalar, "seqc_0_loc", None, ("IGN", "IGN"))
+
+            # # Check that all extracted...
+            # for var in list_features_extraction:
+            #     if var not in self.DfScalar.columns:
+            #         print(var)
+            #         print(D.Dat.columns)
+            #         print(self.DfScalar.columns)
+            #         assert False
+
+            if False:
+                print(" ------------ ")
+                for col in self.DfScalar.columns:
+                    print(col, " -- ", type(self.DfScalar[col].values[0]), " -- ", self.DfScalar[col].values[0])
+
+                print(" *********** ", type(D.Dat["seqc_0_shape"]), type(D.Dat["seqc_0_shape"].values[0]), " -- ", D.Dat["seqc_0_shape"].values[0])
+                Dthis = self.datasetbeh_extract_dataset()
+                print(" *********** ", type(Dthis.Dat["seqc_0_shape"]), type(Dthis.Dat["seqc_0_shape"].values[0]), " -- ", Dthis.Dat["seqc_0_shape"].values[0])
+
+            ################### OTHER FINAL AD-HOC TOUCHES TO SP DATA.
+            # Make a general-purpose "shape" columns applies across trial and stroke data.
+            # try:
+            print("settingdfscalarstuff")
+            self.DfScalar["size_this_event"] = self.DfScalar["gridsize"]
+            if self.Params["which_level"] == "trial":
+                # trial is isually just up to first stroke...
+                # print("---------------")
+                # print(self.DfScalar["seqc_0_shape"].unique())
+                # print("shape_this_event" in list(self.DfScalar.columns))
+                self.DfScalar["shape_this_event"] = self.DfScalar["seqc_0_shape"]
+                self.DfScalar["loc_this_event"] = self.DfScalar["seqc_0_loc"]
+            elif self.Params["which_level"] in ["stroke", "stroke_off"]:
+                self.DfScalar["shape_this_event"] = self.DfScalar["shape_oriented"]
+                self.DfScalar["loc_this_event"] = self.DfScalar["gridloc"]
+            elif self.Params["which_level"] in ["substroke", "substroke_off"]:
+                self.DfScalar["shape_this_event"] = self.DfScalar["shape"]
+                self.DfScalar["loc_this_event"] = self.DfScalar["gridloc"] # HACKY - should actualyl be location of substroke, but not ready
+            elif self.Params["which_level"] in ["saccade_fix_on", "fixon", "flex"]:
+                pass
+            else:
+                print(self.Params)
                 print(self.DfScalar.columns)
                 assert False
-        # Sanity check that no Nones... Had this issue at one point.
-        # if "gridloc" in self.DfScalar.columns:
-        #     if sum(self.DfScalar["gridloc"].isna())>0:
-        #         from pythonlib.tools.pandastools import replace_values_with_this
-        #         replace_values_with_this(self.DfScalar, "gridloc", None, ("IGN", "IGN"))
-        #         # print("DS:", DS_for_feature_extraction)
-        #         # print(DS_for_feature_extraction.Dat["gridloc"].value_counts())
-        #         # print(sum(DS_for_feature_extraction.Dat["gridloc"].isna()))
-        #         # print(DS_for_feature_extraction.Dat[DS_for_feature_extraction.Dat["gridloc"].isna()])
-        #         # assert False, "Fix this above... see what is done in DatStrokes.clean_preprocess_if_reloaded."
-        from pythonlib.tools.pandastools import replace_values_with_this
-        if "gridloc" in self.DfScalar.columns:
-            replace_values_with_this(self.DfScalar, "gridloc", None, ("IGN", "IGN"))
-        if "seqc_0_loc" in self.DfScalar.columns:
-            replace_values_with_this(self.DfScalar, "seqc_0_loc", None, ("IGN", "IGN"))
+            print("appending shapelocsize")
+            list_features_extraction.append("shape_this_event")
+            list_features_extraction.append("loc_this_event")
+            list_features_extraction.append("size_this_event")
+            # except Exception as err:
+            #     print(self.Params)
+            #     print(list(self.DfScalar.columns))
+            #     raise err
 
-        # # Check that all extracted...
-        # for var in list_features_extraction:
-        #     if var not in self.DfScalar.columns:
-        #         print(var)
-        #         print(D.Dat.columns)
-        #         print(self.DfScalar.columns)
-        #         assert False
+            if HACK_RENAME_SHAPES:
+                ############# HACK - rename shapes (lumping)
+                #### Rename any variable values? Hacky
+                # Lump together (done by hand)
+                map_shapelump_to_shapes = {}
+                map_shape_to_shapelump = {}
+                for grp in [
+                    ["V-2-1-0", "arcdeep-4-1-0", "usquare-1-1-0", "L|arcdeep-4-1-0"],
+                    ["V-2-3-0", "arcdeep-4-3-0", "usquare-1-3-0"],
+                    ["V-2-2-0", "arcdeep-4-2-0", "usquare-1-2-0"],
+                    ["V-2-4-0", "arcdeep-4-4-0", "usquare-1-4-0", "L|V-2-4-0"],
+                    ["squiggle3-3-1-0", "zigzagSq-1-2-0"],
+                    ["squiggle3-3-1-1", "zigzagSq-1-2-1"],
+                    ["squiggle3-3-2-0", "zigzagSq-1-1-0"],
+                    ["squiggle3-3-2-1", "zigzagSq-1-1-1"],
+                ]:
 
-        if False:
-            print(" ------------ ")
-            for col in self.DfScalar.columns:
-                print(col, " -- ", type(self.DfScalar[col].values[0]), " -- ", self.DfScalar[col].values[0])
+                    # name it after the first
+                    name = f"L|{grp[0]}"
+                    assert name not in map_shapelump_to_shapes
+                    map_shapelump_to_shapes[name] = grp
 
-            print(" *********** ", type(D.Dat["seqc_0_shape"]), type(D.Dat["seqc_0_shape"].values[0]), " -- ", D.Dat["seqc_0_shape"].values[0])
-            Dthis = self.datasetbeh_extract_dataset()
-            print(" *********** ", type(Dthis.Dat["seqc_0_shape"]), type(Dthis.Dat["seqc_0_shape"].values[0]), " -- ", Dthis.Dat["seqc_0_shape"].values[0])
+                    for g in grp:
+                        assert g not in map_shape_to_shapelump
+                        map_shape_to_shapelump[g] = name
 
-        ################### OTHER FINAL AD-HOC TOUCHES TO SP DATA.
-        # Make a general-purpose "shape" columns applies across trial and stroke data.
-        # try:
-        self.DfScalar["size_this_event"] = self.DfScalar["gridsize"]
-        if self.Params["which_level"] == "trial":
-            # trial is isually just up to first stroke...
-            # print("---------------")
-            # print(self.DfScalar["seqc_0_shape"].unique())
-            # print("shape_this_event" in list(self.DfScalar.columns))
-            self.DfScalar["shape_this_event"] = self.DfScalar["seqc_0_shape"]
-            self.DfScalar["loc_this_event"] = self.DfScalar["seqc_0_loc"]
-        elif self.Params["which_level"] in ["stroke", "stroke_off"]:
-            self.DfScalar["shape_this_event"] = self.DfScalar["shape_oriented"]
-            self.DfScalar["loc_this_event"] = self.DfScalar["gridloc"]
-        elif self.Params["which_level"] in ["substroke", "substroke_off"]:
-            self.DfScalar["shape_this_event"] = self.DfScalar["shape"]
-            self.DfScalar["loc_this_event"] = self.DfScalar["gridloc"] # HACKY - should actualyl be location of substroke, but not ready
-        else:
-            print(self.Params)
-            print(self.DfScalar.columns)
-            assert False
-        list_features_extraction.append("shape_this_event")
-        list_features_extraction.append("loc_this_event")
-        list_features_extraction.append("size_this_event")
-        # except Exception as err:
-        #     print(self.Params)
-        #     print(list(self.DfScalar.columns))
-        #     raise err
+                # Replace shape values for all columns that have "shape" in them.
+                shape_keys = [k for k in list_features_extraction if "shape" in k]
+                for sk in shape_keys:
+                    if isinstance(self.DfScalar.iloc[0][sk], str):
+                        if len(self.DfScalar[sk].unique())>3:
+                            print(" -- Lumping shapes (renaming) in self.DfScalar, for: ", sk)
+                            def F(x):
+                                sh = x[sk]
+                                if sh in map_shape_to_shapelump.keys():
+                                    return map_shape_to_shapelump[sh]
+                                else:
+                                    return sh
+                            self.DfScalar[sk] = self.DfScalar.apply(F, axis=1)
 
-        if HACK_RENAME_SHAPES:
-            ############# HACK - rename shapes (lumping)
-            #### Rename any variable values? Hacky
-            # Lump together (done by hand)
-            map_shapelump_to_shapes = {}
-            map_shape_to_shapelump = {}
-            for grp in [
-                ["V-2-1-0", "arcdeep-4-1-0", "usquare-1-1-0", "L|arcdeep-4-1-0"],
-                ["V-2-3-0", "arcdeep-4-3-0", "usquare-1-3-0"],
-                ["V-2-2-0", "arcdeep-4-2-0", "usquare-1-2-0"],
-                ["V-2-4-0", "arcdeep-4-4-0", "usquare-1-4-0", "L|V-2-4-0"],
-                ["squiggle3-3-1-0", "zigzagSq-1-2-0"],
-                ["squiggle3-3-1-1", "zigzagSq-1-2-1"],
-                ["squiggle3-3-2-0", "zigzagSq-1-1-0"],
-                ["squiggle3-3-2-1", "zigzagSq-1-1-1"],
-            ]:
-
-                # name it after the first
-                name = f"L|{grp[0]}"
-                assert name not in map_shapelump_to_shapes
-                map_shapelump_to_shapes[name] = grp
-
-                for g in grp:
-                    assert g not in map_shape_to_shapelump
-                    map_shape_to_shapelump[g] = name
-
-            # Replace shape values for all columns that have "shape" in them.
-            shape_keys = [k for k in list_features_extraction if "shape" in k]
-            for sk in shape_keys:
-                if isinstance(self.DfScalar.iloc[0][sk], str):
-                    if len(self.DfScalar[sk].unique())>3:
-                        print(" -- Lumping shapes (renaming) in self.DfScalar, for: ", sk)
-                        def F(x):
-                            sh = x[sk]
-                            if sh in map_shape_to_shapelump.keys():
-                                return map_shape_to_shapelump[sh]
-                            else:
-                                return sh
-                        self.DfScalar[sk] = self.DfScalar.apply(F, axis=1)
+        # print("adding saccade-fixation columns...")
+        # # add columns from 240307_sequence_rasters.ipynb
+        # self._addSaccadeFixationColumns()
 
         return D, list_features_extraction
+
+    # adds additional columns for SP.DfScalar here (including code to loop, and append_column vars)
+    # NOTE: assumes multiple session SP, e.g. from 
+    def _addSaccadeFixationColumns(self):
+        import math
+        # get the start, end times for the window spanned by start_event, end_event
+        def getTimeWindowOfEvents(sn, trial, start_event, end_event):
+            # keep just times between [start_event, end_event]
+            dict_event_times = sn.events_get_time_sorted(trial, list_events=(start_event, end_event))[0]
+            start_time = dict_event_times[start_event][0]
+            end_time = dict_event_times[end_event][0]
+            
+            return start_time, end_time
+
+        # array of tokens, each one is a task stroke with info such as shapename etc.
+        def getAllTaskStrokeTokens(sn, trial):
+            dataset_index_from_neural = sn.datasetbeh_trial_to_datidx(trial)
+            return sn.Datasetbeh.taskclass_tokens_extract_wrapper(dataset_index_from_neural, "task", plot=False)
+
+        ############
+        ## SHAPES ##
+        ############
+        def getShapesInOrder(sn, trial):
+            ts = getAllTaskStrokeTokens(sn, trial)
+
+            shape_names = []
+            for i, t in enumerate(ts):
+                shape_name = t['shape'] + '-' + str(i) # adds unique tag onto it, so same shape is named differently
+                shape_names.append(t['shape'])
+            
+            return shape_names
+
+        def getShapeCentroidsInOrder(sn, trial):
+            shape_coords = sn.strokes_task_extract(trial)
+            shape_names = getShapesInOrder(sn, trial)
+            shape_centroids = {}
+            for i in range(len(shape_names)):
+                name = shape_names[i]
+                centroid = [np.mean(shape_coords[i][:,0]), np.mean(shape_coords[i][:,1])]
+                #print("name", name)
+                #print("centroid", centroid)
+                shape_centroids[name] = centroid
+                
+            return shape_centroids # returns dict {name: [x,y]}
+
+        def getClosestShapeToCentroid(sn, trial, centroid, outlier_threshold=600):
+            x = centroid[0]
+            y = centroid[1]
+            shapeDict = getShapeCentroidsInOrder(sn, trial)
+            distances = []
+            names = []
+            
+            for name in shapeDict:
+                names.append(name)
+                distances.append(math.dist(shapeDict[name], [x,y]))
+            
+            shape_ind = np.argmin(distances)
+            if distances[shape_ind] >= outlier_threshold:
+                return 'OFFSCREEN'
+            return names[shape_ind]
+
+        ###############
+        ## LOCATIONS ##
+        ###############
+        def getLocationsAndCentroidsInOrder(sn, trial):
+            ts = getAllTaskStrokeTokens(sn, trial)
+
+            loc_names = []
+            loc_coords = []
+            for t in ts:
+                loc_names.append(str(t['gridloc']))
+                loc_coords.append(t['center'])
+            
+            return loc_names, loc_coords
+            
+
+        def getClosestLocToCentroid(sn, trial, centroid, outlier_threshold=600):
+            x = centroid[0]
+            y = centroid[1]
+            locs = getLocationsAndCentroidsInOrder(sn, trial)
+            locNames = locs[0]
+            locCentroids = locs[1]
+            
+            distances = []
+            names = []
+            
+            for i, name in enumerate(locNames):
+                names.append(name)
+                distances.append(math.dist(locCentroids[i], [x,y]))
+            
+            loc_ind = np.argmin(distances)
+            if distances[loc_ind] >= outlier_threshold:
+                return 'OFFSCREEN'
+            return str(names[loc_ind])
+        # -----------------------------------------------------------
+
+
+        ## add drawing sequence information directly to SP
+        D = self.datasetbeh_extract_dataset()
+        D.seqcontext_preprocess()
+        list_features_extraction_seq = ["seqc_0_shape", "seqc_0_loc", "seqc_1_shape", "seqc_1_loc", "seqc_2_shape", "seqc_2_loc", "seqc_3_shape", "seqc_3_loc",]
+        self.datasetbeh_append_column_helper(list_features_extraction_seq, D, stop_if_fail=True)
+        print("finished appending oclumsn..")
+        sessions = self.DfScalar['session_idx'].unique()
+        dummy_df_all = pd.DataFrame()
+        print("looping through sesssions")
+        for sesh in sessions:
+            sn = self.SNmult.SessionsList[sesh]
+
+            dummy_df = self.DfScalar[self.DfScalar['session_idx']==sesh]
+            #print("dummy_df", dummy_df)
+            neuraltrials = dummy_df['trial_neural'].unique()
+            print("looping through neuraltrials)")
+            for nt in neuraltrials:
+                # get time window
+                start_time, end_time = getTimeWindowOfEvents(sn, nt, "stim_onset", "go")
+                middle_time = np.mean([start_time, end_time])
+
+                event_inds_within_trial = dummy_df[dummy_df['trial_neural']==nt]['event_idx_within_trial'].unique()
+                print("looping through event inds")
+                for eind in event_inds_within_trial:
+                    e_df_inds = dummy_df.index[(dummy_df['trial_neural']==nt) & (dummy_df['event_idx_within_trial']==eind)]
+                    e_df_temp = dummy_df[(dummy_df['trial_neural']==nt) & (dummy_df['event_idx_within_trial']==eind)]
+                    e_prev_df_temp = dummy_df[(dummy_df['trial_neural']==nt) & (dummy_df['event_idx_within_trial']==(eind-1))]
+
+                    ## add between-stimonset and go, early or late planning
+                    e_time = e_df_temp.iloc[0]['event_time']
+                    print("between stimonsetgo")
+                    if (e_time >= start_time) and (e_time <= end_time):
+                        dummy_df.loc[e_df_inds, 'between-stimonset-and-go'] = True
+                        if (e_time <= middle_time):
+                            dummy_df.loc[e_df_inds, 'early-or-late-planning-period'] = 'early'
+                        else:
+                            dummy_df.loc[e_df_inds, 'early-or-late-planning-period'] = 'late'
+                    else:
+                        dummy_df.loc[e_df_inds, 'between-stimonset-and-go'] = False
+                        dummy_df.loc[e_df_inds, 'early-or-late-planning-period'] = 'IGNORE'
+
+                    ## add shape-fixation and loc-fixation
+
+                    # first, get centroid of this fixation event
+                    e_cntrd = e_df_temp.iloc[0]['fixation-centroid']
+
+                    # now, get closest shape to this centroid and add to dummy_df
+                    shapefix = getClosestShapeToCentroid(sn, nt, e_cntrd)
+                    dummy_df.loc[e_df_inds, 'shape-fixation'] = shapefix
+                    print("fiished shapefix")
+                    ## add loc-fixation
+                    locfix = getClosestLocToCentroid(sn, nt, e_cntrd)
+                    dummy_df.loc[e_df_inds, 'loc-fixation'] = locfix
+                    print("finished locfix")
+                    ## add first-fixation-on-shape
+                    # reset values
+                    e_df_inds = dummy_df.index[(dummy_df['trial_neural']==nt) & (dummy_df['event_idx_within_trial']==eind)]
+                    e_df_temp = dummy_df[(dummy_df['trial_neural']==nt) & (dummy_df['event_idx_within_trial']==eind)]
+                    e_prev_df_temp = dummy_df[(dummy_df['trial_neural']==nt) & (dummy_df['event_idx_within_trial']==(eind-1))]
+                    print("dftemplen", len(e_df_temp))
+                    print("prevdftemplen", len(e_prev_df_temp))
+                    print("doing firstifxonshape, eind: ", eind)
+                    # if outside planning period
+                    if eind==event_inds_within_trial[0] or e_df_temp.iloc[0]['early-or-late-planning-period'] == 'IGNORE':
+                        print("1")
+                        dummy_df.loc[e_df_inds, 'first-fixation-on-shape'] = 'IGNORE'
+                    # if this is the first event in the planning period:
+                    elif e_df_temp.iloc[0]['early-or-late-planning-period']=='early' and e_prev_df_temp.iloc[0]['early-or-late-planning-period'] == 'IGNORE':
+                        print("2")
+                        dummy_df.loc[e_df_inds, 'first-fixation-on-shape'] = True
+                    # if first two events are within planning period
+                    else:
+                        print("3")
+                        # check if shape for previous eind is the same
+                        shape_prev = e_prev_df_temp.iloc[0]['shape-fixation']
+
+                        if shape_prev == shapefix:
+                            dummy_df.loc[e_df_inds, 'first-fixation-on-shape'] = False
+                        else:
+                            dummy_df.loc[e_df_inds, 'first-fixation-on-shape'] = True
+                # start counter, for first-fixation-on-shape
+                counter = 1
+                macrosacc_seq_shape = []
+                macrosacc_seq_loc = []
+                print("doing macrosaccs")
+                for eind in event_inds_within_trial:
+                    e_df_inds = dummy_df.index[(dummy_df['trial_neural']==nt) & (dummy_df['event_idx_within_trial']==eind)]
+                    e_df_temp = dummy_df[(dummy_df['trial_neural']==nt) & (dummy_df['event_idx_within_trial']==eind)]
+
+                    ## add shape-macrosaccade-index
+                    if e_df_temp.iloc[0]['between-stimonset-and-go'] == True and e_df_temp.iloc[0]['first-fixation-on-shape'] == True:
+                        dummy_df.loc[e_df_inds, 'shape-macrosaccade-index'] = counter
+                        counter += 1
+                    else:
+                        dummy_df.loc[e_df_inds, 'shape-macrosaccade-index'] = -1 # when filtering out first-fixation-on-shape==False, will be remove
+
+                    ## add saccade-dir-angle and saccade-dir-bin
+                    if eind==event_inds_within_trial[0]: # first fixation has no direction..
+                        dummy_df.loc[e_df_inds, 'saccade-dir-angle'] = 0 # better placeholder value?
+                        continue
+
+                    # now, get fixation centroid
+                    e_fix_centroid = e_df_temp.iloc[0]['fixation-centroid']
+                    x = e_fix_centroid[0]
+                    y = e_fix_centroid[1]
+
+                    # and same for previous EVENT IDX
+                    e_df_inds_prev = dummy_df.index[(dummy_df['trial_neural']==nt) & (dummy_df['event_idx_within_trial']==eind-1)]
+                    e_df_temp_prev = dummy_df[(dummy_df['trial_neural']==nt) & (dummy_df['event_idx_within_trial']==eind-1)]
+                    e_fix_centroid_prev = e_df_temp_prev.iloc[0]['fixation-centroid']
+                    x_prev = e_fix_centroid_prev[0]
+                    y_prev = e_fix_centroid_prev[1]
+                    print("sacc dir angle")
+                    # add angle
+                    dummy_df.loc[e_df_inds, 'saccade-dir-angle'] = math.atan2((y-y_prev), (x-x_prev))+math.pi # make between 0-360
+
+                # bin saccade direction into 4 quadrants
+                dummy_df['saccade-dir-angle-bin'] = pd.cut(dummy_df['saccade-dir-angle'], bins=4, labels=["quadrant1", "quadrant2", "quadrant3", "quadrant4"])
+            print("concatting all dataframes...")
+            dummy_df_all = pd.concat([dummy_df_all, dummy_df])
+        # finally, set SP.DfScalar to dummy_df
+        print("setting dfscalar...")
+        self.DfScalar = dummy_df_all.reset_index(drop=True)
+
 
     def load_v2(self, savedir):
         """ To load data saved using save_v2
@@ -7951,6 +8208,26 @@ def extraction_helper(SN, which_level="trial", list_features_modulation_append=N
         dataset_pruned_for_trial_analysis = None
         trials_prune_just_those_including_events = False
         DS_pruned = None
+
+    elif which_level == "saccade_fix_on": # relevant for dfallpa_extraction_load_wrapper
+        which_level="flex"
+        # Extracts snippets aligned to strokes. Features are columns in DS.
+        list_events = ["fixon"] # must be empty
+        list_features_extraction = [] #
+        list_features_get_conjunction = []
+        # also those for computing moduulation.
+        list_pre_dur = [-0.5]
+        list_post_dur = [0.5]
+        strokes_only_keep_single = False
+        tasks_only_keep_these=None
+        prune_feature_levels_min_n_trials = None
+        dataset_pruned_for_trial_analysis = None
+        trials_prune_just_those_including_events = False
+        fail_if_times_outside_existing=False
+        fr_which_version='sqrt'
+        SKIP_DATA_EXTRACTION=False,
+        DS_pruned = None
+
     else:
         print(which_level)
         assert False
@@ -7994,13 +8271,14 @@ def extraction_helper(SN, which_level="trial", list_features_modulation_append=N
         list_features_get_conjunction,
         list_pre_dur,
         list_post_dur,
-        strokes_only_keep_single=None,
+        strokes_only_keep_single=False,
         tasks_only_keep_these=None,
         prune_feature_levels_min_n_trials=prune_feature_levels_min_n_trials,
         dataset_pruned_for_trial_analysis=dataset_pruned_for_trial_analysis,
         trials_prune_just_those_including_events=trials_prune_just_those_including_events,
         fr_which_version='sqrt',
         SKIP_DATA_EXTRACTION=False,
+        fail_if_times_outside_existing=fail_if_times_outside_existing,
         DS_pruned=DS_pruned)
 
     # Prune, to remove low FR sites
