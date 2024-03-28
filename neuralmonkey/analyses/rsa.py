@@ -3524,6 +3524,41 @@ def rsagood_questions_params(question):
         plot_pairwise_distmats_variables = None
         plot_pairwise_distmats_twinds = None
 
+
+    elif question=="PIG_BASE_saccade_fix_on":
+        # Base, for extracting PIG strokes and trial
+        effect_vars = ["seqc_0_shape"]
+        list_which_level = ["saccade_fix_on"] # Whihc which_level to keep
+
+        ## For "stroke" and "stroke_off" which_levels
+        # - include all strokes within sequence
+        exclude_last_stroke=False
+        exclude_first_stroke=False
+        keep_only_first_stroke=False
+        min_taskstrokes = 1
+        max_taskstrokes = 20
+
+        ## Optionally, rename variables for speicifc which_level, so that variable
+        # names match across which_level --> Helps since the analy requires all datapts
+        # to use same variable names.
+        map_varname_to_new_varname = None
+
+        ## Params which apply AFTER you have concated across which_level
+        # Which events to prune to
+        events_keep = None
+        ANALY_VER = "seqcontext"
+
+        # If this requires slicing and agging DFallpa
+        slice_agg_slices = None
+        slice_agg_vars_to_split = None
+
+        list_subtract_mean_each_level_of_var = [None]
+
+        # Which variables to plot all the pairwise distmats for
+        # Which variables to plot all the pairwise distmats for
+        plot_pairwise_distmats_variables = None
+        plot_pairwise_distmats_twinds = None
+
     elif question=="PIG_planning_shape_loc":
         # Focus on planning period, decoding shapes/locations.
 
