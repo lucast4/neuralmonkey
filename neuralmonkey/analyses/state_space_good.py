@@ -1199,7 +1199,10 @@ def _trajgood_make_colors_discrete_var(labels, which_dim_of_labels_to_use=None):
             _map_lev_to_color[lev] = pc
 
     # Return the color for each item
-    colors = [_map_lev_to_color[lab] for lab in labels_for_color]
+    if _map_lev_to_color is None:
+        colors = labels_color_uniq
+    else:
+        colors = [_map_lev_to_color[lab] for lab in labels_for_color]
 
     return _map_lev_to_color, color_type, colors
 
