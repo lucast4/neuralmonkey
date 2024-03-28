@@ -42,6 +42,7 @@ class PopAnal():
         """
         import copy
 
+        assert len(X.shape)==3
         self.Params = {}
         self.Xdataframe = None
         self.Xz = None
@@ -1347,29 +1348,16 @@ class PopAnal():
                                            method=pca_method,
                                            npcs_keep_force=npcs_keep_force) # (ntrials, nchans) --> (ntrials, ndims)
 
-                #
-                # # Prune with PCA
-                # from sklearn.decomposition import PCA
-                # pca = PCA(n_components=None)
-                # Xpca = pca.fit_transform(X) # (ntrials, nchans) --> (ntrials, ndims)
-                # cumvar = np.cumsum(pca.explained_variance_ratio_)
-                # npcs_keep = np.argwhere(cumvar >= pca_frac_var_keep)[0].item()+1 # the num PCs to take such that cumsum is just above thresh
-                # # npcs_keep = np.argmin(np.abs(cumvar - thresh_frac_var))
-                # X = Xpca[:, :npcs_keep]
-                #
-                # if plot_pca_explained_var:
-                #     fig, axes = plt.subplots(1,2, figsize=(8,3))
-                #
-                #     ax = axes.flatten()[0]
-                #     ax.plot(pca.explained_variance_ratio_)
-                #     ax.axvline(npcs_keep, color="r")
-                #     ax.set_title("frac var, each dim")
-                #
-                #     ax = axes.flatten()[1]
-                #     ax.plot(np.cumsum(pca.explained_variance_ratio_))
-                #     ax.axvline(npcs_keep, color="r")
-                #     ax.set_title("cumulative var, each dim")
-                #     # savefig(fig, f"{savedir_preprocess}/pca_explainedvar.pdf")
+                # Represent X in PopAnal
+                PApca = PopAnal(X.T[:, :, None].copy(), [0])  # (ndimskeep, ntrials, 1)
+                PApca.Xlabels = {dim:df.copy() for dim, df in PAslice.Xlabels.items()}
+                assert len(PApca.Xlabels["trials"])==PApca.X.shape[1]
+
+            # Sanity check
+            assert X.shape[0] == PAslice.X.shape[1]
+            if pca_reduce:
+                assert X.shape[1] == PApca.X.shape[0]
+                assert X.shape[0] == PApca.X.shape[1]
 
         elif reshape_method=="chans_x_trials_x_times":
             # Default.
@@ -1404,47 +1392,35 @@ class PopAnal():
                                            method=pca_method,
                                            npcs_keep_force=npcs_keep_force) # (ntrials, nchans) --> (ntrials, ndims)
 
-                # # Prune with PCA
-                # from sklearn.decomposition import PCA
-                # pca = PCA(n_components=None)
-                # Xpca = pca.fit_transform(X) # (ntrials*ntimes, nchans) --> (ntrials*ntimes, ndims)
-                # cumvar = np.cumsum(pca.explained_variance_ratio_)
-                # npcs_keep = np.argwhere(cumvar >= pca_frac_var_keep)[0].item()+1 # the num PCs to take such that cumsum is just above thresh
-                # # npcs_keep = np.argmin(np.abs(cumvar - thresh_frac_var))
-                # X = Xpca[:, :npcs_keep] # (ntrials*ntimes, npcs_keep)
-
-                # if plot_pca_explained_var:
-                #     fig, axes = plt.subplots(1,2, figsize=(8,3))
-                #
-                #     ax = axes.flatten()[0]
-                #     ax.plot(pca.explained_variance_ratio_)
-                #     ax.axvline(npcs_keep, color="r")
-                #     ax.set_title("frac var, each dim")
-                #
-                #     ax = axes.flatten()[1]
-                #     ax.plot(np.cumsum(pca.explained_variance_ratio_))
-                #     ax.axvline(npcs_keep, color="r")
-                #     ax.set_title("cumulative var, each dim")
-                #     # savefig(fig, f"{savedir_preprocess}/pca_explainedvar.pdf")
-
                 # Reshape back to original
                 npcs_keep = X.shape[1]
                 X = X.T # (npcs_keep, ntrials*ntimes)
                 X = np.reshape(X, [npcs_keep, ntrials, ntimes]) # (npcs_keep, ntrials*ntimes)
-            else:
-                X = PAslice.X
+
+                # Represent X in PopAnal
+                PApca = PopAnal(X.copy(), ntimes)  # (ndimskeep, ntrials, 1)
+                PApca.Xlabels = {dim:df.copy() for dim, df in PAslice.Xlabels.items()}
+                assert len(PApca.Xlabels["trials"])==PApca.X.shape[1]
+
+            # Sanity check
+            assert X.shape[1:] == PAslice.X.shape[1:]
+            if pca_reduce:
+                assert X.shape == PApca.X.shape
         else:
-            assert False
+            X = PAslice.X
             if pca_reduce:
                 assert False, "not coded..."
 
         if not pca_reduce:
             pca = None
+            PApca = None
 
-        # Represent X in PopAnal
-        PApca = PopAnal(X.T[:, :, None].copy(), [0])  # (ndimskeep, ntrials, 1)
-        PApca.Xlabels = {dim:df.copy() for dim, df in PAslice.Xlabels.items()}
-        assert len(PApca.Xlabels["trials"])==PApca.X.shape[1]
+        # # Represent X in PopAnal
+        # print(X.shape)
+        # assert False
+        # PApca = PopAnal(X.T[:, :, None].copy(), [0])  # (ndimskeep, ntrials, 1)
+        # PApca.Xlabels = {dim:df.copy() for dim, df in PAslice.Xlabels.items()}
+        # assert len(PApca.Xlabels["trials"])==PApca.X.shape[1]
 
         return X, PApca, PAslice, pca
 

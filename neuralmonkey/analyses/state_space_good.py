@@ -1755,6 +1755,16 @@ def trajgood_plot_colorby_splotby(df, var_color_by, var_subplots, dims=(0,1),
     from neuralmonkey.population.dimreduction import statespace_plot_single
     from pythonlib.tools.plottools import legend_add_manual
 
+    var_color_for_name = var_color_by
+    if isinstance(var_color_by, (tuple, list)):
+        df = append_col_with_grp_index(df, var_color_by, "_tmp")
+        var_color_by = "_tmp"
+
+    var_color_for_name_subplots = var_subplots
+    if isinstance(var_subplots, (tuple, list)):
+        df = append_col_with_grp_index(df, var_subplots, "_tmp2")
+        var_subplots = "_tmp2"
+
     # One color for each level of effect var
     levs_effect = sort_mixed_type(df[var_color_by].unique().tolist())
     pcols = makeColors(len(levs_effect))
@@ -1868,7 +1878,7 @@ def dimredgood_pca(X, n_components=None,
     :param method:
         using "svd" so that it does not recenter.
     :param npcs_keep_force: int (take this many of the top pcs) or None (use auto method, one of the abbove
-    :return:
+    :return: Xpcakeep (ndat, nfeats)
     """
 
     assert len(X.shape)==2
