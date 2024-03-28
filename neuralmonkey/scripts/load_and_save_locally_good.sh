@@ -24,7 +24,7 @@ date1=$d
 # touch ${logfile}
 
 until [[ ${date1} > ${date2} ]]; do
-  logfile=/gorilla1/code/neuralmonkey/neuralmonkey/logs/log_preprocess_good_${animal}_${date1}.txt
+  logfile=../logs/log_preprocess_good_${animal}_${date1}.txt
   touch ${logfile}
   echo ${date1}
   echo ${logfile}

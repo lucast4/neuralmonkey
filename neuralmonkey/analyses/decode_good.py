@@ -17,6 +17,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from pythonlib.tools.plottools import savefig
 from pythonlib.tools.listtools import sort_mixed_type
+from pythonlib.tools.pandastools import append_col_with_grp_index
 
 LABELS_IGNORE = ["IGN", ("IGN",), "IGNORE", ("IGNORE",)] # values to ignore during dcode.
 N_MIN_TRIALS = 5 # min trials per level, otherwise throws level out.
@@ -905,7 +906,6 @@ def decodewrapouterloop_categorical_timeresolved_within_condition(DFallpa, list_
     DFRES = pd.DataFrame(RES)
 
     ### PLOT
-    from pythonlib.tools.pandastools import append_col_with_grp_index
     import seaborn as sns
     import matplotlib.pyplot as plt
 
@@ -1001,7 +1001,6 @@ def decodewrapouterloop_categorical_timeresolved_cross_condition(DFallpa, list_v
     DFRES = pd.DataFrame(RES)
 
     ### PLOT
-    from pythonlib.tools.pandastools import append_col_with_grp_index
     from pythonlib.tools.pandastools import convert_to_2d_dataframe, grouping_plot_n_samples_conjunction_heatmap, plot_subplots_heatmap
     import seaborn as sns
     import matplotlib.pyplot as plt
@@ -1092,7 +1091,6 @@ def decodewrapouterloop_categorical_timeresolved(DFallpa, list_vars_decode,
     DFRES = pd.DataFrame(RES)
 
     ### PLOT
-    from pythonlib.tools.pandastools import append_col_with_grp_index
     from pythonlib.tools.pandastools import convert_to_2d_dataframe, grouping_plot_n_samples_conjunction_heatmap, plot_subplots_heatmap
     import seaborn as sns
     import matplotlib.pyplot as plt
@@ -1265,7 +1263,6 @@ def decodewrapouterloop_categorical_cross_time_plot(DFRES, SAVEDIR):
     :return:
     """
     from pythonlib.tools.pandastools import convert_to_2d_dataframe, grouping_plot_n_samples_conjunction_heatmap, plot_subplots_heatmap
-    from pythonlib.tools.pandastools import append_col_with_grp_index
     from pythonlib.tools.pandastools import convert_to_2d_dataframe, grouping_plot_n_samples_conjunction_heatmap, plot_subplots_heatmap
 
 
@@ -1956,7 +1953,7 @@ def euclidian_distance_compute_score_single(pa, var, var_others, PLOT=False, PLO
         # Then this is trial-level. ignore this stroke-index based constarint
         CONTEXT_DIFFERENT_FOR_FIRST_STROKE = False
     else:
-        "stroke_index_is_first" in pa.Xlabels["trials"].columns
+        assert "stroke_index_is_first" in pa.Xlabels["trials"].columns
 
     ALSO_COLLECT_SAME_EFFECT = False # NOTE: This is incorrect - it is just "null" data.
     if ALSO_COLLECT_SAME_EFFECT:
@@ -2001,8 +1998,12 @@ def euclidian_distance_compute_score_single(pa, var, var_others, PLOT=False, PLO
     if CONTEXT_DIFFERENT_FOR_FIRST_STROKE:
         # This has no effect on "same context", but ensures that "diff" context cases have same
         # "stroke_index_is_first". This is becuase first stroke is usually different (due to reach from onset).
-        diffctxt_vars_diff = [var for var in var_others if not var=="stroke_index_is_first"]
-        diffctxt_vars_same = ["stroke_index_is_first"]
+        if "stroke_index_is_first" in var_others:
+            diffctxt_vars_diff = [var for var in var_others if not var=="stroke_index_is_first"]
+            diffctxt_vars_same = ["stroke_index_is_first"]
+        else:
+            diffctxt_vars_diff = var_others
+            diffctxt_vars_same = []
         MASKS, fig, axes = Cldist.rsa_mask_context_helper(var, var_others, "diff_specific_lenient",
                                   diffctxt_vars_same, diffctxt_vars_diff, PLOT=True,
                                   path_for_save_print_lab_each_mask=path_for_save_print_lab_each_mask)
@@ -2176,6 +2177,11 @@ def euclidian_distance_compute(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT_MASKS,
         # Copy pa for this
         pa = PApca.copy()
 
+        var_for_name = var
+        if isinstance(var, (tuple, list)):
+            pa.Xlabels["trials"] = append_col_with_grp_index(pa.Xlabels["trials"], var, "_tmp")
+            var = "_tmp"
+
         ############### PRUNE DATA, TO GET ENOUGH FOR THIS VARIABLE
         # # Prep by keeping only if enough data
         # from neuralmonkey.analyses.rsa import preprocess_rsa_prepare_popanal_wrapper
@@ -2186,7 +2192,7 @@ def euclidian_distance_compute(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT_MASKS,
         prune_min_n_levs = 2
 
         # Prune data to just cases with at least 2 levels of decode var
-        plot_counts_heatmap_savepath = f"{savedir}/counts_heatmap-var={var}-ovar={'|'.join(var_others)}.pdf"
+        plot_counts_heatmap_savepath = f"{savedir}/counts_heatmap-var={var_for_name}-ovar={'|'.join(var_others)}.pdf"
         if nmin_trials_per_lev is not None:
             prune_min_n_trials = nmin_trials_per_lev
         else:

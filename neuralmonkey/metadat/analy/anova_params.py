@@ -33,11 +33,15 @@ def _params_score_sequence_ver(animal, DATE, ANALY_VER):
             220921, 220928, 220929, 220930, 221001, 221002, 221014, 221020, 221021, 221023, 221024,
             221031, 221102, 221107, 221112, 221113, 221114, 221118, 221119, 221121, 221125]:
             # determenistic (single solution)
-            DO_SCORE_SEQUENCE_VER = "matlab"
+            # DO_SCORE_SEQUENCE_VER = "matlab"
+            DO_SCORE_SEQUENCE_VER = "parses" # This is better!! It is required if you want to extract chunk features (e.g, chunk rank)
+            # which is done below and so "matlab" would run into error.
         elif animal=="Diego" and DATE in [230701, 230702, 230703, 230704, 230705, 230706, 230707, 230713, 230717, 230719, 230802]:
             # A single correct sequence
-            DO_SCORE_SEQUENCE_VER = "matlab"
-        elif animal=="Diego" and DATE in [230815, 230817]:
+            # DO_SCORE_SEQUENCE_VER = "matlab"
+            DO_SCORE_SEQUENCE_VER = "parses" # This is better!! It is required if you want to extract chunk features (e.g, chunk rank)
+            # which is done below and so "matlab" would run into error.
+        elif animal in ["Diego", "Pancho"]:
             # For chunks analysis (e.g., single rule). Lately (Feb 2024) extracting cjhunks
             # seems to require parse version...
             DO_SCORE_SEQUENCE_VER = "parses"
@@ -1013,7 +1017,7 @@ def dataset_apply_params(D, DS, ANALY_VER, animal, DATE, save_substroke_preproce
                 D.tokens_bin_feature_across_all_data("center", "task", nbins=nbins, PLOT=PLOT)
 
                 # Get locon_bin_in_loc
-                D.tokens_sequence_bin_location_within_gridloc()
+                # D.tokens_sequence_bin_location_within_gridloc()
 
                 # Replace loc, for char, with loc within gridloc.
                 # And then get shape_loc conjunctions
@@ -1035,19 +1039,20 @@ def dataset_apply_params(D, DS, ANALY_VER, animal, DATE, save_substroke_preproce
             D.supervision_epochs_merge_these(this[0], this[1], key=params["epoch_merge_key"],
                 assert_list_epochs_exist=False)
 
-        if params["EXTRACT_EPOCHSETS"]:
-            if params["EXTRACT_EPOCHSETS_trial_label"] == "char_seq":
-                # This useful to separate into cases with same first stroke, and also chars present across contexts,
-                # separating out single prims if they exist into their own epochset.
-                versions_ordered = ["char", "same_beh_first_stroke", "same_beh"]
-                D.epochset_apply_sequence_wrapper(versions_ordered=versions_ordered)
-            else:
-                # Only apply epochset extraction once.
-                D.epochset_extract_common_epoch_sets(
-                    trial_label=params["EXTRACT_EPOCHSETS_trial_label"],
-                    n_max_epochs=params["EXTRACT_EPOCHSETS_n_max_epochs"],
-                    merge_sets_with_only_single_epoch=params["EXTRACT_EPOCHSETS_merge_sets"],
-                    merge_sets_with_only_single_epoch_name = ("LEFTOVER",))
+        # Always extract epochset, simply so that can hard-code extract "epochset" to Snippets.
+        # if params["EXTRACT_EPOCHSETS"]:
+        if params["EXTRACT_EPOCHSETS_trial_label"] == "char_seq":
+            # This useful to separate into cases with same first stroke, and also chars present across contexts,
+            # separating out single prims if they exist into their own epochset.
+            versions_ordered = ["char", "same_beh_first_stroke", "same_beh"]
+            D.epochset_apply_sequence_wrapper(versions_ordered=versions_ordered)
+        else:
+            # Only apply epochset extraction once.
+            D.epochset_extract_common_epoch_sets(
+                trial_label=params["EXTRACT_EPOCHSETS_trial_label"],
+                n_max_epochs=params["EXTRACT_EPOCHSETS_n_max_epochs"],
+                merge_sets_with_only_single_epoch=params["EXTRACT_EPOCHSETS_merge_sets"],
+                merge_sets_with_only_single_epoch_name = ("LEFTOVER",))
 
         if params["DO_EXTRACT_EPOCHKIND"]:
             D.supervision_epochs_extract_epochkind()
@@ -1121,22 +1126,17 @@ def dataset_apply_params(D, DS, ANALY_VER, animal, DATE, save_substroke_preproce
             # Extract motor variables (DS)
             features_motor_extract_and_bin(DS, plot_save_dir=plot_save_dir)
 
-        # ################ CHUNKS, STROKES (e.g., singlerule, AnBm)
-        # if params["datasetstrokes_extract_chunks_variables"]:
-        #     # First extract within Dataset, then to DS.
-        #     # (note: DS.Dataset and D are identical objects).
-        #
-        #     # First, place preprocessed D (from above) into DS.
-        #     DS.dataset_replace_dataset(D)
-        #     # Then prune DS to match D.
-        #     DS.dataset_prune_self_to_match_dataset()
-        #
-        #     # Second, extract chunk variables from Dataset
-        #     for i in range(len(DS.Dataset.Dat)):
-        #         DS.Dataset.grammarparses_taskclass_tokens_assign_chunk_state_each_stroke(i)
-        #
-        #     # Third, extract variables to strokes
-        #     DS.context_chunks_assign_columns()
+        ################ CHUNKS, STROKES (e.g., singlerule, AnBm)
+        if params["datasetstrokes_extract_chunks_variables"]:
+            # Extract chunk variables from Dataset
+            for i in range(len(D.Dat)):
+                D.grammarparses_taskclass_tokens_assign_chunk_state_each_stroke(i)
+
+            # Also extract "syntax parse" e.g., (3,1,1) for A3B1C1.
+            # Also called "taskcat_by_rule"
+            D.grammarparses_classify_tasks_categorize_based_on_rule()
+            print("These are the SYNTAX PARSES (i.e., 'taskcat_by_rule'):")
+            print(D.Dat["taskcat_by_rule"].value_counts())
 
         ###### MAKE SURE DS is None, if you dont want to use it to prune SP.
         if params["datasetstrokes_extract_to_prune_stroke_and_get_features"] is None and params["substrokes_features_do_extraction"] is None:
@@ -1347,8 +1347,10 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
         preprocess_steps_append = ["correct_sequencing_binary_score",
             "one_to_one_beh_task_strokes_allow_unfinished"]
     elif ANALY_VER in ["rulesingle"]:
+        # preprocess_steps_append = ["correct_sequencing_binary_score",
+        #     "one_to_one_beh_task_strokes"]
         preprocess_steps_append = ["correct_sequencing_binary_score",
-            "one_to_one_beh_task_strokes"]
+            "one_to_one_beh_task_strokes_allow_unfinished"]
     elif ANALY_VER in ["ruleswALLDATA"]:
         # keep all trials
         preprocess_steps_append = []
@@ -1405,10 +1407,10 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
 
     ############ rules will generally need to use this.
     DO_EXTRACT_EPOCHKIND = False
-    if ANALY_VER in ["ruleswERROR", "rulesw", "ruleswALLDATA", "rulesingle"]:
+    if "rule" in ANALY_VER:
         # Label each trial based on its conjunction of character and correct beh sequence.
         DO_CHARSEQ_VER = "task_matlab"
-        EXTRACT_EPOCHSETS = True
+        # EXTRACT_EPOCHSETS = True
         EXTRACT_EPOCHSETS_trial_label = "char_seq"
         EXTRACT_EPOCHSETS_n_max_epochs = 3
         EXTRACT_EPOCHSETS_merge_sets = True
@@ -1416,23 +1418,28 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
     elif ANALY_VER in ["singleprimvar"]:
         # Label each trial based on its (shape/loc).
         DO_CHARSEQ_VER = None
-        EXTRACT_EPOCHSETS = True
+        # EXTRACT_EPOCHSETS = True
         EXTRACT_EPOCHSETS_trial_label = "seqc_0_loc_shape"
         EXTRACT_EPOCHSETS_n_max_epochs = 10 # make this higher, since these are usually clean expts.
         EXTRACT_EPOCHSETS_merge_sets = True
     elif ANALY_VER in ["seqcontextvar"]:
         # Label each trial based on its (task config).
         DO_CHARSEQ_VER = None
-        EXTRACT_EPOCHSETS = True
+        # EXTRACT_EPOCHSETS = True
         EXTRACT_EPOCHSETS_trial_label = "taskconfig_shploc"
         EXTRACT_EPOCHSETS_n_max_epochs = 10 # make this higher, since these are usually clean expts.
         EXTRACT_EPOCHSETS_merge_sets = True
     elif ANALY_VER in ["singleprim", "seqcontext", "charstrokes", "chartrial", "substrokes_sp", "PIG_BASE"]:
+        # DO_CHARSEQ_VER = None
+        # EXTRACT_EPOCHSETS = False
+        # EXTRACT_EPOCHSETS_trial_label = None
+        # EXTRACT_EPOCHSETS_n_max_epochs = None
+        # EXTRACT_EPOCHSETS_merge_sets = None
         DO_CHARSEQ_VER = None
-        EXTRACT_EPOCHSETS = False
+        # EXTRACT_EPOCHSETS = False
         EXTRACT_EPOCHSETS_trial_label = None
         EXTRACT_EPOCHSETS_n_max_epochs = None
-        EXTRACT_EPOCHSETS_merge_sets = None
+        EXTRACT_EPOCHSETS_merge_sets = False
     else:
         print(ANALY_VER)
         assert False
@@ -1456,7 +1463,10 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
     elif animal=="Pancho" and DATE in  [221102]:
         # Color-supervision, just differnet set of rules/epochs
         list_epoch_merge = [
-            (["rndstr", "llV1|1", "L|1"], "rank|1")
+            (["rndstr", "llV1a|1", "L|1"], "rank|1"),
+            (["rndstr", "llV1b|1", "L|1"], "rank|1"),
+            (["rndstr", "llV1c|1", "L|1"], "rank|1"),
+            (["rndstr", "llV1d|1", "L|1"], "rank|1"),
         ]
         epoch_merge_key = "epoch"
     elif animal =="Pancho" and DATE in [220921]:
@@ -1504,7 +1514,7 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
         datasetstrokes_extract_to_prune_stroke_and_get_features = "clean_chars_clusters_without_reloading" # Generates
         # DS anew from D, and uses the clust scores within D to prune strokes.
 
-    elif ANALY_VER in ["rulesingle"]:
+    elif "rule" in ANALY_VER:
         # Rule grid tasks, ignore stroke qualtiy
         datasetstrokes_extract_to_prune_trial = None
         datasetstrokes_extract_to_prune_stroke_and_get_features = None
@@ -1524,7 +1534,7 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
         assert False
 
     ######## CHUNKS, e.g., AnBm, wherther to extract state, e.g.,, n in chunk, and so on.
-    if ANALY_VER in ["rulesingle"]:
+    if "rule" in ANALY_VER:
         # This operates on DS only.
         datasetstrokes_extract_chunks_variables = True
     else:
@@ -1533,7 +1543,7 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
 
     params = {
         "DO_CHARSEQ_VER":DO_CHARSEQ_VER,
-        "EXTRACT_EPOCHSETS":EXTRACT_EPOCHSETS,
+        # "EXTRACT_EPOCHSETS":EXTRACT_EPOCHSETS,
         "EXTRACT_EPOCHSETS_trial_label":EXTRACT_EPOCHSETS_trial_label,
         "EXTRACT_EPOCHSETS_n_max_epochs":EXTRACT_EPOCHSETS_n_max_epochs,
         "EXTRACT_EPOCHSETS_merge_sets":EXTRACT_EPOCHSETS_merge_sets,
@@ -1556,6 +1566,186 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
     return params
 
 
+def params_getter_raster_vars(which_level, question, OVERWRITE_lenient_n=2):
+    """
+    Params for rasters, focusing on the minimal plots for getting across qusritons. Mniamrl since takes a logn time to plot.
+    :param which_level:
+    :param ANALY_VER:
+    :return:
+    """
+
+    print("****", which_level, question)
+    LIST_OVERWRITE_lenient_n = None
+
+    if which_level=="trial" and "CHAR_BASE_trial" in question:
+        # Often not enough data for each shape x loc for single prims...
+        ################## - PIG (trial, decode first stroke)
+        # LIST_VAR = [
+        #     "seqc_0_shape",
+        # ]
+        # LIST_VARS_OTHERS = [
+        #     ["task_kind", "seqc_0_loc"],
+        # ]
+        # - 3/12/24 - Parse (vlPFC?)
+        LIST_VAR = [
+            "seqc_1_shape",
+            "seqc_1_shape",
+            "taskconfig_shp_SHSEM",
+            "taskconfig_shp_SHSEM",
+        ]
+        LIST_VARS_OTHERS = [
+            ["character", "task_kind"], # control for image.
+            ["seqc_0_shape", "seqc_0_loc", "task_kind"],
+            ["taskconfig_loc", "seqc_0_shape", "seqc_0_loc", "task_kind"], # control for first action.
+            ["character"],
+        ]
+    elif which_level=="stroke" and question in ["PIG_BASE_stroke"]:
+
+        ################## - PIG decode online context [3/12/24]
+        LIST_VAR = [
+            "CTXT_loc_next",
+            "CTXT_shape_next",
+            "task_kind",
+            # "stroke_index_fromlast_tskstks",
+            "stroke_index",
+            "FEAT_num_strokes_task",
+            "shape",
+        ]
+        # LIST_VARS_OTHERS = [
+        #     ["task_kind", "CTXT_loc_prev", "shape", "gridloc", "CTXT_shape_next"],
+        #     ["task_kind", "CTXT_loc_prev", "shape", "gridloc", "CTXT_loc_next"],
+        #     ["shape", "gridloc", "CTXT_loc_prev"],
+        #     ["task_kind", "FEAT_num_strokes_task", "CTXT_loc_prev", "shape", "gridloc"],
+        #     ["task_kind", "FEAT_num_strokes_task", "CTXT_loc_prev", "shape", "gridloc"],
+        #     ["CTXT_loc_prev", "shape", "gridloc"],
+        #     ]
+        # More restrictive
+        LIST_VARS_OTHERS = [
+            ["task_kind", "CTXT_shape_prev", "CTXT_loc_prev", "shape", "gridloc", "CTXT_shape_next"],
+            ["task_kind", "CTXT_shape_prev", "CTXT_loc_prev", "shape", "gridloc", "CTXT_loc_next"],
+            ["shape", "gridloc", "CTXT_shape_prev", "CTXT_loc_prev"],
+            # ["task_kind", "FEAT_num_strokes_task", "CTXT_shape_prev", "CTXT_loc_prev", "shape", "gridloc"],
+            ["task_kind", "FEAT_num_strokes_task", "CTXT_shape_prev", "CTXT_loc_prev", "shape", "gridloc"],
+            ["CTXT_shape_prev", "CTXT_loc_prev", "shape", "gridloc"],
+            ["task_kind", "FEAT_num_strokes_task", "stroke_index_fromlast_tskstks"],
+            ]
+
+    elif which_level == "stroke" and question in ["RULE_BASE_stroke"]:
+        # "gridloc", # subplots = indices within chunk
+
+        LIST_VAR = [
+            ("chunk_rank", "chunk_within_rank_semantic"), # strongest test of index within chunk, and chunk index.
+            # "chunk_within_rank_semantic", # Good, but slightly redudant with ("chunk_rank", "chunk_within_rank_semantic"). Consider activating
+
+            # Encoding of shape even during gap?
+            "CTXT_shape_prev", # var = 2-motifs, conditioned on the shape of 2nd stroke.
+
+            # -- N in chunk (analysis)
+            "chunk_n_in_chunk", # n at start or end of chunk [general across n_in_chunk]
+
+
+            # These dont need to do chunk_within_rank_fromlast, since it would be very similar to this (chunk_within_rank)
+            "chunk_within_rank_semantic", #
+
+            # -- N in chunk (visualtions)
+            "chunk_n_in_chunk", # subplots = indices within chunk (color by n in chunk)
+            "chunk_n_in_chunk", # subplots = indices within chunk (color by n in chunk)
+        ]
+
+        # ["chunk_rank", "chunk_within_rank", "chunk_within_rank_fromlast"], # NEW - effect of onset
+        LIST_VARS_OTHERS = [
+            # This, checked closely by hand, as the minimum for getting very clean M1
+            ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "shape", "loc_on_clust", "loc_off_clust", "CTXT_shape_prev", "CTXT_loconclust_next"],
+            # ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_loc_prev", "shape", "gridloc", "CTXT_loc_next"],
+
+            ("shape", "CTXT_loc_prev", "loc_on_clust", "loc_off_clust", "CTXT_loconclust_next", "CTXT_shape_next"), # Good -- tight control!
+
+            # GOOD - 2 variations, 2nd is more controlled.
+            ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "chunk_within_rank_semantic", "shape", "loc_on_clust", "CTXT_loc_next"],
+            # ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "chunk_within_rank_semantic", "shape", "loc_on_clust", "CTXT_loc_next", "CTXT_shape_prev"],
+
+            # GOOD - 4 variations, each with stronger control.
+            # ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "shape", "loc_on_clust", "loc_off_clust"]
+            # ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "shape", "loc_on_clust", "loc_off_clust", "CTXT_loconclust_next"]
+            ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "shape", "loc_on_clust", "loc_off_clust", "CTXT_loconclust_next", "CTXT_shape_prev"],
+            # ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "shape", "loc_on_clust", "loc_off_clust", "CTXT_loconclust_next", "CTXT_shape_next"]
+
+            ("chunk_rank", "shape", "chunk_within_rank"), # [vislauzations] NEW: coloring by n in chunk --> consistent across those?
+            ("chunk_rank", "shape", "chunk_within_rank_fromlast"), # same, but align to last stroke in chunk.
+        ]
+
+        # For some, should allow even if just 1 class.
+        LIST_OVERWRITE_lenient_n = [OVERWRITE_lenient_n for _ in range(len(LIST_VARS_OTHERS))]
+        LIST_OVERWRITE_lenient_n[4] = 1
+        LIST_OVERWRITE_lenient_n[5] = 1
+
+    elif which_level == "stroke" and question in ["RULEVSCOL_BASE_stroke"]:
+        # Switchign between two rules.
+
+        # Use all of those that exist for single rule, but addition a conjucntion on epoch
+        LIST_VAR, LIST_VARS_OTHERS, LIST_OVERWRITE_lenient_n = params_getter_raster_vars("stroke",
+                                                                                            "RULE_BASE_stroke")
+        # LIST_VARS_OTHERS = [list(var_others) + ["epoch"] for var_others in LIST_VARS_OTHERS]
+        LIST_VARS_OTHERS = [list(var_others) + ["superv_COLOR_METHOD"] for var_others in LIST_VARS_OTHERS]
+
+        # Add those that use "epoch" as effect
+        LIST_VAR.append("epoch")
+        LIST_VARS_OTHERS.append(["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev",
+                                 "shape", "loc_on_clust", "CTXT_shape_prev", "CTXT_loconclust_next", "chunk_rank",
+                                 "chunk_within_rank_semantic"])
+
+    elif which_level == "stroke" and question in ["RULESW_BASE_stroke"]:
+        # Switchign between two rules.
+
+        # Use all of those that exist for single rule, but addition a conjucntion on epoch
+        LIST_VAR, LIST_VARS_OTHERS, LIST_OVERWRITE_lenient_n = params_getter_raster_vars("stroke",
+                                                                                            "RULE_BASE_stroke")
+        LIST_VARS_OTHERS = [list(var_others) + ["epoch"] for var_others in LIST_VARS_OTHERS]
+
+        # Add those that use "epoch" as effect
+        LIST_VAR.append("epoch")
+        LIST_VARS_OTHERS.append(["epochset", "stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev",
+                                 "shape", "loc_on_clust", "CTXT_shape_prev", "CTXT_loconclust_next", "chunk_rank",
+                                 "chunk_within_rank_semantic"])
+
+    elif which_level=="trial" and question in ["RULESW_BASE_trial"]:
+        LIST_VAR = [
+            "epoch",
+            # "epoch", # abstract rule?
+            # "character", # visually repsonsive?
+            # "seqc_0_loc",
+            # "seqc_0_shape",
+            "epoch",
+            # "seqc_1_loc_shape",
+            # "seqc_1_loc_shape",
+        ]
+        LIST_VARS_OTHERS = [
+            ["epochset"],
+            # ["epochset", "character"],
+            # ["epoch", "epochset"],
+            # ["epoch", "seqc_0_shape"],
+            # ["epoch", "seqc_0_loc"],
+            ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
+            # ["epoch"],
+            # ["epoch", "seqc_0_loc_shape"],
+        ]
+
+    else:
+        print(which_level)
+        print(question)
+        assert False
+
+    if LIST_OVERWRITE_lenient_n is None:
+        LIST_OVERWRITE_lenient_n = [OVERWRITE_lenient_n for _ in range(len(LIST_VARS_OTHERS))]
+
+    assert len(LIST_VAR)==len(LIST_VARS_OTHERS)
+
+    # Convert from tuple to list
+    LIST_VARS_OTHERS = [list(var_others) for var_others in LIST_VARS_OTHERS]
+    LIST_VAR = [list(var) if isinstance(var, tuple) else var for var in LIST_VAR]
+
+    return LIST_VAR, LIST_VARS_OTHERS, LIST_OVERWRITE_lenient_n
+
 def params_getter_decode_vars(which_level):
     """
     Holds variables for decoding and other popujation-level plots, especialyl relating var and conjunction vars,
@@ -1575,17 +1765,17 @@ def params_getter_decode_vars(which_level):
         list_var_decode = [
             "seqc_0_shape",
             "seqc_0_shape",
-            "seqc_0_locon_bin_in_loc",
-            "gridsize",
+            # "seqc_0_locon_bin_in_loc",
+            # "gridsize",
             # "seqc_0_locon_binned",
             # "seqc_0_shape",
             "seqc_0_shapesemcat", # Usually does nothing different.
             "shape_is_novel_all"
         ]
         list_vars_conj = [
-            ["seqc_0_loc", "seqc_0_locon_bin_in_loc", "gridsize", "task_kind"], # ["seqc_0_center_binned", "gridsize", "task_kind"],
-            ["taskconfig_shp_SHSEM", "seqc_0_loc", "seqc_0_locon_bin_in_loc", "gridsize", "task_kind"],
-            ["seqc_0_shape", "gridsize", "task_kind"],
+            ["seqc_0_loc", "seqc_0_loc_on_clust", "gridsize", "task_kind"], # ["seqc_0_center_binned", "gridsize", "task_kind"],
+            ["taskconfig_shp_SHSEM", "seqc_0_loc", "seqc_0_loc_on_clust", "gridsize", "task_kind"],
+            # ["seqc_0_shape", "gridsize", "task_kind"],
             ["seqc_0_shape", "seqc_0_loc", "task_kind"],
             # ["seqc_0_loc", "gridsize", "task_kind"],
             # ["seqc_0_center_binned", "gridsize", "task_kind"],
@@ -1921,6 +2111,8 @@ def params_getter_decode_vars(which_level):
         LIST_SEPARATE_BY_TASK_KIND.append(separate_by_task_kind)
         LIST_FILTDICT.append(filtdict)
         LIST_SUFFIX.append(suffix)
+
+
     else:
         assert False
 

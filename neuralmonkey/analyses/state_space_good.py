@@ -1148,18 +1148,27 @@ def plot_variance_explained_timecourse(SP, animal, DATE, pca_trial_agg_grouping,
         plt.close("all")
 
 
-def _trajgood_make_colors_discrete_var(labels):
+def _trajgood_make_colors_discrete_var(labels, which_dim_of_labels_to_use=None):
     """
     Helper to make colors for plotting, mapping from unque item
     in labels to rgba color. Can be continuous or discrete (and will
     check this automatically).
     PARAMS:
     - labels, values, either cont or discrete.
+    - which_dim_of_labels_to_use, either NOne (use entire label) or int, which indexes into
+    each lab in labels, and just uses that to determine the color. e.g,, (shape, loc) --> are the labels,
+    and you just want to color by shape, then use which_dim_of_labels_to_use = 0.
     RETURNS:
     - dict,  mapping from value to color (if discrete), otherw sie None
     - color_type, str, either "cont" or "discrete".
+    - colors, list of colors, matching input labels.
     """
-    labels_color_uniq = sort_mixed_type(list(set(labels)))
+
+    if which_dim_of_labels_to_use is None:
+        labels_for_color = labels
+    else:
+        labels_for_color = [lab[which_dim_of_labels_to_use] for lab in labels]
+    labels_color_uniq = sort_mixed_type(list(set(labels_for_color)))
 
     if len(set([type(x) for x in labels_color_uniq]))>1:
         # more than one type...
@@ -1189,7 +1198,10 @@ def _trajgood_make_colors_discrete_var(labels):
         for lev, pc in zip(labels_color_uniq, pcols):
             _map_lev_to_color[lev] = pc
 
-    return _map_lev_to_color, color_type
+    # Return the color for each item
+    colors = [_map_lev_to_color[lab] for lab in labels_for_color]
+
+    return _map_lev_to_color, color_type, colors
 
 def trajgood_plot_colorby_splotbydims_scalar(X, labels_color, list_dims,
                                          overlay_mean=False, plot_text_over_examples=False,
@@ -1209,7 +1221,7 @@ def trajgood_plot_colorby_splotbydims_scalar(X, labels_color, list_dims,
     from pythonlib.tools.plottools import plotScatterOverlay
 
     assert len(labels_color)==X.shape[0]
-    map_lev_to_color, color_type = _trajgood_make_colors_discrete_var(labels_color)
+    map_lev_to_color, color_type, _ = _trajgood_make_colors_discrete_var(labels_color)
 
     # One subplot per othervar
     nsplots = len(list_dims)
@@ -1226,14 +1238,47 @@ def trajgood_plot_colorby_splotbydims_scalar(X, labels_color, list_dims,
                                           map_lev_to_color, color_type,
                                           overlay_mean, plot_text_over_examples,
                                           text_to_plot, alpha, SIZE)
+
     return fig, axes
 
+def trajgood_plot_colorby_groupby_meanscalar_BASE(ax, xs, ys, dflab, vars_mean, colorby_ind_in_vars_mean):
+    """
+    Helper to plot means by grouping with <vars_mean> but optionally coloring the means using only one of the variables in vars_mean,
+    indicated by <colorby_ind_in_vars_mean>
+    :param xs:
+    :param ys:
+    :param dflab:
+    :param vars_mean: list of str, e.g, (shape, gridloc)
+    :param colorby_ind_in_vars_mean: int index into vars_mean, e.g,, 0 means color by shape, even though grouping by (shape, loc)
+    :return:
+    """
+
+    if isinstance(vars_mean, str):
+        vars_mean = [vars_mean]
+
+    df = dflab.copy()
+    df["x"] = xs
+    df["y"] = ys
+
+    # get colors
+    var_color = vars_mean[colorby_ind_in_vars_mean]
+    labels_color_uniq = df[var_color].unique().tolist()
+    pcols = makeColors(len(labels_color_uniq))
+    map_var_to_col = {}
+    for i, v in enumerate(df[var_color].unique()):
+        map_var_to_col[v] = pcols[i]
+    df["color"] = [map_var_to_col[v] for v in df[var_color]]
+
+    dfmean = df.groupby(vars_mean).mean().reset_index(drop=True)
+    for i, row in dfmean.iterrows():
+        ax.plot(row["x"], row["y"], "s", color=row["color"], markersize=12)
 
 def trajgood_plot_colorby_scalar_BASE(xs, ys, labels_color, ax,
                                       map_lev_to_color=None, color_type="discr",
                                       overlay_mean=False,
                                       plot_text_over_examples=False, text_to_plot=None,
-                                      alpha=0.5, SIZE=5):
+                                      alpha=0.5, SIZE=5,
+                                      connect_means_with_line=False, connect_means_with_line_levels=None):
     """
     [LOW-LEVEL base plot for scatterplot]
     Like trajgood_plot_colorby_splotby_scalar, but passing in the raw data directly, instead
@@ -1257,7 +1302,7 @@ def trajgood_plot_colorby_scalar_BASE(xs, ys, labels_color, ax,
 
     # Overwrite with user inputed
     if map_lev_to_color is None:
-        map_lev_to_color, color_type = _trajgood_make_colors_discrete_var(labels_color)
+        map_lev_to_color, color_type, _ = _trajgood_make_colors_discrete_var(labels_color)
 
     plotScatterOverlay(X, labels_color, alpha=alpha, ax=ax, overlay_mean=overlay_mean,
                        overlay_ci=False,
@@ -1265,9 +1310,44 @@ def trajgood_plot_colorby_scalar_BASE(xs, ys, labels_color, ax,
                        text_to_plot=text_to_plot, map_lev_to_color=map_lev_to_color,
                        SIZE=SIZE, color_type=color_type)
 
+    # if overlay_mean_which_dim_of_labels_to_use is not None:
+    #     # Then overlay means using var for color that is not identical to var for grouping.
+    #     if map_lev_to_color is None:
+    #         _, _, colors = _trajgood_make_colors_discrete_var(labels_color, overlay_mean_which_dim_of_labels_to_use)
+    #         # Collect means, in sequence
+    #         Xmeans = []
+    #         for lev in connect_means_with_line_levels:
+    #             if lev in labels_color:
+    #                 Xmeans.append(np.mean(X[labels_color==lev, :], axis=0))
+    #         if len(Xmeans)>0:
+    #             Xmeans = np.stack(Xmeans)
+    #             # Plot
+    #             ax.plot(Xmeans[:,0], Xmeans[:,1], "-")
+
+    if connect_means_with_line:
+        if connect_means_with_line_levels is None:
+            # get sorted list of levels
+            connect_means_with_line_levels = sorted(list(set(labels_color)))
+        else:
+            assert isinstance(connect_means_with_line_levels, (list, tuple))
+
+        # Collect means, in sequence
+        Xmeans = []
+        for lev in connect_means_with_line_levels:
+            if lev in labels_color:
+                Xmeans.append(np.mean(X[labels_color==lev, :], axis=0))
+        if len(Xmeans)>0:
+            Xmeans = np.stack(Xmeans)
+            # Plot
+            ax.plot(Xmeans[:,0], Xmeans[:,1], "-")
+
 def trajgood_plot_colorby_splotby_scalar_WRAPPER(X, dflab, var_color, savedir,
                                                  vars_subplot=None, list_dims=None,
-                                                 STROKES_BEH=None, STROKES_TASK=None):
+                                                 STROKES_BEH=None, STROKES_TASK=None,
+                                                 n_min_per_levo=None,
+                                                 overlay_mean=False, overlay_mean_var_color=None,
+                                                 connect_means_with_line=False, connect_means_with_line_levels=None,
+                                                 SIZE=7, alpha=0.5):
     """
     Final wrapper to make many plots, each figure showing supblots one for each levv of otehr var, colored
     by levels of var. Across figures, show different projections to dim pairs. And plot sepraerpte figuers for
@@ -1281,15 +1361,35 @@ def trajgood_plot_colorby_splotby_scalar_WRAPPER(X, dflab, var_color, savedir,
     :param list_dims:
     :param STROKES_BEH:
     :param STROKES_TASK:
+    :param overlay_mean_var_color, str, which variable (in var_color, if it is list) to use for coloring. This doesnt affect
+    the grouping of trails to compute means, which always uses var_color. Controls only how means are collored.
     :return:
     """
     from neuralmonkey.analyses.state_space_good import cleanup_remove_labels_ignore
+
+    if overlay_mean_var_color is not None and overlay_mean:
+        # Currently, overlay_mean_var_color must be subset of var_color
+        if isinstance(var_color, str):
+            assert overlay_mean_var_color==var_color
+            colorby_ind_in_vars_mean = 0
+        elif isinstance(var_color, (list, tuple)):
+            assert overlay_mean_var_color in var_color
+            colorby_ind_in_vars_mean = var_color.index(overlay_mean_var_color)
+            assert colorby_ind_in_vars_mean > -1
+    else:
+        # Color variables are same as grouping variables.
+        colorby_ind_in_vars_mean = None
 
     assert len(X.shape)==2
     assert len(X)==len(dflab)
 
     if list_dims is None:
         list_dims = [(0,1)]
+
+    var_color_for_name = var_color
+    if isinstance(var_color, (tuple, list)):
+        dflab = append_col_with_grp_index(dflab, var_color, "_tmp")
+        var_color = "_tmp"
 
     if isinstance(vars_subplot, str):
         vars_subplot = [vars_subplot]
@@ -1311,7 +1411,9 @@ def trajgood_plot_colorby_splotby_scalar_WRAPPER(X, dflab, var_color, savedir,
             vars_subplot_string = "|".join(vars_subplot)
 
         # Remove ignored labels.
-        xs, ys, labels_color, labels_subplot = cleanup_remove_labels_ignore(xs, ys, labels_color, labels_subplot)
+        if False:
+            # If use this, then trajgood_plot_colorby_groupby_meanscalar_BASE will fail (not alinged indices).
+            xs, ys, labels_color, labels_subplot = cleanup_remove_labels_ignore(xs, ys, labels_color, labels_subplot)
 
         if len(xs)==0:
             continue
@@ -1320,10 +1422,29 @@ def trajgood_plot_colorby_splotby_scalar_WRAPPER(X, dflab, var_color, savedir,
         fig, axes, map_levo_to_ax, map_levo_to_inds = trajgood_plot_colorby_splotby_scalar(xs, ys,
                                                                                            labels_color, labels_subplot, var_color,
                                                                                            vars_subplot_string, SIZE=7,
-                                                                                           overlay_mean=False, text_to_plot=text_to_plot,
-                                                                                           skip_subplots_lack_mult_colors=True)
+                                                                                           alpha=alpha,
+                                                                                           overlay_mean=False,
+                                                                                           text_to_plot=text_to_plot,
+                                                                                           skip_subplots_lack_mult_colors=True,
+                                                                                           n_min_per_levo=n_min_per_levo,
+                                                                                           connect_means_with_line=connect_means_with_line,
+                                                                                           connect_means_with_line_levels=connect_means_with_line_levels)
+
+        # Overlay means, including option to use one set of variables for grouping, and a subset of those variables for coloring.
+        if overlay_mean:
+            for levo, ax in map_levo_to_ax.items():
+                inds = map_levo_to_inds[levo]
+                xsthis = xs[inds]
+                ysthis = ys[inds]
+                dflabthis = dflab.loc[inds, var_color_for_name]
+                trajgood_plot_colorby_groupby_meanscalar_BASE(ax, xsthis, ysthis, dflabthis, var_color_for_name, colorby_ind_in_vars_mean)
+
+        # Save
+        path = f"{savedir}/color={var_color_for_name}-sub={vars_subplot_string}-dims={dim1, dim2}.pdf"
+        print("fig:", path)
         if fig is not None:
-            savefig(fig, f"{savedir}/color={var_color}-sub={vars_subplot_string}-dims={dim1, dim2}.pdf")
+            print("Saving ... ", path)
+            savefig(fig, path)
 
         # With drawings
         if STROKES_BEH is not None or STROKES_TASK is not None:
@@ -1333,22 +1454,29 @@ def trajgood_plot_colorby_splotby_scalar_WRAPPER(X, dflab, var_color, savedir,
                                                                                                overlay_mean=False, text_to_plot=text_to_plot,
                                                                                                STROKES_BEH=STROKES_BEH, STROKES_TASK=STROKES_TASK,
                                                                                                n_strokes_overlay_per_lev=3,
-                                                                                               skip_subplots_lack_mult_colors=True)
+                                                                                               skip_subplots_lack_mult_colors=True,
+                                                                                               n_min_per_levo=n_min_per_levo)
             if fig is not None:
-                savefig(fig, f"{savedir}/color={var_color}-sub={vars_subplot_string}-dims={dim1, dim2}-STROKES_OVERLAY.pdf")
+                path = f"{savedir}/color={var_color_for_name}-sub={vars_subplot_string}-dims={dim1, dim2}-STROKES_OVERLAY.pdf"
+                print("Saving ... ", path)
+                savefig(fig, path)
 
         plt.close("all")
 
 
 def trajgood_plot_colorby_splotby_scalar(xs, ys, labels_color, labels_subplot,
                                          color_var, subplot_var,
-                                         overlay_mean=False, plot_text_over_examples=False,
+                                         overlay_mean=False,
+                                         plot_text_over_examples=False,
                                          text_to_plot=None,
                                          alpha=0.5, SIZE=5,
                                          STROKES_BEH = None,
                                          STROKES_TASK = None,
                                          n_strokes_overlay_per_lev = 4,
-                                         skip_subplots_lack_mult_colors = False
+                                         skip_subplots_lack_mult_colors = False,
+                                         n_min_per_levo=None,
+                                       connect_means_with_line=False,
+                                       connect_means_with_line_levels=None
                                          ):
     """
     Like trajgood_plot_colorby_splotby_scalar, but passing in the raw data directly, instead
@@ -1393,7 +1521,11 @@ def trajgood_plot_colorby_splotby_scalar(xs, ys, labels_color, labels_subplot,
 
     fig, axes, map_levo_to_ax, map_levo_to_inds = _trajgood_plot_colorby_splotby_scalar(dfthis, color_var, subplot_var,
                                          overlay_mean, plot_text_over_examples,
-                                                text_to_plot, alpha, SIZE, skip_subplots_lack_mult_colors=skip_subplots_lack_mult_colors)
+                                                text_to_plot, alpha, SIZE,
+                                                                                        skip_subplots_lack_mult_colors=skip_subplots_lack_mult_colors,
+                                                                                        n_min_per_levo=n_min_per_levo,
+                                                                          connect_means_with_line=connect_means_with_line,
+                                                                                        connect_means_with_line_levels=connect_means_with_line_levels)
 
     if fig is None:
         return None, None, None, None
@@ -1407,7 +1539,7 @@ def trajgood_plot_colorby_splotby_scalar(xs, ys, labels_color, labels_subplot,
     if len(LIST_STROKES_PLOT)>0:
         from pythonlib.tools.pandastools import grouping_append_and_return_inner_items
         # Is this discrete?
-        _, color_type = _trajgood_make_colors_discrete_var(labels_color)
+        _, color_type, _ = _trajgood_make_colors_discrete_var(labels_color)
         if color_type=="discr":
             dflab = pd.DataFrame({color_var:labels_color, subplot_var:labels_subplot})
             grpdict = grouping_append_and_return_inner_items(dflab, [color_var, subplot_var])
@@ -1441,10 +1573,14 @@ def trajgood_plot_colorby_splotby_scalar(xs, ys, labels_color, labels_subplot,
 
 
 def _trajgood_plot_colorby_splotby_scalar(df, var_color_by, var_subplots,
-                                         overlay_mean=False, plot_text_over_examples=False,
+                                         overlay_mean=False,
+                                          plot_text_over_examples=False,
                                          text_to_plot=None,
                                          alpha=0.5, SIZE=5,
-                                         skip_subplots_lack_mult_colors=False):
+                                         skip_subplots_lack_mult_colors=False,
+                                          n_min_per_levo=None,
+                                          connect_means_with_line=False,
+                                          connect_means_with_line_levels=None):
     """ [GOOD], to plot scatter of pts, colored by one variable, and split across
     subplots by another variable.
     PARAMS:
@@ -1459,15 +1595,17 @@ def _trajgood_plot_colorby_splotby_scalar(df, var_color_by, var_subplots,
     from pythonlib.tools.plottools import legend_add_manual
     from pythonlib.tools.plottools import plotScatterOverlay
 
+    if n_min_per_levo is None:
+        n_min_per_levo = 4
     # Color the labels
     # One color for each level of effect var
 
     labellist = df[var_color_by].tolist()
-    map_lev_to_color, color_type = _trajgood_make_colors_discrete_var(labellist)
+    map_lev_to_color, color_type, _ = _trajgood_make_colors_discrete_var(labellist)
 
     # If you pass in continuous variable as othervar, then overwrite that and just plot a single plot.
     if var_subplots is not None:
-        _, tmp = _trajgood_make_colors_discrete_var(df[var_subplots].tolist())
+        _, tmp, _ = _trajgood_make_colors_discrete_var(df[var_subplots].tolist())
         if tmp!="discr":
             # Overwrite input
             var_subplots = None
@@ -1501,7 +1639,6 @@ def _trajgood_plot_colorby_splotby_scalar(df, var_color_by, var_subplots,
 
     if skip_subplots_lack_mult_colors and color_type=="discr":
         # Keep only subplots with >1 color and >n datapts total
-        n_min_per_levo = 4
         levs_other = [levo for levo in levs_other if len(df[df[var_subplots] == levo][var_color_by].unique())>1]
         levs_other = [levo for levo in levs_other if len(df[df[var_subplots] == levo][var_color_by])>=n_min_per_levo]
 
@@ -1544,7 +1681,9 @@ def _trajgood_plot_colorby_splotby_scalar(df, var_color_by, var_subplots,
         trajgood_plot_colorby_scalar_BASE(xs, ys, labels_color, ax,
                                           map_lev_to_color, color_type,
                                           overlay_mean, plot_text_over_examples,
-                                          text_to_plot_this, alpha, SIZE)
+                                          text_to_plot_this, alpha, SIZE,
+                                          connect_means_with_line=connect_means_with_line,
+                                          connect_means_with_line_levels=connect_means_with_line_levels)
 
     return fig, axes, map_levo_to_ax, map_levo_to_inds
 
@@ -1696,6 +1835,7 @@ def dimredgood_nonlinear_embed_data(X, METHOD="umap", n_components=2, tsne_perp=
             perp = tsne_perp
         print("TSNE, Using this perp:", perp, ", nsamp =", nsamp)
         Xredu = TSNE(n_components=n_components, perplexity=perp, learning_rate="auto", init="pca").fit_transform(X)
+        reducer = None
     elif METHOD == "umap":
         import umap
         if umap_n_neighbors =="auto":
@@ -1708,7 +1848,7 @@ def dimredgood_nonlinear_embed_data(X, METHOD="umap", n_components=2, tsne_perp=
     else:
         assert False
 
-    return Xredu
+    return Xredu, reducer
 
 
 def dimredgood_pca(X, n_components=None,
