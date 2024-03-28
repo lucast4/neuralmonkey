@@ -1428,6 +1428,7 @@ class PopAnal():
                 #     # savefig(fig, f"{savedir_preprocess}/pca_explainedvar.pdf")
 
                 # Reshape back to original
+                npcs_keep = X.shape[1]
                 X = X.T # (npcs_keep, ntrials*ntimes)
                 X = np.reshape(X, [npcs_keep, ntrials, ntimes]) # (npcs_keep, ntrials*ntimes)
             else:
