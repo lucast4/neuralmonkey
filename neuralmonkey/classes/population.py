@@ -1398,7 +1398,7 @@ class PopAnal():
                 X = np.reshape(X, [npcs_keep, ntrials, ntimes]) # (npcs_keep, ntrials*ntimes)
 
                 # Represent X in PopAnal
-                PApca = PopAnal(X.copy(), ntimes)  # (ndimskeep, ntrials, 1)
+                PApca = PopAnal(X.copy(), PAslice.Times)  # (ndimskeep, ntrials, 1)
                 PApca.Xlabels = {dim:df.copy() for dim, df in PAslice.Xlabels.items()}
                 assert len(PApca.Xlabels["trials"])==PApca.X.shape[1]
 
