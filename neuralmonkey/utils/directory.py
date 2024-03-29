@@ -263,7 +263,13 @@ def rec_session_durations_extract_kilosort(animal, date):
     sessions_ks = find_ks_cluster_paths(animal, date)
 
     # sanity check that the sessions are aligned between rec and ks
-    assert len(sessions_ks)==len(sessions_rec)
+    if not len(sessions_ks)==len(sessions_rec):
+        from pythonlib.tools.exceptions import NotEnoughDataException
+        print(sessions_ks)
+        print(sessions_rec)
+        print("you probably excluded some neural sessions for final analysis (moved to recordings_IGNORE). No solution yet for this problem.")
+        raise NotEnoughDataException
+
     # - - chekck that the names match for neural and ks.
     for sessks, sessrec in zip(sessions_ks, sessions_rec):
         assert sessks["pathfinal"] == sessrec["pathfinal"]

@@ -41,7 +41,12 @@ def load_and_preprocess_single_session(date, rec_session, animal = "Pancho"):
 
     # ============= RUN
     # beh_session = rec_session+1 # 1-indexing.
-    out = session_map_from_rec_to_ml2(animal, date, rec_session)
+    out, _, _, _ = session_map_from_rec_to_ml2(animal, date, rec_session)
+    # if rec_session==2:
+    #     print("^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^")
+    #     print(animal, date, rec_session)
+    #     print(out)
+    #     assert False
     if out is None:
         # Then this rec/beh session doesnt exist
         # (Otherwise, continue)

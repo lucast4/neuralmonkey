@@ -412,6 +412,7 @@ class Session(object):
 
         # For caching mapping from (site, trial) to index in self.DatAll
         self._MapperSiteTrial2DatAllInd = {}
+        self._MapperTrialcode2TrialToTrial = {}
 
         # behcodes
         self.BehCodes = BEH_CODES
@@ -512,12 +513,29 @@ class Session(object):
         self.TrialsOffset = self._behcode_extract_times(18)
         self._beh_prune_trial_offset_onset()
 
+        if False: # Actually no need, since now I am loading cached trials. This false means will throw error if try to load trials before load cahced
+            # Load behavior, useful for many things -- I previously excluded for MINIMAL, but turns out it might be important
+            print("== Loading ml2 behavior")
+            self.load_behavior()
+
         # Sanity check: are you using the correct loading version?
         # Not allowed to do full loading if you already have gotten to final preprocessed state
         if self._LOAD_VERSION == "FULL_LOADING":
             check_dict = self._check_preprocess_status()
             assert check_dict["allow_full_loading"], "you have already completed preproicessing. use MINIMAL_LOADING instead"
         elif self._LOAD_VERSION == "MINIMAL_LOADING":
+
+            ########## MUST DO THESE HERE, SINCE IT EXTRACTS TRIALS THAT ARE THEN USED IN _check_preprocess_status
+            # not FULL_LOADING. Expect to load all previously cached data.
+            assert do_all_copy_to_local == False
+            assert do_sanity_checks_rawdupl == False
+            assert extract_spiketrain_elephant == False
+
+            # Load previously cached.
+            print("** MINIMAL_LOADING, therefore loading previuosly cached data")
+            self._savelocalcached_load()
+            ###################
+
             check_dict = self._check_preprocess_status()
             assert check_dict["exists_2"], "you have not yet saved cached files. rerun load_and_preprocess_single_session"
 
@@ -532,19 +550,15 @@ class Session(object):
                 print("@@@@ DEBUG TIMING, COMPLETED", "self._loadlocal_events()", ts)
             print("== Done")
 
-        if MINIMAL_LOADING: 
-            # not FULL_LOADING. Expect to load all previously cached data.
-            assert do_all_copy_to_local == False
-            assert do_sanity_checks_rawdupl == False
-            assert extract_spiketrain_elephant == False
-
-            # Load previously cached.
-            print("** MINIMAL_LOADING, therefore loading previuosly cached data")
-            self._savelocalcached_load()
+        if MINIMAL_LOADING:
+            # Load dataset beh
+            self._savelocalcached_load_dataset_beh()
 
             # Hacky things to do, since cannot do in oeroginal extract of dataset.
             self.Datasetbeh.supervision_epochs_extract_orig()
 
+            # Delete behavior, if it had been loaded above to support preprocesing and loading.
+            self.BehFdList =[]
 
         if FULL_LOADING:
             # The initial step. This saves and caches whatever is required.
@@ -668,43 +682,72 @@ class Session(object):
     def _datasetbeh_remove_neural_trials_missing_beh(self):
         """ Does ONE THING --> removes neural trials which dont exist in dataset.
         This is useful since dataset beh might prune trials which have bad strokes, etc.
+        ACTUALLY - this now doesnt do anything. Istead,  just turns on flag to always only return trials that
+        are in Dataset.
         """
-        if self.Datasetbeh is not None:
-            if False:
-                # This is now done within loading of dataset
-                self.Datasetbeh._cleanup_preprocess_each_time_load_dataset()
 
-            if False: # 2/4/24/ now done in _cleanup_reloading_saved_state()
-                # Important, to reset all tokens, some which mgith be incompleted, using
-                # old code, e.g., gridloc_local
-                self.Datasetbeh.behclass_preprocess_wrapper(skip_if_exists=False)
+        if True:
+            # Always do this...
+            self._FORCE_GET_TRIALS_ONLY_IN_DATASET = True
+            self._FORCE_GET_TRIALS_ONLY_IN_DATASET_NTRIALS = len(self.Datasetbeh.Dat) # as sanity check later, to make sure that dataset has not been pruned since now.
+        else:
+            # All this does is check that not too many trials misisng. This is not needed, and often fails.
+            if self.Datasetbeh is not None:
+                if False:
+                    # This is now done within loading of dataset
+                    self.Datasetbeh._cleanup_preprocess_each_time_load_dataset()
 
-            # sanity check that every neuiral trial has a dataset trial
-            # UPDATE: it is possible for some cached neural trials to not exist in dataset (e.g.,
-            # recent code cleans up strokes in dataset).
-            # Update trials list by pruning trials missing from dataset.
-            trials = self.get_trials_list(True)
-            n_trials_missing_from_dataset = 0
-            for t in trials:
-                # print(t, sn.datasetbeh_trial_to_datidx(t))
-                if self.datasetbeh_trial_to_datidx(t) is None:
-                    n_trials_missing_from_dataset += 1
-                    if False: # Older code, would raise error and print info.
-                        tc = self.datasetbeh_trial_to_trialcode(t)
-                        dfcheck = self.Datasetbeh
-                        for _t in self.get_trials_list(True):
-                            print(_t, self.datasetbeh_trial_to_trialcode(_t))
-                        print(tc)
-                        print(t)
-                        print(dfcheck.Dat["trialcode"])
-                        dfthis = dfcheck.Dat[dfcheck.Dat["trialcode"]==tc]
-                        print(dfthis)
-                        assert False
-            if n_trials_missing_from_dataset>0:
-                # Then turn on flag to only keep trials in dataset. Otherwise might have error.
-                assert (n_trials_missing_from_dataset/len(trials)) < 0.05, "threw out >5% trials, missing from dataset. figure out why"
-                self._FORCE_GET_TRIALS_ONLY_IN_DATASET = True
-                self._FORCE_GET_TRIALS_ONLY_IN_DATASET_NTRIALS = len(self.Datasetbeh.Dat) # as sanity check later, to make sure that dataset has not been pruned since now.
+                if False: # 2/4/24/ now done in _cleanup_reloading_saved_state()
+                    # Important, to reset all tokens, some which mgith be incompleted, using
+                    # old code, e.g., gridloc_local
+                    self.Datasetbeh.behclass_preprocess_wrapper(skip_if_exists=False)
+
+                # sanity check that every neuiral trial has a dataset trial
+                # UPDATE: it is possible for some cached neural trials to not exist in dataset (e.g.,
+                # recent code cleans up strokes in dataset).
+                # Update trials list by pruning trials missing from dataset.
+                # trials = self.get_trials_list(True)
+                trials = self.get_trials_list(True)
+                n_trials_missing_from_dataset = 0
+                for t in trials:
+                    # print(t, sn.datasetbeh_trial_to_datidx(t))
+                    if self.datasetbeh_trial_to_datidx(t) is None:
+                        n_trials_missing_from_dataset += 1
+                        if False: # Older code, would raise error and print info.
+                            tc = self.datasetbeh_trial_to_trialcode(t)
+                            dfcheck = self.Datasetbeh
+                            for _t in self.get_trials_list(True):
+                            # for _t in self.get_trials_list(False):
+                                print(_t, self.datasetbeh_trial_to_trialcode(_t))
+                            print(tc)
+                            print(t)
+                            print(dfcheck.Dat["trialcode"])
+                            dfthis = dfcheck.Dat[dfcheck.Dat["trialcode"]==tc]
+                            print(dfthis)
+                            assert False
+                if n_trials_missing_from_dataset>0:
+                    if False:
+                        # Previously, would force fail, but that was when self.get_trials_list(True) used True. Now I turned to
+                        # false, which means many neural trials will correctly not be in dataste. I have to do this becuase
+                        # the True flag requires dataset, and it will fail. BUt this is ok, since now I always load dataset with nerual data.
+                        if (n_trials_missing_from_dataset/len(trials)) > 0.05:
+                            print("threw out >5% trials, missing from dataset. figure out why")
+                            print(n_trials_missing_from_dataset)
+                            print(len(trials))
+                            assert False
+                    # Then turn on flag to only keep trials in dataset. Otherwise might have error.
+                    self._FORCE_GET_TRIALS_ONLY_IN_DATASET = True
+                    self._FORCE_GET_TRIALS_ONLY_IN_DATASET_NTRIALS = len(self.Datasetbeh.Dat) # as sanity check later, to make sure that dataset has not been pruned since now.
+
+        # Sanity check -- every neural trial should have trial in dataset
+        for trial in self.get_trials_list(True):
+            if self.datasetbeh_trial_to_datidx(trial) is None:
+                print(self.Datasetbeh.Dat["trialcode"].tolist())
+                print(trial)
+                print(self.datasetbeh_trial_to_trialcode(trial))
+                print(self._FORCE_GET_TRIALS_ONLY_IN_DATASET)
+                print(self._FORCE_GET_TRIALS_ONLY_IN_DATASET_NTRIALS)
+                assert False, f"dont knwo why -- this neural trail could not be found in Dataset... {trial}"
 
     def _cleanup(self):
         """ Various things to run at end of each initialization
@@ -1218,20 +1261,21 @@ class Session(object):
         Could be either filedata, or dataset, not sure yet , but for now go with filedata
         """ 
         from ..utils.monkeylogic import loadSingleDataQuick
-        for e, s in zip(self.BehExptList, self.BehSessList):
+        if len(self.BehFdList)==0:
+            for e, s in zip(self.BehExptList, self.BehSessList):
 
-            # Load filedata
-            # a = "Pancho"
-            # d = 220531
-            # e = "charneuraltrain1b"
-            # s = 1
-            try:
-                fd = loadSingleDataQuick(self.Animal, self.Date, e, s)
-            except Exception as err:
-                print("=======")
-                self.print_summarize_expt_params()
-                raise err
-            self.BehFdList.append(fd)
+                # Load filedata
+                # a = "Pancho"
+                # d = 220531
+                # e = "charneuraltrain1b"
+                # s = 1
+                try:
+                    fd = loadSingleDataQuick(self.Animal, self.Date, e, s)
+                except Exception as err:
+                    print("=======")
+                    self.print_summarize_expt_params()
+                    raise err
+                self.BehFdList.append(fd)
 
         # Try to automatically determine trial map list
         if False:
@@ -1445,6 +1489,11 @@ class Session(object):
         self.get_trials_list(False, True)
         self.get_trials_list(True, False)
         self.get_trials_list(True, True)
+        # for k in [(False, True), (True, False), (True, True), (False, False)]:
+        #     if k not in self._CachedTrialsList.keys():
+        #         print(k)
+        #         print(self._CachedTrialsList)
+        #         assert False
 
         for trial in self.get_trials_list(SAVELOCALCACHED_TRIALS_FIXATION_SUCCESS):
             self._CachedTrialOnset[trial] = self.ml2_get_trial_onset(trial)
@@ -1488,6 +1537,12 @@ class Session(object):
             _save_this(self._CachedStrokes, "strokes")
             _save_this(self._CachedStrokesPeanutsOnly, "strokes_peanutsonly")
             _save_this(self._CachedStrokesTask, "strokes_task")
+
+            for k in [(False, True), (True, False), (True, True), (False, False)]:
+                if k not in self._CachedTrialsList.keys():
+                    print(k)
+                    print(self._CachedTrialsList)
+                    assert False
             _save_this(self._CachedTrialsList, "trials_list")
 
             if save_dataset_beh:
@@ -1519,9 +1574,20 @@ class Session(object):
             return os.path.exists(path)
 
         # _CachedTrialOnset
-        for x in ["trials_list", "trial_onsets", "strokes", "strokes_peanutsonly", "strokes_task", "touch_data", "dataset_beh"]:
+        # files_check = ["trials_list", "trial_onsets", "strokes", "strokes_peanutsonly", "strokes_task", "touch_data", "dataset_beh"]
+        files_check = ["trials_list", "trial_onsets", "strokes_task", "touch_data"] # 3/28 - reloading dataset every time. So ignore whether beh stuff is done.
+        for x in files_check:
             if _check_this(x)==False:
                 return False
+
+        # Check that you got each trials list
+        import pickle
+        path = f"{self.Paths['cached_dir']}/trials_list.pkl"
+        with open(path, "rb") as f:
+            _CachedTrialsList = pickle.load(f)
+            for k in [(False, True), (True, False), (True, True), (False, False)]:
+                if k not in _CachedTrialsList.keys():
+                    return False
 
         if self._savelocalcached_checksaved_datslice(datslice_quick_check=datslice_quick_check)==False:
             return False 
@@ -1529,9 +1595,9 @@ class Session(object):
         return True
 
 
-    def _savelocalcached_load(self, dataset_version="raw"):
+    def _savelocalcached_load(self):
         """
-        Load from disk the cached data (quick).
+        Load from disk the cached data (quick). NOTE: all are indexed by "trial" neural, and therefore you must load those cached trial nums.
         """
 
         pathdir = self.Paths["cached_dir"]
@@ -1543,8 +1609,32 @@ class Session(object):
             return out
 
         # Related to neural data
-        self._CachedTrialsList = _load_this("trials_list")
-        self._CachedTrialOnset = _load_this("trial_onsets")
+        if True:
+            self._CachedTrialsList = _load_this("trials_list")
+            # # add (datset) to key.
+            # tmp = {}
+            # for k, v in self._CachedTrialsList.items():
+            #     if len(k)==2:
+            #         k = tuple([False] + list(k))
+            #     tmp[k] = v
+            # self._CachedTrialsList = tmp
+
+            for a,b in ([(True, False), (False, True), (False, False), (True, True)]):
+                if (a,b) not in self._CachedTrialsList.keys():
+                    print(self._CachedTrialsList.keys())
+                    assert False, "this might run into issues -- datslices use these cached trials. Prob mistake in prerpocessing --- run the load and save again."
+        else:
+            # 3/28/24 - Instead, load beh and regenrate these, since datset is reloaded eveyr time and was runnig into bugs.
+            # NOTE: dont do this -- might lead to misalignemnet of trials, ie., not sure "trial" is uniwque
+            self.load_behavior()
+            for a,b in ([(True, False), (False, True), (False, False), (True, True)]):
+                if (a,b) not in self._CachedTrialsList.keys():
+                    self.get_trials_list(False, False)
+                    self.get_trials_list(False, True)
+                    self.get_trials_list(True, False)
+                    self.get_trials_list(True, True)
+
+        self._CachedTrialOnset = _load_this("trial_onsets") # diff between neural and beh on each trial.
 
         # Related to dataset beh
         if False:
@@ -1553,6 +1643,7 @@ class Session(object):
             self._CachedStrokesPeanutsOnly = _load_this("strokes_peanutsonly")
             self._CachedStrokesTask = _load_this("strokes_task")
         self._CachedTouchData = _load_this("touch_data")
+        self._CachedStrokesTask_SANITY = _load_this("strokes_task") # For sanithc cehkc of mappoing dataset - neural.
 
         try:
             self.BehTrialMapListGood = _load_this("BehTrialMapListGood")
@@ -1563,6 +1654,14 @@ class Session(object):
             # just skip this. old data, didnt save tehse caches.
             pass
 
+    def _savelocalcached_load_dataset_beh(self, dataset_version="raw"):
+        """
+        Load dataset beh and preprocess, imclding pruning beh and neral trials to match./
+        Separating this from _savelocalcached_load so that the latter can run quickly, to load data useful for
+        other loading steps.
+        :param dataset_version:
+        :return:
+        """
         if dataset_version=="cached":
             # Then load cached version
             paththis = f"{pathdir}/dataset_beh.pkl"
@@ -1592,11 +1691,11 @@ class Session(object):
             print(dataset_version)
             assert False
 
+        if False: # Done above, during dataset loading
+            self.Datasetbeh.LockPreprocess = True
+            self._generate_mappers_quickly_datasetbeh()
 
-        # print("2 dfafasf", self.Datasetbeh.TokensVersion)
-        self.Datasetbeh.LockPreprocess = True
-        self._generate_mappers_quickly_datasetbeh()
-
+        ################################
         # Sanity check alignement between dataset beh and neural data
         from pythonlib.tools.pandastools import _check_index_reseted
         # 1. Check dataset index formating
@@ -1624,6 +1723,21 @@ class Session(object):
 
             gos1.append(go1)
             gos2.append(go2)
+
+        # if Mimmial loading, do sanity check that cached matches dataset
+        if self._LOAD_VERSION == "MINIMAL_LOADING":
+            # STRONG TEST -- check that strokes_task are identical between datsaet and neural data.
+            for t in self.get_trials_list(True):
+                idx = self.datasetbeh_trial_to_datidx(t)
+                strokes_task_1 = self._CachedStrokesTask_SANITY[t]
+                strokes_task_2 = self.Datasetbeh.Dat.iloc[idx]["strokes_task"]
+                assert len(strokes_task_1)==len(strokes_task_2)
+                for s1, s2 in zip(strokes_task_1, strokes_task_2):
+                    assert np.all(s1==s2)
+            # Now can delete..
+            del self._CachedStrokesTask_SANITY
+
+            #TODO: check match between self.EventsTimeUsingPhd and dataset...
 
         if False: # Debug, plotting distribution of go times.
             import matplotlib.pyplot as plt
@@ -1690,10 +1804,9 @@ class Session(object):
                 with open(path, "rb") as f:
                     self._CachedTrialsList = pickle.load(f)
 
-
-            trials = self.get_trials_list(SAVELOCALCACHED_TRIALS_FIXATION_SUCCESS)
+            # FOrce must_use_cached_trials, beecuase datslice are only saved for those cached trials.
+            trials = self.get_trials_list(SAVELOCALCACHED_TRIALS_FIXATION_SUCCESS, must_use_cached_trials=True)
             sites = self.sitegetterKS_map_region_to_sites_MULTREG(clean=True)
-
             for t in trials:
                 for s in sites:
                     exists = self._savelocalcached_loadextract_datslice(t, s, only_check_if_exists=True)
@@ -1787,12 +1900,30 @@ class Session(object):
 
     def spiketimes_ks_check_if_exists(self):
         """ Returns True if finalized (curated) kilosort
-        data exists, i.e, on server.
+        data exists, i.e, on server, and if the num sessions used in ks concatenation matches
+        the num neural rec sessions -- ie can find alignment times.
         """
+        from os.path import isfile
+
+        # Check that files exust
         BASEDIR = "/mnt/Freiwald/kgupta/neural_data/postprocess/final_clusters/"
         clusters_final = f"{BASEDIR}/{self.Animal}/{self.Date}/DATSTRUCT_CLEAN_MERGED.mat"
-        from os.path import isfile
-        return isfile(clusters_final)
+        A = isfile(clusters_final)
+
+        if A:
+            # Check that the num sessions concated to make ks matches the num sessions you used for rs4. If not then I havent coded
+            # up how to match neural session to onset times of ks.
+            from neuralmonkey.utils.directory import rec_session_durations_extract_kilosort
+            from pythonlib.tools.exceptions import NotEnoughDataException
+            try:
+                rec_session_durations_extract_kilosort(self.Animal, self.Date)
+                B = True
+            except NotEnoughDataException as err:
+                B = False
+        else:
+            B = False
+
+        return A and B
 
     def spiketimes_ks_compute_timeglobal_thissession_start(self):
         """ Return the global time (i.e. after concatting multiple sessions)
@@ -3078,18 +3209,35 @@ class Session(object):
                 diffs1 = offs - ons[1:]
                 mean1 = np.mean(diffs1)
                 std1 = np.std(diffs1)
+                min1 = np.min(diffs1)
+                max1 = np.max(diffs1)
 
                 diffs2 = offs - ons[:-1]
                 mean2 = np.mean(diffs2)
                 std2 = np.std(diffs2)
+                min2 = np.min(diffs2)
+                max2 = np.max(diffs2)
 
                 if mean1>0 and mean2<0:
                     self.TrialsOnset = self.TrialsOnset[1:]
                 elif mean1<0 and mean2>0:
                     self.TrialsOnset = self.TrialsOnset[:-1]
                 else:
-                    print(mean1, std1, mean2, std2)
-                    assert False
+                    if max1<30 and min1>1 and min2>5 and max2>120:
+                        # Theese are so unliekly unless is this alignemnt
+                        # Eg these are times for on and off:
+                            # [ 30.04301312 163.7029888  176.922624   188.17630208 205.02122496]
+                            # [173.53125888 185.73729792 201.29517568 220.50480128 235.91272448]
+                        self.TrialsOnset = self.TrialsOnset[1:]
+                    elif max2<30 and min2>1 and min1>5 and max1>120:
+                        # Theese are so unliekly unless is this alignemnt
+                        self.TrialsOnset = self.TrialsOnset[:-1]
+                    else:
+                        print(mean1, std1, mean2, std2)
+                        print(min1, max1, min2, max2)
+                        print(ons[:5])
+                        print(offs[:5])
+                        assert False
             else:
                 print("-----")
                 print(len(self.TrialsOnset))
@@ -3439,7 +3587,7 @@ class Session(object):
 
     def ml2_get_trial_onset(self, trialtdt):
         """ return the onset of this trial in seconds, for the beh data,
-        reltiave toe onset of the neural data
+        reltiave toe onset of the neural data, for alignment of those data.
         """
 
         if trialtdt in self._CachedTrialOnset.keys():
@@ -4755,6 +4903,13 @@ class Session(object):
             print("probably need to pass in correct rule to load dataset.")
             raise err
 
+        # Final stuff for dataset
+
+        # self._generate_mappers_quickly_datasetbeh()
+        self._generate_mappers_quickly_datasetbeh()
+        # (1) Remove all neural trials which are missing from datasetbeh.
+        self._datasetbeh_remove_neural_trials_missing_beh()
+        self.Datasetbeh.LockPreprocess = True
 
     def datasetbeh_load(self, dataset_beh_expt=None, 
             version = "daily"):
@@ -4773,6 +4928,9 @@ class Session(object):
         i.e, you don't want to load the cached dataset.
         RETURNS:
         - self.DatasetBeh, and returns
+
+        NOTE: GOOD sanityc check and matchign of nerual and beh data... if pasees this, confident that aligned betwene them
+        # and mnot throwing out inadvertantly.
         """
         from pythonlib.dataset.dataset import Dataset
         from pythonlib.dataset.dataset import load_dataset_notdaily_helper, load_dataset_daily_helper
@@ -4796,6 +4954,49 @@ class Session(object):
             assert False
         self.Datasetbeh = D
 
+        # 2) keep only the dataset trials that are included in recordings
+        if self._LOAD_VERSION == "MINIMAL_LOADING": # will break for full loading, no mapper yet.
+            #TODO: should instead regenerate all trials in neural, since cached trials MAY have thrown out trails
+            # based on older beh dataset.
+            # Prune dataset to include jsut the trials that exist also in nerual data. Just to reduce size of Dataset
+            trialcodes = self.Datasetbeh.Dat["trialcode"].tolist()
+            trialcodes_neural_exist = self.datasetbeh_trialcode_prune_within_session(trialcodes)
+            print("- Keeping only dataset trials that exist in neural")
+            print("Starting length: ", len(self.Datasetbeh.Dat))
+            self.Datasetbeh.Dat = self.Datasetbeh.Dat[self.Datasetbeh.Dat["trialcode"].isin(trialcodes_neural_exist)].reset_index(drop=True)
+            print("Ending length: ", len(self.Datasetbeh.Dat))
+
+            # (2) Sanity check --> within trial 1 and trial last, all the dataset trials should have a matching
+            # neural trial (or at least all). This important beucase later only gets nerual trials that exist in dataset.
+            # I dont want to inadvertangly throw out many neural trails due to bug...
+            t1 = self.get_trials_list(True)[0]
+            t2 = self.get_trials_list(True)[-1]
+            idx1 = self.datasetbeh_trial_to_datidx(t1)
+            idx2 = self.datasetbeh_trial_to_datidx(t2)
+            failures = 0
+            total = 0
+            for idx in range(idx1, idx2+1):
+                try:
+                    # Check that neural data exist.
+                    self.datasetbeh_datidx_to_trial(idx)
+                except Exception as err:
+                    # print(idx, idx1, idx2, t1, t2)
+                    # assert False, "found a dataset index that is missing neural trial. This shoudl not be possible. Error in parsing neural dta?"
+                    failures += 1
+                total += 1
+            if failures/total > 0.05:
+                # Print the culprits
+                for idx in range(idx1, idx2+1):
+                    try:
+                        # Check that neural data exist.
+                        self.datasetbeh_datidx_to_trial(idx)
+                    except Exception as err:
+                        print(idx, idx1, idx2, t1, t2)
+                        # assert False, "found a dataset index that is missing neural trial. This shoudl not be possible. Error in parsing neural dta?"
+                print(idx1, idx2, t1, t2)
+                assert False, "found too many dataset index that are missing neural trial. This shoudl not be possible. Error in parsing neural dta? Only misses would be due to udpate of dataset extraction..."
+
+
         # print("Loading this dataset: ", self.Animal, expt, dataset_beh_rule)
         # D = Dataset([], remove_online_abort=remove_online_abort)
         # D.load_dataset_helper(self.Animal, expt, rule=dataset_beh_rule)
@@ -4804,69 +5005,71 @@ class Session(object):
         # 10/25/22 - done automaticlaly.
         # if not D._analy_preprocess_done:
         #     D, GROUPING, GROUPING_LEVELS, FEATURE_NAMES, SCORE_COL_NAMES = preprocessDat(D, expt)
+        if False: # NOT NEEDED ANYMORE
+            if False:
+                # old
+                trials = self.get_all_existing_site_trial_in_datall("trial")
+            elif False:
+                trials = self.get_trials_list(True, True)
+            else:
+                # Cannot be True, since that looks for datasetbeh will fail.
+                trials = self.get_trials_list(False, True)
+                trials = [t for t in trials if self.datasetbeh_trial_to_datidx(t) is not None]
+                list_trialcodes = [self.datasetbeh_trial_to_trialcode(t) for t in trials]
+            try:
+                assert len(list_trialcodes)==len(trials) and isinstance(list_trialcodes[0], str)
+            except Exception as err:
+                print(list_trialcodes)
+                print(trials)
+                raise err
 
-        # 2) keep only the dataset trials that are included in recordings
-        #TODO: should instead regenerate all trials in neural, since cached trials MAY have thrown out trails
-        # based on older beh dataset.
-        if False:
-            # old
-            trials = self.get_all_existing_site_trial_in_datall("trial")                                               
-        elif False:
-            trials = self.get_trials_list(True, True)
-        else:
-            # Cannot be True, since that looks for datasetbeh will fail.
-            trials = self.get_trials_list(False, True)
-            trials = [t for t in trials if self.datasetbeh_trial_to_datidx(t) is not None]
-        list_trialcodes = [self.datasetbeh_trial_to_trialcode(t) for t in trials]
-        print("- Keeping only dataset trials that exist in self.Dat")
-        print("Starting length: ", len(self.Datasetbeh.Dat))
-        self.Datasetbeh.filterPandas({"trialcode":list_trialcodes}, "modify")
-        print("Ending length: ", len(self.Datasetbeh.Dat))
+            print("- Keeping only dataset trials that exist in self.Dat")
+            print("Starting length: ", len(self.Datasetbeh.Dat))
+            self.Datasetbeh.Dat = self.Datasetbeh.Dat[self.Datasetbeh.Dat["trialcode"].isin(list_trialcodes)].reset_index(drop=True)
+            # self.Datasetbeh.filterPandas({"trialcode":list_trialcodes}, "modify")
+            print("Ending length: ", len(self.Datasetbeh.Dat))
 
-        # 3) Prune trials in self to remove trials that dont have succesfuly fix and touch.
-        trials_neural_to_remove = []
-        # for trial_neural, trialcode in (list_trialcodes):
-        #     fd, t = self.beh_get_fd_trial(trial_neural)
-        #     outcome = mkl.getTrialsOutcomesWrapper(fd, t)
-        #     t2 = trials[trial_neural]
-        #     print(outcome.keys())
-        #     print(trial_neural, trialcode, t, t2)
-        # assert False
-        for trial_neural, trialcode in zip(trials, list_trialcodes):
-            n_failures = 0
-            if trialcode not in self.Datasetbeh.Dat["trialcode"].tolist():
-                # then this is only acceptable if this trial is not succesful fix or touch
-                fd, t = self.beh_get_fd_trial(trial_neural)
-                suc = mkl.getTrialsFixationSuccess(fd, t)
 
-                # NOTE: this make some trials called "touched" even though no pnut touch
-                # error, since these are excluded from Dataset
-                touched = mkl.getTrialsTouched(fd, t)
-                # tem = mkl.getTrialsOutcomesWrapper(fd,t)["trial_end_method"]
-                if touched and suc:
-                    n_failures += 1
-                    if False: # Dont' fail, since sometimes dataset can be missing trials (e..g,, pruned strokes).
+            # 3) Prune trials in neural to remove trials that dont have succesfuly fix and touch.
+            # THIS IS NOT NEEDED Anymore, becuase of pruning using datasetbeh above. but run jsut as sanity check.
+            trials_neural_to_remove = []
+            # for trial_neural, trialcode in (list_trialcodes):
+            #     fd, t = self.beh_get_fd_trial(trial_neural)
+            #     outcome = mkl.getTrialsOutcomesWrapper(fd, t)
+            #     t2 = trials[trial_neural]
+            #     print(outcome.keys())
+            #     print(trial_neural, trialcode, t, t2)
+            # assert False
+            for trial_neural, trialcode in zip(trials, list_trialcodes):
+                n_failures = 0
+                if trialcode not in self.Datasetbeh.Dat["trialcode"].tolist():
+                    # then this is only acceptable if this trial is not succesful fix or touch
+                    fd, t = self.beh_get_fd_trial(trial_neural)
+                    suc = mkl.getTrialsFixationSuccess(fd, t)
+
+                    # NOTE: this make some trials called "touched" even though no pnut touch
+                    # error, since these are excluded from Dataset
+                    touched = mkl.getTrialsTouched(fd, t)
+                    # tem = mkl.getTrialsOutcomesWrapper(fd,t)["trial_end_method"]
+                    if touched and suc:
+                        n_failures += 1
+                        if False: # Dont' fail, since sometimes dataset can be missing trials (e..g,, pruned strokes).
+                            outcome = mkl.getTrialsOutcomesWrapper(fd, t)
+                            print(outcome)
+                            pnuts = mkl.getTrialsStrokesByPeanuts(fd, t)
+                            print(pnuts)
+                            print(list_trialcodes)
+                            print(self.Datasetbeh.Dat["trialcode"].tolist())
+                            print(trialcode)
+                            assert False, "some neural data not found in beh Dataset..."
+                    else:
                         outcome = mkl.getTrialsOutcomesWrapper(fd, t)
-                        print(outcome)
-                        pnuts = mkl.getTrialsStrokesByPeanuts(fd, t)
-                        print(pnuts)
-                        print(list_trialcodes)
-                        print(self.Datasetbeh.Dat["trialcode"].tolist())
-                        print(trialcode)
-                        assert False, "some neural data not found in beh Dataset..."
-                else:
-                    outcome = mkl.getTrialsOutcomesWrapper(fd, t)
-                    print("Removing this trial because it is not in Dataset:", trial_neural, trialcode, t, outcome["beh_evaluation"]["trialnum"])
-                    # remove this trial from self.Dat, since it has no parallele in dataset
-                    trials_neural_to_remove.append(trial_neural)
-            assert n_failures/len(trials)<0.05, "why so many missing from dataset? figure this out"
+                        print("Removing this trial because it is not in Dataset:", trial_neural, trialcode, t, outcome["beh_evaluation"]["trialnum"])
+                        # remove this trial from self.Dat, since it has no parallele in dataset
+                        trials_neural_to_remove.append(trial_neural)
+                assert n_failures == 0, "jhave already included only tirals that are in dataset. how could it possibly fail here?"
+                # assert n_failures/len(trials)<0.05, "why so many missing from dataset? figure this out"
 
-        # (1) Remove all neural trials which are missing from datasetbeh.
-        self._datasetbeh_remove_neural_trials_missing_beh()
-
-        # --
-        # self.Datasetbeh = D
-        self.Datasetbeh.LockPreprocess = True
         return self.Datasetbeh
 
     def datasetbeh_plot_example_drawing(self, trial):
@@ -6250,6 +6453,7 @@ class Session(object):
             
             # save
             fig.savefig(f"{savedir}/events_raster-eventscat_{category}.pdf")
+            plt.close("all")
             
         ###### save dicts
 
@@ -7098,6 +7302,11 @@ class Session(object):
         - use_stroke_as_proxy, then returns True if this trial has touch data
         after go cue.
         """
+
+        if self.Datasetbeh is None:
+            # strokes dont exist...
+            use_stroke_as_proxy=False
+
         if use_stroke_as_proxy:
             strokes = self.strokes_extract(trial, peanuts_only=True)
             return len(strokes)>0
@@ -7110,9 +7319,10 @@ class Session(object):
             return suc
 
     def get_trials_list(self, only_if_ml2_fixation_success=False,
-        only_if_has_valid_ml2_trial=True, only_if_in_dataset=False, 
+        only_if_has_valid_ml2_trial=True, only_if_in_dataset=False,
         events_that_must_include=None,
-        dataset_input = None, nrand=None, nsub_uniform=None):
+        dataset_input = None, nrand=None, nsub_uniform=None,
+                        must_use_cached_trials=False):
         """
         Get list of ints, trials,
         PARAMS:
@@ -7122,10 +7332,13 @@ class Session(object):
         (e.g.,negetive). can happen if mapper is incorrect, or missing some beh trials from start of day, etc.
         A legit reason is if ml2 is corrupted..
         - only_if_in_dataset, if True, then only keeps trials that are in self.DatasetBeh
-        - events_that_must_include, list of str names of events. only inclues trials that have at least 
+        - events_that_must_include, list of str names of events. only inclues trials that have at least
         one instance of eaech event. time in trial doesnt matter.
         - dataset_input, dataset to use for pruning, if only_if_in_dataset==True.
         if this None, then uses self.DatasetBeh
+        - must_use_cached_trials, bool
+
+        UPDATE (3/28/24) - Does not load cached trials, but instad recomputes
         """
         if events_that_must_include is None:
             events_that_must_include = []
@@ -7143,19 +7356,49 @@ class Session(object):
                 print("Figure out why self.Dataset has been pruned.")
                 assert False
 
+        if self.Datasetbeh is None or len(self._MapperTrialcode2TrialToTrial)>0:
+            only_if_in_dataset = False
+
         assert not isinstance(only_if_in_dataset, list), "sanity check, becasue I moved order of args..."
 
+        # if only_if_ml2_fixation_success:
+        #     # SInce I use dataset to determine if this trial was initiated (has stroke), can only include trials that have data.
+        #     only_if_in_dataset = True
+
+
+        # if only_if_in_dataset:
+        #     # Then no need to check the foloowing, they wil be true
+        #     only_if_ml2_fixation_success = False
+        #     only_if_has_valid_ml2_trial = False
+
+        # A new key, which is fine that this is not in cached, since you are relopading new dataset anyways, so dont want
+        # this cached
+        # key = (only_if_in_dataset, only_if_ml2_fixation_success, only_if_has_valid_ml2_trial)
         key = (only_if_ml2_fixation_success, only_if_has_valid_ml2_trial)
-        if key in self._CachedTrialsList:
+
+        # print(key)
+        # print(self._CachedTrialsList.keys())
+        # print("JHEERE", key in self._CachedTrialsList.keys())
+        # assert False
+        if key in self._CachedTrialsList.keys():
             trials = self._CachedTrialsList[key]
+
+            if only_if_in_dataset:
+                trials = [t for t in trials if self.datasetbeh_trial_to_datidx(t) is not None]
         else:
+            assert must_use_cached_trials==False
+
             trials = list(range(len(self.TrialsOffset)))
-            
+
+            if only_if_in_dataset and self.Datasetbeh is not None:
+                # SHould do this first, since if this trial is not in dataset then it will fail only_if_ml2_fixation_success
+                trials = [t for t in trials if self.datasetbeh_trial_to_datidx(t) is not None]
+
             # 1) only tirals with actual beahvior
             if only_if_ml2_fixation_success:
                 trials = [t for t in trials if self.beh_fixation_success(t)]
 
-            # 2) only if there is valid ml2 trial (e..g, excludes if it is a 
+            # 2) only if there is valid ml2 trial (e..g, excludes if it is a
             # negative trial, meaning that this neural needs to look at the previous beh data)
             if only_if_has_valid_ml2_trial:
                 trials_keep = []
@@ -7181,15 +7424,16 @@ class Session(object):
             # Store it.
             self._CachedTrialsList[key] = trials
 
-        if only_if_in_dataset:
-            trials_keep = []
-            for t in trials:
-                if self.datasetbeh_trial_to_datidx(t, dataset_input=dataset_input) is None:
-                    # exclud
-                    pass
-                else:
-                    trials_keep.append(t)
-            trials = trials_keep
+        # if only_if_in_dataset:
+        #     trials = [t for t in trials if self.datasetbeh_trial_to_datidx(t) is not None]
+        #     # trials_keep = []
+        #     # for t in trials:
+        #     #     if self.datasetbeh_trial_to_datidx(t, dataset_input=dataset_input) is None:
+        #     #         # exclud
+        #     #         pass
+        #     #     else:
+        #     #         trials_keep.append(t)
+        #     # trials = trials_keep
 
         if len(events_that_must_include)>0:
             trials = self._get_trials_list_if_include_these_events(trials, events_that_must_include)
@@ -8496,6 +8740,9 @@ class Session(object):
             if True:
                 # New, always get from dataset, this removes any source of misalignmenet between beh and neural
                 idx = self.datasetbeh_trial_to_datidx(trialtdt)
+                if idx is None:
+                    print(trialtdt)
+                    assert False, "this trial not in dataset.. why this trial has not been pruned?"
                 strokes = self.Datasetbeh.Dat.iloc[idx]["strokes_beh"]
             else:
                 # This is not saved in Datasetbeh. Therefore resort to old methods.
