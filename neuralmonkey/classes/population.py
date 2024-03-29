@@ -42,7 +42,6 @@ class PopAnal():
         """
         import copy
 
-        assert len(X.shape)==3
         self.Params = {}
         self.Xdataframe = None
         self.Xz = None
@@ -70,6 +69,7 @@ class PopAnal():
                 # assume it is (nunits, timebins). unsqueeze so is (nunits, 1, timebins)
                 self.X = np.expand_dims(X, 1)
             else:
+                assert len(X.shape)==3
                 self.X = X
         
         self.Saved = {}

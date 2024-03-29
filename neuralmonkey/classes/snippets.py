@@ -7362,8 +7362,7 @@ class Snippets(object):
                                     "Stroke", "TokTask",
                                     "stroke_index_is_first", "stroke_index_is_last_tskstks",
                                     "loc_on_clust", "CTXT_loconclust_prev", "CTXT_loconclust_next",
-                                    "loc_off_clust", "CTXT_locoffclust_prev", "CTXT_locoffclust_next"
-                                ]
+                                    "loc_off_clust", "CTXT_locoffclust_prev", "CTXT_locoffclust_next"                                ]
                                     # "shape_semantic", "shape_is_novel"]
                                     # "distcum", "displacement", "circularity"]
                                     # "distcum", "displacement", "circularity"]
@@ -7377,7 +7376,7 @@ class Snippets(object):
         list_features_extraction_trial = ["shape_is_novel_all", "shape_semantic_labels", "shape_is_novel_list",
                                           "taskconfig_shp", "taskconfig_shploc", "taskconfig_loc",
                                           "Tkbeh_stkbeh", "Tkbeh_stktask", "Tktask",
-                                          "taskconfig_shp_SHSEM", "taskconfig_shploc_SHSEM"]
+                                          "taskconfig_shp_SHSEM", "taskconfig_shploc_SHSEM"                                          ]
         n_strok_max = 6
         for i in range(n_strok_max):
             # for suff in ["shape", "loc", "loc_local"]:
@@ -7430,7 +7429,8 @@ class Snippets(object):
             # Then dataset_strokes lloaded chunk variables, e.g,
             list_features_extraction = list_features_extraction + ["chunk_rank", "chunk_within_rank", "chunk_within_rank_semantic",
                                                         "chunk_within_rank_fromlast", "chunk_n_in_chunk",
-                                                        "chunk_diff_from_prev"] + ["taskcat_by_rule"]
+                                                        "chunk_diff_from_prev"] + ["taskcat_by_rule", "behseq_shapes"]
+
 
         # For the rest, try to get automatically.
         list_features_extraction = vars_extract_append + list_features_extraction
@@ -7447,7 +7447,7 @@ class Snippets(object):
         # Perform extraction
         print("assert datasetbehappcolhelp")
         HACK=False # was crashing because of memory issues
-        if HACK:
+        if not HACK:
             assert self.datasetbeh_append_column_helper(list_features_extraction, D, DS=DS_for_feature_extraction, stop_if_fail=True)==True # Extract all the vars here
 
             print("listfeaturesextraction")
@@ -7502,21 +7502,24 @@ class Snippets(object):
                 # print("shape_this_event" in list(self.DfScalar.columns))
                 self.DfScalar["shape_this_event"] = self.DfScalar["seqc_0_shape"]
                 self.DfScalar["loc_this_event"] = self.DfScalar["seqc_0_loc"]
+                list_features_extraction.append("shape_this_event")
+                list_features_extraction.append("loc_this_event")
             elif self.Params["which_level"] in ["stroke", "stroke_off"]:
                 self.DfScalar["shape_this_event"] = self.DfScalar["shape_oriented"]
                 self.DfScalar["loc_this_event"] = self.DfScalar["gridloc"]
+                list_features_extraction.append("shape_this_event")
+                list_features_extraction.append("loc_this_event")
             elif self.Params["which_level"] in ["substroke", "substroke_off"]:
                 self.DfScalar["shape_this_event"] = self.DfScalar["shape"]
                 self.DfScalar["loc_this_event"] = self.DfScalar["gridloc"] # HACKY - should actualyl be location of substroke, but not ready
+                list_features_extraction.append("shape_this_event")
+                list_features_extraction.append("loc_this_event")
             elif self.Params["which_level"] in ["saccade_fix_on", "fixon", "flex"]:
                 pass
             else:
                 print(self.Params)
                 print(self.DfScalar.columns)
                 assert False
-            print("appending shapelocsize")
-            list_features_extraction.append("shape_this_event")
-            list_features_extraction.append("loc_this_event")
             list_features_extraction.append("size_this_event")
             # except Exception as err:
             #     print(self.Params)
@@ -8194,6 +8197,7 @@ def extraction_helper(SN, which_level="trial", list_features_modulation_append=N
 
         trials_prune_just_those_including_events = True # True is fine, this just checkl that has fix touch
         DS_pruned = None
+        fail_if_times_outside_existing = True
 
     elif which_level in ["stroke", "stroke_off", "substroke", "substroke_off"]:
         # Extracts snippets aligned to strokes. Features are columns in DS.
@@ -8207,6 +8211,7 @@ def extraction_helper(SN, which_level="trial", list_features_modulation_append=N
         prune_feature_levels_min_n_trials = 1
         dataset_pruned_for_trial_analysis = None
         trials_prune_just_those_including_events = False
+        fail_if_times_outside_existing = True
         DS_pruned = None
 
     elif which_level == "saccade_fix_on": # relevant for dfallpa_extraction_load_wrapper
