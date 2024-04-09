@@ -740,14 +740,16 @@ class Session(object):
                     self._FORCE_GET_TRIALS_ONLY_IN_DATASET_NTRIALS = len(self.Datasetbeh.Dat) # as sanity check later, to make sure that dataset has not been pruned since now.
 
         # Sanity check -- every neural trial should have trial in dataset
-        for trial in self.get_trials_list(True):
-            if self.datasetbeh_trial_to_datidx(trial) is None:
-                print(self.Datasetbeh.Dat["trialcode"].tolist())
-                print(trial)
-                print(self.datasetbeh_trial_to_trialcode(trial))
-                print(self._FORCE_GET_TRIALS_ONLY_IN_DATASET)
-                print(self._FORCE_GET_TRIALS_ONLY_IN_DATASET_NTRIALS)
-                assert False, f"dont knwo why -- this neural trail could not be found in Dataset... {trial}"
+        if False: # Actually skip this -- it is perfeclty fine for a neural trial to not have beh trial, this occurs
+            # when actually it is a bad trial.
+            for trial in self.get_trials_list(True):
+                if self.datasetbeh_trial_to_datidx(trial) is None:
+                    print(self.Datasetbeh.Dat["trialcode"].tolist())
+                    print(trial)
+                    print(self.datasetbeh_trial_to_trialcode(trial))
+                    print(self._FORCE_GET_TRIALS_ONLY_IN_DATASET)
+                    print(self._FORCE_GET_TRIALS_ONLY_IN_DATASET_NTRIALS)
+                    assert False, f"dont knwo why -- this neural trail could not be found in Dataset... {trial}"
 
     def _cleanup(self):
         """ Various things to run at end of each initialization
@@ -1652,7 +1654,20 @@ class Session(object):
             self._MapperTrialcode2TrialToTrial = _load_this("_MapperTrialcode2TrialToTrial")
         except FileNotFoundError as err:
             # just skip this. old data, didnt save tehse caches.
-            pass
+            # assert False, "Missing cached data --> reextract!!"
+            if False:
+                # NOTE: This _should_ work (i compared the outcome to if dont), for
+                # self.BehTrialMapList [(1, 0)
+                # self.BehTrialMapListGood
+                # self._MapperTrialcode2TrialToTrial!
+                # self.BehSessList
+                # BUT skip, since I'll just let the old code work, which did "pass"
+
+                # Then renerate these by loading first behavioral data.
+                self._beh_get_fdnum_trial_generate_mapper()
+                self._generate_mappers_quickly_datasetbeh()
+            else:
+                pass
 
     def _savelocalcached_load_dataset_beh(self, dataset_version="raw"):
         """
@@ -7303,8 +7318,8 @@ class Session(object):
         after go cue.
         """
 
-        if self.Datasetbeh is None:
-            # strokes dont exist...
+        if self.Datasetbeh is None or self.datasetbeh_trial_to_datidx(trial) is None:
+            # Eitehr dataset doesnt eixst, or this trial doesnt exist
             use_stroke_as_proxy=False
 
         if use_stroke_as_proxy:
@@ -7356,8 +7371,11 @@ class Session(object):
                 print("Figure out why self.Dataset has been pruned.")
                 assert False
 
-        if self.Datasetbeh is None or len(self._MapperTrialcode2TrialToTrial)>0:
+        if self.Datasetbeh is None or not hasattr(self, "_MapperTrialcode2TrialToTrial") or len(self._MapperTrialcode2TrialToTrial)==0:
             only_if_in_dataset = False
+
+        # print(only_if_in_dataset, self._FORCE_GET_TRIALS_ONLY_IN_DATASET)
+        # assert False
 
         assert not isinstance(only_if_in_dataset, list), "sanity check, becasue I moved order of args..."
 
@@ -7390,7 +7408,7 @@ class Session(object):
 
             trials = list(range(len(self.TrialsOffset)))
 
-            if only_if_in_dataset and self.Datasetbeh is not None:
+            if only_if_in_dataset:
                 # SHould do this first, since if this trial is not in dataset then it will fail only_if_ml2_fixation_success
                 trials = [t for t in trials if self.datasetbeh_trial_to_datidx(t) is not None]
 
@@ -9532,10 +9550,11 @@ class Session(object):
     def datasetbeh_trialcode_prune_within_session(self, list_trialcodes):
         """ Returns subset of list_trialcodes, just those that exist in this session
         """
-        assert len(self._MapperTrialcode2TrialToTrial)>0, "cannot check without this..."
+        if len(self._MapperTrialcode2TrialToTrial)==0:
+            self._generate_mappers_quickly_datasetbeh()
+        # assert len(self._MapperTrialcode2TrialToTrial)>0, "cannot check without this..."
         return [trialcode for trialcode in list_trialcodes if trialcode in self._MapperTrialcode2TrialToTrial.keys()]
         
-
 
     ##################### SNIPPETS
     def snippets_extract_by_event_flexible(self, sites, trials,
