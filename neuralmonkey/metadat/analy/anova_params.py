@@ -962,9 +962,10 @@ def dataset_apply_params(D, DS, ANALY_VER, animal, DATE, save_substroke_preproce
 
         # Second, do preprocessing to concatted D
         if params["DO_SCORE_SEQUENCE_VER"]=="parses":
-            D.grammarparses_successbinary_score()
+            D.grammarparses_successbinary_score_wrapper()
         elif params["DO_SCORE_SEQUENCE_VER"]=="matlab":
             D.grammarmatlab_successbinary_score()
+            assert params["datasetstrokes_extract_chunks_variables"]==False, "if True, you need to use parses method."
         else:
             # dont score
             assert params["DO_SCORE_SEQUENCE_VER"] is None
@@ -1138,6 +1139,62 @@ def dataset_apply_params(D, DS, ANALY_VER, animal, DATE, save_substroke_preproce
             print("These are the SYNTAX PARSES (i.e., 'taskcat_by_rule'):")
             print(D.Dat["taskcat_by_rule"].value_counts())
 
+            ###################################################
+            ################# SNTAX-RELATED VARIABLES...
+            # And extract syntax_concrete column
+            D.grammarparses_syntax_concrete_append_column()
+
+            # For each sequence kind (e.g. shapes) split into concrete variations (classes).
+            savedir_preprocess = D.make_savedir_for_analysis_figures_BETTER("preprocess_general")
+            sdir = f"{savedir_preprocess}/seqcontext_behorder_cluster_concrete_variation"
+            os.makedirs(sdir, exist_ok=True)
+            D.seqcontext_behorder_cluster_concrete_variation(SAVEDIR=sdir,
+                                                 LIST_VAR_BEHORDER=["behseq_shapes", "behseq_locs",
+                                                                    "behseq_locs_x", "behseq_locs_diff", "behseq_locs_diff_x"])
+
+            if True:
+                # Wrapper to get all info about epochs
+                D.grammarparses_rules_epochs_superv_summarize_wrapper(PRINT=True)
+            else:
+                # Add column "epoch_rand", which collects random + color instruction
+                print(" *** RUNNING: grammarparses_rules_random_sequence()")
+                D.grammarparses_rules_random_sequence(PRINT=True)
+
+            # Need to run this here, and not in preprocess/general.py (can't remember why...)
+            if D.animals(force_single=True)[0]=="Pancho" and int(D.dates(True)[0])>=220902 and int(D.dates(True)[0])<=220909:
+                # AnBm, with two shape ses switching by trail in same day.
+                # Replace epoch and syntax_concrete so shapaes are diff epoch, but same synta concrete.
+                list_epoch = []
+                list_syntax_concrete = []
+                for i, row in D.Dat.iterrows():
+                    tmp = [x>0 for x in row["syntax_concrete"][:4]]
+                    epoch_orig = row["epoch_orig"]
+                    if tmp == [True, False, True, False]:
+                        list_epoch.append(f"{epoch_orig}|A")
+                        list_syntax_concrete.append((row["syntax_concrete"][0], row["syntax_concrete"][2]))
+                    elif tmp == [False, True, False, True]:
+                        list_epoch.append(f"{epoch_orig}|B")
+                        list_syntax_concrete.append((row["syntax_concrete"][1], row["syntax_concrete"][3]))
+                    else:
+                        print(tmp)
+                        print(row["syntax_concrete"])
+                        print(row["epoch_orig"])
+                        assert False
+                # D.Dat["epoch_orig"] = list_epoch # NO!! this leads to rulestring problems (old note: must update epoch_orig (and not epoch) or else grammarparses_syntax_role_append_to_tokens)
+                D.Dat["epoch"] = list_epoch # must update epoch_orig (and not epoch) or else grammarparses_syntax_role_append_to_tokens
+                # will incorrectly count within all data.
+                D.Dat["syntax_concrete"] = list_syntax_concrete
+
+            # Further bin trials based on variation in gap duration --> longer gaps means difference in preSMA state space?
+            sdir = f"{savedir_preprocess}/grammarparses_chunk_transitions_gaps_extract_batch"
+            os.makedirs(sdir, exist_ok=True)
+            D.grammarparses_chunk_transitions_gaps_extract_batch(plot_savedir=sdir)
+
+            # For each token, assign a new key called "syntax role" -- good.
+            D.grammarparses_syntax_role_append_to_tokens()
+
+            plt.close("all")
+
         ###### MAKE SURE DS is None, if you dont want to use it to prune SP.
         if params["datasetstrokes_extract_to_prune_stroke_and_get_features"] is None and params["substrokes_features_do_extraction"] is None:
             assert DS is None, "expect this, since the input should have been DS=None..."
@@ -1146,6 +1203,9 @@ def dataset_apply_params(D, DS, ANALY_VER, animal, DATE, save_substroke_preproce
         if DS is not None:
             # append Tkbeh_stktask
             DS.tokens_append(ver="beh_using_task_data")
+
+        # Shape sequence for each trial:
+        D.seqcontext_extract_shapes_in_beh_order_append_column()
 
         return D, DS, params
 
@@ -1689,6 +1749,10 @@ def params_getter_raster_vars(which_level, question, OVERWRITE_lenient_n=2):
         LIST_VARS_OTHERS = [list(var_others) + ["superv_COLOR_METHOD"] for var_others in LIST_VARS_OTHERS]
 
         # Add those that use "epoch" as effect
+        LIST_VAR.append("epoch")
+        LIST_VARS_OTHERS.append(["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev",
+                                 "shape", "loc_on_clust", "CTXT_shape_prev"])
+
         LIST_VAR.append("epoch")
         LIST_VARS_OTHERS.append(["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev",
                                  "shape", "loc_on_clust", "CTXT_shape_prev", "CTXT_loconclust_next", "chunk_rank",
