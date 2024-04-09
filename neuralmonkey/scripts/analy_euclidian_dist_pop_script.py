@@ -13,7 +13,7 @@ RSA).
 Goal: to quantitatively capture intuition as can see in UMA plots.
 
 3/14/24 - Builds on "decode" code
-Notebook: Currently at end of 240127_snippets_decode_all
+Notebook: Currently in 240217_snippets_euclidian
 
 """
 
@@ -32,6 +32,8 @@ import seaborn as sns
 from neuralmonkey.analyses.decode_good import preprocess_extract_X_and_labels
 
 DEBUG = False
+SPIKES_VERSION = "kilosort_if_exists" # since Snippets not yet extracted for ks
+nmin_trials_per_lev = 5
 
 if __name__=="__main__":
 
@@ -58,7 +60,6 @@ if __name__=="__main__":
 
     ############### PARAMS
     exclude_bad_areas = True
-    SPIKES_VERSION = "tdt" # since Snippets not yet extracted for ks
     combine_into_larger_areas = False
     list_time_windows = [(-0.6, 0.6)]
     EVENTS_IGNORE = [] # To reduce plots
@@ -78,71 +79,187 @@ if __name__=="__main__":
         # (0, 0.2),
         (-0.1, 0.1),
     ]
-    nmin_trials_per_lev = 5
     PLOT_STATE_SPACE = True
     # NPCS_KEEP = None # use auto method
 
-    # var_loc_next = "CTXT_loc_next"
-    var_loc_next = "CTXT_loconclust_next"
-    var_loc_prev = "CTXT_locoffclust_prev"
-    var_loc = "loc_on_clust"
+    if question in ["PIG_BASE_stroke", "CHAR_BASE_stroke"]:
 
-    LIST_VAR = [
-        "CTXT_loc_next",
-        "CTXT_loc_next",
-        "CTXT_loc_next",
+        # var_loc_next = "CTXT_loc_next"
+        var_loc_next = "CTXT_loconclust_next"
+        var_loc_prev = "CTXT_locoffclust_prev"
+        var_loc = "loc_on_clust"
 
-        "CTXT_shape_next",
-        "CTXT_shape_next",
-        "CTXT_shape_next",
+        LIST_VAR = [
+            "CTXT_loc_next",
+            "CTXT_loc_next",
+            "CTXT_loc_next",
 
-        "task_kind",
+            "CTXT_shape_next",
+            "CTXT_shape_next",
+            "CTXT_shape_next",
 
-        "stroke_index",
-        "stroke_index_fromlast_tskstks",
-        "stroke_index_fromlast_tskstks",
+            "task_kind",
 
-        "FEAT_num_strokes_task",
-        "FEAT_num_strokes_task",
+            "stroke_index",
+            "stroke_index_fromlast_tskstks",
+            "stroke_index_fromlast_tskstks",
 
-        "shape",
-        "shape",
-        "shape",
+            "FEAT_num_strokes_task",
+            "FEAT_num_strokes_task",
 
-        # "shape",
-        "gridloc",
-        var_loc,
-        var_loc,
-    ]
-    # More restrictive
-    LIST_VARS_OTHERS = [
-        ["stroke_index_is_first", "task_kind", var_loc_prev, "shape", var_loc, "CTXT_shape_next"],
-        ["stroke_index_is_first", "task_kind", var_loc_prev, "shape", "gridloc", "CTXT_shape_next"],
-        ["stroke_index_is_first", "task_kind", "CTXT_loc_prev", "shape", "gridloc", "CTXT_shape_next"],
+            "shape",
+            "shape",
+            "shape",
 
-        ["stroke_index_is_first", "task_kind", var_loc_prev, "shape", var_loc, "CTXT_loc_next"],
-        ["stroke_index_is_first", "task_kind", var_loc_prev, "shape", "gridloc", "CTXT_loc_next"],
-        ["stroke_index_is_first", "task_kind", "CTXT_loc_prev", "shape", "gridloc", "CTXT_loc_next"],
+            # "shape",
+            "gridloc",
+            var_loc,
+            var_loc,
+        ]
+        # More restrictive
+        LIST_VARS_OTHERS = [
+            ["stroke_index_is_first", "task_kind", var_loc_prev, "shape", var_loc, "CTXT_shape_next"],
+            ["stroke_index_is_first", "task_kind", var_loc_prev, "shape", "gridloc", "CTXT_shape_next"],
+            ["stroke_index_is_first", "task_kind", "CTXT_loc_prev", "shape", "gridloc", "CTXT_shape_next"],
 
-        ["stroke_index_is_first", "shape", var_loc, var_loc_prev],
+            ["stroke_index_is_first", "task_kind", var_loc_prev, "shape", var_loc, "CTXT_loc_next"],
+            ["stroke_index_is_first", "task_kind", var_loc_prev, "shape", "gridloc", "CTXT_loc_next"],
+            ["stroke_index_is_first", "task_kind", "CTXT_loc_prev", "shape", "gridloc", "CTXT_loc_next"],
 
-        ["stroke_index_is_first", "task_kind", var_loc_prev, "shape", var_loc],
-        ["stroke_index_is_first", "task_kind", var_loc_prev, "shape", var_loc],
-        ["stroke_index_is_first", "FEAT_num_strokes_task", "task_kind", var_loc_prev, "shape", var_loc],
+            ["stroke_index_is_first", "shape", var_loc, var_loc_prev],
 
-        ["stroke_index_is_first", "task_kind", var_loc_prev, "shape", var_loc, "stroke_index"],
-        ["stroke_index_is_first", "task_kind", var_loc_prev, "shape", var_loc],
+            ["stroke_index_is_first", "task_kind", var_loc_prev, "shape", var_loc],
+            ["stroke_index_is_first", "task_kind", var_loc_prev, "shape", var_loc],
+            ["stroke_index_is_first", "FEAT_num_strokes_task", "task_kind", var_loc_prev, "shape", var_loc],
 
-        ["stroke_index_is_first", "task_kind", var_loc, var_loc_prev, "CTXT_loc_next"],
-        ["stroke_index_is_first", "task_kind", var_loc, var_loc_prev],
-        ["stroke_index_is_first", "task_kind", "gridloc", var_loc_prev],
+            ["stroke_index_is_first", "task_kind", var_loc_prev, "shape", var_loc, "stroke_index"],
+            ["stroke_index_is_first", "task_kind", var_loc_prev, "shape", var_loc],
 
-        ["stroke_index_is_first", "task_kind", "shape", var_loc_prev, "CTXT_loc_next"],
-        ["stroke_index_is_first", "task_kind", "shape", var_loc_prev, "CTXT_loc_next"],
-        ["stroke_index_is_first", "task_kind", "shape", var_loc_prev],
+            ["stroke_index_is_first", "task_kind", var_loc, var_loc_prev, "CTXT_loc_next"],
+            ["stroke_index_is_first", "task_kind", var_loc, var_loc_prev],
+            ["stroke_index_is_first", "task_kind", "gridloc", var_loc_prev],
+
+            ["stroke_index_is_first", "task_kind", "shape", var_loc_prev, "CTXT_loc_next"],
+            ["stroke_index_is_first", "task_kind", "shape", var_loc_prev, "CTXT_loc_next"],
+            ["stroke_index_is_first", "task_kind", "shape", var_loc_prev],
+            ]
+
+    elif question in ["RULE_BASE_stroke", "RULESW_BASE_stroke", "RULE_COLRANK_STROKE"]:
+        # Syntax role encoding
+
+        LIST_VAR = [
+            # PMv should not get this
+            "chunk_within_rank",
+            "chunk_within_rank",
+            "chunk_within_rank",
+            "chunk_within_rank",
+            "chunk_within_rank",
+
+            # Like above, but mixing across syntax_concrete.
+            "chunk_within_rank",
+            "chunk_within_rank",
+
+            # Roles
+            "syntax_role",
+            "syntax_role",
+            "syntax_role",
+            "syntax_role",
+            "syntax_role",
+            "syntax_role",
+
+            "syntax_role",
+            "syntax_role",
+
+            # Trying this.
+            "syntax_concrete",
+
+            # "chunk_n_in_chunk", #
+            "chunk_n_in_chunk", #
+            "chunk_n_in_chunk", #
+
+            # This is testing for "hierarchy" in that stroke index should not be consistent across concrete symtaxes.
+            "stroke_index",
+            "stroke_index",
+        ]
+        # More restrictive
+        LIST_VARS_OTHERS = [
+            ["stroke_index_is_first", "stroke_index_is_last_tskstks", "epoch", "syntax_concrete", "chunk_rank", "behseq_shapes_clust", "behseq_locs_clust"],
+            ["stroke_index_is_first", "stroke_index_is_last_tskstks", "epoch", "syntax_concrete", "chunk_rank", "behseq_locs_clust"],
+            ["stroke_index_is_first", "stroke_index_is_last_tskstks", "epoch", "syntax_concrete", "chunk_rank"],
+            ["stroke_index_is_first", "stroke_index_is_last_tskstks", "epoch", "syntax_concrete"],
+            ["stroke_index_is_first", "stroke_index_is_last_tskstks", "epoch"],
+
+            # ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "shape", "loc_on_clust", "loc_off_clust"],
+            ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "shape", "loc_on_clust", "loc_off_clust", "CTXT_shape_prev"],
+            ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "shape", "loc_on_clust", "loc_off_clust", "CTXT_shape_prev", "CTXT_loconclust_next"],
+
+            ["stroke_index_is_first", "stroke_index_is_last_tskstks", "epoch", "syntax_concrete", "behseq_shapes_clust", "behseq_locs_clust", "shape"],
+            ["stroke_index_is_first", "stroke_index_is_last_tskstks", "epoch", "syntax_concrete", "behseq_shapes_clust", "behseq_locs_clust"],
+            ["stroke_index_is_first", "stroke_index_is_last_tskstks", "epoch", "syntax_concrete", "behseq_shapes_clust"],
+            ["stroke_index_is_first", "stroke_index_is_last_tskstks", "epoch", "syntax_concrete", "behseq_locs_clust"],
+            ["stroke_index_is_first", "stroke_index_is_last_tskstks", "epoch", "syntax_concrete"],
+            ["stroke_index_is_first", "stroke_index_is_last_tskstks", "epoch"],
+
+            ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "shape", "loc_on_clust", "loc_off_clust"],
+            ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "shape", "loc_on_clust", "loc_off_clust", "CTXT_shape_prev"],
+            # ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "shape", "loc_on_clust", "loc_off_clust", "CTXT_shape_prev", "CTXT_loconclust_next"],
+
+            ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "shape", "loc_on_clust", "loc_off_clust", "CTXT_shape_prev", "FEAT_num_strokes_task"],
+
+            # ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "chunk_within_rank_semantic", "shape", "loc_on_clust"],
+            ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "chunk_within_rank_semantic", "shape", "loc_on_clust", "CTXT_shape_prev"],
+            ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "chunk_within_rank_semantic", "shape", "loc_on_clust", "CTXT_loc_next", "CTXT_shape_prev"],
+
+            ["stroke_index_is_first", "stroke_index_is_last_tskstks", "epoch", "syntax_concrete"],
+            ["stroke_index_is_first", "stroke_index_is_last_tskstks", "epoch", "syntax_concrete", "behseq_shapes_clust", "behseq_locs_clust"],
         ]
 
+        # LIST_VAR = [
+        #     ("chunk_rank", "chunk_within_rank_semantic"), # strongest test of index within chunk, and chunk index.
+        #     ("chunk_rank", "chunk_within_rank_semantic"), # strongest test of index within chunk, and chunk index.
+        #     ("chunk_rank", "chunk_within_rank_semantic"), # strongest test of index within chunk, and chunk index.
+        #
+        #     "CTXT_shape_prev", # var = 2-motifs, conditioned on the shape of 2nd stroke.
+        #     "CTXT_shape_prev", # var = 2-motifs, conditioned on the shape of 2nd stroke.
+        #     "CTXT_shape_prev", # var = 2-motifs, conditioned on the shape of 2nd stroke.
+        #
+        #     "chunk_n_in_chunk", #
+        #     "chunk_n_in_chunk", #
+        #     "chunk_n_in_chunk", #
+        #
+        #     "chunk_within_rank_semantic", #
+        #     "chunk_within_rank_semantic", #
+        #     "chunk_within_rank_semantic", #
+        #     "chunk_within_rank_semantic", #
+        # ]
+        #
+        # LIST_VARS_OTHERS = [
+        #     ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "shape", "loc_on_clust", "loc_off_clust"],
+        #     ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "shape", "loc_on_clust", "loc_off_clust", "CTXT_shape_prev"],
+        #     ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "shape", "loc_on_clust", "loc_off_clust", "CTXT_shape_prev", "CTXT_loconclust_next"],
+        #
+        #     ("shape", "CTXT_loc_prev", "loc_on_clust", "loc_off_clust"), # Good -- tight control!
+        #     ("shape", "CTXT_loc_prev", "loc_on_clust", "loc_off_clust", "CTXT_loconclust_next"), # Good -- tight control!
+        #     ("shape", "CTXT_loc_prev", "loc_on_clust", "loc_off_clust", "CTXT_loconclust_next", "CTXT_shape_next"), # Good -- tight control!
+        #
+        #     ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "chunk_within_rank_semantic", "shape", "loc_on_clust"],
+        #     ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "chunk_within_rank_semantic", "shape", "loc_on_clust", "CTXT_loc_next"],
+        #     ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "chunk_within_rank_semantic", "shape", "loc_on_clust", "CTXT_loc_next", "CTXT_shape_prev"],
+        #
+        #     ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "shape", "loc_on_clust", "loc_off_clust"],
+        #     ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "shape", "loc_on_clust", "loc_off_clust", "CTXT_loconclust_next"],
+        #     ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "shape", "loc_on_clust", "loc_off_clust", "CTXT_loconclust_next", "CTXT_shape_prev"],
+        #     ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "shape", "loc_on_clust", "loc_off_clust", "CTXT_loconclust_next", "CTXT_shape_next"],
+
+
+    else:
+        print(question)
+        assert False
+
     assert len(LIST_VAR)==len(LIST_VARS_OTHERS)
+    # Convert from tuple to list
+    LIST_VARS_OTHERS = [list(var_others) for var_others in LIST_VARS_OTHERS]
+    LIST_VAR = [list(var) if isinstance(var, tuple) else var for var in LIST_VAR]
 
     ########################################## EXTRACT NOT-NORMALIZED DATA
     from neuralmonkey.classes.population_mult import dfallpa_extraction_load_wrapper
@@ -278,7 +395,7 @@ if __name__=="__main__":
                     DFRES["dist_norm_95"] = DFRES["dist"]/DFRES["DIST_NULL_95"]
                     DFRES["dist_norm_50"] = DFRES["dist"]/DFRES["DIST_NULL_50"]
                     DFRES["var_others"] = [tuple(x) for x in DFRES["var_others"]]
-                    DFRES = append_col_with_grp_index(DFRES, ["var", "var_others"], "var_var_others")
+                    DFRES = append_col_with_grp_index(DFRES, ["index_var", "var", "var_others"], "var_var_others")
                     DFRES = append_col_with_grp_index(DFRES, ["effect_samediff", "context_samediff"], "effect_context")
 
                     # SAVE
@@ -287,6 +404,7 @@ if __name__=="__main__":
                     print("Saved to: ", path)
 
                     ######################################### QUICK PLOT - SUMMARIES
+                    sns.set_context("paper", rc={"axes.labelsize":5}) # titles can be very long...
                     import seaborn as sns
                     from pythonlib.tools.snstools import rotateLabel
                     from pythonlib.tools.plottools import savefig
@@ -300,12 +418,12 @@ if __name__=="__main__":
                     yvar = "dist_norm_95"
                     for yvarthis in [yvar, "dist", "DIST_NULL_95"]:
                         fig = sns.catplot(data=DFTHIS, x="bregion", y=yvarthis, col="var_var_others", hue="effect_context",
-                                          col_wrap=3, aspect=1.5, alpha=0.4)
+                                          col_wrap=3, aspect=1.5, alpha=0.4, height=6)
                         rotateLabel(fig)
                         savefig(fig, f"{savedir}/overview_scatter-{yvarthis}.pdf")
 
                         fig = sns.catplot(data=DFTHIS, x="bregion", y=yvarthis, col="var_var_others", hue="effect_context",
-                                          col_wrap=3, aspect=1.5, kind="bar")
+                                          col_wrap=3, aspect=1.5, kind="bar", height=6)
                         rotateLabel(fig)
                         savefig(fig, f"{savedir}/overview_bar-{yvarthis}.pdf")
 
@@ -330,7 +448,7 @@ if __name__=="__main__":
                             for vvo in list_vvo:
                                 dfthisthis = dfthis[dfthis["var_var_others"]==vvo]
                                 fig = sns.catplot(data=dfthisthis, x=yvar, y="levo", col="bregion", alpha=0.4)
-                                savefig(fig, f"{savedirthis}/allconj_scatter-vvo={vvo}.pdf")
+                                savefig(fig, f"{savedirthis}/allconj_scatter-vvo={vvo}.pdf", height=6)
                                 plt.close("all")
 
                             # 2) Heatmap
@@ -350,11 +468,13 @@ if __name__=="__main__":
                         dfpivot["diff_divide_same"] = dfpivot[yvar]["diff"]/dfpivot[yvar]["same_pt_pairs"]
 
                         for yvarthis in ["diff_minus_same", "diff_divide_same"]:
-                            fig = sns.catplot(data=dfpivot, x="bregion", y=yvarthis, col="var_var_others", col_wrap=3, aspect=1.5, alpha=0.4)
+                            fig = sns.catplot(data=dfpivot, x="bregion", y=yvarthis, col="var_var_others", col_wrap=3,
+                                              aspect=1.5, alpha=0.4, height=6)
                             rotateLabel(fig)
                             savefig(fig, f"{savedir}/overview_scatter-{yvarthis}.pdf")
 
-                            fig = sns.catplot(data=dfpivot, x="bregion", y=yvarthis, col="var_var_others", col_wrap=3, aspect=1.5, kind="bar")
+                            fig = sns.catplot(data=dfpivot, x="bregion", y=yvarthis, col="var_var_others", col_wrap=3,
+                                              aspect=1.5, kind="bar", height=6)
                             rotateLabel(fig)
                             savefig(fig, f"{savedir}/overview_bar-{yvarthis}.pdf")
 
