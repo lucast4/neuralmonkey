@@ -7362,8 +7362,9 @@ class Snippets(object):
                                     "Stroke", "TokTask",
                                     "stroke_index_is_first", "stroke_index_is_last_tskstks",
                                     "loc_on_clust", "CTXT_loconclust_prev", "CTXT_loconclust_next",
-                                    "loc_off_clust", "CTXT_locoffclust_prev", "CTXT_locoffclust_next"                                ]
-                                    # "shape_semantic", "shape_is_novel"]
+                                    "loc_off_clust", "CTXT_locoffclust_prev", "CTXT_locoffclust_next",
+                                    "shape_semantic", "shape_semantic_cat"]
+                                    # "shape_is_novel"]
                                     # "distcum", "displacement", "circularity"]
                                     # "distcum", "displacement", "circularity"]
 
@@ -7427,10 +7428,20 @@ class Snippets(object):
 
         if params["datasetstrokes_extract_chunks_variables"] and self.Params["which_level"] == "stroke":
             # Then dataset_strokes lloaded chunk variables, e.g,
-            list_features_extraction = list_features_extraction + ["chunk_rank", "chunk_within_rank", "chunk_within_rank_semantic",
-                                                        "chunk_within_rank_fromlast", "chunk_n_in_chunk",
-                                                        "chunk_diff_from_prev"] + ["taskcat_by_rule", "behseq_shapes"]
+            list_features_extraction = (list_features_extraction + ["chunk_rank", "chunk_within_rank", "chunk_within_rank_semantic",
+                                                        "chunk_within_rank_fromlast", "chunk_n_in_chunk", "epoch_rand",
+                                                        "chunk_diff_from_prev"] + ["taskcat_by_rule", "behseq_shapes"] +
+                                        ["syntax_concrete", "syntax_role"] + ["epoch_orig_rand_seq", "epoch_is_AnBmCk", "superv_is_seq_sup", "INSTRUCTION_COLOR"])
 
+            # Add concrete variations within each taskcat_by_rule
+            LIST_VAR_BEHORDER=["behseq_shapes", "behseq_locs", "behseq_locs_x", "behseq_locs_diff", "behseq_locs_diff_x"]
+            list_features_extraction.extend([f"{var_behorder}_clust" for var_behorder in LIST_VAR_BEHORDER])
+
+            # Add bin indicating wheterh chunk gap is short or long duration
+            tmp = ["chunkgap_(0, 1)_durbin", "chunkgap_(1, 2)_durbin"]
+            for t in tmp:
+                if t in D.Dat.columns:
+                    list_features_extraction.append(t)
 
         # For the rest, try to get automatically.
         list_features_extraction = vars_extract_append + list_features_extraction

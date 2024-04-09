@@ -878,10 +878,10 @@ class PopAnal():
         trials = self.Trials
 
         if chans is None and (X.shape[0]==self.X.shape[0]):
-            chans = self.X.Chans
+            chans = self.Chans
 
         if times is None and (X.shape[2]==self.X.shape[2]):
-            chans = self.X.Times
+            times = self.Times
 
         pa = PopAnal(X, times=times, chans=chans, trials=trials)
 
@@ -1075,13 +1075,14 @@ class PopAnal():
         pa = self.slice_by_dim_indices_wrapper(dim_str, inds)
         return pa
 
-    def slice_by_labels(self, dim_str, dim_variable, list_values):
+    def slice_by_labels(self, dim_str, dim_variable, list_values, verbose=False):
         """
         SLice to return PA that is subset, where you
         filtering to keep if value is in list_values (filtering).
         PARAMS: 
         - dim_str, string name in {trials, chans, ...}
-        - dim_variable, name of column in self.Xlabels[dim_str]
+        - dim_variable, name of column in self.Xlabels[dim_str], or tuple of columns, ion which case considers
+        this a conjunctive variabl. List values must thne be list of tuples
         - list_values, list of vales, will keep indices only those with values in list_values
         EG:
         - dim_str = "trials"
@@ -1091,6 +1092,13 @@ class PopAnal():
         from pythonlib.tools.pandastools import filterPandas
 
         assert isinstance(list_values, list)
+        if isinstance(dim_variable, tuple):
+            # Then this is grouping variable.
+            from pythonlib.tools.pandastools import append_col_with_grp_index
+            self.Xlabels[dim_str] = append_col_with_grp_index(self.Xlabels[dim_str], dim_variable, "_tmp", use_strings=False)
+            for v in list_values:
+                assert isinstance(v, tuple) and len(v)==len(dim_variable)
+            dim_variable = "_tmp"
 
         if True:
             dfthis = self.Xlabels[dim_str]
@@ -1100,7 +1108,14 @@ class PopAnal():
         else:
             dfthis = self.Xlabels[dim_str]
             inds = filterPandas(dfthis, {dim_variable:list_values}, return_indices=True)
+        if verbose:
+            print(f"pa size, before slicing with variable={dim_variable}", self.X.shape)
+
         pa = self.slice_by_dim_indices_wrapper(dim_str, inds)
+
+        if verbose:
+            print(f"... pa size, after slicing with variable={dim_variable}", pa.X.shape)
+
         return pa
 
     # def slice_by_label(self, dim_str, dim_variable, dim_value):
@@ -1274,7 +1289,8 @@ class PopAnal():
                                             plot_pca_explained_var_path=None, plot_loadings_path=None,
                                             pca_method="svd",
                                             norm_subtract_single_mean_each_chan=True,
-                                            npcs_keep_force=None):
+                                            npcs_keep_force=None,
+                                            extra_dimred_method=None, umap_n_neighbors = 30):
         """
         Fleixble methods for extract data for use in population analyses, slicing out a specific time window,
         and binning by time, and ootionally reshaping to (ntrials, ...), where you can optionally
@@ -1293,6 +1309,9 @@ class PopAnal():
         - pca_method, str, either
         --- "sklearn" : centers each time bin!
         --- "svd" : same method as sklearn, but does not do any centering.
+        - extra_dimred_method, str, methdo to apply after PCA.
+        --- "umap"
+
         RETURNS:
         - X, PApca, PAslice, pca
         """
@@ -1359,6 +1378,17 @@ class PopAnal():
                 assert X.shape[1] == PApca.X.shape[0]
                 assert X.shape[0] == PApca.X.shape[1]
 
+            # Extra dimreduction step?
+            if extra_dimred_method in ["umap"]:
+                from neuralmonkey.analyses.state_space_good import dimredgood_nonlinear_embed_data
+                X, _ = dimredgood_nonlinear_embed_data(X, METHOD=extra_dimred_method, n_components=2,
+                                                           umap_n_neighbors=umap_n_neighbors) # (ntrials, ndims)
+                # Update popanal too
+                Xin = X.T[:, :, None]
+                PApca = PApca.copy_replacing_X(Xin)
+            else:
+                assert extra_dimred_method is None
+
         elif reshape_method=="chans_x_trials_x_times":
             # Default.
             # PCA --> first combines trials x timebins (i.e.,
@@ -1406,21 +1436,20 @@ class PopAnal():
             assert X.shape[1:] == PAslice.X.shape[1:]
             if pca_reduce:
                 assert X.shape == PApca.X.shape
+
+            # Extra dimreduction step?
+            assert extra_dimred_method is None, "not yet coded"
+
         else:
             X = PAslice.X
             if pca_reduce:
                 assert False, "not coded..."
 
+            assert extra_dimred_method is None, "not yet coded"
+
         if not pca_reduce:
             pca = None
             PApca = None
-
-        # # Represent X in PopAnal
-        # print(X.shape)
-        # assert False
-        # PApca = PopAnal(X.T[:, :, None].copy(), [0])  # (ndimskeep, ntrials, 1)
-        # PApca.Xlabels = {dim:df.copy() for dim, df in PAslice.Xlabels.items()}
-        # assert len(PApca.Xlabels["trials"])==PApca.X.shape[1]
 
         return X, PApca, PAslice, pca
 
