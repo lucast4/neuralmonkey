@@ -24,12 +24,12 @@ import seaborn as sns
 from neuralmonkey.analyses.decode_good import preprocess_extract_X_and_labels
 from neuralmonkey.analyses.state_space_good import dimredgood_nonlinear_embed_data
 from pythonlib.tools.pandastools import append_col_with_grp_index
+from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper
 
 fr_normalization_method = "across_time_bins"
 # LIST_METHOD = ["umap", "tsne"]
 LIST_METHOD = ["umap"]
 # LIST_UMAP_N_NEIGHBORS = [10, 30, 50]
-LIST_UMAP_N_NEIGHBORS = [30]
 exclude_bad_areas = True
 SPIKES_VERSION = "kilosort_if_exists" # since Snippets not yet extracted for ks
 combine_into_larger_areas = False
@@ -37,16 +37,21 @@ list_time_windows = [(-0.6, 0.6)]
 pca_frac_var_keep = 0.8
 n_min_per_levo= 5
 HACK_CHUNKS = True
-TWIND_STROKE = [-0.1, 0.1]
 
-# 3/24/24 - Params, trying to get more global structure, for chunk variables.
-LIST_UMAP_N_NEIGHBORS = [45]
-TWIND_STROKE = [-0.15, 0.15]
+# LIST_UMAP_N_NEIGHBORS = [30]
+# TWIND_STROKE = [-0.1, 0.1]
+
+# # 3/24/24 - Params, trying to get more global structure, for chunk variables.
+# LIST_UMAP_N_NEIGHBORS = [45]
+# TWIND_STROKE = [-0.15, 0.15]
 
 # 3/25/24 - Params, less influence of context
 LIST_UMAP_N_NEIGHBORS = [45]
-TWIND_STROKE = [-0.1, 0.1]
+# TWIND_STROKE = [-0.1, 0.1]
 
+# 4/??/24 - Trying to look at in between strokes (e..g, syntax represnetation here?)
+TWIND_STROKE = [-0.4, -0.1]
+#
 def get_list_twind_overall(ev):
     """ Get list of twindows that will iterate over, each time doing one analysis.
     """
@@ -275,7 +280,8 @@ if __name__=="__main__":
                                 single_vars_done.append(var_decode)
 
                         if question in ["RULE_BASE_stroke"]:
-                            # Sequence context, chunks (e.g., AnBm)
+                            # Sequence context, chunks
+                            # Usually AnBmCk
                             list_var_color_var_subplot.append([("chunk_rank", "shape"), ("chunk_n_in_chunk", "task_kind")])
                             list_var_color_var_subplot.append([("chunk_rank", "shape"), ("chunk_within_rank_semantic", "task_kind")])
                             list_var_color_var_subplot.append([("chunk_rank", "shape"), ("chunk_within_rank_semantic", "chunk_n_in_chunk", "task_kind")]) # ** GOOD
@@ -287,10 +293,10 @@ if __name__=="__main__":
                             list_var_color_var_subplot.append(["chunk_n_in_chunk", ("chunk_rank", "shape", "chunk_within_rank_semantic", "task_kind")]) # ** GOOD
 
                             # Each subplot is a syntax parse. Color by
-                            list_var_color_var_subplot.append([("chunk_rank", "chunk_within_rank"), ("taskcat_by_rule", "task_kind")]) # ** GOOD
-                            list_var_color_var_subplot.append([("chunk_within_rank", "chunk_rank"), ("taskcat_by_rule", "task_kind")])
-                            list_var_color_var_subplot.append([("shape", "chunk_within_rank"), ("taskcat_by_rule", "task_kind")])
-                            list_var_color_var_subplot.append([("chunk_within_rank", "shape"), ("taskcat_by_rule", "task_kind")])
+                            list_var_color_var_subplot.append([("chunk_rank", "chunk_within_rank"), ("taskcat_by_rule", "behseq_shapes", "task_kind")]) # ** GOOD
+                            list_var_color_var_subplot.append([("chunk_within_rank", "chunk_rank"), ("taskcat_by_rule", "behseq_shapes", "task_kind")])
+                            list_var_color_var_subplot.append([("shape", "chunk_within_rank"), ("taskcat_by_rule", "behseq_shapes", "task_kind")])
+                            list_var_color_var_subplot.append([("chunk_within_rank", "shape"), ("taskcat_by_rule", "behseq_shapes", "task_kind")])
 
                             # Show that it is not trivially explained by location or shape
                             list_var_color_var_subplot.append(["gridloc", "task_kind"])
@@ -302,6 +308,21 @@ if __name__=="__main__":
                             list_var_color_var_subplot.append(["stroke_index", ("task_kind", "FEAT_num_strokes_task")])
                             list_var_color_var_subplot.append(["stroke_index_fromlast", ("task_kind", "FEAT_num_strokes_task")])
                             list_var_color_var_subplot.append([("chunk_rank", "chunk_within_rank_semantic"), ("FEAT_num_strokes_task", "task_kind", "stroke_index")])
+
+                            # Also add those for predicting seuqence
+                            LIST_VAR, LIST_VARS_OTHERS, LIST_OVERWRITE_lenient_n = params_getter_raster_vars(which_level, "PIG_BASE_stroke")
+
+                            single_vars_done = []
+                            for var_decode, vars_conj in zip(LIST_VAR, LIST_VARS_OTHERS):
+
+                                if isinstance(var_decode, list):
+                                    var_decode = tuple(var_decode)
+
+                                list_var_color_var_subplot.append([var_decode, tuple(vars_conj)])
+                                if var_decode not in single_vars_done:
+                                    list_var_color_var_subplot.append([var_decode, "task_kind"])
+                                    single_vars_done.append(var_decode)
+
                         if question in ["RULESW_BASE_stroke"]:
                             # Switching between rules (e.g., AnBm vs. DIR)
                             # Currneetly assuming is just shapes vs. locations... (i.e. deterministic shape).
@@ -368,14 +389,23 @@ if __name__=="__main__":
                             list_var_color_var_subplot.append(["epoch", ("epochset", "shape", "gridloc", "CTXT_loc_prev", "CTXT_shape_prev")]) # ** GOOD
                             list_var_color_var_subplot.append(["epoch", ("epochset", "shape", "gridloc", "CTXT_loc_prev", "CTXT_shape_prev", "CTXT_loc_next")])
 
+                            # # (2) Copies of above (1) but using color, not epoch.
+                            # list_var_color_var_subplot.append(["stroke_index", ("task_kind", "FEAT_num_strokes_task", "INSTRUCTION_COLOR")])
+                            # list_var_color_var_subplot.append(["stroke_index", ("task_kind", "FEAT_num_strokes_task", "epochset", "INSTRUCTION_COLOR")]) # ** GOOD
+                            # list_var_color_var_subplot.append(["gridloc_x", ("epochset", "INSTRUCTION_COLOR")]) # ** GOOD
+                            # list_var_color_var_subplot.append(["gridloc", ("epochset", "INSTRUCTION_COLOR")]) # ** GOOD
+                            # list_var_color_var_subplot.append(["shape", ("epochset", "INSTRUCTION_COLOR")]) # ** GOOD
+                            # list_var_color_var_subplot.append(["INSTRUCTION_COLOR", ("epochset", "shape", "gridloc", "CTXT_loc_prev", "CTXT_shape_prev")]) # ** GOOD
+                            # list_var_color_var_subplot.append(["INSTRUCTION_COLOR", ("epochset", "shape", "gridloc", "CTXT_loc_prev", "CTXT_shape_prev", "CTXT_loc_next")])
+
                             # (2) Copies of above (1) but using color, not epoch.
-                            list_var_color_var_subplot.append(["stroke_index", ("task_kind", "FEAT_num_strokes_task", "INSTRUCTION_COLOR")])
-                            list_var_color_var_subplot.append(["stroke_index", ("task_kind", "FEAT_num_strokes_task", "epochset", "INSTRUCTION_COLOR")]) # ** GOOD
-                            list_var_color_var_subplot.append(["gridloc_x", ("epochset", "INSTRUCTION_COLOR")]) # ** GOOD
-                            list_var_color_var_subplot.append(["gridloc", ("epochset", "INSTRUCTION_COLOR")]) # ** GOOD
-                            list_var_color_var_subplot.append(["shape", ("epochset", "INSTRUCTION_COLOR")]) # ** GOOD
-                            list_var_color_var_subplot.append(["INSTRUCTION_COLOR", ("epochset", "shape", "gridloc", "CTXT_loc_prev", "CTXT_shape_prev")]) # ** GOOD
-                            list_var_color_var_subplot.append(["INSTRUCTION_COLOR", ("epochset", "shape", "gridloc", "CTXT_loc_prev", "CTXT_shape_prev", "CTXT_loc_next")])
+                            list_var_color_var_subplot.append(["stroke_index", ("task_kind", "FEAT_num_strokes_task", "epoch_rand")])
+                            list_var_color_var_subplot.append(["stroke_index", ("task_kind", "FEAT_num_strokes_task", "epochset", "epoch_rand")]) # ** GOOD
+                            list_var_color_var_subplot.append(["gridloc_x", ("epochset", "epoch_rand")]) # ** GOOD
+                            list_var_color_var_subplot.append(["gridloc", ("epochset", "epoch_rand")]) # ** GOOD
+                            list_var_color_var_subplot.append(["shape", ("epochset", "epoch_rand")]) # ** GOOD
+                            list_var_color_var_subplot.append(["epoch_rand", ("epochset", "shape", "gridloc", "CTXT_loc_prev", "CTXT_shape_prev")]) # ** GOOD
+                            list_var_color_var_subplot.append(["epoch_rand", ("epochset", "shape", "gridloc", "CTXT_loc_prev", "CTXT_shape_prev", "CTXT_loc_next")])
 
                             # (2) Chunk rank stuff. This is possible becuase color trials also have extraction of chunk rank.
                             list_var_color_var_subplot.append([("chunk_rank", "shape"), ("chunk_within_rank_semantic", "chunk_n_in_chunk", "task_kind", "epochset", "INSTRUCTION_COLOR")])
@@ -383,19 +413,25 @@ if __name__=="__main__":
                             list_var_color_var_subplot.append(["chunk_within_rank_semantic", ("chunk_rank", "shape", "chunk_n_in_chunk", "task_kind", "epochset", "epoch")])
                             list_var_color_var_subplot.append(["chunk_n_in_chunk", ("chunk_rank", "shape", "chunk_within_rank_semantic", "task_kind", "epochset", "INSTRUCTION_COLOR")])
 
+                            list_var_color_var_subplot.append([("chunk_rank", "shape"), ("chunk_within_rank_semantic", "chunk_n_in_chunk", "task_kind", "epoch_rand")])
+                            list_var_color_var_subplot.append(["chunk_within_rank_semantic", ("chunk_rank", "shape", "chunk_n_in_chunk", "task_kind", "epoch_rand")])
+                            list_var_color_var_subplot.append(["chunk_n_in_chunk", ("chunk_rank", "shape", "chunk_within_rank_semantic", "task_kind", "epoch_rand")])
+
                             # (4) Stuff from SINGLE RULE (AnBm), but adding conditioning on epoch or INSTRUCTION_COLOR
                             # Each subplot is a syntax parse. Color by
-                            list_var_color_var_subplot.append([("chunk_rank", "chunk_within_rank_semantic"), ("task_kind", "epochset", "epoch", "taskcat_by_rule")]) # ** GOOD
-                            list_var_color_var_subplot.append([("chunk_rank", "chunk_within_rank_semantic"), ("task_kind", "epochset", "INSTRUCTION_COLOR", "taskcat_by_rule")]) # ** GOOD
+                            list_var_color_var_subplot.append([("chunk_rank", "chunk_within_rank_semantic"), ("task_kind", "epochset", "epoch", "taskcat_by_rule", "behseq_shapes")]) # ** GOOD
+                            # list_var_color_var_subplot.append([("chunk_rank", "chunk_within_rank_semantic"), ("task_kind", "epochset", "INSTRUCTION_COLOR", "taskcat_by_rule", "behseq_shapes")]) # ** GOOD
+                            list_var_color_var_subplot.append([("chunk_rank", "chunk_within_rank_semantic"), ("task_kind", "epochset", "epoch_rand", "taskcat_by_rule", "behseq_shapes")]) # ** GOOD
                             list_var_color_var_subplot.append([("chunk_rank", "chunk_within_rank_semantic"), ("task_kind", "epochset", "epoch")]) # ** GOOD
-                            list_var_color_var_subplot.append([("chunk_rank", "chunk_within_rank_semantic"), ("task_kind", "epochset", "INSTRUCTION_COLOR")]) # ** GOOD
+                            # list_var_color_var_subplot.append([("chunk_rank", "chunk_within_rank_semantic"), ("task_kind", "epochset", "INSTRUCTION_COLOR")]) # ** GOOD
+                            list_var_color_var_subplot.append([("chunk_rank", "chunk_within_rank_semantic"), ("task_kind", "epochset", "epoch_rand")]) # ** GOOD
 
                             # Each subplot is a syntax parse. Color by
                             if False: # Skip for now, since taskcat_by_rule does not describe beh accurately for color instruction trials (it depends on the image).
-                                list_var_color_var_subplot.append([("chunk_rank", "chunk_within_rank"), ("taskcat_by_rule", "task_kind", "epochset", "INSTRUCTION_COLOR")])
-                                list_var_color_var_subplot.append([("chunk_within_rank", "chunk_rank"), ("taskcat_by_rule", "task_kind", "epochset", "INSTRUCTION_COLOR")])
-                                list_var_color_var_subplot.append([("shape", "chunk_within_rank"), ("taskcat_by_rule", "task_kind", "epochset", "INSTRUCTION_COLOR")])
-                                list_var_color_var_subplot.append([("chunk_within_rank", "shape"), ("taskcat_by_rule", "task_kind", "epochset", "INSTRUCTION_COLOR")])
+                                list_var_color_var_subplot.append([("chunk_rank", "chunk_within_rank"), ("taskcat_by_rule", "behseq_shapes", "task_kind", "epochset", "INSTRUCTION_COLOR")])
+                                list_var_color_var_subplot.append([("chunk_within_rank", "chunk_rank"), ("taskcat_by_rule", "behseq_shapes", "task_kind", "epochset", "INSTRUCTION_COLOR")])
+                                list_var_color_var_subplot.append([("shape", "chunk_within_rank"), ("taskcat_by_rule", "behseq_shapes", "task_kind", "epochset", "INSTRUCTION_COLOR")])
+                                list_var_color_var_subplot.append([("chunk_within_rank", "shape"), ("taskcat_by_rule", "behseq_shapes", "task_kind", "epochset", "INSTRUCTION_COLOR")])
 
                     else:
                         # Older, which I used for PIG strokes... SHould replace with avbove?
@@ -594,30 +630,111 @@ if __name__=="__main__":
                                                  vars_subplot=var_subplot, list_dims=[(0,1)],
                                                  STROKES_BEH=STROKES_BEH, STROKES_TASK=STROKES_TASK, n_min_per_levo=n_min_per_levo)
 
+                    ########################## grouping trials by the duration of bins between chunks
+                    VARS_GAP_DUR_BINS = ["chunkgap_(0, 1)_durbin", "chunkgap_(1, 2)_durbin"]
+                    list_subplot = [
+                        ["taskcat_by_rule"],
+                        ["taskcat_by_rule", "behseq_shapes_clust"],
+                        ["taskcat_by_rule", "behseq_locs_clust"],
+                        ["taskcat_by_rule", "behseq_locs_diff_clust"],
+                        ]
+                    for t in VARS_GAP_DUR_BINS:
+                        if t in dflab.columns:
+                            list_subplot.append(["taskcat_by_rule", "behseq_locs_clust", t])
+
                     if HACK_CHUNKS:
-                        var_color = ["chunk_rank", "chunk_within_rank"]
-                        var_subplot = ["taskcat_by_rule", "task_kind"]
-                        overlay_mean_var_color = "chunk_rank"
-                        connect_means_with_line = True
-                        dflab = append_col_with_grp_index(dflab, var_color, "_tmp")
-                        connect_means_with_line_levels = sorted(dflab["_tmp"].unique().tolist())
+                        # AnBmCk
+                        for var_subplot in list_subplot:
+                            var_color = ["chunk_rank", "chunk_within_rank"]
+                            # var_subplot = ["taskcat_by_rule", "behseq_shapes", "task_kind"]
+                            overlay_mean_var_color = "chunk_rank"
+                            connect_means_with_line = True
+                            dflab = append_col_with_grp_index(dflab, var_color, "_tmp")
+                            connect_means_with_line_levels = sorted(dflab["_tmp"].unique().tolist())
 
-                        trajgood_plot_colorby_splotby_scalar_WRAPPER(Xredu, dflab, var_color, savedir,
-                                                 vars_subplot=var_subplot, list_dims=[(0,1)], connect_means_with_line=connect_means_with_line,
-                                                              connect_means_with_line_levels=connect_means_with_line_levels,
-                                                                     overlay_mean=True, overlay_mean_var_color=overlay_mean_var_color,
-                                                                     alpha=0.3)
+                            # Only keep cases that have low and high bin durations (otherwise too many plots).
+                            FOUND=False
+                            for _var_effect in VARS_GAP_DUR_BINS:
+                                if _var_effect in var_subplot:
+                                    assert FOUND==False, "only one of the vars in VARS_GAPDUR.. should be in var_supblot."
+                                    _vars_others = [v for v in var_subplot if not v==_var_effect]
+                                    dflab_this, _ = extract_with_levels_of_conjunction_vars_helper(dflab, _var_effect, _vars_others)
+                                    Xredu_this = Xredu[dflab_this["_index"].tolist(), :]
+                                    FOUND=True
+                            if not FOUND:
+                                Xredu_this = Xredu
+                                dflab_this = dflab
+                            trajgood_plot_colorby_splotby_scalar_WRAPPER(Xredu_this, dflab_this, var_color, savedir,
+                                                     vars_subplot=var_subplot, list_dims=[(0,1)], connect_means_with_line=connect_means_with_line,
+                                                                  connect_means_with_line_levels=connect_means_with_line_levels,
+                                                                         overlay_mean=True, overlay_mean_var_color=overlay_mean_var_color,
+                                                                         alpha=0.3)
 
-                    if HACK_CHUNKS and question in ["RULEVSCOL_BASE_stroke", "RULESW_BASE_stroke"]:
-                        var_color = ["chunk_rank", "chunk_within_rank"]
-                        var_subplot = ["taskcat_by_rule", "task_kind", "epochset", "epoch"]
-                        overlay_mean_var_color = "chunk_rank"
-                        connect_means_with_line = True
-                        dflab = append_col_with_grp_index(dflab, var_color, "_tmp")
-                        connect_means_with_line_levels = sorted(dflab["_tmp"].unique().tolist())
+                    # Split by epochs
+                    list_subplot = [
+                        ["taskcat_by_rule", "epochset", "epoch"],
+                        ["taskcat_by_rule", "behseq_shapes_clust", "epochset", "epoch"],
+                        ["taskcat_by_rule", "behseq_locs_clust", "epochset", "epoch"],
+                        ["taskcat_by_rule", "behseq_locs_diff_clust", "epochset", "epoch"],
+                        ]
+                    for t in VARS_GAP_DUR_BINS:
+                        if t in dflab.columns:
+                            list_subplot.append(["taskcat_by_rule", "behseq_locs_clust", t])
+                    if HACK_CHUNKS and question in ["RULESW_BASE_stroke"]:
+                        for var_subplot in list_subplot:
+                            var_color = ["chunk_rank", "chunk_within_rank"]
+                            # var_subplot = ["taskcat_by_rule", "behseq_shapes", "task_kind", "epochset", "epoch"]
+                            overlay_mean_var_color = "chunk_rank"
+                            connect_means_with_line = True
+                            dflab = append_col_with_grp_index(dflab, var_color, "_tmp")
+                            connect_means_with_line_levels = sorted(dflab["_tmp"].unique().tolist())
 
-                        trajgood_plot_colorby_splotby_scalar_WRAPPER(Xredu, dflab, var_color, savedir,
-                                                 vars_subplot=var_subplot, list_dims=[(0,1)], connect_means_with_line=connect_means_with_line,
-                                                              connect_means_with_line_levels=connect_means_with_line_levels,
-                                                                     overlay_mean=True, overlay_mean_var_color=overlay_mean_var_color,
-                                                                     alpha=0.3)
+                            # Only keep cases that have low and high bin durations (otherwise too many plots).
+                            FOUND=False
+                            for _var_effect in VARS_GAP_DUR_BINS:
+                                if _var_effect in var_subplot:
+                                    assert FOUND==False, "only one of the vars in VARS_GAPDUR.. should be in var_supblot."
+                                    _vars_others = [v for v in var_subplot if not v==_var_effect]
+                                    dflab_this, _ = extract_with_levels_of_conjunction_vars_helper(dflab, _var_effect, _vars_others)
+                                    Xredu_this = Xredu[dflab_this["_index"].tolist(), :]
+                                    FOUND=True
+                            if not FOUND:
+                                Xredu_this = Xredu
+                                dflab_this = dflab
+                            trajgood_plot_colorby_splotby_scalar_WRAPPER(Xredu_this, dflab_this, var_color, savedir,
+                                                     vars_subplot=var_subplot, list_dims=[(0,1)], connect_means_with_line=connect_means_with_line,
+                                                                  connect_means_with_line_levels=connect_means_with_line_levels,
+                                                                         overlay_mean=True, overlay_mean_var_color=overlay_mean_var_color,
+                                                                         alpha=0.3)
+
+                    if HACK_CHUNKS and question in ["RULEVSCOL_BASE_stroke"]:
+                        tmp = list_subplot + [["taskcat_by_rule", "behseq_shapes_clust", "epoch_rand"],
+                                                    ["taskcat_by_rule", "behseq_locs_clust", "epoch_rand"],
+                                                    ["taskcat_by_rule", "behseq_locs_diff_clust", "epoch_rand"]]
+                        for var_subplot in tmp:
+                            var_color = ["chunk_rank", "chunk_within_rank"]
+                            # var_subplot = ["taskcat_by_rule", "behseq_shapes", "task_kind", "epochset", "epoch"]
+                            overlay_mean_var_color = "chunk_rank"
+                            connect_means_with_line = True
+                            dflab = append_col_with_grp_index(dflab, var_color, "_tmp")
+                            connect_means_with_line_levels = sorted(dflab["_tmp"].unique().tolist())
+
+                            # Only keep cases that have low and high bin durations (otherwise too many plots).
+                            FOUND=False
+                            for _var_effect in VARS_GAP_DUR_BINS:
+                                if _var_effect in var_subplot:
+                                    assert FOUND==False, "only one of the vars in VARS_GAPDUR.. should be in var_supblot."
+                                    _vars_others = [v for v in var_subplot if not v==_var_effect]
+                                    dflab_this, _ = extract_with_levels_of_conjunction_vars_helper(dflab, _var_effect, _vars_others)
+                                    Xredu_this = Xredu[dflab_this["_index"].tolist(), :]
+                                    FOUND=True
+                            if not FOUND:
+                                Xredu_this = Xredu
+                                dflab_this = dflab
+                            trajgood_plot_colorby_splotby_scalar_WRAPPER(Xredu_this, dflab_this, var_color, savedir,
+                                                     vars_subplot=var_subplot, list_dims=[(0,1)], connect_means_with_line=connect_means_with_line,
+                                                                  connect_means_with_line_levels=connect_means_with_line_levels,
+                                                                         overlay_mean=True, overlay_mean_var_color=overlay_mean_var_color,
+                                                                         alpha=0.3)
+
+
