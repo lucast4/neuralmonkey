@@ -1350,7 +1350,8 @@ def trajgood_plot_colorby_splotby_scalar_WRAPPER(X, dflab, var_color, savedir,
                                                  n_min_per_levo=None,
                                                  overlay_mean=False, overlay_mean_var_color=None,
                                                  connect_means_with_line=False, connect_means_with_line_levels=None,
-                                                 SIZE=7, alpha=0.5):
+                                                 SIZE=7, alpha=0.5,
+                                                 skip_subplots_lack_mult_colors=True, save_suffix=None):
     """
     Final wrapper to make many plots, each figure showing supblots one for each levv of otehr var, colored
     by levels of var. Across figures, show different projections to dim pairs. And plot sepraerpte figuers for
@@ -1369,6 +1370,11 @@ def trajgood_plot_colorby_splotby_scalar_WRAPPER(X, dflab, var_color, savedir,
     :return:
     """
     from neuralmonkey.analyses.state_space_good import cleanup_remove_labels_ignore
+
+    if save_suffix is not None:
+        save_suffix = f"-{save_suffix}"
+    else:
+        save_suffix = ""
 
     if overlay_mean_var_color is not None and overlay_mean:
         # Currently, overlay_mean_var_color must be subset of var_color
@@ -1428,7 +1434,7 @@ def trajgood_plot_colorby_splotby_scalar_WRAPPER(X, dflab, var_color, savedir,
                                                                                            alpha=alpha,
                                                                                            overlay_mean=False,
                                                                                            text_to_plot=text_to_plot,
-                                                                                           skip_subplots_lack_mult_colors=True,
+                                                                                           skip_subplots_lack_mult_colors=skip_subplots_lack_mult_colors,
                                                                                            n_min_per_levo=n_min_per_levo,
                                                                                            connect_means_with_line=connect_means_with_line,
                                                                                            connect_means_with_line_levels=connect_means_with_line_levels)
@@ -1443,7 +1449,7 @@ def trajgood_plot_colorby_splotby_scalar_WRAPPER(X, dflab, var_color, savedir,
                 trajgood_plot_colorby_groupby_meanscalar_BASE(ax, xsthis, ysthis, dflabthis, var_color_for_name, colorby_ind_in_vars_mean)
 
         # Save
-        path = f"{savedir}/color={var_color_for_name}-sub={vars_subplot_string}-dims={dim1, dim2}.pdf"
+        path = f"{savedir}/color={var_color_for_name}-sub={vars_subplot_string}-dims={dim1, dim2}{save_suffix}.pdf"
         print("fig:", path)
         if fig is not None:
             print("Saving ... ", path)
@@ -1457,10 +1463,10 @@ def trajgood_plot_colorby_splotby_scalar_WRAPPER(X, dflab, var_color, savedir,
                                                                                                overlay_mean=False, text_to_plot=text_to_plot,
                                                                                                STROKES_BEH=STROKES_BEH, STROKES_TASK=STROKES_TASK,
                                                                                                n_strokes_overlay_per_lev=3,
-                                                                                               skip_subplots_lack_mult_colors=True,
+                                                                                               skip_subplots_lack_mult_colors=skip_subplots_lack_mult_colors,
                                                                                                n_min_per_levo=n_min_per_levo)
             if fig is not None:
-                path = f"{savedir}/color={var_color_for_name}-sub={vars_subplot_string}-dims={dim1, dim2}-STROKES_OVERLAY.pdf"
+                path = f"{savedir}/color={var_color_for_name}-sub={vars_subplot_string}-dims={dim1, dim2}{save_suffix}-STROKES_OVERLAY.pdf"
                 print("Saving ... ", path)
                 savefig(fig, path)
 
@@ -1479,7 +1485,7 @@ def trajgood_plot_colorby_splotby_scalar(xs, ys, labels_color, labels_subplot,
                                          skip_subplots_lack_mult_colors = False,
                                          n_min_per_levo=None,
                                        connect_means_with_line=False,
-                                       connect_means_with_line_levels=None
+                                       connect_means_with_line_levels=None,
                                          ):
     """
     Like trajgood_plot_colorby_splotby_scalar, but passing in the raw data directly, instead
@@ -1648,7 +1654,7 @@ def _trajgood_plot_colorby_splotby_scalar(df, var_color_by, var_subplots,
     if len(levs_other)==0:
         return None, None, None, None
 
-    max_n_subplots = 32
+    max_n_subplots = 40
     if len(levs_other)>max_n_subplots:
         # sort by n datapts, and take the top n
         if True:
@@ -1661,7 +1667,7 @@ def _trajgood_plot_colorby_splotby_scalar(df, var_color_by, var_subplots,
             levs_other = sort_mixed_type(random.sample(levs_other, max_n_subplots))
             print("... pruned to: ", len(levs_other))
 
-    ncols = 4
+    ncols = 5
     nrows = int(np.ceil(len(levs_other)/ncols))
     fig, axes = plt.subplots(nrows, ncols, sharex=True, sharey=True,
                              figsize=(ncols*SIZE, nrows*SIZE))
