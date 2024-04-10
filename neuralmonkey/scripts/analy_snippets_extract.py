@@ -107,7 +107,7 @@ def extract_snippets_all_sessions(MS, which_level, EVENTS_KEEP=None, FORCE_EXTRA
 
         ######### DO EXTRACTION
         SP = extraction_helper(sn, which_level, PRE_DUR=PRE_DUR, POST_DUR=POST_DUR,
-                               EVENTS_KEEP=EVENTS_KEEP)
+                               EVENTS_KEEP=EVENTS_KEEP) 
 
         ##############################
         if do_save:

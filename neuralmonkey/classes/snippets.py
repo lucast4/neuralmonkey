@@ -7643,6 +7643,9 @@ class Snippets(object):
                 return 'OFFSCREEN'
             return names[shape_ind]
 
+        def getClosestShapeLocToCentroid(sn, trial, centroid, outlier_threshold=600):
+            return str(getClosestShapeToCentroid(sn, trial, centroid, outlier_threshold) + getClosestLocToCentroid(sn, trial, centroid, outlier_threshold))
+
         ###############
         ## LOCATIONS ##
         ###############
@@ -7682,7 +7685,7 @@ class Snippets(object):
         ## add drawing sequence information directly to SP
         D = self.datasetbeh_extract_dataset()
         D.seqcontext_preprocess()
-        list_features_extraction_seq = ["seqc_0_shape", "seqc_0_loc", "seqc_1_shape", "seqc_1_loc", "seqc_2_shape", "seqc_2_loc", "seqc_3_shape", "seqc_3_loc",]
+        list_features_extraction_seq = ["seqc_0_shape", "seqc_0_loc", "seqc_1_shape", "seqc_1_loc", "seqc_2_shape", "seqc_2_loc", "seqc_3_shape", "seqc_3_loc", "seqc_0_loc_on_clust", "seqc_1_loc_on_clust", "seqc_2_loc_on_clust", "seqc_3_loc_on_clust"]
         self.datasetbeh_append_column_helper(list_features_extraction_seq, D, stop_if_fail=True)
         print("finished appending oclumsn..")
         sessions = self.DfScalar['session_idx'].unique()
@@ -7729,6 +7732,7 @@ class Snippets(object):
                     shapefix = getClosestShapeToCentroid(sn, nt, e_cntrd)
                     dummy_df.loc[e_df_inds, 'shape-fixation'] = shapefix
                     print("fiished shapefix")
+
                     ## add loc-fixation
                     locfix = getClosestLocToCentroid(sn, nt, e_cntrd)
                     dummy_df.loc[e_df_inds, 'loc-fixation'] = locfix
@@ -7759,6 +7763,15 @@ class Snippets(object):
                             dummy_df.loc[e_df_inds, 'first-fixation-on-shape'] = False
                         else:
                             dummy_df.loc[e_df_inds, 'first-fixation-on-shape'] = True
+
+                        # add prev shape fixation
+                        dummy_df.loc[e_df_inds, 'prev-shape-fixation'] = shape_prev
+                        # for good measure, add prev loc fixation
+                        dummy_df.loc[e_df_inds, 'prev-loc-fixation'] = e_prev_df_temp.iloc[0]['loc-fixation']
+
+                    ## is fixated on first shape drawn?
+                    print("doing isfixatedonseqc0shape")
+                    dummy_df.loc[e_df_inds, 'is-fixated-on-seqc0shape'] = (e_df_temp.iloc[0]['shape-fixation'] == e_df_temp.iloc[0]['seqc_0_shape'])
                 # start counter, for first-fixation-on-shape
                 counter = 1
                 macrosacc_seq_shape = []
@@ -7795,8 +7808,8 @@ class Snippets(object):
                     # add angle
                     dummy_df.loc[e_df_inds, 'saccade-dir-angle'] = math.atan2((y-y_prev), (x-x_prev))+math.pi # make between 0-360
 
-                # bin saccade direction into 4 quadrants
-                dummy_df['saccade-dir-angle-bin'] = pd.cut(dummy_df['saccade-dir-angle'], bins=4, labels=["quadrant1", "quadrant2", "quadrant3", "quadrant4"])
+            # bin saccade direction into 4 quadrants
+            dummy_df['saccade-dir-angle-bin'] = pd.cut(dummy_df['saccade-dir-angle'], bins=4, labels=["quadrant1", "quadrant2", "quadrant3", "quadrant4"])
             print("concatting all dataframes...")
             dummy_df_all = pd.concat([dummy_df_all, dummy_df])
         # finally, set SP.DfScalar to dummy_df

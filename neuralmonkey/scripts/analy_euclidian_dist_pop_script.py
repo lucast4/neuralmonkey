@@ -263,6 +263,8 @@ def plot_all_results(DFRES, SAVEDIR):
                                                       diverge=True, ncols=None, share_zlim=True)
                     savefig(fig, f"{savedirthis}/allconj_heatmap.pdf")
                     plt.close("all")
+=======
+>>>>>>> Stashed changes
 
 if __name__=="__main__":
 
