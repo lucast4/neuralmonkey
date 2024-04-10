@@ -2002,7 +2002,7 @@ def euclidian_distance_compute_score_single(pa, var, var_others, PLOT=False, PLO
     # Get masks of context
     # if PLOT_MASKS==True and path_for_save_print_lab_each_mask==None:
     #     path_for_save_print_lab_each_mask = "/tmp/masks.pdf"
-    if context_input is not None or len(context_input)==0:
+    if context_input is not None and len(context_input)==0:
         print("Generating masks using context:", context_input)
         if "diff_context_ver" in context_input:
             diff_context_ver = context_input["diff_context_ver"]
@@ -2143,7 +2143,7 @@ def euclidian_distance_compute_score_single(pa, var, var_others, PLOT=False, PLO
 
 
     # ------------ get context
-    if context_input is not None or len(context_input)==0:
+    if context_input is not None and len(context_input)==0:
         print("Generating masks using context:", context_input)
         if "diff_context_ver" in context_input:
             diff_context_ver = context_input["diff_context_ver"]
@@ -2268,30 +2268,6 @@ def euclidian_distance_compute_score_single(pa, var, var_others, PLOT=False, PLO
                 "dist":dist,
                 "dat_level":dat_level,
             })
-
-    # SKIP, not sure whats the point of this.
-    # # Get masks of context
-    # MASKS, _, _ = Cldist_each_dat.rsa_mask_context_helper(var, var_others, "diff_at_least_one", PLOT=False)
-    # map_grp_to_mask = Cldist_each_dat.rsa_mask_context_split_levels_of_conj_var(var_others, PLOT=False, exclude_diagonal=True)
-    # for grp, ma in map_grp_to_mask.items():
-    #
-    #     # Also collect "same" effect (and same context, as above)
-    #     ma_final = ma & MASKS["effect_same"]
-    #     if False:
-    #         # Mean pairwise distance
-    #         dist = Cldist_each_dat.Xinput[ma_final].mean()
-    #     else:
-    #         # 95th percentile - i.e., "width" of distribution.
-    #         # dist = np.percentile(Cldist_each_dat.Xinput[ma_final].flatten(), 95)
-    #         dist = Cldist_each_dat.Xinput[ma_final].mean()
-    #     res.append({
-    #         "var":var,
-    #         "var_others":tuple(var_others),
-    #         "effect_samediff":"same_pt_pairs",
-    #         "context_samediff":"same",
-    #         "levo":grp,
-    #         "dist":dist,
-    #     })
 
     return res
 
@@ -2444,7 +2420,11 @@ def euclidian_distance_compute(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT_MASKS,
 
         from pythonlib.tools.listtools import stringify_list
         # plot_mask_path = f"{savedir}/MASK-var={var_for_name}-ovar={'|'.join(var_others)}-context={stringify_list(context)}.pdf"
-        plot_mask_path = f"{savedir}/{i_var}_MASK-var={var_for_name}-ovar={'|'.join(var_others)}-context={stringify_list(context['diff'])}.pdf" # just diff, or else too lomg. diff is main info anyway
+        if context is not None:
+            plot_mask_path = f"{savedir}/{i_var}_MASK-var={var_for_name}-ovar={'|'.join(var_others)}-context={stringify_list(context['diff'])}.pdf" # just diff, or else too lomg. diff is main info anyway
+        else:
+            plot_mask_path = f"{savedir}/{i_var}_MASK-var={var_for_name}-ovar={'|'.join(var_others)}-context={context}.pdf" # just diff, or else too lomg. diff is main info anyway
+
         res = euclidian_distance_compute_score_single(pa, var, var_others, PLOT, PLOT_MASKS,
                                                       version_distance=version_distance,
                                                       AGG_BEFORE_DIST=AGG_BEFORE_DIST, context_input=context,

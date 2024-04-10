@@ -34,6 +34,235 @@ from neuralmonkey.analyses.decode_good import preprocess_extract_X_and_labels
 DEBUG = False
 SPIKES_VERSION = "kilosort_if_exists" # since Snippets not yet extracted for ks
 nmin_trials_per_lev = 5
+LIST_NPCS_KEEP = [10]
+extra_dimred_method = "umap"
+umap_n_neighbors = 40
+
+def plot_all_results(DFRES, SAVEDIR):
+    """
+    Wrapper to make all plots of reusults.
+    :param DFRES:
+    :param SAVEDIR:
+    :return:
+    """
+    from pythonlib.tools.pandastools import pivot_table
+    import seaborn as sns
+    from pythonlib.tools.snstools import rotateLabel
+    from pythonlib.tools.plottools import savefig
+    from pythonlib.tools.pandastools import summarize_featurediff, plot_subplots_heatmap, stringify_values
+
+    # Compute normalized distnaces
+    DFRES["dist_norm_95"] = DFRES["dist"]/DFRES["DIST_NULL_95"]
+    DFRES["dist_norm_50"] = DFRES["dist"]/DFRES["DIST_NULL_50"]
+    DFRES["var_others"] = [tuple(x) for x in DFRES["var_others"]]
+    DFRES = append_col_with_grp_index(DFRES, ["index_var", "var", "var_others"], "var_var_others")
+    DFRES = append_col_with_grp_index(DFRES, ["effect_samediff", "context_samediff"], "effect_context")
+
+    # Stringify, or else will fail groupby step
+    DFRES = stringify_values(DFRES)
+
+    ###########################################################################
+    # Get dataframe with each row being a specific set of variables.
+    DFRES_PIVOT = pivot_table(DFRES, ["var", "var_others", "shuffled", "bregion", "twind", "event", "var_var_others", "dat_level"], ["effect_context"], ["dist_norm_95"], flatten_col_names=True).reset_index(drop=True)
+
+    # Compute effects tha DFRES_PIVOT[DFRES_PIVOT["dat_level"] == "pts"].reset_index(drop=True)t require inputs from multiple distance metrics.
+    DFRES_PIVOT_DISTR = DFRES_PIVOT[DFRES_PIVOT["dat_level"] == "distr"].reset_index(drop=True)
+    DFRES_PIVOT_DISTR["effect_index"] = DFRES_PIVOT_DISTR["dist_norm_95-diff|same"] / (DFRES_PIVOT_DISTR["dist_norm_95-diff|same"] + DFRES_PIVOT_DISTR["dist_norm_95-same|diff"])
+
+    # Keep only the data using pairwise distances
+    DFRES_PIVOT_PAIRWISE = DFRES_PIVOT[DFRES_PIVOT["dat_level"] == "pts"].reset_index(drop=True)
+
+    DFRES_PIVOT_PAIRWISE["effect_index"] = DFRES_PIVOT_PAIRWISE["dist_norm_95-diff|same"] / (DFRES_PIVOT_PAIRWISE["dist_norm_95-diff|same"] + DFRES_PIVOT_PAIRWISE["dist_norm_95-same|diff"])
+
+    DFRES_PIVOT_PAIRWISE["norm_dist_effect"] = DFRES_PIVOT_PAIRWISE["dist_norm_95-diff|same"]-DFRES_PIVOT_PAIRWISE["dist_norm_95-same|same"]
+    # This makes less sense --> diff|diff can be different for many reasons, emprticlaly doesnt match intuition that well
+    # DFRES_PIVOT_PAIRWISE["norm_dist_context"] = DFRES_PIVOT_PAIRWISE["dist_norm_95-same|diff"] - DFRES_PIVOT_PAIRWISE["dist_norm_95-diff|diff"]
+    DFRES_PIVOT_PAIRWISE["norm_dist_context"] = DFRES_PIVOT_PAIRWISE["dist_norm_95-same|diff"] - DFRES_PIVOT_PAIRWISE["dist_norm_95-same|same"]
+    DFRES_PIVOT_PAIRWISE["norm_dist_both"] = DFRES_PIVOT_PAIRWISE["norm_dist_effect"] - DFRES_PIVOT_PAIRWISE["norm_dist_context"]
+    # DFRES_PIVOT_PAIRWISE["norm_dist_effect"] = DFRES_PIVOT_PAIRWISE["dist_norm_95-diff|same"]/DFRES_PIVOT_PAIRWISE["dist_norm_95-same|same"]
+    # DFRES_PIVOT_PAIRWISE["norm_dist_context"] = DFRES_PIVOT_PAIRWISE["dist_norm_95-same|diff"]/DFRES_PIVOT_PAIRWISE["dist_norm_95-diff|diff"]
+    # DFRES_PIVOT_PAIRWISE["norm_dist_both"] = DFRES_PIVOT_PAIRWISE["norm_dist_effect"]/DFRES_PIVOT_PAIRWISE["norm_dist_context"]
+
+    ################### Good normalization method...
+    # - First, cap everything by min and max (normalize all do (diff, diff) (so max is 1))
+    SS = DFRES_PIVOT_PAIRWISE["dist_norm_95-same|same"].values
+    DD = DFRES_PIVOT_PAIRWISE["dist_norm_95-diff|diff"].values
+    DS = DFRES_PIVOT_PAIRWISE["dist_norm_95-diff|same"].values
+    SD = DFRES_PIVOT_PAIRWISE["dist_norm_95-same|diff"].values
+    MIN = SS
+    MAX = DD
+
+    # - clamp
+    DS[DS < MIN] = MIN[DS < MIN]
+    DS[DS > MAX] = MAX[DS > MAX]
+    SD[SD < MIN] = MIN[SD < MIN]
+    SD[SD > MAX] = MAX[SD > MAX]
+
+    def _compute_scores(A, B, C, D):
+        assert np.all(A>=0)
+        assert np.all(B>=0)
+        assert np.all(C>=0)
+        assert np.all(D>=0)
+
+        s1 = (A/B) * (C/D) # aka (A*C)/(B*D)
+        s2 = (A*C) - (B*D)
+        s3 = 0.5 * (A - B) + (C - D)
+
+        a = A - B
+        b = C - D
+        a[a<0] = 0. # to make sure dont multiply neg by neg.
+        b[b<0] = 0.
+        s4 = a * b
+
+        a = A - D
+        b = C - B
+        a[a<0] = 0. # to make sure dont multiply neg by neg.
+        b[b<0] = 0.
+        s5 = a * b
+
+        return s1, s2, s3, s4, s5
+
+    # SCores that use ratios
+    A = DS/SS
+    B = DD/DS
+    C = DD/SD
+    D = SD/SS
+    # -- good ones:
+    s1, s2, s3, s4, s5 = _compute_scores(A, B, C, D)
+    DFRES_PIVOT_PAIRWISE["gen_idx_ratio_1"] = s1
+    DFRES_PIVOT_PAIRWISE["gen_idx_ratio_2"] = s2
+    # -- Just testing
+    DFRES_PIVOT_PAIRWISE["gen_idx_ratio_3"] = s3
+    DFRES_PIVOT_PAIRWISE["gen_idx_ratio_4"] = s4
+    DFRES_PIVOT_PAIRWISE["gen_idx_ratio_5"] = s5
+
+    # Scores that use differences
+    A = DS - SS
+    B = DD - DS
+    C = DD - SD
+    D = SD - SS
+    s1, s2, s3, s4, s5 = _compute_scores(A, B, C, D)
+
+    # -- Just testing:
+    DFRES_PIVOT_PAIRWISE["gen_idx_diff_1"] = s1
+    DFRES_PIVOT_PAIRWISE["gen_idx_diff_2"] = s2
+    # -- good ones
+    DFRES_PIVOT_PAIRWISE["gen_idx_diff_3"] = s3
+    DFRES_PIVOT_PAIRWISE["gen_idx_diff_4"] = s4
+    DFRES_PIVOT_PAIRWISE["gen_idx_diff_5"] = s5
+
+    ############## OLDER VERSION OF GENERLAZATION INDEX
+    # 1. normalize all do (diff, diff) (so max is 1)
+    yvar = "dist_norm_95"
+    for ef in ["same", "diff"]:
+        for ctxt in ["same", "diff"]:
+            DFRES_PIVOT_PAIRWISE[f"DIST-{ef}|{ctxt}"] = DFRES_PIVOT_PAIRWISE[f"{yvar}-{ef}|{ctxt}"]/DFRES_PIVOT_PAIRWISE[f"{yvar}-diff|diff"]
+
+    # 2.
+    A = DFRES_PIVOT_PAIRWISE[f"DIST-diff|same"] - DFRES_PIVOT_PAIRWISE[f"DIST-same|same"]
+    B = DFRES_PIVOT_PAIRWISE[f"DIST-diff|diff"] - DFRES_PIVOT_PAIRWISE[f"DIST-same|diff"]
+    C = (DFRES_PIVOT_PAIRWISE[f"DIST-diff|diff"] - DFRES_PIVOT_PAIRWISE[f"DIST-same|same"]) + 0.02 # 0.02 is to reduce noise.
+    DFRES_PIVOT_PAIRWISE["generalization_index"] = A*B
+    DFRES_PIVOT_PAIRWISE["generalization_index_scaled"] = (A/C) * (B/C)
+
+    ######################################### QUICK PLOT - SUMMARIES
+    import seaborn as sns
+    from pythonlib.tools.snstools import rotateLabel
+    from pythonlib.tools.plottools import savefig
+    from pythonlib.tools.pandastools import summarize_featurediff
+
+    savedir = f"{SAVEDIR}/FIGURES"
+    os.makedirs(savedir, exist_ok=True)
+
+    ########## OVERVIEWS
+    yvar = "dist_norm_95"
+    for yvarthis in [yvar, "dist", "DIST_NULL_95"]:
+        for dat_level in DFRES["dat_level"].unique():
+            dfthis = DFRES[DFRES["dat_level"]==dat_level]
+
+            fig = sns.catplot(data=dfthis, x="bregion", y=yvarthis, col="var_var_others", hue="effect_context",
+                              col_wrap=3, aspect=1.57, alpha=0.4, height=6)
+            rotateLabel(fig)
+            savefig(fig, f"{savedir}/overview_scatter-{yvarthis}-{dat_level}.pdf")
+
+            fig = sns.catplot(data=dfthis, x="bregion", y=yvarthis, col="var_var_others", hue="effect_context",
+                              col_wrap=3, aspect=1.7, kind="bar", height=6)
+            rotateLabel(fig)
+            savefig(fig, f"{savedir}/overview_bar-{yvarthis}-{dat_level}.pdf")
+
+            plt.close("all")
+
+    ########## OVERVIEWS (OLD - effect index)
+    yvarthis = "effect_index"
+    fig = sns.catplot(data=DFRES_PIVOT_DISTR, x="bregion", y=yvarthis, hue="var_var_others",  aspect=1.7, col="dat_level",
+                      height=6, kind="bar")
+    rotateLabel(fig)
+    savefig(fig, f"{savedir}/effect_index-bar.pdf")
+
+    ########## OVERVIEWS (dat_level = pts)
+    for yvarthis in ["norm_dist_effect", "norm_dist_context", "norm_dist_both", "generalization_index", "generalization_index_scaled",
+                     "gen_idx_diff_1", "gen_idx_diff_2", "gen_idx_diff_3", "gen_idx_diff_4", "gen_idx_diff_5",
+                     "gen_idx_ratio_1", "gen_idx_ratio_2", "gen_idx_ratio_3", "gen_idx_ratio_4", "gen_idx_ratio_5"]:
+        if yvarthis in DFRES_PIVOT_PAIRWISE.columns:
+            fig = sns.catplot(data=DFRES_PIVOT_PAIRWISE, x="bregion", y=yvarthis, hue="var_var_others",  aspect=1.7, height=6, kind="bar")
+            rotateLabel(fig)
+            savefig(fig, f"{savedir}/FINAL-{yvarthis}-bar.pdf")
+
+            # Also plot splitting by yvar
+            fig = sns.catplot(data=DFRES_PIVOT_PAIRWISE, x="bregion", y=yvarthis, hue="var_var_others",  col="var_var_others",
+                              aspect=1, height=6, kind="bar")
+            rotateLabel(fig)
+            savefig(fig, f"{savedir}/FINAL-{yvarthis}-bar-splitby_yvar.pdf")
+
+            # Also plot splitting by bregion
+            fig = sns.catplot(data=DFRES_PIVOT_PAIRWISE, x="bregion", y=yvarthis, hue="var_var_others",  col="bregion",
+                              aspect=1, height=6, kind="bar")
+            rotateLabel(fig)
+            savefig(fig, f"{savedir}/FINAL-{yvarthis}-bar-splitby_bregion.pdf")
+        plt.close("all")
+
+    ########### PLOT ALL specific conjunction levels in heatmaps
+    sns.set_context("paper", rc={"axes.labelsize":5})
+
+    for dat_level in DFRES["dat_level"].unique():
+        DFTHIS = DFRES[DFRES["dat_level"] == dat_level].reset_index(drop=True)
+
+        # Plot histograms
+        savedirthis = f"{savedir}/histograms-dat_level={dat_level}"
+        os.makedirs(savedirthis, exist_ok=True)
+        print("... ", savedirthis)
+
+        fig = sns.displot(data=DFTHIS, x="dist_norm_95", hue="effect_context", col="bregion", row="var_var_others", element="step", fill=True, bins=20)
+        savefig(fig, f"{savedirthis}/step.pdf")
+        fig = sns.displot(data=DFTHIS, x="dist_norm_95", hue="effect_context", col="bregion", row="var_var_others", kind="kde", fill=False)
+        savefig(fig, f"{savedirthis}/kde.pdf")
+
+        print("Plotting specific conjucntions heatmaps ... ")
+        yvar = "dist"
+        list_effect_context = DFTHIS["effect_context"].unique()
+        list_shuffled = DFTHIS["shuffled"].unique()
+        for effect_context in list_effect_context:
+            for shuffled in list_shuffled:
+
+                dfthis = DFTHIS[(DFTHIS["effect_context"]==effect_context) & (DFTHIS["shuffled"]==shuffled)].reset_index(drop=True)
+                if len(dfthis)>0:
+                    savedirthis = f"{savedir}/each_conjunction-effect_context={effect_context}-shuffled={shuffled}-dat_level={dat_level}"
+                    os.makedirs(savedirthis, exist_ok=True)
+                    print("... ", savedirthis)
+
+                    # # 1) Scatter
+                    # list_vvo = dfthis["var_var_others"].unique().tolist()
+                    # for vvo in list_vvo:
+                    #     dfthisthis = dfthis[dfthis["var_var_others"]==vvo]
+                    #     fig = sns.catplot(data=dfthisthis, x=yvar, y="levo", col="bregion", alpha=0.4)
+                    #     savefig(fig, f"{savedirthis}/allconj_scatter-vvo={vvo}.pdf", height=6)
+                    #     plt.close("all")
+
+                    # 2) Heatmap
+                    fig, axes = plot_subplots_heatmap(dfthis, "bregion", "levo", yvar, "var_var_others",
+                                                      diverge=True, ncols=None, share_zlim=True)
+                    savefig(fig, f"{savedirthis}/allconj_heatmap.pdf")
+                    plt.close("all")
 
 if __name__=="__main__":
 
