@@ -136,3 +136,6 @@ dmypy.json
 
 ############# OTHRE THIGNS
 preprocess_log*.txt
+
+dfallpa*.pkl
+.idea/*
