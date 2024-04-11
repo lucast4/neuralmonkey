@@ -7431,7 +7431,9 @@ class Snippets(object):
             list_features_extraction = (list_features_extraction + ["chunk_rank", "chunk_within_rank", "chunk_within_rank_semantic",
                                                         "chunk_within_rank_fromlast", "chunk_n_in_chunk", "epoch_rand",
                                                         "chunk_diff_from_prev"] + ["taskcat_by_rule", "behseq_shapes"] +
-                                        ["syntax_concrete", "syntax_role"] + ["epoch_orig_rand_seq", "epoch_is_AnBmCk", "superv_is_seq_sup", "INSTRUCTION_COLOR"])
+                                        ["syntax_concrete", "syntax_role"] + ["epoch_orig_rand_seq", "epoch_is_AnBmCk", "superv_is_seq_sup", "INSTRUCTION_COLOR"]
+                                        + ["epochset_diff_motor"]
+                                        )
 
             # Add concrete variations within each taskcat_by_rule
             LIST_VAR_BEHORDER=["behseq_shapes", "behseq_locs", "behseq_locs_x", "behseq_locs_diff", "behseq_locs_diff_x"]
