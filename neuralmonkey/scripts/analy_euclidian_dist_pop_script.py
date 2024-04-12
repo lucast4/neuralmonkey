@@ -21,6 +21,7 @@ from neuralmonkey.classes.population_mult import dfallpa_extraction_load_wrapper
 import sys
 import numpy as np
 from pythonlib.tools.plottools import savefig
+from pythonlib.tools.pandastools import append_col_with_grp_index
 from pythonlib.globals import PATH_ANALYSIS_OUTCOMES
 import os
 import sys
