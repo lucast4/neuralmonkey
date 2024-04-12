@@ -24,10 +24,10 @@ date1=$d
 # touch ${logfile}
 
 until [[ ${date1} > ${date2} ]]; do
-  logfile=../logs/log_preprocess_good_${animal}_${date1}.txt
-  touch ${logfile}
+  #logfile=../logs/log_preprocess_good_${animal}_${date1}.txt
+  #touch ${logfile}
   echo ${date1}
   echo ${logfile}
-  python -m neuralmonkey.scripts.load_and_save_locally ${date1} ${animal} 2>&1 | tee ${logfile}
+  python -m neuralmonkey.scripts.load_and_save_locally ${date1} ${animal} #2>&1 | tee ${logfile}
   date1=$(date +%y%m%d -d "${date1} + 1 day")
 done
