@@ -1,13 +1,13 @@
 #!/bin/bash -e
 
-##################
+###################
 animal=Diego
-question=RULESW_ANBMCK_DIR_STROKE
+question=RULESW_ANY_SEQSUP_STROKE
 which_level=stroke
-#datelist=(230917 230823 230804 230809 230825 230813 230827 230919) # AnBmCk vs. DIR
-#datelist=(230705 230703 230711 230713 230719) # ABC vs. DIR
-datelist=(230719 230823 230804 230827 230919) # quick subset good
-#datelist=(230823) # testing, 4/9
+#datelist=(230922 230920 230921) # SH vs DIR vs SEQSUP
+#datelist=(230924 230925) # SH vs DIR vs SEQSUP vs COLOR_RANK
+datelist=(230922 230920 230921 230924 230925) # ALL
+#datelist=(230922 230924) # quick, test of all
 for date1 in "${datelist[@]}"
 do
   logfile="../logs/analy_euclidian_dist_pop-${animal}_${date1}_${question}.txt"
@@ -17,12 +17,15 @@ do
   sleep 1m
 done
 #sleep 40m
+#
 
 animal=Pancho
-question=RULESW_ANBMCK_DIR_STROKE
+question=RULESW_ANY_SEQSUP_STROKE
 which_level=stroke
-#datelist=(221023 230910 230912 230914 230919)
-datelist=(221023 230910 230914 230919) # quick subset good
+#datelist=(230923 230921 230920) # SH vs DIR vs SEQSUP
+#datelist=(231019 231020) # SH vs DIR vs SEQSUP vs COLOR_RANK
+datelist=(230923 230921 230920 231019 231020) # ALL
+#datelist=() # quick, test of all
 for date1 in "${datelist[@]}"
 do
   logfile="../logs/analy_euclidian_dist_pop-${animal}_${date1}_${question}.txt"
