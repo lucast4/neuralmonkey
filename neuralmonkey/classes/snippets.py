@@ -4404,12 +4404,12 @@ class Snippets(object):
             df_var.to_csv(f)
             
         path = f"{savedir}/dfscalar_sorted_by_zscore.csv"
-        dfout_sorted = df_var.sort_values(by="val_zscore")
+        dfout_sorted = df_var.sort_values(by="val_zscore").reset_index(drop=True)
         with open(path, "w") as f:
             dfout_sorted.to_csv(f)
             
         path = f"{savedir}/dfscalar_sorted_by_score.csv"
-        dfout_sorted = df_var.sort_values(by="val")
+        dfout_sorted = df_var.sort_values(by="val").reset_index(drop=True)
         with open(path, "w") as f:
             dfout_sorted.to_csv(f)
             
@@ -7431,8 +7431,9 @@ class Snippets(object):
             list_features_extraction = (list_features_extraction + ["chunk_rank", "chunk_within_rank", "chunk_within_rank_semantic",
                                                         "chunk_within_rank_fromlast", "chunk_n_in_chunk", "epoch_rand",
                                                         "chunk_diff_from_prev"] + ["taskcat_by_rule", "behseq_shapes"] +
-                                        ["syntax_concrete", "syntax_role"] + ["epoch_orig_rand_seq", "epoch_is_AnBmCk", "superv_is_seq_sup", "INSTRUCTION_COLOR"]
-                                        + ["epochset_diff_motor"]
+                                        ["syntax_concrete", "syntax_role"] + ["epoch_orig_rand_seq", "epoch_is_AnBmCk", "epoch_is_DIR",
+                                                                              "superv_is_seq_sup", "INSTRUCTION_COLOR"]
+                                        + ["epochset_diff_motor", "epochset_shape", "epochset_dir"]
                                         )
 
             # Add concrete variations within each taskcat_by_rule
@@ -7586,7 +7587,7 @@ class Snippets(object):
         return D, list_features_extraction
 
     # adds additional columns for SP.DfScalar here (including code to loop, and append_column vars)
-    # NOTE: assumes multiple session SP, e.g. from 
+    # NOTE: assumes multiple session SP, e.g. from
     def _addSaccadeFixationColumns(self):
         import math
         # get the start, end times for the window spanned by start_event, end_event
@@ -7595,7 +7596,7 @@ class Snippets(object):
             dict_event_times = sn.events_get_time_sorted(trial, list_events=(start_event, end_event))[0]
             start_time = dict_event_times[start_event][0]
             end_time = dict_event_times[end_event][0]
-            
+
             return start_time, end_time
 
         # array of tokens, each one is a task stroke with info such as shapename etc.
@@ -7613,7 +7614,7 @@ class Snippets(object):
             for i, t in enumerate(ts):
                 shape_name = t['shape'] + '-' + str(i) # adds unique tag onto it, so same shape is named differently
                 shape_names.append(t['shape'])
-            
+
             return shape_names
 
         def getShapeCentroidsInOrder(sn, trial):
@@ -7626,7 +7627,7 @@ class Snippets(object):
                 #print("name", name)
                 #print("centroid", centroid)
                 shape_centroids[name] = centroid
-                
+
             return shape_centroids # returns dict {name: [x,y]}
 
         def getClosestShapeToCentroid(sn, trial, centroid, outlier_threshold=600):
@@ -7635,11 +7636,11 @@ class Snippets(object):
             shapeDict = getShapeCentroidsInOrder(sn, trial)
             distances = []
             names = []
-            
+
             for name in shapeDict:
                 names.append(name)
                 distances.append(math.dist(shapeDict[name], [x,y]))
-            
+
             shape_ind = np.argmin(distances)
             if distances[shape_ind] >= outlier_threshold:
                 return 'OFFSCREEN'
@@ -7659,9 +7660,9 @@ class Snippets(object):
             for t in ts:
                 loc_names.append(str(t['gridloc']))
                 loc_coords.append(t['center'])
-            
+
             return loc_names, loc_coords
-            
+
 
         def getClosestLocToCentroid(sn, trial, centroid, outlier_threshold=600):
             x = centroid[0]
@@ -7669,14 +7670,14 @@ class Snippets(object):
             locs = getLocationsAndCentroidsInOrder(sn, trial)
             locNames = locs[0]
             locCentroids = locs[1]
-            
+
             distances = []
             names = []
-            
+
             for i, name in enumerate(locNames):
                 names.append(name)
                 distances.append(math.dist(locCentroids[i], [x,y]))
-            
+
             loc_ind = np.argmin(distances)
             if distances[loc_ind] >= outlier_threshold:
                 return 'OFFSCREEN'

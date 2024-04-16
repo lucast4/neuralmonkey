@@ -2102,20 +2102,20 @@ def euclidian_distance_compute_score_single(pa, var, var_others, PLOT=False, PLO
                 "dat_level":dat_level
             })
 
-        # Looser version of above -- difference btween contexts, ignoring the level of var
-        ma_final = ma & MASKS["context_diff"] & ma_ut
-        if np.sum(ma_final)>0:
-            dist = Cldist.Xinput[ma_final].mean()
-            res.append({
-                "var":var,
-                "var_others":tuple(var_others),
-                "effect_samediff":"any",
-                "context_samediff":"diff",
-                "levo":"ALL",
-                "leveff":lev_effect,
-                "dist":dist,
-                "dat_level":dat_level
-            })
+        # # Looser version of above -- difference btween contexts, ignoring the level of var
+        # ma_final = ma & MASKS["context_diff"] & ma_ut
+        # if np.sum(ma_final)>0:
+        #     dist = Cldist.Xinput[ma_final].mean()
+        #     res.append({
+        #         "var":var,
+        #         "var_others":tuple(var_others),
+        #         "effect_samediff":"any",
+        #         "context_samediff":"diff",
+        #         "levo":"ALL",
+        #         "leveff":lev_effect,
+        #         "dist":dist,
+        #         "dat_level":dat_level
+        #     })
 
         # Distance for (diff effect, diff context)
         ma_final = ma & MASKS["effect_diff"] & MASKS["context_diff"] & ma_ut
@@ -2188,9 +2188,11 @@ def euclidian_distance_compute_score_single(pa, var, var_others, PLOT=False, PLO
     # (NOTE: this does nto care about "context")
     for grp, ma in map_grp_to_mask.items():
         ma_final = ma & MASKS["effect_diff"] & ma_ut
-        if np.any(ma_final): # might not have if allow for cases with 1 level of effect var.
-            dist = Cldist_each_dat.Xinput[ma_final].mean()
 
+        dist_diff_same = None
+        dist_same_same = None
+        if np.any(ma_final): # might not have if allow for cases with 1 level of effect var.
+            dist_diff_same = Cldist_each_dat.Xinput[ma_final].mean()
             res.append({
                 "var":var,
                 "var_others":tuple(var_others),
@@ -2198,16 +2200,14 @@ def euclidian_distance_compute_score_single(pa, var, var_others, PLOT=False, PLO
                 "context_samediff":"same",
                 "levo":grp,
                 "leveff":"ALL",
-                "dist":dist,
+                "dist":dist_diff_same,
                 "dat_level":dat_level,
             })
 
         # Also collect "same" effect (and same context, as above)
         ma_final = ma & MASKS["effect_same"] & ma_ut
-        dist = Cldist_each_dat.Xinput[ma_final].mean()
         if np.any(ma_final): # might not have if allow for cases with 1 level of effect var.
-            dist = Cldist_each_dat.Xinput[ma_final].mean()
-
+            dist_same_same = Cldist_each_dat.Xinput[ma_final].mean()
             res.append({
                 "var":var,
                 "var_others":tuple(var_others),
@@ -2215,19 +2215,39 @@ def euclidian_distance_compute_score_single(pa, var, var_others, PLOT=False, PLO
                 "context_samediff":"same",
                 "levo":grp,
                 "leveff":"ALL",
-                "dist":dist,
+                "dist":dist_same_same,
                 "dat_level":dat_level,
             })
+
+        # Normalized effect
+        if (dist_diff_same is not None) and (dist_same_same is not None):
+            dist_yue = dist_diff_same/dist_same_same
+            res.append({
+                "var":var,
+                "var_others":tuple(var_others),
+                "effect_samediff":"diff",
+                "context_samediff":"same",
+                "levo":grp,
+                "leveff":"ALL",
+                "dist":dist_yue,
+                "dat_level":"pts_yue",
+            })
+
 
     #### ACROSS CONTEXTS (compute separately for each level of effect)
     for lev_effect, ma in map_grp_to_mask_vareffect.items():
         # Also collect (same effect, diff context)
         # For each level of var, get its distance to that same level of var across
         # all contexts.
-        # - same effect diff context
-        ma_final = ma & MASKS["effect_same"] & MASKS["context_diff"] & ma_ut
+
+        dist_same_same = None
+        dist_same_diff = None
+        dist_diff_diff = None
+
+        # - same effect, same context - just for normalizing.
+        ma_final = ma & MASKS["effect_same"] & MASKS["context_same"] & ma_ut
         if np.sum(ma_final)>0:
-            dist = Cldist_each_dat.Xinput[ma_final].mean()
+            dist_same_same = Cldist_each_dat.Xinput[ma_final].mean()
             res.append({
                 "var":var,
                 "var_others":tuple(var_others),
@@ -2235,29 +2255,45 @@ def euclidian_distance_compute_score_single(pa, var, var_others, PLOT=False, PLO
                 "context_samediff":"diff",
                 "levo":"ALL",
                 "leveff":lev_effect,
-                "dist":dist,
+                "dist":dist_same_same,
                 "dat_level":dat_level,
             })
 
-        # Looser version of above -- difference btween contexts, ignoring the level of var
-        ma_final = ma & MASKS["context_diff"] & ma_ut
+
+        # - same effect diff context
+        ma_final = ma & MASKS["effect_same"] & MASKS["context_diff"] & ma_ut
         if np.sum(ma_final)>0:
-            dist = Cldist_each_dat.Xinput[ma_final].mean()
+            dist_same_diff = Cldist_each_dat.Xinput[ma_final].mean()
             res.append({
                 "var":var,
                 "var_others":tuple(var_others),
-                "effect_samediff":"any",
+                "effect_samediff":"same",
                 "context_samediff":"diff",
                 "levo":"ALL",
                 "leveff":lev_effect,
-                "dist":dist,
+                "dist":dist_same_diff,
                 "dat_level":dat_level,
             })
+
+        # # Looser version of above -- difference btween contexts, ignoring the level of var
+        # ma_final = ma & MASKS["context_diff"] & ma_ut
+        # if np.sum(ma_final)>0:
+        #     dist = Cldist_each_dat.Xinput[ma_final].mean()
+        #     res.append({
+        #         "var":var,
+        #         "var_others":tuple(var_others),
+        #         "effect_samediff":"any",
+        #         "context_samediff":"diff",
+        #         "levo":"ALL",
+        #         "leveff":lev_effect,
+        #         "dist":dist,
+        #         "dat_level":dat_level,
+        #     })
 
         # Distance for (diff effect, diff context)
         ma_final = ma & MASKS["effect_diff"] & MASKS["context_diff"] & ma_ut
         if np.sum(ma_final)>0:
-            dist = Cldist_each_dat.Xinput[ma_final].mean()
+            dist_diff_diff = Cldist_each_dat.Xinput[ma_final].mean()
             res.append({
                 "var":var,
                 "var_others":tuple(var_others),
@@ -2265,8 +2301,32 @@ def euclidian_distance_compute_score_single(pa, var, var_others, PLOT=False, PLO
                 "context_samediff":"diff",
                 "levo":"ALL",
                 "leveff":lev_effect,
-                "dist":dist,
+                "dist":dist_diff_diff,
                 "dat_level":dat_level,
+            })
+
+        # Normalized effect
+        if (dist_same_same is not None) and (dist_same_diff is not None):
+            res.append({
+                "var":var,
+                "var_others":tuple(var_others),
+                "effect_samediff":"same",
+                "context_samediff":"diff",
+                "levo":"ALL",
+                "leveff":lev_effect,
+                "dist":dist_same_diff/dist_same_same,
+                "dat_level":"pts_yue",
+            })
+        if (dist_same_same is not None) and (dist_diff_diff is not None):
+            res.append({
+                "var":var,
+                "var_others":tuple(var_others),
+                "effect_samediff":"diff",
+                "context_samediff":"diff",
+                "levo":"ALL",
+                "leveff":lev_effect,
+                "dist":dist_diff_diff/dist_same_same,
+                "dat_level":"pts_yue",
             })
 
     return res

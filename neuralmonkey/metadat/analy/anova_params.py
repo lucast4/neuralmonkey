@@ -1071,8 +1071,9 @@ def dataset_apply_params(D, DS, ANALY_VER, animal, DATE, save_substroke_preproce
 
         # Append variables by hand
         # D = self.datasetbeh_extract_dataset()
-        if "FEAT_num_strokes_task" not in D.Dat.columns:
-            D.extract_beh_features()
+        # if "FEAT_num_strokes_task" not in D.Dat.columns:
+        D.extract_beh_features()
+
         # if "char_seq" not in D.Dat.columns:
         #     D.sequence_char_taskclass_assign_char_seq()
         if "seqc_nstrokes_task" not in D.Dat.columns:
@@ -1148,8 +1149,8 @@ def dataset_apply_params(D, DS, ANALY_VER, animal, DATE, save_substroke_preproce
             savedir_preprocess = D.make_savedir_for_analysis_figures_BETTER("preprocess_general")
             sdir = f"{savedir_preprocess}/seqcontext_behorder_cluster_concrete_variation"
             os.makedirs(sdir, exist_ok=True)
-            D.seqcontext_behorder_cluster_concrete_variation(SAVEDIR=sdir,
-                                                 LIST_VAR_BEHORDER=["behseq_shapes", "behseq_locs",
+            D.seqcontext_behseq_cluster_concrete_variation(SAVEDIR=sdir,
+                                                           LIST_VAR_BEHORDER=["behseq_shapes", "behseq_locs",
                                                                     "behseq_locs_x", "behseq_locs_diff", "behseq_locs_diff_x"])
 
             if True:
@@ -1193,6 +1194,12 @@ def dataset_apply_params(D, DS, ANALY_VER, animal, DATE, save_substroke_preproce
             # For each token, assign a new key called "syntax role" -- good.
             D.grammarparses_syntax_role_append_to_tokens()
 
+            # Epochsets, figure out if is same or diff motor beahvior (quick and dirty)
+            D.grammarparses_syntax_epochset_quick_classify_same_diff_motor()
+
+            # Define separate epochsets based on matching motor beh within each epoch_orig
+            D.epochset_extract_matching_motor_wrapper()
+            # D.grammarparses_rules_epochs_superv_summarize_wrapper(PRINT=True, include_epochset=True)
             plt.close("all")
 
         ###### MAKE SURE DS is None, if you dont want to use it to prune SP.
@@ -1690,7 +1697,7 @@ def params_getter_raster_vars(which_level, question, OVERWRITE_lenient_n=2):
             ["task_kind", "FEAT_num_strokes_task", "stroke_index_fromlast_tskstks"],
             ]
 
-    elif which_level == "stroke" and question in ["RULE_BASE_stroke"]:
+    elif which_level == "stroke" and question in ["RULE_BASE_stroke", "RULE_ANBMCK_STROKE", "RULE_COLRANK_STROKE", "RULE_DIR_STROKE", "RULE_ROWCOL_STROKE"]:
         # "gridloc", # subplots = indices within chunk
 
         LIST_VAR = [
@@ -1739,7 +1746,7 @@ def params_getter_raster_vars(which_level, question, OVERWRITE_lenient_n=2):
         LIST_OVERWRITE_lenient_n[4] = 1
         LIST_OVERWRITE_lenient_n[5] = 1
 
-    elif which_level == "stroke" and question in ["RULEVSCOL_BASE_stroke"]:
+    elif which_level == "stroke" and question in ["RULESW_ANBMCK_COLRANK_STROKE", "RULESW_ANY_SEQSUP_STROKE"]:
         # Switchign between two rules.
 
         # Use all of those that exist for single rule, but addition a conjucntion on epoch
@@ -1758,7 +1765,8 @@ def params_getter_raster_vars(which_level, question, OVERWRITE_lenient_n=2):
                                  "shape", "loc_on_clust", "CTXT_shape_prev", "CTXT_loconclust_next", "chunk_rank",
                                  "chunk_within_rank_semantic"])
 
-    elif which_level == "stroke" and question in ["RULESW_BASE_stroke"]:
+    elif which_level == "stroke" and question in ["RULESW_BASE_stroke", "RULESW_ANBMCK_DIR_STROKE",
+                                                  "RULESW_ANBMCK_COLRANK_STROKE", "RULESW_ANBMCK_ABN_STROKE"]:
         # Switchign between two rules.
 
         # Use all of those that exist for single rule, but addition a conjucntion on epoch
@@ -1809,6 +1817,957 @@ def params_getter_raster_vars(which_level, question, OVERWRITE_lenient_n=2):
     LIST_VAR = [list(var) if isinstance(var, tuple) else var for var in LIST_VAR]
 
     return LIST_VAR, LIST_VARS_OTHERS, LIST_OVERWRITE_lenient_n
+
+def params_getter_euclidian_vars(question):
+    """
+    Helper to get variables for euclidian distnace when this involves specific hand-pikced variables to test speciifc
+    hypotheses.
+    Written for syntax analyses.
+    """
+
+    if question is None:
+        all_questions = ["RULE_ROWCOL_STROKE", "RULE_DIR_STROKE", "RULE_ANBMCK_STROKE", "RULESW_ANBMCK_DIR_STROKE",
+                         "RULE_COLRANK_STROKE", "RULESW_ANBMCK_COLRANK_STROKE", "RULESW_ANY_SEQSUP_STROKE",
+                         "RULESW_ANBMCK_ABN_STROKE"]
+        # Do quick check that lengths match up (hand entered correctly)
+        for q in all_questions:
+            print("... testing: ", q)
+            params_getter_euclidian_vars(q)
+        print("PAssed all tests!")
+        return (None for _ in range(5))
+
+    if question == "RULESW_ANBMCK_ABN_STROKE":
+        LIST_VAR = [
+            #### SPECIFIC TO (AB)n
+            "chunk_rank", # in (AB)n, same shape, diff "chunk" **
+
+            #### EFFECT OF EPOCH
+            "epoch", # Epoch diff (diff motor)
+
+            #### BELOW ARE ALL taken from rowcol (except where marked with @@)
+            # Chunk_within_rank generalize across chunk_rank
+            "chunk_within_rank", # generalizing across rows **
+            "chunk_within_rank", # (more lenient)
+            "chunk_within_rank_semantic", # (same, but semantic)
+
+            "chunk_within_rank", # Generalize across syntax_concrete **
+
+            # Syntax role, generalize across other things.
+            "syntax_role", # Syntax role generalize across syntax concrete (and shape, as control)
+            "syntax_role", # Syntax role generalize across shape **
+            "syntax_role", # (more leneint)
+
+            "syntax_role", # Syntax role generalize across shape seq **
+            "syntax_role", # Generalize across location sequence **
+            "syntax_role", # Generalize across shape and location sequence **
+
+            # Syntax role, single-stroke level
+            "syntax_role", # See effect of syntax even after controlling for shape and location
+            "syntax_role", # See effect of syntax even after controlling for shape and location and context
+
+            # Syntax role is not just stroke index.
+            "syntax_role", # "Hierarchical" - See effect of syntax even after controlling for shape and stroke index?
+            "syntax_role", # "Hierarchical" - See effect of syntax even after controlling for shape and stroke index?
+        ]
+        # More restrictive
+        LIST_VARS_OTHERS = [
+            ["epoch", "shape", "chunk_within_rank"],
+
+            ["epochset", "shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust"],
+
+            ["epoch", "syntax_concrete", "chunk_rank"], #
+            ["epoch", "chunk_rank"], #
+            ["epoch", "chunk_rank"], #
+
+            ["epoch", "syntax_concrete", "chunk_rank"], #
+
+            ["epoch", "syntax_concrete", "shape"],
+            ["epoch", "syntax_concrete", "shape"],
+            ["epoch", "shape"],
+
+            ["epoch", "syntax_concrete", "behseq_shapes_clust"],
+            ["epoch", "syntax_concrete", "behseq_locs_clust"],
+            ["epoch", "shape", "syntax_concrete", "behseq_locs_clust"],
+
+            ["epoch", "shape", "gridloc"],
+            ["epoch", "shape", "gridloc", "CTXT_loc_prev"],
+
+            ["epoch", "shape", "stroke_index"],
+            ["epoch", "stroke_index"],
+            ]
+        LIST_CONTEXT = [
+            {"same":["epoch", "shape"], "diff":["chunk_within_rank"]},
+
+            None,
+
+            {"same":["epoch", "syntax_concrete"], "diff":["chunk_rank"]},
+            {"same":["epoch"], "diff":["chunk_rank"]},
+            {"same":["epoch"], "diff":["chunk_rank"]},
+
+            {"same":["epoch", "chunk_rank"], "diff":["syntax_concrete"]},
+
+            {"same":["epoch", "shape"], "diff":["syntax_concrete"]},
+            {"same":["epoch", "syntax_concrete"], "diff":["shape"]},
+            {"same":["epoch"], "diff":["shape"]},
+
+            {"same":["epoch", "syntax_concrete"], "diff":["behseq_shapes_clust"]},
+            {"same":["epoch", "syntax_concrete"], "diff":["behseq_locs_clust"]},
+            {"same":["epoch", "syntax_concrete", "shape"], "diff":["behseq_locs_clust"]},
+
+            {"same":["epoch"], "diff":["shape", "gridloc"]},
+            {"same":["epoch"], "diff":["shape", "gridloc", "CTXT_loc_prev"]},
+
+            {"same":["epoch", "shape"], "diff":["stroke_index"]},
+            {"same":["epoch"], "diff":["stroke_index"]},
+            ]
+        LIST_PRUNE_MIN_N_LEVS = [
+            2 for _ in range(len(LIST_VAR))
+        ]
+        filtdict = {
+            "stroke_index": list(range(1, 10, 1)), # [1, ..., ]
+        }
+        LIST_FILTDICT = [
+            filtdict for _ in range(len(LIST_VAR))
+        ]
+
+    elif question == "RULESW_ANY_SEQSUP_STROKE":
+        # Any vs. sequence superviosion, where "any" could be one or more grammars.
+
+        # Printed variables:
+        # vars = ["epochset_diff_motor", "epoch_orig", "epoch", "epoch_rand", "INSTRUCTION_COLOR", "superv_is_seq_sup", "epoch_orig_rand_seq", "epoch_is_AnBmCk"]
+        # (False, 'UL', 'UL', 'UL', False, False, False, False) :     900
+        # (False, 'UL', 'UL|S', 'UL|S', False, True, False, False) :     402
+        # (False, 'llCV2FstStk', 'llCV2FstStk|S', 'presetrand', False, True, True, False) :     6
+        # (False, 'llCV3', 'llCV3', 'llCV3', False, False, False, True) :     894
+        # (False, 'llCV3', 'llCV3|S', 'llCV3|S', False, True, False, False) :     438
+        # (True, 'llCV2FstStk', 'llCV2FstStk|S', 'presetrand', False, True, True, False) :     402
+        # (True, 'rndstr', 'rndstr|S', 'presetrand', False, True, True, False) :     78
+
+        LIST_VAR = [
+            ## preSMA, similar stroke_index for rule VS. sup_seq (on random seqsup only)
+            "stroke_index", #
+            "stroke_index", # preSMA, similar stroke_index for rule VS. sup_seq
+            "stroke_index", # preSMA, similar stroke_index for rule VS. sup_seq
+
+            "stroke_index", # stroke index (during sup_seq) doesnt care about behseq
+            "stroke_index", # stroke index (during sup_seq) doesnt care about behseq
+
+            ## preSMA loses SI structure during seqsup (motor matched) ***NEW
+            "stroke_index", # (dont care if is motor matched -- get all data)
+            "stroke_index", #
+            "stroke_index", # (motor matched)
+            "stroke_index", #
+
+            "stroke_index", # (cleanest, by exclude last stroke... not motor matched)
+            "stroke_index", #
+
+            # ==+ Effect of supervision... WELL CONTROLED
+            "superv_is_seq_sup", # color_rank (better approach, by testing color_rank directly) **
+            "superv_is_seq_sup", # (more lenient)
+            "superv_is_seq_sup", # (more lenient)
+            "superv_is_seq_sup", # (more lenient)
+
+            # === preSMA, strucrture collapses during seqsup?
+            "chunk_within_rank_semantic",
+            "chunk_within_rank_semantic",
+            "stroke_index",
+            "stroke_index",
+            "stroke_index",
+            "stroke_index",
+
+        ]
+        # More restrictive
+        LIST_VARS_OTHERS = [
+            ["epoch_rand"], #
+            ["superv_is_seq_sup"], #
+            ["superv_is_seq_sup", "epoch_orig"], #
+
+            ["epoch_rand", "FEAT_num_strokes_task", "behseq_shapes_clust", "behseq_locs_clust"], #
+            ["superv_is_seq_sup", "FEAT_num_strokes_task", "behseq_shapes_clust", "behseq_locs_clust"], #
+
+            ["epochset", "epoch_orig", "superv_is_seq_sup"],
+            ["epochset", "epoch_rand"],
+            ["epochset", "epoch_orig", "superv_is_seq_sup"],
+            ["epochset", "epoch_rand"],
+
+            ["epochset", "epoch_orig", "superv_is_seq_sup"],
+            ["epochset", "epoch_rand"],
+
+            # ==+ WELL CONTROLED
+            ["shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "CTXT_shape_prev", "CTXT_loconclust_next"],
+            ["shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "CTXT_shape_prev"],
+            ["shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust"],
+            ["shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust"],
+
+            ["epochset_shape", "epoch_rand", "chunk_rank", "shape", "superv_is_seq_sup"],
+            ["epochset_shape", "epoch_rand", "chunk_rank", "shape", "superv_is_seq_sup"],
+            ["epochset_dir", "epoch_rand", "superv_is_seq_sup"],
+            ["epochset_shape", "epoch_rand", "superv_is_seq_sup"],
+            ["epochset_dir", "epoch_rand", "superv_is_seq_sup"],
+            ["epochset_shape", "epoch_rand", "superv_is_seq_sup"],
+
+            ]
+        LIST_CONTEXT = [
+            {"same":[], "diff":["epoch_rand"]},
+            {"same":[], "diff":["superv_is_seq_sup"]},
+            {"same":["epoch_orig"], "diff":["superv_is_seq_sup"]},
+
+            {"same":["epoch_rand", "FEAT_num_strokes_task"], "diff":["behseq_shapes_clust", "behseq_locs_clust"]},
+            {"same":["superv_is_seq_sup", "FEAT_num_strokes_task"], "diff":["behseq_shapes_clust", "behseq_locs_clust"]},
+
+            {"same":["epochset", "epoch_orig"], "diff":["superv_is_seq_sup"]},
+            {"same":["epochset"], "diff":["epoch_rand"]},
+            {"same":["epochset", "epoch_orig"], "diff":["superv_is_seq_sup"]},
+            {"same":["epochset"], "diff":["epoch_rand"]},
+
+            {"same":["epochset", "epoch_orig"], "diff":["superv_is_seq_sup"]},
+            {"same":["epochset"], "diff":["epoch_rand"]},
+
+            # ==+ WELL CONTROLED
+            None,
+            None,
+            None,
+            None,
+
+            {"same":["epochset_shape", "epoch_rand", "chunk_rank", "shape"], "diff":["superv_is_seq_sup"]},
+            {"same":["epochset_shape", "epoch_rand", "chunk_rank", "shape"], "diff":["superv_is_seq_sup"]},
+            {"same":["epochset_dir", "epoch_rand"], "diff":["superv_is_seq_sup"]},
+            {"same":["epochset_shape", "epoch_rand"], "diff":["superv_is_seq_sup"]},
+            {"same":["epochset_dir", "epoch_rand"], "diff":["superv_is_seq_sup"]},
+            {"same":["epochset_shape", "epoch_rand"], "diff":["superv_is_seq_sup"]},
+
+        ]
+        LIST_PRUNE_MIN_N_LEVS = [
+            2 for _ in range(len(LIST_VAR))
+        ]
+        LIST_FILTDICT = [
+            {"stroke_index": list(range(1, 10, 1)), ("epoch_orig_rand_seq", "superv_is_seq_sup"):[(True, True), (False, False)]}, # if superv, then shoudl be rand
+            {"stroke_index": list(range(1, 10, 1)), ("epoch_orig_rand_seq", "superv_is_seq_sup"):[(True, True), (False, False)]}, # if superv, then shoudl be rand
+            {"stroke_index": list(range(1, 10, 1)), ("epoch_orig_rand_seq", "superv_is_seq_sup"):[(True, True), (False, False)]}, # if superv, then shoudl be rand
+
+            {"stroke_index": list(range(1, 10, 1)), ("epoch_orig_rand_seq", "superv_is_seq_sup"):[(True, True)]},
+            {"stroke_index": list(range(1, 10, 1)), ("epoch_orig_rand_seq", "superv_is_seq_sup"):[(True, True)]},
+
+            {"stroke_index": list(range(1, 10, 1))},
+            {"stroke_index": list(range(1, 10, 1))},
+            {"stroke_index": list(range(1, 10, 1)), ("epoch_orig_rand_seq", "superv_is_seq_sup"):[(False, True), (False, False)]}, # exclude True,True, which is random seq sup.
+            {"stroke_index": list(range(1, 10, 1)), ("epoch_orig_rand_seq", "superv_is_seq_sup"):[(False, True), (False, False)]}, # exclude True,True, which is random seq sup.
+
+            {"stroke_index": list(range(1, 10, 1)), "stroke_index_fromlast_tskstks": list(range(-10, -1, 1)), ("epoch_orig_rand_seq", "superv_is_seq_sup"):[(False, True), (False, False)]}, # exclude True,True, which is random seq sup.
+            {"stroke_index": list(range(1, 10, 1)), "stroke_index_fromlast_tskstks": list(range(-10, -1, 1)), ("epoch_orig_rand_seq", "superv_is_seq_sup"):[(False, True), (False, False)]}, # exclude True,True, which is random seq sup.
+
+            # ==+ WELL CONTROLED
+            {"stroke_index": list(range(1, 10, 1))},
+            {"stroke_index": list(range(1, 10, 1))},
+            {"stroke_index": list(range(1, 10, 1))},
+            {"stroke_index": list(range(1, 10, 1)), "epochset_diff_motor":[False]},
+
+            {"stroke_index": list(range(1, 10, 1))},
+            {"stroke_index": list(range(1, 10, 1)), "stroke_index_fromlast_tskstks": list(range(-10, -1, 1))},
+            {"stroke_index": list(range(1, 10, 1))},
+            {"stroke_index": list(range(1, 10, 1))},
+            {"stroke_index": list(range(1, 10, 1)), "stroke_index_fromlast_tskstks": list(range(-10, -1, 1))},
+            {"stroke_index": list(range(1, 10, 1)), "stroke_index_fromlast_tskstks": list(range(-10, -1, 1))},
+        ]
+
+    elif question == "RULE_ROWCOL_STROKE":
+        ################## ROWCOL
+        LIST_VAR = [
+            # Chunk_within_rank generalize across chunk_rank
+            "chunk_within_rank", # generalizing across rows **
+            "chunk_within_rank", # (more lenient)
+            "chunk_within_rank_semantic", # (same, but semantic)
+
+            "chunk_within_rank", # Generalize across syntax_concrete **
+
+            # Syntax role, generalize across other things.
+            "syntax_role", # Syntax role generalize across syntax concrete (and shape, as control)
+            "syntax_role", # Syntax role generalize across shape **
+            "syntax_role", # (more leneint)
+
+            "syntax_role", # Syntax role generalize across shape seq **
+            "syntax_role", # Generalize across shape and location sequence **
+
+            # Syntax role, single-stroke level
+            "syntax_role", # See effect of syntax even after controlling for shape and location
+            "syntax_role", # See effect of syntax even after controlling for shape and location and context
+
+            # Syntax role is not just stroke index.
+            "syntax_role", # "Hierarchical" - See effect of syntax even after controlling for shape and stroke index?
+            "syntax_role", # "Hierarchical" - See effect of syntax even after controlling for shape and stroke index?
+        ]
+        # More restrictive
+        LIST_VARS_OTHERS = [
+            ["epoch", "syntax_concrete", "chunk_rank"], #
+            ["epoch", "chunk_rank"], #
+            ["epoch", "chunk_rank"], #
+
+            ["epoch", "syntax_concrete", "chunk_rank"], #
+
+            ["epoch", "syntax_concrete", "shape"],
+            ["epoch", "syntax_concrete", "shape"],
+            ["epoch", "shape"],
+
+            ["epoch", "syntax_concrete", "behseq_shapes_clust"],
+            ["epoch", "shape", "syntax_concrete", "behseq_locs_clust"],
+
+            ["epoch", "shape", "gridloc"],
+            ["epoch", "shape", "gridloc", "CTXT_loc_prev"],
+
+            ["epoch", "shape", "stroke_index"],
+            ["epoch", "stroke_index"],
+            ]
+        LIST_CONTEXT = [
+            {"same":["epoch", "syntax_concrete"], "diff":["chunk_rank"]},
+            {"same":["epoch"], "diff":["chunk_rank"]},
+            {"same":["epoch"], "diff":["chunk_rank"]},
+
+            {"same":["epoch", "chunk_rank"], "diff":["syntax_concrete"]},
+
+            {"same":["epoch", "shape"], "diff":["syntax_concrete"]},
+            {"same":["epoch", "syntax_concrete"], "diff":["shape"]},
+            {"same":["epoch"], "diff":["shape"]},
+
+            {"same":["epoch", "syntax_concrete"], "diff":["behseq_shapes_clust"]},
+            {"same":["epoch", "syntax_concrete", "shape"], "diff":["behseq_locs_clust"]},
+
+            {"same":["epoch"], "diff":["shape", "gridloc"]},
+            {"same":["epoch"], "diff":["shape", "gridloc", "CTXT_loc_prev"]},
+
+            {"same":["epoch", "shape"], "diff":["stroke_index"]},
+            {"same":["epoch"], "diff":["stroke_index"]},
+            ]
+        LIST_PRUNE_MIN_N_LEVS = [
+            2 for _ in range(len(LIST_VAR))
+        ]
+        filtdict = {
+            "stroke_index": list(range(1, 10, 1)), # [1, ..., ]
+        }
+        LIST_FILTDICT = [
+            filtdict for _ in range(len(LIST_VAR))
+        ]
+
+    elif question == "RULE_DIR_STROKE":
+        # Single rule (direction)
+
+        LIST_VAR = [
+            # [Stroke index generlaizes]
+            "stroke_index", # preSMA reflect stroke index no matter the shape
+            "stroke_index", # (more strict - controlling loc context)
+            "stroke_index", # (more strict -- generalize across gridloc_x or gridloc_y)
+            "stroke_index", # (more strict -- generalize across gridloc_x or gridloc_y)
+            "stroke_index", # [vs. location] (might not have enough data)
+
+            # [SI generalizes across sequence]
+            "stroke_index", # preSMA reflect stroke index no matter the shape sequence
+
+            # [preSMA reflects locaiton, not shape]
+            "gridloc",
+        ]
+        # More restrictive
+        LIST_VARS_OTHERS = [
+            ["epoch", "shape"], # (note: do not put sequence context here)
+            ["epoch", "shape", "CTXT_loc_prev"], # (note: do not put sequence context here)
+            ["epoch", "shape", "gridloc_x"], # .
+            ["epoch", "shape", "gridloc_y"], # .
+            ["epoch", "gridloc"], # .
+
+            ["epoch", "FEAT_num_strokes_task", "behseq_shapes_clust"], # .
+
+            ["epoch", "shape"], # .
+            ]
+
+        LIST_CONTEXT = [
+            {"same":["epoch"], "diff":["shape"]},
+            {"same":["epoch", "CTXT_loc_prev"], "diff":["shape"]},
+            {"same":["epoch"], "diff":["shape", "gridloc_x"], "diff_context_ver":"diff_specific"},
+            {"same":["epoch"], "diff":["shape", "gridloc_y"], "diff_context_ver":"diff_specific"},
+            {"same":["epoch"], "diff":["gridloc"]},
+
+            {"same":["epoch", "FEAT_num_strokes_task"], "diff":["behseq_shapes_clust"]},
+
+            {"same":["epoch"], "diff":["shape"]},
+        ]
+        LIST_PRUNE_MIN_N_LEVS = [
+            2 for _ in range(len(LIST_VAR))
+        ]
+        LIST_FILTDICT = [
+            {"stroke_index": list(range(1, 10, 1))},
+            {"stroke_index": list(range(1, 10, 1))},
+            {"stroke_index": list(range(1, 10, 1))},
+            {"stroke_index": list(range(1, 10, 1))},
+            {"stroke_index": list(range(1, 10, 1))},
+            {"stroke_index": list(range(1, 10, 1))},
+            {"stroke_index": list(range(1, 10, 1))},
+        ]
+
+    elif question == "RULE_ANBMCK_STROKE":
+        # All cases of single rule AnBmCk, including when multiple epochs with diff shapes (e.g.,, Pancho), same syntaxes
+        # across epochs.
+
+        ################## AnBmCk [good]
+        LIST_VAR = [
+            ############################  SINGLE EPOCH
+            # [SHAPES] Chunk_wtihin (semantic), generalize across sjhapes/chunks
+            "chunk_within_rank_semantic", # generalize across chunks (same syntax concrete)
+            "chunk_within_rank_semantic", # (more lenient)
+
+            # [LOCATION] Chunk_wtihin (semantic), generalize across concrete sequences (beh loc)
+            "chunk_within_rank_semantic", # generalize across location sequences (cond on shape) ** (strict).
+            "chunk_within_rank_semantic", # generalize across location sequences and syntax concrete
+
+            # [INDEX] For exact same stroke index, see effect of chunk_within_rank_semantic?
+            "chunk_within_rank_semantic", # Contrast: chunk_within_semantic vs. stroke index? **
+            "chunk_within_rank_semantic", # (more lenient, allow for diff shapes across stroke indices)
+
+            # [SHAPES] Chunk_wtihin (semantic), generalize across sjhapes/chunks
+            "chunk_within_rank", # effect of rank within chunk (vs. across shapes)
+            "chunk_within_rank", # (more lenient)
+
+            # [SYNTAX CONCRETE] (Chunk within rank) --> generalize across syntax concrete
+            "chunk_within_rank_semantic", # effect of rank within chunk (vs. across syntax_concrete) *** (NEW)
+            "chunk_within_rank", # effect of rank within chunk (vs. across syntax_concrete)
+
+            # # [INDEX] For exact same stroke index, see effect of chunk_within_rank_semantic?
+            # "syntax_role", # See effect of syntax even after controlling for stroke index?
+
+            ############################  Multiple epochs (diff shapes, same syntax).
+            # [Gen across epoch]
+            "syntax_role", # syntax role, generalizes across diff shape sets
+            "syntax_role", # (more strict)
+            "syntax_role", # (more strict)
+
+            # [Directly test effect of epoch]
+            "syntax_role", # syntax role, generalizes across diff shape sets
+            "syntax_role", # syntax role, generalizes across diff shape sets
+            "epoch", # effect of epoch (shape), conditioned on specifici syntax role (high for M1)
+            "epoch", # (more strict))
+
+            # [Pure epoch] (Ingore, since here epochs mean diff shapes, which diff even in M1)
+            # "epoch", # effect of epoch (shape), conditioned on specifici syntax role (high for M1)
+
+            ############################ STRONG CONTROL
+            # CONTRAST SET A - [CHunk within rank]
+            "chunk_within_rank_semantic", # strongest test of "within chunk". Also tests (within vs. between chunks).
+            "chunk_within_rank_semantic", # (more lenient)
+            "chunk_within_rank_semantic", # (more lenient)
+
+            # [Counting from onset or offset of chunk]
+            "chunk_within_rank", # (rank, exclude 0th stroke)
+            "chunk_within_rank", # (lenient + allowing 0th stroke within each chunk)) *** (NEW)
+            "chunk_within_rank_fromlast", # (rank from last, exclude 0th)
+            "chunk_within_rank_fromlast", # (lenient + allowing 0th stroke within each chunk)
+            "stroke_index", # (stroke index less effect compared to chunk rank?)
+            "stroke_index",
+
+            # [Pitting chunk_rank_within, from last, and stroke index against each other)
+            "chunk_within_rank_fromlast", # (pit "from start" vs. "from last") *** (NEW)
+            "chunk_within_rank", # (pit "from start" vs. "from last") *** (NEW)
+            "chunk_within_rank_fromlast", # (more lenient)
+            "chunk_within_rank", # (more lenient)
+            "chunk_within_rank_fromlast",
+            "stroke_index",
+
+            # [Generic role]
+            "syntax_role", # strongest test of "within chunk" [just in case this is diff from chunk_within_rank_semantic]
+
+            # CONTRAST SET A - [Syntax concrete] [GOOD - contrast this to chunk_within_rank_semantic above]
+            "syntax_concrete", # Encoding of syntax
+
+            # [CHunk rank]
+            "chunk_rank", # In some cases, same shape in different chunk ranks...
+            "chunk_rank", # (allowing diff shapes)
+
+            # CONTRAST SET A - [Location] [GOOD - low-level effect]
+            "gridloc", # (strict, vary just loc)
+            "gridloc", # (lenient, vary loc and seq context)
+
+            # [N in chunk]
+            "chunk_n_in_chunk", # *** (NEW)
+            "chunk_n_in_chunk", # (allowing first stroke in chunk) *** (NEW)
+            "chunk_n_in_chunk", # *** (NEW)
+        ]
+        # More restrictive
+        LIST_VARS_OTHERS = [
+            # ["stroke_index_is_first", "stroke_index_is_last_tskstks", "epoch", "syntax_concrete", "shape"], # Hierarchy --> within_chunk vs across chunk
+            # ["stroke_index_is_first", "stroke_index_is_last_tskstks", "epoch", "syntax_concrete", "shape"], # Hierarchy -->< within_chunk vs. across chunk (across syntaxes)
+            # ["stroke_index_is_first", "stroke_index_is_last_tskstks", "epoch", "shape", "stroke_index"],
+            # ["stroke_index_is_last_tskstks", "epoch", "syntax_concrete", "shape"], # Hierarchy --> within_chunk vs across chunk
+            # ["stroke_index_is_last_tskstks", "epoch", "syntax_concrete", "shape"], # Hierarchy -->< within_chunk vs. across chunk (across syntaxes)
+            # ["stroke_index_is_last_tskstks", "epoch", "shape", "stroke_index"],
+
+            ["epoch", "syntax_concrete", "shape"], # Hierarchy --> within_chunk vs across chunk
+            ["epoch", "shape"],
+
+            ["epoch", "syntax_concrete", "shape", "behseq_locs_clust"], # Hierarchy --> within_chunk vs across chunk
+            ["epoch", "syntax_concrete", "shape", "behseq_locs_clust"], # Hierarchy --> within_chunk vs across chunk
+
+            ["epoch", "shape", "stroke_index"],
+            ["epoch", "stroke_index"],
+
+            ["epoch", "syntax_concrete", "shape"], # Hierarchy --> within_chunk vs across chunk
+            ["epoch", "shape"], # Hierarchy --> within_chunk vs across chunk
+
+            ["epoch", "syntax_concrete", "shape"], # Hierarchy -->< within_chunk vs. across chunk (across syntaxes)
+            ["epoch", "syntax_concrete", "shape"], # Hierarchy -->< within_chunk vs. across chunk (across syntaxes)
+
+            # ["epoch", "shape", "stroke_index"],
+
+            ["epoch"],
+            ["syntax_concrete", "epoch"],
+            ["syntax_concrete", "epoch", "behseq_locs_clust"],
+
+            ["syntax_concrete", "epoch"],
+            ["syntax_concrete", "behseq_locs_clust", "epoch"],
+            ["syntax_concrete", "syntax_role"],
+            ["syntax_concrete", "behseq_locs_clust", "syntax_role"],
+
+            # == STRONG CONTROL
+            ["epoch", "chunk_rank", "shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "CTXT_shape_prev", "CTXT_loconclust_next"],
+            ["epoch", "chunk_rank", "shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "CTXT_shape_prev"],
+            ["epoch", "chunk_rank", "shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust"],
+
+            ["epoch", "chunk_rank", "shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "CTXT_shape_prev"],
+            ["epoch", "chunk_rank", "shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust"],
+            ["epoch", "chunk_rank", "shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "CTXT_shape_prev"],
+            ["epoch", "chunk_rank", "shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust"],
+            ["epoch", "chunk_rank", "shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "CTXT_shape_prev"],
+            ["epoch", "chunk_rank", "shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust"],
+
+            ["epoch", "chunk_rank", "shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "chunk_within_rank"],
+            ["epoch", "chunk_rank", "shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "chunk_within_rank_fromlast"],
+            ["epoch", "chunk_rank", "shape", "loc_on_clust", "loc_off_clust", "chunk_within_rank"],
+            ["epoch", "chunk_rank", "shape", "loc_on_clust", "loc_off_clust", "chunk_within_rank_fromlast"],
+            ["epoch", "chunk_rank", "shape", "loc_on_clust", "loc_off_clust", "stroke_index"],
+            ["epoch", "chunk_rank", "shape", "loc_on_clust", "loc_off_clust", "chunk_within_rank_fromlast"],
+
+            ["epoch", "chunk_rank", "shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "CTXT_shape_prev"],
+
+            ["epoch", "chunk_rank", "shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "CTXT_shape_prev", "chunk_within_rank_semantic"],
+
+            ["epoch", "shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "CTXT_shape_prev"],
+            ["epoch", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "chunk_within_rank_semantic"],
+
+            ["epoch", "chunk_rank", "shape", "chunk_within_rank_semantic", "CTXT_shape_prev", "CTXT_locoffclust_prev"],
+            ["epoch", "chunk_rank", "shape", "chunk_within_rank_semantic", "CTXT_shape_prev"],
+
+            ["epoch", "chunk_rank", "shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "CTXT_shape_prev"],
+            ["epoch", "chunk_rank", "shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust"],
+            ["epoch", "chunk_rank", "shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "CTXT_shape_prev"],
+            ]
+        LIST_CONTEXT = [
+            # {"same":["stroke_index_is_first", "stroke_index_is_last_tskstks", "epoch", "syntax_concrete"], "diff":["shape"]},
+            # {"same":["stroke_index_is_first", "stroke_index_is_last_tskstks", "epoch", "shape"], "diff":["syntax_concrete"]},
+            # {"same":["stroke_index_is_first", "stroke_index_is_last_tskstks", "epoch", "shape"], "diff":["stroke_index"]},
+            # {"same":["stroke_index_is_last_tskstks", "epoch", "syntax_concrete"], "diff":["shape"]},
+            # {"same":["stroke_index_is_last_tskstks", "epoch", "shape"], "diff":["syntax_concrete"]},
+            # {"same":["stroke_index_is_last_tskstks", "epoch", "shape"], "diff":["stroke_index"]},
+
+            {"same":["epoch", "syntax_concrete"], "diff":["shape"]},
+            {"same":["epoch"], "diff":["shape"]},
+
+            {"same":["epoch", "syntax_concrete", "shape"], "diff":["behseq_locs_clust"]},
+            {"same":["epoch", "shape"], "diff":["syntax_concrete", "behseq_locs_clust"], "diff_context_ver":"diff_specific_lenient"},
+
+            {"same":["epoch", "shape"], "diff":["stroke_index"]},
+            {"same":["epoch"], "diff":["stroke_index"]},
+
+            {"same":["epoch", "syntax_concrete"], "diff":["shape"]},
+            {"same":["epoch"], "diff":["shape"]},
+
+            {"same":["epoch", "shape"], "diff":["syntax_concrete"]},
+            {"same":["epoch", "shape"], "diff":["syntax_concrete"]},
+
+            # {"same":["epoch", "shape"], "diff":["stroke_index"]},
+
+            {"same":[], "diff":["epoch"]},
+            {"same":["syntax_concrete"], "diff":["epoch"]},
+            {"same":["syntax_concrete", "behseq_locs_clust"], "diff":["epoch"]},
+
+            {"same":["syntax_concrete"], "diff":["epoch"]},
+            {"same":["syntax_concrete", "behseq_locs_clust"], "diff":["epoch"]},
+            {"same":["syntax_concrete"], "diff":["syntax_role"]},
+            {"same":["syntax_concrete", "behseq_locs_clust"], "diff":["syntax_role"]},
+
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+
+            {"same":["epoch", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev"], "diff":["chunk_within_rank"]},
+            {"same":["epoch", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev"], "diff":["chunk_within_rank_fromlast"]},
+            {"same":["epoch", "chunk_rank", "shape", "gridloc"], "diff":["chunk_within_rank"]},
+            {"same":["epoch", "chunk_rank", "shape", "gridloc"], "diff":["chunk_within_rank_fromlast"]},
+            {"same":["epoch", "chunk_rank", "shape", "gridloc"], "diff":["stroke_index"]},
+            {"same":["epoch", "chunk_rank", "shape", "gridloc"], "diff":["chunk_within_rank_fromlast"]},
+
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ]
+
+        LIST_PRUNE_MIN_N_LEVS = [1 for _ in range(10)] + [2 for _ in range(31)]
+        # Use 1 for things that use syntax role as effect. or else will throw out cases with 1 item in given chunk.
+
+        filtdict = {
+            "stroke_index": list(range(1, 10, 1)), # [1, ..., ]
+            # "stroke_index_fromlast_tskstks": list(range(-10, -1, 1)), # [-10, ..., -2]
+        }
+        LIST_FILTDICT = [
+            filtdict for _ in range(len(LIST_VAR))
+        ]
+
+        # For n in chunk, replace filter
+        LIST_FILTDICT[-3] = {"stroke_index": list(range(1, 10, 1)), "chunk_within_rank": [0]}
+        LIST_FILTDICT[-2] = {"chunk_within_rank": [0]}
+        LIST_FILTDICT[-1] = {"stroke_index": list(range(1, 10, 1)), "chunk_within_rank_fromlast": [-1]}
+
+    elif question == "RULESW_ANBMCK_DIR_STROKE":
+        # AnBmCk vs. DIR [DONE]
+        # Includes (i) dir-specific and (ii) across dir-shape.
+        # Why no include shape-speciifc variables? Not sure.
+
+        # During dir, is more related to stroke index than shape (preSMA)
+        # Stroke index: similar across epochs.
+        LIST_VAR = [
+            # == For DIR epoch
+            "shape",
+            # "shape",
+            "stroke_index",
+
+            # == For SHAPES epoch
+            "gridloc",
+            "stroke_index",
+
+            # === Compare DIR and SHAPES
+            "stroke_index",
+
+            # ==+ WELL CONTROLED
+            "epoch", # Epoch diff (diff motor)
+            "epoch", # Epoch diff (same motor). **
+            "epoch", # (not using epochset, but tighter control) *** NEW
+            "epoch", # (not using epochset, but tighter control) *** NEW
+
+            "epoch", # (not using epochset, but tighter control) *** NEW
+            "epoch", # (not using epochset, but tighter control) *** NEW
+            "epoch", # (not using epochset, but tighter control) *** NEW
+
+            # === preSMA, strucrture collapses during dir?
+            "chunk_within_rank_semantic",
+            "chunk_within_rank_semantic",
+            "stroke_index",
+            "stroke_index",
+            "stroke_index",
+            "stroke_index",
+        ]
+        # More restrictive
+        LIST_VARS_OTHERS = [
+            ["epochset", "epoch", "stroke_index"], # Prediction: DIR epoch, effect of shape in M1 (cond on stroke index), but not preSMA
+            # ["epochset", "epoch", "stroke_index"], # Prediction: DIR epoch, effect of shape in M1 (cond on stroke index), but not preSMA
+            ["epochset", "epoch", "shape"], # Prediction: DIR epoch, effect of stroke index in preSMA even if condition on shape.
+
+            ["epochset", "epoch", "stroke_index"], # Prediction: SHAPES epoch, effect of location in M1 (cond on stroke index), but not preSMA
+            ["epochset", "epoch", "gridloc"], # Prediction: SHAPES epoch, effect of stroke index in preSMA even if condition on location.
+
+            ["epochset", "epoch"], # Similarity of stroke index across DI r a --> within_chunk vs across chunk
+
+            ["epochset", "shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust"],
+            ["epochset", "shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust"],
+            ["shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "CTXT_shape_prev", "CTXT_loconclust_next"],
+            ["shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "CTXT_loconclust_next"],
+
+            ["shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "CTXT_shape_prev"],
+            ["shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust"],
+            ["shape", "gridloc", "CTXT_loc_prev", "CTXT_shape_prev"],
+
+            ["epochset_shape", "epoch_rand", "chunk_rank", "shape", "epoch_is_AnBmCk", "epoch_is_DIR"],
+            ["epochset_shape", "epoch_rand", "chunk_rank", "shape", "epoch_is_AnBmCk", "epoch_is_DIR"],
+            ["epochset_dir", "epoch_rand", "epoch_is_AnBmCk", "epoch_is_DIR"],
+            ["epochset_shape", "epoch_rand", "epoch_is_AnBmCk", "epoch_is_DIR"],
+            ["epochset_dir", "epoch_rand", "epoch_is_AnBmCk", "epoch_is_DIR"],
+            ["epochset_shape", "epoch_rand", "epoch_is_AnBmCk", "epoch_is_DIR"],
+            ]
+        LIST_CONTEXT = [
+            {"same":["epochset", "epoch"], "diff":["stroke_index"]},
+            # {"same":["epochset", "epoch"], "diff":["stroke_index"]},
+            {"same":["epochset", "epoch"], "diff":["shape"]},
+
+            {"same":["epochset", "epoch"], "diff":["stroke_index"]},
+            {"same":["epochset", "epoch"], "diff":["gridloc"]},
+
+            {"same":["epochset"], "diff":["epoch"]},
+
+            None,
+            None,
+            None,
+            None,
+
+            None,
+            None,
+            None,
+
+            {"same":["epochset_shape", "epoch_rand", "chunk_rank", "shape"], "diff":["epoch_is_AnBmCk", "epoch_is_DIR"]},
+            {"same":["epochset_shape", "epoch_rand", "chunk_rank", "shape"], "diff":["epoch_is_AnBmCk", "epoch_is_DIR"]},
+            {"same":["epochset_dir", "epoch_rand"], "diff":["epoch_is_AnBmCk", "epoch_is_DIR"]},
+            {"same":["epochset_shape", "epoch_rand"], "diff":["epoch_is_AnBmCk", "epoch_is_DIR"]},
+            {"same":["epochset_dir", "epoch_rand"], "diff":["epoch_is_AnBmCk", "epoch_is_DIR"]},
+            {"same":["epochset_shape", "epoch_rand"], "diff":["epoch_is_AnBmCk", "epoch_is_DIR"]},
+        ]
+        LIST_PRUNE_MIN_N_LEVS = [
+            2 for _ in range(len(LIST_VAR))
+        ]
+        # LIST_FILTDICT = [
+        #     {"stroke_index": list(range(1, 10, 1)), "epochset":[("char", "UL", "llCV3")], "epoch":["UL"]},
+        #     {"stroke_index": list(range(1, 10, 1)), "epochset":[("char", "UL", "llCV3")], "epoch":["llCV3"]},
+        #     {"stroke_index": list(range(1, 10, 1)), "epochset":[("char", "UL", "llCV3")]},
+        # ]
+        LIST_FILTDICT = [
+            {"stroke_index": list(range(1, 10, 1)), "epochset_diff_motor":[True], ("epoch_orig_rand_seq", "epoch_is_AnBmCk", "INSTRUCTION_COLOR"):[(False, False, False)]},
+            # {"stroke_index": list(range(1, 10, 1)), "epochset_diff_motor":[True], ("epoch_orig_rand_seq", "epoch_is_AnBmCk", "INSTRUCTION_COLOR"):[(False, True, False)]},
+            {"stroke_index": list(range(1, 10, 1)), "epochset_diff_motor":[True], ("epoch_orig_rand_seq", "epoch_is_AnBmCk", "INSTRUCTION_COLOR"):[(False, False, False)]},
+
+            {"stroke_index": list(range(1, 10, 1)), "epochset_diff_motor":[True], ("epoch_orig_rand_seq", "epoch_is_AnBmCk", "INSTRUCTION_COLOR"):[(False, True, False)]},
+            {"stroke_index": list(range(1, 10, 1)), "epochset_diff_motor":[True], ("epoch_orig_rand_seq", "epoch_is_AnBmCk", "INSTRUCTION_COLOR"):[(False, True, False)]},
+
+            {"stroke_index": list(range(1, 10, 1)), "epochset_diff_motor":[True]},
+
+            {"stroke_index": list(range(1, 10, 1)), "epochset_diff_motor":[True]},
+            {"stroke_index": list(range(1, 10, 1)), "epochset_diff_motor":[False]},
+
+            # {"stroke_index": list(range(1, 10, 1))},
+            # {"stroke_index": list(range(1, 10, 1))},
+            # {"stroke_index": list(range(1, 10, 1))},
+            # {"stroke_index": list(range(1, 10, 1))},
+            # {"stroke_index": list(range(1, 10, 1))},
+            {},
+            {},
+            {},
+            {},
+            {},
+
+            {"stroke_index": list(range(1, 10, 1))},
+            {"stroke_index": list(range(1, 10, 1)), "stroke_index_fromlast_tskstks": list(range(-10, -1, 1))},
+            {"stroke_index": list(range(1, 10, 1))},
+            {"stroke_index": list(range(1, 10, 1))},
+            {"stroke_index": list(range(1, 10, 1)), "stroke_index_fromlast_tskstks": list(range(-10, -1, 1))},
+            {"stroke_index": list(range(1, 10, 1)), "stroke_index_fromlast_tskstks": list(range(-10, -1, 1))},
+        ]
+    elif question=="RULE_COLRANK_STROKE":
+        # COL RANK [GOOD]
+        # Questions:
+        # - preSMA encodes stroke index for COL_RANK
+        # - preSMA, stroke index during COL_RANK doesnt care about behseq.
+        # - preSMA, doesnt encode location or shape during COL_RANK.
+
+        LIST_VAR = [
+            # [LOC AND SHAPE specific sequences]
+            "stroke_index", # Effect of stroke index --> gen across location sequences
+            "stroke_index", # Effect of stroke index --> gen across shape sequences
+            "stroke_index", # (exclude 1st stroke)   **
+            "stroke_index", # (exclude 1st stroke)  **
+
+            # [Well controlled, SHAPE, LOC, and combo]
+            "stroke_index", # (strong control) **
+            "stroke_index", # (strongest control) **
+            "stroke_index", # (weaker)
+            "stroke_index", # (weakest) ***
+            "stroke_index", # (strong control) (exclude first storke) **
+            "stroke_index", # (strongest control) (exclude first storke) **
+
+            # [Shape and location encoding, not about sequence]
+            "shape", # effect of shape, holding others constant.
+            "gridloc", # effect of location, holding others constant.
+            "shape", # (more strict)
+            "gridloc", # (more strict)
+        ]
+        # More restrictive
+        LIST_VARS_OTHERS = [
+            ["FEAT_num_strokes_task", "behseq_locs_clust"], #
+            ["FEAT_num_strokes_task", "behseq_shapes_clust"],
+            ["FEAT_num_strokes_task", "behseq_locs_clust"], #
+            ["FEAT_num_strokes_task", "behseq_shapes_clust"],
+
+            ["shape", "gridloc", "CTXT_loc_prev"],
+            ["shape", "gridloc", "CTXT_loc_prev"],
+            ["shape", "gridloc"],
+            ["shape", "gridloc"],
+            ["shape", "gridloc", "CTXT_loc_prev"],
+            ["shape", "gridloc", "CTXT_loc_prev"],
+
+            ["gridloc", "stroke_index"],
+            ["shape", "stroke_index"],
+            ["gridloc", "stroke_index", "CTXT_loc_prev"],
+            ["shape", "stroke_index", "CTXT_loc_prev"],
+            ]
+        LIST_CONTEXT = [
+            {"same":["FEAT_num_strokes_task"], "diff":["behseq_locs_clust"]},
+            {"same":["FEAT_num_strokes_task"], "diff":["behseq_shapes_clust"]},
+            {"same":["FEAT_num_strokes_task"], "diff":["behseq_locs_clust"]},
+            {"same":["FEAT_num_strokes_task"], "diff":["behseq_shapes_clust"]},
+
+            {"same":["gridloc", "CTXT_loc_prev"], "diff":["shape"]},
+            {"same":["CTXT_loc_prev"], "diff":["shape", "gridloc"], "diff_context_ver":"diff_specific"},
+            {"same":[], "diff":["shape", "gridloc"], "diff_context_ver":"diff_specific"},
+            {"same":["gridloc"], "diff":["shape"]},
+            {"same":["gridloc", "CTXT_loc_prev"], "diff":["shape"]},
+            {"same":["CTXT_loc_prev"], "diff":["shape", "gridloc"], "diff_context_ver":"diff_specific"},
+
+            {"same":["gridloc"], "diff":["stroke_index"]},
+            {"same":["shape"], "diff":["stroke_index"]},
+            {"same":["gridloc", "CTXT_loc_prev"], "diff":["stroke_index"]},
+            {"same":["shape", "CTXT_loc_prev"], "diff":["stroke_index"]},
+        ]
+        LIST_PRUNE_MIN_N_LEVS = [
+            2 for _ in range(len(LIST_VAR))
+        ]
+        LIST_FILTDICT = [
+            {}, {},
+            {"stroke_index": list(range(1, 10, 1))}, {"stroke_index": list(range(1, 10, 1))},
+            {}, {}, # Dont remove first stroke, just not enough data
+            {}, {},
+            {"stroke_index": list(range(1, 10, 1))}, {"stroke_index": list(range(1, 10, 1))},
+            {}, {},
+            {}, {},
+        ]
+
+    elif question == "RULESW_ANBMCK_COLRANK_STROKE":
+        ################# AnBmCk vs. COL_RANK [GOOD]
+        # Notes:
+        # - epochsets are a mess (too many)
+        # - use epoch_rand, not epoch, to lump all random ones.
+        # - Ignore epoch|1, since this is very similar to epoch...
+        LIST_VAR = [
+
+            # [Stroke index generalizes across shapes and col_rank]
+            "stroke_index", # preSMA, similar stroke_index for SHAPES VS. COL_RANK
+            "stroke_index", # (more strict))
+            "stroke_index", # (more strict))
+
+            # [SI gen across sequences]
+            "stroke_index", # stroke index (during COL_RANK) doesnt care about behseq
+
+            # ==+ WELL CONTROLED
+            "epoch", # Epoch diff (diff motor)
+            "epoch", # Epoch diff (same motor).
+
+            "INSTRUCTION_COLOR", # color_rank (better approach, by testing color_rank directly) **
+            "INSTRUCTION_COLOR", # (more lenient)
+            "INSTRUCTION_COLOR", # (more lenient)
+            "INSTRUCTION_COLOR", # (more lenient)
+
+            # === preSMA, strucrture collapses during seqsup?
+            "chunk_within_rank_semantic",
+            "chunk_within_rank_semantic",
+            "stroke_index",
+            "stroke_index",
+        ]
+        # More restrictive
+        LIST_VARS_OTHERS = [
+            ["epoch_rand"], #
+            ["epoch_rand", "gridloc"],
+            ["epoch_rand", "shape"],
+
+            ["epoch_rand", "FEAT_num_strokes_task", "behseq_shapes_clust", "behseq_locs_clust"], #
+
+            # ==+ WELL CONTROLED
+            ["shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust"],
+            ["shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust"],
+
+            ["shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "CTXT_shape_prev", "CTXT_loconclust_next"],
+            ["shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "CTXT_shape_prev"],
+            ["shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust"],
+            ["shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust"],
+
+            ["epochset_shape", "epoch_rand", "chunk_rank", "shape", "INSTRUCTION_COLOR"],
+            ["epochset_shape", "epoch_rand", "chunk_rank", "shape", "INSTRUCTION_COLOR"],
+            ["epochset_shape", "epoch_rand", "INSTRUCTION_COLOR"],
+            ["epochset_shape", "epoch_rand", "INSTRUCTION_COLOR"],
+            ]
+
+        LIST_CONTEXT = [
+            {"same":[], "diff":["epoch_rand"]},
+            {"same":["gridloc"], "diff":["epoch_rand"]},
+            {"same":["shape"], "diff":["epoch_rand"]},
+
+            {"same":["epoch_rand", "FEAT_num_strokes_task"], "diff":["behseq_shapes_clust", "behseq_locs_clust"]},
+
+            # ==+ WELL CONTROLED
+            None,
+            None,
+
+            None,
+            None,
+            None,
+            None,
+
+            {"same":["epochset_shape", "epoch_rand", "chunk_rank", "shape"], "diff":["INSTRUCTION_COLOR"]},
+            {"same":["epochset_shape", "epoch_rand", "chunk_rank", "shape"], "diff":["INSTRUCTION_COLOR"]},
+            {"same":["epochset_shape", "epoch_rand"], "diff":["INSTRUCTION_COLOR"]},
+            {"same":["epochset_shape", "epoch_rand"], "diff":["INSTRUCTION_COLOR"]},
+        ]
+        LIST_PRUNE_MIN_N_LEVS = [
+            2 for _ in range(len(LIST_VAR))
+        ]
+        LIST_FILTDICT = [
+            # {"stroke_index": list(range(1, 10, 1)), "epoch":["llCV2FstStk", "llCV2|0"]},
+            # {"stroke_index": list(range(1, 10, 1)), "epoch":["llCV2FstStk", "llCV2|0"]},
+            # {"stroke_index": list(range(1, 10, 1)), ("epoch_orig_rand_seq", "epoch_is_AnBmCk", "INSTRUCTION_COLOR"):[(True, False, True), (False, True, False)]}, # if superv, then shoudl be rand
+            # {"stroke_index": list(range(1, 10, 1)), ("epoch_orig_rand_seq", "epoch_is_AnBmCk", "INSTRUCTION_COLOR"):[(True, False, True), (False, True, False)]},
+            # {"stroke_index": list(range(1, 10, 1)), ("epoch_orig_rand_seq", "epoch_is_AnBmCk", "INSTRUCTION_COLOR"):[(True, False, True), (False, True, False)]},
+            {"stroke_index": list(range(1, 10, 1)), ("epoch_orig_rand_seq", "INSTRUCTION_COLOR"):[(True, True), (False, False)]}, # if superv, then shoudl be rand
+            {"stroke_index": list(range(1, 10, 1)), ("epoch_orig_rand_seq", "INSTRUCTION_COLOR"):[(True, True), (False, False)]},
+            {"stroke_index": list(range(1, 10, 1)), ("epoch_orig_rand_seq", "INSTRUCTION_COLOR"):[(True, True), (False, False)]},
+
+            {"stroke_index": list(range(1, 10, 1)), ("epoch_orig_rand_seq", "epoch_is_AnBmCk", "INSTRUCTION_COLOR"):[(True, False, True)]},
+
+            # ==+ WELL CONTROLED
+            # {"stroke_index": list(range(1, 10, 1)), "epochset_diff_motor":[True]},
+            # {"stroke_index": list(range(1, 10, 1)), "epochset_diff_motor":[False]},
+            # {"stroke_index": list(range(1, 10, 1))},
+            # {"stroke_index": list(range(1, 10, 1))},
+            # {"stroke_index": list(range(1, 10, 1))},
+            # {"stroke_index": list(range(1, 10, 1)), "epochset_diff_motor":[False]},
+            {"epochset_diff_motor":[True]},
+            {"epochset_diff_motor":[False]},
+            {},
+            {},
+            {},
+            {"epochset_diff_motor":[False]},
+
+            {"stroke_index": list(range(1, 10, 1))},
+            {"stroke_index": list(range(1, 10, 1)), "stroke_index_fromlast_tskstks": list(range(-10, -1, 1))},
+            {"stroke_index": list(range(1, 10, 1))},
+            {"stroke_index": list(range(1, 10, 1)), "stroke_index_fromlast_tskstks": list(range(-10, -1, 1))},
+        ]
+    else:
+        print(question)
+        assert False
+
+    if not len(LIST_VAR)==len(LIST_VARS_OTHERS)==len(LIST_CONTEXT)==len(LIST_PRUNE_MIN_N_LEVS)==len(LIST_FILTDICT):
+        print(LIST_VAR)
+        print(len(LIST_VAR))
+        print(LIST_VARS_OTHERS)
+        print(len(LIST_VARS_OTHERS))
+        print(LIST_CONTEXT)
+        print(len(LIST_CONTEXT))
+        print(LIST_PRUNE_MIN_N_LEVS)
+        print(len(LIST_PRUNE_MIN_N_LEVS))
+        print(LIST_FILTDICT)
+        print(len(LIST_FILTDICT))
+        assert False
+
+    return LIST_VAR, LIST_VARS_OTHERS, LIST_CONTEXT, LIST_PRUNE_MIN_N_LEVS, LIST_FILTDICT
 
 def params_getter_decode_vars(which_level):
     """
