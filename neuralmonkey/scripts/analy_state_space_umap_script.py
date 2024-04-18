@@ -279,7 +279,7 @@ if __name__=="__main__":
                                 list_var_color_var_subplot.append([var_decode, "task_kind"])
                                 single_vars_done.append(var_decode)
 
-                        if question in ["RULE_BASE_stroke"]:
+                        if question in ["RULE_BASE_stroke", "RULE_ANBMCK_STROKE", "RULE_COLRANK_STROKE", "RULE_DIR_STROKE", "RULE_ROWCOL_STROKE"]:
                             # Sequence context, chunks
                             # Usually AnBmCk
                             list_var_color_var_subplot.append([("chunk_rank", "shape"), ("chunk_n_in_chunk", "task_kind")])
@@ -374,7 +374,7 @@ if __name__=="__main__":
                             list_var_color_var_subplot.append(["epoch", ("epochset", "shape", "gridloc", "CTXT_loc_prev", "CTXT_shape_prev", "CTXT_loc_next")])
                             list_var_color_var_subplot.append(["epoch", "epochset"]) #
 
-                        if question in ["RULEVSCOL_BASE_stroke"]:
+                        if question in ["RULESW_ANBMCK_COLRANK_STROKE"]:
                             # Switching between grammar (usualyl AnBmCk) and color_rank, including both random and those using
                             # same sequence as grammar.
 
@@ -680,7 +680,7 @@ if __name__=="__main__":
                     for t in VARS_GAP_DUR_BINS:
                         if t in dflab.columns:
                             list_subplot.append(["taskcat_by_rule", "behseq_locs_clust", t])
-                    if HACK_CHUNKS and question in ["RULESW_BASE_stroke"]:
+                    if HACK_CHUNKS and question in ["RULESW_BASE_stroke", "RULESW_ANBMCK_DIR_STROKE", "RULESW_ANBMCK_ABN_STROKE"]:
                         for var_subplot in list_subplot:
                             var_color = ["chunk_rank", "chunk_within_rank"]
                             # var_subplot = ["taskcat_by_rule", "behseq_shapes", "task_kind", "epochset", "epoch"]
@@ -707,7 +707,7 @@ if __name__=="__main__":
                                                                          overlay_mean=True, overlay_mean_var_color=overlay_mean_var_color,
                                                                          alpha=0.3)
 
-                    if HACK_CHUNKS and question in ["RULEVSCOL_BASE_stroke"]:
+                    if HACK_CHUNKS and question in ["RULESW_ANBMCK_COLRANK_STROKE"]:
                         tmp = list_subplot + [["taskcat_by_rule", "behseq_shapes_clust", "epoch_rand"],
                                                     ["taskcat_by_rule", "behseq_locs_clust", "epoch_rand"],
                                                     ["taskcat_by_rule", "behseq_locs_diff_clust", "epoch_rand"]]
