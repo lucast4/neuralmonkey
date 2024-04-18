@@ -2536,4 +2536,6 @@ def euclidian_distance_compute(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT_MASKS,
     dfres["DIST_NULL_95"] = DIST_NULL_95
     dfres["DIST_NULL_98"] = DIST_NULL_98
 
+    dfres["twind_analy"] = [twind for _ in range(len(dfres))]
+
     return dfres
