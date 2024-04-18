@@ -11,7 +11,7 @@ do
   touch ${logfile}
   echo ${logfile}
   python analy_euclidian_dist_pop_script.py ${animal} ${date1} ${question} ${which_level} 2>&1 | tee ${logfile} &
-  sleep 20s
+  sleep 1m
 done
 
 animal=Pancho
@@ -24,7 +24,6 @@ do
   touch ${logfile}
   echo ${logfile}
   python analy_euclidian_dist_pop_script.py ${animal} ${date1} ${question} ${which_level} 2>&1 | tee ${logfile} &
-  sleep 20s
+  sleep 1m
 done
-
-#sleep 10m
+sleep 10m

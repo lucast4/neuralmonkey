@@ -4,7 +4,7 @@
 ############################
 ############################ SHAPES VS. DIR (SWITCHING)
 animal=Diego
-question=RULEVSCOL_BASE_stroke
+question=RULESW_ANBMCK_COLRANK_STROKE
 ver=stroke
 #datelist=(230910 230911 230907 230912 230927 231001) # ALL
 #datelist=(230910 230907 230912 231001) # subset, just to do during day
@@ -23,7 +23,7 @@ done
 sleep 30m
 #
 animal=Pancho
-question=RULEVSCOL_BASE_stroke
+question=RULESW_ANBMCK_COLRANK_STROKE
 ver=stroke
 datelist=(230928 230929)
 

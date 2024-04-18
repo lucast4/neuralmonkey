@@ -3,7 +3,7 @@
 
 ###########################
 animal=Diego
-question=RULEVSCOL_BASE_stroke
+question=RULESW_ANBMCK_COLRANK_STROKE
 ver=stroke
 datelist=(230928) # all
 for date1 in "${datelist[@]}"
@@ -17,7 +17,7 @@ done
 sleep 1m
 
 animal=Pancho
-question=RULEVSCOL_BASE_stroke
+question=RULESW_ANBMCK_COLRANK_STROKE
 ver=stroke
 datelist=(231001) # all
 for date1 in "${datelist[@]}"

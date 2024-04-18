@@ -6,7 +6,7 @@
 animal=Diego
 question=RULE_BASE_stroke
 ver=stroke
-#datelist=(230724 230726 230817 230913 230730 231118)
+#datelist=(230724 230726 230817 230913 230730 231116 231118)
 #datelist=(231116 231118) # days missed
 #datelist=(230730) # sterotped (not good)
 datelist=(230724 230817 230913 231118) # days missed + quicker
