@@ -353,6 +353,12 @@ class Session(object):
         """
         from pythonlib.tools.expttools import makeTimeStamp
 
+        if (animal=="Diego" and datestr=="231001") or (animal=="Pancho" and datestr=="231020"):
+            print("This day has flipped cue-image onset. It will fail photodiode extraction. ")
+            print("See Dropbox/Diego_231001_cue_stim_flipped.png and Dropbox/Diego_231001_cue_stim_normal.png")
+            print("Solve this using debug_eventcode...ipynb")
+            assert False
+
         # if BAREBONES_LOADING:
         #     assert MINIMAL_LOADING == False, "must do one or the other"
         # if MINIMAL_LOADING:
@@ -1292,7 +1298,7 @@ class Session(object):
 
 
 
-    def load_tdt_tank(self, include_streams=False):
+    def load_tdt_tank(self, include_streams=False, force_reload_from_raw=False):
         """ Holds all non-nueral signals. is aligned to the neural
         BY default only loads epocs (not streams) as streams is large and takes a while
         PARAMS:
@@ -1326,6 +1332,9 @@ class Session(object):
                 LOAD_FROM_SERVER=False
                 self.DatTank = data_tank
         else:
+            LOAD_FROM_SERVER = True
+
+        if force_reload_from_raw:
             LOAD_FROM_SERVER = True
 
         if LOAD_FROM_SERVER:
