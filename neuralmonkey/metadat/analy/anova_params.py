@@ -2269,7 +2269,7 @@ def params_getter_euclidian_vars(question):
             "stroke_index",
 
             # [Generic role]
-            "syntax_role", # strongest test of "within chunk" [just in case this is diff from chunk_within_rank_semantic]
+            # "syntax_role", # strongest test of "within chunk" [just in case this is diff from chunk_within_rank_semantic]
 
             # CONTRAST SET A - [Syntax concrete] [GOOD - contrast this to chunk_within_rank_semantic above]
             "syntax_concrete", # Encoding of syntax
@@ -2281,11 +2281,16 @@ def params_getter_euclidian_vars(question):
             # CONTRAST SET A - [Location] [GOOD - low-level effect]
             "gridloc", # (strict, vary just loc)
             "gridloc", # (lenient, vary loc and seq context)
+            "gridloc", #
+            "gridloc", #
 
             # [N in chunk]
-            "chunk_n_in_chunk", # *** (NEW)
             "chunk_n_in_chunk", # (allowing first stroke in chunk) *** (NEW)
-            "chunk_n_in_chunk", # *** (NEW)
+            "chunk_n_in_chunk", # (allowing first stroke in chunk) *** (NEW)
+            "chunk_n_in_chunk", # (allowing first stroke in chunk) *** (NEW)
+            "chunk_n_in_chunk", # (allowing first stroke in chunk) *** (NEW)
+            "chunk_n_in_chunk", # (allowing first stroke in chunk) *** (NEW)
+            "chunk_n_in_chunk", # (allowing first stroke in chunk) *** (NEW)
         ]
         # More restrictive
         LIST_VARS_OTHERS = [
@@ -2314,8 +2319,8 @@ def params_getter_euclidian_vars(question):
             # ["epoch", "shape", "stroke_index"],
 
             ["epoch"],
-            ["syntax_concrete", "epoch"],
-            ["syntax_concrete", "epoch", "behseq_locs_clust"],
+            ["syntax_concrete", "epoch"], # IGNORE (is repeated 2 steps below)
+            ["syntax_concrete", "epoch", "behseq_locs_clust"], # IGNORE (is repeated 2 steps below)
 
             ["syntax_concrete", "epoch"],
             ["syntax_concrete", "behseq_locs_clust", "epoch"],
@@ -2341,19 +2346,26 @@ def params_getter_euclidian_vars(question):
             ["epoch", "chunk_rank", "shape", "loc_on_clust", "loc_off_clust", "stroke_index"],
             ["epoch", "chunk_rank", "shape", "loc_on_clust", "loc_off_clust", "chunk_within_rank_fromlast"],
 
-            ["epoch", "chunk_rank", "shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "CTXT_shape_prev"],
+            # ["epoch", "chunk_rank", "shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "CTXT_shape_prev"],
 
             ["epoch", "chunk_rank", "shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "CTXT_shape_prev", "chunk_within_rank_semantic"],
 
-            ["epoch", "shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "CTXT_shape_prev"],
-            ["epoch", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "chunk_within_rank_semantic"],
+            # ["epoch", "shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "CTXT_shape_prev"],
+            # ["epoch", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "chunk_within_rank_semantic"],
+            ["epoch", "shape", "gridloc", "CTXT_loc_prev", "CTXT_shape_prev"],
+            ["epoch", "gridloc", "CTXT_loc_prev", "chunk_within_rank_semantic"],
 
+            ["epoch", "chunk_rank", "shape", "chunk_within_rank_semantic", "CTXT_shape_prev", "CTXT_locoffclust_prev", "CTXT_loconclust_next", "syntax_concrete"],
+            ["epoch", "chunk_rank", "shape", "chunk_within_rank_semantic", "CTXT_shape_prev", "CTXT_locoffclust_prev", "CTXT_loconclust_next"],
             ["epoch", "chunk_rank", "shape", "chunk_within_rank_semantic", "CTXT_shape_prev", "CTXT_locoffclust_prev"],
             ["epoch", "chunk_rank", "shape", "chunk_within_rank_semantic", "CTXT_shape_prev"],
 
+            ["epoch", "chunk_rank", "shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "CTXT_shape_prev", "CTXT_shape_next"],
             ["epoch", "chunk_rank", "shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "CTXT_shape_prev"],
             ["epoch", "chunk_rank", "shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust"],
+            ["epoch", "chunk_rank", "shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "CTXT_shape_prev", "CTXT_shape_next"],
             ["epoch", "chunk_rank", "shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "CTXT_shape_prev"],
+            ["epoch", "chunk_rank", "shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust"],
             ]
         LIST_CONTEXT = [
             # {"same":["stroke_index_is_first", "stroke_index_is_last_tskstks", "epoch", "syntax_concrete"], "diff":["shape"]},
@@ -2415,9 +2427,13 @@ def params_getter_euclidian_vars(question):
             None,
             None,
             None,
+            None,
+            None,
+            None,
+            None,
         ]
 
-        LIST_PRUNE_MIN_N_LEVS = [1 for _ in range(10)] + [2 for _ in range(31)]
+        LIST_PRUNE_MIN_N_LEVS = [1 for _ in range(10)] + [2 for _ in range(35)]
         # Use 1 for things that use syntax role as effect. or else will throw out cases with 1 item in given chunk.
 
         filtdict = {
@@ -2429,9 +2445,19 @@ def params_getter_euclidian_vars(question):
         ]
 
         # For n in chunk, replace filter
-        LIST_FILTDICT[-3] = {"stroke_index": list(range(1, 10, 1)), "chunk_within_rank": [0]}
-        LIST_FILTDICT[-2] = {"chunk_within_rank": [0]}
-        LIST_FILTDICT[-1] = {"stroke_index": list(range(1, 10, 1)), "chunk_within_rank_fromlast": [-1]}
+        # LIST_FILTDICT[-3] = {"chunk_within_rank": [0]}
+        # LIST_FILTDICT[-6] = {"stroke_index": list(range(1, 10, 1)), "chunk_within_rank": [0]}
+        # LIST_FILTDICT[-5] = {"stroke_index": list(range(1, 10, 1)), "chunk_within_rank": [0]}
+        # LIST_FILTDICT[-4] = {"stroke_index": list(range(1, 10, 1)), "chunk_within_rank": [0]}
+        # LIST_FILTDICT[-3] = {"stroke_index": list(range(1, 10, 1)), "chunk_within_rank_fromlast": [-1]}
+        # LIST_FILTDICT[-2] = {"stroke_index": list(range(1, 10, 1)), "chunk_within_rank_fromlast": [-1]}
+        # LIST_FILTDICT[-1] = {"stroke_index": list(range(1, 10, 1)), "chunk_within_rank_fromlast": [-1]}
+        LIST_FILTDICT[-6] = {"chunk_within_rank": [0]}
+        LIST_FILTDICT[-5] = {"chunk_within_rank": [0]}
+        LIST_FILTDICT[-4] = {"chunk_within_rank": [0]}
+        LIST_FILTDICT[-3] = {"chunk_within_rank_fromlast": [-1]}
+        LIST_FILTDICT[-2] = {"chunk_within_rank_fromlast": [-1]}
+        LIST_FILTDICT[-1] = {"chunk_within_rank_fromlast": [-1]}
 
     elif question == "RULESW_ANBMCK_DIR_STROKE":
         # AnBmCk vs. DIR [DONE]
