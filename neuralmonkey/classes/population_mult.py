@@ -1140,10 +1140,22 @@ def data_extract_raw_and_save(DFallpa, savepath):
         keys_remove = []
         for k in dflab.keys():
             # print(k, " -- ", type(dflab[k].values[0]))
-            if "Tkbeh" in k or "Tktask" in k:
+            if k in ["TokTask", "Tktask", "TokTask", "TokBeh"]:
                 keys_remove.append(k)
         print("Removing these custom class columns from labels: ", keys_remove)
         dflab_raw = dflab.drop(keys_remove, axis=1)
+
+        # Also convert Strokes to strokes
+        list_stroke = []
+        # list_tok_task = []
+        for i, row in dflab_raw.iterrows():
+            list_stroke.append(row["Stroke"]())
+            # list_tok_task.append(row["TokTask"].data_extract_raw())
+        dflab_raw["stroke"] = list_stroke
+        dflab_raw = dflab_raw.drop(["Stroke"], axis=1)
+
+        # Rest index
+        dflab_raw = dflab_raw.reset_index(drop=True)
 
         list_labels.append(dflab_raw)
     DFallpa_raw["labels"] = list_labels
