@@ -185,7 +185,7 @@ def decode_categorical_within_condition(X, dflab, var_decode, vars_conj_conditio
             # Save results
             RES.append({
                 "var_decode":var_decode,
-                "vars_conj_condition":vars_conj_condition,
+                "vars_conj_condition":tuple(vars_conj_condition),
                 "grp_condition":grp_condition,
                 "score":score,
                 "score_adjusted":score_adjusted,
@@ -196,7 +196,9 @@ def decode_categorical_within_condition(X, dflab, var_decode, vars_conj_conditio
     dfres = pd.DataFrame(RES)
 
     # aggregate, to get one score for each var_decode
-    dfres_agg = dfres.groupby(["var_decode"]).mean()
+    from pythonlib.tools.pandastools import aggregGeneral
+    dfres_agg = aggregGeneral(dfres, ["var_decode", "vars_conj_condition"], values=["score", "score_adjusted", "n_classes_test"])
+    # dfres_agg = dfres.groupby(["var_decode"]).mean()
     if False: # Skip this for now... later on will have to deal with this issue of diff n classes across groups.
         tmp = dfres.groupby(["var_decode"]).std()
         if np.any(tmp["n_classes_test"]>0.):
@@ -289,7 +291,7 @@ def decode_categorical_cross_condition(X, dflab, var_decode, vars_conj_condition
                         # Save results
                         RES.append({
                             "var_decode":var_decode,
-                            "vars_conj_condition":vars_conj_condition,
+                            "vars_conj_condition":tuple(vars_conj_condition),
                             "grp_train":grp_train,
                             "grp_test":grp_test,
                             "score":score,
@@ -301,8 +303,11 @@ def decode_categorical_cross_condition(X, dflab, var_decode, vars_conj_condition
     dfres = pd.DataFrame(RES)
 
     if len(dfres)>0:
+
         # aggregate, to get one score for each var_decode
-        dfres_agg = dfres.groupby(["var_decode"]).mean()
+        from pythonlib.tools.pandastools import aggregGeneral
+        dfres_agg = aggregGeneral(dfres, ["var_decode", "vars_conj_condition"], values=["score", "score_adjusted", "n_classes_test"])
+        # dfres_agg = dfres.groupby(["var_decode"]).mean()
 
         if False: # skip for now
             tmp = dfres.groupby(["var_decode"]).std()
