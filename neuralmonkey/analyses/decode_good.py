@@ -2364,6 +2364,30 @@ def euclidian_distance_compute(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT_MASKS,
     from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars
     from neuralmonkey.analyses.state_space_good import dimredgood_nonlinear_embed_data
 
+    # Get specific params, based on how want to do dim reduction
+    if dim_red_method is None:
+        # Then use raw data
+        pca_reduce = False
+        extra_dimred_method = None
+    elif dim_red_method=="pca":
+        pca_reduce = True
+        extra_dimred_method = None
+    elif dim_red_method=="pca_umap":
+        # PCA --> UMAP
+        pca_reduce = True
+        extra_dimred_method = "umap"
+    elif dim_red_method=="umap":
+        # UMAP
+        pca_reduce = False
+        extra_dimred_method = "umap"
+    elif dim_red_method=="mds":
+        # MDS
+        pca_reduce = False
+        extra_dimred_method = "mds"
+    else:
+        print(dim_red_method)
+        assert False
+
     if LIST_CONTEXT is not None:
         assert len(LIST_CONTEXT)==len(LIST_VAR)
     else:
@@ -2389,9 +2413,7 @@ def euclidian_distance_compute(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT_MASKS,
     else:
         assert False
 
-    pca_frac_min_keep = 0.01
-    pca_frac_var_keep = 0.75
-    if False:
+    if True:
         # empriicalyl this seems good
         how_decide_npcs_keep = "cumvar"
     else:
@@ -2400,12 +2422,13 @@ def euclidian_distance_compute(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT_MASKS,
     ############# First, Extract data in PC space
     plot_pca_explained_var_path = f"{savedir}/pca_explained_var.pdf"
     plot_loadings_path = f"{savedir}/pca_loadings_heatmap.pdf"
-    X, PApca, _, pca = PA.dataextract_state_space_decode_flex(twind, tbin_dur, tbin_slice, reshape_method="trials_x_chanstimes",
-                                           pca_reduce=True, pca_frac_var_keep=pca_frac_var_keep,
-                                            how_decide_npcs_keep=how_decide_npcs_keep, pca_frac_min_keep=pca_frac_min_keep,
+    X, PAfinal, _PAslice, pca = PA.dataextract_state_space_decode_flex(twind, tbin_dur, tbin_slice, reshape_method="trials_x_chanstimes",
+                                           pca_reduce=pca_reduce, how_decide_npcs_keep=how_decide_npcs_keep,
                                            plot_pca_explained_var_path=plot_pca_explained_var_path, plot_loadings_path=plot_loadings_path,
                                           npcs_keep_force=NPCS_KEEP,
-                                          extra_dimred_method=extra_dimred_method, umap_n_neighbors = umap_n_neighbors)
+                                          extra_dimred_method=extra_dimred_method,
+                                          extra_dimred_method_n_components=extra_dimred_method_n_components,
+                                                umap_n_neighbors = umap_n_neighbors)
 
     ########### Compute global distances BEFORE pruning data
     # To normalize, compute distance across datapts
@@ -2429,11 +2452,13 @@ def euclidian_distance_compute(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT_MASKS,
 
     ############ SCore, for each variable
     RES = []
+    vars_already_state_space_plotted = []
+    var_varothers_already_plotted = []
     for i_var, (var, var_others, context, filtdict, prune_min_n_levs) in enumerate(zip(LIST_VAR, LIST_VARS_OTHERS, LIST_CONTEXT, LIST_FILTDICT, LIST_PRUNE_MIN_N_LEVS)):
         print("RUNNING: ", i_var,  var, " -- ", var_others)
 
         # Copy pa for this
-        pa = PApca.copy()
+        pa = PAfinal.copy()
 
         var_for_name = var
         if isinstance(var, (tuple, list)):
@@ -2474,6 +2499,7 @@ def euclidian_distance_compute(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT_MASKS,
 
         # Only keep the indices in dfout
         print("  Pruning for this var adn conjunction. Original length:", pa.X.shape[1], ", pruned length:", len(dfout))
+        pa_before_prune = pa.copy()
         pa = pa.slice_by_dim_indices_wrapper("trials", dfout["_index"].tolist(), True)
 
         ######################## COMPUTE DISTANCES between levels of var
@@ -2505,13 +2531,30 @@ def euclidian_distance_compute(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT_MASKS,
         ######## STATE SPACE PLOTS
         if PLOT_STATE_SPACE:
             from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_scalar_WRAPPER
-            dflab = pa.Xlabels["trials"]
-            Xthis = pa.X.squeeze(axis=2).T # (ntrials, ndims)
-            # list_dims = [(0,1), (2,3)]
-            list_dims = [(0,1)]
-            trajgood_plot_colorby_splotby_scalar_WRAPPER(Xthis, dflab, var, savedir,
-                                                         vars_subplot=var_others, list_dims=list_dims,
-                                                         skip_subplots_lack_mult_colors=False, save_suffix = i_var)
+            if pa.X.shape[0]==3:
+                list_dims = [(0,1), (1,2)]
+            elif pa.X.shape[0]>3:
+                list_dims = [(0,1), (2,3)]
+            else:
+                list_dims = [(0,1)]
+
+            if (var, var_others) not in var_varothers_already_plotted:
+                dflab = pa.Xlabels["trials"]
+                Xthis = pa.X.squeeze(axis=2).T # (n4trials, ndims)
+                trajgood_plot_colorby_splotby_scalar_WRAPPER(Xthis, dflab, var, savedir,
+                                                             vars_subplot=var_others, list_dims=list_dims,
+                                                             skip_subplots_lack_mult_colors=False, save_suffix = i_var)
+                var_varothers_already_plotted.append((var, var_others))
+
+            # Also plot this variable in the entire dataset.
+            # - and use data that hasnt been pruend for conjunctions.
+            if var not in vars_already_state_space_plotted:
+                dflab = pa_before_prune.Xlabels["trials"]
+                Xthis = pa_before_prune.X.squeeze(axis=2).T # (n4trials, ndims)
+                trajgood_plot_colorby_splotby_scalar_WRAPPER(Xthis, dflab, var, savedir,
+                                                             vars_subplot=["task_kind"], list_dims=list_dims,
+                                                             skip_subplots_lack_mult_colors=False, save_suffix = i_var)
+                vars_already_state_space_plotted.append(var)
 
         ############### SHUFFLE CONTROLS
         if DO_SHUFFLE:
