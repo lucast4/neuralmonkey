@@ -1957,12 +1957,40 @@ def euclidian_distance_compute_score_single(pa, var, var_others, PLOT=False, PLO
     """
     from pythonlib.cluster.clustclass import Clusters
 
-    CONTEXT_DIFFERENT_FOR_FIRST_STROKE = True
-    if "seqc_0_shape" in pa.Xlabels["trials"].columns:
-        # Then this is trial-level. ignore this stroke-index based constarint
-        CONTEXT_DIFFERENT_FOR_FIRST_STROKE = False
-    else:
-        assert "stroke_index_is_first" in pa.Xlabels["trials"].columns
+
+    def _get_context_masks(Cldist, context_input, skip_mask_plot=False):
+        """
+        How to defince DIFFERENT context (SAME is always just the conj vars).
+        :param CLdist:
+        :param context_input:
+        :return:
+        """
+        if context_input is not None and len(context_input)>0:
+            print("Generating masks using context:", context_input)
+            if "diff_context_ver" in context_input:
+                diff_context_ver = context_input["diff_context_ver"]
+            else:
+                diff_context_ver = "diff_specific_lenient"
+            # Then use inputed context
+            MASKS, fig, axes = Cldist.rsa_mask_context_helper(var, var_others, diff_context_ver,
+                                  context_input["same"], context_input["diff"], PLOT=PLOT_MASKS,
+                                  path_for_save_print_lab_each_mask=path_for_save_print_lab_each_mask)
+        else:
+            # Called "diff" if ANY var in var_others is different.
+            MASKS, fig, axes = Cldist.rsa_mask_context_helper(var, var_others, "diff_at_least_one", PLOT=PLOT_MASKS,
+                                                              path_for_save_print_lab_each_mask=path_for_save_print_lab_each_mask)
+        if plot_mask_path is not None and PLOT_MASKS and not skip_mask_plot:
+            print("Saving context mask at: ", plot_mask_path)
+            savefig(fig, plot_mask_path)
+
+        return MASKS
+
+    # CONTEXT_DIFFERENT_FOR_FIRST_STROKE = True
+    # if "seqc_0_shape" in pa.Xlabels["trials"].columns:
+    #     # Then this is trial-level. ignore this stroke-index based constarint
+    #     CONTEXT_DIFFERENT_FOR_FIRST_STROKE = False
+    # else:
+    #     assert "stroke_index_is_first" in pa.Xlabels["trials"].columns
 
     ALSO_COLLECT_SAME_EFFECT = False # NOTE: This is incorrect - it is just "null" data.
     if ALSO_COLLECT_SAME_EFFECT:
@@ -2004,82 +2032,32 @@ def euclidian_distance_compute_score_single(pa, var, var_others, PLOT=False, PLO
     if PLOT:
         Cldist.rsa_plot_heatmap()
 
-    # Get masks of context
-    # if PLOT_MASKS==True and path_for_save_print_lab_each_mask==None:
-    #     path_for_save_print_lab_each_mask = "/tmp/masks.pdf"
-    if context_input is not None and len(context_input)==0:
-        print("Generating masks using context:", context_input)
-        if "diff_context_ver" in context_input:
-            diff_context_ver = context_input["diff_context_ver"]
-        else:
-            diff_context_ver = "diff_specific_lenient"
-        # Then use inputed context
-        MASKS, fig, axes = Cldist.rsa_mask_context_helper(var, var_others, diff_context_ver,
-                              context_input["same"], context_input["diff"], PLOT=PLOT_MASKS,
-                              path_for_save_print_lab_each_mask=path_for_save_print_lab_each_mask)
-    else:
-        if CONTEXT_DIFFERENT_FOR_FIRST_STROKE:
-            # This has no effect on "same context", but ensures that "diff" context cases have same
-            # "stroke_index_is_first". This is becuase first stroke is usually different (due to reach from onset).
-            if "stroke_index_is_first" in var_others:
-                diffctxt_vars_diff = [var for var in var_others if not var=="stroke_index_is_first"]
-                diffctxt_vars_same = ["stroke_index_is_first"]
-            else:
-                diffctxt_vars_diff = var_others
-                diffctxt_vars_same = []
-            MASKS, fig, axes = Cldist.rsa_mask_context_helper(var, var_others, "diff_specific_lenient",
-                                      diffctxt_vars_same, diffctxt_vars_diff, PLOT=PLOT_MASKS,
-                                      path_for_save_print_lab_each_mask=path_for_save_print_lab_each_mask)
-            # -- samnity check is same as other version.
-            _MASKS, _, _ = Cldist.rsa_mask_context_helper(var, var_others, "diff_at_least_one", PLOT=PLOT_MASKS)
-            for _ver in ["context_same", "effect_same", "effect_diff"]:
-                assert np.all(_MASKS[_ver] == MASKS[_ver]), "SAnity check failed! bug in code?"
-        else:
-            MASKS, fig, axes = Cldist.rsa_mask_context_helper(var, var_others, "diff_at_least_one", PLOT=PLOT_MASKS,
-                                                              path_for_save_print_lab_each_mask=path_for_save_print_lab_each_mask)
-    if plot_mask_path is not None and PLOT_MASKS:
-        print("Saving context mask at: ", plot_mask_path)
-        savefig(fig, plot_mask_path)
+    ### Get masks of context
+    MASKS = _get_context_masks(Cldist, context_input)
 
     ##################### COMPUTE SCORES.
+    res = []
     # 1. Within each context, average pairwise distance between levels of effect var
-    map_grp_to_mask = Cldist.rsa_mask_context_split_levels_of_conj_var(var_others, PLOT=PLOT_MASKS, exclude_diagonal=False)
+    map_grp_to_mask_context_same = Cldist.rsa_mask_context_split_levels_of_conj_var(var_others, PLOT=PLOT_MASKS, exclude_diagonal=False,
+                                                                                    contrast="same")
     map_grp_to_mask_vareffect = Cldist.rsa_mask_context_split_levels_of_conj_var([var], PLOT=PLOT_MASKS, exclude_diagonal=False,
-                                                                                 contrast="any")
+                                                                                 contrast="any") # either row or col must be the given level.
     ma_ut = Cldist._rsa_matindex_generate_upper_triangular()
 
     # Difference between levels of var, computed within(separately) for each level of ovar
     # (NOTE: this does nto care about "context")
-    res = []
-    for grp, ma in map_grp_to_mask.items():
-        ma_final = ma & MASKS["effect_diff"] & ma_ut
+    for grp, ma_context_same in map_grp_to_mask_context_same.items():
+        ma_final = ma_context_same & MASKS["effect_diff"] & ma_ut # same context, diff effect
         if np.any(ma_final): # might not have if allow for cases with 1 level of effect var.
             dist = Cldist.Xinput[ma_final].mean()
-
             # sanity check
-            _ma_final = ma & MASKS["effect_diff"] & ma_ut & MASKS["context_same"]
+            _ma_final = ma_context_same & MASKS["effect_diff"] & ma_ut & MASKS["context_same"]
             _dist = Cldist.Xinput[_ma_final].mean()
             assert np.isclose(dist, _dist), "I thoguth that context_same is exactly identical to the vars_others... figure this out"
-
             res.append({
                 "var":var,
                 "var_others":tuple(var_others),
                 "effect_samediff":"diff",
-                "context_samediff":"same",
-                "levo":grp,
-                "leveff":"ALL",
-                "dist":dist,
-                "dat_level":dat_level
-            })
-
-        # Also collect "same" effect (and same context, as above)
-        if ALSO_COLLECT_SAME_EFFECT: # NOTE: This is incorrect - it is just "null" data.
-            ma_final = ma & MASKS["effect_same"]
-            dist = Cldist.Xinput[ma_final].mean()
-            res.append({
-                "var":var,
-                "var_others":tuple(var_others),
-                "effect_samediff":"same",
                 "context_samediff":"same",
                 "levo":grp,
                 "leveff":"ALL",
@@ -2107,21 +2085,6 @@ def euclidian_distance_compute_score_single(pa, var, var_others, PLOT=False, PLO
                 "dat_level":dat_level
             })
 
-        # # Looser version of above -- difference btween contexts, ignoring the level of var
-        # ma_final = ma & MASKS["context_diff"] & ma_ut
-        # if np.sum(ma_final)>0:
-        #     dist = Cldist.Xinput[ma_final].mean()
-        #     res.append({
-        #         "var":var,
-        #         "var_others":tuple(var_others),
-        #         "effect_samediff":"any",
-        #         "context_samediff":"diff",
-        #         "levo":"ALL",
-        #         "leveff":lev_effect,
-        #         "dist":dist,
-        #         "dat_level":dat_level
-        #     })
-
         # Distance for (diff effect, diff context)
         ma_final = ma & MASKS["effect_diff"] & MASKS["context_diff"] & ma_ut
         if np.sum(ma_final)>0:
@@ -2137,6 +2100,8 @@ def euclidian_distance_compute_score_single(pa, var, var_others, PLOT=False, PLO
                 "dat_level":dat_level
             })
 
+    # Just to make sure no bleed thru to next section.
+    del Cldist, MASKS, dat_level, map_grp_to_mask_context_same, map_grp_to_mask_vareffect
 
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     #### STUFF THAT USES Pairwise data (Get pairwise distnaces)
@@ -2146,56 +2111,32 @@ def euclidian_distance_compute_score_single(pa, var, var_others, PLOT=False, PLO
     Cldist_each_dat = Cl.distsimmat_convert("euclidian")
     dat_level = "pts"
 
-
-    # ------------ get context
-    if context_input is not None and len(context_input)==0:
-        print("Generating masks using context:", context_input)
-        if "diff_context_ver" in context_input:
-            diff_context_ver = context_input["diff_context_ver"]
-        else:
-            diff_context_ver = "diff_specific_lenient"
-        # Then use inputed context
-        MASKS, fig, axes = Cldist_each_dat.rsa_mask_context_helper(var, var_others, diff_context_ver,
-                              context_input["same"], context_input["diff"], PLOT=PLOT_MASKS,
-                              path_for_save_print_lab_each_mask=path_for_save_print_lab_each_mask)
-    else:
-        if CONTEXT_DIFFERENT_FOR_FIRST_STROKE:
-            # This has no effect on "same context", but ensures that "diff" context cases have same
-            # "stroke_index_is_first". This is becuase first stroke is usually different (due to reach from onset).
-            if "stroke_index_is_first" in var_others:
-                diffctxt_vars_diff = [var for var in var_others if not var=="stroke_index_is_first"]
-                diffctxt_vars_same = ["stroke_index_is_first"]
-            else:
-                diffctxt_vars_diff = var_others
-                diffctxt_vars_same = []
-            MASKS, fig, axes = Cldist_each_dat.rsa_mask_context_helper(var, var_others, "diff_specific_lenient",
-                                      diffctxt_vars_same, diffctxt_vars_diff, PLOT=PLOT_MASKS,
-                                      path_for_save_print_lab_each_mask=path_for_save_print_lab_each_mask)
-            # -- samnity check is same as other version.
-            _MASKS, _, _ = Cldist_each_dat.rsa_mask_context_helper(var, var_others, "diff_at_least_one", PLOT=PLOT_MASKS)
-            for _ver in ["context_same", "effect_same", "effect_diff"]:
-                assert np.all(_MASKS[_ver] == MASKS[_ver]), "SAnity check failed! bug in code?"
-        else:
-            MASKS, fig, axes = Cldist_each_dat.rsa_mask_context_helper(var, var_others, "diff_at_least_one", PLOT=PLOT_MASKS,
-                                                              path_for_save_print_lab_each_mask=path_for_save_print_lab_each_mask)
-    if plot_mask_path is not None and PLOT_MASKS:
-        print("Saving context mask at: ", plot_mask_path)
-        savefig(fig, plot_mask_path)
+    ### Get masks of context
+    MASKS = _get_context_masks(Cldist_each_dat, context_input, skip_mask_plot=True)
 
     ##################### COMPUTE SCORES.
     # 1. Within each context, average pairwise distance between levels of effect var
-    map_grp_to_mask = Cldist_each_dat.rsa_mask_context_split_levels_of_conj_var(var_others, PLOT=PLOT_MASKS, exclude_diagonal=False)
-    map_grp_to_mask_vareffect = Cldist_each_dat.rsa_mask_context_split_levels_of_conj_var([var], PLOT=PLOT_MASKS, exclude_diagonal=False,
+    _plot_masks = False # this too large (datapts...)
+    # map_grp_to_mask = Cldist_each_dat.rsa_mask_context_split_levels_of_conj_var(var_others, PLOT=PLOT_MASKS, exclude_diagonal=False)
+    map_grp_to_mask_context = Cldist_each_dat.rsa_mask_context_split_levels_of_conj_var(var_others, PLOT=_plot_masks, exclude_diagonal=False,
+                                                                                        contrast="any")
+    map_grp_to_mask_vareffect = Cldist_each_dat.rsa_mask_context_split_levels_of_conj_var([var], PLOT=_plot_masks, exclude_diagonal=False,
                                                                                  contrast="any")
     ma_ut = Cldist_each_dat._rsa_matindex_generate_upper_triangular()
 
+    # --- ALIGN TO EACH LEVEL OF CONTEXT VAR.
     # Difference between levels of var, computed within(separately) for each level of ovar
     # (NOTE: this does nto care about "context")
-    for grp, ma in map_grp_to_mask.items():
-        ma_final = ma & MASKS["effect_diff"] & ma_ut
 
+    for grp, ma in map_grp_to_mask_context.items():
+        if np.sum(ma)==0:
+            print(grp)
+            assert False, "bug in Cl code."
         dist_diff_same = None
         dist_same_same = None
+        dist_diff_diff = None
+
+        ma_final = ma & MASKS["effect_diff"] & MASKS["context_same"] & ma_ut
         if np.any(ma_final): # might not have if allow for cases with 1 level of effect var.
             dist_diff_same = Cldist_each_dat.Xinput[ma_final].mean()
             res.append({
@@ -2208,9 +2149,32 @@ def euclidian_distance_compute_score_single(pa, var, var_others, PLOT=False, PLO
                 "dist":dist_diff_same,
                 "dat_level":dat_level,
             })
+        # else:
+        #     fig, axes = plt.subplots(2,2)
+        #
+        #     ax = axes.flatten()[0]
+        #     Cldist_each_dat.rsa_matindex_plot_bool_mask(ma, ax)
+        #
+        #     ax = axes.flatten()[1]
+        #     Cldist_each_dat.rsa_matindex_plot_bool_mask(MASKS["effect_diff"], ax)
+        #
+        #     ax = axes.flatten()[2]
+        #     Cldist_each_dat.rsa_matindex_plot_bool_mask(MASKS["context_same"], ax)
+        #
+        #     fig.savefig("/tmp/masks.png")
+        #
+        #     print(ma)
+        #     print(MASKS["effect_diff"])
+        #     print(MASKS["context_same"])
+        #     assert False
+        #     x = ma & MASKS["effect_diff"]
+        #     print(sum(ma & MASKS["effect_diff"]))
+        #     print(sum(ma & MASKS["context_same"]))
+        #     print(grp)
+        #     assert False
 
         # Also collect "same" effect (and same context, as above)
-        ma_final = ma & MASKS["effect_same"] & ma_ut
+        ma_final = ma & MASKS["effect_same"] & MASKS["context_same"] & ma_ut
         if np.any(ma_final): # might not have if allow for cases with 1 level of effect var.
             dist_same_same = Cldist_each_dat.Xinput[ma_final].mean()
             res.append({
@@ -2224,20 +2188,79 @@ def euclidian_distance_compute_score_single(pa, var, var_others, PLOT=False, PLO
                 "dat_level":dat_level,
             })
 
-        # Normalized effect
-        if (dist_diff_same is not None) and (dist_same_same is not None):
-            dist_yue = dist_diff_same/dist_same_same
+        ma_final = ma & MASKS["effect_diff"] & MASKS["context_diff"] & ma_ut
+        if np.any(ma_final): # might not have if allow for cases with 1 level of effect var.
+            dist_diff_diff = Cldist_each_dat.Xinput[ma_final].mean()
             res.append({
                 "var":var,
                 "var_others":tuple(var_others),
                 "effect_samediff":"diff",
-                "context_samediff":"same",
+                "context_samediff":"diff",
                 "levo":grp,
                 "leveff":"ALL",
-                "dist":dist_yue,
-                "dat_level":"pts_yue",
+                "dist":dist_diff_diff,
+                "dat_level":dat_level,
             })
+        # else:
+        #     fig, axes = plt.subplots(2,2)
+        #
+        #     ax = axes.flatten()[0]
+        #     Cldist_each_dat.rsa_matindex_plot_bool_mask(ma, ax)
+        #
+        #     ax = axes.flatten()[1]
+        #     Cldist_each_dat.rsa_matindex_plot_bool_mask(MASKS["effect_diff"], ax)
+        #
+        #     ax = axes.flatten()[2]
+        #     Cldist_each_dat.rsa_matindex_plot_bool_mask(MASKS["context_diff"], ax)
+        #
+        #     fig.savefig("/tmp/masks.pdf")
+        #
+        #     print(ma)
+        #     print(MASKS["effect_diff"])
+        #     print(MASKS["context_diff"])
+        #     assert False
+        #     x = ma & MASKS["effect_diff"]
+        #     print(sum(ma & MASKS["effect_diff"]))
+        #     print(sum(ma & MASKS["context_diff"]))
+        #     print(grp)
+        #     assert False
 
+        # Normalized effect
+        if (dist_diff_same is not None) and (dist_same_same is not None):
+            for d, dl in [
+                [dist_diff_same/dist_same_same, "pts_yue"],
+                [np.log2(dist_diff_same/dist_same_same), "pts_yue_log"],
+                [dist_diff_same-dist_same_same, "pts_yue_diff"],
+                ]:
+                res.append({
+                    "var":var,
+                    "var_others":tuple(var_others),
+                    "effect_samediff":"diff",
+                    "context_samediff":"same",
+                    "levo":grp,
+                    "leveff":"ALL",
+                    "dist":d,
+                    "dat_level":dl,
+                })
+
+        # (diff, diff) --> A bit arbitrary, could have n pts matching context levels (here) or
+        # effect levels (below). Choose here since this is the main analysis.
+        if (dist_diff_diff is not None) and (dist_same_same is not None):
+            for d, dl in [
+                [dist_diff_diff/dist_same_same, "pts_yue"],
+                [np.log2(dist_diff_diff/dist_same_same), "pts_yue_log"],
+                [dist_diff_diff-dist_same_same, "pts_yue_diff"],
+                ]:
+                res.append({
+                    "var":var,
+                    "var_others":tuple(var_others),
+                    "effect_samediff":"diff",
+                    "context_samediff":"diff",
+                    "levo":grp,
+                    "leveff":"ALL",
+                    "dist":d,
+                    "dat_level":dl,
+                })
 
     #### ACROSS CONTEXTS (compute separately for each level of effect)
     for lev_effect, ma in map_grp_to_mask_vareffect.items():
@@ -2247,23 +2270,12 @@ def euclidian_distance_compute_score_single(pa, var, var_others, PLOT=False, PLO
 
         dist_same_same = None
         dist_same_diff = None
-        dist_diff_diff = None
+        # dist_diff_diff = None
 
         # - same effect, same context - just for normalizing.
         ma_final = ma & MASKS["effect_same"] & MASKS["context_same"] & ma_ut
         if np.sum(ma_final)>0:
             dist_same_same = Cldist_each_dat.Xinput[ma_final].mean()
-            res.append({
-                "var":var,
-                "var_others":tuple(var_others),
-                "effect_samediff":"same",
-                "context_samediff":"diff",
-                "levo":"ALL",
-                "leveff":lev_effect,
-                "dist":dist_same_same,
-                "dat_level":dat_level,
-            })
-
 
         # - same effect diff context
         ma_final = ma & MASKS["effect_same"] & MASKS["context_diff"] & ma_ut
@@ -2280,68 +2292,62 @@ def euclidian_distance_compute_score_single(pa, var, var_others, PLOT=False, PLO
                 "dat_level":dat_level,
             })
 
-        # # Looser version of above -- difference btween contexts, ignoring the level of var
-        # ma_final = ma & MASKS["context_diff"] & ma_ut
-        # if np.sum(ma_final)>0:
-        #     dist = Cldist_each_dat.Xinput[ma_final].mean()
-        #     res.append({
-        #         "var":var,
-        #         "var_others":tuple(var_others),
-        #         "effect_samediff":"any",
-        #         "context_samediff":"diff",
-        #         "levo":"ALL",
-        #         "leveff":lev_effect,
-        #         "dist":dist,
-        #         "dat_level":dat_level,
-        #     })
-
-        # Distance for (diff effect, diff context)
-        ma_final = ma & MASKS["effect_diff"] & MASKS["context_diff"] & ma_ut
-        if np.sum(ma_final)>0:
-            dist_diff_diff = Cldist_each_dat.Xinput[ma_final].mean()
-            res.append({
-                "var":var,
-                "var_others":tuple(var_others),
-                "effect_samediff":"diff",
-                "context_samediff":"diff",
-                "levo":"ALL",
-                "leveff":lev_effect,
-                "dist":dist_diff_diff,
-                "dat_level":dat_level,
-            })
 
         # Normalized effect
         if (dist_same_same is not None) and (dist_same_diff is not None):
-            res.append({
-                "var":var,
-                "var_others":tuple(var_others),
-                "effect_samediff":"same",
-                "context_samediff":"diff",
-                "levo":"ALL",
-                "leveff":lev_effect,
-                "dist":dist_same_diff/dist_same_same,
-                "dat_level":"pts_yue",
-            })
-        if (dist_same_same is not None) and (dist_diff_diff is not None):
-            res.append({
-                "var":var,
-                "var_others":tuple(var_others),
-                "effect_samediff":"diff",
-                "context_samediff":"diff",
-                "levo":"ALL",
-                "leveff":lev_effect,
-                "dist":dist_diff_diff/dist_same_same,
-                "dat_level":"pts_yue",
-            })
+            for d, dl in [
+                [dist_same_diff/dist_same_same, "pts_yue"],
+                [np.log2(dist_same_diff/dist_same_same), "pts_yue_log"],
+                [dist_same_diff-dist_same_same, "pts_yue_diff"],
+                ]:
+                res.append({
+                    "var":var,
+                    "var_others":tuple(var_others),
+                    "effect_samediff":"same",
+                    "context_samediff":"diff",
+                    "levo":"ALL",
+                    "leveff":lev_effect,
+                    "dist":d,
+                    "dat_level":dl,
+                })
+
+        # Normalized effect
+        if False: # Instead get these aligned to context (above).
+            # Distance for (diff effect, diff context)
+            ma_final = ma & MASKS["effect_diff"] & MASKS["context_diff"] & ma_ut
+            if np.sum(ma_final)>0:
+                dist_diff_diff = Cldist_each_dat.Xinput[ma_final].mean()
+                res.append({
+                    "var":var,
+                    "var_others":tuple(var_others),
+                    "effect_samediff":"diff",
+                    "context_samediff":"diff",
+                    "levo":"ALL",
+                    "leveff":lev_effect,
+                    "dist":dist_diff_diff,
+                    "dat_level":dat_level,
+                })
+
+            if (dist_same_same is not None) and (dist_diff_diff is not None):
+                res.append({
+                    "var":var,
+                    "var_others":tuple(var_others),
+                    "effect_samediff":"diff",
+                    "context_samediff":"diff",
+                    "levo":"ALL",
+                    "leveff":lev_effect,
+                    "dist":dist_diff_diff/dist_same_same,
+                    "dat_level":"pts_yue",
+                })
 
     return res
 
-def euclidian_distance_compute(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT_MASKS,
-                               twind, tbin_dur, tbin_slice, savedir,
-                               PLOT_STATE_SPACE = True, nmin_trials_per_lev=None,
-                               version_distance="euclidian_unbiased",
-                               NPCS_KEEP=None, LIST_CONTEXT=None, LIST_FILTDICT=None,
-                               LIST_PRUNE_MIN_N_LEVS=None, extra_dimred_method=None, umap_n_neighbors = 30):
+def euclidian_distance_compute(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT_MASKS, twind, tbin_dur,
+                               tbin_slice, savedir, PLOT_STATE_SPACE=True, nmin_trials_per_lev=None,
+                               version_distance="euclidian_unbiased", LIST_CONTEXT=None, LIST_FILTDICT=None,
+                               LIST_PRUNE_MIN_N_LEVS=None,
+                               dim_red_method = "pca_umap",
+                               NPCS_KEEP=None, umap_n_neighbors=30, extra_dimred_method_n_components=2):
     """
     Wrapper to compute all distances ...
 
