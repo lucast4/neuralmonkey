@@ -8674,13 +8674,13 @@ class Session(object):
 
             times_tdt_raw = times_tdt[:,None]
             strokes_tdt_raw = [np.concatenate([vals_tdt_calibrated, times_tdt_raw], axis=1)]
-            strokes_tdt = smoothStrokes(strokes_tdt_raw, fs_tdt, 0.05)
+            strokes_tdt = smoothStrokes(strokes_tdt_raw, fs_tdt, 0.05, sanity_check_endpoint_not_different=False)
             strokes_tdt = strokesInterpolate2(strokes_tdt, ["input_times", times_ml2], plot_outcome=PLOT)
             vals_tdt_calibrated_atml2times_sm = strokes_tdt[0][:,:2]
 
             # smooth the ml2 version
             strokes_ml2_raw = [np.concatenate([vals_ml2, times_ml2[:,None]], axis=1)]
-            strokes_ml2 = smoothStrokes(strokes_ml2_raw, fs_ml2, 0.05)
+            strokes_ml2 = smoothStrokes(strokes_ml2_raw, fs_ml2, 0.05, sanity_check_endpoint_not_different=False)
             vals_ml2_sm = strokes_ml2[0][:,:2]
 
             diff_ml2_tdt_rms = np.sum((vals_tdt_calibrated_atml2times_sm - vals_ml2_sm)**2, axis=1)**0.5
@@ -8733,7 +8733,7 @@ class Session(object):
             # smooth the trace
             from pythonlib.tools.stroketools import strokesInterpolate2, smoothStrokes            
             strokes_tdt = [np.concatenate([vals_tdt_calibrated, times_tdt[:,None]], axis=1)]
-            strokes_tdt = smoothStrokes(strokes_tdt, fs_tdt, SM_WIN)
+            strokes_tdt = smoothStrokes(strokes_tdt, fs_tdt, SM_WIN, sanity_check_endpoint_not_different=False)
             vals_tdt_calibrated_sm = strokes_tdt[0][:,:2]
             times_tdt_sm = strokes_tdt[0][:,2]
             assert np.all(times_tdt_sm==times_tdt)
