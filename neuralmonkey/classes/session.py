@@ -45,7 +45,8 @@ MAP_COMBINED_REGION_TO_REGION = {
 MAP_COMBINED_REGION_TO_REGION = {k:tuple(v) for k, v in MAP_COMBINED_REGION_TO_REGION.items()}
 
 # SMFR_SIGMA = 0.025
-SMFR_SIGMA = 0.040 # 4/29/23
+# SMFR_SIGMA = 0.040 # 4/29/23
+SMFR_SIGMA = 0.020 # 4/20/24, # since you can always smoother further later on.
 SMFR_TIMEBIN = 0.01
 
 PRE_DUR_TRIAL = 1.
