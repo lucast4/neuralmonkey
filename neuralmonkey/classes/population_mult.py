@@ -11,7 +11,263 @@ import pandas as pd
 import numpy as np
 from pythonlib.tools.pandastools import append_col_with_grp_index
 from pythonlib.tools.plottools import savefig
+import os
 # (animal, date, question) --> DFallPA
+
+def load_handsaved_wrapper(animal=None, version=None):
+    """ Load a pre-saved DfallPA -- not systematic, just hand saved versions.
+    """
+
+    # NEWER (After adding epoch variables)
+    # path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/DFallpa_Diego_230823_RULESW_BASE_stroke.pkl"
+    # path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/DFallpa_Diego_230928_RULE_BASE_stroke.pkl"
+    # path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/DFallpa_Diego_230910_RULESW_BASE_stroke.pkl" # shape vs. color
+    # path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/DFallpa_Diego_230911_RULE_BASE_stroke.pkl" #
+    path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/DFallpa_Diego_230817_RULE_BASE_stroke.pkl" # AnBmCk
+    # path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/DFallpa_Diego_230929_RULE_BASE_stroke.pkl"
+    # path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/DFallpa_Pancho_230320_RULE_BASE_stroke.pkl" # rowcol
+    # path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/DFallpa_Diego_230922_RULESW_BASE_stroke.pkl" # AnBm vs. DIR vs. seqsup
+    # path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/DFallpa_Diego_231024_RULESW_BASE_stroke.pkl" #
+    # path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/DFallpa_Pancho_220830_RULESW_BASE_stroke.pkl" # # (AB)n
+
+    # path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/DFallpa_Diego_230925_RULESW_BASE_stroke.pkl" # seqsup
+    # path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/DFallpa_Pancho_230811_RULESW_BASE_stroke.pkl" # AnBmCk
+    # path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-231211-stroke-ks_nonorm.pkl" # char [DAN AND XUAN]
+    # path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Dolnik/DFallpa_KS_nonorm.pkl" # single prim, shapes (Diego,230615, trial)
+    # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230615-stroke-ks_nonorm.pkl" # shapes (Diego,230615, strokes)
+    # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230630-stroke-ks_nonorm.pkl" # PIG (strokes)
+    # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Pancho-220918-stroke-ks_nonorm.pkl" # Pancho SP (shape, loc, size)
+    DFallpa = pd.read_pickle(path)
+    return DFallpa
+
+def dfallpa_preprocess_fr_normalization(DFallpa, fr_normalization_method, savedir=None):
+    """
+    Apply normalization to firing rates, modifying the inputted DFallpa.
+    :param DFallpa:
+    :param fr_normalization_method:
+    :param savedir:
+    :return: Modifies DFallpa
+    """
+    from pythonlib.tools.plottools import savefig
+    from neuralmonkey.analyses.state_space_good import popanal_preprocess_scalar_normalization
+
+    if savedir is not None:
+        path_to_save_example_fr_normalization = f"{savedir}/example_fr_normalization.png"
+    else:
+        path_to_save_example_fr_normalization = None
+
+    # What low-level params?
+    if fr_normalization_method=="each_time_bin":
+        # Then demean in each time bin indepednently
+        subtract_mean_at_each_timepoint = True
+        subtract_mean_across_time_and_trial = False
+    elif fr_normalization_method=="across_time_bins":
+        # ALl time bins subtract the same scalar --> maintains temporal moudlation.
+        subtract_mean_at_each_timepoint = False
+        subtract_mean_across_time_and_trial = True
+    else:
+        print(fr_normalization_method)
+        assert False
+
+    # Iterate thru each pa, doing normalizatoin.
+    list_panorm = []
+    for i, pa in enumerate(DFallpa["pa"].tolist()):
+
+        # Params for saving figure
+        if path_to_save_example_fr_normalization is not None and i==0:
+            plot_example_chan_number = pa.Chans[0]
+            plot_example_split_var_string = None
+            for var in ["seqc_0_shape", "shape", "seqc_0_loc", "gridloc", "task_kind", "epoch"]:
+                if var in pa.Xlabels["trials"].columns:
+                    plot_example_split_var_string = var
+                    break
+            assert plot_example_split_var_string is not None
+        else:
+            plot_example_chan_number = None
+            plot_example_split_var_string = None
+
+        # Do normalization
+        PAnorm, _, _, fig, axes, _ = popanal_preprocess_scalar_normalization(pa, None,
+                                                                                          DO_AGG_TRIALS=False,
+                                                                                          plot_example_chan_number=plot_example_chan_number,
+                                                                                            plot_example_split_var_string = plot_example_split_var_string,
+                                                                                          subtract_mean_at_each_timepoint=subtract_mean_at_each_timepoint,
+                                                                                          subtract_mean_across_time_and_trial=subtract_mean_across_time_and_trial)
+        if path_to_save_example_fr_normalization is not None and i==0:
+            savefig(fig, path_to_save_example_fr_normalization)
+        list_panorm.append(PAnorm)
+
+    # Replace all pa
+    DFallpa["pa"] = list_panorm
+
+
+def snippets_extract_popanals_split_bregion_twind(SP, list_time_windows, vars_extract_from_dfscalar,
+                                                  SAVEDIR=None, dosave=False,
+                                                  combine_into_larger_areas=False,
+                                                  events_keep=None,
+                                                  exclude_bad_areas=False):
+    """ [GOOD] SP --> Multiple Popanals, each with speciifc (event, bregion, twind), and
+    with all variables extracted into each pa.Xlabels["trials"]. The goal is that at can
+    run all population analyses using these pa, without need for having beh datasets and
+    all snippets in memory.
+    Extraction of specific PopAnals for each conjunction of (twind, bregion).
+    PARAMS:
+    - list_time_windowsm, list of timw eindow, tuples .e.g, (-0.2, 0.2), each defining a specific
+    extracvted PA.
+    - EFFECT_VARS, list of str, vars to extract, mainly to make sure the etracted PA have all
+    variables. If not SKIP_ANALY_PLOTTING, then these also determine which plots.
+    - dosave, bool, def faulse since takes lots sapce, like 1-3g per wl.
+    RETURNS:
+    - DictBregionTwindPA, dict, mapping (bregion, twind) --> pa.
+    All PAs guaradteeed to have iodentical (:, trials, times).
+    """
+    from pythonlib.tools.pandastools import append_col_with_grp_index
+
+    # SInce this is population, make sure all channels are present (no outliers removed)
+    SP.datamod_append_outliers()
+
+    if events_keep is None or len(events_keep)==0:
+        events_keep = SP.Params["list_events_uniqnames"]
+
+    if SAVEDIR is None and dosave:
+        from pythonlib.globals import PATH_ANALYSIS_OUTCOMES
+        SAVEDIR = f"{PATH_ANALYSIS_OUTCOMES}/recordings/main/SAVED_POPANALS"
+        os.makedirs(SAVEDIR, exist_ok=True)
+
+    ####################### EXTRACT DATA
+    # list_features_extraction = list(set(list_features_extraction + EFFECT_VARS))
+    list_bregion = SP.bregion_list(combine_into_larger_areas=combine_into_larger_areas)
+
+    if not any([e in SP.DfScalar["event"].unique().tolist() for e in events_keep]):
+        events_keep = sorted(SP.DfScalar["event"].unique().tolist())
+
+    # 1) Extract population dataras
+    DictEvBrTw_to_PA = {}
+    print("These events:", events_keep)
+    for event in events_keep:
+        if event in SP.DfScalar["event"].tolist():
+            print(event)
+            # assert len(SP.Params["list_events_uniqnames"])==1, "assuming is strokes, just a single event... otherwise iterate"
+            # event = SP.Params["list_events_uniqnames"][0]
+            PA, _ = SP.dataextract_as_popanal_statespace(SP.Sites, event,
+                                                         list_features_extraction=vars_extract_from_dfscalar,
+                                                      which_fr_sm = "fr_sm", max_frac_trials_lose=0.02)
+
+            assert len(PA.X)>0
+            # print("These are requested sites:", SP.Sites)
+            # print("These are extracted sites:", PA.Chans)
+
+            # Split PA based on chans (e.g., bregions), times (e.g., different time slices) BEFORE doing downstream analyses
+            DictBregionTwindPA = {}
+            trials = None
+            xlabels_times = None
+            xlabels_trials = None
+            for twind in list_time_windows:
+                times = None
+                for bregion in list_bregion:
+
+                    print(event, bregion, twind)
+
+                    # Bregion
+                    chans_needed = SP.sitegetter_map_region_to_sites(bregion, exclude_bad_areas=exclude_bad_areas)
+                    print("Sites for this bregion ", bregion)
+                    print(chans_needed)
+                    if len(chans_needed)>0:
+                        pa = PA.slice_by_dim_values_wrapper("chans", chans_needed)
+                        # Times
+                        pa = pa.slice_by_dim_values_wrapper("times", twind)
+
+                        assert len(pa.X)>0
+
+                        # sanity check that all pa are identical
+                        if trials is not None:
+                            assert pa.Trials == trials
+                        if times is not None:
+                            # print(list(pa.Times))
+                            # print(list(times))
+                            assert list(pa.Times) == list(times)
+                        if xlabels_trials is not None:
+                            assert pa.Xlabels["trials"].equals(xlabels_trials)
+                        if xlabels_times is not None:
+                            assert pa.Xlabels["times"].equals(xlabels_times)
+
+                        # # uiseful - a conjucntionv ariable for each tw
+                        # from pythonlib.tools.pandastools import append_col_with_grp_index
+                        # pa.Xlabels["trials"] = append_col_with_grp_index(pa.Xlabels["trials"],
+                        #                                                 ["which_level", "event", "twind"],
+                        #                                                 "wl_ev_tw",
+                        #                                                 use_strings=False)
+                        #
+                        # Update all
+                        trials = pa.Trials
+                        times = pa.Times
+                        xlabels_trials = pa.Xlabels["trials"]
+                        xlabels_times = pa.Xlabels["times"]
+
+                        # DictBregionTwindPA[(bregion, twind)] = pa
+                        DictEvBrTw_to_PA[(SP.Params["which_level"], event, bregion, twind)] = pa
+                        print(event, " -- ", bregion, " -- ", twind, " -- (data shape:)", pa.X.shape)
+                    else:
+                        print("Skipping bregion (0 channels): ", bregion)
+
+    assert len(DictEvBrTw_to_PA)>0
+
+    # Save it as dataframe
+    tmp = []
+    for k, v in DictEvBrTw_to_PA.items():
+
+        # Make sure pa itself is keeping track of the outer varibles,
+        # for sanity checks once you start splitting and grouping.
+        v.Xlabels["trials"]["which_level"] = k[0]
+        v.Xlabels["trials"]["event"] = k[1]
+        v.Xlabels["trials"]["bregion"] = k[2]
+        v.Xlabels["trials"]["twind"] = [k[3] for _ in range(len(v.Xlabels["trials"]))]
+
+        tmp.append({
+            "which_level":k[0],
+            "event":k[1],
+            "bregion":k[2],
+            "twind":k[3],
+            "pa":v
+        })
+    DFallpa = pd.DataFrame(tmp)
+
+    if len(DFallpa)==0:
+        print(list_time_windows, vars_extract_from_dfscalar,
+              combine_into_larger_areas, events_keep, exclude_bad_areas)
+        assert False, "probably params not compatible with each other"
+
+    # # Sanity check
+    # for i, row in DFallpa.iterrows():
+    #     a = row["twind"]
+    #     b = row["pa"].Xlabels["trials"]["twind"].values[0]
+    #
+    #     if not a==b:
+    #         print(a, b)
+    #         assert False, "this is old versio before 1/28 -- delete it and regenerate DFallpa"
+
+    # Also note down size of PA, in a column
+    list_shape =[]
+    for i, row in DFallpa.iterrows():
+        list_shape.append(row["pa"].X.shape)
+    DFallpa["pa_x_shape"] = list_shape
+
+    ## SAVE
+    if dosave:
+        import pickle
+        mult_sing, sessions = SP.check_if_single_or_mult_session()
+        sessions_str = "_".join([str(s) for s in sessions])
+        if mult_sing == "mult":
+            SAVEDIR = f"{PATH_ANALYSIS_OUTCOMES}/recordings/main/SAVED_POPANALS/mult_session"
+            path = f"{SAVEDIR}/{SP.animal()}-{SP.date()}-{SP.Params['which_level']}-{sessions_str}.pkl"
+        elif mult_sing=="sing":
+            SAVEDIR = f"{PATH_ANALYSIS_OUTCOMES}/recordings/main/SAVED_POPANALS/single_session"
+            path = f"{SAVEDIR}/{SP.animal()}-{SP.date()}-{SP.Params['which_level']}-{sessions_str}.pkl"
+        with open(path, "wb") as f:
+            pickle.dump(DFallpa, f)
+        print("Saved to: ", path)
+
+    return DFallpa
 
 def dfallpa_preprocess_vars_conjunctions_extract(DFallpa, which_level):
     """
@@ -471,7 +727,6 @@ def dfallpa_extraction_load_wrapper_from_MS(MS, question, list_time_windows, whi
     """
     from neuralmonkey.classes.snippets import load_and_concat_mult_snippets
     from neuralmonkey.classes.session import load_mult_session_helper
-    from neuralmonkey.analyses.state_space_good import snippets_extract_popanals_split_bregion_twind
     from neuralmonkey.analyses.rsa import rsagood_questions_dict
 
     animal = MS.animal()
@@ -643,8 +898,8 @@ def dfallpa_extraction_load_wrapper(animal, date, question, list_time_windows, w
     """
     from neuralmonkey.classes.snippets import load_and_concat_mult_snippets
     from neuralmonkey.classes.session import load_mult_session_helper
-    from neuralmonkey.analyses.state_space_good import snippets_extract_popanals_split_bregion_twind
     from neuralmonkey.analyses.rsa import rsagood_questions_dict
+    from neuralmonkey.classes.population_mult import snippets_extract_popanals_split_bregion_twind
 
     if LOAD_FROM_RSA_ANALY:
         # Saved in analy_rsa_script.py
