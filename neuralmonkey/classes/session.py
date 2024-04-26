@@ -3,6 +3,7 @@
 """
 import tdt
 import numpy as np
+import scipy
 import matplotlib.pyplot as plt
 from ..utils.timeseries import dat_to_time
 # from ..utils.monkeylogic import getTrialsTaskAsStrokes
@@ -13,7 +14,8 @@ import os
 from pythonlib.tools.expttools import checkIfDirExistsAndHasFiles
 from pythonlib.tools.exceptions import NotEnoughDataException, DataMisalignError
 from pythonlib.tools.expttools import checkIfDirExistsAndHasFiles
-from pythonlib.globals import PATH_NEURALMONKEY, PATH_DATA_NEURAL_RAW, PATH_DATA_NEURAL_PREPROCESSED
+from pythonlib.tools.stroketools import strokesInterpolate2
+from pythonlib.globals import PATH_NEURALMONKEY, PATH_DATA_NEURAL_RAW, PATH_DATA_NEURAL_PREPROCESSED, PATH_MATLAB, PATH_SAVE_CLUSTERFIX
 # PATH_NEURALMONKEY = "/data1/code/python/neuralmonkey/neuralmonkey"
 import pandas as pd
 
@@ -104,7 +106,7 @@ SAVELOCALCACHED_TRIALS_FIXATION_SUCCESS = True
 # Each event has a hard-coded numerical prefix
 MAP_EVENT_TO_PREFIX = {
     "stroke":"00",
-    "fixon":"00",
+    "fixon_preparation":"00",
     "fixcue":"00",
     "rulecue2":"02",
     "samp":"03",
@@ -6103,113 +6105,62 @@ class Session(object):
         return dict_events
 
     # load fixation onset times (231027_eyetracking_neural_exploration.ipynb)
-    def events_get_fixation_times_clusterfix_results(self, trial, on_or_off=True, DEBUG_PLOT=False):
+    def events_get_clusterfix_fixation_times_and_centroids(self, trial, on_or_off=True, event_endpoints=[]):
         # load this trial's saccade times
         trialcode = self.datasetbeh_trial_to_trialcode(trial)
-        directory_for_clusterfix = "/home/kgg/Desktop/eyetracking_analyses"
+        directory_for_clusterfix = PATH_SAVE_CLUSTERFIX
 
-        # load the .csv file for this trialcode, containing fixation onsets
+        # load the .csv file for this trialcode, containing fixation times
         if on_or_off:
-            fname = f"{directory_for_clusterfix}/{self.Animal}-{self.Date}-{self.RecSession}/{trialcode}-fixation-onsets.csv"
+            fname_times = f"{directory_for_clusterfix}/{self.Animal}-{self.Date}-{self.RecSession}/clusterfix_result_csvs/{trialcode}-fixation-onsets.csv"
         else:
-            fname = f"{directory_for_clusterfix}/{self.Animal}-{self.Date}-{self.RecSession}/{trialcode}-fixation-offsets.csv"
+            fname_times = f"{directory_for_clusterfix}/{self.Animal}-{self.Date}-{self.RecSession}/clusterfix_result_csvs/{trialcode}-fixation-offsets.csv"
 
-
-        import pandas as pd 
-        data = pd.read_csv(fname, sep=',').values
-        data = [item[0] for item in data]
-        #print(data)
-
-        # fname = f"{directory_for_clusterrfix}/{sn.Animal}-{sn.Date}-{trialcode}.mat"
-
-
-        # return etiher the on or off times depending on on_or_off
-        # print(data)
-
-        if DEBUG_PLOT:
-            times_clfix = self.events_get_fixation_times_clusterfix_results(trial)
-            times_tdt, vals_tdt_calibrated = self.beh_extract_eye_good(trial)
-
-            fig, ax = plt.subplots(figsize=(10,3))
-            ax.plot(times_tdt, vals_tdt_calibrated[:,0], label="x")
-            ax.plot(times_tdt, vals_tdt_calibrated[:,1], label="y")
-            self.plotmod_overlay_trial_events(ax, trial)
-            for t in times_clfix:
-                ax.axvline(t, color="r")
-
-        return data
-
-
-    # load fixation onset times (231027_eyetracking_neural_exploration.ipynb)
-    def events_get_fixation_centroids_clusterfix_results(self, trial):
-        # load this trial's fixation centroids
-        trialcode = self.datasetbeh_trial_to_trialcode(trial)
-        directory_for_clusterfix = "/home/kgg/Desktop/eyetracking_analyses"
+        data_times = pd.read_csv(fname_times, sep=',').values
+        data_times = [item[0] for item in data_times]
 
         # load the .csv file for this trialcode, containing fixation centroids
-        fname = f"{directory_for_clusterfix}/{self.Animal}-{self.Date}-{self.RecSession}/{trialcode}-fixation-centroids.csv"
+        fname_centroids = f"{directory_for_clusterfix}/{self.Animal}-{self.Date}-{self.RecSession}/clusterfix_result_csvs/{trialcode}-fixation-centroids.csv"
+        data_centroids = pd.read_csv(fname_centroids, sep=',').values
+        data_centroids = [item for item in data_centroids]
 
+        if event_endpoints:
+            if event_endpoints==["stim_onset", "go"]:
+                # get start, end indices
+                start_time, end_time = self.get_time_window_of_events(trial, event_endpoints[0], event_endpoints[1])
+                valid_inds = [i for i, t in enumerate(data_times) if end_time >= t >= start_time]
+                data_times = [data_times[i] for i in valid_inds]
+                data_centroids = [data_centroids[i] for i in valid_inds]
+            else:
+                assert False, "code this"
 
-        import pandas as pd 
-        data = pd.read_csv(fname, sep=',').values
-        data = [item for item in data]
-        return data
-
+        return data_times, data_centroids
 
     # load saccade onset times (231027_eyetracking_neural_exploration.ipynb)
-    def events_get_saccade_times_clusterfix_results(self, trial, on_or_off=True, DEBUG_PLOT=False):
+    def events_get_clusterfix_saccade_times(self, trial, on_or_off=True, event_endpoints=[]):
         # load this trial's saccade times
         trialcode = self.datasetbeh_trial_to_trialcode(trial)
-        directory_for_clusterfix = "/home/kgg/Desktop/eyetracking_analyses"
+        directory_for_clusterfix = PATH_SAVE_CLUSTERFIX
 
-        # load the .csv file for this trialcode, containing saccade onsets
+        # load the .csv file for this trialcode, containing saccade times
         if on_or_off: #TODO change
-            fname = f"{directory_for_clusterfix}/{self.Animal}-{self.Date}-{self.RecSession}/{trialcode}-saccade-onsets.csv"
+            fname = f"{directory_for_clusterfix}/{self.Animal}-{self.Date}-{self.RecSession}/clusterfix_result_csvs/{trialcode}-saccade-onsets.csv"
         else:
-            fname = f"{directory_for_clusterfix}/{self.Animal}-{self.Date}-{self.RecSession}/{trialcode}-saccade-offsets.csv"
+            fname = f"{directory_for_clusterfix}/{self.Animal}-{self.Date}-{self.RecSession}/clusterfix_result_csvs/{trialcode}-saccade-offsets.csv"
 
-        import pandas as pd 
         data = pd.read_csv(fname, sep=',').values
         data = [item[0] for item in data]
-        #print(data)
 
-        #import csv
-        #with open (fname, newline='') as csvfile:
-            #data = list(csv.reader(csvfile, delimiter=","))
-            #reader = csv.reader(csvfile, delimiter=',')
-            #for row in reader:
-            #    print(', '.join(row))
-        # first, find the "trial" in the saved name, by loading the mapper:
-        # all_trialnums
-        # all_trialcodes
-
-        # trial_load = None
-        # for t, tc in zip(all_trialnums, all_trialcodes):
-        #     if tc==trialcode:
-        #         trial_load = t
-        #         break
-        # assert trial_load is not Noen
-
-
-        # fname = f"{directory_for_clusterrfix}/{sn.Animal}-{sn.Date}-{trialcode}.mat"
-
-
-        # return etiher the on or off times depending on on_or_off
-        print(data)
-
-        if DEBUG_PLOT:
-            times_clfix = self.events_get_saccade_times_clusterfix_results(trial)
-            times_tdt, vals_tdt_calibrated = self.beh_extract_eye_good(trial)
-
-            fig, ax = plt.subplots(figsize=(10,3))
-            ax.plot(times_tdt, vals_tdt_calibrated[:,0], label="x")
-            ax.plot(times_tdt, vals_tdt_calibrated[:,1], label="y")
-            self.plotmod_overlay_trial_events(ax, trial)
-            for t in times_clfix:
-                ax.axvline(t, color="r")
+        if event_endpoints:
+            if event_endpoints==["stim_onset", "go"]:
+                # get start, end indices
+                start_time, end_time = self.get_time_window_of_events(trial, event_endpoints[0], event_endpoints[1])
+                valid_inds = [i for i, t in enumerate(data) if end_time >= t >= start_time]
+                data = [data[i] for i in valid_inds]
+            else:
+                assert False, "code this"
 
         return data
-
 
     def events_get_time_helper(self, event, trial, assert_one=False):
         """ [GOOD] Return the time in trial for this event. Tries to use
@@ -6222,10 +6173,10 @@ class Session(object):
         - list of numbers, one for each detection of this even in this trial, sorted.
         """
 
-        if event in ["saccon", "saccoff"]:
-            times = self.events_get_saccade_times_clusterfix_results(trial)
-        elif event in ["fixon"]:
-            times = self.events_get_fixation_times_clusterfix_results(trial)
+        if event in ["saccon_preparation", "saccoff_preparation"]:
+            times = self.events_get_clusterfix_saccade_times(trial, event_endpoints=["stim_onset", "go"])
+        elif event in ["fixon_preparation"]:
+            times, _ = self.events_get_clusterfix_fixation_times_and_centroids(trial, event_endpoints=["stim_onset", "go"])
         else:
             try:
                 # Better version using photodiode or motor
@@ -6280,9 +6231,9 @@ class Session(object):
         - list_featvals, list of feature values within column titled {feat_name}
         """
 
-        if event in ["fixon"]:
+        if event in ["fixon_preparation"]:
             feat_name = "fixation-centroid"
-            list_featvals = self.events_get_fixation_centroids_clusterfix_results(trial)
+            _, list_featvals = self.events_get_clusterfix_fixation_times_and_centroids(trial, event_endpoints=["stim_onset", "go"])
         else:
             assert False
                 
@@ -9613,7 +9564,7 @@ class Session(object):
                 list_times = sorted(self.events_get_time_helper(event, trial_neural))
 
                 # For some events, you want to extract features associated with each event.
-                if event in ["fixon"]:
+                if event in ["fixon_preparation"]:
                     #### extracts featurename and featurevals FOR certain custom events (e.g. saccades, fixations)
                     # get feature name and list of values
                     feat_name, list_featvals = self.events_get_feature_helper(event, trial_neural)
@@ -10245,6 +10196,191 @@ class Session(object):
         # def F(x):
         #     return [map_region_to_index[xx] for xx in x] # list of ints
         # return df.sort_values(by=col, key=lambda x:F(x))
+
+    ####################################
+    #### CLUSTERFIX EXTRACTION CODE ####
+    ####################################
+
+    ######################
+    ## helper functions ##
+    ######################
+    def datasetbeh_get_all_trialcodes(self):
+        return self.Datasetbeh.Dat['trialcode'].tolist()
+
+    def datasetbeh_get_all_trialnums(self):
+        return self.datasetbeh_trialcode_to_trial_batch(self.datasetbeh_get_all_trialcodes())
+
+    # returns smoothed and transformed x,y data for a session/trialnum
+    def get_eye_xy_smoothed_and_transformed(self, trialnum, PLOT=True):
+        # get TRANSFORMED xy-coordinates (used calibration matrix to map to screen)
+        st = self.beh_extract_eye_good(trialnum)
+        times = st[0]
+        x_aff = st[1][:,0]
+        y_aff = st[1][:,1]
+
+        # SMOOTH DATA
+        from pythonlib.tools.timeseriestools import smoothDat
+        x_aff_sm = smoothDat(x_aff, window_len=10)
+        y_aff_sm = smoothDat(y_aff, window_len=10)
+        
+        return x_aff_sm, y_aff_sm, times
+
+    # get the start, end times for the window spanned by start_event, end_event
+    def get_time_window_of_events(self, trial, start_event, end_event):
+        # keep just times between [start_event, end_event]
+        dict_event_times = self.events_get_time_sorted(trial, list_events=(start_event, end_event))[0]
+        start_time = dict_event_times[start_event][0]
+        end_time = dict_event_times[end_event][0]
+        
+        return start_time, end_time
+
+    #########################
+    ## exporting functions ##
+    #########################
+    def extract_and_save_clusterfix_trial_xy_mats(self, fs_new=200):    
+        # export .mat files with raw x,y to be used in MATLAB
+        animal = self.Animal 
+        date = self.Date 
+        session_no = self.RecSession
+
+        SAVEDIR = f"{PATH_SAVE_CLUSTERFIX}/{animal}-{date}-{session_no}/raw_xy_mats"
+        os.makedirs(SAVEDIR, exist_ok=True)
+
+        trialcodes = self.datasetbeh_get_all_trialcodes()
+        trialnums = self.datasetbeh_get_all_trialnums()
+        scipy.io.savemat(f"{SAVEDIR}/all_ntrialnums.mat", dict(neuraltrialnums=trialnums))
+        scipy.io.savemat(f"{SAVEDIR}/all_trialcodes.mat", dict(trialcodes=trialcodes))
+
+        # loop thru trials and save xy data
+        for tnum in trialnums:
+            # get sampling rate
+            t,v,fs_raw = self.extract_data_tank_streams("eyex", tnum, ploton=False)
+
+            # get XY smoothed / transformed on eye calibration matrix
+            x_raw,y_raw,times_raw = self.get_eye_xy_smoothed_and_transformed(tnum, False)
+
+            # resample x, y, times using integer sampling rate
+            fs_new = fs_new
+            stroke_raw = [np.array([x_raw, y_raw, times_raw]).T] # dummy stroke list
+            stroke_intp = strokesInterpolate2(stroke_raw, ["fsnew", fs_new, fs_raw])
+            stroke_resampled = stroke_intp[0]
+            x_rs = stroke_resampled[:,0]
+            y_rs = stroke_resampled[:,1]
+            times_rs = stroke_resampled[:,2]
+
+            # save data to be loaded into MATLAB
+            fname = f"{SAVEDIR}/ntrial{str(tnum)}.mat"
+            scipy.io.savemat(fname, dict(x=x_rs, y=y_rs, times_xy=times_rs, fs_hz=fs_new))
+
+    def extract_and_save_clusterfix_results_mat(self):
+        # run MATLAB to extract clusterfix_results.mat
+        animal = self.Animal 
+        date = self.Date 
+        session_no = self.RecSession
+        base_dir = PATH_SAVE_CLUSTERFIX
+
+        os.system(f"{PATH_MATLAB} -nodisplay -nosplash -nodesktop -r \"get_clusterfix_results_mat('{animal}', '{date}', '{session_no}', '{base_dir}'); quit\"")
+
+    def extract_clusterfix_results_dataframe(self):
+        # creating a dataframe of clusterfix_results from the original .mat
+        # note: clusterfix_results.mat has a unique structure, similar to JSON...
+
+        animal = self.Animal 
+        date = self.Date 
+        session_no = self.RecSession
+
+        # load in results
+        mat = scipy.io.loadmat(f"{PATH_SAVE_CLUSTERFIX}/{animal}-{date}-{session_no}/clusterfix_results.mat")
+
+        # add results to dataframe
+        mat_vars = ['neuraltrialnum', 'trialcode', 'fs', 'x', 'y', 'times', 'fixation_start_inds',
+                    'fixation_end_inds', 'fixation_centroids_x', 'fixation_centroids_y', 
+                    'saccade_start_inds', 'saccade_end_inds']
+        tmp = []
+        for i in range(len(mat['RESULTS'][0])):
+            neuraltrialnum = mat['RESULTS'][0]['neuraltrialnum'][i][0,0]
+            tcode = mat['RESULTS'][0]['trialcode'][i][0]
+            fs = mat['RESULTS'][0]['fs'][i][0,0]
+            x = mat['RESULTS'][0]['x'][i][0]
+            y = mat['RESULTS'][0]['y'][i][0]
+            times = mat['RESULTS'][0]['times'][i][0]
+
+            # get start, end inds for fixations/saccades
+            fixation_start_inds = mat['RESULTS'][0]['fixation_inds'][i][0]
+            fixation_end_inds = mat['RESULTS'][0]['fixation_inds'][i][1]
+            saccade_start_inds = mat['RESULTS'][0]['saccade_inds'][i][0]
+            saccade_end_inds = mat['RESULTS'][0]['saccade_inds'][i][1]
+
+            # get centroids x,y
+            fixation_centroids_x = mat['RESULTS'][0]['fixation_centroids'][i][0]
+            fixation_centroids_y = mat['RESULTS'][0]['fixation_centroids'][i][1]
+
+            dat = [neuraltrialnum, tcode, fs, x, y, times, fixation_start_inds, fixation_end_inds,
+                    fixation_centroids_x, fixation_centroids_y, saccade_start_inds, saccade_end_inds]
+            tmp.append({})
+            for v, d in zip(mat_vars, dat):
+                tmp[-1][v]=d
+
+        return pd.DataFrame(tmp, columns=mat_vars)
+
+    def extract_and_save_clusterfix_trial_fixsacc_csvs(self):
+        # export .csv files with saccade times and fixation times/centroids
+
+        animal = self.Animal 
+        date = self.Date 
+        session_no = self.RecSession
+
+        SAVEDIR = f"{PATH_SAVE_CLUSTERFIX}/{animal}-{date}-{session_no}/clusterfix_result_csvs"
+        os.makedirs(SAVEDIR, exist_ok=True)
+
+        clusterfix_results = self.extract_clusterfix_results_dataframe()
+        for index, row in clusterfix_results.iterrows():
+            tnum = row['neuraltrialnum']
+            tcode = row['trialcode']
+
+            x_t = row['x']
+            y_t = row['y']
+            times_t = row['times']
+
+            # get the FIXATIONS belonging to this trial
+            fixation_start_inds = row['fixation_start_inds']
+            fixation_end_inds = row['fixation_end_inds']
+            fixation_centroids_x = row['fixation_centroids_x']
+            fixation_centroids_y = row['fixation_centroids_y']
+            centroid_pairs = [[x,y] for x,y in zip(fixation_centroids_x, fixation_centroids_y)]
+
+            # get the times of the FIXATIONS
+            fixation_start_times = times_t[fixation_start_inds]
+            fixation_end_times = times_t[fixation_end_inds]
+
+            # save fixation start times using TRIALCODE, to load into session.py
+            fname = f"{SAVEDIR}/{tcode}-fixation-onsets.csv"
+            np.savetxt(fname, fixation_start_times, delimiter=',')
+
+            # save fixation centroids using TRIALCODE, to load into session.py
+            fname = f"{SAVEDIR}/{tcode}-fixation-centroids.csv"
+            np.savetxt(fname, centroid_pairs, delimiter=",")
+
+            # get the times of the SACCADES
+            saccade_start_inds = row['saccade_start_inds']
+            saccade_end_inds = row['saccade_end_inds']
+            saccade_start_times = times_t[saccade_start_inds]
+            saccade_end_times = times_t[saccade_end_inds]
+
+            # save saccade start times using TRIALCODE, to load into session.py
+            fname = f"{SAVEDIR}/{tcode}-saccade-onsets.csv"
+            np.savetxt(fname, saccade_start_times, delimiter=',')
+
+    # main function to extract clusterfix results
+    # end result: this generates .csv files in PATH_SAVE_CLUSTERFIX which are then used by events_get_time_helper
+    def extract_and_save_clusterfix_results(self, fs_new=200):
+        print("exporting xy mats...")
+        self.extract_and_save_clusterfix_trial_xy_mats(fs_new)
+        print("running clusterfix in matlab...")
+        self.extract_and_save_clusterfix_results_mat()
+        print("exporting fixation/saccade csvs...")
+        self.extract_and_save_clusterfix_trial_fixsacc_csvs()
+
 
 #####################################################################
 assert _REGIONS_IN_ORDER == ("M1_m", "M1_l", "PMv_l", "PMv_m",
