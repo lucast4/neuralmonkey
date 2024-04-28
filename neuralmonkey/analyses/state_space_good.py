@@ -2788,7 +2788,7 @@ def euclidian_distance_compute_score_single(pa, var, var_others, PLOT_RSA_HEATMA
         assert False, "check, it is weird. Waht is the point of this? "
 
     LIST_CLDIST, LIST_TIME = pa.dataextract_as_distance_matrix_clusters_flex([var] + var_others, 
-                                                                            version_distance=version_distance")
+                                                                            version_distance=version_distance)
     assert len(LIST_CLDIST)==1
     Cldist_each_dat = LIST_CLDIST[0]
 
