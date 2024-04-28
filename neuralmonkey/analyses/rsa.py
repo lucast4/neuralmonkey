@@ -103,7 +103,7 @@ def OLD_pipeline_rsa_all_steps(SP, EFFECT_VARS, list_time_windows,
     from pythonlib.tools.snstools import rotateLabel
     from pythonlib.tools.pandastools import convert_to_2d_dataframe
     from pythonlib.tools.pandastools import append_col_with_grp_index
-    from neuralmonkey.analyses.state_space_good import snippets_extract_popanals_split_bregion_twind
+    from neuralmonkey.classes.population_mult import snippets_extract_popanals_split_bregion_twind
 
     DictBregionTwindPA = snippets_extract_popanals_split_bregion_twind(SP, list_time_windows, EFFECT_VARS)
 
@@ -1061,6 +1061,7 @@ def _rsagood_convert_PA_to_Cl(PAscal, grouping_vars, version_distance,
         assert False
 
     if DO_AGG_TRIALS and use_distributional_distance==False:
+        # First agg, then take pt-wise distance.
         PAagg, _ = PAscal.slice_and_agg_wrapper("trials", grouping_vars, return_group_dict=True)
     else:
         PAagg = PAscal
@@ -3207,6 +3208,37 @@ def rsagood_questions_params(question):
         ## Params which apply AFTER you have concated across which_level
         # Which events to prune to
         events_keep = ["00_stroke"]
+        ANALY_VER = "singleprim"
+
+        # If this requires slicing and agging DFallpa
+        slice_agg_slices = None
+        slice_agg_vars_to_split = None
+
+        list_subtract_mean_each_level_of_var = [None]
+
+        # Which variables to plot all the pairwise distmats for
+        plot_pairwise_distmats_variables = None
+        plot_pairwise_distmats_twinds = None
+
+    elif question=="SP_BASE_trial":
+        # for Single prims, strokes.
+
+        effect_vars = ["seqc_0_shape"]
+        list_which_level = ["trial"] # Whihc which_level to keep
+
+        ## For "stroke" and "stroke_off" which_levels
+        # - include all strokes within sequence
+        exclude_last_stroke=False
+        exclude_first_stroke=False
+        keep_only_first_stroke=False
+        min_taskstrokes = 1
+        max_taskstrokes = 10
+
+        ## Params which apply AFTER you have concated across which_level
+        # Which events to prune to
+        events_keep = [
+            '03_samp',
+            '06_on_strokeidx_0']
         ANALY_VER = "singleprim"
 
         # If this requires slicing and agging DFallpa

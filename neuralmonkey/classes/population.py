@@ -934,35 +934,44 @@ class PopAnal():
 
         """
 
-        if SLIDE is None:
-            SLIDE = DUR
+        # Only contineu if DUR is larger than the largest period between adjacent samples.
+        max_period = np.max(np.diff(self.Times))
 
-        # MAke new times iwndows
-        PRE = self.Times[0]
-        POST = self.Times[-1]
-        if False:
-            # Failed soemtimes, if dur > amount of data. then time_wind would be []
-            # n = (POST-PRE)/DUR
-            times1 = np.arange(PRE, POST-DUR, SLIDE)
-            times2 = times1+DUR
-            time_windows = np.stack([times1, times2], axis=1)
+        if DUR >= (1.001 * max_period):
+
+            if SLIDE is None:
+                SLIDE = DUR
+
+            # MAke new times iwndows
+            PRE = self.Times[0]
+            POST = self.Times[-1]
+            if False:
+                # Failed soemtimes, if dur > amount of data. then time_wind would be []
+                # n = (POST-PRE)/DUR
+                times1 = np.arange(PRE, POST-DUR, SLIDE)
+                times2 = times1+DUR
+                time_windows = np.stack([times1, times2], axis=1)
+            else:
+                times1 = np.arange(PRE, POST-DUR/2, SLIDE) # each window, at least half of it inlcudes data
+                times2 = times1 + DUR
+                time_windows = np.stack([times1, times2], axis=1)
+                assert np.isclose(time_windows[0,0], PRE)
+                # assert time_windows[-1,1]>=post
+                assert time_windows[-1,0]<POST
+
+            # print("===========")
+            # print(DUR, SLIDE)
+            # print(time_windows)
+            # print(self.Times)
+            # assert False
+
+            X, times = self.agg_by_time_windows(time_windows)
+
+            PA = PopAnal(X, times=times, chans=self.Chans,
+                        trials = self.Trials)
+            PA.Xlabels["trials"] = self.Xlabels["trials"].copy()
         else:
-            times1 = np.arange(PRE, POST-DUR/2, SLIDE) # each window, at least half of it inlcudes data
-            times2 = times1 + DUR
-            time_windows = np.stack([times1, times2], axis=1)
-            assert np.isclose(time_windows[0,0], PRE)
-            # assert time_windows[-1,1]>=post
-            assert time_windows[-1,0]<POST
-
-        # print(DUR, SLIDE)
-        # print(time_windows)
-        # print(self.Times)
-        # assert False
-        X, times = self.agg_by_time_windows(time_windows)
-
-        PA = PopAnal(X, times=times, chans=self.Chans,
-                    trials = self.Trials)
-        PA.Xlabels["trials"] = self.Xlabels["trials"].copy()
+            PA = self.copy()
 
         return PA
 
@@ -1192,7 +1201,8 @@ class PopAnal():
     def norm_subtract_trial_mean_each_timepoint(self, dim="trials"):
         """ Take mean over one of the dims, and return data subtracting
         that out. e..g, if dim=="trials", for each (chan, timepoint), subtract the mean
-        across all trials within that (chan, timepoint).
+        across all trials within that (chan, timepoint) --> resulting will have
+        mean fr of 0 at each (chan, timepoint).
         RETURNS:
         - PA, a copy of self, with normalized X.
         """
@@ -1300,6 +1310,139 @@ class PopAnal():
         return ListPA, list_levels
 
     #######################
+    def dataextract_as_distance_matrix_clusters_flex_reversed(self, var_group,
+                                                     version_distance="euclidian",
+                                                     accurately_estimate_diagonal=False):
+        """
+        A bit hacky variation of dataextract_as_distance_matrix_clusters_flex -- running that but on 
+        call shuffles the times for one of the pairs of datapts being compoared -- this is null value if
+        the timing of the neural trajectories does not matter.
+        :return:
+        - LIST_CLDIST, List of Cl, each holding distance of shape (ntrials, trials), if version_distance 
+        is pairwise between pts, or shape (ngroups, ngroups), if version_distance is distribugtional (ie.
+        is pairwise between levels of conjucntion of var_group)
+        """
+        from pythonlib.cluster.clustclass import Clusters
+        
+        assert version_distance == "euclidian", "only coded for this so far.."
+
+        # Get labels info
+        dflab = self.Xlabels["trials"]
+        labels_rows = dflab.loc[:, var_group].values.tolist()
+        labels_rows = [tuple(x) for x in labels_rows] # list of tuples
+
+        # Get a shuffled version of self.X
+        Xshuff = self.shuffle_by_time()
+        
+        # Option 1 - do independently for each time bin, and return list of all results.
+        # - Collect Cldists, one for each time bin
+        LIST_CLDIST = []
+        LIST_TIME = []
+        ntimes = self.X.shape[2]
+        for i_time in range(ntimes):
+
+            X1 = self.X[:, :, i_time].T # (trials, chans)
+            X2 = Xshuff[:, :, i_time].T
+
+            # Compute distance matrix directly
+            # 0=idnetical, more positive more distance.
+            from scipy.spatial import distance_matrix
+            D = distance_matrix(X1, X2)
+
+            params = {
+                "version_distance":version_distance,
+                "Clraw":None,
+                "label_vars":var_group
+            }
+            Cldist = Clusters(D, labels_rows, labels_rows, ver="dist", params=params)
+
+            if Cldist is None:
+                print(D)
+                assert False
+            LIST_CLDIST.append(Cldist)
+            LIST_TIME.append(self.Times[i_time])
+        
+        return LIST_CLDIST, LIST_TIME
+
+
+    def dataextract_as_distance_matrix_clusters_flex(self, var_group,
+                                                     version_distance="euclidian",
+                                                     accurately_estimate_diagonal=False):
+        """
+        GOOD - Extract distance matrix between trials, with flexible ways of c,m,puting and agging over variables.
+        :params: var_group, determines the trial labels kept in Cl, and, if vd is distributional, then
+        how to group trials into distributiosn
+        :params: accurately_estimate_diagonal, bool, True means faster compute. In general I don't use
+        the diagonal, so leave false.
+        :return:
+        - LIST_CLDIST, List of Cl, each holding distance of shape (ntrials, trials), if version_distance 
+        is pairwise between pts, or shape (ngroups, ngroups), if version_distance is distribugtional (ie.
+        is pairwise between levels of conjucntion of var_group)
+        """
+        from pythonlib.cluster.clustclass import Clusters
+        
+        # How to deal with multiple time windows.
+        
+        # Option 1 - do independently for each time bin, and return list of all results.
+        # - Collect Cldists, one for each time bin
+        LIST_CLDIST = []
+        LIST_TIME = []
+        ntimes = self.X.shape[2]
+        for i_time in range(ntimes):
+            
+            # make a pa that just has this one time bin
+            pa_single_time = self.slice_by_dim_indices_wrapper("times", [i_time, i_time])
+            assert pa_single_time.X.shape[2]==1
+            
+            # Create clusters
+            dflab = pa_single_time.Xlabels["trials"]
+            Xthis = pa_single_time.X.squeeze(axis=2).T # (ntrials, ndims)
+            
+            # print("  Final Scalar data (trial, dims):", Xthis.shape)
+            label_vars = var_group
+            labels_rows = dflab.loc[:, label_vars].values.tolist()
+            labels_rows = [tuple(x) for x in labels_rows] # list of tuples
+            params = {"label_vars":label_vars}
+
+            if False:
+                # Compute distance matrix directly
+                # 0=idnetical, more positive more distance.
+                from scipy.spatial import distance_matrix
+                D = distance_matrix(Xthis, Xthis)
+
+                params = {
+                    "version_distance":version_distance,
+                    "Clraw":None,
+                }
+                Cldist = Clusters(D, labels_rows, labels_rows, ver="dist", params=params)
+
+            else:
+                # Compute using Cl intermediate
+                Cl = Clusters(Xthis, labels_rows, ver="rsa", params=params)
+                            
+                # convert to distance matrix
+                if version_distance == "euclidian":
+                    Cldist = Cl.distsimmat_convert(version_distance)
+                else:
+                    Cldist = Cl.distsimmat_convert_distr(label_vars, version_distance, accurately_estimate_diagonal=accurately_estimate_diagonal)
+            
+            LIST_CLDIST.append(Cldist)
+            LIST_TIME.append(self.Times[i_time])
+
+        # Sanity check that all Cl match
+        labels = None
+        labels_cols = None
+        for t, Cldist in zip(LIST_TIME, LIST_CLDIST):
+            # check labels match
+            if labels is not None:
+                assert labels == Cldist.Labels
+                labels = Cldist.Labels
+            if labels_cols is not None:
+                assert labels_cols == Cldist.LabelsCols
+                labels_cols = Cldist.LabelsCols
+
+        return LIST_CLDIST, LIST_TIME
+
     # def dataextract_as_clusters_after_conj_grouping(self, vars_grp_and_extract, do_agg_by_grouping=False):
     #     """
     #     Extract clusters represntation of PA.X, which is (
@@ -1485,10 +1628,11 @@ class PopAnal():
                 from neuralmonkey.analyses.state_space_good import dimredgood_pca
                 # Make labels (chans x timebins)
                 ntimes = len(PAslice.Times)
-                col_labels = []
-                for ch in PAslice.Chans:
-                    for t in range(ntimes):
-                        col_labels.append((ch, t))
+                col_labels = PAslice.Chans
+                # col_labels = []
+                # for ch in PAslice.Chans:
+                #     for t in range(ntimes):
+                #         col_labels.append((ch, t))
                 X, _, pca = dimredgood_pca(X,
                                            how_decide_npcs_keep = how_decide_npcs_keep,
                                            pca_frac_var_keep=pca_frac_var_keep, pca_frac_min_keep=pca_frac_min_keep,
@@ -1938,6 +2082,18 @@ class PopAnal():
         else:
             print(dim)
             assert False
+
+    def shuffle_by_time(self):
+        """ 
+        Return a copy of self.X, with time dimension shuffled,
+        i.e., shape is identical.
+        """
+
+        # get random indices for shuffling
+        n = self.X.shape[2]
+        inds = np.random.permutation(range(n))
+        X = self.X[:, :, inds].copy()
+        return X
 
     def shuffle_by_trials(self, inds_rows):
         """ Shuffle rows, given input indices, with many sanityc checeks,

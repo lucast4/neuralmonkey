@@ -1818,8 +1818,366 @@ def params_getter_raster_vars(which_level, question, OVERWRITE_lenient_n=2):
 
     return LIST_VAR, LIST_VARS_OTHERS, LIST_OVERWRITE_lenient_n
 
+def params_getter_umap_vars(question):
+    """
+    For visualization, so there are many... THese are like a superset of the vars in 
+    params_getter_euclidian...
+    :param question:
+    :return:
+    """
+    # 3/20/24 - Made this for stroke AnBm Context. Should generalyl use this (over decode params, below?)
+    list_var_color_var_subplot = []
+    from neuralmonkey.metadat.analy.anova_params import params_getter_raster_vars
+    LIST_VAR, LIST_VARS_OTHERS, LIST_OVERWRITE_lenient_n = params_getter_raster_vars(which_level, question)
+
+    single_vars_done = []
+    for var_decode, vars_conj in zip(LIST_VAR, LIST_VARS_OTHERS):
+
+        if isinstance(var_decode, list):
+            var_decode = tuple(var_decode)
+
+        list_var_color_var_subplot.append([var_decode, tuple(vars_conj)])
+        if var_decode not in single_vars_done:
+            list_var_color_var_subplot.append([var_decode, "task_kind"])
+            single_vars_done.append(var_decode)
+
+    if question in ["RULE_BASE_stroke", "RULE_ANBMCK_STROKE", "RULE_COLRANK_STROKE", "RULE_DIR_STROKE", "RULE_ROWCOL_STROKE"]:
+        # Sequence context, chunks
+        # Usually AnBmCk
+        list_var_color_var_subplot.append([("chunk_rank", "shape"), ("chunk_n_in_chunk", "task_kind")])
+        list_var_color_var_subplot.append([("chunk_rank", "shape"), ("chunk_within_rank_semantic", "task_kind")])
+        list_var_color_var_subplot.append([("chunk_rank", "shape"), ("chunk_within_rank_semantic", "chunk_n_in_chunk", "task_kind")]) # ** GOOD
+        list_var_color_var_subplot.append(["chunk_within_rank_semantic", ("chunk_rank", "shape", "task_kind")])
+        list_var_color_var_subplot.append(["chunk_within_rank_semantic", ("chunk_n_in_chunk", "task_kind")])
+        list_var_color_var_subplot.append(["chunk_within_rank_semantic", ("chunk_rank", "shape", "chunk_n_in_chunk", "task_kind")]) # ** GOOD
+        list_var_color_var_subplot.append(["chunk_n_in_chunk", ("chunk_within_rank_semantic", "task_kind")])
+        list_var_color_var_subplot.append(["chunk_n_in_chunk", ("chunk_rank", "shape", "task_kind")])
+        list_var_color_var_subplot.append(["chunk_n_in_chunk", ("chunk_rank", "shape", "chunk_within_rank_semantic", "task_kind")]) # ** GOOD
+
+        # Each subplot is a syntax parse. Color by
+        list_var_color_var_subplot.append([("chunk_rank", "chunk_within_rank"), ("taskcat_by_rule", "behseq_shapes", "task_kind")]) # ** GOOD
+        list_var_color_var_subplot.append([("chunk_within_rank", "chunk_rank"), ("taskcat_by_rule", "behseq_shapes", "task_kind")])
+        list_var_color_var_subplot.append([("shape", "chunk_within_rank"), ("taskcat_by_rule", "behseq_shapes", "task_kind")])
+        list_var_color_var_subplot.append([("chunk_within_rank", "shape"), ("taskcat_by_rule", "behseq_shapes", "task_kind")])
+
+        # Show that it is not trivially explained by location or shape
+        list_var_color_var_subplot.append(["gridloc", "task_kind"])
+        list_var_color_var_subplot.append(["gridloc", ("chunk_rank", "chunk_within_rank_semantic", "task_kind")])
+        list_var_color_var_subplot.append([("chunk_rank", "chunk_within_rank_semantic"), ("gridloc", "task_kind")])
+        list_var_color_var_subplot.append(["shape", "task_kind"])
+
+        # Goal: show that chunk structure is more strongly represented compared to stroke index.
+        list_var_color_var_subplot.append(["stroke_index", ("task_kind", "FEAT_num_strokes_task")])
+        list_var_color_var_subplot.append(["stroke_index_fromlast", ("task_kind", "FEAT_num_strokes_task")])
+        list_var_color_var_subplot.append([("chunk_rank", "chunk_within_rank_semantic"), ("FEAT_num_strokes_task", "task_kind", "stroke_index")])
+
+        # Also add those for predicting seuqence
+        LIST_VAR, LIST_VARS_OTHERS, LIST_OVERWRITE_lenient_n = params_getter_raster_vars(which_level, "PIG_BASE_stroke")
+
+        single_vars_done = []
+        for var_decode, vars_conj in zip(LIST_VAR, LIST_VARS_OTHERS):
+
+            if isinstance(var_decode, list):
+                var_decode = tuple(var_decode)
+
+            list_var_color_var_subplot.append([var_decode, tuple(vars_conj)])
+            if var_decode not in single_vars_done:
+                list_var_color_var_subplot.append([var_decode, "task_kind"])
+                single_vars_done.append(var_decode)
+
+    elif question in ["RULESW_BASE_stroke"]:
+        # Switching between rules (e.g., AnBm vs. DIR)
+        # Currneetly assuming is just shapes vs. locations... (i.e. deterministic shape).
+        list_var_color_var_subplot = []
+        # list_var_color_var_subplot.append(["gridloc", "task_kind"])
+        list_var_color_var_subplot.append(["gridloc", ("epoch", "task_kind")])
+        list_var_color_var_subplot.append(["gridloc", ("epoch", "task_kind", "shape")])
+        list_var_color_var_subplot.append(["gridloc_x", ("epoch", "task_kind")])
+        list_var_color_var_subplot.append(["gridloc_x", ("epoch", "task_kind", "shape")])
+        list_var_color_var_subplot.append(["gridloc_y", ("epoch", "task_kind")])
+        list_var_color_var_subplot.append(["gridloc_y", ("epoch", "task_kind", "shape")])
+        # list_var_color_var_subplot.append(["shape", "task_kind"])
+        list_var_color_var_subplot.append(["shape", ("epoch", "task_kind")])
+        list_var_color_var_subplot.append(["shape", ("epoch", "task_kind", "gridloc")])
+        list_var_color_var_subplot.append(["shape", ("epoch", "task_kind", "gridloc_x")])
+        list_var_color_var_subplot.append(["shape", ("epoch", "task_kind", "gridloc_y")])
+        # list_var_color_var_subplot.append(["stroke_index", "task_kind"])
+        list_var_color_var_subplot.append(["stroke_index", ("task_kind", "FEAT_num_strokes_task", "epoch")])
+        list_var_color_var_subplot.append(["stroke_index", ("task_kind", "FEAT_num_strokes_task", "epochset", "epoch")]) # ** GOOD
+        list_var_color_var_subplot.append(["stroke_index", ("task_kind", "FEAT_num_strokes_task", "epoch", "gridloc_x")])
+        list_var_color_var_subplot.append(["stroke_index", ("task_kind", "FEAT_num_strokes_task", "epoch", "gridloc_y")])
+        list_var_color_var_subplot.append(["stroke_index", ("task_kind", "FEAT_num_strokes_task", "epoch", "shape")])
+
+        # Check --> Effect of shape higher during shape epoch?
+        list_var_color_var_subplot.append(["gridloc_x", ("stroke_index", "epoch")])
+        list_var_color_var_subplot.append(["gridloc_y", ("stroke_index", "epoch")])
+        list_var_color_var_subplot.append(["shape", ("stroke_index", "epoch")])
+
+        list_var_color_var_subplot.append(["shape", ("stroke_index", "gridloc_x", "epoch")])
+        list_var_color_var_subplot.append(["gridloc_x", ("stroke_index", "shape", "epoch")])
+
+        list_var_color_var_subplot.append(["gridloc_x", ("epochset", "epoch")]) # ** GOOD
+        list_var_color_var_subplot.append(["gridloc_y", ("epochset", "epoch")]) # ** GOOD
+        list_var_color_var_subplot.append(["gridloc", ("epochset", "epoch")]) # ** GOOD
+        list_var_color_var_subplot.append(["shape", ("epochset", "epoch")]) # ** GOOD
+
+        # Check --> Controlling for context as much as possible.
+        list_var_color_var_subplot.append(["shape", ("gridloc", "CTXT_loc_prev", "epoch")])
+        list_var_color_var_subplot.append(["gridloc_x", ("shape", "CTXT_loc_prev", "epoch")])
+        list_var_color_var_subplot.append(["gridloc_y", ("shape", "CTXT_loc_prev", "epoch")])
+
+        # DIR vs. DIR, effect of x still present when control for y?
+        list_var_color_var_subplot.append(["gridloc_x", ("epochset", "epoch", "gridloc_y")]) # ** GOOD (for DIR vs. DIR, that is correlated, e.g, U vs L)
+        list_var_color_var_subplot.append(["gridloc_y", ("epochset", "epoch", "gridloc_x")])
+
+        # Effect of epoch
+        list_var_color_var_subplot.append(["epoch", ("epochset", "shape", "gridloc", "CTXT_loc_prev")])
+        list_var_color_var_subplot.append(["epoch", ("epochset", "shape", "gridloc", "CTXT_loc_prev", "CTXT_shape_prev")]) # ** GOOD
+        list_var_color_var_subplot.append(["epoch", ("epochset", "shape", "gridloc", "CTXT_loc_prev", "CTXT_shape_prev", "CTXT_loc_next")])
+        list_var_color_var_subplot.append(["epoch", "epochset"]) #
+
+    elif question in ["RULESW_ANBMCK_COLRANK_STROKE"]:
+        # Switching between grammar (usualyl AnBmCk) and color_rank, including both random and those using
+        # same sequence as grammar.
+
+        list_var_color_var_subplot = []
+
+        # (1) Important ones copied from SHAPE vs DIR (above)
+        list_var_color_var_subplot.append(["stroke_index", ("task_kind", "FEAT_num_strokes_task", "epoch")])
+        list_var_color_var_subplot.append(["stroke_index", ("task_kind", "FEAT_num_strokes_task", "epochset", "epoch")]) # ** GOOD
+        list_var_color_var_subplot.append(["gridloc_x", ("epochset", "epoch")]) # ** GOOD
+        list_var_color_var_subplot.append(["gridloc", ("epochset", "epoch")]) # ** GOOD
+        list_var_color_var_subplot.append(["shape", ("epochset", "epoch")]) # ** GOOD
+        list_var_color_var_subplot.append(["epoch", ("epochset", "shape", "gridloc", "CTXT_loc_prev", "CTXT_shape_prev")]) # ** GOOD
+        list_var_color_var_subplot.append(["epoch", ("epochset", "shape", "gridloc", "CTXT_loc_prev", "CTXT_shape_prev", "CTXT_loc_next")])
+
+        # # (2) Copies of above (1) but using color, not epoch.
+        # list_var_color_var_subplot.append(["stroke_index", ("task_kind", "FEAT_num_strokes_task", "INSTRUCTION_COLOR")])
+        # list_var_color_var_subplot.append(["stroke_index", ("task_kind", "FEAT_num_strokes_task", "epochset", "INSTRUCTION_COLOR")]) # ** GOOD
+        # list_var_color_var_subplot.append(["gridloc_x", ("epochset", "INSTRUCTION_COLOR")]) # ** GOOD
+        # list_var_color_var_subplot.append(["gridloc", ("epochset", "INSTRUCTION_COLOR")]) # ** GOOD
+        # list_var_color_var_subplot.append(["shape", ("epochset", "INSTRUCTION_COLOR")]) # ** GOOD
+        # list_var_color_var_subplot.append(["INSTRUCTION_COLOR", ("epochset", "shape", "gridloc", "CTXT_loc_prev", "CTXT_shape_prev")]) # ** GOOD
+        # list_var_color_var_subplot.append(["INSTRUCTION_COLOR", ("epochset", "shape", "gridloc", "CTXT_loc_prev", "CTXT_shape_prev", "CTXT_loc_next")])
+
+        # (2) Copies of above (1) but using color, not epoch.
+        list_var_color_var_subplot.append(["stroke_index", ("task_kind", "FEAT_num_strokes_task", "epoch_rand")])
+        list_var_color_var_subplot.append(["stroke_index", ("task_kind", "FEAT_num_strokes_task", "epochset", "epoch_rand")]) # ** GOOD
+        list_var_color_var_subplot.append(["gridloc_x", ("epochset", "epoch_rand")]) # ** GOOD
+        list_var_color_var_subplot.append(["gridloc", ("epochset", "epoch_rand")]) # ** GOOD
+        list_var_color_var_subplot.append(["shape", ("epochset", "epoch_rand")]) # ** GOOD
+        list_var_color_var_subplot.append(["epoch_rand", ("epochset", "shape", "gridloc", "CTXT_loc_prev", "CTXT_shape_prev")]) # ** GOOD
+        list_var_color_var_subplot.append(["epoch_rand", ("epochset", "shape", "gridloc", "CTXT_loc_prev", "CTXT_shape_prev", "CTXT_loc_next")])
+
+        # (2) Chunk rank stuff. This is possible becuase color trials also have extraction of chunk rank.
+        list_var_color_var_subplot.append([("chunk_rank", "shape"), ("chunk_within_rank_semantic", "chunk_n_in_chunk", "task_kind", "epochset", "INSTRUCTION_COLOR")])
+        list_var_color_var_subplot.append(["chunk_within_rank_semantic", ("chunk_rank", "shape", "chunk_n_in_chunk", "task_kind", "epochset", "INSTRUCTION_COLOR")])
+        list_var_color_var_subplot.append(["chunk_within_rank_semantic", ("chunk_rank", "shape", "chunk_n_in_chunk", "task_kind", "epochset", "epoch")])
+        list_var_color_var_subplot.append(["chunk_n_in_chunk", ("chunk_rank", "shape", "chunk_within_rank_semantic", "task_kind", "epochset", "INSTRUCTION_COLOR")])
+
+        list_var_color_var_subplot.append([("chunk_rank", "shape"), ("chunk_within_rank_semantic", "chunk_n_in_chunk", "task_kind", "epoch_rand")])
+        list_var_color_var_subplot.append(["chunk_within_rank_semantic", ("chunk_rank", "shape", "chunk_n_in_chunk", "task_kind", "epoch_rand")])
+        list_var_color_var_subplot.append(["chunk_n_in_chunk", ("chunk_rank", "shape", "chunk_within_rank_semantic", "task_kind", "epoch_rand")])
+
+        # (4) Stuff from SINGLE RULE (AnBm), but adding conditioning on epoch or INSTRUCTION_COLOR
+        # Each subplot is a syntax parse. Color by
+        list_var_color_var_subplot.append([("chunk_rank", "chunk_within_rank_semantic"), ("task_kind", "epochset", "epoch", "taskcat_by_rule", "behseq_shapes")]) # ** GOOD
+        # list_var_color_var_subplot.append([("chunk_rank", "chunk_within_rank_semantic"), ("task_kind", "epochset", "INSTRUCTION_COLOR", "taskcat_by_rule", "behseq_shapes")]) # ** GOOD
+        list_var_color_var_subplot.append([("chunk_rank", "chunk_within_rank_semantic"), ("task_kind", "epochset", "epoch_rand", "taskcat_by_rule", "behseq_shapes")]) # ** GOOD
+        list_var_color_var_subplot.append([("chunk_rank", "chunk_within_rank_semantic"), ("task_kind", "epochset", "epoch")]) # ** GOOD
+        # list_var_color_var_subplot.append([("chunk_rank", "chunk_within_rank_semantic"), ("task_kind", "epochset", "INSTRUCTION_COLOR")]) # ** GOOD
+        list_var_color_var_subplot.append([("chunk_rank", "chunk_within_rank_semantic"), ("task_kind", "epochset", "epoch_rand")]) # ** GOOD
+
+        # Each subplot is a syntax parse. Color by
+        if False: # Skip for now, since taskcat_by_rule does not describe beh accurately for color instruction trials (it depends on the image).
+            list_var_color_var_subplot.append([("chunk_rank", "chunk_within_rank"), ("taskcat_by_rule", "behseq_shapes", "task_kind", "epochset", "INSTRUCTION_COLOR")])
+            list_var_color_var_subplot.append([("chunk_within_rank", "chunk_rank"), ("taskcat_by_rule", "behseq_shapes", "task_kind", "epochset", "INSTRUCTION_COLOR")])
+            list_var_color_var_subplot.append([("shape", "chunk_within_rank"), ("taskcat_by_rule", "behseq_shapes", "task_kind", "epochset", "INSTRUCTION_COLOR")])
+            list_var_color_var_subplot.append([("chunk_within_rank", "shape"), ("taskcat_by_rule", "behseq_shapes", "task_kind", "epochset", "INSTRUCTION_COLOR")])
+    elif question in ["PIG_BASE_trial", "CHAR_BASE_trial"]:
+        # list_var_color_var_subplot.append(["seqc_0_shape", "task_kind"])
+        # if len(dflab["gridsize"].unique())>1:
+        #     list_var_color_var_subplot.append(["seqc_0_shape", "gridsize"])
+        #     list_var_color_var_subplot.append(["gridsize", "seqc_0_shape"])
+        #     list_var_color_var_subplot.append(["gridsize", "task_kind"])
+        # if len(dflab["seqc_0_loc"].unique())>1:
+        #     list_var_color_var_subplot.append(["seqc_0_shape", "seqc_0_loc"])
+        #     list_var_color_var_subplot.append(["seqc_0_loc", "seqc_0_shape"])
+        #     list_var_color_var_subplot.append(["seqc_0_loc", "task_kind"])
+        if len(dflab["shape_is_novel_all"].unique())>1:
+            list_var_color_var_subplot.append(["seqc_0_shape", "shape_is_novel_all"])
+            list_var_color_var_subplot.append(["shape_is_novel_all", "seqc_0_shape"])
+            list_var_color_var_subplot.append(["seqc_0_shapesemcat", ("shape_is_novel_all", "task_kind")])
+            list_var_color_var_subplot.append(["seqc_0_angle", ("shape_is_novel_all", "seqc_0_shape")]) # One subplot per shape, use seqc_0_angle is hack-- need a variation in var for this to not be skipped.
+            # list_var_color_var_subplot.append(["shape_is_novel_all", "task_kind"])
+        if "seqc_0_locx" in dflab.columns:
+            list_var_color_var_subplot.append(["seqc_0_locx", "seqc_0_shapeloc"])
+            list_var_color_var_subplot.append(["seqc_0_locy", "seqc_0_shapeloc"])
+            list_var_color_var_subplot.append(["seqc_0_locx", "task_kind"])
+            list_var_color_var_subplot.append(["seqc_0_locy", "task_kind"])
+        if "seqc_0_angle" in dflab.columns:
+            list_var_color_var_subplot.append(["seqc_0_angle", "seqc_0_shapeloc"])
+            list_var_color_var_subplot.append(["seqc_0_angle", "task_kind"])
+        if "seqc_0_angle_binned" in dflab.columns:
+            list_var_color_var_subplot.append(["seqc_0_shape", "seqc_0_angle_binned"])
+        # color by shape semantic category (vlPFC?)
+        # list_var_color_var_subplot.append(["seqc_0_shapesemcat", "task_kind"])
+
+        # (for character)
+        # list_var_color_var_subplot.append(["seqc_0_shape", ("taskconfig_shp_SHSEM", "seqc_0_center_binned", "gridsize", "task_kind")]) # Same image --> diff sequence
+
+        # sequence predictions
+        if False:
+            # list_var_color_var_subplot.append(["seqc_1_shapeloc", ("seqc_0_shapeloc", "task_kind")])
+            list_var_color_var_subplot.append(["seqc_1_shape", ("seqc_0_shapeloc", "seqc_1_loc", "task_kind")])
+            list_var_color_var_subplot.append(["seqc_1_loc", ("seqc_0_shapeloc", "seqc_1_shape", "task_kind")])
+            # list_var_color_var_subplot.append(["seqc_2_shapeloc", ("seqc_0_shapeloc", "seqc_1_shapeloc", "task_kind")])
+            list_var_color_var_subplot.append(["seqc_2_shape", ("seqc_0_shapeloc", "seqc_1_shapeloc", "seqc_2_loc", "task_kind")])
+            list_var_color_var_subplot.append(["seqc_2_loc", ("seqc_0_shapeloc", "seqc_1_shapeloc", "seqc_2_shape", "task_kind")])
+        # (for character)
+        # list_var_color_var_subplot.append(["seqc_1_shape", ("seqc_0_shape", "seqc_0_center_binned", "seqc_1_locon_binned", "task_kind")])
+        # list_var_color_var_subplot.append(["seqc_1_locon_binned", ("seqc_0_shape", "seqc_0_center_binned", "seqc_1_shape", "task_kind")])
+        # list_var_color_var_subplot.append(["seqc_nstrokes_beh", ("seqc_0_shape", "seqc_0_center_binned", "task_kind")])
+        # list_var_color_var_subplot.append(["seqc_nstrokes_beh", ("taskconfig_shp_SHSEM", "seqc_0_shape", "seqc_0_center_binned", "task_kind")]) # Same image --> diff sequence
+        # list_var_color_var_subplot.append(["seqc_nstrokes_beh", "task_kind"])
+
+        # Same image --> diff sequence
+        if False:
+            list_var_color_var_subplot.append(["seqc_0_shapeloc", ("character", "task_kind")])
+            list_var_color_var_subplot.append(["FEAT_num_strokes_beh", ("character", "task_kind")])
+            # list_var_color_var_subplot.append(["FEAT_num_strokes_beh", "task_kind"])
+
+        # Image properties (controlling for beh).
+        if False:
+            list_var_color_var_subplot.append(["taskconfig_shp", ("taskconfig_loc", "seqc_0_shapeloc", "task_kind")])
+            list_var_color_var_subplot.append(["taskconfig_shploc", ("FEAT_num_strokes_task", "seqc_0_shapeloc", "task_kind")])
+            list_var_color_var_subplot.append(["FEAT_num_strokes_task", ("seqc_0_shapeloc", "task_kind")])
+            list_var_color_var_subplot.append(["FEAT_num_strokes_task", "task_kind"])
+
+        # Parse (characters)
+        # list_var_color_var_subplot.append(["taskconfig_shp_SHSEM", ("taskconfig_loc", "task_kind")])
+        # list_var_color_var_subplot.append(["taskconfig_shp_SHSEM", ("taskconfig_loc", "seqc_0_shape", "seqc_0_center_binned", "task_kind")])
+        # list_var_color_var_subplot.append(["taskconfig_shp_SHSEM", ("character", "task_kind")])
+        # list_var_color_var_subplot.append(["taskconfig_shploc_SHSEM", ("taskconfig_loc", "task_kind")])
+        # list_var_color_var_subplot.append(["taskconfig_shploc_SHSEM", ("taskconfig_loc", "seqc_0_shape", "seqc_0_center_binned", "task_kind")])
+        # list_var_color_var_subplot.append(["taskconfig_shploc_SHSEM", ("character", "task_kind")])
+        # list_var_color_var_subplot.append(["taskconfig_shp_SHSEM", "task_kind"])
+        # list_var_color_var_subplot.append(["taskconfig_shploc_SHSEM", "task_kind"])
+        # list_var_color_var_subplot.append(["seqc_1_shape", ("seqc_0_shape", "seqc_0_center_binned", "task_kind")]) # actually, is testing for parsing.
+        # list_var_color_var_subplot.append(["seqc_2_shape", ("seqc_0_shape", "seqc_0_center_binned", "task_kind")]) # actually, is testing for parsing.
+
+        from neuralmonkey.metadat.analy.anova_params import params_getter_decode_vars
+        LIST_VAR_DECODE, LIST_VARS_CONJ, LIST_SEPARATE_BY_TASK_KIND, LIST_FILTDICT, LIST_SUFFIX = params_getter_decode_vars(which_level)
+        single_vars_done = []
+        for list_var_decode, list_vars_conj in zip(LIST_VAR_DECODE, LIST_VARS_CONJ):
+            for var_decode, vars_conj in zip(list_var_decode, list_vars_conj):
+                list_var_color_var_subplot.append([var_decode, tuple(vars_conj)])
+                if var_decode not in single_vars_done:
+                    list_var_color_var_subplot.append([var_decode, "task_kind"])
+                    single_vars_done.append(var_decode)
+
+    elif question in ["PIG_BASE_stroke", "CHAR_BASE_stroke"]:
+        # shape (effect of shape)
+        # list_var_color_var_subplot.append(["shape", ("CTXT_shapeloc_prev", "gridloc", "CTXT_shapeloc_next", "task_kind")]) # (1) context --> after account for context, not much shape encoding.
+        # list_var_color_var_subplot.append(["shape", ("CTXT_shapeloc_prev", "gridloc", "CTXT_loc_next", "task_kind")])
+        list_var_color_var_subplot.append(["shape", ("CTXT_loc_prev", "gridloc", "task_kind")])
+        # list_var_color_var_subplot.append(["shape", ("stroke_index", "gridloc", "task_kind")]) # effect of stroke index
+        list_var_color_var_subplot.append(["shape", ("stroke_index", "task_kind")]) # important
+        list_var_color_var_subplot.append(["shape", ("stroke_index", "stroke_index_fromlast_tskstks", "task_kind")]) # (1) PMv, shape is invariant, but different for first stroke, (2) preSMA, encode SI indep of shape.
+        list_var_color_var_subplot.append(["shape", "task_kind"])
+
+        # shape (invariance)
+        list_var_color_var_subplot.append(["stroke_index_semantic", ("shape", "task_kind")]) # # also useful to see consistent for shape across contexts.
+        list_var_color_var_subplot.append(["CTXT_ALL_shape", ("shape", "stroke_index_semantic", "task_kind")]) # (1) also useful to see consistent for shape across contexts. (in PMv, not in M1).
+        list_var_color_var_subplot.append(["gridloc", ("shape", "stroke_index_semantic", "task_kind")]) # if many shapes, then this is easier to see if shape is invariant.
+        # list_var_color_var_subplot.append(["task_kind", ("shape", "stroke_index_semantic")]) # if many shapes, then this is easier to see if shape is invariant.
+
+        # location
+        # list_var_color_var_subplot.append(["gridloc", ("CTXT_shapeloc_prev", "shape", "CTXT_shapeloc_next", "task_kind")])
+        # list_var_color_var_subplot.append(["gridloc", ("CTXT_shapeloc_prev", "shape", "CTXT_loc_next", "task_kind")])
+        list_var_color_var_subplot.append(["gridloc", ("CTXT_loc_prev", "shape", "task_kind")])
+        list_var_color_var_subplot.append(["gridloc", ("stroke_index", "shape", "task_kind")])
+        list_var_color_var_subplot.append(["gridloc", "task_kind"])
+
+        # loc (vs. reach direction)
+        list_var_color_var_subplot.append(["gridloc", ("gap_from_prev_angle_binned", "shape", "stroke_index_semantic", "task_kind")]) # control for SIS, since onset reach and offset can be different.
+        list_var_color_var_subplot.append(["gridloc", ("gap_to_next_angle_binned", "shape", "stroke_index_semantic", "task_kind")])
+
+        # state (seq context) (also: prediction)
+        # list_var_color_var_subplot.append(["CTXT_shapeloc_next", ("CTXT_shapeloc_prev", "shape", "gridloc", "task_kind")])
+        # list_var_color_var_subplot.append(["CTXT_shape_next", ("CTXT_shapeloc_prev", "shape", "gridloc", "CTXT_loc_next", "task_kind")])
+        # list_var_color_var_subplot.append(["CTXT_loc_next", ("CTXT_shapeloc_prev", "shape", "gridloc", "CTXT_shape_next", "task_kind")])
+        # list_var_color_var_subplot.append(["CTXT_shapeloc_prev", ("CTXT_shapeloc_next", "shape", "gridloc", "task_kind")])
+        # list_var_color_var_subplot.append(["CTXT_loc_next", "task_kind"])
+        # list_var_color_var_subplot.append(["CTXT_shape_next", "task_kind"])
+
+        # list_var_color_var_subplot.append(["CTXT_shapeloc_next", ("CTXT_shapeloc_prev", "shape", "gridloc", "stroke_index_semantic", "task_kind")]) # important to have SIS, to separate (shapeloc) from END.
+        list_var_color_var_subplot.append(["CTXT_shapeloc_next", ("CTXT_loc_prev", "shape", "gridloc", "stroke_index_semantic", "task_kind")])  # important to have SIS, to separate (shapeloc) from END.
+        list_var_color_var_subplot.append(["CTXT_loc_next", ("CTXT_loc_prev", "shape", "gridloc", "stroke_index_semantic", "CTXT_shape_next", "task_kind")])
+        if False: # just get fewer plots
+            list_var_color_var_subplot.append(["CTXT_shape_next", ("CTXT_shapeloc_prev", "shape", "gridloc", "CTXT_loc_next", "stroke_index_semantic", "task_kind")]) # important to have SIS, to separate (shapeloc) from END.
+            list_var_color_var_subplot.append(["CTXT_loc_next", ("CTXT_shapeloc_prev", "shape", "gridloc", "CTXT_shape_next", "stroke_index_semantic", "task_kind")]) # important to have SIS, to separate (shapeloc) from END.
+
+        # list_var_color_var_subplot.append(["CTXT_shapeloc_prev", ("CTXT_shapeloc_next", "shape", "gridloc", "stroke_index_semantic", "task_kind")]) # important to have SIS, to separate (shapeloc) from END.
+        list_var_color_var_subplot.append(["CTXT_shapeloc_prev", ("shape", "gridloc", "stroke_index_semantic", "task_kind")]) # important to have SIS, to separate (shapeloc) from END.
+        # list_var_color_var_subplot.append(["CTXT_shapeloc_prev", ("shape", "gridloc", "task_kind")]) # also useful to see consistent for shape across contexts.
+
+        list_var_color_var_subplot.append(["CTXT_shapeloc_prev", "task_kind"])
+        list_var_color_var_subplot.append(["CTXT_shapeloc_next", "task_kind"])
+        list_var_color_var_subplot.append(["CTXT_loc_next", "task_kind"])
+
+        # stroke index (effect)
+        # list_var_color_var_subplot.append(["stroke_index", ("CTXT_shapeloc_prev", "shape", "gridloc", "CTXT_shapeloc_next", "task_kind")])
+        # list_var_color_var_subplot.append(["stroke_index", ("shape", "gridloc", "CTXT_shapeloc_next", "task_kind")])
+        list_var_color_var_subplot.append(["stroke_index", ("CTXT_loc_prev", "shape", "gridloc", "task_kind")])
+        list_var_color_var_subplot.append(["stroke_index", ("stroke_index_semantic", "task_kind")]) # Important: showing that PMv has no stroke effect if exclude first stroke
+        list_var_color_var_subplot.append(["stroke_index", ("FEAT_num_strokes_task", "task_kind")]) # Important: is counting, or internal ,etc.
+        list_var_color_var_subplot.append(["stroke_index", "task_kind"])
+
+        # list_var_color_var_subplot.append(["stroke_index_fromlast_tskstks", ("CTXT_shapeloc_prev", "shape", "gridloc", "CTXT_shapeloc_next", "task_kind")]) # SI - Good (strongest control)
+        list_var_color_var_subplot.append(["stroke_index_fromlast_tskstks", ("CTXT_loc_prev", "shape", "gridloc", "task_kind")])
+        list_var_color_var_subplot.append(["stroke_index_fromlast_tskstks", ("stroke_index_semantic", "task_kind")]) # Important: showing that PMv has no stroke effect if exclude first stroke
+        list_var_color_var_subplot.append(["stroke_index_fromlast_tskstks", "task_kind"])
+
+        list_var_color_var_subplot.append(["CTXT_ALL_MAX", ("stroke_index_fromlast_tskstks", "task_kind")]) # Strong, test context vs. SI
+        list_var_color_var_subplot.append(["CTXT_shapeloc_next", ("CTXT_shapeloc_prev", "stroke_index_fromlast_tskstks", "task_kind")]) # Strong, test context vs. SI
+
+        # stroke index (invariance)
+        list_var_color_var_subplot.append(["shape_loc", ("stroke_index", "task_kind")]) # (1) Stroke index invariant to shape/loc (2) Consistent across task_kind
+
+        # contrast stroke index vs. stroke index from last
+        if False: # too messy
+            list_var_color_var_subplot.append(["stroke_index", ("shape", "gridloc", "stroke_index_fromlast_tskstks", "task_kind")])
+            list_var_color_var_subplot.append(["stroke_index_fromlast_tskstks", ("shape", "gridloc", "stroke_index", "task_kind")])
+
+        # task kind
+        list_var_color_var_subplot.append(["task_kind", ("shape", "gridloc", "CTXT_shapeloc_prev")])
+
+        # num strokes in task
+        list_var_color_var_subplot.append(["FEAT_num_strokes_task", ("shape", "gridloc", "CTXT_shapeloc_prev")])
+
+    else:
+        print(question)
+        assert False
+
+    # Cleanup, if forgot to add taskkind
+    tmp = []
+    for var_color, var_subplot in list_var_color_var_subplot:
+        if not var_color == "task_kind":
+            if isinstance(var_subplot, (list, tuple)) and not any([v=="task_kind" for v in var_subplot]):
+                var_subplot = tuple(list(var_subplot) + ["task_kind"])
+            elif isinstance(var_subplot, str) and not var_subplot=="task_kind":
+                var_subplot = tuple([var_subplot, "task_kind"])
+            elif var_subplot is None:
+                var_subplot = "task_kind"
+        tmp.append([var_color, var_subplot])
+    list_var_color_var_subplot = tmp
+
+    return list_var_color_var_subplot
+
 def params_getter_euclidian_vars(question):
     """
+    GOOD - these are the most carefully constructed, in terms of high control, and testing specific hypothes
     Helper to get variables for euclidian distnace when this involves specific hand-pikced variables to test speciifc
     hypotheses.
     Written for syntax analyses.
@@ -1828,15 +2186,229 @@ def params_getter_euclidian_vars(question):
     if question is None:
         all_questions = ["RULE_ROWCOL_STROKE", "RULE_DIR_STROKE", "RULE_ANBMCK_STROKE", "RULESW_ANBMCK_DIR_STROKE",
                          "RULE_COLRANK_STROKE", "RULESW_ANBMCK_COLRANK_STROKE", "RULESW_ANY_SEQSUP_STROKE",
-                         "RULESW_ANBMCK_ABN_STROKE"]
+                         "RULESW_ANBMCK_ABN_STROKE", "SP_BASE_stroke", "PIG_BASE_stroke", "CHAR_BASE_stroke"]
         # Do quick check that lengths match up (hand entered correctly)
         for q in all_questions:
             print("... testing: ", q)
-            params_getter_euclidian_vars(q)
+            LIST_VAR, LIST_VARS_OTHERS, LIST_CONTEXT, LIST_PRUNE_MIN_N_LEVS, LIST_FILTDICT = params_getter_euclidian_vars(q)
+
+            # Test that context and ovar match
+            for i, (vars_others, context) in enumerate(zip(LIST_VARS_OTHERS, LIST_CONTEXT)):
+                if context is not None:
+                    try:
+                        assert all([v in vars_others for v in context["same"]])
+                        assert all([v in vars_others for v in context["diff"]])
+                        assert all([v in context["same"] + context["diff"] for v in vars_others])
+                    except Exception as err:
+                        print(vars_others)
+                        print(context)
+                        print("index:", i)
+                        raise err
+
         print("PAssed all tests!")
         return (None for _ in range(5))
 
-    if question == "RULESW_ANBMCK_ABN_STROKE":
+
+    if question in ["PIG_BASE_stroke" , "CHAR_BASE_stroke"]:
+        # OLD -- should be ok, but shoudl update this file
+        # Mainly about sequence stuff.
+
+        if question == "PIG_BASE_stroke":
+            task_kind_keep = "prims_on_grid"
+            task_kind_keep = None
+            var_loc_next = "CTXT_loc_next"
+            var_loc_prev = "CTXT_loc_prev"
+            var_loc = "gridloc"
+        elif question == "CHAR_BASE_stroke":
+            task_kind_keep = "character"
+            task_kind_keep = None
+            var_loc_next = "CTXT_loconclust_next"
+            var_loc_prev = "CTXT_locoffclust_prev"
+            var_loc = "loc_on_clust"
+        else:
+            assert False
+
+
+        LIST_VAR = [
+            # [Predict sequence]
+            "CTXT_loc_next",
+            "CTXT_loc_next",
+            "CTXT_loc_next",
+
+            # [Predict sequence]
+            "CTXT_shape_next",
+            "CTXT_shape_next",
+            "CTXT_shape_next",
+
+            # [Task kind]
+            "task_kind",
+
+            # [Stroke index]
+            "stroke_index",
+            "stroke_index_fromlast_tskstks",
+            "stroke_index_fromlast_tskstks",
+
+            # [Num strokes]
+            "FEAT_num_strokes_task",
+            "FEAT_num_strokes_task",
+
+            # [Shape]
+            "shape",
+            "shape",
+            "shape",
+            "shape",
+
+            "shape",
+            "shape",
+            "shape",
+            "shape",
+            "shape",
+            "shape",
+
+            # [Location]
+            "gridloc",
+            var_loc,
+            var_loc,
+        ]
+        # More restrictive
+        LIST_VARS_OTHERS = [
+            ["stroke_index_is_first", "task_kind", var_loc_prev, "shape", var_loc, "CTXT_shape_next"],
+            ["stroke_index_is_first", "task_kind", var_loc_prev, "shape", "gridloc", "CTXT_shape_next"],
+            ["stroke_index_is_first", "task_kind", "CTXT_loc_prev", "shape", "gridloc", "CTXT_shape_next"],
+
+            ["stroke_index_is_first", "task_kind", var_loc_prev, "shape", var_loc, "CTXT_loc_next"],
+            ["stroke_index_is_first", "task_kind", var_loc_prev, "shape", "gridloc", "CTXT_loc_next"],
+            ["stroke_index_is_first", "task_kind", "CTXT_loc_prev", "shape", "gridloc", "CTXT_loc_next"],
+
+            ["stroke_index_is_first", "shape", var_loc, var_loc_prev],
+
+            ["stroke_index_is_first", "task_kind", var_loc_prev, "shape", var_loc],
+            ["stroke_index_is_first", "task_kind", var_loc_prev, "shape", var_loc],
+            ["stroke_index_is_first", "FEAT_num_strokes_task", "task_kind", var_loc_prev, "shape", var_loc],
+
+            ["stroke_index_is_first", "task_kind", var_loc_prev, "shape", var_loc, "stroke_index"],
+            ["stroke_index_is_first", "task_kind", var_loc_prev, "shape", var_loc],
+
+            ["task_kind", "stroke_index_is_first", "gridloc", "CTXT_loc_prev", "CTXT_shape_prev", "CTXT_loc_next"],
+            ["task_kind", "stroke_index_is_first", "gridloc", "CTXT_loc_prev", "CTXT_shape_prev"],
+            ["task_kind", "stroke_index_is_first", "gridloc", "CTXT_loc_prev", "CTXT_loc_next"],
+            ["task_kind", "stroke_index_is_first", "gridloc", "CTXT_loc_prev"],
+
+            ["task_kind", "stroke_index_is_first", "loc_on_clust", "CTXT_locoffclust_prev"],
+            ["task_kind", "stroke_index_is_first", "loc_on_clust", "CTXT_locoffclust_prev", "CTXT_shape_prev"],
+            ["task_kind", "stroke_index_is_first", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust"],
+            ["task_kind", "stroke_index_is_first", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "CTXT_shape_prev"],
+            ["task_kind", "stroke_index_is_first", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "CTXT_loconclust_next"],
+            ["task_kind", "stroke_index_is_first", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "CTXT_shape_prev", "CTXT_loconclust_next"],
+
+            ["stroke_index_is_first", "task_kind", "shape", var_loc_prev, "CTXT_loc_next"],
+            ["stroke_index_is_first", "task_kind", "shape", var_loc_prev, "CTXT_loc_next"],
+            ["stroke_index_is_first", "task_kind", "shape", var_loc_prev],
+            ]
+        LIST_CONTEXT = [
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+
+            {"same":["task_kind", "stroke_index_is_first"], "diff":["gridloc", "CTXT_loc_prev", "CTXT_shape_prev", "CTXT_loc_next"], "diff_context_ver":"diff_specific_lenient"},
+            {"same":["task_kind", "stroke_index_is_first"], "diff":["gridloc", "CTXT_loc_prev", "CTXT_shape_prev"], "diff_context_ver":"diff_specific_lenient"},
+            {"same":["task_kind", "stroke_index_is_first"], "diff":["gridloc", "CTXT_loc_prev", "CTXT_loc_next"], "diff_context_ver":"diff_specific_lenient"},
+            {"same":["task_kind", "stroke_index_is_first"], "diff":["gridloc", "CTXT_loc_prev"], "diff_context_ver":"diff_specific_lenient"},
+
+            {"same":["task_kind", "stroke_index_is_first"], "diff":["loc_on_clust", "CTXT_locoffclust_prev"], "diff_context_ver":"diff_specific_lenient"},
+            {"same":["task_kind", "stroke_index_is_first"], "diff":["loc_on_clust", "CTXT_locoffclust_prev", "CTXT_shape_prev"], "diff_context_ver":"diff_specific_lenient"},
+            {"same":["task_kind", "stroke_index_is_first"], "diff":["loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust"], "diff_context_ver":"diff_specific_lenient"},
+            {"same":["task_kind", "stroke_index_is_first"], "diff":["loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "CTXT_shape_prev"], "diff_context_ver":"diff_specific_lenient"},
+            {"same":["task_kind", "stroke_index_is_first"], "diff":["loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "CTXT_loconclust_next"], "diff_context_ver":"diff_specific_lenient"},
+            {"same":["task_kind", "stroke_index_is_first"], "diff":["loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust", "CTXT_shape_prev", "CTXT_loconclust_next"], "diff_context_ver":"diff_specific_lenient"},
+
+            {"same":["stroke_index_is_first", "task_kind"], "diff":["shape", var_loc_prev, "CTXT_loc_next"], "diff_context_ver":"diff_specific_lenient"},
+            {"same":["stroke_index_is_first", "task_kind"], "diff":["shape", var_loc_prev, "CTXT_loc_next"], "diff_context_ver":"diff_specific_lenient"},
+            {"same":["stroke_index_is_first", "task_kind"], "diff":["shape", var_loc_prev], "diff_context_ver":"diff_specific_lenient"},
+            ]
+        LIST_PRUNE_MIN_N_LEVS = [
+            2 for _ in range(len(LIST_VAR))
+        ]
+
+        if task_kind_keep is not None:
+            f = {"task_kind":[task_kind_keep]}
+        else:
+            f = None
+        LIST_FILTDICT = [
+            f for _ in range(len(LIST_VAR))
+        ]
+
+    elif question == "SP_BASE_stroke":
+        # Standard stuff, related to single strokes
+        LIST_VAR = [
+            # [Shape]
+            "shape", # (gen across size)
+            "shape", # (gen across loc)
+            "shape", # (more strict)
+            "shape", # (more strict)
+
+            # [Shape semantic]
+            "shape_semantic_cat",
+            "shape_semantic_cat",
+            "shape_semantic_cat", # (more strict)
+            "shape_semantic_cat", # (more strict)
+
+            # [Location]
+            "gridloc",
+            "loc_on_clust",
+            
+            # [Size]
+            "gridsize",
+            # TODO angle of stroke onset.
+        ]
+        LIST_VARS_OTHERS = [
+            ["gridloc", "gridsize"],
+            ["gridloc", "gridsize"],
+            ["loc_on_clust", "gridsize"],
+            ["loc_on_clust", "loc_off_clust", "gridsize"],
+
+            ["gridloc", "gridsize"],
+            ["gridloc", "gridsize"],
+            ["loc_on_clust", "gridsize"],
+            ["loc_on_clust", "loc_off_clust", "gridsize"],
+
+            ["shape", "gridsize"],
+            ["shape", "gridsize"],
+
+            ["shape", "gridloc"],
+            ]
+        LIST_CONTEXT = [
+            {"same":["gridloc"], "diff":["gridsize"]},
+            {"same":["gridsize"], "diff":["gridloc"]},
+            None,
+            None,
+
+            {"same":["gridloc"], "diff":["gridsize"]},
+            {"same":["gridsize"], "diff":["gridloc"]},
+            None,
+            None,
+
+            {"same":["gridsize"], "diff":["shape"]},
+            {"same":["gridsize"], "diff":["shape"]},
+
+            {"same":["gridloc"], "diff":["shape"]},
+            ]
+        LIST_PRUNE_MIN_N_LEVS = [
+            2 for _ in range(len(LIST_VAR))
+        ]
+        LIST_FILTDICT = [
+            None for _ in range(len(LIST_VAR))
+        ]
+    elif question == "RULESW_ANBMCK_ABN_STROKE":
         LIST_VAR = [
             #### SPECIFIC TO (AB)n
             "chunk_rank", # in (AB)n, same shape, diff "chunk" **
@@ -2411,12 +2983,12 @@ def params_getter_euclidian_vars(question):
             None,
             None,
 
-            {"same":["epoch", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev"], "diff":["chunk_within_rank"]},
-            {"same":["epoch", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev"], "diff":["chunk_within_rank_fromlast"]},
-            {"same":["epoch", "chunk_rank", "shape", "gridloc"], "diff":["chunk_within_rank"]},
-            {"same":["epoch", "chunk_rank", "shape", "gridloc"], "diff":["chunk_within_rank_fromlast"]},
-            {"same":["epoch", "chunk_rank", "shape", "gridloc"], "diff":["stroke_index"]},
-            {"same":["epoch", "chunk_rank", "shape", "gridloc"], "diff":["chunk_within_rank_fromlast"]},
+            {"same":["epoch", "chunk_rank", "shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust"], "diff":["chunk_within_rank"]},
+            {"same":["epoch", "chunk_rank", "shape", "loc_on_clust", "CTXT_locoffclust_prev", "loc_off_clust"], "diff":["chunk_within_rank_fromlast"]},
+            {"same":["epoch", "chunk_rank", "shape", "loc_on_clust", "loc_off_clust"], "diff":["chunk_within_rank"]},
+            {"same":["epoch", "chunk_rank", "shape", "loc_on_clust", "loc_off_clust"], "diff":["chunk_within_rank_fromlast"]},
+            {"same":["epoch", "chunk_rank", "shape", "loc_on_clust", "loc_off_clust"], "diff":["stroke_index"]},
+            {"same":["epoch", "chunk_rank", "shape", "loc_on_clust", "loc_off_clust"], "diff":["chunk_within_rank_fromlast"]},
 
             None,
             None,

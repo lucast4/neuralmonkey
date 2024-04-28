@@ -23,7 +23,7 @@ def load_handsaved_wrapper(animal=None, version=None):
     # path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/DFallpa_Diego_230928_RULE_BASE_stroke.pkl"
     # path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/DFallpa_Diego_230910_RULESW_BASE_stroke.pkl" # shape vs. color
     # path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/DFallpa_Diego_230911_RULE_BASE_stroke.pkl" #
-    path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/DFallpa_Diego_230817_RULE_BASE_stroke.pkl" # AnBmCk
+    # path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/DFallpa_Diego_230817_RULE_BASE_stroke.pkl" # AnBmCk
     # path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/DFallpa_Diego_230929_RULE_BASE_stroke.pkl"
     # path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/DFallpa_Pancho_230320_RULE_BASE_stroke.pkl" # rowcol
     # path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/DFallpa_Diego_230922_RULESW_BASE_stroke.pkl" # AnBm vs. DIR vs. seqsup
@@ -34,9 +34,13 @@ def load_handsaved_wrapper(animal=None, version=None):
     # path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/DFallpa_Pancho_230811_RULESW_BASE_stroke.pkl" # AnBmCk
     # path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-231211-stroke-ks_nonorm.pkl" # char [DAN AND XUAN]
     # path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Dolnik/DFallpa_KS_nonorm.pkl" # single prim, shapes (Diego,230615, trial)
-    # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230615-stroke-ks_nonorm.pkl" # shapes (Diego,230615, strokes)
+    path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230615-stroke-ks_nonorm.pkl" # shapes (Diego,230615, strokes)
     # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230630-stroke-ks_nonorm.pkl" # PIG (strokes)
     # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Pancho-220918-stroke-ks_nonorm.pkl" # Pancho SP (shape, loc, size)
+
+    # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Pancho-220715-stroke-ks_nonorm.pkl" # PAncho, SP, strokes
+    # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Pancho-220715-stroke-tdt_nonorm.pkl" # Pancho, SP, tdt, more data.
+
     DFallpa = pd.read_pickle(path)
     return DFallpa
 
