@@ -7374,7 +7374,7 @@ class Session(object):
 
         if self._FORCE_GET_TRIALS_ONLY_IN_DATASET:
             only_if_in_dataset = True
-            if self._FORCE_GET_TRIALS_ONLY_IN_DATASET_NTRIALS > len(self.Datasetbeh.Dat):
+            if self._FORCE_GET_TRIALS_ONLY_IN_DATASET_NTRIALS > 1.1*len(self.Datasetbeh.Dat):
                 print(self._FORCE_GET_TRIALS_ONLY_IN_DATASET_NTRIALS)
                 print(len(self.Datasetbeh.Dat))
                 print("You have pruned self.Dataset, which means turning on only_if_in_dataset may inadvertently reduce n trials more than you expect")

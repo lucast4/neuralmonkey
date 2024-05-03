@@ -32,15 +32,19 @@ def load_handsaved_wrapper(animal=None, version=None):
 
     # path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/DFallpa_Diego_230925_RULESW_BASE_stroke.pkl" # seqsup
     # path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/DFallpa_Pancho_230811_RULESW_BASE_stroke.pkl" # AnBmCk
+
     # path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-231211-stroke-ks_nonorm.pkl" # char [DAN AND XUAN]
-    # path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Dolnik/DFallpa_KS_nonorm.pkl" # single prim, shapes (Diego,230615, trial)
-    path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230615-stroke-ks_nonorm.pkl" # shapes (Diego,230615, strokes)
+    # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-231211-stroke-tdt-norm=None-combine=True.pkl" # char [DAN AND XUAN]
+
+    path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Dolnik/DFallpa_KS_nonorm.pkl" # single prim, shapes (Diego,230615, trial)
+    # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230615-stroke-ks_nonorm.pkl" # shapes (Diego,230615, strokes)
     # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230630-stroke-ks_nonorm.pkl" # PIG (strokes)
     # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Pancho-220918-stroke-ks_nonorm.pkl" # Pancho SP (shape, loc, size)
 
     # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Pancho-220715-stroke-ks_nonorm.pkl" # PAncho, SP, strokes
     # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Pancho-220715-stroke-tdt_nonorm.pkl" # Pancho, SP, tdt, more data.
-
+    # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Pancho-220715-trial-tdt_nonorm.pkl" # Pancho, SP (shapes vs loc, TRIAL)
+    # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230618-trial-tdt_nonorm.pkl" # Diego, SP (many shapes) (Trial)
     DFallpa = pd.read_pickle(path)
     return DFallpa
 
@@ -544,7 +548,7 @@ def dfallpa_combine_trial_strokes_from_already_loaded_DFallpa():
                     print("Probably event_trial should be changed to an event that has all the tcs that exist for this bregion...")
 
     # Keep all
-    DFallpa = pd.concat([DFallpa, pd.DataFrame(RES_DFMULT_NEW)])
+    DFallpa = pd.concat([DFallpa, pd.DataFrame(RES_DFMULT_NEW)]).reset_index(drop=True)
 
     return DFallpa
 
@@ -1193,6 +1197,7 @@ def dfpa_group_and_split(DFallpa, vars_to_concat=None, vars_to_split=None,
         for pa in DFallpa["pa"].tolist():
             # print(pa.Xlabels["trials"]["wl_ev_tw"].value_counts())
             # assert False
+            pa.Xlabels["trials"]["event_orig"] = pa.Xlabels["trials"]["event"]
             pa.Xlabels["trials"]["event"] = pa.Xlabels["trials"]["wl_ev_tw"]
 
             a = pa.X.shape[1]
@@ -1218,6 +1223,63 @@ def dfpa_group_and_split(DFallpa, vars_to_concat=None, vars_to_split=None,
 
     return DFallpa
 
+def pa_split_into_multiple_event_timewindows(PA, ev_tw_1, ev_tw_2):
+    """
+    Split a single PA into multiple PA, each with its specific event (e.g., 03_samp) and time
+    window (sliced into PA), and the concatenate them into a single PA.
+    
+    Useful if want to analyze similarity of representations across time, and you have PA that have already
+    concatenated across events (i.e, the output of dfpa_group_and_split).
+
+    Note; This can also work for unmodified PA, byut would have to chagne some hard-coded stuff, such as 
+    "event_orig" below.
+
+    Note: hard coded for 2 event_times, but could be expanded by changing code.
+    
+    PARAMS:
+    - ev_tw_1, tuple([event_orig, twind]), where event_orig is string like "03_samp" and twind is 2-tyuple (e.g, (-0.2, -0.1))) 
+    defining time window to keep. 
+    - ev_tw_2, same as 1. NOTE: must have same duration time window or will fail.
+    
+    e.g.,:
+    ev_tw_1 = ("03_samp", (-0.4, -0.2))
+    ev_tw_2 = ("06_on_strokeidx_0", (0.1, 0.3))
+
+    RETURNS:
+    - PA copy, with shape like input but time just within the twinds, and evens just thoise evnets., and 
+    times repalced with udummy var 0,1,2 ... And appends a column called "event_times" which is the unique conjunction
+    of ev_tw
+    """
+    from neuralmonkey.classes.population import concatenate_popanals
+
+    assert "event_orig" in PA.Xlabels["trials"], "need to either run dfpa_group_and_split first, or modify code to not have this hard-coded."
+
+    # Pull out PAs for each event
+    pa1 = PA.copy()
+    pa1 = pa1.slice_by_labels_filtdict({"event_orig":[ev_tw_1[0]]}) # keep event
+    pa1 = pa1.slice_by_dim_values_wrapper("times", ev_tw_1[1], time_keep_only_within_window=False) # keep time wind
+    pa1.Xlabels["trials"]["event_times"] = f"{ev_tw_1[0]}|{ev_tw_1[1][0]:.3f}|{ev_tw_1[1][1]:.3f}"
+
+    pa2 = PA.copy()
+    pa2 = pa2.slice_by_labels_filtdict({"event_orig":[ev_tw_2[0]]}) # keep event
+    pa2 = pa2.slice_by_dim_values_wrapper("times", ev_tw_2[1], time_keep_only_within_window=False) # keep time wind
+    pa2.Xlabels["trials"]["event_times"] = f"{ev_tw_2[0]}|{ev_tw_2[1][0]:.3f}|{ev_tw_2[1][1]:.3f}"
+
+    # print(pa1.X.shape)
+    # print(pa2.X.shape)
+
+    if not pa1.X.shape ==pa2.X.shape:
+        return None
+        # print(pa1.X.shape)
+        # print(pa2.X.shape)
+        # print(pa1.Times)
+        # print(pa2.Times)
+        # assert False, "probably mismatch in times??"
+
+    # concatenate them
+    pa = concatenate_popanals([pa1, pa2], "trials", replace_times_with_dummy_variable=True)
+
+    return pa
 
 
 
@@ -1367,7 +1429,8 @@ def data_extract_raw_and_save(DFallpa, savepath):
     :param savepath, usually should have "DFallpa_raw.pkl"
     :return:
     """
-
+    import pandas as pd
+    
     # 1. Extract raw data for each row
     datas = []
     chans = []
@@ -1394,29 +1457,43 @@ def data_extract_raw_and_save(DFallpa, savepath):
     DFallpa_raw = DFallpa_raw.drop(["pa", "pa_x_shape"], axis=1)
 
     # 4. Remove label columns which use custom class objects
+
     list_labels = []
+    did_print = False
     for dflab in DFallpa_raw["labels"]:
         keys_remove = []
         for k in dflab.keys():
             # print(k, " -- ", type(dflab[k].values[0]))
-            if k in ["TokTask", "Tktask", "TokTask", "TokBeh"]:
+            if k in ["TokTask", "Tktask", "TokTask", "TokBeh", "Tkbeh_stktask", "Tkbeh_stkbeh"]:
                 keys_remove.append(k)
         print("Removing these custom class columns from labels: ", keys_remove)
         dflab_raw = dflab.drop(keys_remove, axis=1)
 
         # Also convert Strokes to strokes
-        list_stroke = []
-        # list_tok_task = []
-        for i, row in dflab_raw.iterrows():
-            list_stroke.append(row["Stroke"]())
-            # list_tok_task.append(row["TokTask"].data_extract_raw())
-        dflab_raw["stroke"] = list_stroke
-        dflab_raw = dflab_raw.drop(["Stroke"], axis=1)
+        if "Stroke" in dflab_raw.columns:
+            list_stroke = []
+            # list_tok_task = []
+            for i, row in dflab_raw.iterrows():
+                list_stroke.append(row["Stroke"]())
+                # list_tok_task.append(row["TokTask"].data_extract_raw())
+            dflab_raw["stroke"] = list_stroke
+            dflab_raw = dflab_raw.drop(["Stroke"], axis=1)
 
         # Rest index
         dflab_raw = dflab_raw.reset_index(drop=True)
 
         list_labels.append(dflab_raw)
+
+        if not did_print:
+            # Print the final labels
+            # - First, print the types of each column
+            # dflab = DFallpa_raw["labels"].values[0]
+            print("Final kept labels... ")
+            columns = sorted(dflab_raw.columns)
+            for col in columns:
+                print(col, "   ====   ", type(dflab_raw[col].values[0]))
+            did_print = True
+
     DFallpa_raw["labels"] = list_labels
 
     # 5. Save
