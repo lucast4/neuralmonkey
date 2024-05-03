@@ -766,17 +766,14 @@ def dfallpa_extraction_load_wrapper_from_MS(MS, question, list_time_windows, whi
         substrokes_plot_preprocess=substrokes_plot_preprocess,
         HACK_RENAME_SHAPES=HACK_RENAME_SHAPES)
 
-    if which_level=="flex":
-        HACK_KEDAR = True
-        if HACK_KEDAR: # Do this outside datasetbeh_preprocess_clean_by_expt, so can exit and do garbage collection?
-            import gc
-            gc.collect()
+    if question=="PIG_BASE_saccade_fix_on":
+        # want to extract clusterfix columns, which is a memory-intensive operation
+        import gc
+        gc.collect()
+        del MS
 
-            del MS
-
-            print("adding saccade-fixation columns...")
-            # add columns from 240307_sequence_rasters.ipynb
-            SP._addSaccadeFixationColumns()
+        print("adding saccade-fixation columns...")
+        SP._add_clusterfix_saccfix_columns()
 
     # If this is "strokes" SP, you have option of renaming events to the stroke index, allowing to
     # extract separate PA for each stroke index.

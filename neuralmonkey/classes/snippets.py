@@ -7612,7 +7612,7 @@ class Snippets(object):
 
     # adds additional columns for SP.DfScalar here (including code to loop, and append_column vars)
     # NOTE: assumes multiple session SP, e.g. from
-    def _addSaccadeFixationColumns(self):
+    def _add_clusterfix_saccfix_columns(self):
         import math
         # get the start, end times for the window spanned by start_event, end_event
         def getTimeWindowOfEvents(sn, trial, start_event, end_event):
@@ -8268,7 +8268,7 @@ def extraction_helper(SN, which_level="trial", list_features_modulation_append=N
     elif which_level == "saccade_fix_on": # relevant for dfallpa_extraction_load_wrapper
         which_level="flex"
         # Extracts snippets aligned to strokes. Features are columns in DS.
-        list_events = ["fixon"] # must be empty
+        list_events = ["fixon_preparation"]
         list_features_extraction = [] #
         list_features_get_conjunction = []
         # also those for computing moduulation.
