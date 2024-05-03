@@ -7344,6 +7344,25 @@ class Snippets(object):
         if ANALY_VER == "MINIMAL":
             return D, []
 
+        ################ SUBSTROKES
+        if params["substrokes_features_do_extraction"]:
+            # Moved out here since now DS is recreated out here. BUT this is not working, since 
+            # substrokes do the thing of saving and loading DS, which is not cufrrent method.
+            from pythonlib.dataset.substrokes import features_motor_extract_and_bin
+            save_substroke_preprocess_figures = substrokes_plot_preprocess
+            assert params["datasetstrokes_extract_to_prune_stroke_and_get_features"] is None, "they would overwrite each other"
+
+            # Save in substrokes preprocess folder.
+            if save_substroke_preprocess_figures: # Takes too long
+                SAVEDIR = D.make_savedir_for_analysis_figures_BETTER("substrokes_preprocess")
+                plot_save_dir = f"{SAVEDIR}/plots_during_anova_params"
+                os.makedirs(plot_save_dir, exist_ok=True)
+            else:
+                plot_save_dir = None
+
+            # Extract motor variables (DS)
+            features_motor_extract_and_bin(DS, plot_save_dir=plot_save_dir)
+
         ##################################### EXTRACT FEATURES INTO DFSCALAR
         list_features_extraction_base = ["trialcode", "aborted", "event_time", "task_kind", "gridsize",
                                           "FEAT_num_strokes_task", "FEAT_num_strokes_beh",
@@ -7351,16 +7370,18 @@ class Snippets(object):
                                          "INSTRUCTION_COLOR", "epoch_orig", "epoch", "taskgroup", "epochset",
                                           "origin", "donepos"]
 
-        list_features_extraction_stroke = [
-                                    "stroke_index", "stroke_index_fromlast", "stroke_index_fromlast_tskstks",
+        # These are in both stroek and substroke (the latter is loaded from a saved pickled DS, so it only has older stuff)
+        list_features_extraction_stroke_substroke = ["stroke_index", "stroke_index_fromlast", "stroke_index_fromlast_tskstks",
                                     "stroke_index_semantic", "stroke_index_semantic_tskstks",
                                     "shape_oriented", "shape", "gridloc", "gridloc_x", "gridloc_y",
                                     "CTXT_loc_next", "CTXT_shape_next",
                                     "CTXT_loc_prev", "CTXT_shape_prev",
                                     "gap_from_prev_angle_binned", "gap_to_next_angle_binned",
                                     "gap_from_prev_angle", "gap_to_next_angle",
-                                    "Stroke", "TokTask",
-                                    "stroke_index_is_first", "stroke_index_is_last_tskstks",
+                                    "Stroke"]
+
+        list_features_extraction_stroke = [
+                                    "TokTask", "stroke_index_is_first", "stroke_index_is_last_tskstks",
                                     "loc_on_clust", "CTXT_loconclust_prev", "CTXT_loconclust_next",
                                     "loc_off_clust", "CTXT_locoffclust_prev", "CTXT_locoffclust_next",
                                     "shape_semantic", "shape_semantic_cat"]
@@ -7391,17 +7412,19 @@ class Snippets(object):
         list_features_extraction_trial.append("seqc_nstrokes_task")
 
         # SANITY CEHCK that there are no identical names ... this leads to ambiguity as to which dataset to get this var from
+        assert not any([f in list_features_extraction_stroke_substroke for f in list_features_extraction_trial])
         assert not any([f in list_features_extraction_stroke for f in list_features_extraction_trial])
+        assert not any([f in list_features_extraction_substroke for f in list_features_extraction_trial])
 
         # Features that should always extract (Strokes dat)
         if self.Params["which_level"] in ["substroke", "substroke_off"]:
             print("Using substroke...")
-            list_features_extraction = list_features_extraction_base + list_features_extraction_stroke + list_features_extraction_substroke
+            list_features_extraction = list_features_extraction_base + list_features_extraction_stroke_substroke + list_features_extraction_substroke
             DS_for_feature_extraction = DS
             assert DS is not None
         elif self.Params["which_level"] in ["stroke", "stroke_off"]:
             print("Using stroke...")
-            list_features_extraction = list_features_extraction_base + list_features_extraction_stroke
+            list_features_extraction = list_features_extraction_base + list_features_extraction_stroke_substroke + list_features_extraction_stroke
             DS_for_feature_extraction = DS
             assert DS is not None
         elif self.Params["which_level"]=="trial":
@@ -7429,6 +7452,7 @@ class Snippets(object):
         if params["datasetstrokes_extract_chunks_variables"] and self.Params["which_level"] == "stroke":
             # Then dataset_strokes lloaded chunk variables, e.g,
             list_features_extraction = (list_features_extraction + ["chunk_rank", "chunk_within_rank", "chunk_within_rank_semantic",
+                                                                    "chunk_within_rank_semantic_v2", "chunk_within_rank_semantic_v3",
                                                         "chunk_within_rank_fromlast", "chunk_n_in_chunk", "epoch_rand",
                                                         "chunk_diff_from_prev"] + ["taskcat_by_rule", "behseq_shapes"] +
                                         ["syntax_concrete", "syntax_role"] + ["epoch_orig_rand_seq", "epoch_is_AnBmCk", "epoch_is_DIR",
