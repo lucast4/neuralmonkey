@@ -44,17 +44,14 @@ def load_preprocess_concat_mult_sessions(animal, save_suffix, new_varied_hyperpa
             dates = [230922, 230920, 230924, 230925]
             question = "RULESW_ANY_SEQSUP_STROKE"
             fr_normalization_method = "across_time_bins"
-            twind_analy = (-0.1, 0.1)
         elif save_suffix=="sh_vs_dir":
             dates = [230719, 230823, 230804, 230827, 230919]
             question = "RULESW_ANBMCK_DIR_STROKE"
             fr_normalization_method = "across_time_bins"
-            twind_analy = (-0.1, 0.1)
         elif save_suffix=="sh_vs_col":
-            dates = [230910, 230912, 230927]
+            dates = [230910, 230912, 230927, 231001]
             question = "RULESW_ANBMCK_COLRANK_STROKE"
             fr_normalization_method = "across_time_bins"
-            twind_analy = (-0.1, 0.1)
         else:
             print(animal, save_suffix)
             assert False, "add this."
@@ -248,9 +245,24 @@ if __name__=="__main__":
     animal = sys.argv[1]
     save_suffix = sys.argv[2] # a code name for this analysis (e.g., two_shape_sets)
 
+    dim_red_method = "pca"
+    NPCS_KEEP = 10
+    extra_dimred_method_n_components = None
+    umap_n_neighbors = None
+    savedir_suffix = None
+    new_mult_savedir_suffix = "PCA"
+    skip_dates_dont_exist = False
+
     # (1) Load all data
-    DFRES, DFRES_PIVOT_DISTR, DFRES_PIVOT_PAIRWISE, DFRES_PIVOT_YUE, SAVEDIR_ANALYSIS, params, plot_params = load_preprocess_concat_mult_sessions(
-        animal, save_suffix)
+    # DFRES, DFRES_PIVOT_DISTR, DFRES_PIVOT_PAIRWISE, DFRES_PIVOT_YUE, SAVEDIR_ANALYSIS, params, plot_params = load_preprocess_concat_mult_sessions(
+    #     animal, save_suffix)    
+    DFRES, DFRES_PIVOT_DISTR, DFRES_PIVOT_PAIRWISE, DFRES_PIVOT_YUE, SAVEDIR_ANALYSIS, params, plot_params =\
+        load_preprocess_concat_mult_sessions(animal, save_suffix, new_varied_hyperparams=True,
+                                            dim_red_method=dim_red_method, NPCS_KEEP=NPCS_KEEP, 
+                                            extra_dimred_method_n_components=extra_dimred_method_n_components,
+                                            umap_n_neighbors=umap_n_neighbors, savedir_suffix=savedir_suffix,
+                                            skip_dates_dont_exist=skip_dates_dont_exist, new_mult_savedir_suffix=new_mult_savedir_suffix)
+
 
     # (2) Plot
     plot_all(DFRES, DFRES_PIVOT_DISTR, DFRES_PIVOT_PAIRWISE, DFRES_PIVOT_YUE, plot_params, SAVEDIR_ANALYSIS)
