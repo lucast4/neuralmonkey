@@ -1111,22 +1111,23 @@ def dataset_apply_params(D, DS, ANALY_VER, animal, DATE, save_substroke_preproce
             DS = dsprun # Replace with newly extracted.
 
         ############### SUBSTROKES
-        if params["substrokes_features_do_extraction"]:
-            from pythonlib.dataset.substrokes import features_motor_extract_and_bin
-            assert params["datasetstrokes_extract_to_prune_stroke_and_get_features"] is None, "they would overwrite each other"
+        if False: # This is done in Snippets now.
+            if params["substrokes_features_do_extraction"]:
+                from pythonlib.dataset.substrokes import features_motor_extract_and_bin
+                assert params["datasetstrokes_extract_to_prune_stroke_and_get_features"] is None, "they would overwrite each other"
 
-            # Save in substrokes preprocess folder.
-            if save_substroke_preprocess_figures: # Takes too long
-                SAVEDIR = D.make_savedir_for_analysis_figures_BETTER("substrokes_preprocess")
-                plot_save_dir = f"{SAVEDIR}/plots_during_anova_params"
-                os.makedirs(plot_save_dir, exist_ok=True)
-            else:
-                plot_save_dir = None
+                # Save in substrokes preprocess folder.
+                if save_substroke_preprocess_figures: # Takes too long
+                    SAVEDIR = D.make_savedir_for_analysis_figures_BETTER("substrokes_preprocess")
+                    plot_save_dir = f"{SAVEDIR}/plots_during_anova_params"
+                    os.makedirs(plot_save_dir, exist_ok=True)
+                else:
+                    plot_save_dir = None
 
-            # from pythonlib.tools.expttools import writeDictToTxt
+                # from pythonlib.tools.expttools import writeDictToTxt
 
-            # Extract motor variables (DS)
-            features_motor_extract_and_bin(DS, plot_save_dir=plot_save_dir)
+                # Extract motor variables (DS)
+                features_motor_extract_and_bin(DS, plot_save_dir=plot_save_dir)
 
         ################ CHUNKS, STROKES (e.g., singlerule, AnBm)
         if params["datasetstrokes_extract_chunks_variables"]:
@@ -2186,7 +2187,7 @@ def params_getter_euclidian_vars(question):
     if question is None:
         all_questions = ["RULE_ROWCOL_STROKE", "RULE_DIR_STROKE", "RULE_ANBMCK_STROKE", "RULESW_ANBMCK_DIR_STROKE",
                          "RULE_COLRANK_STROKE", "RULESW_ANBMCK_COLRANK_STROKE", "RULESW_ANY_SEQSUP_STROKE",
-                         "RULESW_ANBMCK_ABN_STROKE", "SP_BASE_stroke", "PIG_BASE_stroke", "CHAR_BASE_stroke"]
+                         "RULESW_ANBMCK_ABN_STROKE", "SP_BASE_stroke", "SP_BASE_trial", "PIG_BASE_stroke", "CHAR_BASE_stroke"]
         # Do quick check that lengths match up (hand entered correctly)
         for q in all_questions:
             print("... testing: ", q)
@@ -2214,13 +2215,13 @@ def params_getter_euclidian_vars(question):
         # Mainly about sequence stuff.
 
         if question == "PIG_BASE_stroke":
-            task_kind_keep = "prims_on_grid"
+            # task_kind_keep = "prims_on_grid"
             task_kind_keep = None
             var_loc_next = "CTXT_loc_next"
             var_loc_prev = "CTXT_loc_prev"
             var_loc = "gridloc"
         elif question == "CHAR_BASE_stroke":
-            task_kind_keep = "character"
+            # task_kind_keep = "character"
             task_kind_keep = None
             var_loc_next = "CTXT_loconclust_next"
             var_loc_prev = "CTXT_locoffclust_prev"
@@ -2408,6 +2409,47 @@ def params_getter_euclidian_vars(question):
         LIST_FILTDICT = [
             None for _ in range(len(LIST_VAR))
         ]
+
+    elif question == "SP_BASE_trial":
+        #TODO: this is temporaly
+        # Standard stuff, related to single strokes
+        LIST_VAR = [
+            # [Shape]
+            "seqc_0_shape", # (gen across size)
+            "seqc_0_shape", # (gen across loc)
+
+            # [Location]
+            "seqc_0_loc",
+            "seqc_0_loc",
+            
+            # [Size]
+            "gridsize",
+        ]
+        LIST_VARS_OTHERS = [
+            ["seqc_0_loc", "gridsize"],
+            ["seqc_0_loc", "gridsize"],
+
+            ["seqc_0_shape", "gridsize"],
+            ["seqc_0_shape", "gridsize"],
+
+            ["seqc_0_shape", "seqc_0_loc"],
+            ]
+        LIST_CONTEXT = [
+            {"same":["seqc_0_loc"], "diff":["gridsize"]},
+            {"same":["gridsize"], "diff":["seqc_0_loc"]},
+
+            {"same":["gridsize"], "diff":["seqc_0_shape"]},
+            {"same":["gridsize"], "diff":["seqc_0_shape"]},
+
+            {"same":["seqc_0_loc"], "diff":["seqc_0_shape"]},
+            ]
+        LIST_PRUNE_MIN_N_LEVS = [
+            2 for _ in range(len(LIST_VAR))
+        ]
+        LIST_FILTDICT = [
+            None for _ in range(len(LIST_VAR))
+        ]
+
     elif question == "RULESW_ANBMCK_ABN_STROKE":
         LIST_VAR = [
             #### SPECIFIC TO (AB)n

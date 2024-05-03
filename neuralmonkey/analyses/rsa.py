@@ -673,7 +673,7 @@ def rsagood_pa_effectsize_single(PA, grouping_vars, subtract_mean_each_level_of_
         dfthis = pd.DataFrame({"lev":PAagg.Xlabels["trials"][var].tolist(), "norm":norm.squeeze(), "var":var})
 
         list_df.append(dfthis)
-    DF_EFFECT_MARG = pd.concat(list_df)
+    DF_EFFECT_MARG = pd.concat(list_df).reset_index(drop=True)
 
     # (2) Conjucntions, one value for each conjucntion var
     _, _, PAagg, _, _, _ = popanal_preprocess_scalar_normalization(PA, grouping_vars, subtract_mean_each_level_of_var,
@@ -1799,7 +1799,7 @@ def rsagood_pa_effectsize_plot_summary(DFRES_THEOR, DFRES_EFFECT_MARG, DFRES_EFF
                 list_df.append(dfeff)
         else:
             assert False
-        dfthis = pd.concat(list_df)
+        dfthis = pd.concat(list_df).reset_index(drop=True)
 
         # Make plots
         for wl in list_wl:

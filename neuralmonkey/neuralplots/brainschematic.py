@@ -6,6 +6,7 @@ See snippets.modulation_plot_heatmaps_brain_schematic (move stuff here)
 import numpy as np
 import matplotlib.pyplot as plt
 from neuralmonkey.classes.session import _REGIONS_IN_ORDER as REGIONS_IN_ORDER
+from neuralmonkey.classes.session import _REGIONS_IN_ORDER_COMBINED as REGIONS_IN_ORDER_COMBINED
 from pythonlib.globals import PATH_NEURALMONKEY
 
 #
@@ -20,6 +21,11 @@ def datamod_reorder_by_bregion_get_mapper():
     Rreturn dict mapping from bregion to rank, useful for consistent plotting.
     """
     map_region_to_index = {region:i for i, region in enumerate(REGIONS_IN_ORDER)}
+    # Also include combined regions
+
+    for i, region in enumerate(REGIONS_IN_ORDER_COMBINED):
+        map_region_to_index[region] = i
+        
     return map_region_to_index
 
 def datamod_reorder_by_bregion(df, col="bregion"):
