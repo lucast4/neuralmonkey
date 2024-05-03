@@ -33,20 +33,19 @@ import seaborn as sns
 from neuralmonkey.analyses.decode_good import preprocess_extract_X_and_labels
 from pythonlib.tools.pandastools import append_col_with_grp_index
 
-############### PARAMS (EUCLIDIAN)
-PLOT = False
-PLOT_MASKS = False
-N_MIN_TRIALS = 6
 
 def _get_list_twind_by_animal(animal):
     if animal=="Diego":
+        # LIST_TWIND = [
+        #     # (-0.2, 0.2),
+        #     # (0.05, 0.35),
+        #     # (0, 0.2),
+        #     # (-0.3, -0.1),
+        #     (-0.1, 0.1),
+        #     # (0.1, 0.3),
+        # ]
         LIST_TWIND = [
-            # (-0.2, 0.2),
-            # (0.05, 0.35),
-            # (0, 0.2),
-            # (-0.3, -0.1),
-            (-0.1, 0.1),
-            # (0.1, 0.3),
+            (-0.1, 0.2),
         ]
     elif animal=="Pancho":
         # Increaingly better compared to (-0.1, 0.1), tested up to (0.1, 0.3).
@@ -64,14 +63,20 @@ PLOT_STATE_SPACE = True
 DEBUG = False
 SPIKES_VERSION = "kilosort_if_exists" # since Snippets not yet extracted for ks
 nmin_trials_per_lev = 6
-LIST_NPCS_KEEP = [10]
-extra_dimred_method = "umap"
-umap_n_neighbors = 40
 LIST_FR_NORMALIZATION = ["across_time_bins"]
 LIST_TBIN_DUR = [0.1] # None means no binning
 
+
+# LIST_NPCS_KEEP = [10]
+# dim_red_method = "pca_umap"
+# umap_n_neighbors = 40
+#
+# dim_red_method = None
+# extra_dimred_method_n_components = 3
+# umap_n_neighbors = 20
+# NPCS_KEEP = 5
+
 # Load and plot saved values?
-LOAD_AND_PLOT_RESULTS_ONLY = False
 
 def sort_df(DF):
     """ Sort df first by var_var_others, and then by bregion --> useful for making
@@ -251,16 +256,15 @@ def plot_pairwise_all_wrapper(DFRES, SAVEDIR):
     """
     for VERSION in ["nosup_vs_sup", "shape_vs_dir", "nocol_vs_col"]:
         try:
-            plot_pairwise_btw_levels_for_seqsup(DFRES, SAVEDIR, VERSION=VERSION)
+            _plot_pairwise_btw_levels_for_seqsup(DFRES, SAVEDIR, VERSION=VERSION)
         except Exception as err:
             print(err)
             print("Skipping plot_pairwise_btw_levels_for_seqsup... version:", VERSION)
 
-
     LIST_LIST_VVO_XY, LIST_dir_suffix = params_pairwise_variables_for_plotting()
 
     for LIST_VVO_XY, dir_suffix in zip(LIST_LIST_VVO_XY, LIST_dir_suffix):
-        plot_pairwise_btw_vvo_general(DFRES, SAVEDIR, LIST_VVO_XY, dir_suffix=dir_suffix)
+        _plot_pairwise_btw_vvo_general(DFRES, SAVEDIR, LIST_VVO_XY, dir_suffix=dir_suffix)
 
 def _plot_pairwise_btw_vvo_general_MULT(DFRES_MULT, ythis, SAVEDIR, LIST_VVO_XY,
                                         dir_suffix=None, plot_text=True,
@@ -287,6 +291,9 @@ def _plot_pairwise_btw_vvo_general_MULT(DFRES_MULT, ythis, SAVEDIR, LIST_VVO_XY,
     #     else:
     #         return "LEFTOVER"
     # DFRES_MULT = applyFunctionToAllRows(DFRES_MULT, F, "subplot_set")
+
+    from pythonlib.tools.pandastools import stringify_values
+    DFRES_MULT = stringify_values(DFRES_MULT)
 
     from pythonlib.tools.pandastools import append_col_with_grp_index, applyFunctionToAllRows
     DFRES_MULT = append_col_with_grp_index(DFRES_MULT, ["date", "bregion"], "date_bregion")
@@ -339,7 +346,7 @@ def _plot_pairwise_btw_vvo_general_MULT(DFRES_MULT, ythis, SAVEDIR, LIST_VVO_XY,
                     plt.close("all")
     plt.close("all")
 
-def plot_pairwise_btw_vvo_general(DFRES, SAVEDIR, LIST_VVO_XY, dir_suffix=None):
+def _plot_pairwise_btw_vvo_general(DFRES, SAVEDIR, LIST_VVO_XY, dir_suffix=None):
     """
     Good - plot scatter to compare effects across pairs of vvo (var_vars_others) -- .e,g,
     compare effect of syntax (holding shape constant) vs. shape (holding syntax constant), each of those
@@ -366,54 +373,55 @@ def plot_pairwise_btw_vvo_general(DFRES, SAVEDIR, LIST_VVO_XY, dir_suffix=None):
 
     # Regular  metrics
     ythis_done = [] # hacky, to maek sure dont overwrite plot with same ythis name.
-    for DFTHIS, ythis in [
-        [DFRES, "dist_norm_95"],
-        [DFRES_PIVOT_YUE, "dist_yue_diff"],
-        [DFRES_PIVOT_YUE, "dist_yue"],
+    for DFTHIS, dat_lev, ythis in [
+        [DFRES, "distr", "dist_norm_95"],
+        [DFRES, "pts_yue_log", "dist"],
+        [DFRES, "pts_yue_diff", "dist_norm_95"],
+        # [DFRES_PIVOT_YUE, "dist_yue_diff"],
+        # [DFRES_PIVOT_YUE, "dist_yue"],
+        # [DFRES_PIVOT_YUE, "dist_yue_log"],
         ]:
 
-        assert ythis not in ythis_done, "this hacky solution sodesnt work - have to also make filenmae use DFTHIs version"
-        ythis_done.append(ythis)
+        assert (dat_lev, ythis) not in ythis_done, "this hacky solution sodesnt work - have to also make filenmae use DFTHIs version"
+        ythis_done.append((dat_lev, ythis))
 
         # ----------
         shuffled = False
-        list_dat_lev = DFTHIS["dat_level"].unique().tolist()
-        for dat_lev in list_dat_lev:
-            # Keep just this.
-            dfthis = DFTHIS[
-                (DFTHIS["dat_level"] == dat_lev) & (DFTHIS["shuffled"] == shuffled)
-            ].reset_index(drop=True)
-            for vvo_x, vvo_y in LIST_VVO_XY:
-                if vvo_x in dfthis["var_var_others"].tolist() and vvo_y in dfthis["var_var_others"].tolist():
-                    savedirthis = f"{savedir}/dat_lev={dat_lev}-vvo_x={vvo_x[:50]}-vvo_y={vvo_y[:50]}"
-                    os.makedirs(savedirthis, exist_ok=True)
+        dfthis = DFTHIS[
+            (DFTHIS["dat_level"] == dat_lev) & (DFTHIS["shuffled"] == shuffled)
+        ].reset_index(drop=True)
 
-                    print("---- Plotting for dat_lev = ", dat_lev)
-                    print("x = ", vvo_x)
-                    print("y = ", vvo_y)
-                    # print("at .. ", savedirthis)
+        for vvo_x, vvo_y in LIST_VVO_XY:
+            if vvo_x in dfthis["var_var_others"].tolist() and vvo_y in dfthis["var_var_others"].tolist():
+                savedirthis = f"{savedir}/dat_lev={dat_lev}-vvo_x={vvo_x[:50]}-vvo_y={vvo_y[:50]}"
+                os.makedirs(savedirthis, exist_ok=True)
 
-                    if "effect_context" in dfthis.columns:
-                        var_subplot = "effect_context"
-                    else:
-                        var_subplot = None
-                    _, fig = plot_45scatter_means_flexible_grouping(dfthis, "var_var_others", vvo_x, vvo_y,
-                                                            var_subplot, ythis, "bregion",
-                                                            shareaxes=False, SIZE=4)
-                    path = f"{savedirthis}/ythis={ythis}.pdf"
-                    savefig(fig, path)
+                print("---- Plotting for dat_lev = ", dat_lev)
+                print("x = ", vvo_x)
+                print("y = ", vvo_y)
+                # print("at .. ", savedirthis)
 
-                    plt.close("all")
+                if "effect_context" in dfthis.columns:
+                    var_subplot = "effect_context"
                 else:
-                    print("--- Skipping, did not find in data (var_var_others):")
-                    print(vvo_x)
-                    print(vvo_y)
-                    # print("Unique values...:", dfthis["var_var_others"].unique().tolist())
+                    var_subplot = None
+                _, fig = plot_45scatter_means_flexible_grouping(dfthis, "var_var_others", vvo_x, vvo_y,
+                                                        var_subplot, ythis, "bregion",
+                                                        shareaxes=False, SIZE=4)
+                path = f"{savedirthis}/ythis={ythis}.pdf"
+                savefig(fig, path)
+
+                plt.close("all")
+            else:
+                print("--- Skipping, did not find in data (var_var_others):")
+                print(vvo_x)
+                print(vvo_y)
+                # print("Unique values...:", dfthis["var_var_others"].unique().tolist())
     plt.close("all")
 
 
-def plot_pairwise_btw_levels_for_seqsup(DFRES, SAVEDIR, VERSION="nosup_vs_sup",
-                                        one_subplot_per_bregion=False):
+def _plot_pairwise_btw_levels_for_seqsup(DFRES, SAVEDIR, VERSION="nosup_vs_sup",
+                                         one_subplot_per_bregion=False):
     """
     Specific (and a bit hacky) to test for whether preSMA stroke index represntation collapses during sequence supervision.
     Plots 45deg scatter between (without supervision, x axi) and (with sup, yaxis), for tasks controlled to have same
@@ -633,24 +641,26 @@ def plot_pairwise_btw_levels_for_seqsup(DFRES, SAVEDIR, VERSION="nosup_vs_sup",
         # for y in possible_lev_y:
         #     print(y)
         # assert False
+        list_yvar_dat_level = [
+            ["dist_norm_95", "distr"],
+            ["dist", "pts_yue_log"],
+        ]
         for lev_x in possible_lev_x:
             for lev_y in possible_lev_y:
                 if lev_x != lev_y:
                     if tuple(sorted([lev_x, lev_y])) not in pairs_already_done:
-
-                        # Only plot if they are same epochset
-                        if lev_x[0] == lev_y[0]:
-
+                        if lev_x[0] == lev_y[0]: # Only plot if they are same epochset
                             pairs_already_done.append(tuple(sorted([lev_x, lev_y])))
 
                             # 3 compare effect across levels -->
-                            list_dat_lev = DFTHIS["dat_level"].unique().tolist()
-                            for dat_lev in list_dat_lev:
+                            for yvarthis, dat_lev in list_yvar_dat_level:
+                            # list_dat_lev = DFTHIS["dat_level"].unique().tolist()
+                            # for dat_lev in list_dat_lev:
                                 if one_subplot_per_bregion==False:
                                     # Standard --> one pt per region. Useful for a single session plot.
                                     dfthis = DFTHIS[DFTHIS["dat_level"] == dat_lev].reset_index(drop=True)
                                     _, fig = plot_45scatter_means_flexible_grouping(dfthis, "levo", lev_x, lev_y,
-                                                                    "effect_context", "dist_norm_95", "bregion",
+                                                                    "effect_context", yvarthis, "bregion",
                                                                            shareaxes=True)
                                     path = f"{savedirthis}/dat_lev={dat_lev}--lev_x={lev_x}--lev_y={lev_y}.pdf"
                                     savefig(fig, path)
@@ -662,7 +672,7 @@ def plot_pairwise_btw_levels_for_seqsup(DFRES, SAVEDIR, VERSION="nosup_vs_sup",
                                         ].reset_index(drop=True)
                                     if len(dfthis)>0:
                                         _, fig = plot_45scatter_means_flexible_grouping(dfthis, "levo", lev_x, lev_y,
-                                                                        "bregion", "dist_norm_95", "date",
+                                                                        "bregion", yvarthis, "date",
                                                                                shareaxes=True)
                                         path = f"{savedirthis}/dat_lev={dat_lev}--eff_cont={effect_context}--lev_x={lev_x}--lev_y={lev_y}.pdf"
                                         savefig(fig, path)
@@ -772,16 +782,17 @@ def plot_all_results_yue(DFRES, SAVEDIR, PLOT=True):
 
     # Compute scores, two versions, either divide or diff.
     DFRES_PIVOT["dist_yue"] = DFRES_PIVOT["dist_norm_95-diff|same"] / DFRES_PIVOT["dist_norm_95-same|same"]
+    DFRES_PIVOT["dist_yue_log"] = np.log2(DFRES_PIVOT["dist_norm_95-diff|same"] / DFRES_PIVOT["dist_norm_95-same|same"])
     DFRES_PIVOT["dist_yue_diff"] = DFRES_PIVOT["dist_norm_95-diff|same"] - DFRES_PIVOT["dist_norm_95-same|same"]
 
     # Sort
     DFRES_PIVOT = sort_df(DFRES_PIVOT)
 
     if PLOT:
-        for yvarthis in ["dist_yue", "dist_yue_diff"]:
+        for yvarthis in ["dist_yue", "dist_yue_log", "dist_yue_diff"]:
             fig = sns.catplot(data=DFRES_PIVOT, x="bregion", y=yvarthis, col="var_var_others",
                               col_wrap=3, aspect=1.57, alpha=0.4, height=6)
-            if yvarthis=="dist_yue_diff": # aling to 0
+            if yvarthis in ["dist_yue_log", "dist_yue_diff"]: # aling to 0
                 map_function_tofacet(fig, lambda ax: ax.axhline(0, color="k", alpha=0.4))
             elif yvarthis=="dist_yue":
                 map_function_tofacet(fig, lambda ax: ax.axhline(1, color="k", alpha=0.4))
@@ -791,7 +802,7 @@ def plot_all_results_yue(DFRES, SAVEDIR, PLOT=True):
             rotateLabel(fig)
             savefig(fig, f"{savedir}/overview_scatter-YUE-{yvarthis}.pdf")
 
-            if yvarthis=="dist_yue_diff": # aling to 0
+            if yvarthis in ["dist_yue_log", "dist_yue_diff"]: # aling to 0
                 fig = sns.catplot(data=DFRES_PIVOT, x="bregion", y=yvarthis, col="var_var_others",
                                   col_wrap=3, aspect=1.7, kind="bar", height=6, errorbar=('ci', 68))
                 rotateLabel(fig)
@@ -823,6 +834,16 @@ def compute_all_derived_metrics(DFRES):
     from pythonlib.tools.pandastools import pivot_table
     from pythonlib.tools.pandastools import stringify_values
 
+    if "shuffled" not in DFRES:
+        DFRES["shuffled"] = False
+    if "twind" not in DFRES:
+        DFRES["twind"] = "dummy"
+    if "event" not in DFRES:
+        DFRES["event"] = "dummy"
+
+    dat_level_gen_indices = "pts" # This is correct -- don't use pts_yue diff, since the below codes does those diffing.
+    yvar_gen_indices = "dist_norm_95"
+
     # Compute normalized distnaces
     DFRES, DIST_NULL = compute_normalized_distances(DFRES)
 
@@ -837,7 +858,7 @@ def compute_all_derived_metrics(DFRES):
     # Get dataframe with each row being a specific set of variables.
     DFRES_PIVOT = pivot_table(DFRES, ["animal", "date", "var", "var_others", "shuffled", "bregion", "twind",
                                       "event", "var_var_others", "dat_level"], ["effect_context"],
-                              ["dist_norm_95"], flatten_col_names=True).reset_index(drop=True)
+                              [yvar_gen_indices], flatten_col_names=True).reset_index(drop=True)
     DFRES_PIVOT["effect_context"] = "IGNORE"
 
     # Compute effects tha DFRES_PIVOT[DFRES_PIVOT["dat_level"] == "pts"].reset_index(drop=True)t require inputs from multiple distance metrics.
@@ -845,7 +866,7 @@ def compute_all_derived_metrics(DFRES):
     DFRES_PIVOT_DISTR["effect_index"] = DFRES_PIVOT_DISTR["dist_norm_95-diff|same"] / (DFRES_PIVOT_DISTR["dist_norm_95-diff|same"] + DFRES_PIVOT_DISTR["dist_norm_95-same|diff"])
 
     # Keep only the data using pairwise distances
-    DFRES_PIVOT_PAIRWISE = DFRES_PIVOT[DFRES_PIVOT["dat_level"] == "pts"].reset_index(drop=True)
+    DFRES_PIVOT_PAIRWISE = DFRES_PIVOT[DFRES_PIVOT["dat_level"] == dat_level_gen_indices].reset_index(drop=True)
 
     DFRES_PIVOT_PAIRWISE["effect_index"] = DFRES_PIVOT_PAIRWISE["dist_norm_95-diff|same"] / (DFRES_PIVOT_PAIRWISE["dist_norm_95-diff|same"] + DFRES_PIVOT_PAIRWISE["dist_norm_95-same|diff"])
 
@@ -972,6 +993,7 @@ def compute_all_derived_metrics(DFRES):
     return DFRES_ORIG, DFRES_PIVOT_DISTR, DFRES_PIVOT_PAIRWISE, DFRES_PIVOT_YUE, plot_params
 
 def plot_histograms_clean_wrapper(DFRES, SAVEDIR, dat_level = "distr", effect_context = "diff|same",
+                                  ythis = "dist_norm_95",
                                   bregions_plot=None):
     """
     Good, all plots summarizing specific vars and bregions.
@@ -1028,9 +1050,11 @@ def plot_histograms_clean_wrapper(DFRES, SAVEDIR, dat_level = "distr", effect_co
             print(savedir)
 
             _plot_histograms_clean(DFTHIS, list_vvo, savedir, effect_context=effect_context, dat_level=dat_level,
-                                   bregions_plot=bregions_plot)
+                                   bregions_plot=bregions_plot, ythis=ythis)
 
-def _plot_histograms_clean(DFRES, list_vvo, savedir, effect_context="diff|same", dat_level="distr", bregions_plot=None):
+def _plot_histograms_clean(DFRES, list_vvo, savedir, effect_context="diff|same",
+                           dat_level="distr", bregions_plot=None,
+                           ythis = "dist_norm_95"):
     """
     Helper to plot clean plots of many kinds, focusing on speicifc variables, including specific brain regions
     to compare.
@@ -1045,8 +1069,8 @@ def _plot_histograms_clean(DFRES, list_vvo, savedir, effect_context="diff|same",
     """
     from pythonlib.tools.snstools import map_function_tofacet, rotateLabel
 
-    # if bregions_plot is None:
-    #     bregions_plot = DFRES["bregion"].unique().tolist()
+    from pythonlib.tools.pandastools import stringify_values
+    DFRES = stringify_values(DFRES)
 
     # FIlter input
     DFTHIS = DFRES[
@@ -1061,7 +1085,7 @@ def _plot_histograms_clean(DFRES, list_vvo, savedir, effect_context="diff|same",
     if bregions_plot is not None:
         dfthis = DFTHIS[(DFTHIS["bregion"].isin(bregions_plot))]
         if len(dfthis)>0:
-            fig = sns.displot(data=dfthis, x="dist_norm_95", hue="bregion", col="var_var_others", col_wrap=4, element="step",
+            fig = sns.displot(data=dfthis, x=ythis, hue="bregion", col="var_var_others", col_wrap=4, element="step",
                               fill=True, bins=20)
             map_function_tofacet(fig, lambda ax: ax.axvline(0, color="k", alpha=0.4))
             rotateLabel(fig)
@@ -1069,39 +1093,39 @@ def _plot_histograms_clean(DFRES, list_vvo, savedir, effect_context="diff|same",
 
     ######### ALL REGIONS
     # (2) Each subplot = bregion
-    fig = sns.displot(data=DFTHIS, x="dist_norm_95", hue="var_var_others", col="bregion", col_wrap=4, element="step", fill=True, bins=20)
+    fig = sns.displot(data=DFTHIS, x=ythis, hue="var_var_others", col="bregion", col_wrap=4, element="step", fill=True, bins=20)
     map_function_tofacet(fig, lambda ax: ax.axvline(0, color="k", alpha=0.5))
     rotateLabel(fig)
     savefig(fig, f"{savedir}/all_regions-subplot=region.pdf")
 
     # (3) Separate plots for each area and var
-    fig = sns.displot(data=DFTHIS, x="dist_norm_95", col="bregion", row="var_var_others", element="step", fill=True, bins=20)
+    fig = sns.displot(data=DFTHIS, x=ythis, col="bregion", row="var_var_others", element="step", fill=True, bins=20)
     map_function_tofacet(fig, lambda ax: ax.axvline(0, color="k", alpha=0.5))
     rotateLabel(fig)
     savefig(fig, f"{savedir}/all_regions-subplot=region_var.pdf")
 
     # (4) Show all bregions
-    fig = sns.catplot(data=DFTHIS, x="bregion", y="dist_norm_95", col="var_var_others", jitter=True,
+    fig = sns.catplot(data=DFTHIS, x="bregion", y=ythis, col="var_var_others", jitter=True,
                       aspect=1.57, alpha=0.4, height=6)
     map_function_tofacet(fig, lambda ax: ax.axhline(0, color="k", alpha=0.5))
     rotateLabel(fig)
     savefig(fig, f"{savedir}/all_regions-scatter.pdf")
 
     if False: # boxen is better
-        fig = sns.catplot(data=DFTHIS, x="bregion", y="dist_norm_95", col="var_var_others", col_wrap=4,
+        fig = sns.catplot(data=DFTHIS, x="bregion", y=ythis, col="var_var_others", col_wrap=4,
                           aspect=1.57, kind="bar", errorbar=('ci', 68), height=6)
         map_function_tofacet(fig, lambda ax: ax.axhline(0, color="k", alpha=0.5))
         rotateLabel(fig)
         savefig(fig, f"{savedir}/all_regions-bar.pdf")
 
-    fig = sns.catplot(data=DFTHIS, x="bregion", y="dist_norm_95", col="var_var_others", col_wrap=4,
+    fig = sns.catplot(data=DFTHIS, x="bregion", y=ythis, col="var_var_others", col_wrap=4,
                       aspect=1.57, kind="boxen", height=6)
     map_function_tofacet(fig, lambda ax: ax.axhline(0, color="k", alpha=0.5))
     rotateLabel(fig)
     savefig(fig, f"{savedir}/all_regions-boxen.pdf")
 
     # (5) Split by day
-    fig = sns.catplot(data=DFTHIS, x="bregion", y="dist_norm_95", col="var_var_others", kind="point",
+    fig = sns.catplot(data=DFTHIS, x="bregion", y=ythis, col="var_var_others", kind="point",
                       aspect=1.57, errorbar=('ci', 68), height=6, hue="date")
     map_function_tofacet(fig, lambda ax: ax.axhline(0, color="k", alpha=0.5))
     rotateLabel(fig)
@@ -1111,7 +1135,7 @@ def _plot_histograms_clean(DFRES, list_vvo, savedir, effect_context="diff|same",
     from neuralmonkey.neuralplots.brainschematic import plot_df_from_longform
     savedirthis = f"{savedir}/brain_schematics"
     os.makedirs(savedirthis, exist_ok=True)
-    plot_df_from_longform(DFTHIS, "dist_norm_95", "var_var_others",
+    plot_df_from_longform(DFTHIS, ythis, "var_var_others",
                           savedirthis)
 
     # Also plot with diff heat limits
@@ -1119,7 +1143,7 @@ def _plot_histograms_clean(DFRES, list_vvo, savedir, effect_context="diff|same",
     os.makedirs(savedirthis, exist_ok=True)
     for vvo in DFTHIS["var_var_others"].unique().tolist():
         dfthis = DFTHIS[DFTHIS["var_var_others"]==vvo]
-        plot_df_from_longform(dfthis, "dist_norm_95", None,
+        plot_df_from_longform(dfthis, ythis, None,
                               savedirthis, savesuffix=vvo)
     plt.close("all")
 
@@ -1296,24 +1320,32 @@ def _plot_all_results(DFRES, DFRES_PIVOT_DISTR, DFRES_PIVOT_PAIRWISE, plot_param
     from pythonlib.tools.pandastools import plot_subplots_heatmap
     from pythonlib.tools.snstools import map_function_tofacet
 
+    if "shuffled" not in DFRES:
+        DFRES["shuffled"] = False
+
+    # Always run this once, if in low-level plots.
+    from pythonlib.tools.pandastools import stringify_values
+    DFRES = stringify_values(DFRES)
+
     yvar = plot_params["yvar"]
     DIST_NULL = plot_params["DIST_NULL"]
 
     savedir = f"{SAVEDIR}/FIGURES"
     os.makedirs(savedir, exist_ok=True)
 
+    list_yvar_dat_level = [
+        [DIST_NULL, "dist"],
+        ["dist_norm_95", "distr"],
+        ["dist_norm_95", "pts"],
+        ["dist", "pts_yue_log"],
+        ["dist_norm_95", "pts_yue_diff"],
+    ]
+
     ########## OVERVIEWS
-    for yvarthis in [yvar, "dist", DIST_NULL]:
-        for dat_level in DFRES["dat_level"].unique():
-            dfthis = DFRES[DFRES["dat_level"]==dat_level]
-
-            # Only plot speciifc ones that are useful
-            if dat_level=="pts_yue" and yvarthis not in ["dist"]: # i.e. do not nomralize it is already normed.
-                continue
-            elif yvarthis == DIST_NULL and dat_level not in ["pts"]:
-                # just plot oncse
-                continue
-
+    print("..Plotting overview bar and scatter plots")
+    for yvarthis, dat_level in list_yvar_dat_level:
+        dfthis = DFRES[DFRES["dat_level"]==dat_level]
+        if len(dfthis)>0:
             if ONLY_ESSENTIALS:
                 if not yvarthis == yvar:
                     continue
@@ -1327,22 +1359,23 @@ def _plot_all_results(DFRES, DFRES_PIVOT_DISTR, DFRES_PIVOT_PAIRWISE, plot_param
                 map_function_tofacet(fig, lambda ax: ax.axhline(0, color="k", alpha=0.4))
             elif dat_level=="pts_yue":
                 map_function_tofacet(fig, lambda ax: ax.axhline(1, color="k", alpha=0.4))
-            savefig(fig, f"{savedir}/overview_scatter-{yvarthis}-{dat_level}.pdf")
+            savefig(fig, f"{savedir}/overview_scatter-{dat_level}-{yvarthis}.pdf")
 
             fig = sns.catplot(data=dfthis, x="bregion", y=yvarthis, col="var_var_others", hue="effect_context",
                               col_wrap=3, aspect=1.7, kind="bar", height=6, errorbar=('ci', 68))
             rotateLabel(fig)
-            savefig(fig, f"{savedir}/overview_bar-{yvarthis}-{dat_level}.pdf")
+            savefig(fig, f"{savedir}/overview_bar-{dat_level}-{yvarthis}.pdf")
 
             plt.close("all")
 
     ########## OVERVIEWS (OLD - effect index)
-    if not ONLY_ESSENTIALS:
-        yvarthis = "effect_index"
-        fig = sns.catplot(data=DFRES_PIVOT_DISTR, x="bregion", y=yvarthis, hue="var_var_others",  aspect=1.7, col="dat_level",
-                          height=6, kind="bar", errorbar=('ci', 68))
-        rotateLabel(fig)
-        savefig(fig, f"{savedir}/effect_index-bar.pdf")
+    if False: # Never checekd.
+        if not ONLY_ESSENTIALS:
+            yvarthis = "effect_index"
+            fig = sns.catplot(data=DFRES_PIVOT_DISTR, x="bregion", y=yvarthis, hue="var_var_others",  aspect=1.7, col="dat_level",
+                              height=6, kind="bar", errorbar=('ci', 68))
+            rotateLabel(fig)
+            savefig(fig, f"{savedir}/effect_index-bar.pdf")
 
     ########## OVERVIEWS (dat_level = pts)
     if ONLY_ESSENTIALS:
@@ -1355,6 +1388,10 @@ def _plot_all_results(DFRES, DFRES_PIVOT_DISTR, DFRES_PIVOT_PAIRWISE, plot_param
 
     for yvarthis in list_yvarthis:
         if yvarthis in DFRES_PIVOT_PAIRWISE.columns:
+
+            print("..Plotting pairwise for one specific pair of variables:")
+            print(yvarthis)
+
             if not ONLY_ESSENTIALS:
                 fig = sns.catplot(data=DFRES_PIVOT_PAIRWISE, x="bregion", y=yvarthis, hue="var_var_others",  aspect=1.7, height=6,
                                   kind="bar", errorbar=('ci', 68))
@@ -1379,21 +1416,34 @@ def _plot_all_results(DFRES, DFRES_PIVOT_DISTR, DFRES_PIVOT_PAIRWISE, plot_param
     if not ONLY_ESSENTIALS:
         sns.set_context("paper", rc={"axes.labelsize":5})
 
-        for dat_level in DFRES["dat_level"].unique():
+        # list_yvar_dat_level = [
+        #     [DIST_NULL, "dist"],
+        #     ["dist_norm_95", "distr"],
+        #     ["dist_norm_95", "pts"],
+        #     ["dist", "pts_yue_log"],
+        #     ["dist_norm_95", "pts_yue_diff"],
+        # ]
+        list_yvar_dat_level = [
+            ["dist", "pts_yue_log"],
+        ]
+        for yvarthis, dat_level in list_yvar_dat_level:
+        # for dat_level in DFRES["dat_level"].unique():
             DFTHIS = DFRES[DFRES["dat_level"] == dat_level].reset_index(drop=True)
 
             # Plot histograms
-            savedirthis = f"{savedir}/histograms-dat_level={dat_level}"
-            os.makedirs(savedirthis, exist_ok=True)
-            print("... ", savedirthis)
+            if False:
+                # not usefl
+                savedirthis = f"{savedir}/histograms-dat_level={dat_level}-yvar={yvarthis}"
+                os.makedirs(savedirthis, exist_ok=True)
+                print("... ", savedirthis)
 
-            fig = sns.displot(data=DFTHIS, x="dist_norm_95", hue="effect_context", col="bregion", row="var_var_others", element="step", fill=True, bins=20)
-            savefig(fig, f"{savedirthis}/step.pdf")
-            fig = sns.displot(data=DFTHIS, x="dist_norm_95", hue="effect_context", col="bregion", row="var_var_others", kind="kde", fill=False)
-            savefig(fig, f"{savedirthis}/kde.pdf")
+                fig = sns.displot(data=DFTHIS, x=yvarthis, hue="effect_context", col="bregion", row="var_var_others", element="step", fill=True, bins=20)
+                savefig(fig, f"{savedirthis}/step.pdf")
+                fig = sns.displot(data=DFTHIS, x=yvarthis, hue="effect_context", col="bregion", row="var_var_others", kind="kde", fill=False)
+                savefig(fig, f"{savedirthis}/kde.pdf")
 
+            # Plot heatmaps
             print("Plotting specific conjucntions heatmaps ... ")
-            yvar = "dist"
             list_effect_context = DFTHIS["effect_context"].unique()
             list_shuffled = DFTHIS["shuffled"].unique()
             for effect_context in list_effect_context:
@@ -1401,7 +1451,7 @@ def _plot_all_results(DFRES, DFRES_PIVOT_DISTR, DFRES_PIVOT_PAIRWISE, plot_param
 
                     dfthis = DFTHIS[(DFTHIS["effect_context"]==effect_context) & (DFTHIS["shuffled"]==shuffled)].reset_index(drop=True)
                     if len(dfthis)>0:
-                        savedirthis = f"{savedir}/each_conjunction-effect_context={effect_context}-shuffled={shuffled}-dat_level={dat_level}"
+                        savedirthis = f"{savedir}/each_conjunction-effect_context={effect_context}-shuffled={shuffled}-dat_level={dat_level}-yvar={yvarthis}"
                         os.makedirs(savedirthis, exist_ok=True)
                         print("... ", savedirthis)
 
@@ -1414,10 +1464,15 @@ def _plot_all_results(DFRES, DFRES_PIVOT_DISTR, DFRES_PIVOT_PAIRWISE, plot_param
                         #     plt.close("all")
 
                         # 2) Heatmap
-                        fig, axes = plot_subplots_heatmap(dfthis, "bregion", "levo", yvar, "var_var_others",
-                                                          diverge=True, ncols=None, share_zlim=True)
-                        savefig(fig, f"{savedirthis}/allconj_heatmap.pdf")
-                        plt.close("all")
+                        try:
+                            fig, axes = plot_subplots_heatmap(dfthis, "bregion", "levo", yvarthis, "var_var_others",
+                                                              diverge=True, ncols=None, share_zlim=True)
+                            savefig(fig, f"{savedirthis}/allconj_heatmap.pdf")
+                            plt.close("all")
+                        except Exception as err:
+                            print(dfthis["levo"])
+                            print(dfthis["var_var_others"])
+                            raise err
 
 if __name__=="__main__":
 
@@ -1426,11 +1481,344 @@ if __name__=="__main__":
 
     LIST_TWIND = _get_list_twind_by_animal(animal)
 
+    ############### PARAMS (EUCLIDIAN)
+    PLOT = False
+    PLOT_MASKS = False
+    PLOT_CHUNK_END_STATE_ALIGNMENT = False
+    LOAD_AND_PLOT_RESULTS_ONLY = False
+    SKIP_EUCL_PLOTS = False
+
     # DONT COMBINE, use questions.
     question = sys.argv[3]
     combine_trial_and_stroke = False
     which_level = sys.argv[4]
     dir_suffix = question
+
+    # Final version, this is best
+    from neuralmonkey.metadat.analy.anova_params import params_getter_euclidian_vars
+    LIST_VAR, LIST_VARS_OTHERS, LIST_CONTEXT, LIST_PRUNE_MIN_N_LEVS, LIST_FILTDICT = params_getter_euclidian_vars(question)
+
+    assert len(LIST_VAR)==len(LIST_VARS_OTHERS)
+    # Convert from tuple to list
+    LIST_VARS_OTHERS = [list(var_others) for var_others in LIST_VARS_OTHERS]
+    LIST_VAR = [list(var) if isinstance(var, tuple) else var for var in LIST_VAR]
+
+    if False:
+        if len(sys.argv)>5:
+            # Test hypoerparams, e.g, iterate over diff ways to do dim reduction.
+            HYPERPARAM_MODE = int(sys.argv[5])==1
+        else:
+            HYPERPARAM_MODE = False
+    else:
+        HYPERPARAM_MODE = True
+
+    ## DIM REDUCTION PARAMS
+    if True:
+        if HYPERPARAM_MODE:
+            LIST_DIMRED_METHODS = [ # (dim_red_method, NPCS_KEEP, extra_dimred_method_n_components, umap_n_neighbors, PLOT_STATE_SPACEC)
+                # ["pca", None, None, None, False], # pca (high D)
+                ["pca", 10, None, None, True], # pca (low D)
+                # ["pca", 4, None, None, False], # pca (low D)
+                # ["pca_umap", 10, 2, 40], # pca --> umap [old version]
+                # ["pca_umap", None, 2, 40], # pca --> umap [new version]
+                ["pca_umap", None, 4, 40, False], # pca --> umap [new version]
+                # ["umap", None, 6, 40, False], # umap (high D)
+                # ["umap", None, 2, 40, False], # umap (low D)
+                # ["umap", None, 4, 40, True], # umap (high D)
+                # [None, None, None, None, False], # raw data
+            ]
+        else:
+            # The best params, for main run
+            LIST_DIMRED_METHODS = [ # (dim_red_method, NPCS_KEEP, extra_dimred_method_n_components, umap_n_neighbors)
+                ["pca_umap", 10, 2, 40, True], # pca --> umap [old version]
+        ]
+
+        LIST_DIMRED_METHODS = [x + [None, None] for x in LIST_DIMRED_METHODS]
+    else:
+        ########### DPCA
+        LIST_SAVEDIR_SUFFIX = []
+        LIST_SUPERV_DPCA_PARAMS = []
+        LIST_DIMRED_METHODS = []
+
+        if question in ["RULE_ANBMCK_STROKE"]:
+
+            if False: # Original set -- still good.
+                # chunk_within_rank
+                savedir_suffix = f"chunk_within_rank_semantic_v2"
+                # (1) var rank, condition on everything else.
+                superv_dpca_params = {
+                    "superv_dpca_var":"chunk_within_rank_semantic_v2",
+                    "superv_dpca_vars_group":["epoch", "chunk_rank", "syntax_concrete", "shape"],
+                    "superv_dpca_filtdict":None
+                }
+                LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+                LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+                # chunk_within_rank
+                savedir_suffix = f"chunk_within_rank_semantic_v2_gridloc"
+                # (1) var rank, condition on everything else.
+                superv_dpca_params = {
+                    "superv_dpca_var":"chunk_within_rank_semantic_v2",
+                    "superv_dpca_vars_group":["epoch", "chunk_rank", "shape", "syntax_concrete", "gridloc"],
+                    "superv_dpca_filtdict":None
+                }
+                LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+                LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+                # (3) shape
+                savedir_suffix = f"shape"
+                superv_dpca_params = {
+                    "superv_dpca_var":"shape",
+                    "superv_dpca_vars_group":["epoch", "chunk_within_rank_semantic", "syntax_concrete"], # This seems better...
+                    "superv_dpca_filtdict":None
+                }
+                LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+                LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+                # (3) shape
+                savedir_suffix = f"shape_gridloc"
+                superv_dpca_params = {
+                    "superv_dpca_var":"shape",
+                    "superv_dpca_vars_group":["epoch", "chunk_within_rank_semantic", "gridloc"],
+                    "superv_dpca_filtdict":None
+                }
+                LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+                LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+                # # - Supervised
+                savedir_suffix = f"syntax_role"
+                # (1) var rank, condition on everything else.
+                superv_dpca_params = {
+                    "superv_dpca_var":"syntax_role",
+                    "superv_dpca_vars_group":["epoch", "syntax_concrete"],
+                    "superv_dpca_filtdict":None
+                }
+                LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+                LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+                # # - Supervised
+                savedir_suffix = f"syntax_role_gridloc"
+                # (1) var rank, condition on everything else.
+                superv_dpca_params = {
+                    "superv_dpca_var":"syntax_role",
+                    "superv_dpca_vars_group":["epoch", "syntax_concrete", "gridloc"],
+                    "superv_dpca_filtdict":None
+                }
+                LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+                LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+                ################## AnBmCk [good]
+                LIST_VAR = [
+                    "shape",
+                    "chunk_within_rank_semantic",
+                    "chunk_within_rank_fromlast",
+                    "chunk_within_rank_fromlast",
+                ]
+                # More restrictive
+                LIST_VARS_OTHERS = [
+                    ["epoch", "chunk_within_rank_semantic"],
+                    ["epoch", "chunk_rank", "shape"],
+                    ["epoch", "chunk_rank", "shape", "syntax_concrete"],
+                    ["epoch", "chunk_rank", "shape", "syntax_concrete", "behseq_locs_clust"],
+                ]
+
+                for cr in [0,1,2]:
+                    savedir_suffix = f"chunk_within_rank_{cr}"
+                    superv_dpca_params = {
+                        "superv_dpca_var":"chunk_within_rank_semantic_v2",
+                        "superv_dpca_vars_group":["epoch", "shape", "syntax_concrete"],
+                        "superv_dpca_filtdict":{"chunk_rank":[cr]}
+                    }
+                    LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+                    LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+                LIST_CONTEXT = [None for _ in range(len(LIST_VAR))]
+                LIST_PRUNE_MIN_N_LEVS = [1 for _ in range(len(LIST_VAR))]
+                # Use 1 for things that use syntax role as effect. or else will throw out cases with 1 item in given chunk.
+
+                # filtdict = {
+                #     # "stroke_index": list(range(1, 10, 1)), # [1, ..., ]
+                # }
+                # filtdict = {"task_kind":["character"]}
+                filtdict = None
+                LIST_FILTDICT = [
+                    filtdict for _ in range(len(LIST_VAR))
+                ]
+
+            else:
+                # 4/24/24 just to focus on  question of alignemnet to end
+
+                # This is best?
+                savedir_suffix = f"chunk_within_rank_semantic_v3"
+                # (1) var rank, condition on everything else.
+                superv_dpca_params = {
+                    "superv_dpca_var":"chunk_within_rank_semantic_v3",
+                    "superv_dpca_vars_group":["epoch", "chunk_rank", "shape", "syntax_concrete", "gridloc"],
+                    "superv_dpca_filtdict":None
+                }
+                LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+                LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+                LIST_VAR = [
+                    "chunk_within_rank_semantic_v3",
+                    "chunk_within_rank_semantic",
+                    "chunk_within_rank",
+                    "chunk_within_rank_fromlast",
+                ]
+                # More restrictive
+                LIST_VARS_OTHERS = [
+                    ["chunk_rank", "shape", "chunk_n_in_chunk"],
+                    ["chunk_rank", "shape", "chunk_n_in_chunk"],
+                    ["chunk_rank", "shape", "chunk_n_in_chunk"],
+                    ["chunk_rank", "shape", "chunk_n_in_chunk"],
+                ]
+
+                LIST_CONTEXT = [
+                    {"same":["chunk_rank", "shape"], "diff":["chunk_n_in_chunk"]},
+                    {"same":["chunk_rank", "shape"], "diff":["chunk_n_in_chunk"]},
+                    {"same":["chunk_rank", "shape"], "diff":["chunk_n_in_chunk"]},
+                    {"same":["chunk_rank", "shape"], "diff":["chunk_n_in_chunk"]},
+                    ]
+
+                LIST_PRUNE_MIN_N_LEVS = [2 for _ in range(len(LIST_VAR))]
+                # Use 1 for things that use syntax role as effect. or else will throw out cases with 1 item in given chunk.
+
+                filtdict = {
+                    "stroke_index": list(range(1, 10, 1)), # [1, ..., ]
+                }
+                LIST_FILTDICT = [
+                    filtdict for _ in range(len(LIST_VAR))
+                ]
+
+                ########
+                PLOT_CHUNK_END_STATE_ALIGNMENT = True
+
+        elif question in ["SP_BASE_stroke"]:
+            ################# SP
+            # (1) Shape.
+            savedir_suffix = f"shape"
+            superv_dpca_params = {
+                "superv_dpca_var":"shape",
+                "superv_dpca_vars_group":["gridloc", "gridsize"],
+                "superv_dpca_filtdict":None
+            }
+            LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+            LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+            # (1) gridloc
+            savedir_suffix = f"gridloc"
+            superv_dpca_params = {
+                "superv_dpca_var":"gridloc",
+                "superv_dpca_vars_group":["shape", "gridsize"],
+                "superv_dpca_filtdict":None
+            }
+            LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+            LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+            # (1) Size
+            savedir_suffix = f"gridsize"
+            superv_dpca_params = {
+                "superv_dpca_var":"gridsize",
+                "superv_dpca_vars_group":["shape", "gridloc"],
+                "superv_dpca_filtdict":None
+            }
+            LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+            LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+            ################ sometimes only few trials, and clean enough...
+            nmin_trials_per_lev = 3
+            LIST_PRUNE_MIN_N_LEVS = [1 for _ in range(len(LIST_VAR))]
+
+        elif question in ["PIG_BASE_stroke", "CHAR_BASE_stroke"]:
+            savedir_suffix = f"shape"
+            # (1) var rank, condition on everything else.
+            superv_dpca_params = {
+                "superv_dpca_var":"shape",
+                "superv_dpca_vars_group":["task_kind", "CTXT_loc_prev", "gridloc", "stroke_index"],
+                "superv_dpca_filtdict":None
+            }
+            LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+            LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+            savedir_suffix = f"stroke_index"
+            # (1) var rank, condition on everything else.
+            superv_dpca_params = {
+                "superv_dpca_var":"stroke_index",
+                "superv_dpca_vars_group":["task_kind", "CTXT_loc_prev", "gridloc", "shape"],
+                "superv_dpca_filtdict":None
+            }
+            LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+            LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+            savedir_suffix = f"gridloc"
+            # (1) var rank, condition on everything else.
+            superv_dpca_params = {
+                "superv_dpca_var":"gridloc",
+                "superv_dpca_vars_group":["task_kind", "CTXT_loc_prev", "stroke_index", "shape"],
+                "superv_dpca_filtdict":None
+            }
+            LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+            LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+            savedir_suffix = f"CTXT_loc_next"
+            # (1) var rank, condition on everything else.
+            superv_dpca_params = {
+                "superv_dpca_var":"CTXT_loc_next",
+                "superv_dpca_vars_group":["task_kind", "stroke_index", "CTXT_loc_prev", "shape", "gridloc"],
+                "superv_dpca_filtdict":None
+            }
+            LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+            LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+            savedir_suffix = f"CTXT_shape_next"
+            # (1) var rank, condition on everything else.
+            superv_dpca_params = {
+                "superv_dpca_var":"CTXT_shape_next",
+                "superv_dpca_vars_group":["task_kind", "stroke_index", "CTXT_loc_prev", "shape", "gridloc"],
+                "superv_dpca_filtdict":None
+            }
+            LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+            LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+            ###############
+            LIST_VAR = [
+                "CTXT_shape_next",
+                "CTXT_loc_next",
+                "shape",
+                "gridloc",
+                "stroke_index",
+                "task_kind",
+            ]
+            # More restrictive
+            LIST_VARS_OTHERS = [
+                ["task_kind", "stroke_index_is_first", "CTXT_loc_prev", "shape", "gridloc"],
+                ["task_kind", "stroke_index_is_first", "CTXT_loc_prev", "shape", "gridloc"],
+                ["task_kind", "stroke_index_is_first", "gridloc"],
+                ["task_kind", "stroke_index_is_first", "shape"],
+                ["task_kind", "shape", "gridloc"],
+                ["CTXT_loc_prev", "shape", "gridloc"],
+            ]
+
+            LIST_CONTEXT = [None for _ in range(len(LIST_VAR))]
+
+            LIST_PRUNE_MIN_N_LEVS = [1 for _ in range(len(LIST_VAR))]
+
+            filtdict = None
+            LIST_FILTDICT = [
+                filtdict for _ in range(len(LIST_VAR))
+            ]
+
+        else:
+            print(question)
+            assert False
+
+        for savedir_suffix, superv_dpca_params in zip(LIST_SAVEDIR_SUFFIX, LIST_SUPERV_DPCA_PARAMS):
+            LIST_DIMRED_METHODS.append(["superv_dpca", None, None, None, True, savedir_suffix, superv_dpca_params])
+
+        assert len(LIST_DIMRED_METHODS)>0
+
+    for x in LIST_DIMRED_METHODS:
+        assert len(x)==7
 
     # Load q_params
     from neuralmonkey.analyses.rsa import rsagood_questions_dict, rsagood_questions_params
@@ -1440,6 +1828,7 @@ if __name__=="__main__":
     elif which_level=="stroke":
         events_keep = ["00_stroke"]
     else:
+        print(question)
         assert False
 
     HACK_RENAME_SHAPES = "CHAR" in question
@@ -1454,190 +1843,6 @@ if __name__=="__main__":
         TASK_KIND_RENAME_AS_NOVEL_SHAPE=True
     else:
         TASK_KIND_RENAME_AS_NOVEL_SHAPE=False
-
-    if True:
-        # Final version, this is best
-        from neuralmonkey.metadat.analy.anova_params import params_getter_euclidian_vars
-        LIST_VAR, LIST_VARS_OTHERS, LIST_CONTEXT, LIST_PRUNE_MIN_N_LEVS, LIST_FILTDICT = params_getter_euclidian_vars(question)
-    else:
-        if question in ["PIG_BASE_stroke", "CHAR_BASE_stroke"]:
-
-            # var_loc_next = "CTXT_loc_next"
-            var_loc_next = "CTXT_loconclust_next"
-            var_loc_prev = "CTXT_locoffclust_prev"
-            var_loc = "loc_on_clust"
-
-            LIST_VAR = [
-                "CTXT_loc_next",
-                "CTXT_loc_next",
-                "CTXT_loc_next",
-
-                "CTXT_shape_next",
-                "CTXT_shape_next",
-                "CTXT_shape_next",
-
-                "task_kind",
-
-                "stroke_index",
-                "stroke_index_fromlast_tskstks",
-                "stroke_index_fromlast_tskstks",
-
-                "FEAT_num_strokes_task",
-                "FEAT_num_strokes_task",
-
-                "shape",
-                "shape",
-                "shape",
-
-                # "shape",
-                "gridloc",
-                var_loc,
-                var_loc,
-            ]
-            # More restrictive
-            LIST_VARS_OTHERS = [
-                ["stroke_index_is_first", "task_kind", var_loc_prev, "shape", var_loc, "CTXT_shape_next"],
-                ["stroke_index_is_first", "task_kind", var_loc_prev, "shape", "gridloc", "CTXT_shape_next"],
-                ["stroke_index_is_first", "task_kind", "CTXT_loc_prev", "shape", "gridloc", "CTXT_shape_next"],
-
-                ["stroke_index_is_first", "task_kind", var_loc_prev, "shape", var_loc, "CTXT_loc_next"],
-                ["stroke_index_is_first", "task_kind", var_loc_prev, "shape", "gridloc", "CTXT_loc_next"],
-                ["stroke_index_is_first", "task_kind", "CTXT_loc_prev", "shape", "gridloc", "CTXT_loc_next"],
-
-                ["stroke_index_is_first", "shape", var_loc, var_loc_prev],
-
-                ["stroke_index_is_first", "task_kind", var_loc_prev, "shape", var_loc],
-                ["stroke_index_is_first", "task_kind", var_loc_prev, "shape", var_loc],
-                ["stroke_index_is_first", "FEAT_num_strokes_task", "task_kind", var_loc_prev, "shape", var_loc],
-
-                ["stroke_index_is_first", "task_kind", var_loc_prev, "shape", var_loc, "stroke_index"],
-                ["stroke_index_is_first", "task_kind", var_loc_prev, "shape", var_loc],
-
-                ["stroke_index_is_first", "task_kind", var_loc, var_loc_prev, "CTXT_loc_next"],
-                ["stroke_index_is_first", "task_kind", var_loc, var_loc_prev],
-                ["stroke_index_is_first", "task_kind", "gridloc", var_loc_prev],
-
-                ["stroke_index_is_first", "task_kind", "shape", var_loc_prev, "CTXT_loc_next"],
-                ["stroke_index_is_first", "task_kind", "shape", var_loc_prev, "CTXT_loc_next"],
-                ["stroke_index_is_first", "task_kind", "shape", var_loc_prev],
-                ]
-
-        elif question in ["RULE_BASE_stroke", "RULESW_BASE_stroke", "RULE_COLRANK_STROKE"]:
-            # Syntax role encoding
-
-            LIST_VAR = [
-                # PMv should not get this
-                "chunk_within_rank",
-                "chunk_within_rank",
-                "chunk_within_rank",
-                "chunk_within_rank",
-                "chunk_within_rank",
-
-                # Like above, but mixing across syntax_concrete.
-                "chunk_within_rank",
-                "chunk_within_rank",
-
-                # Roles
-                "syntax_role",
-                "syntax_role",
-                "syntax_role",
-                "syntax_role",
-                "syntax_role",
-                "syntax_role",
-
-                "syntax_role",
-                "syntax_role",
-
-                # Trying this.
-                "syntax_concrete",
-
-                # "chunk_n_in_chunk", #
-                "chunk_n_in_chunk", #
-                "chunk_n_in_chunk", #
-
-                # This is testing for "hierarchy" in that stroke index should not be consistent across concrete symtaxes.
-                "stroke_index",
-                "stroke_index",
-            ]
-            # More restrictive
-            LIST_VARS_OTHERS = [
-                ["stroke_index_is_first", "stroke_index_is_last_tskstks", "epoch", "syntax_concrete", "chunk_rank", "behseq_shapes_clust", "behseq_locs_clust"],
-                ["stroke_index_is_first", "stroke_index_is_last_tskstks", "epoch", "syntax_concrete", "chunk_rank", "behseq_locs_clust"],
-                ["stroke_index_is_first", "stroke_index_is_last_tskstks", "epoch", "syntax_concrete", "chunk_rank"],
-                ["stroke_index_is_first", "stroke_index_is_last_tskstks", "epoch", "syntax_concrete"],
-                ["stroke_index_is_first", "stroke_index_is_last_tskstks", "epoch"],
-
-                # ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "shape", "loc_on_clust", "loc_off_clust"],
-                ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "shape", "loc_on_clust", "loc_off_clust", "CTXT_shape_prev"],
-                ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "shape", "loc_on_clust", "loc_off_clust", "CTXT_shape_prev", "CTXT_loconclust_next"],
-
-                ["stroke_index_is_first", "stroke_index_is_last_tskstks", "epoch", "syntax_concrete", "behseq_shapes_clust", "behseq_locs_clust", "shape"],
-                ["stroke_index_is_first", "stroke_index_is_last_tskstks", "epoch", "syntax_concrete", "behseq_shapes_clust", "behseq_locs_clust"],
-                ["stroke_index_is_first", "stroke_index_is_last_tskstks", "epoch", "syntax_concrete", "behseq_shapes_clust"],
-                ["stroke_index_is_first", "stroke_index_is_last_tskstks", "epoch", "syntax_concrete", "behseq_locs_clust"],
-                ["stroke_index_is_first", "stroke_index_is_last_tskstks", "epoch", "syntax_concrete"],
-                ["stroke_index_is_first", "stroke_index_is_last_tskstks", "epoch"],
-
-                ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "shape", "loc_on_clust", "loc_off_clust"],
-                ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "shape", "loc_on_clust", "loc_off_clust", "CTXT_shape_prev"],
-                # ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "shape", "loc_on_clust", "loc_off_clust", "CTXT_shape_prev", "CTXT_loconclust_next"],
-
-                ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "shape", "loc_on_clust", "loc_off_clust", "CTXT_shape_prev", "FEAT_num_strokes_task"],
-
-                # ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "chunk_within_rank_semantic", "shape", "loc_on_clust"],
-                ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "chunk_within_rank_semantic", "shape", "loc_on_clust", "CTXT_shape_prev"],
-                ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "chunk_within_rank_semantic", "shape", "loc_on_clust", "CTXT_loc_next", "CTXT_shape_prev"],
-
-                ["stroke_index_is_first", "stroke_index_is_last_tskstks", "epoch", "syntax_concrete"],
-                ["stroke_index_is_first", "stroke_index_is_last_tskstks", "epoch", "syntax_concrete", "behseq_shapes_clust", "behseq_locs_clust"],
-            ]
-
-            # LIST_VAR = [
-            #     ("chunk_rank", "chunk_within_rank_semantic"), # strongest test of index within chunk, and chunk index.
-            #     ("chunk_rank", "chunk_within_rank_semantic"), # strongest test of index within chunk, and chunk index.
-            #     ("chunk_rank", "chunk_within_rank_semantic"), # strongest test of index within chunk, and chunk index.
-            #
-            #     "CTXT_shape_prev", # var = 2-motifs, conditioned on the shape of 2nd stroke.
-            #     "CTXT_shape_prev", # var = 2-motifs, conditioned on the shape of 2nd stroke.
-            #     "CTXT_shape_prev", # var = 2-motifs, conditioned on the shape of 2nd stroke.
-            #
-            #     "chunk_n_in_chunk", #
-            #     "chunk_n_in_chunk", #
-            #     "chunk_n_in_chunk", #
-            #
-            #     "chunk_within_rank_semantic", #
-            #     "chunk_within_rank_semantic", #
-            #     "chunk_within_rank_semantic", #
-            #     "chunk_within_rank_semantic", #
-            # ]
-            #
-            # LIST_VARS_OTHERS = [
-            #     ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "shape", "loc_on_clust", "loc_off_clust"],
-            #     ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "shape", "loc_on_clust", "loc_off_clust", "CTXT_shape_prev"],
-            #     ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "shape", "loc_on_clust", "loc_off_clust", "CTXT_shape_prev", "CTXT_loconclust_next"],
-            #
-            #     ("shape", "CTXT_loc_prev", "loc_on_clust", "loc_off_clust"), # Good -- tight control!
-            #     ("shape", "CTXT_loc_prev", "loc_on_clust", "loc_off_clust", "CTXT_loconclust_next"), # Good -- tight control!
-            #     ("shape", "CTXT_loc_prev", "loc_on_clust", "loc_off_clust", "CTXT_loconclust_next", "CTXT_shape_next"), # Good -- tight control!
-            #
-            #     ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "chunk_within_rank_semantic", "shape", "loc_on_clust"],
-            #     ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "chunk_within_rank_semantic", "shape", "loc_on_clust", "CTXT_loc_next"],
-            #     ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "chunk_within_rank_semantic", "shape", "loc_on_clust", "CTXT_loc_next", "CTXT_shape_prev"],
-            #
-            #     ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "shape", "loc_on_clust", "loc_off_clust"],
-            #     ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "shape", "loc_on_clust", "loc_off_clust", "CTXT_loconclust_next"],
-            #     ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "shape", "loc_on_clust", "loc_off_clust", "CTXT_loconclust_next", "CTXT_shape_prev"],
-            #     ["stroke_index_is_first", "stroke_index_is_last_tskstks", "CTXT_locoffclust_prev", "shape", "loc_on_clust", "loc_off_clust", "CTXT_loconclust_next", "CTXT_shape_next"],
-
-
-        else:
-            print(question)
-            assert False
-
-    assert len(LIST_VAR)==len(LIST_VARS_OTHERS)
-    # Convert from tuple to list
-    LIST_VARS_OTHERS = [list(var_others) for var_others in LIST_VARS_OTHERS]
-    LIST_VAR = [list(var) if isinstance(var, tuple) else var for var in LIST_VAR]
 
     if LOAD_AND_PLOT_RESULTS_ONLY == False:
         ########################################## EXTRACT NOT-NORMALIZED DATA
@@ -1663,12 +1868,13 @@ if __name__=="__main__":
         # Just a DUMMY VARiable
         DFALLPA = pd.DataFrame([])
 
-    # for NPCS_KEEP in [5, 12]:
-    for NPCS_KEEP in LIST_NPCS_KEEP:
+    # Iterate over all dim reduction methods
+    # for NPCS_KEEP in LIST_NPCS_KEEP:
+    for dim_red_method, NPCS_KEEP, extra_dimred_method_n_components, umap_n_neighbors, PLOT_STATE_SPACE, savedir_suffix, superv_dpca_params in LIST_DIMRED_METHODS:
         for fr_normalization_method in LIST_FR_NORMALIZATION:
 
             ###########
-            SAVEDIR_ANALYSIS = f"{PATH_ANALYSIS_OUTCOMES}/recordings/main/EUCLIDIAN_DIST/{animal}-{date}/{dir_suffix}-fr_normalization_method={fr_normalization_method}-NPCS_KEEP={NPCS_KEEP}"
+            SAVEDIR_ANALYSIS = f"{PATH_ANALYSIS_OUTCOMES}/recordings/main/EUCLIDIAN_DIST/{animal}-{date}/{dir_suffix}-norm={fr_normalization_method}-dr={dim_red_method}-NPC={NPCS_KEEP}-nc={extra_dimred_method_n_components}-un={umap_n_neighbors}-suff={savedir_suffix}"
             os.makedirs(SAVEDIR_ANALYSIS, exist_ok=True)
             print("SAVING AT:", SAVEDIR_ANALYSIS)
 
@@ -1692,6 +1898,8 @@ if __name__=="__main__":
                     "list_time_windows":list_time_windows,
                     "fr_normalization_method":fr_normalization_method,
                     "nmin_trials_per_lev":nmin_trials_per_lev,
+                    "savedir_suffix":savedir_suffix,
+                    "superv_dpca_params":superv_dpca_params
                     },
                     f"{SAVEDIR_ANALYSIS}/params.txt")
 
@@ -1740,7 +1948,7 @@ if __name__=="__main__":
                 for tbin_dur in LIST_TBIN_DUR:
                     tbin_slice = tbin_dur
 
-                    SAVEDIR = f"{SAVEDIR_ANALYSIS}/twind_analy={twind_analy}-tbin_dur={tbin_dur}"
+                    SAVEDIR = f"{SAVEDIR_ANALYSIS}/twinda={twind_analy}-tbin={tbin_dur}"
 
                     ################# GET DFRES
                     if LOAD_AND_PLOT_RESULTS_ONLY:
@@ -1765,10 +1973,14 @@ if __name__=="__main__":
                             "fr_normalization_method":fr_normalization_method,
                             "tbin_dur":tbin_dur,
                             "twind_analy":twind_analy,
+                            "dim_red_method":dim_red_method,
+                            "extra_dimred_method_n_components":extra_dimred_method_n_components,
+                            "umap_n_neighbors":umap_n_neighbors
                         }, path)
 
                         #### COLLECT DATA
-                        from neuralmonkey.analyses.decode_good import euclidian_distance_compute
+                        # from neuralmonkey.analyses.decode_good import euclidian_distance_compute
+                        from neuralmonkey.analyses.state_space_good import euclidian_distance_compute, euclidian_distance_compute_AnBmCk_endpoint
                         list_dfres = []
                         for i, row in DFallpa.iterrows():
                             br = row["bregion"]
@@ -1780,48 +1992,73 @@ if __name__=="__main__":
 
                             savedir = f"{SAVEDIR}/each_region/{br}-twind_analy={twind_analy}"
                             os.makedirs(savedir, exist_ok=True)
-                            dfres = euclidian_distance_compute(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT_MASKS,
-                                                       twind_analy, tbin_dur, tbin_slice, savedir, PLOT_STATE_SPACE=PLOT_STATE_SPACE,
-                                                               nmin_trials_per_lev=nmin_trials_per_lev, LIST_CONTEXT=LIST_CONTEXT,
-                                                               LIST_FILTDICT=LIST_FILTDICT, NPCS_KEEP=NPCS_KEEP, extra_dimred_method=extra_dimred_method,
-                                                               umap_n_neighbors = umap_n_neighbors, LIST_PRUNE_MIN_N_LEVS=LIST_PRUNE_MIN_N_LEVS)
 
+                            if dim_red_method is None:
+                                # Then this is just plotting raw data...
+                                _plot_state_space = False
+                            else:
+                                _plot_state_space = PLOT_STATE_SPACE
+                            dfres, PAredu = euclidian_distance_compute(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT_MASKS,
+                                                               twind_analy, tbin_dur, tbin_slice, savedir,
+                                                               PLOT_STATE_SPACE=_plot_state_space,
+                                                               nmin_trials_per_lev=nmin_trials_per_lev,
+                                                               LIST_CONTEXT=LIST_CONTEXT, LIST_FILTDICT=LIST_FILTDICT,
+                                                               LIST_PRUNE_MIN_N_LEVS=LIST_PRUNE_MIN_N_LEVS,
+                                                               dim_red_method = dim_red_method,
+                                                               extra_dimred_method_n_components = extra_dimred_method_n_components,
+                                                               NPCS_KEEP=NPCS_KEEP,
+                                                               umap_n_neighbors=umap_n_neighbors,
+                                                               superv_dpca_params=superv_dpca_params,
+                                                                       return_PAredu=True)
                             plt.close("all")
-                            if len(dfres)>0:
+
+                            try:
+                                if PLOT_CHUNK_END_STATE_ALIGNMENT:
+                                    # HACKY - plots related to chunks, testing alignement to endpoint of chunk.
+                                    savedir = f"{SAVEDIR}/END_STATE_ALIGNMENT/{br}"
+                                    os.makedirs(savedir, exist_ok=True)
+                                    euclidian_distance_compute_AnBmCk_endpoint(PAredu, savedir)
+                            except Exception as err:
+                                print("************ FAILED euclidian_distance_compute_AnBmCk_endpoint")
+                                print(err)
+                                pass
+
+                            if dfres is not None and len(dfres)>0:
                                 dfres["bregion"] = br
                                 dfres["twind"] = [tw for _ in range(len(dfres))]
                                 dfres["twind_analy"] = [twind_analy for _ in range(len(dfres))]
                                 dfres["event"] = ev
-
+                                dfres["savedir_suffix"] = savedir_suffix
                                 list_dfres.append(dfres)
 
-                        DFRES = pd.concat(list_dfres).reset_index(drop=True)
+                        # Concat
+                        if len(list_dfres)>0:
+                            DFRES = pd.concat(list_dfres).reset_index(drop=True)
 
-                        # SAVE
-                        path = f"{SAVEDIR}/DFRES.pkl"
-                        pd.to_pickle(DFRES, path)
-                        print("Saved to: ", path)
-
-                    ############### PLOT RESULTS
-                    # Compute normalized distnaces
-                    # DFRES, DIST_NULL = compute_normalized_distances(DFRES)
-                    # DFRES["dist_norm_95"] = DFRES["dist"]/DFRES["DIST_NULL_95"]
-                    # DFRES["dist_norm_50"] = DFRES["dist"]/DFRES["DIST_NULL_50"]
-                    # DFRES["var_others"] = [tuple(x) for x in DFRES["var_others"]]
-                    # DFRES = append_col_with_grp_index(DFRES, ["index_var", "var", "var_others"], "var_var_others")
-                    # DFRES = append_col_with_grp_index(DFRES, ["effect_samediff", "context_samediff"], "effect_context")
-                    # DFRES = append_col_with_grp_index(DFRES, ["dat_level", "effect_samediff", "context_samediff"], "dl_eff_ctxt")
+                            # SAVE
+                            path = f"{SAVEDIR}/DFRES.pkl"
+                            pd.to_pickle(DFRES, path)
+                            print("Saved to: ", path)
+                        else:
+                            DFRES = None
 
                     ############ PLOTS
-                    # (1) All main plots, scores, distributions
-                    plot_all_results(DFRES, SAVEDIR)
+                    if DFRES is not None and not SKIP_EUCL_PLOTS:
+                        try:
+                            # (1) All main plots, scores, distributions
+                            plot_all_results(DFRES, SAVEDIR)
 
-                    # (2) Like above, but a few, using Yue neural moduluation
-                    # try:
-                    DFRES_PIVOT_YUE = plot_all_results_yue(DFRES, SAVEDIR)
-                    # except Exception as err:
-                    #     print("FAILED plot_all_results_yue, this err:")
-                    #     print(err)
+                            # (2) Like above, but a few, using Yue neural moduluation
+                            # try:
+                            DFRES_PIVOT_YUE = plot_all_results_yue(DFRES, SAVEDIR)
+                            # except Exception as err:
+                            #     print("FAILED plot_all_results_yue, this err:")
+                            #     print(err)
 
-                    # (3) Pairwise plots
-                    plot_pairwise_all_wrapper(DFRES, SAVEDIR)
+                            # (3) Pairwise plots
+                            plot_pairwise_all_wrapper(DFRES, SAVEDIR)
+                        except Exception as err:
+                            print("------------------------")
+                            print(err)
+                            print("SKIPPING PLOTS!!")
+                            pass
