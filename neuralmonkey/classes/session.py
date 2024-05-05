@@ -3303,6 +3303,14 @@ class Session(object):
         trials_all = self.get_trials_list(False, False)
         trials_exist_in_ml2 = self.get_trials_list(False, True)
 
+        if False: # Tried this hacky, but still failed... (for loading and saving locally).
+            if (int(self.Date))==220610 and self.RecSession==0 and self.Animal=="Pancho":
+                # HACKY - I restarted ML2 after around 40 trails, but kept recording in. Need
+                # to throw out those trials...
+                if all([t in trials_all for t in trials_exist_in_ml2]):
+                    print("_beh_validate_trial_number passed!!")
+                return None
+
         if not trials_all==trials_exist_in_ml2:
             # check whether this session is allowed to fail this.
             from ..utils.monkeylogic import _load_sessions_corrupted
@@ -3313,10 +3321,10 @@ class Session(object):
                 print("_beh_validate_trial_number failed, but OK becuase is expected!!")
             else:
                 print("**&*&**")
-                print(trials_all)
-                print(trials_exist_in_ml2)
-                print([t for t in trials_all if t not in trials_exist_in_ml2])
-                print([t for t in trials_exist_in_ml2 if t not in trials_all])
+                print("trials in neural data:", trials_all)
+                print("trials_exist_in_ml2:", trials_exist_in_ml2)
+                print("neural trials that miss beh data:", [t for t in trials_all if t not in trials_exist_in_ml2])
+                print("beh trials that miss neural data:", [t for t in trials_exist_in_ml2 if t not in trials_all])
                 self.print_summarize_expt_params()
                 print("_beh_validate_trial_number failed!!")
                 assert False, "there exist neural trials which are not succesuflly matched to beh trial"
@@ -3480,7 +3488,7 @@ class Session(object):
 
         def _summarize():
             fd, _ = self.beh_get_fd_trial(0)
-            print("* n trials: ", len(self.get_trials_list()), len(mkl.getIndsTrials(fd)))
+            print("* n trials in ml2 fd: ", len(self.get_trials_list()), len(mkl.getIndsTrials(fd)))
             print("self.BehTrialMapList", self.BehTrialMapList)
             print("self.BehTrialMapListGood", self.BehTrialMapListGood)
             print(lagshift)
@@ -3774,7 +3782,7 @@ class Session(object):
             dict_sites_TDT[name] = list(range(1+32*i, 1+32*(i+1)))
 
         ########################### ANIMAL-SPECIFIC THINGS
-        if self.Animal=="Diego":
+        if self.Animal=="Diego":    
             # dlPFCp is severed.
             dict_sites_TDT["dlPFC_p"] = []
 
@@ -7369,6 +7377,11 @@ class Session(object):
 
             trials = list(range(len(self.TrialsOffset)))
 
+            ############# VERY HACKY,
+            # if (int(self.Date))==220609 and self.RecSession==0 and self.Animal=="Pancho":
+            #     neural_trials_missing_beh = [858, 859, 860, 861, 862, 863, 864, 865, 866, 867]
+            #     trials = [t for t in trials if t not in neural_trials_missing_beh]
+
             if only_if_in_dataset:
                 # SHould do this first, since if this trial is not in dataset then it will fail only_if_ml2_fixation_success
                 trials = [t for t in trials if self.datasetbeh_trial_to_datidx(t) is not None]
@@ -9441,7 +9454,12 @@ class Session(object):
             self._generate_mappers_quickly_datasetbeh()
 
         # Return the trialcode
-        idx = list(self._MapperTrialcode2TrialToTrial.values()).index(trial)
+        try:
+            idx = list(self._MapperTrialcode2TrialToTrial.values()).index(trial)
+        except Exception as err:
+            print("trials in mapper: ", self._MapperTrialcode2TrialToTrial.values())
+            print("Looking for this trial", trial)
+            raise err
         return list(self._MapperTrialcode2TrialToTrial.keys())[idx]
 
         # trialcode = self.datasetbeh_trial_to_trialcode_from_raw(trial)

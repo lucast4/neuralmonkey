@@ -15,18 +15,42 @@ def load_beh_trial_map_list(animal, DATE, rec_session):
     woulnd['t know that previuos rec sessions used up all the beh sesions.
     NOTE: 
     - you must always use rec_session and DATE, or else will return wrong beh_trial_map_list
+    - NOTE: this is NOT actually used for anything (except checing if output is None or IGNORE)... it is done automaticlaly downstream.
     """
-    if animal=="Pancho" and int(DATE)==221024 and rec_session==1:
-        # two rec sessions, one beh session
-        beh_trial_map_list = [(667, 0)]
-    elif animal=="Pancho" and int(DATE)==220719 and rec_session==0:
-        # one rec session, two beh sessions
-        beh_trial_map_list = [(1,0), (1,45)]
-    elif animal=="Pancho" and int(DATE)==220719 and rec_session>0:
-        # one rec session, two beh sessions
-        beh_trial_map_list = "IGNORE"
+
+    if True: # Since I dont think it is doing antyhing, this is sanity, it should work
+        if animal=="Pancho" and int(DATE)==220719 and rec_session>0:
+            # one rec session, two beh sessions
+            beh_trial_map_list = "IGNORE"
+        else:
+            # Default, perfect alignment.
+            beh_trial_map_list = None
     else:
-        # Default, perfect alignment.
-        beh_trial_map_list = None
+        if animal=="Pancho" and int(DATE)==221024 and rec_session==1:
+            # two rec sessions, one beh session
+            beh_trial_map_list = [(667, 0)]
+        elif animal=="Pancho" and int(DATE)==220719 and rec_session==0:
+            # one rec session, two beh sessions
+            beh_trial_map_list = [(1,0), (1,45)]
+        elif animal=="Pancho" and int(DATE)==220719 and rec_session>0:
+            # one rec session, two beh sessions
+            beh_trial_map_list = "IGNORE"
+        elif animal=="Pancho" and int(DATE)==220610 and rec_session==0:
+            # Thrw out first beh session with 40 trials, but kept rec on. 
+            # # Therefore, throw out first 40 rec trials
+            beh_trial_map_list = [(1, 42)]
+        # elif animal=="Pancho" and int(DATE)==220710 and rec_session==1:
+        #     # This 2nd rec session should start earlier in beh session
+        #     beh_trial_map_list = (229, 0)
+        elif animal=="Pancho" and int(DATE)==220609 and rec_session==0:
+            # Thrw out first few 10 neural trials, for some reason...
+            beh_trial_map_list = [(1, 10)]
+        else:
+            # Default, perfect alignment.
+            beh_trial_map_list = None
+
+    if beh_trial_map_list is not None and not beh_trial_map_list=="IGNORE":
+        assert isinstance(beh_trial_map_list, list)
+        assert isinstance(beh_trial_map_list[0], tuple)
 
     return beh_trial_map_list
