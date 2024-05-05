@@ -361,21 +361,22 @@ def rec_session_durations_extract_kilosort(animal, date):
             with open(path) as f:
                 lines = f.readlines()
 
-            if len(lines)==3:
+            if len(lines)>2:
                 # Then is something like this. Keep first and last.
                 # ['recording started at sample: 2\n', 'gap detected. last saved sample: 51833413, new saved sample: 51833425\n', 'recording stopped at sample: 332994022\n']
-                lines = [lines[0], lines[2]]
-            else:
-                if not len(lines)==2:
-                    print("==========")
-                    print(lines)
-                    print(len(lines))
-                    for l in lines:
-                        print(l)
-                    print(rs, sessnum, sessrec, path)
-                    assert False, "investigate..."
-            assert lines[0][:27] == 'recording started at sample'
-            assert lines[1][:20] == 'recording stopped at'
+                lines = [lines[0], lines[-1]]
+
+            try:
+                assert lines[0][:27] == 'recording started at sample'
+                assert lines[1][:20] == 'recording stopped at'
+            except AssertionError as err:
+                print("==========")
+                print(lines)
+                print(len(lines))
+                for l in lines:
+                    print(l)
+                print(rs, sessnum, sessrec, path)
+                assert False, "investigate..."
 
             ind1 = lines[0].find(": ")
             ind2 = lines[0].find("\n")
