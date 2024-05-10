@@ -207,40 +207,42 @@ if __name__=="__main__":
     LIST_FILTDICT = []
     LIST_SUFFIX = []
 
-    if question in ["RULE_BASE_stroke", "RULESW_BASE_stroke"]:
-        # Hard code different params here.
-        LIST_VAR_DECODE = []
-        LIST_VARS_CONJ = []
-        LIST_SEPARATE_BY_TASK_KIND = []
-        LIST_FILTDICT = []
-        LIST_SUFFIX = []
-
-        ########### Action (first stroke)
-        suffix = "syntax_role"
-        list_var_decode = [
-            "syntax_role",
-            "syntax_role",
-            "syntax_role",
-            "syntax_role",
-            "syntax_role",
-            "syntax_role",
-        ]
-        list_vars_conj = [
-            ["task_kind", "epoch", "syntax_concrete", "behseq_shapes_clust", "behseq_locs_clust"],
-            ["task_kind", "epoch", "syntax_concrete", "behseq_shapes_clust"],
-            ["task_kind", "epoch", "syntax_concrete", "behseq_locs_clust"],
-            ["task_kind", "epoch", "syntax_concrete"],
-            ["task_kind", "epoch"],
-            ["task_kind"],
-            ]
-        separate_by_task_kind = True
-        filtdict = None
-        # ------
-        LIST_VAR_DECODE.append(list_var_decode)
-        LIST_VARS_CONJ.append(list_vars_conj)
-        LIST_SEPARATE_BY_TASK_KIND.append(separate_by_task_kind)
-        LIST_FILTDICT.append(filtdict)
-        LIST_SUFFIX.append(suffix)
+    if question in ["RULE_BASE_stroke", "RULE_ANBMCK_STROKE", "RULESW_BASE_stroke", "RULESW_ANBMCK_ABN_STROKE",
+                    "RULESW_ANBMCK_DIR_STROKE", "RULE_DIR_STROKE", "RULE_ROWCOL_STROKE"]:
+        assert False, "derive these from euclidian distance variables"
+        # # Hard code different params here.
+        # LIST_VAR_DECODE = []
+        # LIST_VARS_CONJ = []
+        # LIST_SEPARATE_BY_TASK_KIND = []
+        # LIST_FILTDICT = []
+        # LIST_SUFFIX = []
+        #
+        # ########### Action (first stroke)
+        # suffix = "syntax_role"
+        # list_var_decode = [
+        #     "syntax_role",
+        #     "syntax_role",
+        #     "syntax_role",
+        #     "syntax_role",
+        #     "syntax_role",
+        #     "syntax_role",
+        # ]
+        # list_vars_conj = [
+        #     ["task_kind", "epoch", "syntax_concrete", "behseq_shapes_clust", "behseq_locs_clust"],
+        #     ["task_kind", "epoch", "syntax_concrete", "behseq_shapes_clust"],
+        #     ["task_kind", "epoch", "syntax_concrete", "behseq_locs_clust"],
+        #     ["task_kind", "epoch", "syntax_concrete"],
+        #     ["task_kind", "epoch"],
+        #     ["task_kind"],
+        #     ]
+        # separate_by_task_kind = True
+        # filtdict = None
+        # # ------
+        # LIST_VAR_DECODE.append(list_var_decode)
+        # LIST_VARS_CONJ.append(list_vars_conj)
+        # LIST_SEPARATE_BY_TASK_KIND.append(separate_by_task_kind)
+        # LIST_FILTDICT.append(filtdict)
+        # LIST_SUFFIX.append(suffix)
 
     else:
         # SETS OF HARD CODED VARIABLES.
