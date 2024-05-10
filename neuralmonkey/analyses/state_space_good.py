@@ -2039,19 +2039,45 @@ def dimredgood_nonlinear_embed_data(X, METHOD="umap", n_components=2, tsne_perp=
     return Xredu, reducer
 
 
-def dimredgood_pca_project(components, X, plot_pca_explained_var_path=None):
+def dimredgood_pca_project(components, X, plot_pca_explained_var_path=None,
+                           do_additional_reshape_from_ChTrTi=False,
+                        #    reshape_method_that_was_used="trials_x_chanstimes"
+                           ):
     """
     Project new data onto a subspace, e.g.,, PCA subspace, and compute variance explained.
     :param components: pca loadings, (n_components, n_features)
-    :param X: data to project, already demeaned, etc. does not processing (ntrials, nfeatures)
+    :param X: data to project, already demeaned, etc. and already reshaped to (ntrials, nfeats),
+    except if do_additional_reshape_from_ChTrTi==True, in which case input is (nchans, ntrials, ntimesS),
+    and here will do the approppriate reshaping.
+    
+    [IGNORE THIS: based on value of reshape_method_that_was_used. So X is eitehr:
+    --- (ntrials, nfeatures), if reshape_method_that_was_used="trials_x_chanstimes" or
+    --- (nchans, ntrials, ntimes), if reshape_method_that_was_used="chans_x_trials_x_times" or
+    :param reshape_method_that_was_used: str, method that was used to get components (e..g, in PA.dataextract_pca_demixed_subspace),
+    presumably from data shaped same as X. This here is used to deicde whether to reshape X to match that process.]
+
     :return:
     - Xredu, (ntrials, n_components)
     """
     from pythonlib.tools.nptools import isnear
 
+
+    # Decide if do reshape first
+    if do_additional_reshape_from_ChTrTi:
+        assert len(X.shape)==3
+        Xorig = X.copy()
+        nchans, ntrials, ntimes = Xorig.shape
+        X = np.reshape(Xorig, [nchans, ntrials * ntimes]).T # (ntrials*ntimes, nchans)        
+        # print(components.shape)
+        # print(Xorig.shape)
+        # print(X.shape)
+        # assert False
+
     # Sanity checks
     assert X.shape[1] == components.shape[1]
-    assert isnear(np.mean(X, axis=0), np.zeros(X.shape)) # Check that X is zeroed, or else the variance calcualtion may be weird.
+    # print("HERE", np.mean(X, axis=0))
+    assert np.all(np.mean(X, axis=0)<0.1)
+    # assert isnear(np.mean(X, axis=0), np.zeros(X.shape)) # Check that X is zeroed, or else the variance calcualtion may be weird.
 
     # Compute projection
     Xredu = np.dot(X, components.T)
@@ -2064,6 +2090,19 @@ def dimredgood_pca_project(components, X, plot_pca_explained_var_path=None):
     variances_ = [np.sum(np.dot(X, components[n,:].T)**2) for n in range(ncomp)]
     explained_variance_ratio_ = [v/total_variance_ for v in variances_]
 
+    if do_additional_reshape_from_ChTrTi:
+        npcs_keep = Xredu.shape[1]
+        Xredu_in_orig_shape = Xredu.T # (npcs_keep, ntrials*ntimes)
+        Xredu_in_orig_shape = np.reshape(Xredu_in_orig_shape, [npcs_keep, ntrials, ntimes]) # (npcs_keep, ntrials*ntimes)
+    else:
+        Xredu_in_orig_shape = None
+
+    # print(Xorig.shape)
+    # print(components.shape)
+    # print(Xredu.shape)
+    # print(Xredu_in_orig_shape.shape)
+    # assert False
+        
     if plot_pca_explained_var_path is not None:
         fig, axes = plt.subplots(1,2, figsize=(8,3))
 
@@ -2085,7 +2124,7 @@ def dimredgood_pca_project(components, X, plot_pca_explained_var_path=None):
         "variances_":variances_,
         "explained_variance_ratio_":explained_variance_ratio_
     }
-    return Xredu, stats
+    return Xredu, stats, Xredu_in_orig_shape
 
 
 def dimredgood_pca(X, n_components=None,
@@ -3031,4 +3070,221 @@ def euclidian_distance_compute_score_single(pa, var, var_others, PLOT_RSA_HEATMA
 
     return res, DIST_NULL_50, DIST_NULL_95, DIST_NULL_98
 
-    return res
+
+def euclidian_distance_compute_AnBmCk_endpoint(PAredu, SAVEDIR):
+    """ Qyiuck hapcky, to plot things relate to showing whetherh last strokes algine
+    """
+    # twind = (-0.1, 0.2)
+    # tbin_dur = 0.1
+    # tbin_slice = 0.1
+    # if DO_DEMIXED:
+    #     vars_subract_mean = ["epoch", "chunk_rank", "shape", "syntax_concrete", "gridloc"]
+    #     var_pca = "chunk_within_rank_semantic_v2"
+    #     filtdict = None
+    #
+    #     savedir = f"{SAVEDIR}/test_gridloc"
+    #     os.makedirs(savedir, exist_ok=True)
+    #     PLOT_STEPS = False
+    #     Xredu, PAredu, stats_redu, Xfinal_before_redu, pca = PA.dataextract_pca_demixed_subspace(var_pca, vars_subract_mean,
+    #                                                twind, tbin_dur, filtdict, savedir,
+    #                                                 PLOT_STEPS=PLOT_STEPS)
+    # else:
+    #     # Just PCA
+    #     plot_pca_explained_var_path=f"{SAVEDIR}/pcaexp.pdf"
+    #     plot_loadings_path = f"{SAVEDIR}/pcaload.pdf"
+    #
+    #
+    #     pca_reduce = True
+    #     NPCS_KEEP = 10
+    #     extra_dimred_method = None
+    #     umap_n_neighbors = 40
+    #     Xredu, PAredu, PAslice, pca, _ = PA.dataextract_state_space_decode_flex(twind, tbin_dur, tbin_slice, reshape_method="trials_x_chanstimes",
+    #                                                pca_reduce=pca_reduce, plot_pca_explained_var_path=plot_pca_explained_var_path, plot_loadings_path=plot_loadings_path, npcs_keep_force=NPCS_KEEP,
+    #                                               extra_dimred_method=extra_dimred_method, umap_n_neighbors = umap_n_neighbors)
+
+    from neuralmonkey.analyses.rsa import _rsagood_convert_PA_to_Cl
+    from pythonlib.tools.plottools import savefig
+    from itertools import permutations
+    from pythonlib.tools.plottools import savefig
+
+    sdir = f"{SAVEDIR}"
+
+    dflab = PAredu.Xlabels["trials"]
+    Xredu = PAredu.X.squeeze(axis=2).T # (ntrials, ndims)
+
+    ### Compute state similarity for chunk_within_indices
+
+    from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_scalar_splitmeanlines
+    var_color = "chunk_within_rank_fromlast"
+    # var_lines_within_subplot = ["syntax_concrete"]
+    var_lines_within_subplot = ["chunk_n_in_chunk"]
+    vars_subplot = ["chunk_rank", "shape"]
+    n_min = 4
+
+    # Hand enter how to color things
+    from pythonlib.tools.listtools import sort_mixed_type
+    fig = trajgood_plot_colorby_scalar_splitmeanlines(Xredu, dflab, var_color, var_lines_within_subplot, vars_subplot,
+                                                    plot_method="overlay_mean_lines",
+                                                    desired_levels_var_color_in_order = None,
+                                                    map_linelev_to_color = None, dims = (0,1),
+                                                    n_min_across_all_levs_var=4,
+                                                    lenient_allow_data_if_has_n_levels=1,
+                                                    SIZE = 5)
+    savefig(fig, f"{SAVEDIR}/overlay_mean_lines.pdf")
+
+    fig = trajgood_plot_colorby_scalar_splitmeanlines(Xredu, dflab, var_color, var_lines_within_subplot, vars_subplot,
+                                                    plot_method="separate_scatters",
+                                                    desired_levels_var_color_in_order = None,
+                                                    map_linelev_to_color = None, dims = (0,1),
+                                                    n_min_across_all_levs_var=4,
+                                                    lenient_allow_data_if_has_n_levels=1,
+                                                    SIZE = 5)
+    savefig(fig, f"{SAVEDIR}/overlay_mean_lines_scatter.pdf")
+
+
+    grouping_vars = ["chunk_rank", "shape", "chunk_n_in_chunk", "chunk_within_rank"]
+    DO_AGG_TRIALS = False
+    version_distance = "euclidian_unbiased"
+    Clraw, Clsim = _rsagood_convert_PA_to_Cl(PAredu, grouping_vars, version_distance, DO_AGG_TRIALS)
+    Clsim.Xinput
+    get_all_sort_orders = False
+    sort_order_force = [ 1, 2, 3, 0]
+    # Plot heatmaps, in every sort order of variables.
+
+
+    if get_all_sort_orders:
+        if len(grouping_vars)<5:
+            list_sort_order = permutations(range(len(grouping_vars)))
+        else:
+            list_sort_order = [list(range(len(grouping_vars)))]
+    else:
+        #  Just get the defautl
+        list_sort_order = [list(range(len(grouping_vars)))]
+
+    for sort_order in list_sort_order:
+
+        if version_distance in ["_pearson_raw"]:
+            diverge = True
+        else:
+            diverge = False
+        figsim, ax = Clsim.rsa_plot_heatmap(sort_order, diverge=diverge)
+
+        # - name this sort order
+        main_var = grouping_vars[sort_order[0]]
+        s = "_".join([str(i) for i in sort_order])
+        s+=f"_{main_var}"
+
+        path = f"{sdir}/heat_sim-sort_order_{s}.pdf"
+        savefig(figsim, path)
+
+
+        if len(Clraw.Labels) > len(Clsim.Labels):
+            # then Clraw is not agged data. First agg before plotting raw
+            from pythonlib.cluster.clustclass import Clusters
+
+            PAagg, _ = PAredu.slice_and_agg_wrapper("trials", grouping_vars, return_group_dict=True)
+            X = PAagg.X.squeeze().T # (ndat, nchans)
+            labels_rows = PAagg.Xlabels["trials"].loc[:, grouping_vars].values.tolist()
+            labels_rows = [tuple(x) for x in labels_rows] # list of tuples
+            labels_cols = PAagg.Chans # list of ints
+            params = {
+                "label_vars":grouping_vars,
+            }
+            ClrawAGG = Clusters(X, labels_rows, labels_cols, ver="rsa", params=params)
+            figraw, ax = ClrawAGG.rsa_plot_heatmap(sort_order, diverge=True)
+            path = f"{sdir}/heat_raw_AGG-sort_order_{s}.pdf"
+            savefig(figraw, path)
+        else:
+            figraw, ax = Clraw.rsa_plot_heatmap(sort_order, diverge=True)
+            path = f"{sdir}/heat_raw-sort_order_{s}.pdf"
+            savefig(figraw, path)
+
+        plt.close("all")
+
+    import numpy as np
+    # Plot specific slices, to make easier to visualize
+    from pythonlib.tools.plottools import makeColors
+    MASKS = Clsim.rsa_mask_context_split_levels_of_conj_var(vars_context=["chunk_rank", "shape", "chunk_n_in_chunk"], contrast="any",
+                                                            exclude_diagonal=False)
+
+    for grp, ma in MASKS.items():
+
+        fig, ax = Clsim.rsa_plot_heatmap(diverge=diverge, mask=ma)
+        path = f"{sdir}/heat_sim-grp={grp}.pdf"
+
+        # # Given a mask, overlay bounding box
+        # x1 = 2
+        # x2 = 4
+        # y1 = 2
+        # y2 = 4
+        # Clsim.rsa_matindex_plot_bounding_box(x1, x2, y1, y2, ax)
+
+        # HACKY - place vertical lines at bounding boxes demarcating columns that are groueped, based
+        # on having same level of vars_context_bounding_box
+        vars_context_bounding_box = ["chunk_rank", "shape", "chunk_n_in_chunk"]
+        MASKS_bb = Clsim.rsa_mask_context_split_levels_of_conj_var(vars_context_bounding_box, exclude_diagonal=True)
+        pcols = makeColors(len(MASKS_bb), cmap="winter")
+        for _i, (grp_bb, ma_bb) in enumerate(MASKS_bb.items()):
+            if np.any(ma_bb):
+                # print(grp, np.argwhere(ma))
+                # print(grp_bb, np.argwhere(ma_bb))
+                x1 = min(np.argwhere(ma_bb)[:,0])
+                x2 = max(np.argwhere(ma_bb)[:,1])
+                # y1 = min(np.argwhere(ma_bb)[:,1])
+                # y2 = max(np.argwhere(ma_bb)[:,1])
+                y1 = min(np.argwhere(ma)[:,1])
+                y2 = max(np.argwhere(ma)[:,1])
+
+                # print(x1, x2, y1, y2)
+                col = pcols[_i]
+                Clsim.rsa_matindex_plot_bounding_box(x1, x2, y1, y2, ax, edgecolor=col)
+
+                # assert False
+        print(path)
+        savefig(fig, path)
+        plt.close("all")
+
+
+    ##### QUantify, take different slices
+    dfdists = Clsim.rsa_dataextract_with_labels_as_flattened_df()
+    yvar = "dist"
+    savedir = f"{SAVEDIR}"
+
+    # Each subplot is a
+
+    vars_figures = "shape"
+
+    vars_subplot_cols = "chunk_n_in_chunk_col"
+    var_lines_within_subplots = "chunk_within_rank_col"
+    # var_lines_within_subplots = "chunk_within_rank_col"
+
+    vars_subplot_rows = "chunk_n_in_chunk_row"
+    var_x_axis_each_subplot = "chunk_within_rank_row"
+    # var_x_axis_each_subplot = "chunk_within_rank_row"
+
+    Clsim.rsa_plot_points_split_by_var_flex(var_x_axis_each_subplot, yvar,
+                                              var_lines_within_subplots,
+                                                savedir,
+                                              vars_subplot_rows, vars_subplot_cols,
+                                              vars_figures)
+    # For debuggin bove, seeing that conjcuintiosn matchf igure
+    a = dfdists["shape_row"] == "arcdeep-4-3-0"
+    b = dfdists["shape_col"] == "arcdeep-4-3-0"
+    # a = True
+    # b = True
+    c = dfdists["chunk_n_in_chunk_row"]==1
+    d = dfdists["chunk_n_in_chunk_col"]==2
+    e = dfdists["chunk_within_rank_row"]==0
+    f = dfdists["chunk_within_rank_col"]==1
+
+    dfdists[a & b & c & d & e & f]
+
+    # Combine all chunk_n_in_chunk (columns)
+    if False:
+        vars_subplot_rows = None
+        Clsim.rsa_plot_points_split_by_var_flex(var_x_axis_each_subplot, yvar,
+                                                  var_lines_within_subplots,
+                                                    savedir,
+                                                  vars_subplot_rows, vars_subplot_cols,
+                                                  vars_figures)
+    plt.close("all")
