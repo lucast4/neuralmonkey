@@ -7618,7 +7618,8 @@ class Snippets(object):
 
     # adds additional columns for SP.DfScalar here (including code to loop, and append_column vars)
     # NOTE: assumes multiple session SP, e.g. from
-    def _add_clusterfix_saccfix_columns(self):
+    # note: if change to add new columns, must change list_features_extraction in dfallpa_extraction_load_wrapper_from_MS
+    def _add_clusterfix_saccfix_columns(self, filter_outliers=True, filter_only_first_shapefix=True):
         import math
         # get the start, end times for the window spanned by start_event, end_event
         def getTimeWindowOfEvents(sn, trial, start_event, end_event):
@@ -7720,14 +7721,14 @@ class Snippets(object):
         D.seqcontext_preprocess()
         list_features_extraction_seq = ["seqc_0_shape", "seqc_0_loc", "seqc_1_shape", "seqc_1_loc", "seqc_2_shape", "seqc_2_loc", "seqc_3_shape", "seqc_3_loc", "seqc_0_loc_on_clust", "seqc_1_loc_on_clust", "seqc_2_loc_on_clust", "seqc_3_loc_on_clust"]
         self.datasetbeh_append_column_helper(list_features_extraction_seq, D, stop_if_fail=True)
-        print("finished appending oclumsn..")
+        print("finished appending seqc0 columns..")
         sessions = self.DfScalar['session_idx'].unique()
         dummy_df_all = pd.DataFrame()
         print("looping through sesssions")
         for sesh in sessions:
             sn = self.SNmult.SessionsList[sesh]
 
-            dummy_df = self.DfScalar[self.DfScalar['session_idx']==sesh]
+            dummy_df = self.DfScalar[self.DfScalar['session_idx']==sesh].copy()
             #print("dummy_df", dummy_df)
             neuraltrials = dummy_df['trial_neural'].unique()
             print("looping through neuraltrials)")
@@ -7763,6 +7764,7 @@ class Snippets(object):
 
                     # now, get closest shape to this centroid and add to dummy_df
                     shapefix = getClosestShapeToCentroid(sn, nt, e_cntrd)
+                    print("shapefixation: ", shapefix)
                     dummy_df.loc[e_df_inds, 'shape-fixation'] = shapefix
                     print("fiished shapefix")
 
@@ -7841,14 +7843,26 @@ class Snippets(object):
                     # add angle
                     dummy_df.loc[e_df_inds, 'saccade-dir-angle'] = math.atan2((y-y_prev), (x-x_prev))+math.pi # make between 0-360
 
+            # is first macrosaccade?
+            dummy_df['is-first-macrosaccade'] = dummy_df['shape-macrosaccade-index']==1
             # bin saccade direction into 4 quadrants
             dummy_df['saccade-dir-angle-bin'] = pd.cut(dummy_df['saccade-dir-angle'], bins=4, labels=["quadrant1", "quadrant2", "quadrant3", "quadrant4"])
             print("concatting all dataframes...")
-            dummy_df_all = pd.concat([dummy_df_all, dummy_df])
+            dummy_df_all = pd.concat([dummy_df_all, dummy_df], ignore_index=True)
         # finally, set SP.DfScalar to dummy_df
         print("setting dfscalar...")
-        self.DfScalar = dummy_df_all.reset_index(drop=True)
-
+        #dummy_df_all = dummy_df_all.reset_index(drop=True)
+        # filter outliers out
+        if filter_outliers==True:
+            print("filter outliers")
+            dummy_df_all = dummy_df_all[dummy_df_all["shape-fixation"]!='OFFSCREEN'].reset_index(drop=True)
+        if filter_only_first_shapefix==True:
+            print("filter only first shapefix)")
+            dummy_df_all = dummy_df_all[dummy_df_all["first-fixation-on-shape"]==True].reset_index(drop=True)
+        print("length of old dfscalar: ", len(self.DfScalar))
+        self.DfScalar = dummy_df_all
+        print("length of new dfscalar: ", len(self.DfScalar))
+        print("dfscalar columns: ", self.DfScalar.columns)
 
     def load_v2(self, savedir):
         """ To load data saved using save_v2

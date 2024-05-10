@@ -2371,10 +2371,15 @@ class PopAnal():
 
         inds = self.index_find_these_values("times", twind)
         assert len(inds)==2
-
+        if twind[0] > max(self.Times) or twind[1] < min(self.Times):
+            print(twind)
+            print(self.Times)
+            print(inds)
+            assert False, "twind incompatible with times"
         if time_keep_only_within_window:
             # inclusive, deal with numerical imprecision..
             # ensuring that indices are entirely contained within twind.
+
             while self.Times[inds[0]]<=twind[0]:
                 inds[0]+=1
             while self.Times[inds[1]]>=twind[1]:

@@ -780,6 +780,15 @@ def dfallpa_extraction_load_wrapper_from_MS(MS, question, list_time_windows, whi
 
         print("adding saccade-fixation columns...")
         SP._add_clusterfix_saccfix_columns()
+        list_features_extraction = ["seqc_0_shape", "seqc_0_loc", "seqc_1_shape", "seqc_1_loc", 
+                            "seqc_2_shape", "seqc_2_loc", "seqc_3_shape", "seqc_3_loc",
+                            "seqc_0_loc_on_clust", "seqc_1_loc_on_clust", "seqc_2_loc_on_clust", "seqc_3_loc_on_clust",
+                            "trial_neural", "event_idx_within_trial", "between-stimonset-and-go",
+                            "early-or-late-planning-period", "fixation-centroid",
+                            "shape-fixation", "loc-fixation", "first-fixation-on-shape",
+                            "shape-macrosaccade-index", "saccade-dir-angle", "saccade-dir-angle-bin",
+                            "is-fixated-on-seqc0shape", "prev-shape-fixation", "prev-loc-fixation", "is-first-macrosaccade"] + list_features_extraction
+        # NOTE: if change _add_clusterfix_saccfix_columns, must add new column names to above list.
 
     # If this is "strokes" SP, you have option of renaming events to the stroke index, allowing to
     # extract separate PA for each stroke index.
