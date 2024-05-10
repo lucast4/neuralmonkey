@@ -116,9 +116,9 @@ def statespace_plot_single(frmat, ax, color_for_trajectory="k",
                            times=None, times_to_mark=None,
                            times_to_mark_markers=None,
                            time_bin_size=None,
-                           markersize=3, marker="o",
+                           markersize=3, marker="P",
                            text_plot_pt1=None,
-                           alpha=0.2):
+                           alpha=0.2, plot_dots_on_traj=True):
     """ [GOOD] Plot a single trial (or mean over trials) trajectory in state space (2d)
     plots data in frmat in the space defined by PApca, which holds pca space
     computed from the data in PApca
@@ -167,13 +167,17 @@ def statespace_plot_single(frmat, ax, color_for_trajectory="k",
         times_to_mark_inds = None
     dims_neural = (0,1)
 
+    if plot_dots_on_traj:
+        marker_along_traj = "."
+    else:
+        marker_along_traj = None
     plotStateSpace(frmat, dims_neural=dims_neural, plotndim=len(dims_neural), ax=ax,
         color_for_trajectory=color_for_trajectory, is_traj=is_traj,
                    alpha=alpha,
         traj_mark_times_inds = times_to_mark_inds,
         traj_mark_times_markers = times_to_mark_markers,
         markersize=markersize, marker=marker,
-                   text_plot_pt1=text_plot_pt1)
+                   text_plot_pt1=text_plot_pt1, marker_along_traj=marker_along_traj)
 
     # grid on, for easy comparisons
     ax.grid()
@@ -181,7 +185,7 @@ def statespace_plot_single(frmat, ax, color_for_trajectory="k",
 def plotStateSpace(X, dims_neural=(0,1), plotndim=2, ax=None,
     color_for_trajectory="k", is_traj=True, text_plot_pt1=None, alpha=0.5,
     traj_mark_times_inds = None, traj_mark_times_markers = None,
-    markersize=3, marker="o"):
+    markersize=3, marker="P", marker_along_traj="."):
     """ general, for plotting state space, will work
     with trajectories or pts (with variance plotted)
     PARAMS:
@@ -239,9 +243,11 @@ def plotStateSpace(X, dims_neural=(0,1), plotndim=2, ax=None,
         # dfthis = pd.DataFrame({"x":x1, "y":x2, "color":color_for_trajectory})
         # sns.scatterplot(data=dfthis, x="x", y="y", hue="color", ax=ax, alpha=alpha)
         if is_traj:
-            ax.plot(x1, x2, '-', marker=".", color=color_for_trajectory, alpha=alpha, linewidth=2.25)
-            ax.plot(x1[-1], x2[-1], "s", mfc="w", mec=color_for_trajectory, alpha=alpha_marker, markersize=markersize) # mark offset
-            ax.plot(x1[0], x2[0], marker, mfc=color_for_trajectory, mec="k", alpha=alpha_marker, markersize=markersize) # mark onset
+            ax.plot(x1, x2, '-', marker=marker_along_traj, color=color_for_trajectory, alpha=alpha, linewidth=2.25)
+            # ax.plot(x1[-1], x2[-1], "s", mfc="w", mec=color_for_trajectory, alpha=alpha_marker, markersize=markersize) # mark offset
+            # ax.plot(x1[0], x2[0], marker, mfc=color_for_trajectory, mec="k", alpha=alpha_marker, markersize=markersize) # mark onset
+            ax.plot(x1[-1], x2[-1], "P", mfc=color_for_trajectory, mec=color_for_trajectory, alpha=alpha_marker, markersize=markersize) # mark offset
+            ax.plot(x1[0], x2[0], marker, mfc=color_for_trajectory, mec="k", alpha=alpha_marker, markersize=markersize*0.9) # mark onset
         else:
             # plot smaller markers
             ax.plot(x1[0], x2[0], marker, color=color_for_trajectory, alpha=alpha_marker, markersize=markersize) # mark onset
