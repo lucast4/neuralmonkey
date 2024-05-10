@@ -3195,7 +3195,7 @@ def rsagood_questions_params(question):
         # for Single prims, strokes.
 
         effect_vars = ["shape_oriented"]
-        list_which_level = ["stroke"] # Whihc which_level to keep
+        list_which_level = ["stroke", "stroke_off"] # Whihc which_level to keep
 
         ## For "stroke" and "stroke_off" which_levels
         # - include all strokes within sequence

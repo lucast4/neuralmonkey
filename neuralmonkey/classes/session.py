@@ -48,7 +48,7 @@ MAP_COMBINED_REGION_TO_REGION = {k:tuple(v) for k, v in MAP_COMBINED_REGION_TO_R
 
 # SMFR_SIGMA = 0.025
 # SMFR_SIGMA = 0.040 # 4/29/23
-SMFR_SIGMA = 0.020 # 4/20/24, # since you can always smoother further later on.
+_SMFR_SIGMA = 0.025 # 4/20/24, # since you can always smoother further later on.
 SMFR_TIMEBIN = 0.01
 
 PRE_DUR_TRIAL = 1.
@@ -123,7 +123,7 @@ DATASETBEH_CACHED_USE_BEHTOUCH = True
 def load_mult_session_helper(DATE, animal, dataset_beh_expt=None, expt = "*", 
     MINIMAL_LOADING=True,
     units_metadat_fail_if_no_exist=False,
-    spikes_version="kilosort_if_exists"):
+    spikes_version="kilosort_if_exists", fr_sm_std=None):
     """ Hacky, iterates over range(10) sessions, concatenations into a single MultSessions
     for this date.
     """
@@ -151,7 +151,7 @@ def load_mult_session_helper(DATE, animal, dataset_beh_expt=None, expt = "*",
         SN = load_session_helper(DATE, dataset_beh_expt, rec_session, animal, expt,
             MINIMAL_LOADING=MINIMAL_LOADING,
             units_metadat_fail_if_no_exist=units_metadat_fail_if_no_exist,
-            spikes_version=spikes_version)
+            spikes_version=spikes_version, fr_sm_std=fr_sm_std)
         SNlist.append(SN)
         print("Extracted successfully for session: ", rec_session)
     assert len(SNlist)>0, "did not find any neural sessions..."
@@ -168,7 +168,8 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
     ACTUALLY_BAREBONES_LOADING = False,
     units_metadat_fail_if_no_exist=False,
     do_if_spikes_incomplete="ignore",
-    spikes_version="kilosort_if_exists"):
+    spikes_version="kilosort_if_exists",
+    fr_sm_std=None):
     """ Load a single recording session.
     PARAMS:
     - DATE, str, "yymmdd"
@@ -262,7 +263,7 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
             units_metadat_fail_if_no_exist=units_metadat_fail_if_no_exist,
             do_if_spikes_incomplete=do_if_spikes_incomplete,
             ACTUALLY_BAREBONES_LOADING=ACTUALLY_BAREBONES_LOADING,
-            spikes_version=spikes_version)
+            spikes_version=spikes_version, fr_sm_std=fr_sm_std)
     except DataMisalignError as err:
         if ALLOW_RETRY:
             print("FAILED loading session:", DATE, rec_session)
@@ -281,7 +282,7 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
                 units_metadat_fail_if_no_exist=units_metadat_fail_if_no_exist,
                 do_if_spikes_incomplete=do_if_spikes_incomplete,
                 ACTUALLY_BAREBONES_LOADING=ACTUALLY_BAREBONES_LOADING,
-                spikes_version=spikes_version)
+                spikes_version=spikes_version, fr_sm_std=fr_sm_std)
         else:
             raise err
     except Exception as err:
@@ -323,7 +324,8 @@ class Session(object):
             ACTUALLY_BAREBONES_LOADING = False,
             units_metadat_fail_if_no_exist=False,
             do_if_spikes_incomplete="ignore",
-            spikes_version="kilosort_if_exists"):
+            spikes_version="kilosort_if_exists",
+            fr_sm_std=None):
         """
         PARAMS:
         - datestr, string, YYMMDD, e.g, "220609"
@@ -686,6 +688,12 @@ class Session(object):
         # Do it here so that dont inadvertantly cache data for the wrong spikes version.
         self.SPIKES_VERSION=spikes_version
         self._SPIKES_VERSION_INPUTED = spikes_version
+
+        if fr_sm_std is not None:
+            assert fr_sm_std>0. and fr_sm_std<0.1, "mistake? this is unexpted window size"
+            self.SMFR_SIGMA = fr_sm_std
+        else:
+            self.SMFR_SIGMA = _SMFR_SIGMA
 
     ####################### PREPROCESS THINGS
     def _datasetbeh_remove_neural_trials_missing_beh(self):
@@ -6838,7 +6846,7 @@ class Session(object):
 
     def elephant_spiketrain_to_smoothedfr(self, spike_times, 
         time_on, time_off, 
-        gaussian_sigma = SMFR_SIGMA, # changed to 0.025 on 4/3/23. ,
+        gaussian_sigma = None, # changed to 0.025 on 4/3/23. ,
         sampling_period=SMFR_TIMEBIN):
         """
         Convert spiketrain to smoothed fr
@@ -6854,6 +6862,9 @@ class Session(object):
         from quantities import s
         from neo.core import SpikeTrain
 
+        if gaussian_sigma is None:
+            gaussian_sigma = self.SMFR_SIGMA
+
         spiketrain = SpikeTrain(spike_times*s, t_stop=time_off, t_start=time_on)
 
         frate = instantaneous_rate(spiketrain, sampling_period=sampling_period*s, 
@@ -6865,7 +6876,7 @@ class Session(object):
             # gaussian_sigma = 0.1, 
             # gaussian_sigma = 0.025, # changed to 0.025 on 4/3/23. 
             # sampling_period=0.005, # changed to 0.005 from 0.01 on 4/18/23.
-            gaussian_sigma = SMFR_SIGMA, # made global on 4/23
+            gaussian_sigma = None, # made global on 4/23
             sampling_period = SMFR_TIMEBIN, # made global on 4/23
             print_shape_confirmation=False,
             clean_chans=True, overwrite=False,
@@ -6890,6 +6901,9 @@ class Session(object):
         from elephant.statistics import time_histogram, instantaneous_rate,mean_firing_rate
         from quantities import s
         from neuralmonkey.classes.population import PopAnal
+
+        if gaussian_sigma is None:
+            gaussian_sigma = self.SMFR_SIGMA
 
         if trial not in self.PopAnalDict.keys() or overwrite==True:
             # Get all spike trains for a trial
