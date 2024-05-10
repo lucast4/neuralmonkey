@@ -1870,8 +1870,12 @@ def trajgood_construct_df_from_raw(X, times, labels, labelvars):
 def trajgood_plot_colorby_splotby_WRAPPER(X, times, dflab, var_color, savedir,
                                                  vars_subplot=None, list_dims=None,
                                                 time_bin_size = None, alpha=0.5,
-                                          save_suffix=None):
+                                          save_suffix=None, mean_over_trials=True,
+                                          ntrials=5, cont_color_kind="circular",
+                                          plot_dots_on_traj=True,
+                                          xlim_force=None, ylim_force=None):
     """
+    NOTE: Only useful if var_color is categorical!! 
     :param X: neural data, shape (chans, trials, times).
     :param times: timestaps, matches X.shape[2]
     :param time_bin_size: time in sec, to make plot easier to visaulize, you can bin in time.
@@ -1882,22 +1886,34 @@ def trajgood_plot_colorby_splotby_WRAPPER(X, times, dflab, var_color, savedir,
     # assert False, "good, but havent tested"
 
     for dims in list_dims:
-
+        
         # 1) Construct dataframe
-        if isinstance(var_color, (list, tuple)):
-            grpvars = list(var_color) + list(vars_subplot)
+        if vars_subplot is None:
+            if isinstance(var_color, (list, tuple)):
+                grpvars = list(var_color)
+            else:
+                grpvars = [var_color]
         else:
-            grpvars = [var_color] + list(vars_subplot)
+            if isinstance(var_color, (list, tuple)):
+                grpvars = list(var_color) + list(vars_subplot)
+            else:
+                grpvars = [var_color] + list(vars_subplot)
         labels = dflab.loc[:, grpvars]
         labelvars = grpvars
         df = trajgood_construct_df_from_raw(X, times, labels, labelvars)
 
         # 2) Plot
-        times_to_mark = [0.] # you can mark specific times on the plot. here marks the 0. sec mark.
-        times_to_mark_markers = ["d"] # mark with a diamond ("d")
-        fig, axes = trajgood_plot_colorby_splotby(df, var_color, vars_subplot, dims, "traj", mean_over_trials=True,
+        if times[0]<0. and times[-1]>0.:
+            times_to_mark = [0.] # you can mark specific times on the plot. here marks the 0. sec mark.
+            times_to_mark_markers = ["x"] # mark with a diamond ("d")
+        else:
+            times_to_mark = None
+            times_to_mark_markers = None
+
+        fig, axes = trajgood_plot_colorby_splotby(df, var_color, vars_subplot, dims, "traj", mean_over_trials=mean_over_trials,
                                       times_to_mark = times_to_mark, times_to_mark_markers = times_to_mark_markers,
-                                      time_bin_size=time_bin_size, alpha=alpha)
+                                      time_bin_size=time_bin_size, alpha=alpha, ntrials=ntrials,
+                                      plot_dots_on_traj=plot_dots_on_traj, xlim_force=xlim_force, ylim_force=ylim_force)
 
         path = f"{savedir}/color={var_color}-sub={vars_subplot}-dims={dims[0], dims[1]}-suff={save_suffix}.pdf"
         print("Saving ... ", path)
@@ -1913,7 +1929,10 @@ def trajgood_plot_colorby_splotby(df, var_color_by, var_subplots, dims=(0,1),
                                    markersize=6, marker="o",
                                    text_plot_pt1=None,
                                    alpha=0.5,
-                                   ntrials=5):
+                                   ntrials=5, plot_dots_on_traj=True,
+                                   overlay_trials_on_mean=False, 
+                                   n_trials_overlay_on_mean=5,
+                                   xlim_force=None, ylim_force=None):
     """ [GOOD], to plot trajectories colored by one variable, and split across subplots by another
     variable.
     PARAMS:
@@ -1927,6 +1946,11 @@ def trajgood_plot_colorby_splotby(df, var_color_by, var_subplots, dims=(0,1),
     from pythonlib.tools.plottools import makeColors
     from neuralmonkey.population.dimreduction import statespace_plot_single
     from pythonlib.tools.plottools import legend_add_manual
+
+    if var_subplots is None:
+        df = df.copy()
+        df["_dummy"] = "dummy"
+        var_subplots = ["_dummy"]
 
     var_color_for_name = var_color_by
     if isinstance(var_color_by, (tuple, list)):
@@ -1976,7 +2000,25 @@ def trajgood_plot_colorby_splotby(df, var_color_by, var_subplots, dims=(0,1),
                                        times, times_to_mark, times_to_mark_markers,
                                        time_bin_size = time_bin_size,
                                        markersize=markersize, marker=marker,
-                                       text_plot_pt1=text_plot_pt1, alpha=alpha)
+                                       text_plot_pt1=text_plot_pt1, alpha=alpha, plot_dots_on_traj=plot_dots_on_traj)
+                
+                if overlay_trials_on_mean:
+                    # Optionally overlay some single trials, so show variability
+                    n = X.shape[1]
+                    n_trials_overlay_on_mean = 5
+                    if n>n_trials_overlay_on_mean:
+                        import random
+                        trials_get = random.sample(range(n), n_trials_overlay_on_mean)
+                    else:
+                        trials_get = range(n)
+                    
+                    for tr in trials_get:
+                        x = X[dims, tr, :] # (dims, times)
+                        statespace_plot_single(x, ax, color_for_trajectory,
+                                            times, times_to_mark, times_to_mark_markers,
+                                            time_bin_size = time_bin_size,
+                                            markersize=markersize, marker="",
+                                            text_plot_pt1=None, alpha=0.2, plot_dots_on_traj=False)
             else:
                 # Loop over all trials
                 # Pick subset of trials
@@ -1986,19 +2028,157 @@ def trajgood_plot_colorby_splotby(df, var_color_by, var_subplots, dims=(0,1),
                     trials_get = random.sample(range(n), ntrials)
                 else:
                     trials_get = range(n)
-
+                
                 for tr in trials_get:
                     x = X[dims, tr, :] # (dims, times)
                     statespace_plot_single(x, ax, color_for_trajectory,
                                            times, times_to_mark, times_to_mark_markers,
                                            time_bin_size = time_bin_size,
                                            markersize=markersize, marker=marker,
-                                           text_plot_pt1=text_plot_pt1, alpha=alpha)
+                                           text_plot_pt1=text_plot_pt1, alpha=alpha, plot_dots_on_traj=plot_dots_on_traj)
+        if xlim_force is not None:
+            ax.set_xlim(xlim_force)
+        if ylim_force is not None:
+            ax.set_ylim(ylim_force)
+
+    # Add legend to the last axis
+    legend_add_manual(ax, map_lev_to_color.keys(), map_lev_to_color.values(), 0.2, "best")
+
+    return fig, axes
+
+def trajgood_plot_colorby_splotby_timeseries(df, var_color_by, var_subplots, 
+                                             dim=0, plot_trials=True, plot_trials_n=10,
+                                             plot_mean=True, 
+                                             alpha=0.5, SUBPLOT_OPTION="combine_levs"):
+    """ [GOOD], to plot trajectories colored by one variable, and split across subplots by another
+    variable, where x axis is always time.
+
+    PARAMS:
+    - df, standard form for holding trajectories, each row holds; one condition (e.g., shape,location):
+    --- "z", activity (ndims, ntrials, ntimes),
+    --- "z_scalar", scalarized version (ndims, ntrials, 1) in "z_scalar".
+    --- "times", matching ntimes
+    - mean_over_trials, bool, if True, then plots mean, if False, plots ntrials random trials.
+    Other columns are flexible, defnining varialbes. must have var_color_by, var_subplots
+    """
+    from pythonlib.tools.plottools import makeColors
+    from neuralmonkey.population.dimreduction import statespace_plot_single
+    from pythonlib.tools.plottools import legend_add_manual
+    from neuralmonkey.neuralplots.population import plot_smoothed_fr
+
+    dim = 0
+
+    if var_subplots is None:
+        df = df.copy()
+        df["_dummy"] = "dummy"
+        var_subplots = ["_dummy"]
+
+    var_color_for_name = var_color_by
+    if isinstance(var_color_by, (tuple, list)):
+        df = append_col_with_grp_index(df, var_color_by, "_tmp")
+        var_color_by = "_tmp"
+
+    var_color_for_name_subplots = var_subplots
+    if isinstance(var_subplots, (tuple, list)):
+        df = append_col_with_grp_index(df, var_subplots, "_tmp2")
+        var_subplots = "_tmp2"
+
+    # One color for each level of effect var
+    levs_effect = sort_mixed_type(df[var_color_by].unique().tolist())
+    pcols = makeColors(len(levs_effect))
+    map_lev_to_color = {}
+    for lev, pc in zip(levs_effect, pcols):
+        map_lev_to_color[lev] = pc
+
+    # One subplot per othervar
+    levs_other = sort_mixed_type(df[var_subplots].unique().tolist())
+
+    if SUBPLOT_OPTION=="combine_levs":
+        ncols = 3
+        nrows = int(np.ceil(len(levs_other)/ncols))
+        fig, axes = plt.subplots(nrows, ncols, sharex=True, sharey=True, figsize=(ncols*3.5, nrows*3.5))
+        for ax, levo in zip(axes.flatten(), levs_other):
+            ax.set_title(levo)
+            dfthis = df[df[var_subplots]==levo]
+
+            # # Optionally sample a fixed n for each level of var_color
+            # from pythonlib.tools.pandastools import extract_trials_spanning_variable
+            # dfthis = dfthis.reset_index(drop=True)
+            # inds = extract_trials_spanning_variable(dfthis, var_color_by, None, 1)
+            # dfthis = dfthis.iloc[inds]
+
+            # Plot each row (each level of effect)
+            for _, row in dfthis.iterrows():
+
+                X = row["z"] # (dims, trials, times)
+                times = row["times"]
+                color_for_trajectory = map_lev_to_color[row[var_color_by]]
+
+                if plot_trials:
+                    if X.shape[1]>plot_trials_n:
+                        import random
+                        _inds = random.sample(range(X.shape[1]), plot_trials_n)
+                        Xthis = X[:, _inds, :]
+                    else:
+                        Xthis = X
+                    for _trial in range(Xthis.shape[1]):
+                        ax.plot(times, Xthis[dim, _trial, :], "-", color=color_for_trajectory, alpha=alpha)
+                
+                if plot_mean:
+                    plot_smoothed_fr(X[dim, :, :], times, ax, color=color_for_trajectory)
+                    # Xmean = np.mean(X[dim, :, :], axis=0)
+                    # ax.plot(times, Xmean, "-", color=color_for_trajectory, linewidth=4, alpha=0.7)
+
+    # OPTION 2 - grid of subplots (var vs. othervar)
+    elif SUBPLOT_OPTION=="split_levs":
+        ncols = len(levs_effect)
+        nrows = len(levs_other)
+        fig, axes = plt.subplots(nrows, ncols, sharex=True, sharey=True, figsize=(ncols*3.5, nrows*3.5),
+                                 squeeze=False)
+        for i, levo in enumerate(levs_other):
+            for j, leveff in enumerate(levs_effect):
+
+                ax = axes[i][j]
+                dfthis = df[(df[var_subplots]==levo) & (df[var_color_by]==leveff)]
+                if i==0 and j==0:
+                    ax.set_title(f"{leveff} - {levo}", fontsize=6)
+                elif i==0:
+                    ax.set_title(f"{leveff}", fontsize=6)
+                elif j==0:
+                    ax.set_title(f"{levo}", fontsize=6)
+                    
+
+                if len(dfthis)==0:
+                    continue
+                elif len(dfthis)>1:
+                    print(dfthis)
+                    assert False
+                else:
+                    X = dfthis["z"].values[0] # (dims, trials, times)
+                    times = dfthis["times"].values[0]
+                    color_for_trajectory = map_lev_to_color[leveff]
+
+                    if plot_trials:
+                        if X.shape[1]>plot_trials_n:
+                            import random
+                            _inds = random.sample(range(X.shape[1]), plot_trials_n)
+                            Xthis = X[:, _inds, :]
+                        else:
+                            Xthis = X
+                        for _trial in range(Xthis.shape[1]):
+                            ax.plot(times, Xthis[dim, _trial, :], "-", alpha=alpha)
+                    
+                    if plot_mean:
+                        plot_smoothed_fr(X[dim, :, :], times, ax, color=color_for_trajectory)
+    else:
+        print(SUBPLOT_OPTION)
+        assert False
 
     # Add legend to the last axis
     legend_add_manual(ax, map_lev_to_color.keys(), map_lev_to_color.values(), 0.2)
 
     return fig, axes
+
 
 def dimredgood_nonlinear_embed_data(X, METHOD="umap", n_components=2, tsne_perp="auto", umap_n_neighbors="auto"):
     """
@@ -2277,9 +2457,10 @@ def cleanup_remove_labels_ignore(xs, ys, labels_color, labels_subplot):
         labels_subplot = [labels_subplot[i] for i in inds_keep]
 
     return xs, ys, labels_color, labels_subplot
+    
 
-
-def euclidian_distance_compute(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT_MASKS, twind, tbin_dur,
+# def euclidian_distance_compute
+def euclidian_distance_compute_scalar(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT_MASKS, twind, tbin_dur,
                                tbin_slice, savedir,
                                PLOT_STATE_SPACE=True, COMPUTE_EUCLIDIAN=True,
                                nmin_trials_per_lev=None,
@@ -2460,34 +2641,6 @@ def euclidian_distance_compute(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT_MASKS,
                 # pa_orig_dim = pa_orig_dim.slice_by_labels("trials", _var, _levs)
 
         ############### PRUNE DATA, TO GET ENOUGH FOR THIS VARIABLE
-        # # Prep by keeping only if enough data
-        # from neuralmonkey.analyses.rsa import preprocess_rsa_prepare_popanal_wrapper
-        # preprocess_rsa_prepare_popanal_wrapper(pa, )
-
-        # Get data split by othervar
-        # Return dict[levo] --> data
-        # Prune data to just cases with at least 2 levels of decode var
-
-
-
-        # dflab = pa.Xlabels["trials"]
-        # dfout, dict_dfthis = extract_with_levels_of_conjunction_vars(dflab, var, var_others,
-        #                                                          n_min_across_all_levs_var=prune_min_n_trials,
-        #                                                          lenient_allow_data_if_has_n_levels=prune_min_n_levs,
-        #                                                          prune_levels_with_low_n=True,
-        #                                                          ignore_values_called_ignore=True,
-        #                                                          plot_counts_heatmap_savepath=plot_counts_heatmap_savepath,
-        #                                                          balance_no_missed_conjunctions=False)
-        # # for levo, dfthis in dict_dfthis.items():
-        # #     print(levo, len(dfthis))
-        # if len(dfout)==0:
-        #     print("all data pruned!!")
-        #     continue
-        #
-        # # Only keep the indices in dfout
-        # print("  Pruning for this var adn conjunction. Original length:", pa.X.shape[1], ", pruned length:", len(dfout))
-        # pa = pa.slice_by_dim_indices_wrapper("trials", dfout["_index"].tolist(), True)
-
         if nmin_trials_per_lev is not None:
             prune_min_n_trials = nmin_trials_per_lev
         else:
@@ -2526,7 +2679,7 @@ def euclidian_distance_compute(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT_MASKS,
             if False:
                 # This passes
                 assert np.all(pa.X[:n_pcs_keep_euclidian, :, :] == pa_eucl.X)
-            res, DIST_NULL_50, DIST_NULL_95, DIST_NULL_98 = euclidian_distance_compute_score_single(pa_eucl, var, var_others, PLOT, PLOT_MASKS,
+            res, DIST_NULL_50, DIST_NULL_95, DIST_NULL_98 = euclidian_distance_compute_scalar_single(pa_eucl, var, var_others, PLOT, PLOT_MASKS,
                                                           version_distance=version_distance,
                                                           AGG_BEFORE_DIST=AGG_BEFORE_DIST, context_input=context,
                                                           plot_mask_path=plot_mask_path)
@@ -2551,7 +2704,7 @@ def euclidian_distance_compute(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT_MASKS,
                     dflabSHUFF = shuffle_dataset_hierarchical(dflab, [var], var_others)
                     PApcaSHUFF.Xlabels["trials"] = dflabSHUFF
 
-                    res, _, _, _ = euclidian_distance_compute_score_single(PApcaSHUFF, var, var_others,
+                    res, _, _, _ = euclidian_distance_compute_scalar_single(PApcaSHUFF, var, var_others,
                                                                   version_distance=version_distance,
                                                                   AGG_BEFORE_DIST=AGG_BEFORE_DIST)
                     for r in res:
@@ -2630,7 +2783,7 @@ def euclidian_distance_compute(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT_MASKS,
     else:
         return dfres
 
-def euclidian_distance_compute_score_single(pa, var, var_others, PLOT_RSA_HEATMAP=False, PLOT_MASKS=False,
+def euclidian_distance_compute_scalar_single(pa, var, var_others, PLOT_RSA_HEATMAP=False, PLOT_MASKS=False,
                                             version_distance="euclidian_unbiased", AGG_BEFORE_DIST=False,
                                             context_input=None, path_for_save_print_lab_each_mask=None,
                                             plot_mask_path=None):
@@ -2695,15 +2848,16 @@ def euclidian_distance_compute_score_single(pa, var, var_others, PLOT_RSA_HEATMA
 
     assert pa.X.shape[2]==1, "must be scalar"
 
-    if AGG_BEFORE_DIST:
-        # Agg, then compute distances between means
-        # 1. agg before computing distances (quicker)
-        pa = pa.slice_and_agg_wrapper("trials", [var]+var_others)
-        assert version_distance in ["euclidian"]
-    else:
-        # Then compute distance between datapts, and then agg distances
-        pa = pa
-        assert version_distance in ["euclidian_unbiased"]
+    assert AGG_BEFORE_DIST == False, "assuming this..."
+    # if AGG_BEFORE_DIST:
+    #     # Agg, then compute distances between means
+    #     # 1. agg before computing distances (quicker)
+    #     pa = pa.slice_and_agg_wrapper("trials", [var]+var_others)
+    #     assert version_distance in ["euclidian"]
+    # else:
+    #     # Then compute distance between datapts, and then agg distances
+    #     pa = pa
+    #     assert version_distance in ["euclidian_unbiased"]
 
     # Create clusters
     # dflab = pa.Xlabels["trials"]
@@ -2728,6 +2882,7 @@ def euclidian_distance_compute_score_single(pa, var, var_others, PLOT_RSA_HEATMA
     # else:
     #     Cldist = Cl.distsimmat_convert_distr(label_vars, version_distance, accurately_estimate_diagonal=ALSO_COLLECT_SAME_EFFECT)
     
+    print("... dataextract_as_distance_matrix_clusters_flex")
     LIST_CLDIST, LIST_TIME = pa.dataextract_as_distance_matrix_clusters_flex([var] + var_others, 
                                                                             version_distance=version_distance)
     assert len(LIST_CLDIST)==1
@@ -2737,6 +2892,7 @@ def euclidian_distance_compute_score_single(pa, var, var_others, PLOT_RSA_HEATMA
         Cldist.rsa_plot_heatmap()
 
     if True:
+        print("... rsa_distmat_score_same_diff_by_context")
         _res, _, _, _ = Cldist.rsa_distmat_score_same_diff_by_context(var, var_others, context_input, dat_level, PLOT_MASKS, 
                                                     plot_mask_path=plot_mask_path, path_for_save_print_lab_each_mask=path_for_save_print_lab_each_mask)
         res.extend(_res)
@@ -3069,6 +3225,834 @@ def euclidian_distance_compute_score_single(pa, var, var_others, PLOT_RSA_HEATMA
                     })
 
     return res, DIST_NULL_50, DIST_NULL_95, DIST_NULL_98
+
+def euclidian_distance_plot_timedistmat_score_similarity(DFRES, vars_context,
+                                                         DO_PLOTS=True, SAVEDIR_PLOTS=None):
+    """Get the pairwise similarity between distmats (each at a specific
+    event/time)
+
+    Args:
+        DFRES (_type_): EAch row holds a dist mat for a specific event/time,
+            Genrated from euclidian_distance_compute_trajectories
+        vars_context: grouping var. computes separated within eavh level, and averages.
+            (ie each level slices out a specific distmat). Make None to compare entire distmat
+            without caring about context.
+    RETURNS:
+    - dfres_corrs_btw_distmats, each row is corr between distats for a pair of event/time
+    """
+
+    # computes separately for each context.
+    import scipy.stats as stats
+    import numpy as np
+
+    res_distmat_corrs = []
+    ma_ut = None
+    dict_masks = None
+    for _i, row_i in DFRES.iterrows():
+        print("row: ", _i)
+        for _j, row_j in DFRES.iterrows():
+            if _i == _j:
+                distmat_corr = 0. # Set diagonal to 0, arbitrarily.
+            elif _j>_i:
+                Cldist1 = row_i["Cldist"]
+                Cldist2 = row_j["Cldist"]
+                            
+                # Check matching labels
+                assert Cldist1.Labels == Cldist2.Labels
+                
+                if ma_ut is None:
+                    ma_ut = Cldist1._rsa_matindex_generate_upper_triangular(exclude_diag=True)
+
+                if vars_context is not None:
+                    # Score for each context, then combine
+                    # e.g. condition on specific levels of vars_others
+                    if dict_masks is None:
+                        # NOTE: confirmed this correct, by setting PLOT=True
+                        dict_masks = Cldist1.rsa_mask_context_split_levels_of_conj_var(vars_context, PLOT=False)
+                        
+                    dists = []
+                    for _, ma in dict_masks.items():
+                        vec1 = Cldist1.Xinput[(ma_ut & ma)].flatten()
+                        vec2 = Cldist2.Xinput[(ma_ut & ma)].flatten()
+                        
+                        if True: # Less noisy
+                            tau, _ = stats.kendalltau(vec1, vec2)
+                            dists.append(tau)
+                        else:
+                            dists.append(np.corrcoef(vec1, vec2)[0,1])
+                    distmat_corr = np.mean(dists)
+                else:
+                    # Just compare the distmats, without splitting by context.
+                    vec1 = Cldist1.Xinput[(ma_ut)].flatten()
+                    vec2 = Cldist2.Xinput[(ma_ut)].flatten()
+                    tau, _ = stats.kendalltau(vec1, vec2)
+                    distmat_corr = tau
+            else:
+                distmat_corr = None
+
+            # Store results.
+            if distmat_corr is not None:
+                res_distmat_corrs.append({
+                    "distmat_corr":distmat_corr,
+                    "bregion_1":row_i["bregion"],
+                    "event_1":row_i["event"],
+                    "time_1":row_i["time"],
+                    "bregion_2":row_j["bregion"],
+                    "event_2":row_j["event"],
+                    "time_2":row_j["time"],
+                })
+
+    dfres_corrs_btw_distmats = pd.DataFrame(res_distmat_corrs)
+    dfres_corrs_btw_distmats["bregions_same"] = [row["bregion_1"] == row["bregion_2"] for _, row in dfres_corrs_btw_distmats.iterrows()]
+    dfres_corrs_btw_distmats["events_same"] = [row["event_1"] == row["event_2"] for _, row in dfres_corrs_btw_distmats.iterrows()]
+    
+    ################### PLOTS
+    if DO_PLOTS and SAVEDIR_PLOTS is not None:
+        # (1) Heatmaps
+        from pythonlib.tools.pandastools import plot_subplots_heatmap
+        from pythonlib.tools.plottools import savefig
+        import seaborn as sns
+        from pythonlib.tools.snstools import rotateLabel
+        from pythonlib.tools.snstools import map_function_tofacet
+
+        list_event_1= sorted(dfres_corrs_btw_distmats["event_1"].unique().tolist())
+        list_event_2 = sorted(dfres_corrs_btw_distmats["event_2"].unique().tolist())
+
+        # ZLIMS = [0., 0.8]
+        ZLIMS = [0., None]
+        # Across event (same bregion)
+        for i, ev1 in enumerate(list_event_1):
+            for j, ev2 in enumerate(list_event_2):
+                if j>=i:
+                    dfthis = dfres_corrs_btw_distmats[
+                        (dfres_corrs_btw_distmats["event_1"] == ev1) & 
+                        (dfres_corrs_btw_distmats["event_2"] == ev2) & 
+                        (dfres_corrs_btw_distmats["bregions_same"] == True)].reset_index(drop=True)
+                    fig, _ = plot_subplots_heatmap(dfthis, "time_1", "time_2", 
+                                        "distmat_corr", "bregion_1", False, True,
+                                        ZLIMS=ZLIMS);
+                    path = f"{SAVEDIR_PLOTS}/heatmaps-ev1={ev1}-ev2={ev2}.pdf"
+                    savefig(fig, path)
+
+                    # (2) Timecourse plots (easier to see details)
+                    fig = sns.relplot(data=dfthis, x="time_2", y="distmat_corr", hue="time_1", 
+                                    col="bregion_1", col_wrap = 4, kind="line")
+                    rotateLabel(fig)
+                    map_function_tofacet(fig, lambda ax: ax.axhline(0, color="k", alpha=0.5))
+                    path = f"{SAVEDIR_PLOTS}/pointplotv1-ev1={ev1}-ev2={ev2}.pdf"
+                    savefig(fig, path)
+
+                    plt.close("all")
+
+        # (3) separate figure for each time_1
+        # Timecourse plots (easier to see details) --> one for each "from" time
+        for time_1 in dfres_corrs_btw_distmats["time_1"].unique().tolist():
+            for i, ev1 in enumerate(list_event_1):
+                for j, ev2 in enumerate(list_event_2):
+                    if j>=i:
+                        dfthis = dfres_corrs_btw_distmats[
+                            (dfres_corrs_btw_distmats["event_1"] == ev1) & 
+                            (dfres_corrs_btw_distmats["event_2"] == ev2) & 
+                            (dfres_corrs_btw_distmats["time_1"] > time_1-0.01) & (dfres_corrs_btw_distmats["time_1"] < time_1+0.01)].reset_index(drop=True)
+
+                        fig = sns.relplot(data=dfthis, x="time_2", y="distmat_corr", hue="bregion_2", 
+                                        col = "bregion_1", col_wrap = 4, kind="line")
+                        map_function_tofacet(fig, lambda ax: ax.axhline(0, color="k", alpha=0.5))
+                        rotateLabel(fig)
+                        path = f"{SAVEDIR_PLOTS}/pointplotv2-ev1={ev1}-ev2={ev2}-time1={time_1:.3f}.pdf"
+                        savefig(fig, path)
+
+                        plt.close("all")
+
+        # (4) Nice summary plot -- average over "from" time windows to get a single curve
+        event_start = "03_samp"
+        twind_start = (0.1, 0.3)
+
+        # Take average over all timecourses starting in the given time window.
+        for j, ev2 in enumerate(list_event_2):
+            dfthis = dfres_corrs_btw_distmats[
+                (dfres_corrs_btw_distmats["event_1"] == event_start) &
+                (dfres_corrs_btw_distmats["event_2"] == ev2) &
+                (dfres_corrs_btw_distmats["time_1"] >= twind_start[0]-0.001) &
+                (dfres_corrs_btw_distmats["time_1"] <= twind_start[1]+0.001)
+                ]
+            
+            fig = sns.relplot(data=dfthis, x="time_2", y="distmat_corr", col="bregion_1", hue="bregion_2",
+                                kind="line")
+            map_function_tofacet(fig, lambda ax: ax.axhline(0, color="k", alpha=0.5))
+            rotateLabel(fig)
+
+            path = f"{SAVEDIR_PLOTS}/pointplotagg_on_ev1={event_start}_t1={twind_start}-ev2={ev2}.pdf"
+            savefig(fig, path)
+
+            plt.close("all")
+
+        # Similar, but different view
+        dfthis = dfres_corrs_btw_distmats[
+            (dfres_corrs_btw_distmats["event_1"] == event_start) &
+            (dfres_corrs_btw_distmats["time_1"] >= twind_start[0]-0.001) &
+            (dfres_corrs_btw_distmats["time_1"] <= twind_start[1]+0.001) &
+            (dfres_corrs_btw_distmats["bregions_same"] == True)
+            ]
+
+        fig = sns.relplot(data=dfthis, x="time_2", y="distmat_corr", hue="event_2", col="bregion_1", 
+                        col_wrap = 8, kind="line")
+        map_function_tofacet(fig, lambda ax: ax.axhline(0, color="k", alpha=0.5))
+        rotateLabel(fig)
+
+        path = f"{SAVEDIR_PLOTS}/pointplotagg_on_ev1_v2={event_start}_t1={twind_start}.pdf"
+        savefig(fig, path)
+
+        plt.close("all")
+
+
+    return dfres_corrs_btw_distmats
+
+def euclidian_distance_plot_timedistmat_heatmaps(DFRES, SAVEDIR,
+        do_agg_over_vars=False, sort_order=None):
+    """
+    Plot heatmap of distance between conditions, one for each time bin.
+    PARAMS:
+    - DFRES, output of euclidian_distance_compute_trajectories_timedistmat
+    """
+    from pythonlib.tools.plottools import savefig
+    from pythonlib.cluster.clustclass import Clusters
+
+    # Sort by time
+    DFRES = DFRES.sort_values("time", axis=0)
+
+    # For each bregion and event, plot a series of RSA distmats one for each time bin.
+    for bregion in DFRES["bregion"].unique():
+        for event in DFRES["event"].unique():
+
+            dfthis = DFRES[
+                (DFRES["bregion"] == bregion) & 
+                (DFRES["event"] == event)
+                ]
+            
+            savedir = f"{SAVEDIR}/cldist_each_time/{bregion}-{event}"
+            os.makedirs(savedir, exist_ok=True)
+
+            print(bregion, event)
+            list_time = dfthis["time"].tolist()
+            list_Cldist = dfthis["Cldist"].tolist()
+            
+            list_Cldist_Agg = []
+            if do_agg_over_vars:
+                for i, (t, Cldist) in enumerate(zip(list_time, list_Cldist)):
+                    # Before plot take means over levels, or else plot is too large
+                    CldistAgg = Cldist.distsimmat_convert_distr_from_self()
+                    list_Cldist_Agg.append(CldistAgg)
+            else:
+                list_Cldist_Agg = list_Cldist
+
+            # Use same zlims for all plots
+            maxes = []
+            for i, (t, CldistAgg) in enumerate(zip(list_time, list_Cldist_Agg)):
+                maxes.append(np.max(CldistAgg.Xinput))
+            zlims = [0., max(maxes)]
+
+            # (1) Plot time series of heat maps
+            # Plot CLdist on each time
+
+            for i, (t, CldistAgg) in enumerate(zip(list_time, list_Cldist_Agg)):
+                # Make plot
+                fig, ax = CldistAgg.rsa_plot_heatmap(zlims=zlims, sort_order=sort_order)
+                savefig(fig, f"{savedir}/dist_heatmap-idx={i}-time={t:.2f}.pdf")
+            plt.close("all")
+
+            ### Plot average heatmap
+            # 1. Times <= 0
+            inds_this = [i for i, t in enumerate(list_time) if t<=0]
+            if len(inds_this)>0:
+                list_Cldist_Agg_this = [list_Cldist_Agg[i] for i in inds_this]
+                Xinpput_mean = np.mean(np.stack([Cldist.Xinput for Cldist in list_Cldist_Agg_this], axis=0), axis=0)
+                params = {
+                    "label_vars":list_Cldist_Agg_this[0].Params["label_vars"],
+                    "version_distance":list_Cldist_Agg_this[0].Params["version_distance"],
+                    "Clraw":None,
+                }
+                list_lab = list_Cldist_Agg_this[0].Labels
+                Cldist = Clusters(Xinpput_mean, list_lab, list_lab, ver="dist", params=params)
+                fig, _ = Cldist.rsa_plot_heatmap(zlims=zlims, sort_order=sort_order)
+                savefig(fig, f"{savedir}/dist_heatmap-MEAN-before_time_0.pdf")
+                plt.close("all")
+
+            # 1. Times > 0
+            inds_this = [i for i, t in enumerate(list_time) if t>0]
+            if len(inds_this)>0:
+                list_Cldist_Agg_this = [list_Cldist_Agg[i] for i in inds_this]
+                Xinpput_mean = np.mean(np.stack([Cldist.Xinput for Cldist in list_Cldist_Agg_this], axis=0), axis=0)
+                params = {
+                    "label_vars":list_Cldist_Agg_this[0].Params["label_vars"],
+                    "version_distance":list_Cldist_Agg_this[0].Params["version_distance"],
+                    "Clraw":None,
+                }
+                list_lab = list_Cldist_Agg_this[0].Labels
+                Cldist = Clusters(Xinpput_mean, list_lab, list_lab, ver="dist", params=params)
+                fig, _ = Cldist.rsa_plot_heatmap(zlims=zlims, sort_order=sort_order)
+                savefig(fig, f"{savedir}/dist_heatmap-MEAN-after_time_0.pdf")
+                plt.close("all")
+
+
+def euclidian_distance_compute_trajectories_timedistmat(PA, var, var_others, 
+                                        twind, tbin_dur, tbin_slice, savedir, 
+                                        context=None, filtdict=None,
+                                        PLOT_TRAJS=True, nmin_trials_per_lev=None,
+                                        NPCS_KEEP=None,
+                                        dim_red_method = "pca", superv_dpca_params=None,
+                                        ):
+    """
+    Helper to get dsitance matrix between trajectories, one for each time bin. 
+    This only uses a SINGLE var-var_others, since doing just one takes a long time, and the
+    downstream plotting functions all assume there's just one var...
+    """
+    DFRES = euclidian_distance_compute_trajectories(PA, [var], [var_others], twind, tbin_dur,
+                               tbin_slice, savedir, PLOT_TRAJS, False,
+                               nmin_trials_per_lev, [context], [filtdict], 
+                               None, NPCS_KEEP, 
+                               dim_red_method, superv_dpca_params, 
+                               RETURN_EACH_TIMES_CLDIST=True)
+    return DFRES
+
+
+def euclidian_distance_compute_trajectories(PA, LIST_VAR, LIST_VARS_OTHERS, twind, tbin_dur,
+                               tbin_slice, savedir, 
+                               PLOT_TRAJS=True, PLOT_HEATMAPS=False,
+                               nmin_trials_per_lev=None,
+                               LIST_CONTEXT=None, LIST_FILTDICT=None,
+                               LIST_PRUNE_MIN_N_LEVS=None,
+                               NPCS_KEEP=None,
+                               dim_red_method = "pca", superv_dpca_params=None,
+                               RETURN_EACH_TIMES_CLDIST=False,
+                               PLOT_CLEAN_VERSION = False,
+                               COMPUTE_EUCLIDIAN=True
+                               ):
+    """
+    Wrapper to compute all distances between levels of variables, with flecxible abilties for
+    controlling context. -- see within for details ...
+
+    :param PA: (chans, trials, times), where len(times) can be > 1.
+    :param LIST_VAR:
+    :param LIST_VARS_OTHERS:
+    :param PLOT:
+    :param PLOT_MASKS:
+    :param twind:
+    :param tbin_dur:
+    :param tbin_slice:
+    :param savedir:
+    :param SHUFFLE:
+    :param PLOT_STATE_SPACE:
+    :param nmin_trials_per_lev:
+    :param LIST_CONTEXT: list of dicts each dict has "same" and :"diff" keys, list of str vars, defining the context for the
+    matchging var and vars_others.
+    :return:
+    """
+    from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars
+    from pythonlib.cluster.clustclass import Clusters
+
+    PA = PA.copy()
+    assert NPCS_KEEP is not None, "coded onoy for this so far -0 forceing an npcs"
+
+    ######################## (1) CONSTRUCT A SINGLE SUBSPACE (that all subsequence plots and analyses will be performed on)
+    # Get specific params, based on how want to do dim reduction
+    METHOD = "basic"
+    if dim_red_method is None:
+        # Then use raw data
+        pca_reduce = False
+        extra_dimred_method = None
+    elif dim_red_method=="pca":
+        pca_reduce = True
+        extra_dimred_method = None
+    elif dim_red_method=="pca_umap":
+        # PCA --> UMAP
+        pca_reduce = True
+        extra_dimred_method = "umap"
+    elif dim_red_method=="umap":
+        # UMAP
+        pca_reduce = False
+        extra_dimred_method = "umap"
+    elif dim_red_method=="mds":
+        # MDS
+        pca_reduce = False
+        extra_dimred_method = "mds"
+    elif dim_red_method=="superv_dpca":
+        # Supervised, based on DPCA, find subspace for a given variable by doing PCA on the mean values.
+        superv_dpca_var = superv_dpca_params["superv_dpca_var"]
+        superv_dpca_vars_group = superv_dpca_params["superv_dpca_vars_group"]
+        superv_dpca_filtdict = superv_dpca_params["superv_dpca_filtdict"]
+        METHOD = "dpca"
+    else:
+        print(dim_red_method)
+        assert False
+
+    if METHOD=="basic":
+        # 1. Dim reduction
+        # - normalize - remove time-varying component
+        PA = PA.norm_subtract_trial_mean_each_timepoint()
+        
+        # - PCA
+        reshape_method = "chans_x_trials_x_times"
+        plot_pca_explained_var_path=f"{savedir}/pcaexp.pdf"
+        plot_loadings_path = f"{savedir}/pcaload.pdf"
+        umap_n_neighbors = 40
+        _, PAredu, _, _, _ = PA.dataextract_state_space_decode_flex(twind, tbin_dur, tbin_slice, reshape_method=reshape_method,
+                                                    pca_reduce=pca_reduce, plot_pca_explained_var_path=plot_pca_explained_var_path, 
+                                                    plot_loadings_path=plot_loadings_path, npcs_keep_force=NPCS_KEEP,
+                                                    extra_dimred_method=extra_dimred_method, umap_n_neighbors = umap_n_neighbors)    
+        n_pcs_keep_euclidian = PAredu.X.shape[1]
+
+    elif METHOD=="dpca":
+        # from neuralmonkey.classes.population import PopAnal
+        print("... dpca")
+
+        savedirthis = f"{savedir}/pca_construction"
+        os.makedirs(savedirthis, exist_ok=True)
+        PLOT_STEPS = False
+        reshape_method = "chans_x_trials_x_times"
+        _, PAredu, _, _, pca = PA.dataextract_pca_demixed_subspace(
+            superv_dpca_var, superv_dpca_vars_group, twind, tbin_dur, superv_dpca_filtdict, savedirthis,
+            n_min_per_lev_lev_others=nmin_trials_per_lev, PLOT_STEPS=PLOT_STEPS, reshape_method=reshape_method,
+            pca_tbin_slice=tbin_slice)
+
+        
+        if PAredu is None:
+            # Then no data...
+            return None
+        
+        # Save a version with full D, for state space
+        # PAredu_orig_dim = PAredu.copy()
+
+        # Figure out how many dimensions to keep (for euclidian).
+        n1 = pca["nclasses_of_var_pca"] # num classes of superv_dpca_var that exist. this is upper bound on dims.
+        n2 = PAredu.X.shape[1] # num classes to reach criterion for cumvar for pca.
+        n_pcs_keep_euclidian = min([n1, n2, NPCS_KEEP])
+        
+        PAredu = PAredu.slice_by_dim_indices_wrapper("chans", list(range(n_pcs_keep_euclidian)))
+
+        # # - prune data for euclidian
+        # Xredu = Xredu[:, :n_pcs_keep_euclidian]
+        # dflab = PAredu.Xlabels.copy()
+        # PAredu = PopAnal(Xredu.T[:, :, None], [0])  # (ndimskeep, ntrials, 1)
+        # PAredu.Xlabels = {dim:df.copy() for dim, df in dflab.items()}
+
+    else:
+        print(METHOD)
+        assert False    
+
+    ############################ (2) Euclidian and State space plots
+    if LIST_CONTEXT is not None:
+        assert len(LIST_CONTEXT)==len(LIST_VAR)
+    else:
+        LIST_CONTEXT = [None for _ in range(len(LIST_VAR))]
+
+    if LIST_FILTDICT is not None:
+        assert len(LIST_FILTDICT)==len(LIST_VAR)
+    else:
+        LIST_FILTDICT = [None for _ in range(len(LIST_VAR))]
+
+    if LIST_PRUNE_MIN_N_LEVS is not None:
+        assert len(LIST_PRUNE_MIN_N_LEVS)==len(LIST_VAR)
+    else:
+        LIST_PRUNE_MIN_N_LEVS = [2 for _ in range(len(LIST_VAR))]
+
+    ############ SCore, for each variable
+    RES = []
+    vars_already_state_space_plotted = []
+    var_varothers_already_plotted = []
+    heatmaps_already_plotted = []
+    for i_var, (var, var_others, context, filtdict, prune_min_n_levs) in enumerate(zip(LIST_VAR, LIST_VARS_OTHERS, LIST_CONTEXT, LIST_FILTDICT, LIST_PRUNE_MIN_N_LEVS)):
+        print("RUNNING: ", i_var,  var, " -- ", var_others)
+
+        # Copy pa for this
+        pa = PAredu.copy()
+
+        ####################### Cleanup PA
+        var_for_name = var
+        if isinstance(var, (tuple, list)):
+            pa.Xlabels["trials"] = append_col_with_grp_index(pa.Xlabels["trials"], var, "_tmp")
+            # pa_orig_dim.Xlabels["trials"] = append_col_with_grp_index(pa_orig_dim.Xlabels["trials"], var, "_tmp")
+            var = "_tmp"
+
+        if filtdict is not None:
+            for _var, _levs in filtdict.items():
+                print("len pa bnefore filt this values (var, levs): ", _var, _levs)
+                pa = pa.slice_by_labels("trials", _var, _levs, verbose=True)
+                # pa_orig_dim = pa_orig_dim.slice_by_labels("trials", _var, _levs)
+
+        if nmin_trials_per_lev is not None:
+            prune_min_n_trials = nmin_trials_per_lev
+        else:
+            prune_min_n_trials = N_MIN_TRIALS
+
+        if (var, tuple(var_others)) not in heatmaps_already_plotted:
+            plot_counts_heatmap_savepath = f"{savedir}/{i_var}_counts_heatmap-var={var_for_name}-ovar={'|'.join(var_others)}.pdf"
+            heatmaps_already_plotted.append((var, tuple(var_others)))
+        else:
+            plot_counts_heatmap_savepath = None
+
+        # pa_before_prune = pa.copy()
+        pa, _, _= pa.slice_extract_with_levels_of_conjunction_vars(var, var_others, prune_min_n_trials, prune_min_n_levs,
+                                                         plot_counts_heatmap_savepath=plot_counts_heatmap_savepath)
+        if pa is None:
+            print("all data pruned!!")
+            continue
+
+        ##############################       
+        if COMPUTE_EUCLIDIAN: 
+            # Two options:
+            if RETURN_EACH_TIMES_CLDIST:
+                # Collect Cldists, one for each time bin
+                version_distance = "euclidian_unbiased"
+                print("... dataextract_as_distance_matrix_clusters_flex")
+                LIST_CLDIST, LIST_TIME = pa.dataextract_as_distance_matrix_clusters_flex([var] + var_others, 
+                                                                                        version_distance=version_distance,
+                                                                                        accurately_estimate_diagonal=False)
+                
+                # Collect
+                for cldist, time in zip(LIST_CLDIST, LIST_TIME):
+                    RES.append({
+                        "var":var,
+                        "var_others":tuple(var_others),
+                        "shuffled":False,
+                        "shuffled_iter":-1,
+                        "index_var":i_var,
+                        "Cldist":cldist,
+                        "time":time  
+                    })
+            else:
+                # Get a single score taking mean over all time (entire traj)
+                # 3. Compute euclidian
+                savedir_heatmaps = f"{savedir}/heatmap_average.pdf"
+                dir_to_print_lab_each_mask = f"{savedir}/final_labels_data_pairs_in_masks-{i_var}-var={var}-ovar={var_others}"
+                os.makedirs(dir_to_print_lab_each_mask, exist_ok=True)
+                res = euclidian_distance_compute_trajectories_single(pa, var, var_others, version_distance="euclidian",
+                                                                    context_input=context, PLOT_HEATMAPS=PLOT_HEATMAPS, 
+                                                                    savedir_heatmaps=savedir_heatmaps,
+                                                                    dir_to_print_lab_each_mask=dir_to_print_lab_each_mask)
+                for r in res:
+                    r["shuffled"] = False
+                    r["shuffled_iter"] = -1
+                    r["index_var"] = i_var
+
+                RES.extend(res)
+
+        ##############################
+        # 2. Plot trajectories
+        if PLOT_TRAJS:
+            pathis = pa # Use the pruned data for plots.
+            # pathis = PAredu
+            
+            if len(LIST_VAR)<15:
+                if PAredu.X.shape[0]==3:
+                    list_dims = [(0,1), (1,2)]
+                elif PAredu.X.shape[0]>3:
+                    list_dims = [(0,1), (2,3)]
+                else:
+                    list_dims = [(0,1)]
+            else:
+                # Too slow, just do 1st 2 d
+                list_dims = [(0,1)]
+
+            time_bin_size = 0.05
+            # savedir_this = f"{savedir}/trajectories"
+            # os.makedirs(savedir_this, exist_ok=True)
+            from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_WRAPPER
+
+            if (var, var_others) not in var_varothers_already_plotted:
+                var_varothers_already_plotted.append((var, tuple(var_others)))
+                
+                if PLOT_CLEAN_VERSION == False:
+                    trajgood_plot_colorby_splotby_WRAPPER(pathis.X, pathis.Times, pathis.Xlabels["trials"], var, 
+                                                        savedir, var_others, list_dims, 
+                                                        time_bin_size=time_bin_size, save_suffix=i_var)
+                    plt.close("all")
+                else:
+                    # Plot a "clean" version (Paper version), including with different x and y lims, so can compare
+                    # across plots
+                    
+                    ssuff = f"{i_var}"
+                    trajgood_plot_colorby_splotby_WRAPPER(pathis.X, pathis.Times, pathis.Xlabels["trials"], var, 
+                                                        savedir, var_others, list_dims, 
+                                                        time_bin_size=None, save_suffix=ssuff,
+                                                        plot_dots_on_traj=False)
+                    
+                    for xlim_force in [
+                        [-3.2, 3.2],
+                        [-2.4, 2.4],
+                        ]:
+                        for ylim_force in [
+                            [-1.5, 1.5],
+                            [-2, 2],
+                            [-2.5, 2.5],
+                            ]:
+                            ssuff = f"{i_var}--xylim={xlim_force}|{ylim_force}"
+                            trajgood_plot_colorby_splotby_WRAPPER(pathis.X, pathis.Times, pathis.Xlabels["trials"], var, 
+                                                                savedir, var_others, list_dims, 
+                                                                time_bin_size=None, save_suffix=ssuff,
+                                                                plot_dots_on_traj=False,
+                                                                xlim_force = xlim_force, ylim_force=ylim_force)
+
+
+
+            if var not in vars_already_state_space_plotted:
+                vars_already_state_space_plotted.append(var)
+                if PLOT_CLEAN_VERSION:
+                    # Plot a "clean" version (Paper version), including with different x and y lims, so can compare
+                    # across plots
+                    trajgood_plot_colorby_splotby_WRAPPER(pathis.X, pathis.Times, pathis.Xlabels["trials"], var, 
+                                                        savedir, None, list_dims, 
+                                                        time_bin_size=None, save_suffix=i_var,
+                                                        plot_dots_on_traj=False)
+
+                    for xlim_force in [
+                        [-3.2, 3.2],
+                        [-2.4, 2.4],
+                        ]:
+                        for ylim_force in [
+                            [-1.5, 1.5],
+                            [-2, 2],
+                            [-2.5, 2.5],
+                            ]:
+                            ssuff = f"{i_var}--xylim={xlim_force}|{ylim_force}"
+                            trajgood_plot_colorby_splotby_WRAPPER(pathis.X, pathis.Times, pathis.Xlabels["trials"], var, 
+                                                                savedir, None, list_dims, 
+                                                                time_bin_size=None, save_suffix=ssuff,
+                                                                plot_dots_on_traj=False,
+                                                                xlim_force = xlim_force, ylim_force=ylim_force)
+                else:
+                    trajgood_plot_colorby_splotby_WRAPPER(pathis.X, pathis.Times, pathis.Xlabels["trials"], var, 
+                                                        savedir, None, list_dims, 
+                                                        time_bin_size=time_bin_size, save_suffix=i_var)
+                    
+                plt.close("all")
+            
+            # Also plot timecourse
+            from neuralmonkey.analyses.state_space_good import trajgood_construct_df_from_raw, trajgood_plot_colorby_splotby_timeseries
+            plot_trials_n = 5
+            df = trajgood_construct_df_from_raw(pathis.X, pathis.Times, pathis.Xlabels["trials"], [var] + var_others)
+            
+            for dim in [0,1]:
+            
+                # - (i) combined, plotting means.
+                fig, _ = trajgood_plot_colorby_splotby_timeseries(df, var, var_others, dim=dim,
+                                                                plot_trials_n=plot_trials_n, 
+                                                                SUBPLOT_OPTION="split_levs")
+                path = f"{savedir}/TIMECOURSEsplit-color={var}-sub={var_others}-dim={dim}-suff={i_var}.pdf"
+                print("Saving ... ", path)
+                savefig(fig, path)
+
+                # - (2) split
+                fig, _ = trajgood_plot_colorby_splotby_timeseries(df, var, var_others, dim=dim, plot_trials_n=plot_trials_n,
+                                                        plot_trials=False, SUBPLOT_OPTION="combine_levs")
+                path = f"{savedir}/TIMECOURSEcomb-color={var}-sub={var_others}-dim={dim}-suff={i_var}.pdf"
+                print("Saving ... ", path)
+                savefig(fig, path)
+                
+                plt.close("all")
+
+
+    dfres = pd.DataFrame(RES)
+    if len(dfres)>0:
+        dfres["twind_analy"] = [twind for _ in range(len(dfres))]
+    plt.close("all")
+
+    return dfres
+
+
+def euclidian_distance_compute_trajectories_single(PA, var_effect, vars_others, context_input=None,
+                                                   version_distance="euclidian",
+                                                PLOT_HEATMAPS=False, savedir_heatmaps=None, PLOT_MASKS=False,
+                                                get_reverse_also=True, dir_to_print_lab_each_mask=None):
+    """
+    Compute distance between trajectories (each pair of trajs (i.e, triualsd) returns a single scalar distances, which
+    is the average distance over time)
+
+    """
+    from pythonlib.cluster.clustclass import Clusters
+    import numpy as np
+
+    # # 3. Compute euclidian
+    # # For each timepoint, compute
+    # # - 
+    # if False:
+    #     tbin = 0.05
+    #     pa = PAredu.agg_by_time_windows_binned(tbin, SLIDE=tbin)
+    
+    # Methoid 1 -- hacky for loop thru all time
+    # - NOTE: this is actually same speed as other version
+
+    if version_distance == "euclidian":
+        dat_level = "pts"
+    elif version_distance == "euclidian_unbiased":
+        dat_level = "distr"
+    else:
+        assert False, "code it"
+
+    if get_reverse_also:
+        LIST_REVERSE = [False, True]
+    else:
+        LIST_REVERSE = [False]
+
+    list_res = []
+    for DO_REVERSE_CONTROL in LIST_REVERSE:
+        if DO_REVERSE_CONTROL:
+            niter = 3
+        else:
+            niter = 1
+
+        for _i in range(niter):
+
+            ### COMPUTE TRAJECTORY DISTANCES
+            # Collect Cldists, one for each time bin
+            # Collect 
+            if DO_REVERSE_CONTROL:
+                LIST_CLDIST, LIST_TIME = PA.dataextract_as_distance_matrix_clusters_flex_reversed([var_effect] + vars_others, 
+                                                                                            version_distance=version_distance)
+            else:
+                LIST_CLDIST, LIST_TIME = PA.dataextract_as_distance_matrix_clusters_flex([var_effect] + vars_others, 
+                                                                                            version_distance=version_distance)
+            
+            ### Take mean distance over time, and construct a single Clusters
+            Xinpput_mean = np.mean(np.stack([Cldist.Xinput for Cldist in LIST_CLDIST], axis=0), axis=0)
+            params = {
+                "label_vars":LIST_CLDIST[0].Params["label_vars"],
+                "version_distance":LIST_CLDIST[0].Params["version_distance"],
+                "Clraw":None,
+            }
+            list_lab = LIST_CLDIST[0].Labels
+            Cldist = Clusters(Xinpput_mean, list_lab, list_lab, ver="dist", params=params)
+
+            if PLOT_HEATMAPS and savedir_heatmaps is not None:
+                fig, _ = Cldist.rsa_plot_heatmap()
+                if fig is not None:
+                    savefig(fig, f"{savedir_heatmaps}/heatmap_average.pdf")
+                    plt.close("all")
+            
+            ### Compute scores
+            # dir_to_print_lab_each_mask = # good to always save the final data pairs.
+            res, DIST_NULL_50, DIST_NULL_95, DIST_NULL_98 = Cldist.rsa_distmat_score_same_diff_by_context(var_effect, vars_others, 
+                                                                                        context_input, dat_level, 
+                                                                                        PLOT_MASKS,
+                                                                                        dir_to_print_lab_each_mask=dir_to_print_lab_each_mask)
+            for r in res:
+                r["DIST_NULL_98"] = DIST_NULL_98
+                r["shuffled_time"] = DO_REVERSE_CONTROL
+                r["shuffled_time_iter"] = _i
+                
+            list_res.extend(res)
+
+    ##### Version 2 -- quicker, treat trajectoreis as single datapts [IGNORE, working, but decided above is better, intergartes with my code better]
+
+    # DFallpa
+    # var_effect = "shape"
+    # vars_others = ["gridloc"]
+
+    # from pythonlib.tools.pandastools import grouping_append_and_return_inner_items
+
+    # PA = DFallpa["pa"].values[2]
+    # bregion = DFallpa["bregion"].values[2]
+    # print(bregion)
+
+    # # Do dim reductions
+
+    # # - normalize - remove time-varying component
+    # PA = PA.norm_subtract_trial_mean_each_timepoint()
+
+    # SAVEDIR = f"/tmp/PCA_time_v2/{bregion}-var={var_effect}-var_others={'--'.join(vars_others)}"
+    # os.makedirs(SAVEDIR, exist_ok=True)
+
+    # reshape_method = "chans_x_trials_x_times"
+
+    # # Just PCA
+    # plot_pca_explained_var_path=f"{SAVEDIR}/pcaexp.pdf"
+    # plot_loadings_path = f"{SAVEDIR}/pcaload.pdf"
+
+    # pca_reduce = True
+    # extra_dimred_method = None
+    # umap_n_neighbors = 40
+    # Xredu, PAredu, PAslice, pca, _ = PA.dataextract_state_space_decode_flex(twind, tbin_dur, tbin_slice, reshape_method=reshape_method,
+    #                                             pca_reduce=pca_reduce, plot_pca_explained_var_path=plot_pca_explained_var_path, plot_loadings_path=plot_loadings_path, npcs_keep_force=NPCS_KEEP,
+    #                                             extra_dimred_method=extra_dimred_method, umap_n_neighbors = umap_n_neighbors)    
+    # # (compare to dPCA?)
+
+    # # if False:
+    # ##############################
+    # # 2. Plot trajectories
+    # from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_WRAPPER
+    # savedir = f"{SAVEDIR}/trajectories"
+    # os.makedirs(savedir, exist_ok=True)
+    # var_color = var_effect
+    # vars_subplot = vars_others
+    # list_dims = [(0,1), (2,3)]
+    # time_bin_size = 0.05
+
+    # trajgood_plot_colorby_splotby_WRAPPER(PAredu.X, PAredu.Times, PAredu.Xlabels["trials"], var_color, savedir, vars_subplot, list_dims,
+    #                                         time_bin_size=time_bin_size, save_suffix=bregion)
+
+
+    # # Get data
+    # dflab = pa.Xlabels["trials"]
+    # X = pa.X
+    # assert len(dflab)==X.shape[1]
+
+    # # X = self.Xinput
+    # label_vars = [var]+var_others
+
+    # # Get grouping of labels
+    # groupdict = grouping_append_and_return_inner_items(dflab, label_vars)
+
+    # # Convert to list, which can then pass into distmat constructor
+    # list_X = []
+    # list_lab = []
+    # list_exclude = []
+    # for i, (grp, inds) in enumerate(groupdict.items()):
+    #     print(grp, len(inds), X[:, inds, :].shape)
+    #     list_X.append(X[:, inds, :])
+    #     list_lab.append(grp)
+        
+    # # get pairwise distances
+
+    # # - distance function
+    # from pythonlib.tools.distfunctools import euclidian_unbiased, distmat_construct_wrapper, euclidian
+
+    # def euclidian_unbiased_over_time(x1, x2):
+    #     """
+    #     Gets distance at each timepoint, and averages them
+    #     :param x1: (dims, ndat_1, ntimes) 
+    #     :param x2: (dims, ndat_2, ntimes)
+    #     :return: scalar distance,  
+    #     """
+    #     import numpy as np
+    #     assert x1.shape[2] == x2.shape[2]
+    #     ntimes = x1.shape[2]
+        
+    #     list_d = []
+    #     for i_time in range(ntimes):
+    #         x1_slice = x1[:, :, i_time]
+    #         x2_slice = x2[:, :, i_time]
+    #         list_d.append(euclidian_unbiased(x1_slice.T, x2_slice.T))
+        
+    #     return np.mean(list_d)
+        
+    # accurately_estimate_diagonal = False
+
+    # D = distmat_construct_wrapper(list_X, list_X, euclidian_unbiased_over_time,
+    #                             accurately_estimate_diagonal=accurately_estimate_diagonal)
+
+    # # Construct Cl
+
+    # params = {
+    #     "version_distance":None,
+    #     "Clraw":None,
+    # }
+    # Cldist = Clusters(D, list_lab, list_lab, ver="dist", params=params)
+
+
+    # Cldist.rsa_plot_heatmap()
+
+
+    return list_res
 
 
 def euclidian_distance_compute_AnBmCk_endpoint(PAredu, SAVEDIR):
