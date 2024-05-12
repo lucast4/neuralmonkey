@@ -7842,21 +7842,21 @@ class Session(object):
         - list_trials, list of indices into self. will plot them in order, from bottom to top
         """
 
-        if plot_rasters:
-            list_align_time = []
-            for i, trial in enumerate(list_trials):
-                
-                # get time of this event (first instance)
-                if alignto:
-                    timesthis = self.events_get_time_helper(alignto, trial) 
-                    # if long, then take the first one
-                    assert len(timesthis)>0
-                    alignto_time = timesthis[0]
-                else:
-                    alignto_time = None
+        list_align_time = []
+        for i, trial in enumerate(list_trials):
+            
+            # get time of this event (first instance)
+            if alignto:
+                timesthis = self.events_get_time_helper(alignto, trial) 
+                # if long, then take the first one
+                assert len(timesthis)>0
+                alignto_time = timesthis[0]
+            else:
+                alignto_time = None
 
-                list_align_time.append(alignto_time)
+            list_align_time.append(alignto_time)
                 
+            if plot_rasters: # THis hould be independento f overlay_trial_egents, since latter I use for preprocessing, to make plots of events.
                 # Rasters
                 # rs, chan = self.convert_site_to_rschan(site)
                 D = self.datall_TDT_KS_slice_single_bysite(site, trial)
@@ -7865,12 +7865,12 @@ class Session(object):
                 self._plot_raster_line(ax, spikes, i, alignto_time=alignto_time, 
                     linelengths=raster_linelengths, alpha=alpha_raster)
 
-            if overlay_trial_events:
-                self.plotmod_overlay_trial_events_mult(ax, list_trials, list_align_time,
-                    ylabel_trials, xmin=xmin, xmax=xmax, overlay_strokes=overlay_strokes)
+        if overlay_trial_events:
+            self.plotmod_overlay_trial_events_mult(ax, list_trials, list_align_time,
+                ylabel_trials, xmin=xmin, xmax=xmax, overlay_strokes=overlay_strokes)
         
-            if site is not None:
-                ax.set_title(self.sitegetter_summarytext(site)) 
+        if site is not None:
+            ax.set_title(self.sitegetter_summarytext(site)) 
 
 
     def _plot_raster_create_figure_blank(self, duration, n_raster_lines, n_subplot_rows=1,
