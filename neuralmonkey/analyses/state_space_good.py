@@ -2403,7 +2403,6 @@ def euclidian_distance_compute(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT_MASKS,
     heatmaps_already_plotted = []
     for i_var, (var, var_others, context, filtdict, prune_min_n_levs) in enumerate(zip(LIST_VAR, LIST_VARS_OTHERS, LIST_CONTEXT, LIST_FILTDICT, LIST_PRUNE_MIN_N_LEVS)):
         print("RUNNING: ", i_var,  var, " -- ", var_others)
-
         # Copy pa for this
         pa = PAredu.copy()
         # pa_orig_dim = PAredu_orig_dim.copy()
@@ -2448,7 +2447,6 @@ def euclidian_distance_compute(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT_MASKS,
         # # Only keep the indices in dfout
         # print("  Pruning for this var adn conjunction. Original length:", pa.X.shape[1], ", pruned length:", len(dfout))
         # pa = pa.slice_by_dim_indices_wrapper("trials", dfout["_index"].tolist(), True)
-
         if nmin_trials_per_lev is not None:
             prune_min_n_trials = nmin_trials_per_lev
         else:
@@ -2473,7 +2471,6 @@ def euclidian_distance_compute(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT_MASKS,
             chan = pa.Chans[0]
             pa.plotwrapper_smoothed_fr_split_by_label("trials", var, ax, chan=chan)
             plt.close("all")
-
         if COMPUTE_EUCLIDIAN:
             from pythonlib.tools.listtools import stringify_list
 
@@ -2491,6 +2488,7 @@ def euclidian_distance_compute(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT_MASKS,
                                                           version_distance=version_distance,
                                                           AGG_BEFORE_DIST=AGG_BEFORE_DIST, context_input=context,
                                                           plot_mask_path=plot_mask_path)
+            print("DIST_NULL_50", DIST_NULL_50)
             for r in res:
                 r["shuffled"] = False
                 r["shuffled_iter"] = -1
@@ -2579,7 +2577,7 @@ def euclidian_distance_compute(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT_MASKS,
             plt.close("all")
 
     dfres = pd.DataFrame(RES)
-    if COMPUTE_EUCLIDIAN:
+    if COMPUTE_EUCLIDIAN and len(dfres)>0:
         # Get score normalized against global distance
         dfres["DIST_NULL_50"] = DIST_NULL_50
         dfres["DIST_NULL_95"] = DIST_NULL_95
@@ -2656,15 +2654,15 @@ def euclidian_distance_compute_score_single(pa, var, var_others, PLOT_RSA_HEATMA
 
     assert pa.X.shape[2]==1, "must be scalar"
 
-    if AGG_BEFORE_DIST:
-        # Agg, then compute distances between means
-        # 1. agg before computing distances (quicker)
-        pa = pa.slice_and_agg_wrapper("trials", [var]+var_others)
-        assert version_distance in ["euclidian"]
-    else:
-        # Then compute distance between datapts, and then agg distances
-        pa = pa
-        assert version_distance in ["euclidian_unbiased"]
+    # if AGG_BEFORE_DIST:
+    #     # Agg, then compute distances between means
+    #     # 1. agg before computing distances (quicker)
+    #     pa = pa.slice_and_agg_wrapper("trials", [var]+var_others)
+    #     assert version_distance in ["euclidian"]
+    # else:
+    #     # Then compute distance between datapts, and then agg distances
+    #     pa = pa
+    #     assert version_distance in ["euclidian_unbiased"]
 
     # Create clusters
     # dflab = pa.Xlabels["trials"]
