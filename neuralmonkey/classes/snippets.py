@@ -7157,6 +7157,12 @@ class Snippets(object):
                 list_sn = self._session_extract_all()
                 Dall = concatDatasets([sn.Datasetbeh for sn in list_sn])
 
+                if Dall.TokensStrokesBeh is None:
+                    for sn in list_sn:
+                        print(sn.Datasetbeh.TokensStrokesBeh)
+                    print("If print is not None, then this failed in concatDataset")
+                    assert False
+                    
                 # Preprocess dataset
                 if False:
                     # No need, since these datasets have each already been preprocessed...

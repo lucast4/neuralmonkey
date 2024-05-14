@@ -48,7 +48,7 @@ MAP_COMBINED_REGION_TO_REGION = {k:tuple(v) for k, v in MAP_COMBINED_REGION_TO_R
 
 # SMFR_SIGMA = 0.025
 # SMFR_SIGMA = 0.040 # 4/29/23
-SMFR_SIGMA = 0.020 # 4/20/24, # since you can always smoother further later on.
+_SMFR_SIGMA = 0.025 # 4/20/24, # since you can always smoother further later on.
 SMFR_TIMEBIN = 0.01
 
 PRE_DUR_TRIAL = 1.
@@ -123,7 +123,7 @@ DATASETBEH_CACHED_USE_BEHTOUCH = True
 def load_mult_session_helper(DATE, animal, dataset_beh_expt=None, expt = "*", 
     MINIMAL_LOADING=True,
     units_metadat_fail_if_no_exist=False,
-    spikes_version="kilosort_if_exists"):
+    spikes_version="kilosort_if_exists", fr_sm_std=None):
     """ Hacky, iterates over range(10) sessions, concatenations into a single MultSessions
     for this date.
     """
@@ -151,7 +151,7 @@ def load_mult_session_helper(DATE, animal, dataset_beh_expt=None, expt = "*",
         SN = load_session_helper(DATE, dataset_beh_expt, rec_session, animal, expt,
             MINIMAL_LOADING=MINIMAL_LOADING,
             units_metadat_fail_if_no_exist=units_metadat_fail_if_no_exist,
-            spikes_version=spikes_version)
+            spikes_version=spikes_version, fr_sm_std=fr_sm_std)
         SNlist.append(SN)
         print("Extracted successfully for session: ", rec_session)
     assert len(SNlist)>0, "did not find any neural sessions..."
@@ -168,7 +168,8 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
     ACTUALLY_BAREBONES_LOADING = False,
     units_metadat_fail_if_no_exist=False,
     do_if_spikes_incomplete="ignore",
-    spikes_version="kilosort_if_exists"):
+    spikes_version="kilosort_if_exists",
+    fr_sm_std=None):
     """ Load a single recording session.
     PARAMS:
     - DATE, str, "yymmdd"
@@ -262,7 +263,7 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
             units_metadat_fail_if_no_exist=units_metadat_fail_if_no_exist,
             do_if_spikes_incomplete=do_if_spikes_incomplete,
             ACTUALLY_BAREBONES_LOADING=ACTUALLY_BAREBONES_LOADING,
-            spikes_version=spikes_version)
+            spikes_version=spikes_version, fr_sm_std=fr_sm_std)
     except DataMisalignError as err:
         if ALLOW_RETRY:
             print("FAILED loading session:", DATE, rec_session)
@@ -281,7 +282,7 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
                 units_metadat_fail_if_no_exist=units_metadat_fail_if_no_exist,
                 do_if_spikes_incomplete=do_if_spikes_incomplete,
                 ACTUALLY_BAREBONES_LOADING=ACTUALLY_BAREBONES_LOADING,
-                spikes_version=spikes_version)
+                spikes_version=spikes_version, fr_sm_std=fr_sm_std)
         else:
             raise err
     except Exception as err:
@@ -323,7 +324,8 @@ class Session(object):
             ACTUALLY_BAREBONES_LOADING = False,
             units_metadat_fail_if_no_exist=False,
             do_if_spikes_incomplete="ignore",
-            spikes_version="kilosort_if_exists"):
+            spikes_version="kilosort_if_exists",
+            fr_sm_std=None):
         """
         PARAMS:
         - datestr, string, YYMMDD, e.g, "220609"
@@ -686,6 +688,12 @@ class Session(object):
         # Do it here so that dont inadvertantly cache data for the wrong spikes version.
         self.SPIKES_VERSION=spikes_version
         self._SPIKES_VERSION_INPUTED = spikes_version
+
+        if fr_sm_std is not None:
+            assert fr_sm_std>0. and fr_sm_std<0.1, "mistake? this is unexpted window size"
+            self.SMFR_SIGMA = fr_sm_std
+        else:
+            self.SMFR_SIGMA = _SMFR_SIGMA
 
     ####################### PREPROCESS THINGS
     def _datasetbeh_remove_neural_trials_missing_beh(self):
@@ -3303,6 +3311,14 @@ class Session(object):
         trials_all = self.get_trials_list(False, False)
         trials_exist_in_ml2 = self.get_trials_list(False, True)
 
+        if False: # Tried this hacky, but still failed... (for loading and saving locally).
+            if (int(self.Date))==220610 and self.RecSession==0 and self.Animal=="Pancho":
+                # HACKY - I restarted ML2 after around 40 trails, but kept recording in. Need
+                # to throw out those trials...
+                if all([t in trials_all for t in trials_exist_in_ml2]):
+                    print("_beh_validate_trial_number passed!!")
+                return None
+
         if not trials_all==trials_exist_in_ml2:
             # check whether this session is allowed to fail this.
             from ..utils.monkeylogic import _load_sessions_corrupted
@@ -3313,10 +3329,10 @@ class Session(object):
                 print("_beh_validate_trial_number failed, but OK becuase is expected!!")
             else:
                 print("**&*&**")
-                print(trials_all)
-                print(trials_exist_in_ml2)
-                print([t for t in trials_all if t not in trials_exist_in_ml2])
-                print([t for t in trials_exist_in_ml2 if t not in trials_all])
+                print("trials in neural data:", trials_all)
+                print("trials_exist_in_ml2:", trials_exist_in_ml2)
+                print("neural trials that miss beh data:", [t for t in trials_all if t not in trials_exist_in_ml2])
+                print("beh trials that miss neural data:", [t for t in trials_exist_in_ml2 if t not in trials_all])
                 self.print_summarize_expt_params()
                 print("_beh_validate_trial_number failed!!")
                 assert False, "there exist neural trials which are not succesuflly matched to beh trial"
@@ -3480,7 +3496,7 @@ class Session(object):
 
         def _summarize():
             fd, _ = self.beh_get_fd_trial(0)
-            print("* n trials: ", len(self.get_trials_list()), len(mkl.getIndsTrials(fd)))
+            print("* n trials in ml2 fd: ", len(self.get_trials_list()), len(mkl.getIndsTrials(fd)))
             print("self.BehTrialMapList", self.BehTrialMapList)
             print("self.BehTrialMapListGood", self.BehTrialMapListGood)
             print(lagshift)
@@ -3774,7 +3790,7 @@ class Session(object):
             dict_sites_TDT[name] = list(range(1+32*i, 1+32*(i+1)))
 
         ########################### ANIMAL-SPECIFIC THINGS
-        if self.Animal=="Diego":
+        if self.Animal=="Diego":    
             # dlPFCp is severed.
             dict_sites_TDT["dlPFC_p"] = []
 
@@ -6830,7 +6846,7 @@ class Session(object):
 
     def elephant_spiketrain_to_smoothedfr(self, spike_times, 
         time_on, time_off, 
-        gaussian_sigma = SMFR_SIGMA, # changed to 0.025 on 4/3/23. ,
+        gaussian_sigma = None, # changed to 0.025 on 4/3/23. ,
         sampling_period=SMFR_TIMEBIN):
         """
         Convert spiketrain to smoothed fr
@@ -6846,6 +6862,9 @@ class Session(object):
         from quantities import s
         from neo.core import SpikeTrain
 
+        if gaussian_sigma is None:
+            gaussian_sigma = self.SMFR_SIGMA
+
         spiketrain = SpikeTrain(spike_times*s, t_stop=time_off, t_start=time_on)
 
         frate = instantaneous_rate(spiketrain, sampling_period=sampling_period*s, 
@@ -6857,7 +6876,7 @@ class Session(object):
             # gaussian_sigma = 0.1, 
             # gaussian_sigma = 0.025, # changed to 0.025 on 4/3/23. 
             # sampling_period=0.005, # changed to 0.005 from 0.01 on 4/18/23.
-            gaussian_sigma = SMFR_SIGMA, # made global on 4/23
+            gaussian_sigma = None, # made global on 4/23
             sampling_period = SMFR_TIMEBIN, # made global on 4/23
             print_shape_confirmation=False,
             clean_chans=True, overwrite=False,
@@ -6882,6 +6901,9 @@ class Session(object):
         from elephant.statistics import time_histogram, instantaneous_rate,mean_firing_rate
         from quantities import s
         from neuralmonkey.classes.population import PopAnal
+
+        if gaussian_sigma is None:
+            gaussian_sigma = self.SMFR_SIGMA
 
         if trial not in self.PopAnalDict.keys() or overwrite==True:
             # Get all spike trains for a trial
@@ -7369,6 +7391,11 @@ class Session(object):
 
             trials = list(range(len(self.TrialsOffset)))
 
+            ############# VERY HACKY,
+            # if (int(self.Date))==220609 and self.RecSession==0 and self.Animal=="Pancho":
+            #     neural_trials_missing_beh = [858, 859, 860, 861, 862, 863, 864, 865, 866, 867]
+            #     trials = [t for t in trials if t not in neural_trials_missing_beh]
+
             if only_if_in_dataset:
                 # SHould do this first, since if this trial is not in dataset then it will fail only_if_ml2_fixation_success
                 trials = [t for t in trials if self.datasetbeh_trial_to_datidx(t) is not None]
@@ -7815,21 +7842,21 @@ class Session(object):
         - list_trials, list of indices into self. will plot them in order, from bottom to top
         """
 
-        if plot_rasters:
-            list_align_time = []
-            for i, trial in enumerate(list_trials):
-                
-                # get time of this event (first instance)
-                if alignto:
-                    timesthis = self.events_get_time_helper(alignto, trial) 
-                    # if long, then take the first one
-                    assert len(timesthis)>0
-                    alignto_time = timesthis[0]
-                else:
-                    alignto_time = None
+        list_align_time = []
+        for i, trial in enumerate(list_trials):
+            
+            # get time of this event (first instance)
+            if alignto:
+                timesthis = self.events_get_time_helper(alignto, trial) 
+                # if long, then take the first one
+                assert len(timesthis)>0
+                alignto_time = timesthis[0]
+            else:
+                alignto_time = None
 
-                list_align_time.append(alignto_time)
+            list_align_time.append(alignto_time)
                 
+            if plot_rasters: # THis hould be independento f overlay_trial_egents, since latter I use for preprocessing, to make plots of events.
                 # Rasters
                 # rs, chan = self.convert_site_to_rschan(site)
                 D = self.datall_TDT_KS_slice_single_bysite(site, trial)
@@ -7838,12 +7865,12 @@ class Session(object):
                 self._plot_raster_line(ax, spikes, i, alignto_time=alignto_time, 
                     linelengths=raster_linelengths, alpha=alpha_raster)
 
-            if overlay_trial_events:
-                self.plotmod_overlay_trial_events_mult(ax, list_trials, list_align_time,
-                    ylabel_trials, xmin=xmin, xmax=xmax, overlay_strokes=overlay_strokes)
+        if overlay_trial_events:
+            self.plotmod_overlay_trial_events_mult(ax, list_trials, list_align_time,
+                ylabel_trials, xmin=xmin, xmax=xmax, overlay_strokes=overlay_strokes)
         
-            if site is not None:
-                ax.set_title(self.sitegetter_summarytext(site)) 
+        if site is not None:
+            ax.set_title(self.sitegetter_summarytext(site)) 
 
 
     def _plot_raster_create_figure_blank(self, duration, n_raster_lines, n_subplot_rows=1,
@@ -9441,7 +9468,12 @@ class Session(object):
             self._generate_mappers_quickly_datasetbeh()
 
         # Return the trialcode
-        idx = list(self._MapperTrialcode2TrialToTrial.values()).index(trial)
+        try:
+            idx = list(self._MapperTrialcode2TrialToTrial.values()).index(trial)
+        except Exception as err:
+            print("trials in mapper: ", self._MapperTrialcode2TrialToTrial.values())
+            print("Looking for this trial", trial)
+            raise err
         return list(self._MapperTrialcode2TrialToTrial.keys())[idx]
 
         # trialcode = self.datasetbeh_trial_to_trialcode_from_raw(trial)

@@ -36,7 +36,7 @@ def load_handsaved_wrapper(animal=None, version=None):
     # path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-231211-stroke-ks_nonorm.pkl" # char [DAN AND XUAN]
     # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-231211-stroke-tdt-norm=None-combine=True.pkl" # char [DAN AND XUAN]
 
-    path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Dolnik/DFallpa_KS_nonorm.pkl" # single prim, shapes (Diego,230615, trial)
+    # path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Dolnik/DFallpa_KS_nonorm.pkl" # single prim, shapes (Diego,230615, trial)
     # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230615-stroke-ks_nonorm.pkl" # shapes (Diego,230615, strokes)
     # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230630-stroke-ks_nonorm.pkl" # PIG (strokes)
     # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Pancho-220918-stroke-ks_nonorm.pkl" # Pancho SP (shape, loc, size)
@@ -45,8 +45,13 @@ def load_handsaved_wrapper(animal=None, version=None):
     # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Pancho-220715-stroke-tdt_nonorm.pkl" # Pancho, SP, tdt, more data.
     # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Pancho-220715-trial-tdt_nonorm.pkl" # Pancho, SP (shapes vs loc, TRIAL)
     # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230618-trial-tdt_nonorm.pkl" # Diego, SP (many shapes) (Trial)
+    
+    # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230615-trial-kilosort_if_exists-norm=None-combine=True.pkl" # SP, shape vs. loc, all events, good.
+    path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Pancho-220715-trial-kilosort_if_exists-norm=None-combine=True.pkl" # SP, has all events.
+    # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Pancho-220608-trial-tdt-norm=None-combine=True.pkl" # SP, all events, good
     DFallpa = pd.read_pickle(path)
     return DFallpa
+
 
 def dfallpa_preprocess_fr_normalization(DFallpa, fr_normalization_method, savedir=None):
     """
@@ -395,7 +400,7 @@ def dfallpa_preprocess_vars_conjunctions_extract(DFallpa, which_level):
             dflab = append_col_with_grp_index(dflab, ["seqc_2_shape", "seqc_2_loc"], "seqc_2_shapeloc")
             pa.Xlabels["trials"] = dflab
 
-    elif which_level=="stroke":
+    elif which_level in ["stroke", "stroke_off"]:
 
         ##### CONJUNCTIONS
         for i, pa in enumerate(DFallpa["pa"]):
@@ -423,6 +428,7 @@ def dfallpa_preprocess_vars_conjunctions_extract(DFallpa, which_level):
 
             pa.Xlabels["trials"] = dflab
     else:
+        print(which_level)
         assert False
 
 def dfallpa_combine_trial_strokes_from_already_loaded_DFallpa():
@@ -754,7 +760,7 @@ def dfallpa_extraction_load_wrapper_from_MS(MS, question, list_time_windows, whi
         events_keep = q_params["events_keep"]
 
     # Load previously generated
-    SP, SAVEDIR_ALL = load_and_concat_mult_snippets(MS, which_level = which_level, events_keep=events_keep,
+    SP, _ = load_and_concat_mult_snippets(MS, which_level = which_level, events_keep=events_keep,
         DEBUG=False,  REGENERATE_SNIPPETS=REGENERATE_SNIPPETS)
 
     # Run this early, before run further pruning stuff.
@@ -1215,6 +1221,8 @@ def dfpa_group_and_split(DFallpa, vars_to_concat=None, vars_to_split=None,
 
     assert len(DFallpa)>0
 
+    DFallpa["pa_x_shape"] = [row["pa"].X.shape for _, row in DFallpa.iterrows()]
+     
     if DEBUG:
         for pa in list_pa:
             print(pa.X.shape)
@@ -1229,10 +1237,71 @@ def dfpa_group_and_split(DFallpa, vars_to_concat=None, vars_to_split=None,
 
     return DFallpa
 
+
+def pa_split_into_multiple_event_timewindows_flex(PA, list_ev_tw,
+                                                  how_deal_with_different_time_values="replace_with_first_pa_realigned"):
+    """
+    Split a single PA into multiple PA, each with its specific event (e.g., 03_samp) and time
+    window (sliced into PA), and the concatenate them into a single PA along the "trials" axis.
+    
+    Useful if want to analyze similarity of representations across time, and you have PA that have already
+    concatenated across events (i.e, the output of dfpa_group_and_split).
+
+    Note; This can also work for unmodified PA, byut would have to chagne some hard-coded stuff, such as 
+    "event_orig" below.
+
+    Note: hard coded for 2 event_times, but could be expanded by changing code.
+    
+    PARAMS:
+    - ev_tw_1, tuple([event_orig, twind]), where event_orig is string like "03_samp" and twind is 2-tyuple (e.g, (-0.2, -0.1))) 
+    defining time window to keep. 
+    - ev_tw_2, same as 1. NOTE: must have same duration time window or will fail.
+    
+    e.g.,:
+    ev_tw_1 = ("03_samp", (-0.4, -0.2))
+    ev_tw_2 = ("06_on_strokeidx_0", (0.1, 0.3))
+
+    RETURNS:
+    - PA copy, with shape like input but time just within the twinds, and evens just thoise evnets., and 
+    times repalced with udummy var 0,1,2 ... And appends a column called "event_times" which is the unique conjunction
+    of ev_tw
+    """
+    from neuralmonkey.classes.population import concatenate_popanals, concatenate_popanals_flexible
+
+    assert "event_orig" in PA.Xlabels["trials"], "need to either run dfpa_group_and_split first, or modify code to not have this hard-coded."
+
+    list_pa = []
+    _shape = None
+    for ev_tw in list_ev_tw:
+        assert isinstance(ev_tw[0], str)
+        assert isinstance(ev_tw[1], tuple)
+        
+        # Pull out PAs for each event
+        pa = PA.slice_by_labels_filtdict({"event_orig":[ev_tw[0]]}) # keep event
+        pa = pa.slice_by_dim_values_wrapper("times", ev_tw[1], time_keep_only_within_window=False) # keep time wind
+        pa.Xlabels["trials"]["event_times_str"] = f"{ev_tw[0]}|{ev_tw[1][0]:.3f}|{ev_tw[1][1]:.3f}"
+
+        if _shape is not None:
+            if not _shape == pa.X.shape:
+                print(_shape)
+                print(pa.X.shape)
+                print(ev_tw)
+                assert False, "come up with better way to ensure same num time bins."
+
+        _shape = pa.X.shape
+        
+        list_pa.append(pa)
+
+    # concatenate them
+    pa, twind = concatenate_popanals_flexible(list_pa, "trials", how_deal_with_different_time_values)
+
+    return pa, twind
+
+
 def pa_split_into_multiple_event_timewindows(PA, ev_tw_1, ev_tw_2):
     """
     Split a single PA into multiple PA, each with its specific event (e.g., 03_samp) and time
-    window (sliced into PA), and the concatenate them into a single PA.
+    window (sliced into PA), and the concatenate them into a single PA along the "trials" axis.
     
     Useful if want to analyze similarity of representations across time, and you have PA that have already
     concatenated across events (i.e, the output of dfpa_group_and_split).
@@ -1264,23 +1333,23 @@ def pa_split_into_multiple_event_timewindows(PA, ev_tw_1, ev_tw_2):
     pa1 = PA.copy()
     pa1 = pa1.slice_by_labels_filtdict({"event_orig":[ev_tw_1[0]]}) # keep event
     pa1 = pa1.slice_by_dim_values_wrapper("times", ev_tw_1[1], time_keep_only_within_window=False) # keep time wind
-    pa1.Xlabels["trials"]["event_times"] = f"{ev_tw_1[0]}|{ev_tw_1[1][0]:.3f}|{ev_tw_1[1][1]:.3f}"
+    pa1.Xlabels["trials"]["event_times_str"] = f"{ev_tw_1[0]}|{ev_tw_1[1][0]:.3f}|{ev_tw_1[1][1]:.3f}"
 
     pa2 = PA.copy()
     pa2 = pa2.slice_by_labels_filtdict({"event_orig":[ev_tw_2[0]]}) # keep event
     pa2 = pa2.slice_by_dim_values_wrapper("times", ev_tw_2[1], time_keep_only_within_window=False) # keep time wind
-    pa2.Xlabels["trials"]["event_times"] = f"{ev_tw_2[0]}|{ev_tw_2[1][0]:.3f}|{ev_tw_2[1][1]:.3f}"
+    pa2.Xlabels["trials"]["event_times_str"] = f"{ev_tw_2[0]}|{ev_tw_2[1][0]:.3f}|{ev_tw_2[1][1]:.3f}"
 
     # print(pa1.X.shape)
     # print(pa2.X.shape)
 
     if not pa1.X.shape ==pa2.X.shape:
-        return None
         # print(pa1.X.shape)
         # print(pa2.X.shape)
         # print(pa1.Times)
         # print(pa2.Times)
         # assert False, "probably mismatch in times??"
+        return None
 
     # concatenate them
     pa = concatenate_popanals([pa1, pa2], "trials", replace_times_with_dummy_variable=True)

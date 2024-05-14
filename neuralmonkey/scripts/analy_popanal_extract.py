@@ -4,7 +4,7 @@ Make sure you have extract all Snippets
 
 from neuralmonkey.classes.snippets import load_and_concat_mult_snippets
 from neuralmonkey.classes.session import load_mult_session_helper
-from neuralmonkey.analyses.state_space_good import snippets_extract_popanals_split_bregion_twind
+from neuralmonkey.classes.population_mult import snippets_extract_popanals_split_bregion_twind
 import sys
 
 assert False, "THIS WORKS, but not doing it since it takes too much space. Instead go straight from SP --> PA"

@@ -621,7 +621,9 @@ class PopAnal():
             indices = self.index_find_these_values(dim, values)
         elif dim=="times":
             # values are [t1, t2]
-            assert len(values)==2
+            if not len(values)==2:
+                print(values)
+                assert False, "why?"
             assert values[1]>values[0]
             indices = self.index_find_this_time_window(values, time_keep_only_within_window=time_keep_only_within_window)
             # indices = self.index_find_these_values(dim, values)
@@ -922,18 +924,26 @@ class PopAnal():
         X = self.extract_activity_copy(version=version)
         return np.mean(X, axis=1, keepdims=True)
 
-    def _agg_by_time_windows_binned_get_windows(self, DUR, SLIDE):
+    def _agg_by_time_windows_binned_get_windows(self, DUR, SLIDE, min_time=None, max_time=None):
         """
         Helper to get the windows that you can then use for biniing.
+        PARAMS:
+        - min_time, max_time, sec, if not None, keeps only times within this window.
         - Returns (nwinds, 2) array
         """
 
         if SLIDE is None:
             SLIDE = DUR
 
+        times = self.Times
+        if min_time is not None:
+            times = times[times>=min_time]
+        if max_time is not None:
+            times = times[times<=max_time]
+        
         # MAke new times iwndows
-        PRE = self.Times[0]
-        POST = self.Times[-1]
+        PRE = times[0]
+        POST = times[-1]
         times1 = np.arange(PRE, POST-DUR/2, SLIDE) # each window, at least half of it inlcudes data
         times2 = times1 + DUR
         time_windows = np.stack([times1, times2], axis=1)
@@ -1283,6 +1293,10 @@ class PopAnal():
             chans and times, but NOT guaranteed to have same ordering of trials.
         """
 
+        if dim_variable_grp is None:
+            # Then just subtract across all trials (ie., all trials constitue one group)
+            return self.norm_subtract_mean_each_chan()
+
         # First, split into separate pa, one for each level of <dim_variable>
         list_pa = self.split_by_label(dim_str, dim_variable_grp)[0]
 
@@ -1419,6 +1433,7 @@ class PopAnal():
         LIST_CLDIST = []
         LIST_TIME = []
         ntimes = self.X.shape[2]
+        print("... computing distance matrices, using distnace:", version_distance)
         for i_time in range(ntimes):
             
             # make a pa that just has this one time bin
@@ -1522,8 +1537,15 @@ class PopAnal():
         Does work of projecting raw data onto this space.
 
         Example:
+            # This does pca on means for stroke_index, controlling for context defined by each level of vars_grouping
             var_pca = "stroke_index"
             vars_grouping = ["task_kind", "gridloc", "shape"]
+            filtdict= None
+
+        Example:
+            # This does pca on means for each level of conjunctive var_pca.
+            var_pca = ("gridloc", "stroke_index")
+            vars_grouping = None
             filtdict= None
 
         Can do this for both scalar (mean over time, returns (ntrials, npcs) and trajectories (retains time, returns (npcs, ntrials, ntimes)),
@@ -1553,6 +1575,12 @@ class PopAnal():
         RETURNS None if no data found for this var_pca
         """
         from neuralmonkey.analyses.state_space_good import dimredgood_pca_project
+
+        if isinstance(var_pca, (list, tuple)):
+            # conjunctive variable...
+            from pythonlib.tools.pandastools import append_col_with_grp_index
+            self.Xlabels["trials"] = append_col_with_grp_index(self.Xlabels["trials"], var_pca, "|".join(var_pca))
+            var_pca = "|".join(var_pca)
 
         if reshape_method=="chans_x_trials_x_times":
             dimredgood_pca_project_do_reshape = True
@@ -1615,7 +1643,11 @@ class PopAnal():
                 pa.plotwrapper_smoothed_fr_split_by_label_and_subplots(chan, var_pca, vars_grouping)
 
         # Get new PA that averages to get one value for each state (var x vars_groupig)
-        pa = pa.slice_and_agg_wrapper("trials", [var_pca]+vars_grouping)
+        if vars_grouping is None:
+            grouping_variables = [var_pca]
+        else:
+            grouping_variables = [var_pca]+vars_grouping
+        pa = pa.slice_and_agg_wrapper("trials", grouping_variables)
         if PLOT_STEPS:
             pa.plotwrapper_smoothed_fr_split_by_label_and_subplots(chan, var_pca, vars_grouping)
 
@@ -2575,10 +2607,10 @@ class PopAnal():
         from pythonlib.tools.plottools import makeColors
 
         if chan is not None:
-            # Then pull out specific PA that is just this chan
+        # Then pull out specific PA that is just this chan
             PA = self.slice_by_dim_values_wrapper("chans", [chan])
         else:
-            assert False, "did you really not want to input chan?"
+            # assert False, "did you really not want to input chan?"
             PA = self
 
         # Split into each pa for each level
@@ -2697,10 +2729,14 @@ class PopAnal():
         ax.grid()
 
 
-def concatenate_popanals_flexible(list_pa, concat_dim="trials"):
+def concatenate_popanals_flexible(list_pa, concat_dim="trials", how_deal_with_different_time_values="replace_with_dummy"):
     """ Concatenates popanals (along trial dim) which may have different time bases (but
     the same n time bins.
     If differnet, then replaces time with 0,1, 2... (index), otherwise uses actual time.
+    PARAMS:
+        - how_deal_with_different_time_values, str, if concatting along trials, and each pa has different
+        timebase, then different methods for dealing with fact that the returned PA must have the same time labels
+        across all datapts.
     RETURNS:
         - PA, new popanal
         - twind, (tmin, tmax) from new PA.Times.
@@ -2711,10 +2747,35 @@ def concatenate_popanals_flexible(list_pa, concat_dim="trials"):
         # if you are combining multiple times, then replace times iwth a
         # dummy variable
         times_identical = check_identical_times(list_pa)
-        replace_times_with_dummy_variable = not times_identical
+        if not times_identical:
+            if how_deal_with_different_time_values=="replace_with_dummy":
+                # (0,1,2, ...)
+                replace_times_with_dummy_variable = True
+                all_pa_inherit_times_of_pa_at_this_index = None
+                times_realign_so_first_index_is_this_time = None
+            elif how_deal_with_different_time_values=="replace_with_first_pa":
+                # Take the timestamps from first pa
+                replace_times_with_dummy_variable = False
+                all_pa_inherit_times_of_pa_at_this_index = 0
+                times_realign_so_first_index_is_this_time = None
+            elif how_deal_with_different_time_values=="replace_with_first_pa_realigned":
+                # Take the timestamps from first pa, and then shift times so that
+                # gtime of first time index is 0.
+                replace_times_with_dummy_variable = False
+                all_pa_inherit_times_of_pa_at_this_index = 0
+                times_realign_so_first_index_is_this_time = 0.
+            else:
+                print(how_deal_with_different_time_values)
+                assert False, "different time bases, not sure hwo to deal"
+        else:
+            replace_times_with_dummy_variable = False
+            all_pa_inherit_times_of_pa_at_this_index = None
+            times_realign_so_first_index_is_this_time = None
 
         PA = concatenate_popanals(list_pa, "trials",
-                                    replace_times_with_dummy_variable=replace_times_with_dummy_variable)
+                                    replace_times_with_dummy_variable=replace_times_with_dummy_variable,
+                                    all_pa_inherit_times_of_pa_at_this_index=all_pa_inherit_times_of_pa_at_this_index,
+                                    times_realign_so_first_index_is_this_time=times_realign_so_first_index_is_this_time)
 
     elif concat_dim=="times":
         # ALl will copy the trials df from the first pa.
@@ -2740,7 +2801,8 @@ def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None,
     assert_otherdims_restrict_to_these=("chans", "trials", "times"),
     all_pa_inherit_times_of_pa_at_this_index=None,
      replace_times_with_dummy_variable=False,
-     all_pa_inherit_trials_of_pa_at_this_index=None):
+     all_pa_inherit_trials_of_pa_at_this_index=None,
+     times_realign_so_first_index_is_this_time=None):
     """ Concatenate multiple popanals. They must have same shape except
     for the one dim concatted along.
     PARAMS:
@@ -2761,6 +2823,9 @@ def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None,
     have differnet time bases, but you really just care about realtive time to alignment.
     replace_times_with_dummy_variable, bool, if True, then reaplces all times with indices
     0, 1.,,,
+    - times_realign_so_first_index_is_this_time, float, if not None, then forces that the first
+    time index takes this value, by shifting times (subtraction). e.g,, if 0., then all times
+    are shifted, maintaing same time period. Applies whether or not replace_times_with_dummy_variable is True
     RETURNS:
     - PopAnal object,
     --- or None, if inputed list_pa is empty.
@@ -2768,16 +2833,18 @@ def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None,
     - for the non-concatted dim, will use the values for the first pa. assumes
     this is same across pa.
     """
+    import copy
+    from pythonlib.tools.pandastools import concat
 
     if len(list_pa)==0:
         return None
 
-    # always copy
+    ### Initialize by making copies.
     list_pa = [pa.copy() for pa in list_pa]
-
     dim, dim_str = help_get_dimensions(dim)
 
-    # Sometimes times are len 1 off from each other. Here is quick fix.
+    ### Fix problem where times are len 1 off from each other. 
+    # (Sometimes times are len 1 off from each other. Here is quick fix.
     # If any trials are off from other by one time bin (possible, round error), then remove the last sample
     if not dim_str=="times":
         list_n = [pa.X.shape[2] for pa in list_pa]
@@ -2799,38 +2866,30 @@ def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None,
             else:
                 pass
 
+    ### Deal with different time-bases across PAs
     if all_pa_inherit_times_of_pa_at_this_index is not None:
         assert replace_times_with_dummy_variable==False
         pa_base = list_pa[all_pa_inherit_times_of_pa_at_this_index]
         for pa in list_pa:
             assert len(pa.Times)==len(pa_base.Times)
-            pa.Times = pa_base.Times
+            pa.Times = copy.copy(pa_base.Times)
 
     if replace_times_with_dummy_variable:
         assert all_pa_inherit_times_of_pa_at_this_index is None
         for pa in list_pa:
             pa.Times = np.arange(len(pa.Times))
 
-    # 1) Concat the data
-    list_x = [pa.X for pa in list_pa]
-    # for x in list_x:
-    #     print(x.shape)
-    X = np.concatenate(list_x, axis=dim)
-
+    if times_realign_so_first_index_is_this_time is not None:
+        for pa in list_pa:
+            pa.Times = pa.Times - pa.Times[0] + times_realign_so_first_index_is_this_time
+        
     # 2) Create new PA
-    if False:
-        # [OLD METHOD] values for the non-concatted dimensions.
-        pa1 = list_pa[0]
-        chans = pa1.Chans
-        trials = pa1.Trials
-        times = pa1.Times
-
     # Extract values to populate the other dimensions
     # - decide whether to enforce same values across all list_pa.
-    tmp = {}
+    check_this_dim = {}
 
     for d in ["times", "chans", "trials"]:
-        tmp[d] = (assert_otherdims_have_same_values) and (d in assert_otherdims_restrict_to_these)
+        check_this_dim[d] = (assert_otherdims_have_same_values) and (d in assert_otherdims_restrict_to_these)
     # - extract values
     if dim_str=="times":
         times = values_for_concatted_dim
@@ -2840,29 +2899,29 @@ def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None,
             for i, patmp in enumerate(list_pa):
                 # times.extend([(i, t) for t in patmp.Times])
                 times.extend([f"{i}|{t:.4f}" for t in patmp.Times])
-        chans = check_get_common_values_this_dim(list_pa,"chans", tmp["chans"])
-        trials = check_get_common_values_this_dim(list_pa, "trials", tmp["trials"])
+        chans = check_get_common_values_this_dim(list_pa,"chans", check_this_dim["chans"])
+        trials = check_get_common_values_this_dim(list_pa, "trials", check_this_dim["trials"])
     elif dim_str=="chans":
-        times = check_get_common_values_this_dim(list_pa, "times", tmp["times"])
+        times = check_get_common_values_this_dim(list_pa, "times", check_this_dim["times"])
         chans = values_for_concatted_dim
-        trials = check_get_common_values_this_dim(list_pa, "trials", tmp["trials"])
+        trials = check_get_common_values_this_dim(list_pa, "trials", check_this_dim["trials"])
     elif dim_str=="trials":
-        times = check_get_common_values_this_dim(list_pa, "times", tmp["times"])
-        chans = check_get_common_values_this_dim(list_pa, "chans", tmp["chans"])
+        times = check_get_common_values_this_dim(list_pa, "times", check_this_dim["times"])
+        chans = check_get_common_values_this_dim(list_pa, "chans", check_this_dim["chans"])
         trials = values_for_concatted_dim   
     else:
         print(dim_str)
         assert False
 
+    ### 1) Concat the data
     # Generate new popanal
+    list_x = [pa.X for pa in list_pa]
+    X = np.concatenate(list_x, axis=dim)
     PA = PopAnal(X, times=times, trials = trials,
         chans = chans)
 
     # Concatenate Xlabels dataframe
     # - concat the dimension chosen
-    from pythonlib.tools.pandastools import concat
-    #
-    # PA.Xlabels = self.Xlabels.copy()
     list_df = [pa.Xlabels[dim_str] for pa in list_pa]
     PA.Xlabels[dim_str] = concat(list_df)
 
@@ -2875,6 +2934,7 @@ def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None,
 
         # Replace
         dftmp = list_pa[all_pa_inherit_trials_of_pa_at_this_index].Xlabels["trials"].copy()
+        assert len(dftmp) == PA.X.shape[1], "prob because concateed along trials, so trails expanded.."
         PA.Xlabels["trials"] = dftmp
 
     # convert index_to_old_dataframe to meaningful value

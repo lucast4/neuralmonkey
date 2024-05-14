@@ -11,7 +11,7 @@ from neuralmonkey.classes.snippets import load_and_concat_mult_snippets
 from neuralmonkey.classes.session import load_mult_session_helper
 import os
 import pandas as pd
-from neuralmonkey.analyses.state_space_good import snippets_extract_popanals_split_bregion_twind
+from neuralmonkey.classes.population_mult import snippets_extract_popanals_split_bregion_twind
 from pythonlib.tools.plottools import savefig
 from pythonlib.tools.plottools import rotate_x_labels
 from pythonlib.tools.pandastools import applyFunctionToAllRows

@@ -1235,6 +1235,7 @@ def conjunctions_print_plot_all(ListD, SAVEDIR, ANALY_VER, which_level="trial"):
     import numpy as np
     import os
     from pythonlib.tools.plottools import savefig
+    from neuralmonkey.metadat.analy.anova_params import params_getter_euclidian_vars
 
     sdir = f"{SAVEDIR}/conjunctions"
     os.makedirs(sdir, exist_ok=True)
@@ -1259,47 +1260,21 @@ def conjunctions_print_plot_all(ListD, SAVEDIR, ANALY_VER, which_level="trial"):
     from pythonlib.dataset.analy_dlist import concatDatasets
     D = concatDatasets(ListD)
 
+    assert len(D.TokensStrokesBeh)>0, "sanity check, lost in concat?"
+
     ### Prep dataset, and extract params
-    assert False, "fix this call to dataset_apply_params"
-    Dpruned, DSprun, params = dataset_apply_params(ListD, DS, animal, DATE, which_level, ANALY_VER)
-    # _, Dpruned, TRIALCODES_KEEP, params, params_extraction = dataset_apply_params_OLD(ListD,
-    #                                                                                   animal, DATE, which_level, ANALY_VER)
+    Dpruned, _, params = dataset_apply_params(D, None, ANALY_VER, animal, DATE)
     assert len(Dpruned.Dat)>0
+    assert len(Dpruned.TokensStrokesBeh)>0
     
     ### Print and plot all conjucntions
-    LIST_VAR = params["LIST_VAR"]
-    LIST_VARS_CONJUNCTION = params["LIST_VARS_CONJUNCTION"]         
+    if False: # NOT WORKING -- need the params for which_level = trial
+        LIST_VAR, LIST_VARS_OTHERS, LIST_CONTEXT, LIST_PRUNE_MIN_N_LEVS, LIST_FILTDICT = params_getter_euclidian_vars("PIG_BASE_stroke")
+        # LIST_VAR = params["LIST_VAR"]
+        # LIST_VARS_CONJUNCTION = params["LIST_VARS_CONJUNCTION"]         
 
-    _conjunctions_print_plot_all(Dpruned.Dat, LIST_VAR, LIST_VARS_CONJUNCTION, sdir, 
-        params["globals_nmin"], Dpruned)  
-    # list_n = []
-    # for var, vars_others in zip(LIST_VAR, LIST_VARS_CONJUNCTION):
-        
-    #     print(var, "vs", vars_others)
-        
-    #     # All data
-    #     path = f"{sdir}/{var}|vs|{'-'.join(vars_others)}.txt"
-    #     plot_counts_heatmap_savedir = f"{sdir}/heatmap-{var}|vs|{'-'.join(vars_others)}.pdf"
-    #     Dpruned.grouping_conjunctions_print_variables_save(var, vars_others, path, n_min=0, 
-    #                                                       plot_counts_heatmap_savedir=plot_counts_heatmap_savedir)
-    #     # Passing nmin
-    #     path = f"{sdir}/goodPassNmin-{var}|vs|{'-'.join(vars_others)}.txt"
-    #     plot_counts_heatmap_savedir = f"{sdir}/goodPassNmin-heatmap-{var}|vs|{'-'.join(vars_others)}.pdf"
-    #     dfout, dict_dfs = Dpruned.grouping_conjunctions_print_variables_save(var, vars_others, path, n_min=params["globals_nmin"], 
-    #                                                       plot_counts_heatmap_savedir=plot_counts_heatmap_savedir)
-    #     plt.close("all")
-        
-    #     # Count
-    #     list_n.append(len(dict_dfs))
-        
-    # ### Print summary across conjucntions
-    # strings = []
-    # strings.append("n good levels of othervar | var |vs| othervars")
-    # for var, vars_others, n in zip(LIST_VAR, LIST_VARS_CONJUNCTION, list_n):
-    #     s = f"{n} -- {var}|vs|{'-'.join(vars_others)}"
-    #     strings.append(s)
-    # path = f"{sdir}/summary_n_levels_of_othervar_with_min_data.txt"
-    # writeStringsToFile(path, strings)  
+        _conjunctions_print_plot_all(Dpruned.Dat, LIST_VAR, LIST_VARS_CONJUNCTION, sdir, 
+            params["globals_nmin"], Dpruned)  
 
     ### STROKE LEVEL - heatmaps of (shape, location) vs. index
     from pythonlib.dataset.dataset_strokes import DatStrokes
@@ -1801,6 +1776,18 @@ def params_getter_raster_vars(which_level, question, OVERWRITE_lenient_n=2):
             ["seqc_0_loc", "seqc_0_shape", "seqc_nstrokes_beh"],
             # ["epoch"],
             # ["epoch", "seqc_0_loc_shape"],
+        ]
+
+    elif which_level=="trial" and question in ["SP_BASE_trial"]:
+        LIST_VAR = [
+            "seqc_0_shape",
+            "seqc_0_loc",
+            "gridsize",
+        ]
+        LIST_VARS_OTHERS = [
+            ["seqc_0_loc", "gridsize"],
+            ["seqc_0_shape", "gridsize"],
+            ["seqc_0_shape", "seqc_0_loc"],
         ]
 
     else:

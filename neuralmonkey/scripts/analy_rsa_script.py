@@ -14,11 +14,10 @@ import sys
 from neuralmonkey.classes.session import load_session_helper, load_mult_session_helper
 from neuralmonkey.analyses.rsa import rsagood_questions_dict
 from neuralmonkey.classes.snippets import load_and_concat_mult_snippets
-from neuralmonkey.analyses.state_space_good import snippets_extract_popanals_split_bregion_twind
 import pandas as pd
 from neuralmonkey.analyses.rsa import rsagood_score_wrapper, rsagood_pa_effectsize_plot_summary, rsagood_pa_vs_theor_samecontextctrl, rsagood_pa_vs_theor_plot_results, rsagood_pa_vs_theor_plot_pairwise_distmats, rsagood_score_vs_shuff_wrapper
 from neuralmonkey.classes.population_mult import dfpa_slice_specific_windows, dfpa_group_and_split
-from neuralmonkey.classes.population_mult import dfallpa_extraction_load_wrapper_from_MS
+from neuralmonkey.classes.population_mult import dfallpa_extraction_load_wrapper_from_MS, snippets_extract_popanals_split_bregion_twind
 
 
 # list_time_windows = [

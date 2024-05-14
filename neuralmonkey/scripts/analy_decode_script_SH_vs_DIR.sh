@@ -12,7 +12,7 @@ do
   touch ${logfile}
   echo ${logfile}
   python analy_decode_script.py ${animal} ${date1} 0 ${question} ${ver} 0100 2>&1 | tee ${logfile} &
-  sleep 30s
+  sleep 1m
 done
 sleep 60m
 

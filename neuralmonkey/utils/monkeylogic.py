@@ -208,6 +208,34 @@ def session_map_from_rec_to_ml2(animal, date, rec_session):
             print(rec_session)
             raise err
         beh_trial_map_list = [(1, 0)]
+
+    ### WAS Trying to fix for these 2 dates. Problem for both is that they have neural trials that dont have existing ml2 trials at all...
+    # elif animal=="Pancho" and int(date)==220610 and rec_session==0:
+    #     # debugging, why not do this generally (ie below in else:)
+
+    #     # print("HASDASASD")
+    #     # print(beh_trial_map_list)
+    #     # print(sessdict)
+    #     # print(date)
+    #     # print(sessdict[date])
+    #     # assert False
+    #     beh_sess_list = [1]
+    #     beh_expt_list = ["priminvar2b"]
+    #     beh_trial_map_list = beh_trial_map_list
+
+    # elif animal=="Pancho" and int(date)==220609 and rec_session==0:
+    #     # debugging, why not do this generally (ie below in else:)
+
+    #     print("HASDASASD")
+    #     print(beh_trial_map_list)
+    #     print(sessdict)
+    #     print(date)
+    #     print(sessdict[date])
+    #     assert False
+    #     beh_sess_list = [x[0] for x in sessdict[date]]
+    #     beh_expt_list = [x[1] for x in sessdict[date]]
+    #     beh_trial_map_list = beh_trial_map_list
+
     else:
         #### ONE REC SESSION - MULTIPLE BEH SESSIONS
         # Also, you are guaranteed this rec sessions exists, so dont check if it exists

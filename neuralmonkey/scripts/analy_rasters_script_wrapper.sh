@@ -74,7 +74,7 @@ done
 
 ##################
 animal=Pancho
-question=RULEVSCOL_BASE_stroke
+question=RULESW_ANBMCK_COLRANK_STROKE
 datelist=(220829 220830)
 #datelist=(230615 230620 230621)
 for date1 in "${datelist[@]}"
