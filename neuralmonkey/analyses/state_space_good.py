@@ -2640,6 +2640,7 @@ def euclidian_distance_compute_scalar(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT
                 # pa_orig_dim = pa_orig_dim.slice_by_labels("trials", _var, _levs)
 
         ############### PRUNE DATA, TO GET ENOUGH FOR THIS VARIABLE
+<<<<<<< HEAD
         # # Prep by keeping only if enough data
         # from neuralmonkey.analyses.rsa import preprocess_rsa_prepare_popanal_wrapper
         # preprocess_rsa_prepare_popanal_wrapper(pa, )
@@ -2667,6 +2668,8 @@ def euclidian_distance_compute_scalar(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT
         # # Only keep the indices in dfout
         # print("  Pruning for this var adn conjunction. Original length:", pa.X.shape[1], ", pruned length:", len(dfout))
         # pa = pa.slice_by_dim_indices_wrapper("trials", dfout["_index"].tolist(), True)
+=======
+>>>>>>> 42357e31bb6615190fbee610bb7229bee0af59eb
         if nmin_trials_per_lev is not None:
             prune_min_n_trials = nmin_trials_per_lev
         else:
