@@ -2625,7 +2625,6 @@ def euclidian_distance_compute_scalar(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT
     heatmaps_already_plotted = []
     for i_var, (var, var_others, context, filtdict, prune_min_n_levs) in enumerate(zip(LIST_VAR, LIST_VARS_OTHERS, LIST_CONTEXT, LIST_FILTDICT, LIST_PRUNE_MIN_N_LEVS)):
         print("RUNNING: ", i_var,  var, " -- ", var_others)
-
         # Copy pa for this
         pa = PAredu.copy()
         # pa_orig_dim = PAredu_orig_dim.copy()
@@ -2643,6 +2642,33 @@ def euclidian_distance_compute_scalar(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT
                 # pa_orig_dim = pa_orig_dim.slice_by_labels("trials", _var, _levs)
 
         ############### PRUNE DATA, TO GET ENOUGH FOR THIS VARIABLE
+        # # Prep by keeping only if enough data
+        # from neuralmonkey.analyses.rsa import preprocess_rsa_prepare_popanal_wrapper
+        # preprocess_rsa_prepare_popanal_wrapper(pa, )
+
+        # Get data split by othervar
+        # Return dict[levo] --> data
+        # Prune data to just cases with at least 2 levels of decode var
+
+
+
+        # dflab = pa.Xlabels["trials"]
+        # dfout, dict_dfthis = extract_with_levels_of_conjunction_vars(dflab, var, var_others,
+        #                                                          n_min_across_all_levs_var=prune_min_n_trials,
+        #                                                          lenient_allow_data_if_has_n_levels=prune_min_n_levs,
+        #                                                          prune_levels_with_low_n=True,
+        #                                                          ignore_values_called_ignore=True,
+        #                                                          plot_counts_heatmap_savepath=plot_counts_heatmap_savepath,
+        #                                                          balance_no_missed_conjunctions=False)
+        # # for levo, dfthis in dict_dfthis.items():
+        # #     print(levo, len(dfthis))
+        # if len(dfout)==0:
+        #     print("all data pruned!!")
+        #     continue
+        #
+        # # Only keep the indices in dfout
+        # print("  Pruning for this var adn conjunction. Original length:", pa.X.shape[1], ", pruned length:", len(dfout))
+        # pa = pa.slice_by_dim_indices_wrapper("trials", dfout["_index"].tolist(), True)
         if nmin_trials_per_lev is not None:
             prune_min_n_trials = nmin_trials_per_lev
         else:
@@ -2667,7 +2693,6 @@ def euclidian_distance_compute_scalar(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT
             chan = pa.Chans[0]
             pa.plotwrapper_smoothed_fr_split_by_label("trials", var, ax, chan=chan)
             plt.close("all")
-
         if COMPUTE_EUCLIDIAN:
             from pythonlib.tools.listtools import stringify_list
 
@@ -2687,6 +2712,7 @@ def euclidian_distance_compute_scalar(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT
                                                           version_distance=version_distance,
                                                           AGG_BEFORE_DIST=AGG_BEFORE_DIST, context_input=context,
                                                           plot_mask_path=plot_mask_path)
+            print("DIST_NULL_50", DIST_NULL_50)
             for r in res:
                 r["shuffled"] = False
                 r["shuffled_iter"] = -1
@@ -2775,7 +2801,7 @@ def euclidian_distance_compute_scalar(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT
             plt.close("all")
 
     dfres = pd.DataFrame(RES)
-    if COMPUTE_EUCLIDIAN:
+    if COMPUTE_EUCLIDIAN and len(dfres)>0:
         # Get score normalized against global distance
         dfres["DIST_NULL_50"] = DIST_NULL_50
         dfres["DIST_NULL_95"] = DIST_NULL_95

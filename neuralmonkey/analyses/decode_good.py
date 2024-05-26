@@ -1507,7 +1507,8 @@ def decodewrapouterloop_categorical_cross_time(DFallpa, list_var_decode, time_bi
 
 
 def decodewrapouterloop_categorical_cross_time_cross_var(DFallpa, list_var_decode_train_test,
-                                                         time_bin_size, slide, savedir=None):
+                                                         time_bin_size, slide, savedir=None, extract_params=True,
+                                                         ignore_same_events=True, which_level="trial"):
     """ Decode across events_taskkinds and time, asking how decoder generalizes, where
     now trains to decode one variable, and asks how well that decoder generalizes to
     decode another variable. THis only works for things liek seqc_0_shape --> seqc_1_shape,
@@ -1518,7 +1519,13 @@ def decodewrapouterloop_categorical_cross_time_cross_var(DFallpa, list_var_decod
 
     :param: list_var_decode_train_test, list of list, where each inner 2-list is [var_train, var_test]
     """
-    list_br, list_tw, list_ev, n_strokes_max = decodewrapouterloop_preprocess_extract_params(DFallpa)
+    if extract_params:
+        list_br, list_tw, list_ev, n_strokes_max = decodewrapouterloop_preprocess_extract_params(DFallpa)
+    else:
+        list_br = DFallpa['bregion'].unique().tolist()
+        list_tw = DFallpa['twind'].unique().tolist()
+        list_ev = DFallpa['event'].unique().tolist()
+        n_strokes_max = None
 
     assert len(DFallpa["twind"].unique())==1, "not big deal. just change code below to iter over all (ev, tw)."
 
@@ -1527,12 +1534,14 @@ def decodewrapouterloop_categorical_cross_time_cross_var(DFallpa, list_var_decod
         for tw in list_tw:
             for i, ev_train in enumerate(list_ev):
                 for j, ev_test in enumerate(list_ev):
-                    if j>i: # Dont so same events.
+                    if ignore_same_events and j<=i: # Dont so same events.
+                        print("skipping same event")
+                    else:
                         print(br, tw, ev_train, ev_test)
 
                         # TRAIN
-                        PA_train_orig = extract_single_pa(DFallpa, br, tw, event=ev_train)
-                        PA_test_orig = extract_single_pa(DFallpa, br, tw, event=ev_test)
+                        PA_train_orig = extract_single_pa(DFallpa, br, tw, event=ev_train, which_level=which_level)
+                        PA_test_orig = extract_single_pa(DFallpa, br, tw, event=ev_test, which_level=which_level)
 
                         list_task_kind_train = PA_train_orig.Xlabels["trials"]["task_kind"].unique()
                         list_task_kind_test = PA_test_orig.Xlabels["trials"]["task_kind"].unique()
@@ -1598,6 +1607,7 @@ def decodewrapouterloop_categorical_cross_time_cross_var(DFallpa, list_var_decod
     # save results (too large, like 1GB. This does to like 10MB).
     if savedir is not None:
         dfres = DFRES.copy()
+        print(len(dfres))
         dfres = dfres.drop(["conf_scores", "labels_test", "labels_predicted"], axis=1)
         path = f"{savedir}/DFRES.pkl"
         pd.to_pickle(dfres, path)
