@@ -2545,7 +2545,8 @@ def euclidian_distance_compute_scalar(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT
         PLOT_STEPS = False
         Xredu, PAredu, _, _, pca = PA.dataextract_pca_demixed_subspace(
             superv_dpca_var, superv_dpca_vars_group, twind, tbin_dur, superv_dpca_filtdict, savedirthis,
-            n_min_per_lev_lev_others=nmin_trials_per_lev, PLOT_STEPS=PLOT_STEPS)
+            n_min_per_lev_lev_others=nmin_trials_per_lev, PLOT_STEPS=PLOT_STEPS,
+            n_pcs_subspace_max=NPCS_KEEP)
 
         if Xredu is None:
             # Then no data...
@@ -2559,6 +2560,7 @@ def euclidian_distance_compute_scalar(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT
         n2 = Xredu.shape[1] # num classes to reach criterion for cumvar for pca.
         n_pcs_keep_euclidian = min([n1, n2])
 
+        print("dpca, keeping this many dims (final):", n_pcs_keep_euclidian)
         # # - prune data for euclidian
         # Xredu = Xredu[:, :n_pcs_keep_euclidian]
         # dflab = PAredu.Xlabels.copy()
@@ -2676,6 +2678,8 @@ def euclidian_distance_compute_scalar(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT
 
             # Keep just the n dims you want
             pa_eucl = pa.slice_by_dim_indices_wrapper("chans", list(range(n_pcs_keep_euclidian)))
+            print("FINAL DIMENSION OF DATA (after dimredu, before eucl):", pa_eucl.X.shape)
+            
             if False:
                 # This passes
                 assert np.all(pa.X[:n_pcs_keep_euclidian, :, :] == pa_eucl.X)
