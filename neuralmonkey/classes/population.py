@@ -1525,7 +1525,7 @@ class PopAnal():
                                                 raw_subtract_mean_each_timepoint=True,
                                                 pca_subtract_mean_each_level_grouping=True,
                                                 n_min_per_lev_lev_others=5, prune_min_n_levs = 2,
-                                                n_pcs_subspace_max = 10,
+                                                n_pcs_subspace_max = None,
                                                 do_pca_after_project_on_subspace=False,
                                                 PLOT_STEPS=False, SANITY=False,
                                                 reshape_method="trials_x_chanstimes",
@@ -1575,6 +1575,9 @@ class PopAnal():
         RETURNS None if no data found for this var_pca
         """
         from neuralmonkey.analyses.state_space_good import dimredgood_pca_project
+
+        if n_pcs_subspace_max is None:
+            n_pcs_subspace_max = 10
 
         if isinstance(var_pca, (list, tuple)):
             # conjunctive variable...
