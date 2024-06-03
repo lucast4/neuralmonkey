@@ -779,7 +779,7 @@ def dfallpa_extraction_load_wrapper_from_MS(MS, question, list_time_windows, whi
         del MS
 
         print("adding saccade-fixation columns...")
-        SP._add_clusterfix_saccfix_columns()
+        SP._add_clusterfix_saccfix_columns(filter_only_first_shapefix=False)
         list_features_extraction = ["seqc_0_shape", "seqc_0_loc", "seqc_1_shape", "seqc_1_loc", 
                             "seqc_2_shape", "seqc_2_loc", "seqc_3_shape", "seqc_3_loc",
                             "seqc_0_loc_on_clust", "seqc_1_loc_on_clust", "seqc_2_loc_on_clust", "seqc_3_loc_on_clust",

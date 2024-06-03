@@ -134,49 +134,49 @@ function get_clusterfix_results_mat(animal, date, session, base_path)
     save([session_path '/clusterfix_results.mat'], 'RESULTS', '-v7');
     disp('finished saving clusterfix_results.mat');
 
-%     %% plot results for each trial
-%     savedir_figs = [session_path '/trial_plots']; % @LT, saving, too many to plot.
-%     mkdir(savedir_figs);
-%     for i = 1:length(RESULTS)
-%         trial_results = RESULTS(i);
-%         ntnum = trial_results.neuraltrialnum;
-%         disp(ntnum)
-%         %t_start_ind = ntrial_start_end_inds(2,i);
-%         %t_end_ind = ntrial_start_end_inds(3,i);
-%         figure('Name', num2str(ntnum), 'visible', 'off'); % @LT, annoying to pop up.
-% 
-%         % plot xy
-%         x = trial_results.x;
-%         y = trial_results.y;
-%         plot(x,y)
-%         hold on
-% 
-%         % get fixation times and plot each, alternating colors to separate
-%         fixation_times_all = trial_results.fixation_inds;
-% 
-%         for j=1:length(fixation_times_all)
-%             fix_inds = fixation_times_all(1,j):fixation_times_all(2,j);
-%             %disp(fixationtimes(1,i))
-%             %time_window = fixation_times_all(1,j):fixation_times_all(2,j);
-% 
-%             % check that fixation belongs to this trial
-%             %if (time_window(1) >= t_start_ind) && (time_window(end) <= t_end_ind)
-%            if mod(j,2)==0
-%                plot(x(fix_inds), y(fix_inds), 'r');
-%            else
-%                plot(x(fix_inds), y(fix_inds), 'g');
-%            end
-%            hold on
-%             %end
-%             %plot(x(fix_inds), y(fix_inds), 'g');
-%         end
-% 
-%         % done with this plot
-%         hold off
-% 
-%         % Save plot and close, @LT
-%         saveas(gcf, [savedir_figs '/trial_' num2str(ntnum) '_fixations.png']); 
-%         close all;
-%     end
+    %% plot results for each trial
+    savedir_figs = [session_path '/clusterfix_plots']; % @LT, saving, too many to plot.
+    mkdir(savedir_figs);
+    for i = 1:length(RESULTS)
+        trial_results = RESULTS(i);
+        ntnum = trial_results.neuraltrialnum;
+        disp(ntnum)
+        %t_start_ind = ntrial_start_end_inds(2,i);
+        %t_end_ind = ntrial_start_end_inds(3,i);
+        figure('Name', num2str(ntnum), 'visible', 'off'); % @LT, annoying to pop up.
+
+        % plot xy
+        x = trial_results.x;
+        y = trial_results.y;
+        plot(x,y)
+        hold on
+
+        % get fixation times and plot each, alternating colors to separate
+        fixation_times_all = trial_results.fixation_inds;
+
+        for j=1:length(fixation_times_all)
+            fix_inds = fixation_times_all(1,j):fixation_times_all(2,j);
+            %disp(fixationtimes(1,i))
+            %time_window = fixation_times_all(1,j):fixation_times_all(2,j);
+
+            % check that fixation belongs to this trial
+            %if (time_window(1) >= t_start_ind) && (time_window(end) <= t_end_ind)
+           if mod(j,2)==0
+               plot(x(fix_inds), y(fix_inds), 'r');
+           else
+               plot(x(fix_inds), y(fix_inds), 'g');
+           end
+           hold on
+            %end
+            %plot(x(fix_inds), y(fix_inds), 'g');
+        end
+
+        % done with this plot
+        hold off
+
+        % Save plot and close, @LT
+        saveas(gcf, [savedir_figs '/trial_' num2str(ntnum) '_fixations.png']); 
+        close all;
+    end
 
 end
