@@ -5777,7 +5777,7 @@ class Session(object):
                     cross_dir = 'down'
                     t_pre = -0.01
                     # t_post = 0.16 # missed. too short.
-                    t_post = 0.2
+                    t_post = 0.33 # is ok to be kind of long, nothing following can contaminate.
                     out = self.behcode_get_stream_crossings_in_window(trial, behcode, whichstream=stream, 
                                                               cross_dir_to_take=cross_dir, t_pre=t_pre,
                                                               t_post=t_post,
@@ -6121,7 +6121,8 @@ class Session(object):
         return dict_events
 
     # load fixation onset times (231027_eyetracking_neural_exploration.ipynb)
-    def events_get_clusterfix_fixation_times_and_centroids(self, trial, on_or_off=True, event_endpoints=[]):
+    def events_get_clusterfix_fixation_times_and_centroids(self, trial, on_or_off=True, event_endpoints=None,
+                                                           plot_overlay_on_raw=False):
         # load this trial's saccade times
         trialcode = self.datasetbeh_trial_to_trialcode(trial)
         directory_for_clusterfix = PATH_SAVE_CLUSTERFIX
@@ -6140,20 +6141,98 @@ class Session(object):
         data_centroids = pd.read_csv(fname_centroids, sep=',').values
         data_centroids = [item for item in data_centroids]
 
-        if event_endpoints:
+        if event_endpoints is not None:
             if event_endpoints==["stim_onset", "go"]:
                 # get start, end indices
                 start_time, end_time = self.get_time_window_of_events(trial, event_endpoints[0], event_endpoints[1])
                 valid_inds = [i for i, t in enumerate(data_times) if end_time >= t >= start_time]
                 data_times = [data_times[i] for i in valid_inds]
                 data_centroids = [data_centroids[i] for i in valid_inds]
+
+
             else:
                 assert False, "code this"
 
-        return data_times, data_centroids
+        if plot_overlay_on_raw:
+            times_tdt, vals_tdt_calibrated, fs_tdt, vals_tdt_calibrated_sm = self.beh_extract_eye_good(trial, CHECK_TDT_ML2_MATCH=True, return_all=True,
+                                                                                                    PLOT=False)
+
+            if event_endpoints==["stim_onset", "go"]:
+                _inds = (times_tdt>=start_time) & (times_tdt<=end_time)
+                times_tdt = times_tdt[_inds]
+                vals_tdt_calibrated = vals_tdt_calibrated[_inds, :]
+                vals_tdt_calibrated_sm = vals_tdt_calibrated_sm[_inds, :]
+            else:
+                assert event_endpoints is None
+
+            fig1d, axes1d = plt.subplots(3,1, figsize=(15,10), squeeze=False)
+
+            ax = axes1d.flatten()[0]
+            ax.plot(times_tdt, vals_tdt_calibrated[:,0], label="tdt_x", color="b")
+            ax.plot(data_times, np.stack(data_centroids)[:,0],  "ob")
+            for t in data_times:
+                ax.axvline(t, linestyle="-", alpha=0.5, color="k")
+            ax.set_title("fixation events overlaid on raw voltage (calibrated)")
+            ax.legend()
+            # - overlay trial events
+            self.plotmod_overlay_trial_events(ax, trial)
+
+            ax = axes1d.flatten()[1]
+            ax.plot(times_tdt, vals_tdt_calibrated[:,1], label="tdt_y", color="r")
+            ax.plot(data_times, np.stack(data_centroids)[:,1],  "or")
+            for t in data_times:
+                ax.axvline(t, linestyle="-", alpha=0.5, color="k")
+            ax.legend()
+            ax.set_title("fixation events overlaid on raw voltage (calibrated)")
+            # - overlay trial events
+            self.plotmod_overlay_trial_events(ax, trial)
+
+            ax = axes1d.flatten()[2]
+            ax.plot(times_tdt, vals_tdt_calibrated[:,0], label="tdt_x", color="b")
+            ax.plot(times_tdt, vals_tdt_calibrated[:,1], label="tdt_y", color="r")
+            ax.legend()
+
+            ax.plot(data_times, np.stack(data_centroids)[:,0],  "ob")
+            ax.plot(data_times, np.stack(data_centroids)[:,1],  "or")
+            for t in data_times:
+                ax.axvline(t, linestyle="-", alpha=0.5, color="k")
+            ax.set_title("fixation events overlaid on raw voltage (calibrated)")
+            # - overlay trial events
+            self.plotmod_overlay_trial_events(ax, trial)
+
+            # overlay on task image
+            fig2d, axes2d = plt.subplots(2, 2, figsize=(10,10))
+
+            def _plot_eye_trace(times, vals, ax, alpha=0.15, overlay_idx_text=False):
+                ax.plot(vals[:,0], vals[:,1], "-k", alpha=alpha)
+                ax.scatter(vals[:,0], vals[:,1], c=times, alpha=alpha, marker="x")
+
+                if overlay_idx_text:
+                    for i, v in enumerate(vals):
+                        ax.text(v[0], v[1], i, fontsize=10)
+
+            ax = axes2d.flatten()[0]
+            self.plot_taskimage(ax, trial)
+            _plot_eye_trace(times_tdt, vals_tdt_calibrated, ax)
+            ax.set_title("raw, not smoothed")
+
+            ax = axes2d.flatten()[1]
+            self.plot_taskimage(ax, trial)
+            _plot_eye_trace(times_tdt, vals_tdt_calibrated_sm, ax)
+            ax.set_title("raw, smoothed")
+
+            ax = axes2d.flatten()[2]
+            self.plot_taskimage(ax, trial)
+            _plot_eye_trace(np.array(data_times), np.stack(data_centroids), ax, 
+                            alpha=1, overlay_idx_text=True)
+            ax.set_title("extracted fixations")
+
+            return data_times, data_centroids, fig1d, axes1d, fig2d, axes2d
+        else:
+            return data_times, data_centroids
 
     # load saccade onset times (231027_eyetracking_neural_exploration.ipynb)
-    def events_get_clusterfix_saccade_times(self, trial, on_or_off=True, event_endpoints=[]):
+    def events_get_clusterfix_saccade_times(self, trial, on_or_off=True, event_endpoints=None, plot_overlay_on_raw=False):
         # load this trial's saccade times
         trialcode = self.datasetbeh_trial_to_trialcode(trial)
         directory_for_clusterfix = PATH_SAVE_CLUSTERFIX
@@ -6167,7 +6246,7 @@ class Session(object):
         data = pd.read_csv(fname, sep=',').values
         data = [item[0] for item in data]
 
-        if event_endpoints:
+        if event_endpoints is not None:
             if event_endpoints==["stim_onset", "go"]:
                 # get start, end indices
                 start_time, end_time = self.get_time_window_of_events(trial, event_endpoints[0], event_endpoints[1])
@@ -6175,6 +6254,75 @@ class Session(object):
                 data = [data[i] for i in valid_inds]
             else:
                 assert False, "code this"
+
+        if plot_overlay_on_raw:
+            times_tdt, vals_tdt_calibrated, fs_tdt, vals_tdt_calibrated_sm = self.beh_extract_eye_good(trial, CHECK_TDT_ML2_MATCH=True, return_all=True,
+                                                                                                    PLOT=False)
+
+            if event_endpoints==["stim_onset", "go"]:
+                _inds = (times_tdt>=start_time) & (times_tdt<=end_time)
+                times_tdt = times_tdt[_inds]
+                vals_tdt_calibrated = vals_tdt_calibrated[_inds, :]
+                vals_tdt_calibrated_sm = vals_tdt_calibrated_sm[_inds, :]
+            else:
+                assert event_endpoints is None
+
+            fig, axes = plt.subplots(3,1, figsize=(15,10), squeeze=False)
+
+            ax = axes.flatten()[0]
+            ax.plot(times_tdt, vals_tdt_calibrated[:,0], label="tdt_x", color="b")
+            for t in data:
+                ax.axvline(t, linestyle="-", alpha=0.5, color="k")
+            ax.set_title("fixation events overlaid on raw voltage (calibrated)")
+            ax.legend()
+            # - overlay trial events
+            self.plotmod_overlay_trial_events(ax, trial)
+
+            ax = axes.flatten()[1]
+            ax.plot(times_tdt, vals_tdt_calibrated[:,1], label="tdt_y", color="r")
+            for t in data:
+                ax.axvline(t, linestyle="-", alpha=0.5, color="k")
+            ax.legend()
+            ax.set_title("fixation events overlaid on raw voltage (calibrated)")
+            # - overlay trial events
+            self.plotmod_overlay_trial_events(ax, trial)
+
+            ax = axes.flatten()[2]
+            ax.plot(times_tdt, vals_tdt_calibrated[:,0], label="tdt_x", color="b")
+            ax.plot(times_tdt, vals_tdt_calibrated[:,1], label="tdt_y", color="r")
+            ax.legend()
+            for t in data:
+                ax.axvline(t, linestyle="-", alpha=0.5, color="k")
+            ax.set_title("fixation events overlaid on raw voltage (calibrated)")
+            # - overlay trial events
+            self.plotmod_overlay_trial_events(ax, trial)
+
+            # # overlay on task image
+            # fig2d, axes2d = plt.subplots(2, 2, figsize=(10,10))
+
+            # def _plot_eye_trace(times, vals, ax, alpha=0.15, overlay_idx_text=False):
+            #     ax.plot(vals[:,0], vals[:,1], "-k", alpha=alpha)
+            #     ax.scatter(vals[:,0], vals[:,1], c=times, alpha=alpha, marker="x")
+
+            #     if overlay_idx_text:
+            #         for i, v in enumerate(vals):
+            #             ax.text(v[0], v[1], i, fontsize=10)
+
+            # ax = axes2d.flatten()[0]
+            # self.plot_taskimage(ax, trial)
+            # _plot_eye_trace(times_tdt, vals_tdt_calibrated, ax)
+            # ax.set_title("raw, not smoothed")
+
+            # ax = axes2d.flatten()[1]
+            # self.plot_taskimage(ax, trial)
+            # _plot_eye_trace(times_tdt, vals_tdt_calibrated_sm, ax)
+            # ax.set_title("raw, smoothed")
+
+            # ax = axes2d.flatten()[2]
+            # self.plot_taskimage(ax, trial)
+            # _plot_eye_trace(np.array(data_times), np.stack(data_centroids), ax, 
+            #                 alpha=1, overlay_idx_text=True)
+            # ax.set_title("extracted fixations")
 
         return data
 
@@ -8519,9 +8667,9 @@ class Session(object):
 
         if self._BehEyeAlignOffset is None:
             from pythonlib.tools.stroketools import strokesInterpolate2
-            n = 16
+            n = 30
             trials = self.get_trials_list(True, nsub_uniform=n+1)[1:] # skip first sometimes is weird
-            print("trials:", trials)
+            print("trials, for computing a global offset to align tdt and ml2 eye tracking data:", trials)
             list_x =[]
             for t in trials:
                 times_tdt, vals_tdt, fs_tdt, times_ml2, vals_ml2, fs_ml2, fd = self._beh_extract_eye_raw(t)
@@ -8568,10 +8716,125 @@ class Session(object):
 
         return self._BehEyeAlignOffset
 
+    def beh_eye_fixation_extract_and_assign_task_shape(self, trial, PLOT=False, event_endpoints=None):
+        """
+        Good helper to extract fixations for a trial, optionally within a range of events, and assigning the shape he is looking at, with
+        constraints on closeness in distance, and in time from onset of first event (i.e, in getting clean fixations).
+        
+        """
+        import pandas as pd
+        from pythonlib.tools.distfunctools import closest_pt_twotrajs
+
+        assert event_endpoints == ["stim_onset", "go"], "only coded for this, since it uses the time from stim onset to fixation to decide whether to throw it out.."
+
+        # Params - criteria for assigining a shape to fiaation, based on distance
+        MIN_DIST_TASK_TO_FIX = 70 # radius (from closest point along stroke stroke task image), fixation must be within this to assign to this shape (L2)
+        MIN_TIME_REL_STIM_ONSET = 0.15 # (saccades take ~0.05-0.1 sec. Account for 0.1 reaction time)
+
+        # Get data for this trial
+        t_stim_onset = self.events_get_time_helper("stim_onset", trial, assert_one=True)[0]
+        tmp = self.events_get_clusterfix_fixation_times_and_centroids(trial, plot_overlay_on_raw=PLOT,
+                                                                                                    event_endpoints =event_endpoints)
+        ind = self.datasetbeh_trial_to_datidx(trial)
+        Tk = self.Datasetbeh.taskclass_tokens_extract_wrapper(ind, "task", return_as_tokensclass=True)
+
+        if PLOT:
+            data_times, data_centroids, fig1d, axes1d, fig2d, axes2d = tmp
+        else:
+            data_times, data_centroids = tmp
+
+        if PLOT:
+            # overlay locations of each shape
+            ax = axes1d.flatten()[0]
+            centers = [tk["center"] for tk in Tk.Tokens]
+            if False: # This is not accurate anymore, since useing al;l pts, not just centroid
+                for cen in centers:
+                    ax.axhline(cen[0], color="b")
+                    ax.axhline(cen[0]-MIN_DIST_TASK_TO_FIX, color="b", linestyle="--")
+                    ax.axhline(cen[0]+MIN_DIST_TASK_TO_FIX, color="b", linestyle="--")
+                
+            ax = axes1d.flatten()[1]
+            centers = [tk["center"] for tk in Tk.Tokens]
+            if False:
+                for cen in centers:
+                    ax.axhline(cen[1], color="r")
+                    ax.axhline(cen[1]-MIN_DIST_TASK_TO_FIX, color="r", linestyle="--")
+                    ax.axhline(cen[1]+MIN_DIST_TASK_TO_FIX, color="r", linestyle="--")
+
+        # For each fixation, get its distance to task shapes.
+        list_dist_to_closest_token = []
+        list_idx_closest_token = []
+        for fix_cen in data_centroids:
+
+            # get distance to each token
+            dist_to_each_token = []
+            for tk in Tk.Tokens:
+                pts = tk["Prim"].Stroke()[:,:2]
+                mindist, _, _ = closest_pt_twotrajs(pts, fix_cen[None, :])
+                dist_to_each_token.append(mindist)
+
+            # find the closest token
+            idx_min = np.argmin(dist_to_each_token)
+            val_min = np.min(dist_to_each_token)
+
+            list_dist_to_closest_token.append(val_min)
+            list_idx_closest_token.append(idx_min)
+
+        # For each fixatoin, get its time relative to stim onset.
+        assert event_endpoints == ["stim_onset", "go"], "only coded for this, since it uses the time from stim onset to fixation to decide whether to throw it out.."
+        list_time_relative_stim_onset = [t - t_stim_onset for t in data_times]
+        
+        if PLOT:
+            # Overlay results
+            fig, ax = plt.subplots()
+            self.plot_taskimage(ax=ax, trialtdt=trial)
+
+            # ax.plot(np.stack(data_centroids)[:, 0], np.stack(data_centroids)[:, 1], "-k", alpha=0.4)
+            ax.plot(np.stack(data_centroids)[:, 0], np.stack(data_centroids)[:, 1], "-k", alpha=0.4)
+            ax.scatter(np.stack(data_centroids)[:, 0], np.stack(data_centroids)[:, 1], c=list_idx_closest_token)
+            for i, (fix_cen, idx_closest, dist_closest, t_rel_stim) in enumerate(zip(data_centroids, list_idx_closest_token, list_dist_to_closest_token, list_time_relative_stim_onset)):
+                ax.text(fix_cen[0], fix_cen[1], f"#{i}-dist={dist_closest:.1f}-trelstim={t_rel_stim:.2f}")
+                if dist_closest>MIN_DIST_TASK_TO_FIX:
+                    ax.plot(fix_cen[0], fix_cen[1], "xr")
+                if t_rel_stim<MIN_TIME_REL_STIM_ONSET:
+                    ax.plot(fix_cen[0], fix_cen[1], "dr")
+                        
+        # Get final list of good fixations
+        res = []
+        for i in range(len(data_centroids)):
+            if (list_time_relative_stim_onset[i]>MIN_TIME_REL_STIM_ONSET) & (list_dist_to_closest_token[i]<MIN_DIST_TASK_TO_FIX):
+                # then assign the shape it was lookinga t
+                tk = Tk.Tokens[list_idx_closest_token[i]]
+                # - pull out useful things
+                shape = tk["shape"]
+                gridloc = tk["gridloc"]
+                idx_task_orig = tk["ind_taskstroke_orig"]
+            else:
+                shape = "FAR_FROM_ALL_SHAPES"
+                gridloc = "FAR_FROM_ALL_SHAPES"
+                idx_task_orig = "FAR_FROM_ALL_SHAPES"
+            
+            res.append({
+                "idx_fixation":i,
+                "time_global":data_times[i],
+                "fix_cen":data_centroids[i],
+                "time_rel_stim_onset":list_time_relative_stim_onset[i],
+                "closest_task_token_dist":list_dist_to_closest_token[i],
+                "closest_task_token_idx":list_idx_closest_token[i],
+                "assigned_task_shape":shape,
+                "assigned_task_gridloc":gridloc,
+                "assigned_task_idx_task_orig":idx_task_orig,
+                "assigned_task_token":tk,
+            })
+
+        dffix = pd.DataFrame(res)
+
+        return dffix
+
 
     def beh_extract_eye_good(self, trial, apply_empirical_offset=True,
         CHECK_TDT_ML2_MATCH=False, THRESH=5, PLOT=False, return_all=False,
-        SM_WIN = 0.01):
+        SM_WIN = 0.01, return_fs_tdt=False):
         """
         Get eye track data in units of pixels (matching strokes), by using
         voltage saved in TDT, but doing projective transform using the T
@@ -8645,7 +8908,7 @@ class Session(object):
             ax.plot(times_tdt, vals_tdt_calibrated, label="tdt_calib")
             ax.legend()
 
-        if CHECK_TDT_ML2_MATCH:
+        if CHECK_TDT_ML2_MATCH: 
             # assert False, "not ready. this requires a  different offset for each session. should compute the offset by converting ml2 back to voltage"
             # Sanity check that (i) tdt voltage transformed --> pix == (ii) monkeylogic saved.
             # - interpolate to same time base
@@ -8717,6 +8980,8 @@ class Session(object):
             times_tdt_sm = strokes_tdt[0][:,2]
             assert np.all(times_tdt_sm==times_tdt)
             return times_tdt, vals_tdt_calibrated, fs_tdt, vals_tdt_calibrated_sm
+        elif return_fs_tdt:
+            return times_tdt, vals_tdt_calibrated, fs_tdt
         else:
             return times_tdt, vals_tdt_calibrated
 
@@ -10237,6 +10502,7 @@ class Session(object):
     ## helper functions ##
     ######################
     def datasetbeh_get_all_trialcodes(self):
+        assert False, "do not use this. Datasetbeh.Dat is not guaranteed to map onto neural trials one to one."
         return self.Datasetbeh.Dat['trialcode'].tolist()
 
     def datasetbeh_get_all_trialnums(self):
@@ -10245,17 +10511,18 @@ class Session(object):
     # returns smoothed and transformed x,y data for a session/trialnum
     def get_eye_xy_smoothed_and_transformed(self, trialnum, PLOT=True):
         # get TRANSFORMED xy-coordinates (used calibration matrix to map to screen)
-        st = self.beh_extract_eye_good(trialnum)
+        st = self.beh_extract_eye_good(trialnum, CHECK_TDT_ML2_MATCH=True, return_fs_tdt=True)
         times = st[0]
         x_aff = st[1][:,0]
         y_aff = st[1][:,1]
+        fs_tdt = st[2]
 
         # SMOOTH DATA
         from pythonlib.tools.timeseriestools import smoothDat
         x_aff_sm = smoothDat(x_aff, window_len=10)
         y_aff_sm = smoothDat(y_aff, window_len=10)
         
-        return x_aff_sm, y_aff_sm, times
+        return x_aff_sm, y_aff_sm, times, fs_tdt
 
     # get the start, end times for the window spanned by start_event, end_event
     def get_time_window_of_events(self, trial, start_event, end_event):
@@ -10271,6 +10538,7 @@ class Session(object):
     #########################
     def extract_and_save_clusterfix_trial_xy_mats(self, fs_new=200):    
         # export .mat files with raw x,y to be used in MATLAB
+        # LT updated 5/26/24, confirmed all steps good.
         animal = self.Animal 
         date = self.Date 
         session_no = self.RecSession
@@ -10278,21 +10546,27 @@ class Session(object):
         SAVEDIR = f"{PATH_SAVE_CLUSTERFIX}/{animal}-{date}-{session_no}/raw_xy_mats"
         os.makedirs(SAVEDIR, exist_ok=True)
 
-        trialcodes = self.datasetbeh_get_all_trialcodes()
-        trialnums = self.datasetbeh_get_all_trialnums()
-        scipy.io.savemat(f"{SAVEDIR}/all_ntrialnums.mat", dict(neuraltrialnums=trialnums))
-        scipy.io.savemat(f"{SAVEDIR}/all_trialcodes.mat", dict(trialcodes=trialcodes))
+        # This may run into error in getting dataset trialcodes that dont exist as neural trials..
+        # trialcodes = self.datasetbeh_get_all_trialcodes()
+        # trialnums = self.datasetbeh_get_all_trialnums()
+        # scipy.io.savemat(f"{SAVEDIR}/all_ntrialnums.mat", dict(neuraltrialnums=trialnums))
+        # scipy.io.savemat(f"{SAVEDIR}/all_trialcodes.mat", dict(trialcodes=trialcodes))
 
         # loop thru trials and save xy data
+        trialnums = self.get_trials_list()
+        trialcodes = []
         for tnum in trialnums:
+
+            tc = self.datasetbeh_trial_to_trialcode(tnum)
+            trialcodes.append(tc)
+
             # get sampling rate
-            t,v,fs_raw = self.extract_data_tank_streams("eyex", tnum, ploton=False)
+            # _, _, fs_raw = self.extract_data_tank_streams("eyex", tnum, ploton=False)
 
             # get XY smoothed / transformed on eye calibration matrix
-            x_raw,y_raw,times_raw = self.get_eye_xy_smoothed_and_transformed(tnum, False)
+            x_raw,y_raw,times_raw, fs_raw = self.get_eye_xy_smoothed_and_transformed(tnum, False)
 
             # resample x, y, times using integer sampling rate
-            fs_new = fs_new
             stroke_raw = [np.array([x_raw, y_raw, times_raw]).T] # dummy stroke list
             stroke_intp = strokesInterpolate2(stroke_raw, ["fsnew", fs_new, fs_raw])
             stroke_resampled = stroke_intp[0]
@@ -10304,14 +10578,19 @@ class Session(object):
             fname = f"{SAVEDIR}/ntrial{str(tnum)}.mat"
             scipy.io.savemat(fname, dict(x=x_rs, y=y_rs, times_xy=times_rs, fs_hz=fs_new))
 
+        # Save mappings between trials and trialcodes.
+        scipy.io.savemat(f"{SAVEDIR}/all_ntrialnums.mat", dict(neuraltrialnums=trialnums))
+        scipy.io.savemat(f"{SAVEDIR}/all_trialcodes.mat", dict(trialcodes=trialcodes))
+
     def extract_and_save_clusterfix_results_mat(self):
         # run MATLAB to extract clusterfix_results.mat
         animal = self.Animal 
         date = self.Date 
         session_no = self.RecSession
         base_dir = PATH_SAVE_CLUSTERFIX
-
-        os.system(f"{PATH_MATLAB} -nodisplay -nosplash -nodesktop -r \"get_clusterfix_results_mat('{animal}', '{date}', '{session_no}', '{base_dir}'); quit\"")
+        
+        PATH_TO_CLUSTERFIX_CODE = f"{PATH_NEURALMONKEY}/eyetracking_analyses"
+        os.system(f"{PATH_MATLAB} -nodisplay -nosplash -nodesktop -r \"addpath(genpath('{PATH_TO_CLUSTERFIX_CODE}')); get_clusterfix_results_mat('{animal}', '{date}', '{session_no}', '{base_dir}'); quit\"")
 
     def extract_clusterfix_results_dataframe(self):
         # creating a dataframe of clusterfix_results from the original .mat
