@@ -7619,7 +7619,7 @@ class Snippets(object):
     # adds additional columns for SP.DfScalar here (including code to loop, and append_column vars)
     # NOTE: assumes multiple session SP, e.g. from
     # note: if change to add new columns, must change list_features_extraction in dfallpa_extraction_load_wrapper_from_MS
-    def _add_clusterfix_saccfix_columns(self, filter_outliers=True, filter_only_first_shapefix=True):
+    def _add_clusterfix_saccfix_columns(self, filter_outliers=False, filter_only_first_shapefix=False):
         import math
         # get the start, end times for the window spanned by start_event, end_event
         def getTimeWindowOfEvents(sn, trial, start_event, end_event):
@@ -7638,81 +7638,127 @@ class Snippets(object):
         ############
         ## SHAPES ##
         ############
-        def getShapesInOrder(sn, trial):
-            ts = getAllTaskStrokeTokens(sn, trial)
+        # def getShapesInOrder(sn, trial):
+        #     ts = getAllTaskStrokeTokens(sn, trial)
 
-            shape_names = []
-            for i, t in enumerate(ts):
-                shape_name = t['shape'] + '-' + str(i) # adds unique tag onto it, so same shape is named differently
-                shape_names.append(t['shape'])
+        #     shape_names = []
+        #     for i, t in enumerate(ts):
+        #         shape_name = t['shape'] + '-' + str(i) # adds unique tag onto it, so same shape is named differently
+        #         shape_names.append(t['shape'])
 
-            return shape_names
+        #     return shape_names
 
-        def getShapeCentroidsInOrder(sn, trial):
-            shape_coords = sn.strokes_task_extract(trial)
-            shape_names = getShapesInOrder(sn, trial)
-            shape_centroids = {}
-            for i in range(len(shape_names)):
-                name = shape_names[i]
-                centroid = [np.mean(shape_coords[i][:,0]), np.mean(shape_coords[i][:,1])]
-                #print("name", name)
-                #print("centroid", centroid)
-                shape_centroids[name] = centroid
+        # def getShapeCentroidsInOrder(sn, trial):
+        #     shape_coords = sn.strokes_task_extract(trial)
+        #     shape_names = getShapesInOrder(sn, trial)
+        #     shape_centroids = {}
+        #     for i in range(len(shape_names)):
+        #         name = shape_names[i]
+        #         centroid = [np.mean(shape_coords[i][:,0]), np.mean(shape_coords[i][:,1])]
+        #         #print("name", name)
+        #         #print("centroid", centroid)
+        #         shape_centroids[name] = centroid
 
-            return shape_centroids # returns dict {name: [x,y]}
+        #     return shape_centroids # returns dict {name: [x,y]}
 
-        def getClosestShapeToCentroid(sn, trial, centroid, outlier_threshold=600):
-            x = centroid[0]
-            y = centroid[1]
-            shapeDict = getShapeCentroidsInOrder(sn, trial)
-            distances = []
-            names = []
+        # def getClosestShapeToCentroid(sn, trial, centroid, outlier_threshold=600):
+        #     x = centroid[0]
+        #     y = centroid[1]
+        #     shapeDict = getShapeCentroidsInOrder(sn, trial)
+        #     distances = []
+        #     names = []
 
-            for name in shapeDict:
-                names.append(name)
-                distances.append(math.dist(shapeDict[name], [x,y]))
+        #     for name in shapeDict:
+        #         names.append(name)
+        #         distances.append(math.dist(shapeDict[name], [x,y]))
 
-            shape_ind = np.argmin(distances)
-            if distances[shape_ind] >= outlier_threshold:
-                return 'OFFSCREEN'
-            return names[shape_ind]
+        #     shape_ind = np.argmin(distances)
+        #     if distances[shape_ind] >= outlier_threshold:
+        #         return 'OFFSCREEN'
+        #     return names[shape_ind]
 
-        def getClosestShapeLocToCentroid(sn, trial, centroid, outlier_threshold=600):
-            return str(getClosestShapeToCentroid(sn, trial, centroid, outlier_threshold) + getClosestLocToCentroid(sn, trial, centroid, outlier_threshold))
+        def getClosestShapeAndLocToCentroid(sn, trial, centroid, event_time):
+            import pandas as pd
+            from pythonlib.tools.distfunctools import closest_pt_twotrajs
+
+            # Params - criteria for assigining a shape to fiaation, based on distance
+            MIN_DIST_TASK_TO_FIX = 100 # radius (from closest point along stroke stroke task image), fixation must be within this to assign to this shape (L2)
+            MIN_TIME_REL_STIM_ONSET = 0.15 # (saccades take ~0.05-0.1 sec. Account for 0.1 reaction time)
+
+            t_stim_onset = sn.events_get_time_helper("stim_onset", trial, assert_one=True)[0]
+            t_go = sn.events_get_time_helper("go", trial, assert_one=True)[0]
+
+            # if outside prep window, then set to ignore value
+            if (event_time < t_stim_onset) or (event_time > t_go):
+                return "OUTSIDE_PREP_WINDOW", "OUTSIDE_PREP_WINDOW"
+
+            ind = sn.datasetbeh_trial_to_datidx(trial)
+            Tk = sn.Datasetbeh.taskclass_tokens_extract_wrapper(ind, "task", return_as_tokensclass=True)
+
+            # For this fixation/centroid, get its distance to task shapes.
+
+            # get distance to each token
+            dist_to_each_token = []
+            for tk in Tk.Tokens:
+                pts = tk["Prim"].Stroke()[:,:2]
+                mindist, _, _ = closest_pt_twotrajs(pts, centroid[None, :])
+                dist_to_each_token.append(mindist)
+
+            # find the closest token
+            idx_min = np.argmin(dist_to_each_token)
+            val_min = np.min(dist_to_each_token)
+
+            # For each fixatoin, get its time relative to stim onset.
+            time_relative_stim_onset = event_time - t_stim_onset
+
+            if (time_relative_stim_onset>MIN_TIME_REL_STIM_ONSET) & (val_min<MIN_DIST_TASK_TO_FIX):
+                # then assign the shape it was lookinga t
+                tk = Tk.Tokens[idx_min]
+                # - pull out useful things
+                shape = tk["shape"]
+                gridloc = tk["gridloc"]
+            else:
+                shape = "FAR_FROM_ALL_SHAPES"
+                gridloc = "FAR_FROM_ALL_LOCS"       
+
+            return shape, str(gridloc)
+
+        # def getClosestShapeLocToCentroid(sn, trial, centroid, outlier_threshold=600):
+        #     return str(getClosestShapeToCentroid(sn, trial, centroid, outlier_threshold) + getClosestLocToCentroid(sn, trial, centroid, outlier_threshold))
 
         ###############
         ## LOCATIONS ##
         ###############
-        def getLocationsAndCentroidsInOrder(sn, trial):
-            ts = getAllTaskStrokeTokens(sn, trial)
+        # def getLocationsAndCentroidsInOrder(sn, trial):
+        #     ts = getAllTaskStrokeTokens(sn, trial)
 
-            loc_names = []
-            loc_coords = []
-            for t in ts:
-                loc_names.append(str(t['gridloc']))
-                loc_coords.append(t['center'])
+        #     loc_names = []
+        #     loc_coords = []
+        #     for t in ts:
+        #         loc_names.append(str(t['gridloc']))
+        #         loc_coords.append(t['center'])
 
-            return loc_names, loc_coords
+        #     return loc_names, loc_coords
 
 
-        def getClosestLocToCentroid(sn, trial, centroid, outlier_threshold=600):
-            x = centroid[0]
-            y = centroid[1]
-            locs = getLocationsAndCentroidsInOrder(sn, trial)
-            locNames = locs[0]
-            locCentroids = locs[1]
+        # def getClosestLocToCentroid(sn, trial, centroid, outlier_threshold=600):
+        #     x = centroid[0]
+        #     y = centroid[1]
+        #     locs = getLocationsAndCentroidsInOrder(sn, trial)
+        #     locNames = locs[0]
+        #     locCentroids = locs[1]
 
-            distances = []
-            names = []
+        #     distances = []
+        #     names = []
 
-            for i, name in enumerate(locNames):
-                names.append(name)
-                distances.append(math.dist(locCentroids[i], [x,y]))
+        #     for i, name in enumerate(locNames):
+        #         names.append(name)
+        #         distances.append(math.dist(locCentroids[i], [x,y]))
 
-            loc_ind = np.argmin(distances)
-            if distances[loc_ind] >= outlier_threshold:
-                return 'OFFSCREEN'
-            return str(names[loc_ind])
+        #     loc_ind = np.argmin(distances)
+        #     if distances[loc_ind] >= outlier_threshold:
+        #         return 'OFFSCREEN'
+        #     return str(names[loc_ind])
         # -----------------------------------------------------------
 
 
@@ -7741,8 +7787,8 @@ class Snippets(object):
                 print("looping through event inds")
                 for eind in event_inds_within_trial:
                     e_df_inds = dummy_df.index[(dummy_df['trial_neural']==nt) & (dummy_df['event_idx_within_trial']==eind)]
-                    e_df_temp = dummy_df[(dummy_df['trial_neural']==nt) & (dummy_df['event_idx_within_trial']==eind)]
-                    e_prev_df_temp = dummy_df[(dummy_df['trial_neural']==nt) & (dummy_df['event_idx_within_trial']==(eind-1))]
+                    e_df_temp = dummy_df[(dummy_df['trial_neural']==nt) & (dummy_df['event_idx_within_trial']==eind)].copy()
+                    e_prev_df_temp = dummy_df[(dummy_df['trial_neural']==nt) & (dummy_df['event_idx_within_trial']==(eind-1))].copy()
 
                     ## add between-stimonset and go, early or late planning
                     e_time = e_df_temp.iloc[0]['event_time']
@@ -7763,32 +7809,38 @@ class Snippets(object):
                     e_cntrd = e_df_temp.iloc[0]['fixation-centroid']
 
                     # now, get closest shape to this centroid and add to dummy_df
-                    shapefix = getClosestShapeToCentroid(sn, nt, e_cntrd)
+                    shapefix, locfix = getClosestShapeAndLocToCentroid(sn, nt, e_cntrd, e_time)
+                    #shapefix = getClosestShapeToCentroid(sn, nt, e_cntrd)
                     print("shapefixation: ", shapefix)
                     dummy_df.loc[e_df_inds, 'shape-fixation'] = shapefix
-                    print("fiished shapefix")
+                    print("finished shapefix")
 
                     ## add loc-fixation
-                    locfix = getClosestLocToCentroid(sn, nt, e_cntrd)
+                    #locfix = getClosestLocToCentroid(sn, nt, e_cntrd)
+                    print("locfixation: ", locfix)
                     dummy_df.loc[e_df_inds, 'loc-fixation'] = locfix
                     print("finished locfix")
-                    ## add first-fixation-on-shape
+                    ## add first-fixation-on-shape 
                     # reset values
-                    e_df_inds = dummy_df.index[(dummy_df['trial_neural']==nt) & (dummy_df['event_idx_within_trial']==eind)]
-                    e_df_temp = dummy_df[(dummy_df['trial_neural']==nt) & (dummy_df['event_idx_within_trial']==eind)]
-                    e_prev_df_temp = dummy_df[(dummy_df['trial_neural']==nt) & (dummy_df['event_idx_within_trial']==(eind-1))]
+                    #e_df_inds = dummy_df.index[(dummy_df['trial_neural']==nt) & (dummy_df['event_idx_within_trial']==eind)]
+                    e_df_temp = dummy_df[(dummy_df['trial_neural']==nt) & (dummy_df['event_idx_within_trial']==eind)].copy()
+                    e_prev_df_temp = dummy_df[(dummy_df['trial_neural']==nt) & (dummy_df['event_idx_within_trial']==(eind-1))].copy()
                     print("dftemplen", len(e_df_temp))
                     print("prevdftemplen", len(e_prev_df_temp))
                     print("doing firstifxonshape, eind: ", eind)
-                    # if outside planning period
-                    if eind==event_inds_within_trial[0] or e_df_temp.iloc[0]['early-or-late-planning-period'] == 'IGNORE':
-                        print("1")
+
+                    # sometimes, first fixation is within planning window..
+                    if shapefix=='FAR_FROM_ALL_SHAPES':
                         dummy_df.loc[e_df_inds, 'first-fixation-on-shape'] = 'IGNORE'
-                    # if this is the first event in the planning period:
-                    elif e_df_temp.iloc[0]['early-or-late-planning-period']=='early' and e_prev_df_temp.iloc[0]['early-or-late-planning-period'] == 'IGNORE':
-                        print("2")
+                    elif e_df_temp.iloc[0]['between-stimonset-and-go']==True and eind==0:
+                        print("0")
                         dummy_df.loc[e_df_inds, 'first-fixation-on-shape'] = True
-                    # if first two events are within planning period
+                    elif e_df_temp.iloc[0]['between-stimonset-and-go']==True and e_prev_df_temp.iloc[0]['between-stimonset-and-go'] == False:
+                        print("1")
+                        dummy_df.loc[e_df_inds, 'first-fixation-on-shape'] = True
+                    elif e_df_temp.iloc[0]['between-stimonset-and-go']==False:
+                        print("2")
+                        dummy_df.loc[e_df_inds, 'first-fixation-on-shape'] = 'IGNORE'
                     else:
                         print("3")
                         # check if shape for previous eind is the same
@@ -7800,9 +7852,9 @@ class Snippets(object):
                             dummy_df.loc[e_df_inds, 'first-fixation-on-shape'] = True
 
                         # add prev shape fixation
-                        dummy_df.loc[e_df_inds, 'prev-shape-fixation'] = shape_prev
+                        #dummy_df.loc[e_df_inds, 'prev-shape-fixation'] = shape_prev
                         # for good measure, add prev loc fixation
-                        dummy_df.loc[e_df_inds, 'prev-loc-fixation'] = e_prev_df_temp.iloc[0]['loc-fixation']
+                        #dummy_df.loc[e_df_inds, 'prev-loc-fixation'] = e_prev_df_temp.iloc[0]['loc-fixation']
 
                     ## is fixated on first shape drawn?
                     print("doing isfixatedonseqc0shape")
@@ -7855,7 +7907,7 @@ class Snippets(object):
         # filter outliers out
         if filter_outliers==True:
             print("filter outliers")
-            dummy_df_all = dummy_df_all[dummy_df_all["shape-fixation"]!='OFFSCREEN'].reset_index(drop=True)
+            dummy_df_all = dummy_df_all[dummy_df_all["shape-fixation"]!='FAR_FROM_ALL_SHAPES'].reset_index(drop=True)
         if filter_only_first_shapefix==True:
             print("filter only first shapefix)")
             dummy_df_all = dummy_df_all[dummy_df_all["first-fixation-on-shape"]==True].reset_index(drop=True)
