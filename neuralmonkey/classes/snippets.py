@@ -7682,7 +7682,7 @@ class Snippets(object):
             from pythonlib.tools.distfunctools import closest_pt_twotrajs
 
             # Params - criteria for assigining a shape to fiaation, based on distance
-            MIN_DIST_TASK_TO_FIX = 100 # radius (from closest point along stroke stroke task image), fixation must be within this to assign to this shape (L2)
+            MIN_DIST_TASK_TO_FIX = 70 # radius (from closest point along stroke stroke task image), fixation must be within this to assign to this shape (L2)
             MIN_TIME_REL_STIM_ONSET = 0.15 # (saccades take ~0.05-0.1 sec. Account for 0.1 reaction time)
 
             t_stim_onset = sn.events_get_time_helper("stim_onset", trial, assert_one=True)[0]
@@ -7852,9 +7852,9 @@ class Snippets(object):
                             dummy_df.loc[e_df_inds, 'first-fixation-on-shape'] = True
 
                         # add prev shape fixation
-                        #dummy_df.loc[e_df_inds, 'prev-shape-fixation'] = shape_prev
+                        dummy_df.loc[e_df_inds, 'prev-shape-fixation'] = shape_prev
                         # for good measure, add prev loc fixation
-                        #dummy_df.loc[e_df_inds, 'prev-loc-fixation'] = e_prev_df_temp.iloc[0]['loc-fixation']
+                        dummy_df.loc[e_df_inds, 'prev-loc-fixation'] = e_prev_df_temp.iloc[0]['loc-fixation']
 
                     ## is fixated on first shape drawn?
                     print("doing isfixatedonseqc0shape")
