@@ -2616,6 +2616,9 @@ class PopAnal():
             # assert False, "did you really not want to input chan?"
             PA = self
 
+        if ax is None:
+            fig, ax = plt.subplots()
+            
         # Split into each pa for each level
         list_pa, list_levels_matching_pa = PA.split_by_label(dim_str, dim_variable)
         
