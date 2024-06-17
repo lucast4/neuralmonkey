@@ -1809,6 +1809,7 @@ class Session(object):
                     try:
                         with open(paththis, "rb") as f:
                             dat = pickle.load(f)
+                        print("Loading... ", trial, site)
                     except Exception as err:
                         print(paththis)
                         raise err
@@ -4237,7 +4238,9 @@ class Session(object):
     def sitestats_fr_get_and_save(self, save=True):
         """ Gets fr for all sites and saves in self.DatAll, and saves
         to disk. This is more for computation than for returning anything useufl. 
-        Run this once."""
+        Run this once.
+        Takes a while, like minutes
+        """
         for site in self.sitegetterKS_map_region_to_sites_MULTREG(clean=False):
             
             if site%50==0:
@@ -6489,7 +6492,7 @@ class Session(object):
 
 
 
-    def eventsdataframe_sanity_check(self, DEBUG=False):
+    def eventsdataframe_sanity_check(self, DEBUG=False, PLOT=True):
         """
         Sanityc check of timing of extracted events (accurate timing). Extract
         all events, then check ones that are weiord (in ordering and/or missing
@@ -6585,15 +6588,27 @@ class Session(object):
         os.makedirs(savedir, exist_ok=True)
         print("SAVING AT: ", savedir)
 
-        list_categories = list(log_events_in_chron_order_allinstances.keys())
-        for category in list_categories:
-            trials = log_events_in_chron_order_allinstances[category]
-            fig, axes, _, _, = self.plotwrapper_raster_multrials_onesite(trials, plot_beh=False, 
-                                                    plot_rasters=False, SIZE=0.15, alignto="go")
-            
-            # save
-            fig.savefig(f"{savedir}/events_raster-eventscat_{category}.pdf")
-            plt.close("all")
+        if PLOT:
+            list_categories = list(log_events_in_chron_order_allinstances.keys())
+            for category in list_categories:
+                print("Saving figure for:", category, " at ", savedir)
+                trials = log_events_in_chron_order_allinstances[category]
+                fig, axes, _, _, = self.plotwrapper_raster_multrials_onesite(trials, plot_beh=False, 
+                                                        plot_rasters=False, SIZE=0.15, alignto="go")
+                
+                for ax in axes.flatten():
+                    # Extract the current axis limits
+                    x_min, x_max = ax.get_xlim()
+                    y_min, y_max = ax.get_ylim()
+
+                    # Set x and y ticks with intervals of 1 based on the extracted limits
+                    from pythonlib.tools.plottools import axis_xlim_ylim_intervals_modify
+                    axis_xlim_ylim_intervals_modify(ax, 0.5, "x")
+                    axis_xlim_ylim_intervals_modify(ax, 0.5, "y")
+                    
+                # save
+                fig.savefig(f"{savedir}/events_raster-eventscat_{category}.pdf")
+                plt.close("all")
             
         ###### save dicts
 
@@ -8764,14 +8779,19 @@ class Session(object):
         # For each fixation, get its distance to task shapes.
         list_dist_to_closest_token = []
         list_idx_closest_token = []
+        list_distance_to_each_token = []
         for fix_cen in data_centroids:
 
             # get distance to each token
             dist_to_each_token = []
+            dist_to_each_token_gridloc = {}
             for tk in Tk.Tokens:
                 pts = tk["Prim"].Stroke()[:,:2]
+                #  - also inclue to centroid, since he may be looking in center of circle...
+                pts = np.concatenate([pts, np.array(tk["center"])[None, :]],axis=0)
                 mindist, _, _ = closest_pt_twotrajs(pts, fix_cen[None, :])
                 dist_to_each_token.append(mindist)
+                dist_to_each_token_gridloc[tk["gridloc"]] = mindist
 
             # find the closest token
             idx_min = np.argmin(dist_to_each_token)
@@ -8779,6 +8799,7 @@ class Session(object):
 
             list_dist_to_closest_token.append(val_min)
             list_idx_closest_token.append(idx_min)
+            list_distance_to_each_token.append(dist_to_each_token_gridloc)
 
         # For each fixatoin, get its time relative to stim onset.
         assert event_endpoints == ["stim_onset", "go"], "only coded for this, since it uses the time from stim onset to fixation to decide whether to throw it out.."
@@ -8825,6 +8846,7 @@ class Session(object):
                 "assigned_task_gridloc":gridloc,
                 "assigned_task_idx_task_orig":idx_task_orig,
                 "assigned_task_token":tk,
+                "distance_to_each_token":list_distance_to_each_token[i],
             })
 
         dffix = pd.DataFrame(res)
