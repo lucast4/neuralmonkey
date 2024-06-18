@@ -34,49 +34,104 @@ from neuralmonkey.analyses.decode_good import preprocess_extract_X_and_labels
 from pythonlib.tools.pandastools import append_col_with_grp_index
 
 
-def _get_list_twind_by_animal(animal):
-    if animal=="Diego":
-        # LIST_TWIND = [
-        #     # (-0.2, 0.2),
-        #     # (0.05, 0.35),
-        #     # (0, 0.2),
-        #     # (-0.3, -0.1),
-        #     (-0.1, 0.1),
-        #     # (0.1, 0.3),
-        # ]
-        LIST_TWIND = [
-            (-0.1, 0.2),
-        ]
-    elif animal=="Pancho":
-        # Increaingly better compared to (-0.1, 0.1), tested up to (0.1, 0.3).
-        LIST_TWIND = [
-            (0.05, 0.25),
-        ]
+def _get_list_twind_by_animal(animal, event, trajectories_method, HACK_TRAJS_JUST_FOR_PLOTTING_NICE=False):
+    if trajectories_method=="scalar" and event=="00_stroke":
+        if animal=="Diego":
+            # LIST_TWIND = [
+            #     # (-0.2, 0.2),
+            #     # (0.05, 0.35),
+            #     # (0, 0.2),
+            #     # (-0.3, -0.1),
+            #     (-0.1, 0.1),
+            #     # (0.1, 0.3),
+            # ]
+            LIST_TWIND = [
+                (-0.1, 0.2),
+            ]
+        elif animal=="Pancho":
+            # Increaingly better compared to (-0.1, 0.1), tested up to (0.1, 0.3).
+            LIST_TWIND = [
+                (0.05, 0.25),
+            ]
+        else:
+            print(animal)
+            assert False
+    elif trajectories_method=="traj_to_scalar" and event=="03_samp":
+        if HACK_TRAJS_JUST_FOR_PLOTTING_NICE:
+            LIST_TWIND = [
+                (-0.3, 0.5),
+            ]         
+        else:
+            LIST_TWIND = [
+                # (-0.05, 0.45),
+                (0.1, 0.5),
+            ]
+    elif trajectories_method=="traj_to_scalar" and event in ["00_stroke", "06_on_strokeidx_0"]:
+        if HACK_TRAJS_JUST_FOR_PLOTTING_NICE:
+            LIST_TWIND = [
+                (-0.3, 0.5),
+            ]
+        else:
+            if animal=="Diego":
+                LIST_TWIND = [
+                    (-0.25, 0.1), # TESTING, pretouch...
+                    (-0.1, 0.3), # GOOD
+                    # (-0.25, 0.75), # Just to look at size effect
+                ]
+            elif animal=="Pancho":
+                # Increaingly better compared to (-0.1, 0.1), tested up to (0.1, 0.3).
+                LIST_TWIND = [
+                    (0., 0.3),
+                    (-0.2, 0.35),
+                ]
+            else:
+                print(animal)
+                assert False
+    elif trajectories_method=="traj_to_scalar" and event in ["04_go_cue"]:
+        if HACK_TRAJS_JUST_FOR_PLOTTING_NICE:
+            LIST_TWIND = [
+                (-0.3, 0.4),
+            ]            
+        else:
+            LIST_TWIND = [
+                (-0.35, -0.05), # GOOD
+                (-0.1, 0.3), # GOOD
+            ]
+    elif trajectories_method=="traj_to_scalar" and event in ["05_first_raise"]:
+        if HACK_TRAJS_JUST_FOR_PLOTTING_NICE:
+            LIST_TWIND = [
+                (-0.3, 0.4),
+            ]            
+        else:
+            if animal=="Diego":
+                LIST_TWIND = [
+                    (-0.25, 0.2), # GOOD
+                ]
+            elif animal=="Pancho":
+                LIST_TWIND = [
+                    (-0.25, 0.2), # GOOD
+                ]
+            else:
+                print(animal)
+                assert False
     else:
-        print(animal)
+        print(animal, event, trajectories_method)
         assert False
-    return LIST_TWIND
 
-PLOT_STATE_SPACE = True
-# NPCS_KEEP = None # use auto method
+    if trajectories_method=="scalar":
+        LIST_TBIN_DUR = [0.1] # None means no binning
+        LIST_TBIN_SLIDE = [0.1] # None means no binning
+    elif trajectories_method=="traj_to_scalar":
+        if HACK_TRAJS_JUST_FOR_PLOTTING_NICE:
+            LIST_TBIN_DUR = [0.2] 
+            LIST_TBIN_SLIDE = [0.02] 
+        else:
+            LIST_TBIN_DUR = [0.1] # None means no binning
+            LIST_TBIN_SLIDE = [0.025] # None means no binning
+    else:
+        print(trajectories_method)
 
-DEBUG = False
-SPIKES_VERSION = "kilosort_if_exists" # since Snippets not yet extracted for ks
-nmin_trials_per_lev = 6
-LIST_FR_NORMALIZATION = ["across_time_bins"]
-LIST_TBIN_DUR = [0.1] # None means no binning
-
-
-# LIST_NPCS_KEEP = [10]
-# dim_red_method = "pca_umap"
-# umap_n_neighbors = 40
-#
-# dim_red_method = None
-# extra_dimred_method_n_components = 3
-# umap_n_neighbors = 20
-# NPCS_KEEP = 5
-
-# Load and plot saved values?
+    return LIST_TWIND, LIST_TBIN_DUR, LIST_TBIN_SLIDE
 
 def sort_df(DF):
     """ Sort df first by var_var_others, and then by bregion --> useful for making
@@ -1478,8 +1533,29 @@ if __name__=="__main__":
 
     animal = sys.argv[1]
     date = int(sys.argv[2])
+    question = sys.argv[3]
+    which_level = sys.argv[4]
+    if len(sys.argv)>5:
+        combine_into_larger_areas = int(sys.argv[5])==1
+    else:
+        combine_into_larger_areas = False
+    assert len(sys.argv)<7, "you made mistake with args"
 
-    LIST_TWIND = _get_list_twind_by_animal(animal)
+    # LIST_TWIND = _get_list_twind_by_animal(animal)
+
+    ############## HIGH-LEVEL PARAMS
+    # TRAJECTORIES_METHOD = "scalar"
+    TRAJECTORIES_METHOD = "traj_to_scalar"
+    # TRAJECTORIES_METHOD = "traj_to_timeseries"
+
+    HACK_TRAJS_JUST_FOR_PLOTTING_NICE = False # To plot with wider time windows, clean version of state space plots, and wont spend time computing euclidian distance.
+
+    if HACK_TRAJS_JUST_FOR_PLOTTING_NICE:
+        COMPUTE_EUCLIDIAN = False
+        PLOT_CLEAN_VERSION = True
+    else:
+        COMPUTE_EUCLIDIAN = True
+        PLOT_CLEAN_VERSION = False
 
     ############### PARAMS (EUCLIDIAN)
     PLOT = False
@@ -1488,8 +1564,27 @@ if __name__=="__main__":
     LOAD_AND_PLOT_RESULTS_ONLY = False
     SKIP_EUCL_PLOTS = False
 
+    ############### PARAMS
+    PLOT_STATE_SPACE = True
+    # NPCS_KEEP = None # use auto method
+
+    DEBUG = False
+    # SPIKES_VERSION = "kilosort_if_exists" # since Snippets not yet extracted for ks
+    # combine_into_larger_areas = True
+    # if combine_into_larger_areas:
+    SPIKES_VERSION = "kilosort_if_exists" # since Snippets not yet extracted for ks
+    # else:
+    #     SPIKES_VERSION = "tdt" # since Snippets not yet extracted for ks
+
+    nmin_trials_per_lev = 5 # e.g. some cases liek (shape x loc x size)...
+    LIST_FR_NORMALIZATION = ["across_time_bins"]
+
+    # exclude_bad_areas = True
+    exclude_bad_areas = True
+    list_time_windows = [(-0.8, 0.8)]
+    EVENTS_IGNORE = [] # To reduce plots
+
     # DONT COMBINE, use questions.
-    question = sys.argv[3]
     combine_trial_and_stroke = False
     which_level = sys.argv[4]
     dir_suffix = question

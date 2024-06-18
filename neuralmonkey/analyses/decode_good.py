@@ -1403,12 +1403,20 @@ def decodewrapouterloop_categorical_cross_time_plot(DFRES, SAVEDIR):
 
 
 def decodewrapouterloop_categorical_cross_time(DFallpa, list_var_decode, time_bin_size,
-                                               slide, savedir=None):
+                                               slide, savedir=None, extract_params=True,
+                                               ignore_same_events=True, which_level="trial"):
     """ Decode across events_taskkinds and time, asking how decoder generalizes.
     Should run this outer loop. goes over all
     events and task_kinds.
     """
-    list_br, list_tw, list_ev, n_strokes_max = decodewrapouterloop_preprocess_extract_params(DFallpa)
+
+    if extract_params:
+        list_br, list_tw, list_ev, n_strokes_max = decodewrapouterloop_preprocess_extract_params(DFallpa)
+    else:
+        list_br = DFallpa['bregion'].unique().tolist()
+        list_tw = DFallpa['twind'].unique().tolist()
+        list_ev = DFallpa['event'].unique().tolist()
+        n_strokes_max = None
 
     assert len(DFallpa["twind"].unique())==1, "not big deal. just change code below to iter over all (ev, tw)."
 
@@ -1417,12 +1425,15 @@ def decodewrapouterloop_categorical_cross_time(DFallpa, list_var_decode, time_bi
         for tw in list_tw:
             for i, ev_train in enumerate(list_ev):
                 for j, ev_test in enumerate(list_ev):
-                    if j>=i:
+
+                    if ignore_same_events and j<i: # Dont so same events.
+                        print("skipping same event")
+                    else:
                         print(br, tw, ev_train, ev_test)
 
                         # TRAIN
-                        PA_train_orig = extract_single_pa(DFallpa, br, tw, event=ev_train)
-                        PA_test_orig = extract_single_pa(DFallpa, br, tw, event=ev_test)
+                        PA_train_orig = extract_single_pa(DFallpa, br, tw, event=ev_train, which_level=which_level)
+                        PA_test_orig = extract_single_pa(DFallpa, br, tw, event=ev_test, which_level=which_level)
 
                         list_task_kind_train = PA_train_orig.Xlabels["trials"]["task_kind"].unique()
                         list_task_kind_test = PA_test_orig.Xlabels["trials"]["task_kind"].unique()
@@ -1437,7 +1448,8 @@ def decodewrapouterloop_categorical_cross_time(DFallpa, list_var_decode, time_bi
 
                                 if PA_train.X.shape[1]==0 or PA_test.X.shape[1]==0:
                                     continue
-
+                                
+                                
                                 # if time_bin_size is not None:
                                 #     print(PA_train.X.shape)
                                 #     PA_train = PA_train.agg_by_time_windows_binned(time_bin_size, slide)
@@ -1459,7 +1471,6 @@ def decodewrapouterloop_categorical_cross_time(DFallpa, list_var_decode, time_bi
                                     if X_train is None or X_test is None:
                                         print("SKIPPING, becuase only not enough data:")
                                         continue
-
                                     if len(set(labels_train))<2 or len(set(labels_test))<2:
                                         print("SKIPPING, becuase only one label:")
                                         print("Train:", set(labels_train))
