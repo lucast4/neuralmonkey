@@ -7193,7 +7193,7 @@ class Snippets(object):
                 return None
             else:
                 if self.DS is None:
-                    print("GENERATING DS FOR THE FIRST TIME...")
+                    print("GENERATING DS FOR THE FIRST TIME...") 
 
                     # Then generate for the first time
                     D = self.datasetbeh_extract_dataset()
@@ -7287,9 +7287,8 @@ class Snippets(object):
 
         # Preprocess, clean, and prune D
         print("Running dataset_apply_params...")
-        D, DS, params = dataset_apply_params(D, DS, ANALY_VER, animal, date, save_substroke_preprocess_figures=substrokes_plot_preprocess) # prune it
-
-        # print(" *********** ", type(D.Dat["seqc_0_shape"]), type(D.Dat["seqc_0_shape"].values[0]), " -- ", D.Dat["seqc_0_shape"].values[0])
+        D, DS_for_pruning_D, params = dataset_apply_params(D, DS, ANALY_VER, animal, date, save_substroke_preprocess_figures=substrokes_plot_preprocess) # prune it
+        del DS
 
         ############################# PRUNE DFSCALAR using Dataset and DatasetStrokes
         # Prune DfScalar to only have trialcodes that remain after pruning.
@@ -7299,14 +7298,14 @@ class Snippets(object):
         print("Ending len dfscalar: ", len(self.DfScalar))
 
         # Optioanlly, for which_level = "stroke", prune rows based on (tc, stroke index).
-        if self.Params["which_level"] in ["stroke", "stroke_off", "substroke", "substroke_off"] and DS is not None:
-            tcs = DS.Dat["trialcode"].tolist()
-            sis = DS.Dat["stroke_index"].tolist()
+        if self.Params["which_level"] in ["stroke", "stroke_off", "substroke", "substroke_off"] and DS_for_pruning_D is not None:
+            tcs = DS_for_pruning_D.Dat["trialcode"].tolist()
+            sis = DS_for_pruning_D.Dat["stroke_index"].tolist()
             print(" --- Pruning SP.DfScalar to match DS...", "start len: ", len(self.DfScalar))
 
             # assert_exactly_one_each = False, since a trial can have multiple rows in SP.DfScalar.
             from pythonlib.tools.pandastools import append_col_with_grp_index
-            DS.Dat = append_col_with_grp_index(DS.Dat, ["trialcode", "stroke_index"], new_col_name="trialcode_strokeidx",
+            DS_for_pruning_D.Dat = append_col_with_grp_index(DS_for_pruning_D.Dat, ["trialcode", "stroke_index"], new_col_name="trialcode_strokeidx",
                                      use_strings=False)
             self.DfScalar = append_col_with_grp_index(self.DfScalar, ["trialcode", "stroke_index"], new_col_name="trialcode_strokeidx",
                                      use_strings=False)
