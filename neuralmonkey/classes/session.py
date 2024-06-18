@@ -8853,7 +8853,6 @@ class Session(object):
 
         return dffix
 
-
     def beh_extract_eye_good(self, trial, apply_empirical_offset=True,
         CHECK_TDT_ML2_MATCH=False, THRESH=5, PLOT=False, return_all=False,
         SM_WIN = 0.01, return_fs_tdt=False):
