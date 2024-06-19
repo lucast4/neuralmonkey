@@ -3089,8 +3089,7 @@ class Snippets(object):
                             #     print("HERE")
                             #     print(MS.Data[var].value_counts())
                             #     raise err
-                            #     assert False
-                            
+                            print(eventscores.keys())
                             assert len(eventscores.keys())==1, "should only be one event"
                             score = eventscores[event]
 
