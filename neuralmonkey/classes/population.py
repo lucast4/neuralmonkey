@@ -866,6 +866,27 @@ class PopAnal():
             return PA
         else:
             return X
+    
+    def replace_X(self, X, times, chans):
+        """ Replace X-- modifying self
+        """
+        assert X.shape[1]==self.X.shape[1], "assumes trials are matches, to get labels"
+        # trials = self.Trials
+
+        if chans is None and (X.shape[0]==self.X.shape[0]):
+            chans = self.Chans
+
+        if times is None and (X.shape[2]==self.X.shape[2]):
+            times = self.Times
+
+        self.X = X
+        self.Chans = chans
+        self.Times = times
+
+        # Remove these, just in case they are inconssitent with new inputs
+        # pa.Xlabels["trials"] = self.Xlabels["trials"].copy()
+        self.Xlabels["chans"] = pd.DataFrame()
+        self.Xlabels["times"] = pd.DataFrame()
 
     def copy_replacing_X(self, X, times=None, chans=None):
         """
@@ -1804,7 +1825,7 @@ class PopAnal():
         Keeps top N dimensions by criteriion either based on cumvar or minvar.
 
         PARAMS:
-        - twind_overall, only keep data within this window (e.g, [0.3, 0.6])
+        - twind_overall, only keep data within this window (e.g, [0.3, 0.6]). None, to keep all data
         - tbin_dur, optional, for binning data (sec)
         - tbin_slide, optional, if binning, how slide bin
         - reshape_method, str, defines shape of output.
@@ -1830,6 +1851,9 @@ class PopAnal():
         if tbin_dur is None:
             # Then take mean
             PAslice = PAslice.agg_wrapper("times") # (chans, trials, 1)
+        elif tbin_dur=="ignore":
+            # Pass, no smoothing
+            pass
         else:
             PAslice = PAslice.agg_by_time_windows_binned(tbin_dur, tbin_slide)
 
@@ -1844,7 +1868,40 @@ class PopAnal():
 
         ## DIM REDUCTION
         nchans, ntrials, ntimes = PAslice.X.shape
-        if reshape_method=="trials_x_chanstimes":
+        if reshape_method == "chans_x_trialstimes":
+            # E.g. if decoding, soemtimes want each time bin as datapt.
+
+            dflab = PAslice.Xlabels["trials"]
+            list_x = []
+            list_dflab = []
+            # labels_all = []
+            for i in range(ntimes):
+                list_x.append(PAslice.X[:, :, i])
+                # labels_all.extend(labels)
+                list_dflab.append(dflab)
+            X_before_dimred = np.concatenate(list_x, axis=1) # (nchans, ntrials x ntimes)
+            dflab_final = pd.concat(list_dflab).reset_index(drop=True)
+
+            if pca_reduce:  
+                assert False, "not codede yet"
+            else:
+                X = X_before_dimred
+                pca = None
+
+            assert extra_dimred_method is None, "Not codede yet"
+
+            # Represent X in PopAnal
+            PAfinal = PopAnal(X[:, :, None], times=[0], chans=PAslice.Chans)  # (ndimskeep, ntrials x ntimes, 1)
+            PAfinal.Xlabels = {dim:df.copy() for dim, df in PAslice.Xlabels.items()}
+            PAfinal.Xlabels["trials"] = dflab_final
+            assert len(PAfinal.Xlabels["trials"])==PAfinal.X.shape[1]
+
+            # # Sanity check
+            # assert X.shape[0] == PAslice.X.shape[1]
+            # assert X.shape[1] == PAfinal.X.shape[0]
+            # assert X.shape[0] == PAfinal.X.shape[1]
+
+        elif reshape_method=="trials_x_chanstimes":
             # Reshape to (ntrials, nchans*ntimes)
             tmp = np.transpose(PAslice.X, (1, 0, 2)) # (trials, chans, times)
             X = np.reshape(tmp, [ntrials, nchans * ntimes]) # (ntrials, nchans*timebins)
@@ -1915,7 +1972,7 @@ class PopAnal():
             # Default.
             # PCA --> first combines trials x timebins (i.e.,
             # (ntrials*ntimes, nchans) --> (ntrials*ntimes, ndims)
-            # Then reshapes back ot (nchans, ntrials, ntimes)
+            # Then reshapes back ot (ndims, ntrials, ntimes)
 
             if False: # Check passes
                 # Check that reshapes (skipping PCA) dont affect data
@@ -2512,10 +2569,11 @@ class PopAnal():
         X = self.extract_activity_copy(trial, version)
         return plotNeurTimecourse(X, **kwargs)
 
-    def plotwrapper_smoothed_fr(self, inds=None, axis_for_inds="site", ax=None, 
+    def plotwrapper_smoothed_fr(self, values_this_axis=None, axis_for_inds="site", ax=None, 
                      plot_indiv=True, plot_summary=False, error_ver="sem",
                      pcol_indiv = "k", pcol_summary="r", summary_method="mean",
-                     event_bounds=(None, None, None), alpha=0.6):
+                     event_bounds=(None, None, None), alpha=0.6, 
+                     time_shift_dur=None):
         """ Wrapper for different ways of plotting multiple smoothed fr traces, where
         multiple could be trials or sites. Also to plot summaries (means, etc). 
         PARAMS:
@@ -2533,8 +2591,8 @@ class PopAnal():
         import numpy as np
 
         # extract data
-        if inds is not None:
-            PAthis = self.slice_by_dim_values_wrapper(axis_for_inds, inds)
+        if values_this_axis is not None:
+            PAthis = self.slice_by_dim_values_wrapper(axis_for_inds, values_this_axis)
             # if axis_for_inds in ["site", "sites"]:
             # #         idxs = [PA.Chans.index(site) for site in inds]
             #     PAthis = self._slice_by_chan(inds, return_as_popanal=True)
@@ -2546,11 +2604,15 @@ class PopAnal():
             PAthis = self
         X = PAthis.X
         times = PAthis.Times
+        
+        if False:
+            if X.shape[1]==1 and axis_for_inds not in ["trials"]:
+                plot_indiv = True
+                plot_summary = False
 
-        if X.shape[1]==1:
-            plot_indiv = True
-            plot_summary = False
-
+        if time_shift_dur is not None:
+            times = times + time_shift_dur
+            
         # Reshape to (nsamp, times), combining all chans and trials.
         X = X.reshape(X.shape[0] * X.shape[1], X.shape[2])
         n_time_bins = X.shape[1]
@@ -2987,17 +3049,21 @@ def check_identical_times(list_pa):
     smae time base (in pa.Times), wihtin numerical precision
     """
     from pythonlib.tools.nptools import isin_array
+    from pythonlib.tools.checktools import check_objects_identical
 
     times_prev = None
     times_identical = True
     for pa in list_pa:
         if times_prev is not None:
-            if len(pa.Times) != len(times_prev):
-                times_identical = False
+            times_identical = check_objects_identical(pa.Times, times_prev)
+            if not times_identical:
                 break
-            if not isin_array(pa.Times, [times_prev]):
-                times_identical = False
-                break
+            # if len(pa.Times) != len(times_prev):
+            #     times_identical = False
+            #     break
+            # if not isin_array(pa.Times, [times_prev]):
+            #     times_identical = False
+            #     break
         times_prev = pa.Times
     return times_identical
 
