@@ -9,7 +9,7 @@ class PopAnal():
     """ for analysis of population state spaces
     """
 
-    def __init__(self, X, times, chans=None, dim_units=0, 
+    def __init__(self, X, times=None, chans=None, dim_units=0,
         stack_trials_ver="append_nan", 
         feature_list = None, spike_trains=None,
         print_shape_confirmation = False, trials=None):
@@ -69,6 +69,7 @@ class PopAnal():
                 # assume it is (nunits, timebins). unsqueeze so is (nunits, 1, timebins)
                 self.X = np.expand_dims(X, 1)
             else:
+                assert len(X.shape)==3
                 self.X = X
         
         self.Saved = {}
@@ -298,7 +299,7 @@ class PopAnal():
 
         # First, whether to subtract mean FR at each timepoint
         if norm_subtract_condition_invariant:
-            PApca = PApca.norm_subtract_mean_each_timepoint()
+            PApca = PApca.norm_subtract_condition_invariant()
 
         # second, whether to agg by time (optional). e..g, take mean over time
         if time_agg_method=="mean":
@@ -620,7 +621,9 @@ class PopAnal():
             indices = self.index_find_these_values(dim, values)
         elif dim=="times":
             # values are [t1, t2]
-            assert len(values)==2
+            if not len(values)==2:
+                print(values)
+                assert False, "why?"
             assert values[1]>values[0]
             indices = self.index_find_this_time_window(values, time_keep_only_within_window=time_keep_only_within_window)
             # indices = self.index_find_these_values(dim, values)
@@ -863,6 +866,55 @@ class PopAnal():
             return PA
         else:
             return X
+    
+    def replace_X(self, X, times, chans):
+        """ Replace X-- modifying self
+        """
+        assert X.shape[1]==self.X.shape[1], "assumes trials are matches, to get labels"
+        # trials = self.Trials
+
+        if chans is None and (X.shape[0]==self.X.shape[0]):
+            chans = self.Chans
+
+        if times is None and (X.shape[2]==self.X.shape[2]):
+            times = self.Times
+
+        self.X = X
+        self.Chans = chans
+        self.Times = times
+
+        # Remove these, just in case they are inconssitent with new inputs
+        # pa.Xlabels["trials"] = self.Xlabels["trials"].copy()
+        self.Xlabels["chans"] = pd.DataFrame()
+        self.Xlabels["times"] = pd.DataFrame()
+
+    def copy_replacing_X(self, X, times=None, chans=None):
+        """
+        Retyrns a copy, with a new X that has same n trials (so that can copy the labels from self,
+        self.Xlabels), but potentialyl diff n chans and times.
+        NOTE: if X has any dimensions matching self.X, then assumes the labels are the same for that dim,
+        (if that input (e.g., times) is NOne)
+        :return:
+        """
+
+        assert X.shape[1]==self.X.shape[1], "assumes trials are matches, to get labels"
+        trials = self.Trials
+
+        if chans is None and (X.shape[0]==self.X.shape[0]):
+            chans = self.Chans
+
+        if times is None and (X.shape[2]==self.X.shape[2]):
+            times = self.Times
+
+        pa = PopAnal(X, times=times, chans=chans, trials=trials)
+
+        # pa.Xlabels = {dim:df.copy() for dim, df in self.Xlabels.items()}
+        pa.Xlabels = {}
+        pa.Xlabels["trials"] = self.Xlabels["trials"].copy()
+        pa.Xlabels["chans"] = pd.DataFrame()
+        pa.Xlabels["times"] = pd.DataFrame()
+
+        return pa
 
     def copy(self):
         """ Returns a copy.
@@ -885,13 +937,46 @@ class PopAnal():
             Xnew = np.mean(X, axis=2, keepdims=False)
             return Xnew
 
-    def mean_over_trials(self, version="raw"):
+    def mean_over_trials(self, version="raw", add_to_flank=0.001):
         """ Return X, but mean over trials,
         out shape (nchans, 1, time)
         """
         assert False, "OBSOLETE. use agg_wrapper, it retains Xlabels"
         X = self.extract_activity_copy(version=version)
         return np.mean(X, axis=1, keepdims=True)
+
+    def _agg_by_time_windows_binned_get_windows(self, DUR, SLIDE, min_time=None, max_time=None):
+        """
+        Helper to get the windows that you can then use for biniing.
+        PARAMS:
+        - min_time, max_time, sec, if not None, keeps only times within this window.
+        - Returns (nwinds, 2) array
+        """
+
+        if SLIDE is None:
+            SLIDE = DUR
+
+        times = self.Times
+        if min_time is not None:
+            times = times[times>=min_time]
+        if max_time is not None:
+            times = times[times<=max_time]
+        
+        # MAke new times iwndows
+        PRE = times[0]
+        POST = times[-1]
+        times1 = np.arange(PRE, POST-DUR/2, SLIDE) # each window, at least half of it inlcudes data
+        times2 = times1 + DUR
+        time_windows = np.stack([times1, times2], axis=1)
+        assert np.isclose(time_windows[0,0], PRE)
+        # assert time_windows[-1,1]>=post
+        assert time_windows[-1,0]<POST
+
+        # Add to flank, to abvoid numerical miss
+        time_windows[:, 0] = time_windows[:, 0]-0.001
+        time_windows[:, 1] = time_windows[:, 1]+0.001
+
+        return time_windows
 
     def agg_by_time_windows_binned(self, DUR, SLIDE):
         """
@@ -905,35 +990,47 @@ class PopAnal():
 
         """
 
-        if SLIDE is None:
-            SLIDE = DUR
+        # Only contineu if DUR is larger than the largest period between adjacent samples.
+        max_period = np.max(np.diff(self.Times))
 
-        # MAke new times iwndows
-        PRE = self.Times[0]
-        POST = self.Times[-1]
-        if False:
-            # Failed soemtimes, if dur > amount of data. then time_wind would be []
-            # n = (POST-PRE)/DUR
-            times1 = np.arange(PRE, POST-DUR, SLIDE)
-            times2 = times1+DUR
-            time_windows = np.stack([times1, times2], axis=1)
+        if DUR >= (1.001 * max_period):
+
+            time_windows = self._agg_by_time_windows_binned_get_windows(DUR, SLIDE)
+
+            # if SLIDE is None:
+            #     SLIDE = DUR
+
+            # # MAke new times iwndows
+            # PRE = self.Times[0]
+            # POST = self.Times[-1]
+            # if False:
+            #     # Failed soemtimes, if dur > amount of data. then time_wind would be []
+            #     # n = (POST-PRE)/DUR
+            #     times1 = np.arange(PRE, POST-DUR, SLIDE)
+            #     times2 = times1+DUR
+            #     time_windows = np.stack([times1, times2], axis=1)
+            # else:
+            #     times1 = np.arange(PRE, POST-DUR/2, SLIDE) # each window, at least half of it inlcudes data
+            #     times2 = times1 + DUR
+            #     time_windows = np.stack([times1, times2], axis=1)
+            #     assert np.isclose(time_windows[0,0], PRE)
+            #     # assert time_windows[-1,1]>=post
+            #     assert time_windows[-1,0]<POST
+            
+
+            # print("===========")
+            # print(DUR, SLIDE)
+            # print(time_windows)
+            # print(self.Times)
+            # assert False
+
+            X, times = self.agg_by_time_windows(time_windows)
+
+            PA = PopAnal(X, times=times, chans=self.Chans,
+                        trials = self.Trials)
+            PA.Xlabels["trials"] = self.Xlabels["trials"].copy()
         else:
-            times1 = np.arange(PRE, POST-DUR/2, SLIDE) # each window, at least half of it inlcudes data
-            times2 = times1 + DUR
-            time_windows = np.stack([times1, times2], axis=1)
-            assert np.isclose(time_windows[0,0], PRE)
-            # assert time_windows[-1,1]>=post
-            assert time_windows[-1,0]<POST
-
-        # print(DUR, SLIDE)
-        # print(time_windows)
-        # print(self.Times)
-        # assert False
-        X, times = self.agg_by_time_windows(time_windows)
-
-        PA = PopAnal(X, times=times, chans=self.Chans,
-                    trials = self.Trials)
-        PA.Xlabels["trials"] = self.Xlabels["trials"].copy()
+            PA = self.copy()
 
         return PA
 
@@ -1046,13 +1143,57 @@ class PopAnal():
         pa = self.slice_by_dim_indices_wrapper(dim_str, inds)
         return pa
 
-    def slice_by_labels(self, dim_str, dim_variable, list_values):
+    def slice_extract_with_levels_of_conjunction_vars(self, var, vars_others,
+                                                      prune_min_n_trials=5, prune_min_n_levs=2,
+                                                      plot_counts_heatmap_savepath=None):
+        """
+        Keep only levels of vars_others, which have at least <prune_min_n_trials> across
+        <prune_min_n_levs> many levels of var. Remove all levels of var and vars_others which
+        fail this test.
+        :return: pa, copy of self, with pruned trials.
+        """
+        from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars
+        pa = self.copy()
+        dflab = pa.Xlabels["trials"]
+        dfout, dict_dfthis = extract_with_levels_of_conjunction_vars(dflab, var, vars_others,
+                                                                 n_min_across_all_levs_var=prune_min_n_trials,
+                                                                 lenient_allow_data_if_has_n_levels=prune_min_n_levs,
+                                                                 prune_levels_with_low_n=True,
+                                                                 ignore_values_called_ignore=True,
+                                                                 plot_counts_heatmap_savepath=plot_counts_heatmap_savepath)
+
+        if len(dfout)>0:
+            # Only keep the indices in dfout
+            pa = pa.slice_by_dim_indices_wrapper("trials", dfout["_index"].tolist(), True)
+            return pa, dfout, dict_dfthis
+        else:
+            return None, None, None
+
+    def slice_by_labels_filtdict(self, filtdict):
+        """
+        Filter based on self.Xlabels["trials"]
+        :param filtdict: variable:list of levels to keep.
+        :return: pa, a copy of self, with trials pruned
+        """
+        pa = self.copy()
+        if filtdict is not None:
+            for _var, _levs in filtdict.items():
+                assert isinstance(_var, str)
+                assert isinstance(_levs, (list, tuple))
+
+                inds = pa.Xlabels["trials"][pa.Xlabels["trials"][_var].isin(_levs)].index.tolist()
+                pa = pa.slice_by_dim_indices_wrapper("trials", inds)
+                # pa.Xlabels["trials"] = pa.Xlabels["trials"][pa.Xlabels["trials"][_var].isin(_levs)].reset_index(drop=True)
+        return pa
+
+    def slice_by_labels(self, dim_str, dim_variable, list_values, verbose=False):
         """
         SLice to return PA that is subset, where you
         filtering to keep if value is in list_values (filtering).
         PARAMS: 
         - dim_str, string name in {trials, chans, ...}
-        - dim_variable, name of column in self.Xlabels[dim_str]
+        - dim_variable, name of column in self.Xlabels[dim_str], or tuple of columns, ion which case considers
+        this a conjunctive variabl. List values must thne be list of tuples
         - list_values, list of vales, will keep indices only those with values in list_values
         EG:
         - dim_str = "trials"
@@ -1062,6 +1203,13 @@ class PopAnal():
         from pythonlib.tools.pandastools import filterPandas
 
         assert isinstance(list_values, list)
+        if isinstance(dim_variable, tuple):
+            # Then this is grouping variable.
+            from pythonlib.tools.pandastools import append_col_with_grp_index
+            self.Xlabels[dim_str] = append_col_with_grp_index(self.Xlabels[dim_str], dim_variable, "_tmp", use_strings=False)
+            for v in list_values:
+                assert isinstance(v, tuple) and len(v)==len(dim_variable)
+            dim_variable = "_tmp"
 
         if True:
             dfthis = self.Xlabels[dim_str]
@@ -1071,7 +1219,14 @@ class PopAnal():
         else:
             dfthis = self.Xlabels[dim_str]
             inds = filterPandas(dfthis, {dim_variable:list_values}, return_indices=True)
+        if verbose:
+            print(f"pa size, before slicing with variable={dim_variable}", self.X.shape)
+
         pa = self.slice_by_dim_indices_wrapper(dim_str, inds)
+
+        if verbose:
+            print(f"... pa size, after slicing with variable={dim_variable}", pa.X.shape)
+
         return pa
 
     # def slice_by_label(self, dim_str, dim_variable, dim_value):
@@ -1108,16 +1263,23 @@ class PopAnal():
     def norm_subtract_trial_mean_each_timepoint(self, dim="trials"):
         """ Take mean over one of the dims, and return data subtracting
         that out. e..g, if dim=="trials", for each (chan, timepoint), subtract the mean
-        across all trials within that (chan, timepoint).
+        across all trials within that (chan, timepoint) --> resulting will have
+        mean fr of 0 at each (chan, timepoint).
         RETURNS:
         - PA, a copy of self, with normalized X.
         """
         pamean = self.agg_wrapper(dim, "mean") # (chans, 1, times)
         PA = self.copy()
         PA.X = PA.X - pamean.X
+
+        if False: # NOTE: this succeeds.
+            for i in range(PA.X.shape[0]):
+                for j in range(PA.X.shape[2]):
+                    assert(np.isclose(np.mean(PA.X[i, :, j]), 0))
+
         return PA
 
-    def norm_subtract_mean_each_timepoint(self, dim="trials"):
+    def norm_subtract_condition_invariant(self, dim="trials"):
         """ at each timepoint, subtract the component of fr that 
         is due to condition-invariant (time), while leaving intact
         the different mean fr for each chan x trial.
@@ -1143,6 +1305,8 @@ class PopAnal():
         """ Returns PA of same size as self, but subtracting the mean
         fr for each level of dim_variable. I.e., gets the noise after taking
         into account the level.
+        Optionally subtract the mean at each time point, or a single scalar mean
+        across time.
         PARAMS:
         - dim_variable_grp, list of str
         RETURNS:
@@ -1150,15 +1314,21 @@ class PopAnal():
             chans and times, but NOT guaranteed to have same ordering of trials.
         """
 
+        if dim_variable_grp is None:
+            # Then just subtract across all trials (ie., all trials constitue one group)
+            return self.norm_subtract_mean_each_chan()
+
         # First, split into separate pa, one for each level of <dim_variable>
         list_pa = self.split_by_label(dim_str, dim_variable_grp)[0]
 
         # Subtract mean for each, then concat.
         list_pa_norm = []
         for pa in list_pa:
-            list_pa_norm.append(pa.norm_subtract_trial_mean_each_timepoint())
+            # list_pa_norm.append(pa.norm_subtract_trial_mean_each_timepoint()) # wrong -- subtracts each time point.,
+            list_pa_norm.append(pa.norm_subtract_mean_each_chan())
         PA = concatenate_popanals(list_pa_norm, "trials")
 
+        # Check match between input and output.
         assert PA.Chans == self.Chans
         assert check_identical_times([self, PA])==True
         assert len(PA.Trials)==len(self.Trials)
@@ -1206,6 +1376,140 @@ class PopAnal():
         return ListPA, list_levels
 
     #######################
+    def dataextract_as_distance_matrix_clusters_flex_reversed(self, var_group,
+                                                     version_distance="euclidian",
+                                                     accurately_estimate_diagonal=False):
+        """
+        A bit hacky variation of dataextract_as_distance_matrix_clusters_flex -- running that but on 
+        call shuffles the times for one of the pairs of datapts being compoared -- this is null value if
+        the timing of the neural trajectories does not matter.
+        :return:
+        - LIST_CLDIST, List of Cl, each holding distance of shape (ntrials, trials), if version_distance 
+        is pairwise between pts, or shape (ngroups, ngroups), if version_distance is distribugtional (ie.
+        is pairwise between levels of conjucntion of var_group)
+        """
+        from pythonlib.cluster.clustclass import Clusters
+        
+        assert version_distance == "euclidian", "only coded for this so far.."
+
+        # Get labels info
+        dflab = self.Xlabels["trials"]
+        labels_rows = dflab.loc[:, var_group].values.tolist()
+        labels_rows = [tuple(x) for x in labels_rows] # list of tuples
+
+        # Get a shuffled version of self.X
+        Xshuff = self.shuffle_by_time()
+        
+        # Option 1 - do independently for each time bin, and return list of all results.
+        # - Collect Cldists, one for each time bin
+        LIST_CLDIST = []
+        LIST_TIME = []
+        ntimes = self.X.shape[2]
+        for i_time in range(ntimes):
+
+            X1 = self.X[:, :, i_time].T # (trials, chans)
+            X2 = Xshuff[:, :, i_time].T
+
+            # Compute distance matrix directly
+            # 0=idnetical, more positive more distance.
+            from scipy.spatial import distance_matrix
+            D = distance_matrix(X1, X2)
+
+            params = {
+                "version_distance":version_distance,
+                "Clraw":None,
+                "label_vars":var_group
+            }
+            Cldist = Clusters(D, labels_rows, labels_rows, ver="dist", params=params)
+
+            if Cldist is None:
+                print(D)
+                assert False
+            LIST_CLDIST.append(Cldist)
+            LIST_TIME.append(self.Times[i_time])
+        
+        return LIST_CLDIST, LIST_TIME
+
+
+    def dataextract_as_distance_matrix_clusters_flex(self, var_group,
+                                                     version_distance="euclidian",
+                                                     accurately_estimate_diagonal=False):
+        """
+        GOOD - Extract distance matrix between trials, with flexible ways of c,m,puting and agging over variables.
+        :params: var_group, determines the trial labels kept in Cl, and, if vd is distributional, then
+        how to group trials into distributiosn
+        :params: accurately_estimate_diagonal, bool, True means faster compute. In general I don't use
+        the diagonal, so leave false.
+        :return:
+        - LIST_CLDIST, List of Cl, each holding distance of shape (ntrials, trials), if version_distance 
+        is pairwise between pts, or shape (ngroups, ngroups), if version_distance is distribugtional (ie.
+        is pairwise between levels of conjucntion of var_group)
+        """
+        from pythonlib.cluster.clustclass import Clusters
+        
+        # How to deal with multiple time windows.
+        
+        # Option 1 - do independently for each time bin, and return list of all results.
+        # - Collect Cldists, one for each time bin
+        LIST_CLDIST = []
+        LIST_TIME = []
+        ntimes = self.X.shape[2]
+        print("... computing distance matrices, using distnace:", version_distance)
+        for i_time in range(ntimes):
+            
+            # make a pa that just has this one time bin
+            pa_single_time = self.slice_by_dim_indices_wrapper("times", [i_time, i_time])
+            assert pa_single_time.X.shape[2]==1
+            
+            # Create clusters
+            dflab = pa_single_time.Xlabels["trials"]
+            Xthis = pa_single_time.X.squeeze(axis=2).T # (ntrials, ndims)
+            
+            # print("  Final Scalar data (trial, dims):", Xthis.shape)
+            label_vars = var_group
+            labels_rows = dflab.loc[:, label_vars].values.tolist()
+            labels_rows = [tuple(x) for x in labels_rows] # list of tuples
+            params = {"label_vars":label_vars}
+
+            if False:
+                # Compute distance matrix directly
+                # 0=idnetical, more positive more distance.
+                from scipy.spatial import distance_matrix
+                D = distance_matrix(Xthis, Xthis)
+
+                params = {
+                    "version_distance":version_distance,
+                    "Clraw":None,
+                }
+                Cldist = Clusters(D, labels_rows, labels_rows, ver="dist", params=params)
+
+            else:
+                # Compute using Cl intermediate
+                Cl = Clusters(Xthis, labels_rows, ver="rsa", params=params)
+                            
+                # convert to distance matrix
+                if version_distance == "euclidian":
+                    Cldist = Cl.distsimmat_convert(version_distance)
+                else:
+                    Cldist = Cl.distsimmat_convert_distr(label_vars, version_distance, accurately_estimate_diagonal=accurately_estimate_diagonal)
+            
+            LIST_CLDIST.append(Cldist)
+            LIST_TIME.append(self.Times[i_time])
+
+        # Sanity check that all Cl match
+        labels = None
+        labels_cols = None
+        for t, Cldist in zip(LIST_TIME, LIST_CLDIST):
+            # check labels match
+            if labels is not None:
+                assert labels == Cldist.Labels
+                labels = Cldist.Labels
+            if labels_cols is not None:
+                assert labels_cols == Cldist.LabelsCols
+                labels_cols = Cldist.LabelsCols
+
+        return LIST_CLDIST, LIST_TIME
+
     # def dataextract_as_clusters_after_conj_grouping(self, vars_grp_and_extract, do_agg_by_grouping=False):
     #     """
     #     Extract clusters represntation of PA.X, which is (
@@ -1236,6 +1540,267 @@ class PopAnal():
     #
     #     return Cl
 
+    def dataextract_pca_demixed_subspace(self, var_pca, vars_grouping,
+                                                pca_twind, pca_tbindur,
+                                                filtdict=None, savedir_plots=None,
+                                                raw_subtract_mean_each_timepoint=True,
+                                                pca_subtract_mean_each_level_grouping=True,
+                                                n_min_per_lev_lev_others=5, prune_min_n_levs = 2,
+                                                n_pcs_subspace_max = None,
+                                                do_pca_after_project_on_subspace=False,
+                                                PLOT_STEPS=False, SANITY=False,
+                                                reshape_method="trials_x_chanstimes",
+                                                pca_tbin_slice=None):
+        """
+        Helper to construct pca space (deminxed pca) in flexible ways, and then project raw data onto this space.
+        Uses representations that are sliced data (n sub slices, concate into vector).
+
+        Does work of projecting raw data onto this space.
+
+        Example:
+            # This does pca on means for stroke_index, controlling for context defined by each level of vars_grouping
+            var_pca = "stroke_index"
+            vars_grouping = ["task_kind", "gridloc", "shape"]
+            filtdict= None
+
+        Example:
+            # This does pca on means for each level of conjunctive var_pca.
+            var_pca = ("gridloc", "stroke_index")
+            vars_grouping = None
+            filtdict= None
+
+        Can do this for both scalar (mean over time, returns (ntrials, npcs) and trajectories (retains time, returns (npcs, ntrials, ntimes)),
+        --- scalar, make reshape_method "trials_x_chanstimes"
+        --- trajs, make reshape_method "chans_x_trials_x_times"
+
+        :param var_pca: str, the variable to find subspaces for, takes mean over these after subtracting out and conditioning
+        on each levle of vars_goruping, then does PCA.
+        :param vars_grouping: list of str, see var_pca.
+        :param pca_twind: e.g, (-0.1, 0.1), entire window of data to slice out
+        :param pca_tbindur: time sec, width of sliding window wiwthin pca_twind. e.g, if pca_twind==(-0.1, 0.1) and pca_tbindur
+        is 0.1, then dimension of raw data is nchans*2.
+        :param filtdict:
+        :param raw_subtract_mean_each_timepoint:
+        :param pca_subtract_mean_each_level_grouping:
+        :param n_pcs_subspace_max, int, keeps maximum this many of the top dimensions after projecting into subspace.
+        :param do_pca_after_project_on_subspace, bool, if True, does on final after proj. Useful if want to rotate
+        final data but this usually shouldnt be done.
+        :param PLOT_STEPS:
+        :return:
+        - Xredu, (ntrials, npc dims)
+        - Xfinal, (ntrials, nchan * timesteps), data immed before pCA
+        - PAfinal, holds Xfinal
+        - PAraw, holds data in raw dimensions, but with all prepprocess done -- ie can project this into pc space
+        - pca, dict, holds PC features.
+
+        RETURNS None if no data found for this var_pca
+        """
+        from neuralmonkey.analyses.state_space_good import dimredgood_pca_project
+
+        if n_pcs_subspace_max is None:
+            n_pcs_subspace_max = 10
+
+        if isinstance(var_pca, (list, tuple)):
+            # conjunctive variable...
+            from pythonlib.tools.pandastools import append_col_with_grp_index
+            self.Xlabels["trials"] = append_col_with_grp_index(self.Xlabels["trials"], var_pca, "|".join(var_pca))
+            var_pca = "|".join(var_pca)
+
+        if reshape_method=="chans_x_trials_x_times":
+            dimredgood_pca_project_do_reshape = True
+        else:
+            dimredgood_pca_project_do_reshape = False
+            
+        if pca_tbin_slice is None:
+            pca_tbin_slice = pca_tbindur
+
+        # For plotting exmaples...
+        chan = self.Chans[0]
+
+        if PLOT_STEPS:
+            self.plotwrapper_smoothed_fr_split_by_label_and_subplots(chan, var_pca, vars_grouping)
+
+        ############### DO ALL NORMALIZING ON RAW DATA, BEFORE take avg and do pca, so that can pass in raw and project to pc space.
+        PAraw = self.copy()
+
+        if raw_subtract_mean_each_timepoint:
+            PAraw = PAraw.norm_subtract_trial_mean_each_timepoint()
+            if PLOT_STEPS:
+                PAraw.plotwrapper_smoothed_fr_split_by_label_and_subplots(chan, var_pca, vars_grouping)
+
+        ############### Perform PCA
+        pa = PAraw.copy()
+
+        # Apply filtdict
+        pa = pa.slice_by_labels_filtdict(filtdict)
+
+        # Keep only othervar that has multiple cases of var
+        if savedir_plots is not None:
+            plot_counts_heatmap_savepath = f"{savedir_plots}/counts_conj.pdf"
+        else:
+            plot_counts_heatmap_savepath = None
+        pa, dfout, dict_dfthis = pa.slice_extract_with_levels_of_conjunction_vars(var_pca, vars_grouping, n_min_per_lev_lev_others,
+                                                              prune_min_n_levs, plot_counts_heatmap_savepath=plot_counts_heatmap_savepath)
+        # print(var_pca)
+        # print(vars_grouping)
+        # print(pa.Xlabels["trials"]["gridloc"])
+        # print(n_min_per_lev_lev_others)
+        # assert False
+        if pa is None:
+            print("No variation found for this var_pca (reutrning None): ", var_pca)
+            return (None for _ in range(5))
+        if PLOT_STEPS:
+            pa.plotwrapper_smoothed_fr_split_by_label_and_subplots(chan, var_pca, vars_grouping)
+
+        # count, what is the max n lev across all otherlevs
+        if False:
+            # get the max within lev (across levs)
+            print([len(df[var_pca].unique()) for df in dict_dfthis.values()])
+        else:
+            # get n classes after lumping all olev
+            nclasses_of_var_pca = len(dfout[var_pca].unique())
+
+        # Subtract mean for the variables you want to "condition on"
+        if pca_subtract_mean_each_level_grouping:
+            pa = pa.norm_by_label_subtract_mean("trials", vars_grouping)
+            if PLOT_STEPS:
+                pa.plotwrapper_smoothed_fr_split_by_label_and_subplots(chan, var_pca, vars_grouping)
+
+        # Get new PA that averages to get one value for each state (var x vars_groupig)
+        if vars_grouping is None:
+            grouping_variables = [var_pca]
+        else:
+            grouping_variables = [var_pca]+vars_grouping
+        pa = pa.slice_and_agg_wrapper("trials", grouping_variables)
+        if PLOT_STEPS:
+            pa.plotwrapper_smoothed_fr_split_by_label_and_subplots(chan, var_pca, vars_grouping)
+
+        # Finally, demean again
+        if False: # dont do this, since this leads to separation of each context again...
+            pa = pa.norm_subtract_trial_mean_each_timepoint()
+            # print(pa.X.shape)
+            # print(np.mean(pa.X[:, :, 10], axis=1))
+            # assert False
+            if PLOT_STEPS:
+                pa.plotwrapper_smoothed_fr_split_by_label_and_subplots(chan, var_pca, vars_grouping)
+
+        # Do PCA for each time window (normalize within that window)
+        plot_pca_explained_var_path = f"{savedir_plots}/expvar.pdf"
+        plot_loadings_path = f"{savedir_plots}/loadings.pdf"
+        _, PApca, _, pca, X_before_dimred = pa.dataextract_state_space_decode_flex(pca_twind, pca_tbindur, pca_tbin_slice,
+                                                          reshape_method=reshape_method, pca_reduce=True,
+                                                          plot_pca_explained_var_path=plot_pca_explained_var_path,
+                                                          plot_loadings_path=plot_loadings_path, how_decide_npcs_keep="cumvar",
+                                                           norm_subtract_single_mean_each_chan=False)
+        pca["explained_variance_ratio_initial_construct_space"] = pca["explained_variance_ratio_"]
+        del pca["explained_variance_ratio_"]
+        pca["X_before_dimred"] = X_before_dimred
+        pca["nclasses_of_var_pca"] = nclasses_of_var_pca
+        # print(PApca.X.shape)
+        # print(pca["X_before_dimred"].shape)
+        # assert False
+
+        if SANITY:
+            from neuralmonkey.analyses.state_space_good import dimredgood_pca_project
+            X = pca["X_before_dimred"]
+            dimredgood_pca_project(pca["components"], X, "/tmp/test2", 
+                                   do_additional_reshape_from_ChTrTi=dimredgood_pca_project_do_reshape)
+            print("HCECK tmp/test2 -- This should match the exp var above...")
+            assert False
+
+        # Plot results in state space
+        if False: # Need to use trajectories...
+            if savedir_plots is not None:
+                from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_scalar_WRAPPER
+                ndims = PApca.X.shape[0]
+                if ndims<4:
+                    list_dims = [(0,1)]
+                else:
+                    list_dims = [(0,1), (1,2)]
+
+                dflab = PApca.Xlabels["trials"]
+                xthis = PApca.X.squeeze(axis=2).T # (n4trials, ndims)
+                save_suffix = "DAT_GO_INTO_PCA"
+                trajgood_plot_colorby_splotby_scalar_WRAPPER(xthis, dflab, var_pca, savedir_plots,
+                                                            vars_subplot=None, list_dims=list_dims,
+                                                            skip_subplots_lack_mult_colors=False,
+                                                            save_suffix=save_suffix)
+                trajgood_plot_colorby_splotby_scalar_WRAPPER(xthis, dflab, var_pca, savedir_plots,
+                                                            vars_subplot=vars_grouping, list_dims=list_dims,
+                                                            skip_subplots_lack_mult_colors=False,
+                                                            save_suffix=save_suffix)
+
+        ########### Project RAW data back into this space
+        # - preprocess data
+        Xfinal_before_redu, PAfinal_before_redu, _, _, _ = PAraw.dataextract_state_space_decode_flex(pca_twind, pca_tbindur, pca_tbin_slice,
+                                                                                 reshape_method=reshape_method, pca_reduce=False,
+                                                                                 norm_subtract_single_mean_each_chan=False)
+        
+        ### Project all raw data
+        plot_pca_explained_var_path = f"{savedir_plots}/expvar_reproj_raw.pdf"
+        Xredu, stats_redu, Xredu_in_orig_shape = dimredgood_pca_project(pca["components"], 
+                                                                        Xfinal_before_redu, 
+                                                                        plot_pca_explained_var_path=plot_pca_explained_var_path,
+                                                                        do_additional_reshape_from_ChTrTi=dimredgood_pca_project_do_reshape)
+
+        if dimredgood_pca_project_do_reshape:
+            # TRAJ, returns (ndims, ntrials,  ntimes)
+            del Xredu
+
+            # Keep only n final dimensions in subspace
+            if n_pcs_subspace_max is not None and n_pcs_subspace_max <= Xredu_in_orig_shape.shape[0]:
+                Xredu_in_orig_shape = Xredu_in_orig_shape[:n_pcs_subspace_max, :, :]
+
+            if do_pca_after_project_on_subspace:
+                assert False, "not yet coded for trajecroreis"
+                # Optionally, do PCA again on raw data that was projected into this subspace (useful for visualization).
+                # [IGNORE -- this is counterproductive]. This is just for rotation...
+                from neuralmonkey.analyses.state_space_good import dimredgood_pca
+                plot_pca_explained_var_path_this = f"{savedir_plots}/expvar_pca_after_subspace_projection.pdf"
+                plot_loadings_path_this = f"{savedir_plots}/loadings_pca_after_subspace_projection.pdf"
+                Xredu, _, _ = dimredgood_pca(Xredu, how_decide_npcs_keep = "keep_all",
+                                plot_pca_explained_var_path=plot_pca_explained_var_path_this,
+                            plot_loadings_path=plot_loadings_path_this)
+
+            # Get a PA holding final projected data
+            PAredu = PAfinal_before_redu.copy_replacing_X(Xredu_in_orig_shape)
+
+            # print(Xredu_in_orig_shape.shape) # (npcs, ntrials, ntimes)
+            # print(PAredu.X.shape) # (npcs, ntrials, ntimes)
+            # print(Xfinal_before_redu.shape) # (nchans, ntrials, ntimes)
+            # print(pca["X_before_dimred"].shape) # (nchans, ngroups, ntimes)
+            # assert False
+            return Xredu_in_orig_shape, PAredu, stats_redu, Xfinal_before_redu, pca
+
+        else:
+            # SCALAR, returns (ntrials, ndims)
+
+            # Keep only n final dimensions in subspace
+            if n_pcs_subspace_max is not None and n_pcs_subspace_max <= Xredu.shape[1]:
+                Xredu = Xredu[:, :n_pcs_subspace_max]
+
+            if do_pca_after_project_on_subspace:
+                # Optionally, do PCA again on raw data that was projected into this subspace (useful for visualization).
+                # [IGNORE -- this is counterproductive]. This is just for rotation...
+                from neuralmonkey.analyses.state_space_good import dimredgood_pca
+                plot_pca_explained_var_path_this = f"{savedir_plots}/expvar_pca_after_subspace_projection.pdf"
+                plot_loadings_path_this = f"{savedir_plots}/loadings_pca_after_subspace_projection.pdf"
+                Xredu, _, _ = dimredgood_pca(Xredu, how_decide_npcs_keep = "keep_all",
+                                plot_pca_explained_var_path=plot_pca_explained_var_path_this,
+                            plot_loadings_path=plot_loadings_path_this)
+
+            # Get a PA holding final projected data
+            assert len(PAfinal_before_redu.Xlabels["trials"]) == Xredu.shape[0]
+            PAredu = PopAnal(Xredu.T[:, :, None].copy(), [0])  # (ndimskeep, ntrials, 1)
+            PAredu.Xlabels = {dim:df.copy() for dim, df in PAfinal_before_redu.Xlabels.items()}
+
+            # print(Xredu.shape)
+            # print(PAredu.X.shape)
+            # print(Xfinal_before_redu.shape)
+            # print(pca["X_before_dimred"].shape)
+            # assert False
+            return Xredu, PAredu, stats_redu, Xfinal_before_redu, pca
+
     def dataextract_state_space_decode_flex(self, twind_overall=None,
                                             tbin_dur=None, tbin_slide=None,
                                             reshape_method = "chans_x_trials_x_times",
@@ -1245,7 +1810,10 @@ class PopAnal():
                                             plot_pca_explained_var_path=None, plot_loadings_path=None,
                                             pca_method="svd",
                                             norm_subtract_single_mean_each_chan=True,
-                                            npcs_keep_force=None):
+                                            npcs_keep_force=None,
+                                            extra_dimred_method=None,
+                                            extra_dimred_method_n_components=2, umap_n_neighbors = 30,
+                                            PLOT_EXAMPLE_X_BEFORE_GO_INTO_PCA=False):
         """
         Fleixble methods for extract data for use in population analyses, slicing out a specific time window,
         and binning by time, and ootionally reshaping to (ntrials, ...), where you can optionally
@@ -1257,15 +1825,20 @@ class PopAnal():
         Keeps top N dimensions by criteriion either based on cumvar or minvar.
 
         PARAMS:
-        - twind_overall, only keep data within this window (e.g, [0.3, 0.6])
+        - twind_overall, only keep data within this window (e.g, [0.3, 0.6]). None, to keep all data
         - tbin_dur, optional, for binning data (sec)
         - tbin_slide, optional, if binning, how slide bin
         - reshape_method, str, defines shape of output.
         - pca_method, str, either
         --- "sklearn" : centers each time bin!
         --- "svd" : same method as sklearn, but does not do any centering.
+        - extra_dimred_method, str, methdo to apply after PCA.
+        --- "umap"
+
         RETURNS:
-        - X, PApca, PAslice, pca
+        - X, final data, reshaped as desired, and dim reduction applied.
+        - PAfinal, PA holding X. (always dims, trials, times).
+        - PAslice, PA holding data sliced, but before reshape or dim reduction.
         """
 
         PAslice = self.copy()
@@ -1278,6 +1851,9 @@ class PopAnal():
         if tbin_dur is None:
             # Then take mean
             PAslice = PAslice.agg_wrapper("times") # (chans, trials, 1)
+        elif tbin_dur=="ignore":
+            # Pass, no smoothing
+            pass
         else:
             PAslice = PAslice.agg_by_time_windows_binned(tbin_dur, tbin_slide)
 
@@ -1287,11 +1863,49 @@ class PopAnal():
             # within eahc time point of each channel).
             PAslice = PAslice.norm_subtract_mean_each_chan()
 
+        if PLOT_EXAMPLE_X_BEFORE_GO_INTO_PCA:
+            PAslice.plotNeurHeat(0)
+
+        ## DIM REDUCTION
         nchans, ntrials, ntimes = PAslice.X.shape
-        if reshape_method=="trials_x_chanstimes":
+        if reshape_method == "chans_x_trialstimes":
+            # E.g. if decoding, soemtimes want each time bin as datapt.
+
+            dflab = PAslice.Xlabels["trials"]
+            list_x = []
+            list_dflab = []
+            # labels_all = []
+            for i in range(ntimes):
+                list_x.append(PAslice.X[:, :, i])
+                # labels_all.extend(labels)
+                list_dflab.append(dflab)
+            X_before_dimred = np.concatenate(list_x, axis=1) # (nchans, ntrials x ntimes)
+            dflab_final = pd.concat(list_dflab).reset_index(drop=True)
+
+            if pca_reduce:  
+                assert False, "not codede yet"
+            else:
+                X = X_before_dimred
+                pca = None
+
+            assert extra_dimred_method is None, "Not codede yet"
+
+            # Represent X in PopAnal
+            PAfinal = PopAnal(X[:, :, None], times=[0], chans=PAslice.Chans)  # (ndimskeep, ntrials x ntimes, 1)
+            PAfinal.Xlabels = {dim:df.copy() for dim, df in PAslice.Xlabels.items()}
+            PAfinal.Xlabels["trials"] = dflab_final
+            assert len(PAfinal.Xlabels["trials"])==PAfinal.X.shape[1]
+
+            # # Sanity check
+            # assert X.shape[0] == PAslice.X.shape[1]
+            # assert X.shape[1] == PAfinal.X.shape[0]
+            # assert X.shape[0] == PAfinal.X.shape[1]
+
+        elif reshape_method=="trials_x_chanstimes":
             # Reshape to (ntrials, nchans*ntimes)
             tmp = np.transpose(PAslice.X, (1, 0, 2)) # (trials, chans, times)
             X = np.reshape(tmp, [ntrials, nchans * ntimes]) # (ntrials, nchans*timebins)
+            X_before_dimred = X.copy()
 
             # Sanitych check
             if False: # no need to check. know it works.
@@ -1303,6 +1917,8 @@ class PopAnal():
                     assert False, "bug in reshaping"
 
             if pca_reduce:
+                print("Running PCA")
+                print(how_decide_npcs_keep, pca_frac_var_keep, pca_frac_min_keep)
                 from neuralmonkey.analyses.state_space_good import dimredgood_pca
                 # Make labels (chans x timebins)
                 ntimes = len(PAslice.Times)
@@ -1319,34 +1935,44 @@ class PopAnal():
                                            method=pca_method,
                                            npcs_keep_force=npcs_keep_force) # (ntrials, nchans) --> (ntrials, ndims)
 
-                #
-                # # Prune with PCA
-                # from sklearn.decomposition import PCA
-                # pca = PCA(n_components=None)
-                # Xpca = pca.fit_transform(X) # (ntrials, nchans) --> (ntrials, ndims)
-                # cumvar = np.cumsum(pca.explained_variance_ratio_)
-                # npcs_keep = np.argwhere(cumvar >= pca_frac_var_keep)[0].item()+1 # the num PCs to take such that cumsum is just above thresh
-                # # npcs_keep = np.argmin(np.abs(cumvar - thresh_frac_var))
-                # X = Xpca[:, :npcs_keep]
-                #
-                # if plot_pca_explained_var:
-                #     fig, axes = plt.subplots(1,2, figsize=(8,3))
-                #
-                #     ax = axes.flatten()[0]
-                #     ax.plot(pca.explained_variance_ratio_)
-                #     ax.axvline(npcs_keep, color="r")
-                #     ax.set_title("frac var, each dim")
-                #
-                #     ax = axes.flatten()[1]
-                #     ax.plot(np.cumsum(pca.explained_variance_ratio_))
-                #     ax.axvline(npcs_keep, color="r")
-                #     ax.set_title("cumulative var, each dim")
-                #     # savefig(fig, f"{savedir_preprocess}/pca_explainedvar.pdf")
+                # Represent X in PopAnal
+                # PAfinal = PopAnal(X.T[:, :, None].copy(), [0])  # (ndimskeep, ntrials, 1)
+                # PAfinal.Xlabels = {dim:df.copy() for dim, df in PAslice.Xlabels.items()}
+                # assert len(PAfinal.Xlabels["trials"])==PAfinal.X.shape[1]
 
+            # assert X.shape[0] == PAslice.X.shape[1]
+            # if pca_reduce:
+            #     assert X.shape[1] == PAfinal.X.shape[0]
+            #     assert X.shape[0] == PAfinal.X.shape[1]
+
+            # Extra dimreduction step?
+            if extra_dimred_method in ["umap", "mds"]:
+                from neuralmonkey.analyses.state_space_good import dimredgood_nonlinear_embed_data
+                X, _ = dimredgood_nonlinear_embed_data(X, METHOD=extra_dimred_method, n_components=extra_dimred_method_n_components,
+                                                           umap_n_neighbors=umap_n_neighbors) # (ntrials, ndims)
+            else:
+                assert extra_dimred_method is None
+
+            # Represent X in PopAnal
+            PAfinal = PopAnal(X.T[:, :, None].copy(), [0])  # (ndimskeep, ntrials, 1)
+            PAfinal.Xlabels = {dim:df.copy() for dim, df in PAslice.Xlabels.items()}
+            assert len(PAfinal.Xlabels["trials"])==PAfinal.X.shape[1]
+
+            # Sanity check
+            assert X.shape[0] == PAslice.X.shape[1]
+            assert X.shape[1] == PAfinal.X.shape[0]
+            assert X.shape[0] == PAfinal.X.shape[1]
+
+            # print(X.shape)
+            # print(PAfinal.X.shape)
+            # print(PAslice.X.shape)
+            # assert False
+            # assert False
         elif reshape_method=="chans_x_trials_x_times":
             # Default.
             # PCA --> first combines trials x timebins (i.e.,
             # (ntrials*ntimes, nchans) --> (ntrials*ntimes, ndims)
+            # Then reshapes back ot (ndims, ntrials, ntimes)
 
             if False: # Check passes
                 # Check that reshapes (skipping PCA) dont affect data
@@ -1356,17 +1982,29 @@ class PopAnal():
                 X1 = np.reshape(X1, [nchans, ntrials, ntimes])
                 assert np.all(PAslice.X==X1)
 
-            if pca_reduce:
-                # Reshape to pass into PCA
-                X = np.reshape(PAslice.X, [nchans, ntrials * ntimes]).T # (ntrials*ntimes, nchans)
+            # No need to reshape
+            X = PAslice.X
+            X_before_dimred = X.copy()
 
+            ################## Get in shape.
+            X = np.reshape(PAslice.X, [nchans, ntrials * ntimes]).T # (ntrials*ntimes, nchans)
+            
+            if pca_reduce:
+                print("Doing PCA")
+                # Reshape to pass into PCA
+
+                # print(X.shape)
+                # print(np.mean(PAslice.X[0, 0]))
+                # print("HEREsadasd", np.mean(X, axis=0))
+                # assert False
                 from neuralmonkey.analyses.state_space_good import dimredgood_pca
                 # Make labels (chans x timebins)
                 ntimes = len(PAslice.Times)
-                col_labels = []
-                for ch in PAslice.Chans:
-                    for t in range(ntimes):
-                        col_labels.append((ch, t))
+                col_labels = PAslice.Chans
+                # col_labels = []
+                # for ch in PAslice.Chans:
+                #     for t in range(ntimes):
+                #         col_labels.append((ch, t))
                 X, _, pca = dimredgood_pca(X,
                                            how_decide_npcs_keep = how_decide_npcs_keep,
                                            pca_frac_var_keep=pca_frac_var_keep, pca_frac_min_keep=pca_frac_min_keep,
@@ -1375,51 +2013,55 @@ class PopAnal():
                                            plot_loadings_feature_labels=col_labels,
                                            method=pca_method,
                                            npcs_keep_force=npcs_keep_force) # (ntrials, nchans) --> (ntrials, ndims)
-
-                # # Prune with PCA
-                # from sklearn.decomposition import PCA
-                # pca = PCA(n_components=None)
-                # Xpca = pca.fit_transform(X) # (ntrials*ntimes, nchans) --> (ntrials*ntimes, ndims)
-                # cumvar = np.cumsum(pca.explained_variance_ratio_)
-                # npcs_keep = np.argwhere(cumvar >= pca_frac_var_keep)[0].item()+1 # the num PCs to take such that cumsum is just above thresh
-                # # npcs_keep = np.argmin(np.abs(cumvar - thresh_frac_var))
-                # X = Xpca[:, :npcs_keep] # (ntrials*ntimes, npcs_keep)
-
-                # if plot_pca_explained_var:
-                #     fig, axes = plt.subplots(1,2, figsize=(8,3))
-                #
-                #     ax = axes.flatten()[0]
-                #     ax.plot(pca.explained_variance_ratio_)
-                #     ax.axvline(npcs_keep, color="r")
-                #     ax.set_title("frac var, each dim")
-                #
-                #     ax = axes.flatten()[1]
-                #     ax.plot(np.cumsum(pca.explained_variance_ratio_))
-                #     ax.axvline(npcs_keep, color="r")
-                #     ax.set_title("cumulative var, each dim")
-                #     # savefig(fig, f"{savedir_preprocess}/pca_explainedvar.pdf")
-
-                # Reshape back to original
-                X = X.T # (npcs_keep, ntrials*ntimes)
-                X = np.reshape(X, [npcs_keep, ntrials, ntimes]) # (npcs_keep, ntrials*ntimes)
+            # Extra dimreduction step?
+            if extra_dimred_method in ["umap", "mds"]:
+                from neuralmonkey.analyses.state_space_good import dimredgood_nonlinear_embed_data
+                X, _ = dimredgood_nonlinear_embed_data(X, METHOD=extra_dimred_method, n_components=extra_dimred_method_n_components,
+                                                           umap_n_neighbors=umap_n_neighbors) # 
             else:
-                X = PAslice.X
-        else:
-            assert False
+                assert extra_dimred_method is None
+
+
+            ################# Reshape back to original
+            npcs_keep = X.shape[1]
+            X = X.T # (npcs_keep, ntrials*ntimes)
+            X = np.reshape(X, [npcs_keep, ntrials, ntimes]) # (npcs_keep, ntrials*ntimes)
+        
+            # Represent X in PopAnal
+            PAfinal = PopAnal(X.copy(), PAslice.Times)  # (ndimskeep, ntrials, 1)
+            PAfinal.Xlabels = {dim:df.copy() for dim, df in PAslice.Xlabels.items()}
+            assert len(PAfinal.Xlabels["trials"])==PAfinal.X.shape[1]
+
+            # Sanity check
+            assert X.shape[1:] == PAslice.X.shape[1:]
             if pca_reduce:
-                assert False, "not coded..."
+                assert X.shape == PAfinal.X.shape
+
+            # # Extra dimreduction step?
+            # assert extra_dimred_method is None, "not yet coded.. a bit tricky?"
+
+        else:
+            print(reshape_method)
+            assert False
+
+            # X = PAslice.X
+            #
+            # if pca_reduce:
+            #     assert False, "not coded..."
+            #
+            # assert extra_dimred_method is None, "not yet coded"
 
         if not pca_reduce:
             pca = None
+            # PAfinal = None
 
-        # Represent X in PopAnal
-        PApca = PopAnal(X.T[:, :, None].copy(), [0])  # (ndimskeep, ntrials, 1)
-        PApca.Xlabels = {dim:df.copy() for dim, df in PAslice.Xlabels.items()}
-        assert len(PApca.Xlabels["trials"])==PApca.X.shape[1]
+        # print(X.shape)
+        # print(PAfinal.X.shape)
+        # print(PAslice.X.shape)
+        # assert False
+        return X, PAfinal, PAslice, pca, X_before_dimred
 
-        return X, PApca, PAslice, pca
-
-    def dataextract_split_by_label_grp_for_statespace(self, grpvars):
+    def _dataextract_split_by_label_grp_for_statespace(self, grpvars):
         """
         Return a dataframe, where each row is a single level of conjunctive grpvars,
         holding all trials. Useful for state space traj plotting etc, e.g.,
@@ -1789,10 +2431,15 @@ class PopAnal():
 
         inds = self.index_find_these_values("times", twind)
         assert len(inds)==2
-
+        if twind[0] > max(self.Times) or twind[1] < min(self.Times):
+            print(twind)
+            print(self.Times)
+            print(inds)
+            assert False, "twind incompatible with times"
         if time_keep_only_within_window:
             # inclusive, deal with numerical imprecision..
             # ensuring that indices are entirely contained within twind.
+
             while self.Times[inds[0]]<=twind[0]:
                 inds[0]+=1
             while self.Times[inds[1]]>=twind[1]:
@@ -1820,6 +2467,18 @@ class PopAnal():
         else:
             print(dim)
             assert False
+
+    def shuffle_by_time(self):
+        """ 
+        Return a copy of self.X, with time dimension shuffled,
+        i.e., shape is identical.
+        """
+
+        # get random indices for shuffling
+        n = self.X.shape[2]
+        inds = np.random.permutation(range(n))
+        X = self.X[:, :, inds].copy()
+        return X
 
     def shuffle_by_trials(self, inds_rows):
         """ Shuffle rows, given input indices, with many sanityc checeks,
@@ -1875,6 +2534,21 @@ class PopAnal():
         else:
             print(version)
             assert False
+    def extract_activity_copy_all(self):
+        """
+        Copy and return all data from self.
+        :return: data, dict.
+        """
+        data = {
+            "X":self.X.copy(),
+            "dflab":self.Xlabels["trials"].copy(),
+            "Times":self.Times,
+            "Chans":self.Chans,
+            "Trials":self.Trials,
+        }
+
+        return data
+
 
     def help_get_dimensions(self, dim):
         """ Hleper to convert between types for dim (int or str)
@@ -1895,10 +2569,11 @@ class PopAnal():
         X = self.extract_activity_copy(trial, version)
         return plotNeurTimecourse(X, **kwargs)
 
-    def plotwrapper_smoothed_fr(self, inds=None, axis_for_inds="site", ax=None, 
+    def plotwrapper_smoothed_fr(self, values_this_axis=None, axis_for_inds="site", ax=None, 
                      plot_indiv=True, plot_summary=False, error_ver="sem",
                      pcol_indiv = "k", pcol_summary="r", summary_method="mean",
-                     event_bounds=(None, None, None), alpha=0.6):
+                     event_bounds=(None, None, None), alpha=0.6, 
+                     time_shift_dur=None):
         """ Wrapper for different ways of plotting multiple smoothed fr traces, where
         multiple could be trials or sites. Also to plot summaries (means, etc). 
         PARAMS:
@@ -1912,12 +2587,12 @@ class PopAnal():
         - plot_summary, bool, whether to plot summary (method defined by error_ver)
         - error_ver, string or None, methods for overlaying mean+error
         """
-        from neuralmonkey.neuralplots.population import plotNeurTimecourse, plotNeurTimecourseErrorbar
+        from neuralmonkey.neuralplots.population import plotNeurTimecourse, plot_smoothed_fr, plotNeurTimecourseErrorbar
         import numpy as np
 
         # extract data
-        if inds is not None:
-            PAthis = self.slice_by_dim_values_wrapper(axis_for_inds, inds)
+        if values_this_axis is not None:
+            PAthis = self.slice_by_dim_values_wrapper(axis_for_inds, values_this_axis)
             # if axis_for_inds in ["site", "sites"]:
             # #         idxs = [PA.Chans.index(site) for site in inds]
             #     PAthis = self._slice_by_chan(inds, return_as_popanal=True)
@@ -1929,38 +2604,44 @@ class PopAnal():
             PAthis = self
         X = PAthis.X
         times = PAthis.Times
+        
+        if False:
+            if X.shape[1]==1 and axis_for_inds not in ["trials"]:
+                plot_indiv = True
+                plot_summary = False
 
-        # Reshape to (nsamp, times)
+        if time_shift_dur is not None:
+            times = times + time_shift_dur
+            
+        # Reshape to (nsamp, times), combining all chans and trials.
         X = X.reshape(X.shape[0] * X.shape[1], X.shape[2])
         n_time_bins = X.shape[1]
 
-        if len(X)<3:
-            plot_indiv = True
-            plot_summary = False
-
         # 1) Plot indiividual traces?
         if plot_indiv:
-            fig1, ax1 = plotNeurTimecourse(X, times,ax=ax, color = pcol_indiv,
+            fig1, ax1 = plotNeurTimecourse(X, times, ax=ax, color = pcol_indiv,
                 alpha=alpha)
         else:
             fig1, ax1 = None, None
-            
+
         # 2) Plot summary too?
         if plot_summary:
-            if error_ver=="sem":
-                from scipy import stats
-                if summary_method=="mean":
-                    Xmean = np.mean(X, axis=0)
-                elif summary_method=="median":
-                    Xmean = np.median(X, axis=0)
-                else:
-                    print(summary_method)
-                    assert False
-                Xsem = stats.sem(X, axis=0)
-            else:
-                assert error_ver is None, "not coded"
+            fig2, ax2 = plot_smoothed_fr(X, times, ax, summary_method=summary_method,
+                             color=pcol_summary)
+            # if error_ver=="sem":
+            #     from scipy import stats
+            #     if summary_method=="mean":
+            #         Xmean = np.mean(X, axis=0)
+            #     elif summary_method=="median":
+            #         Xmean = np.median(X, axis=0)
+            #     else:
+            #         print(summary_method)
+            #         assert False
+            #     Xsem = stats.sem(X, axis=0)
+            # else:
+            #     assert error_ver is None, "not coded"
 
-            fig2, ax2 = plotNeurTimecourseErrorbar(Xmean, Xerror=Xsem, times=times,ax=ax, color=pcol_summary)
+            # fig2, ax2 = plotNeurTimecourseErrorbar(Xmean, Xerror=Xsem, times=times,ax=ax, color=pcol_summary)
         else:
             fig2, ax2 = None, None
 
@@ -1974,7 +2655,7 @@ class PopAnal():
 
     def plotwrapper_smoothed_fr_split_by_label(self, dim_str, dim_variable, ax=None,
                                               plot_indiv=False, plot_summary=True,
-                                              event_bounds=[None, None, None], 
+                                              event_bounds=[None, None, None],
                                               add_legend=True, legend_levels=None,
                                                chan=None):
         """ Plot separate smoothed fr traces, overlaid on single plot, each a different
@@ -1991,11 +2672,15 @@ class PopAnal():
         from pythonlib.tools.plottools import makeColors
 
         if chan is not None:
-            # Then pull out specific PA that is just this chan
+        # Then pull out specific PA that is just this chan
             PA = self.slice_by_dim_values_wrapper("chans", [chan])
         else:
+            # assert False, "did you really not want to input chan?"
             PA = self
 
+        if ax is None:
+            fig, ax = plt.subplots()
+            
         # Split into each pa for each level
         list_pa, list_levels_matching_pa = PA.split_by_label(dim_str, dim_variable)
         
@@ -2005,7 +2690,6 @@ class PopAnal():
             legend_levels = list_levels_matching_pa
         pcols = makeColors(len(legend_levels))
         dict_lev_color = {}
-
 
         for pc, lev in zip(pcols, legend_levels):
             dict_lev_color[lev] = pc
@@ -2023,6 +2707,21 @@ class PopAnal():
 
         return pcols
 
+    def plotwrapper_smoothed_fr_split_by_label_and_subplots(self, chan, var, vars_subplots):
+        """
+        Helper to plot smoothed fr, multkiple supblots, each varying by var
+        :param var: str, to splot and color within subplot
+        :param vars_subplots: list of str, each is a supblot
+        :param chan:
+        :return:
+        """
+        list_pa, levels = self.split_by_label("trials", vars_subplots)
+        ncols = 8
+        nrows = int(np.ceil(len(levels)/ncols))
+        fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*3, nrows*3), sharex=True, sharey=True)
+        for ax, lev, pa in zip(axes.flatten(), levels, list_pa):
+            pa.plotwrapper_smoothed_fr_split_by_label("trials", var, ax, chan=chan)
+            ax.set_title(lev)
 
     ############################
     def convert_to_dataframe_long(self):
@@ -2098,10 +2797,14 @@ class PopAnal():
         ax.grid()
 
 
-def concatenate_popanals_flexible(list_pa, concat_dim="trials"):
+def concatenate_popanals_flexible(list_pa, concat_dim="trials", how_deal_with_different_time_values="replace_with_dummy"):
     """ Concatenates popanals (along trial dim) which may have different time bases (but
     the same n time bins.
     If differnet, then replaces time with 0,1, 2... (index), otherwise uses actual time.
+    PARAMS:
+        - how_deal_with_different_time_values, str, if concatting along trials, and each pa has different
+        timebase, then different methods for dealing with fact that the returned PA must have the same time labels
+        across all datapts.
     RETURNS:
         - PA, new popanal
         - twind, (tmin, tmax) from new PA.Times.
@@ -2112,10 +2815,35 @@ def concatenate_popanals_flexible(list_pa, concat_dim="trials"):
         # if you are combining multiple times, then replace times iwth a
         # dummy variable
         times_identical = check_identical_times(list_pa)
-        replace_times_with_dummy_variable = not times_identical
+        if not times_identical:
+            if how_deal_with_different_time_values=="replace_with_dummy":
+                # (0,1,2, ...)
+                replace_times_with_dummy_variable = True
+                all_pa_inherit_times_of_pa_at_this_index = None
+                times_realign_so_first_index_is_this_time = None
+            elif how_deal_with_different_time_values=="replace_with_first_pa":
+                # Take the timestamps from first pa
+                replace_times_with_dummy_variable = False
+                all_pa_inherit_times_of_pa_at_this_index = 0
+                times_realign_so_first_index_is_this_time = None
+            elif how_deal_with_different_time_values=="replace_with_first_pa_realigned":
+                # Take the timestamps from first pa, and then shift times so that
+                # gtime of first time index is 0.
+                replace_times_with_dummy_variable = False
+                all_pa_inherit_times_of_pa_at_this_index = 0
+                times_realign_so_first_index_is_this_time = 0.
+            else:
+                print(how_deal_with_different_time_values)
+                assert False, "different time bases, not sure hwo to deal"
+        else:
+            replace_times_with_dummy_variable = False
+            all_pa_inherit_times_of_pa_at_this_index = None
+            times_realign_so_first_index_is_this_time = None
 
         PA = concatenate_popanals(list_pa, "trials",
-                                    replace_times_with_dummy_variable=replace_times_with_dummy_variable)
+                                    replace_times_with_dummy_variable=replace_times_with_dummy_variable,
+                                    all_pa_inherit_times_of_pa_at_this_index=all_pa_inherit_times_of_pa_at_this_index,
+                                    times_realign_so_first_index_is_this_time=times_realign_so_first_index_is_this_time)
 
     elif concat_dim=="times":
         # ALl will copy the trials df from the first pa.
@@ -2141,7 +2869,8 @@ def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None,
     assert_otherdims_restrict_to_these=("chans", "trials", "times"),
     all_pa_inherit_times_of_pa_at_this_index=None,
      replace_times_with_dummy_variable=False,
-     all_pa_inherit_trials_of_pa_at_this_index=None):
+     all_pa_inherit_trials_of_pa_at_this_index=None,
+     times_realign_so_first_index_is_this_time=None):
     """ Concatenate multiple popanals. They must have same shape except
     for the one dim concatted along.
     PARAMS:
@@ -2162,6 +2891,9 @@ def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None,
     have differnet time bases, but you really just care about realtive time to alignment.
     replace_times_with_dummy_variable, bool, if True, then reaplces all times with indices
     0, 1.,,,
+    - times_realign_so_first_index_is_this_time, float, if not None, then forces that the first
+    time index takes this value, by shifting times (subtraction). e.g,, if 0., then all times
+    are shifted, maintaing same time period. Applies whether or not replace_times_with_dummy_variable is True
     RETURNS:
     - PopAnal object,
     --- or None, if inputed list_pa is empty.
@@ -2169,16 +2901,18 @@ def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None,
     - for the non-concatted dim, will use the values for the first pa. assumes
     this is same across pa.
     """
+    import copy
+    from pythonlib.tools.pandastools import concat
 
     if len(list_pa)==0:
         return None
 
-    # always copy
+    ### Initialize by making copies.
     list_pa = [pa.copy() for pa in list_pa]
-
     dim, dim_str = help_get_dimensions(dim)
 
-    # Sometimes times are len 1 off from each other. Here is quick fix.
+    ### Fix problem where times are len 1 off from each other. 
+    # (Sometimes times are len 1 off from each other. Here is quick fix.
     # If any trials are off from other by one time bin (possible, round error), then remove the last sample
     if not dim_str=="times":
         list_n = [pa.X.shape[2] for pa in list_pa]
@@ -2200,38 +2934,30 @@ def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None,
             else:
                 pass
 
+    ### Deal with different time-bases across PAs
     if all_pa_inherit_times_of_pa_at_this_index is not None:
         assert replace_times_with_dummy_variable==False
         pa_base = list_pa[all_pa_inherit_times_of_pa_at_this_index]
         for pa in list_pa:
             assert len(pa.Times)==len(pa_base.Times)
-            pa.Times = pa_base.Times
+            pa.Times = copy.copy(pa_base.Times)
 
     if replace_times_with_dummy_variable:
         assert all_pa_inherit_times_of_pa_at_this_index is None
         for pa in list_pa:
             pa.Times = np.arange(len(pa.Times))
 
-    # 1) Concat the data
-    list_x = [pa.X for pa in list_pa]
-    # for x in list_x:
-    #     print(x.shape)
-    X = np.concatenate(list_x, axis=dim)
-
+    if times_realign_so_first_index_is_this_time is not None:
+        for pa in list_pa:
+            pa.Times = pa.Times - pa.Times[0] + times_realign_so_first_index_is_this_time
+        
     # 2) Create new PA
-    if False:
-        # [OLD METHOD] values for the non-concatted dimensions.
-        pa1 = list_pa[0]
-        chans = pa1.Chans
-        trials = pa1.Trials
-        times = pa1.Times
-
     # Extract values to populate the other dimensions
     # - decide whether to enforce same values across all list_pa.
-    tmp = {}
+    check_this_dim = {}
 
     for d in ["times", "chans", "trials"]:
-        tmp[d] = (assert_otherdims_have_same_values) and (d in assert_otherdims_restrict_to_these)
+        check_this_dim[d] = (assert_otherdims_have_same_values) and (d in assert_otherdims_restrict_to_these)
     # - extract values
     if dim_str=="times":
         times = values_for_concatted_dim
@@ -2241,29 +2967,29 @@ def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None,
             for i, patmp in enumerate(list_pa):
                 # times.extend([(i, t) for t in patmp.Times])
                 times.extend([f"{i}|{t:.4f}" for t in patmp.Times])
-        chans = check_get_common_values_this_dim(list_pa,"chans", tmp["chans"])
-        trials = check_get_common_values_this_dim(list_pa, "trials", tmp["trials"])
+        chans = check_get_common_values_this_dim(list_pa,"chans", check_this_dim["chans"])
+        trials = check_get_common_values_this_dim(list_pa, "trials", check_this_dim["trials"])
     elif dim_str=="chans":
-        times = check_get_common_values_this_dim(list_pa, "times", tmp["times"])
+        times = check_get_common_values_this_dim(list_pa, "times", check_this_dim["times"])
         chans = values_for_concatted_dim
-        trials = check_get_common_values_this_dim(list_pa, "trials", tmp["trials"])
+        trials = check_get_common_values_this_dim(list_pa, "trials", check_this_dim["trials"])
     elif dim_str=="trials":
-        times = check_get_common_values_this_dim(list_pa, "times", tmp["times"])
-        chans = check_get_common_values_this_dim(list_pa, "chans", tmp["chans"])
+        times = check_get_common_values_this_dim(list_pa, "times", check_this_dim["times"])
+        chans = check_get_common_values_this_dim(list_pa, "chans", check_this_dim["chans"])
         trials = values_for_concatted_dim   
     else:
         print(dim_str)
         assert False
 
+    ### 1) Concat the data
     # Generate new popanal
+    list_x = [pa.X for pa in list_pa]
+    X = np.concatenate(list_x, axis=dim)
     PA = PopAnal(X, times=times, trials = trials,
         chans = chans)
 
     # Concatenate Xlabels dataframe
     # - concat the dimension chosen
-    from pythonlib.tools.pandastools import concat
-    #
-    # PA.Xlabels = self.Xlabels.copy()
     list_df = [pa.Xlabels[dim_str] for pa in list_pa]
     PA.Xlabels[dim_str] = concat(list_df)
 
@@ -2276,6 +3002,7 @@ def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None,
 
         # Replace
         dftmp = list_pa[all_pa_inherit_trials_of_pa_at_this_index].Xlabels["trials"].copy()
+        assert len(dftmp) == PA.X.shape[1], "prob because concateed along trials, so trails expanded.."
         PA.Xlabels["trials"] = dftmp
 
     # convert index_to_old_dataframe to meaningful value
@@ -2322,17 +3049,21 @@ def check_identical_times(list_pa):
     smae time base (in pa.Times), wihtin numerical precision
     """
     from pythonlib.tools.nptools import isin_array
+    from pythonlib.tools.checktools import check_objects_identical
 
     times_prev = None
     times_identical = True
     for pa in list_pa:
         if times_prev is not None:
-            if len(pa.Times) != len(times_prev):
-                times_identical = False
+            times_identical = check_objects_identical(pa.Times, times_prev)
+            if not times_identical:
                 break
-            if not isin_array(pa.Times, [times_prev]):
-                times_identical = False
-                break
+            # if len(pa.Times) != len(times_prev):
+            #     times_identical = False
+            #     break
+            # if not isin_array(pa.Times, [times_prev]):
+            #     times_identical = False
+            #     break
         times_prev = pa.Times
     return times_identical
 

@@ -175,7 +175,7 @@ def session_map_from_rec_to_ml2(animal, date, rec_session):
 
     if isinstance(beh_trial_map_list, str) and beh_trial_map_list=="IGNORE":
         # Then you told yoursefl: skip this. 
-        return None
+        return None, None, None, None
     elif beh_trial_map_list is None: # Default, no hand coded mods.
         #### ONE REC SESSION - ONE BEH SESSION
         # Prune sessdict that that it only keeps the beh sessions that are used.
@@ -185,13 +185,13 @@ def session_map_from_rec_to_ml2(animal, date, rec_session):
             sessdict[date] = [sess_expt for sess_expt in sessdict[date] if sess_expt[0] in session_map]
             if rec_session+1 > len(session_map):
                 # Then
-                return None
+                return None, None, None, None
             beh_session = session_map[rec_session]
             print("Beh Sessions hand netered (mapping: rec sess --> beh sess): ", session_map)
         else:
             # Then use rec_session+1 (indexing into the beh sessions that exist.)
             if rec_session+1 > len(sessdict[date]):
-                return None
+                return None, None, None, None
 
             # Second, pull out this session.
             beh_session = sessdict[date][rec_session][0]
@@ -200,8 +200,42 @@ def session_map_from_rec_to_ml2(animal, date, rec_session):
 
         # Convert to list
         beh_sess_list = [beh_session]
-        beh_expt_list = [sessdict[date][rec_session][1]]
+        try:
+            beh_expt_list = [sessdict[date][rec_session][1]]
+        except Exception as err:
+            print(sessdict)
+            print(date)
+            print(rec_session)
+            raise err
         beh_trial_map_list = [(1, 0)]
+
+    ### WAS Trying to fix for these 2 dates. Problem for both is that they have neural trials that dont have existing ml2 trials at all...
+    # elif animal=="Pancho" and int(date)==220610 and rec_session==0:
+    #     # debugging, why not do this generally (ie below in else:)
+
+    #     # print("HASDASASD")
+    #     # print(beh_trial_map_list)
+    #     # print(sessdict)
+    #     # print(date)
+    #     # print(sessdict[date])
+    #     # assert False
+    #     beh_sess_list = [1]
+    #     beh_expt_list = ["priminvar2b"]
+    #     beh_trial_map_list = beh_trial_map_list
+
+    # elif animal=="Pancho" and int(date)==220609 and rec_session==0:
+    #     # debugging, why not do this generally (ie below in else:)
+
+    #     print("HASDASASD")
+    #     print(beh_trial_map_list)
+    #     print(sessdict)
+    #     print(date)
+    #     print(sessdict[date])
+    #     assert False
+    #     beh_sess_list = [x[0] for x in sessdict[date]]
+    #     beh_expt_list = [x[1] for x in sessdict[date]]
+    #     beh_trial_map_list = beh_trial_map_list
+
     else:
         #### ONE REC SESSION - MULTIPLE BEH SESSIONS
         # Also, you are guaranteed this rec sessions exists, so dont check if it exists

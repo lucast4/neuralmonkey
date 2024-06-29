@@ -53,7 +53,10 @@ for cg = list_chans_global
         datstruct_this = rmfield(datstruct_this, 'isbimod');
         datstruct_this.clust_before_merge = nan;
         datstruct_this.index_before_merge = nan;
-
+        
+        if ~isfield(datstruct_this, 'times_sec_all_BEFORE_REMOVE_DOUBLE')
+            datstruct_this.times_sec_all_BEFORE_REMOVE_DOUBLE = nan;
+        end
         try
             DATSTRUCT_FINAL = [DATSTRUCT_FINAL, datstruct_this];
         catch err

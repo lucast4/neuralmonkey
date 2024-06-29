@@ -1,4 +1,5 @@
 clear all; close all; 
+
 ANIMAL = 'Pancho';
 DATE = 230620;
 
@@ -12,14 +13,16 @@ kspostprocess_manual_curate_merge(ANIMAL, DATE, SKIP_LOADING_DATSTRUCT);
 
 
 clear all; close all; 
-ANIMAL = 'Pancho';
+ANIMAL = 'Diego';
 % DATE = 220719;
 % DATES = [221015 221024 221220 230616 230622 230623];
 
 %DATES = [220719  220918  221024  221218  230103  230105  230613  230622, ...
 %    220724  221015  221217  221220  230104  230612  230616  230623]; % all excpt 221015
 
-DATES = [230615 230620];
+%DATES = [220829 220830 220831];
+DATES = [231207 231211 231213 231218 231219];
+
 for i=1:length(DATES)
     DATE = DATES(i);
     

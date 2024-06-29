@@ -45,8 +45,6 @@ from neuralmonkey.analyses.decode_good import preprocess_extract_X_and_labels
 SAVEDIR_ANALYSES = f"{PATH_ANALYSIS_OUTCOMES}/recordings/main/DECODE"
 DEBUG = False
 
-
-
 if __name__=="__main__":
 
     animal = sys.argv[1]
@@ -103,6 +101,8 @@ if __name__=="__main__":
     PLOT_4 = plots_do[3]=="1"
     # else:
     #     PLOT_1, PLOT_2, PLOT_3, PLOT_4 = True, True, True, True
+
+    assert PLOT_1==PLOT_4==PLOT_3==False, "is currently not compatible with LIST_VAR_DECODE.. update the code if needed."
 
     ############### PARAMS
     fr_normalization_method = "each_time_bin"
@@ -207,33 +207,75 @@ if __name__=="__main__":
     LIST_FILTDICT = []
     LIST_SUFFIX = []
 
-    # SETS OF HARD CODED VARIABLES.
-    # if combine_trial_and_stroke==False and question in ["CHAR_BASE_stroke", "PIG_BASE_stroke"]:
-    from neuralmonkey.metadat.analy.anova_params import params_getter_decode_vars
-    if combine_trial_and_stroke==False and which_level=="trial":
-        # For sequence-related decoding (and also location and shape).
-        # Should work for SP, PIG, and CHAR
-        # FOCUS ON THINGS DURING PLANNING (stroke-related stuff do with stroke plots).
+    if question in ["RULE_BASE_stroke", "RULE_ANBMCK_STROKE", "RULESW_BASE_stroke", "RULESW_ANBMCK_ABN_STROKE",
+                    "RULESW_ANBMCK_DIR_STROKE", "RULE_DIR_STROKE", "RULE_ROWCOL_STROKE"]:
+        assert False, "derive these from euclidian distance variables"
+        # # Hard code different params here.
+        # LIST_VAR_DECODE = []
+        # LIST_VARS_CONJ = []
+        # LIST_SEPARATE_BY_TASK_KIND = []
+        # LIST_FILTDICT = []
+        # LIST_SUFFIX = []
+        #
+        # ########### Action (first stroke)
+        # suffix = "syntax_role"
+        # list_var_decode = [
+        #     "syntax_role",
+        #     "syntax_role",
+        #     "syntax_role",
+        #     "syntax_role",
+        #     "syntax_role",
+        #     "syntax_role",
+        # ]
+        # list_vars_conj = [
+        #     ["task_kind", "epoch", "syntax_concrete", "behseq_shapes_clust", "behseq_locs_clust"],
+        #     ["task_kind", "epoch", "syntax_concrete", "behseq_shapes_clust"],
+        #     ["task_kind", "epoch", "syntax_concrete", "behseq_locs_clust"],
+        #     ["task_kind", "epoch", "syntax_concrete"],
+        #     ["task_kind", "epoch"],
+        #     ["task_kind"],
+        #     ]
+        # separate_by_task_kind = True
+        # filtdict = None
+        # # ------
+        # LIST_VAR_DECODE.append(list_var_decode)
+        # LIST_VARS_CONJ.append(list_vars_conj)
+        # LIST_SEPARATE_BY_TASK_KIND.append(separate_by_task_kind)
+        # LIST_FILTDICT.append(filtdict)
+        # LIST_SUFFIX.append(suffix)
 
-        # Just focus on 1D decoding, and do "combine" if want to do 2d.
-        PLOT_1 = False
-        PLOT_2 = True
-        PLOT_3 = False
-        PLOT_4 = False
+    else:
+        # SETS OF HARD CODED VARIABLES.
+        # if combine_trial_and_stroke==False and question in ["CHAR_BASE_stroke", "PIG_BASE_stroke"]:
+        from neuralmonkey.metadat.analy.anova_params import params_getter_decode_vars
+        if combine_trial_and_stroke==False and which_level=="trial":
+            # For sequence-related decoding (and also location and shape).
+            # Should work for SP, PIG, and CHAR
+            # FOCUS ON THINGS DURING PLANNING (stroke-related stuff do with stroke plots).
 
-        LIST_VAR_DECODE, LIST_VARS_CONJ, LIST_SEPARATE_BY_TASK_KIND, LIST_FILTDICT, LIST_SUFFIX = params_getter_decode_vars(which_level)
+            # Just focus on 1D decoding, and do "combine" if want to do 2d.
+            PLOT_1 = False
+            PLOT_2 = True
+            PLOT_3 = False
+            PLOT_4 = False
 
-    elif combine_trial_and_stroke==False and which_level=="stroke":
-        # For sequence-related decoding (and also location and shape).
-        # Should work for SP, PIG, and CHAR
+            LIST_VAR_DECODE, LIST_VARS_CONJ, LIST_SEPARATE_BY_TASK_KIND, LIST_FILTDICT, LIST_SUFFIX = params_getter_decode_vars(which_level)
 
-        PLOT_1 = False
-        PLOT_2 = True
-        PLOT_3 = False
-        PLOT_4 = False
+        elif combine_trial_and_stroke==False and which_level=="stroke":
+            # For sequence-related decoding (and also location and shape).
+            # Should work for SP, PIG, and CHAR
 
-        LIST_VAR_DECODE, LIST_VARS_CONJ, LIST_SEPARATE_BY_TASK_KIND, LIST_FILTDICT, LIST_SUFFIX = params_getter_decode_vars(which_level)
+            PLOT_1 = False
+            PLOT_2 = True
+            PLOT_3 = False
+            PLOT_4 = False
 
+            LIST_VAR_DECODE, LIST_VARS_CONJ, LIST_SEPARATE_BY_TASK_KIND, LIST_FILTDICT, LIST_SUFFIX = params_getter_decode_vars(which_level)
+
+    print("=== LIST_VAR_DECODE:")
+    print(LIST_VAR_DECODE)
+    print("=== LIST_VARS_CONJ:")
+    print(LIST_VARS_CONJ)
 
     ############## 1) Default: Time-resolved decoding
     if PLOT_1:

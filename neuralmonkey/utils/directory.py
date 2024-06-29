@@ -1,10 +1,48 @@
 """ Working with pathsa nd directories
 """
+import os.path
 
-from pythonlib.globals import PATH_NEURALMONKEY, PATH_DATA_NEURAL_RAW, PATH_DATA_NEURAL_PREPROCESSED
+from pythonlib.globals import PATH_NEURALMONKEY, PATH_DATA_NEURAL_RAW, PATH_DATA_NEURAL_PREPROCESSED, PATH_KS_RAW
 from pythonlib.tools.expttools import writeStringsToFile, makeTimeStamp
 
 from neuralmonkey.classes.session import LOCAL_LOADING_MODE, LOCAL_PATH_PREPROCESSED_DATA
+
+def find_ks_cluster_paths(animal, date):
+    """
+    Find paths, in list len sessions, to ks directiores (ei., duirng ks extraction, before concat across sessions for that day
+    """
+    from pythonlib.tools.expttools import findPath, deconstruct_filename
+
+    path_hierarchy = [
+        [animal],
+        [date],
+        [animal, date]
+    ]
+
+    paths = findPath(PATH_KS_RAW, path_hierarchy, path_fname=None, sort_by="name")
+
+    # REmove paths that say "IGNORE"
+    paths = [p for p in paths if "IGNORE" not in p]
+
+    # OUTPUT AS DICT
+    sessions = []
+    for sessnum, paththis in enumerate(paths):
+        fnparts = deconstruct_filename(paththis)
+        final_dir_name = fnparts["filename_final_noext"]
+        # print("---")
+        # print(paththis)
+        # print(fnparts)
+        # print(final_dir_name)
+        sessions.append({
+            "sessnum":sessnum,
+            "path":paththis,
+            "pathfinal":final_dir_name,
+            "fileparts":fnparts
+            })
+
+        # sessdict[sessnum] = []
+
+    return sessions
 
 def find_rec_session_paths(animal, date):
     """
@@ -15,7 +53,6 @@ def find_rec_session_paths(animal, date):
         [animal],
         [date]
     ]
-
 
     if LOCAL_LOADING_MODE:
         paths = findPath(LOCAL_PATH_PREPROCESSED_DATA, path_hierarchy, sort_by="name")
@@ -192,6 +229,229 @@ def check_log_anova_analy_status(DEST_DIR= f"{PATH_NEURALMONKEY}/logs_checks"):
     path = f"{DEST_DIR}/anova_df_var_exists.txt"
     writeStringsToFile(path, OUT_STRINGS)
     print("Saved log results to: ", path)
+
+def rec_session_durations_extract_kilosort(animal, date):
+    """
+    Find the durations of data for each session that has been completely preprocessed and also kilosorted.
+    Purpose was for re-zeroing spike times from each session relative to the onset of that session, for ks.
+    Finds durations by going through raw data logs.
+
+    NOTE: Collects RS4 durations separately for each RS, since they can differ by few ms in their final samples, whichi
+    matters if you are collecting mulktple sessions across day...
+
+    # Confident about the following:
+    # - kiloosrt spike times are correct relative to onset of each sessions neural data (RS4).
+    # - total duration of file used in KS will be same duration as sum of raw RS4 durations.
+    # - data tank (e.g., all behavior and events) are at most 0.2 sec offset, from neural data, and I am checking with
+    # Myles whether this is guaranteed to be at the offset.
+    # Sanity check, ks similar to tdt, e.g, find M1 channel and do crosscor.
+
+    :param animal:
+    :param date:
+    :return:
+    durations_each_sess_rs4, duration_total_kilosort, _durations_each_sess_using_tank
+    First 2 are good.
+    """
+    from neuralmonkey.utils.directory import find_rec_session_paths, find_ks_cluster_paths
+    from pythonlib.globals import PATH_DATA_NEURAL_PREPROCESSED, PATH_DATA_NEURAL_RAW
+    import pickle
+    import scipy.io as sio
+    import numpy as np
+
+    # (1) Find list of sessions and ensur ethey are aligned between ks and nerual preprocess
+    sessions_rec = find_rec_session_paths(animal, date)
+    sessions_ks = find_ks_cluster_paths(animal, date)
+
+    # sanity check that the sessions are aligned between rec and ks
+    if not len(sessions_ks)==len(sessions_rec):
+        from pythonlib.tools.exceptions import NotEnoughDataException
+        print(sessions_ks)
+        print(sessions_rec)
+        print("you probably excluded some neural sessions for final analysis (moved to recordings_IGNORE). No solution yet for this problem.")
+        raise NotEnoughDataException
+
+    # - - chekck that the names match for neural and ks.
+    for sessks, sessrec in zip(sessions_ks, sessions_rec):
+        assert sessks["pathfinal"] == sessrec["pathfinal"]
+
+    ################# DIFFERENT METHODS TO FIND DURATIONS OF EACH SESSION
+    # (1) Use data tanks that are cached. THIS IS NOT PERFECTLY accurate, since tank times are slignly shorter than rs4.
+    _durations_each_sess_using_tank = []
+    for sessrec in sessions_rec:
+        path = f"{PATH_DATA_NEURAL_PREPROCESSED}/recordings/{animal}/{date}/{sessrec['pathfinal']}/data_tank.pkl"
+        with open(path, "rb") as f:
+            dattank = pickle.load(f)
+
+        duration_sec = dattank["info"]["duration"].total_seconds()
+        _durations_each_sess_using_tank.append(duration_sec)
+
+        # OTher alternative methods to get duration, but seem to be less than above
+        if False:
+            fs = dattank["streams"]["PhDi"]["fs"]
+            nsamp = len(dattank["streams"]["PhDi"]["data"])
+            nsamp/fs
+            fs = dattank["streams"]["Mic1"]["fs"]
+            nsamp = len(dattank["streams"]["Mic1"]["data"])
+            nsamp/fs
+            fs = dattank["streams"]["PhDi"]["fs"]
+            nsamp = len(dattank["streams"]["PhDi"]["data"])
+
+    # # (2) Duration of total of neural data used in kilosort, in the raw data.
+    # # i.e. raw(RS4) --> concated across sessions --> saved [THIS DURATION] --> kilosort ...
+    # duration_total_kilosort = None
+    # list_batchnames = ["RSn2_batch1", "RSn2_batch2", "RSn3_batch1", "RSn3_batch2"]
+    # duration_total_kilosort_dict = {}
+    # for batchname in list_batchnames:
+    #     dirpath = f"{PATH_KS_RAW}/{animal}/{date}/{batchname}" # choose any batch, they are identical.
+    #     file = "ops.mat"
+    #     path = f"{dirpath}/{file}"
+    #     if os.path.exists(path):
+    #         mat_dict = sio.loadmat(path)
+    #         FS = mat_dict["ops"]["fs"][0][0][0][0]
+    #         assert FS == 24414.0625, f"{FS}, why is this different?"
+    #         sampsToRead = mat_dict["ops"]["sampsToRead"][0][0][0][0]
+    #         tend = mat_dict["ops"]["tend"][0][0][0][0]
+    #         assert tend==sampsToRead, "figure out which one is correct -- num samps"
+    #         # Duration combining all batches
+    #         if duration_total_kilosort is None:
+    #             duration_total_kilosort = sampsToRead/FS
+    #         else:
+    #             # confirm not different
+    #             assert duration_total_kilosort - sampsToRead/FS < 0.005
+    #         # Collect durations for each rs and back of chans
+    #         duration_total_kilosort_dict[batchname] = sampsToRead/FS
+
+    # (2) Duration of total of neural data used in kilosort, in the raw data (data that was concatted during Kilosort pipeline)
+    # i.e. raw(RS4) --> concated across sessions --> saved [THIS DURATION] --> kilosort ...
+    duration_total_kilosort_dict_each_rs = {}
+    for rsnum in [2,3]:
+        _duration_this_rs = None
+        for batchnum in [1,2,3,4]:
+            dirpath = f"{PATH_KS_RAW}/{animal}/{date}/RSn{rsnum}_batch{batchnum}" # choose any batch, they are identical.
+            file = "ops.mat"
+            path = f"{dirpath}/{file}"
+            if os.path.exists(path):
+                mat_dict = sio.loadmat(path)
+                FS = mat_dict["ops"]["fs"][0][0][0][0]
+                assert FS == 24414.0625, f"{FS}, why is this different?"
+                sampsToRead = mat_dict["ops"]["sampsToRead"][0][0][0][0]
+                tend = mat_dict["ops"]["tend"][0][0][0][0]
+                assert tend==sampsToRead, "figure out which one is correct -- num samps"
+                # Duration combining all batches
+                if _duration_this_rs is None:
+                    _duration_this_rs = sampsToRead/FS
+                else:
+                    # confirm not different
+                    assert _duration_this_rs - sampsToRead/FS < 0.001
+
+        # Collect durations for each rs and back of chans
+        assert _duration_this_rs is not None
+        duration_total_kilosort_dict_each_rs[rsnum] = _duration_this_rs
+
+
+    # (3) Duration of lenght of each RS4 recordings, saved in raw logs
+    # i.e., raw(RS4) [THIS, in logs] --> concated..
+    durations_each_sess_rs4_keyed_by_rs = {}
+    for rs in [2, 3]:
+        durations = [] # list, length sessions/
+        for sessnum, sessrec in enumerate(sessions_rec):
+            # - Collect duration for this session
+            logfile = f"RSn{rs}_log"
+            path = f"{PATH_DATA_NEURAL_RAW}/{animal}/{date}/{sessrec['pathfinal']}/{logfile}.txt"
+            with open(path) as f:
+                lines = f.readlines()
+
+            if len(lines)>2:
+                # Then is something like this. Keep first and last.
+                # ['recording started at sample: 2\n', 'gap detected. last saved sample: 51833413, new saved sample: 51833425\n', 'recording stopped at sample: 332994022\n']
+                lines = [lines[0], lines[-1]]
+
+            try:
+                assert lines[0][:27] == 'recording started at sample'
+                assert lines[1][:20] == 'recording stopped at'
+            except AssertionError as err:
+                print("==========")
+                print(lines)
+                print(len(lines))
+                for l in lines:
+                    print(l)
+                print(rs, sessnum, sessrec, path)
+                assert False, "investigate..."
+
+            ind1 = lines[0].find(": ")
+            ind2 = lines[0].find("\n")
+            samp_on = int(lines[0][ind1+2:ind2])
+            assert samp_on < 25, "why is RS4 signal offset from onset of trial. This probably means misalignment vs. Data tank..."
+
+            ind1 = lines[1].find(": ")
+            ind2 = lines[1].find("\n")
+            samp_off = int(lines[1][ind1+2:ind2])
+            nsamp = samp_off - samp_on + 1
+            # if dur is None:
+            #     dur = nsamp/FS
+            # else:
+            #     assert dur - nsamp/FS < 0.005
+
+            durations.append(nsamp/FS)
+
+        durations_each_sess_rs4_keyed_by_rs[rs] = durations
+        # # Store across all (sess, rs)
+        # durations_each_sess_rs4_keyed_by_sessnum_rs_dict[(sessnum, rsnum)] = nsamp/FS
+
+        # durations_each_sess_rs4.append(dur)
+
+    # (4) Total duration, by summing up RS4 raw across sessions (from log files).
+    # sessnums = sorted(set([x[0] for x in out["durations_each_sess_rs4_keyed_by_sessnum_rs_dict"].keys()]))
+    # sessnums = sorted(set([x[0] for x in durations_each_sess_rs4_keyed_by_sessnum_rs_dict.keys()]))
+    duration_total_by_summing_rs4_dict = {}
+    for rs in [2,3]:
+        duration_total_by_summing_rs4_dict[rs] = sum(durations_each_sess_rs4_keyed_by_rs[rs])
+        # duration_total_by_summing_rs4_dict[rs] = sum([durations_each_sess_rs4_keyed_by_sessnum_rs_dict[(s, rs)] for s in sessnums])
+
+    ## Sanity check, durations for each sess add up to the total duration
+    for rs in [2,3]:
+        assert duration_total_by_summing_rs4_dict[rs] - duration_total_kilosort_dict_each_rs[rs]<0.001
+
+    # Sanity check, dont expect tank to be accurate but m ake sure it is not totlaly worng relative to neural.
+    for rs in [2,3]:
+        durations = durations_each_sess_rs4_keyed_by_rs[rs]
+        for dur1, dur2 in zip(_durations_each_sess_using_tank, durations):
+            assert dur1-dur2 < 0.15, "Problem probably in getting durations from RSn2_log, in the string parsing part?"
+
+    # Get onset time of session, using RS4 log data for each session.
+    onsets_using_rs4_each_rs ={}
+    offsets_using_rs4_each_rs ={}
+    for rs in [2,3]:
+        durations = durations_each_sess_rs4_keyed_by_rs[rs]
+
+        onsets = [0.] + list(np.cumsum(durations)[:-1])
+        offsets = [a+b for a,b in zip(onsets, durations)]
+
+        onsets_using_rs4_each_rs[rs] = onsets
+        offsets_using_rs4_each_rs[rs] = offsets
+
+    out = {
+        # "durations_each_sess_rs4":durations_each_sess_rs4,
+        # "duration_total_kilosort":duration_total_kilosort,
+        "_durations_each_sess_using_tank":_durations_each_sess_using_tank,
+        "onsets_using_rs4_each_rs":onsets_using_rs4_each_rs,
+        "offsets_using_rs4_each_rs":offsets_using_rs4_each_rs,
+        # "durations_each_sess_rs4_keyed_by_sessnum_rs_dict":durations_each_sess_rs4_keyed_by_sessnum_rs_dict,
+        "durations_each_sess_rs4_keyed_by_rs":durations_each_sess_rs4_keyed_by_rs,
+        # "duration_total_kilosort_dict":duration_total_kilosort_dict,
+        "duration_total_kilosort_dict_each_rs":duration_total_kilosort_dict_each_rs,
+        "duration_total_by_summing_rs4_dict":duration_total_by_summing_rs4_dict,
+    }
+
+    print("These durations gotten for sessions...")
+    for k, v in out.items():
+        print("... ", k, ":", v)
+    # print("... durations_each_sess_rs4_keyed_by_rs", durations_each_sess_rs4_keyed_by_rs)
+    # print("... _durations_each_sess_using_tank", _durations_each_sess_using_tank)
+    # print("... duration_total_by_summing_rs4_dict", duration_total_by_summing_rs4_dict)
+
+
+    return out
 
 
 if __name__=="__main__":

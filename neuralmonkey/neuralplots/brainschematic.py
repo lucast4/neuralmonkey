@@ -6,6 +6,7 @@ See snippets.modulation_plot_heatmaps_brain_schematic (move stuff here)
 import numpy as np
 import matplotlib.pyplot as plt
 from neuralmonkey.classes.session import _REGIONS_IN_ORDER as REGIONS_IN_ORDER
+from neuralmonkey.classes.session import _REGIONS_IN_ORDER_COMBINED as REGIONS_IN_ORDER_COMBINED
 from pythonlib.globals import PATH_NEURALMONKEY
 
 #
@@ -14,6 +15,18 @@ from pythonlib.globals import PATH_NEURALMONKEY
 #     consistent plotting order (hierarhcial)
 #     """
 #     from neuralmonkey.classes.session import
+
+def datamod_reorder_by_bregion_get_mapper():
+    """
+    Rreturn dict mapping from bregion to rank, useful for consistent plotting.
+    """
+    map_region_to_index = {region:i for i, region in enumerate(REGIONS_IN_ORDER)}
+    # Also include combined regions
+
+    for i, region in enumerate(REGIONS_IN_ORDER_COMBINED):
+        map_region_to_index[region] = i
+        
+    return map_region_to_index
 
 def datamod_reorder_by_bregion(df, col="bregion"):
     """ reorder rows of dataframe based on bregion, from top to bottom
@@ -26,10 +39,10 @@ def datamod_reorder_by_bregion(df, col="bregion"):
         else:
             print(df.columns)
             assert False, "whichc olumn holds regions?"
-    map_region_to_index = {region:i for i, region in enumerate(REGIONS_IN_ORDER)}
+    map_region_to_index = datamod_reorder_by_bregion_get_mapper()
     def F(x):
         return [map_region_to_index[xx] for xx in x] # list of ints
-    return df.sort_values(by=col, key=lambda x:F(x))
+    return df.sort_values(by=col, key=lambda x:F(x)).reset_index(drop=True)
 
 def mapper_combinedbregion_to_meanlocation():
     """

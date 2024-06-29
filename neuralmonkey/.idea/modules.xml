@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/../../drawmonkey/.idea/IGNORE.iml" filepath="$PROJECT_DIR$/../../drawmonkey/.idea/IGNORE.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/neuralmonkey.iml" filepath="$PROJECT_DIR$/.idea/neuralmonkey.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../../pythonlib/.idea/pythonlib.iml" filepath="$PROJECT_DIR$/../../pythonlib/.idea/pythonlib.iml" />
+    </modules>
+  </component>
+</project>

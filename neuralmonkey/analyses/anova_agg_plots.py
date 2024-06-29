@@ -288,13 +288,19 @@ def load_and_preprocess_alldays(animal, ANALY_VER, var_desired, LIST_DATE,
 
 
 def _get_epoch_kind(level):
+
+    tmp = ["llV1a", "llV1b", "llV1c", "llV1d"]
+    tmp2 = [f"{s}|0" for s in tmp]
+    tmp3 = [f"{s}R" for s in tmp]
+    tmp = tmp + tmp2 + tmp3
+
     if level in ["U", "D", "L", "L|0", "R", "TR", "TR|0"]:
         return "dir"
-    elif level in ["VlL1", "llV1", "llV1|0", "llV1R"]:
+    elif level in ["VlL1"] + tmp + tmp2 + tmp3:
         return "shape"
     elif level in ["AnBmTR", "AnBmTR|0", "AnBm1b"]:
         return "AnBm"
-    elif level in ["TR|1", "llV1|1", "L|1", "AnBmTR|1", "rndstr"]:
+    elif level in ["TR|1", "L|1", "AnBmTR|1", "rndstr"] + [f"{s}|1" for s in tmp]:
         return "rankcol"
     elif level in ["base"]:
         return "base"

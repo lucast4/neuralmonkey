@@ -38,6 +38,10 @@ switch MACHINE
         if HACK
             LOADDIR_BASE = '/mnt/Freiwald/kgupta/neural_data';
         end
+    case 'ltbonobo'
+        SAVEDIR_FINAL_SERVER =  '/home/kgg/mnt/Freiwald/kgupta/neural_data/postprocess'; % final, so all machines can access.
+        LOADDIR_BASE = '/home/kgg/mnt/Freiwald/kgupta/neural_data'; % location of kilosorted data
+        SAVEDIR_LOCAL = '/home/kgg/Desktop/neural_preprocess_kilosort';
     otherwise
         disp(['MACHINE: ' MACHINE])
         disp([MACHINE(1)])

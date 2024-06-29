@@ -184,7 +184,7 @@ class MultSessions(object):
         """
         print("=== N trials per session")
         for i, sn in enumerate(self.SessionsList):
-            print("sess", i, len(sn.get_trials_list()))
+            print("sess", i, len(sn.get_trials_list(True)))
 
         print("=== N units per session")
         for i, sn in enumerate(self.SessionsList):

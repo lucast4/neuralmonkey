@@ -17,6 +17,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from pythonlib.tools.plottools import savefig
 from pythonlib.tools.listtools import sort_mixed_type
+from pythonlib.tools.pandastools import append_col_with_grp_index
 
 LABELS_IGNORE = ["IGN", ("IGN",), "IGNORE", ("IGNORE",)] # values to ignore during dcode.
 N_MIN_TRIALS = 5 # min trials per level, otherwise throws level out.
@@ -184,7 +185,7 @@ def decode_categorical_within_condition(X, dflab, var_decode, vars_conj_conditio
             # Save results
             RES.append({
                 "var_decode":var_decode,
-                "vars_conj_condition":vars_conj_condition,
+                "vars_conj_condition":tuple(vars_conj_condition),
                 "grp_condition":grp_condition,
                 "score":score,
                 "score_adjusted":score_adjusted,
@@ -195,7 +196,9 @@ def decode_categorical_within_condition(X, dflab, var_decode, vars_conj_conditio
     dfres = pd.DataFrame(RES)
 
     # aggregate, to get one score for each var_decode
-    dfres_agg = dfres.groupby(["var_decode"]).mean()
+    from pythonlib.tools.pandastools import aggregGeneral
+    dfres_agg = aggregGeneral(dfres, ["var_decode", "vars_conj_condition"], values=["score", "score_adjusted", "n_classes_test"])
+    # dfres_agg = dfres.groupby(["var_decode"]).mean()
     if False: # Skip this for now... later on will have to deal with this issue of diff n classes across groups.
         tmp = dfres.groupby(["var_decode"]).std()
         if np.any(tmp["n_classes_test"]>0.):
@@ -288,7 +291,7 @@ def decode_categorical_cross_condition(X, dflab, var_decode, vars_conj_condition
                         # Save results
                         RES.append({
                             "var_decode":var_decode,
-                            "vars_conj_condition":vars_conj_condition,
+                            "vars_conj_condition":tuple(vars_conj_condition),
                             "grp_train":grp_train,
                             "grp_test":grp_test,
                             "score":score,
@@ -300,8 +303,11 @@ def decode_categorical_cross_condition(X, dflab, var_decode, vars_conj_condition
     dfres = pd.DataFrame(RES)
 
     if len(dfres)>0:
+
         # aggregate, to get one score for each var_decode
-        dfres_agg = dfres.groupby(["var_decode"]).mean()
+        from pythonlib.tools.pandastools import aggregGeneral
+        dfres_agg = aggregGeneral(dfres, ["var_decode", "vars_conj_condition"], values=["score", "score_adjusted", "n_classes_test"])
+        # dfres_agg = dfres.groupby(["var_decode"]).mean()
 
         if False: # skip for now
             tmp = dfres.groupby(["var_decode"]).std()
@@ -905,7 +911,6 @@ def decodewrapouterloop_categorical_timeresolved_within_condition(DFallpa, list_
     DFRES = pd.DataFrame(RES)
 
     ### PLOT
-    from pythonlib.tools.pandastools import append_col_with_grp_index
     import seaborn as sns
     import matplotlib.pyplot as plt
 
@@ -977,7 +982,8 @@ def decodewrapouterloop_categorical_timeresolved_cross_condition(DFallpa, list_v
                 if filtdict is not None:
                     pa = pa.copy()
                     for _var, _levs in filtdict.items():
-                        pa.Xlabels["trials"] = pa.Xlabels["trials"][pa.Xlabels["trials"][_var].isin(_levs)].reset_index(drop=True)
+                        pa = pa.slice_by_labels("trials", _var, _levs)
+                        # pa.Xlabels["trials"] = pa.Xlabels["trials"][pa.Xlabels["trials"][_var].isin(_levs)].reset_index(drop=True)
                         if len(pa.Xlabels["trials"])==0:
                             print("var:", _var, ", levels keep:", _levs)
                             print("Filter completely removed all trials... SKIPPING")
@@ -1001,7 +1007,6 @@ def decodewrapouterloop_categorical_timeresolved_cross_condition(DFallpa, list_v
     DFRES = pd.DataFrame(RES)
 
     ### PLOT
-    from pythonlib.tools.pandastools import append_col_with_grp_index
     from pythonlib.tools.pandastools import convert_to_2d_dataframe, grouping_plot_n_samples_conjunction_heatmap, plot_subplots_heatmap
     import seaborn as sns
     import matplotlib.pyplot as plt
@@ -1092,7 +1097,6 @@ def decodewrapouterloop_categorical_timeresolved(DFallpa, list_vars_decode,
     DFRES = pd.DataFrame(RES)
 
     ### PLOT
-    from pythonlib.tools.pandastools import append_col_with_grp_index
     from pythonlib.tools.pandastools import convert_to_2d_dataframe, grouping_plot_n_samples_conjunction_heatmap, plot_subplots_heatmap
     import seaborn as sns
     import matplotlib.pyplot as plt
@@ -1265,7 +1269,6 @@ def decodewrapouterloop_categorical_cross_time_plot(DFRES, SAVEDIR):
     :return:
     """
     from pythonlib.tools.pandastools import convert_to_2d_dataframe, grouping_plot_n_samples_conjunction_heatmap, plot_subplots_heatmap
-    from pythonlib.tools.pandastools import append_col_with_grp_index
     from pythonlib.tools.pandastools import convert_to_2d_dataframe, grouping_plot_n_samples_conjunction_heatmap, plot_subplots_heatmap
 
 
@@ -1400,12 +1403,20 @@ def decodewrapouterloop_categorical_cross_time_plot(DFRES, SAVEDIR):
 
 
 def decodewrapouterloop_categorical_cross_time(DFallpa, list_var_decode, time_bin_size,
-                                               slide, savedir=None):
+                                               slide, savedir=None, extract_params=True,
+                                               ignore_same_events=True, which_level="trial"):
     """ Decode across events_taskkinds and time, asking how decoder generalizes.
     Should run this outer loop. goes over all
     events and task_kinds.
     """
-    list_br, list_tw, list_ev, n_strokes_max = decodewrapouterloop_preprocess_extract_params(DFallpa)
+
+    if extract_params:
+        list_br, list_tw, list_ev, n_strokes_max = decodewrapouterloop_preprocess_extract_params(DFallpa)
+    else:
+        list_br = DFallpa['bregion'].unique().tolist()
+        list_tw = DFallpa['twind'].unique().tolist()
+        list_ev = DFallpa['event'].unique().tolist()
+        n_strokes_max = None
 
     assert len(DFallpa["twind"].unique())==1, "not big deal. just change code below to iter over all (ev, tw)."
 
@@ -1414,12 +1425,15 @@ def decodewrapouterloop_categorical_cross_time(DFallpa, list_var_decode, time_bi
         for tw in list_tw:
             for i, ev_train in enumerate(list_ev):
                 for j, ev_test in enumerate(list_ev):
-                    if j>=i:
+
+                    if ignore_same_events and j<i: # Dont so same events.
+                        print("skipping same event")
+                    else:
                         print(br, tw, ev_train, ev_test)
 
                         # TRAIN
-                        PA_train_orig = extract_single_pa(DFallpa, br, tw, event=ev_train)
-                        PA_test_orig = extract_single_pa(DFallpa, br, tw, event=ev_test)
+                        PA_train_orig = extract_single_pa(DFallpa, br, tw, event=ev_train, which_level=which_level)
+                        PA_test_orig = extract_single_pa(DFallpa, br, tw, event=ev_test, which_level=which_level)
 
                         list_task_kind_train = PA_train_orig.Xlabels["trials"]["task_kind"].unique()
                         list_task_kind_test = PA_test_orig.Xlabels["trials"]["task_kind"].unique()
@@ -1434,7 +1448,8 @@ def decodewrapouterloop_categorical_cross_time(DFallpa, list_var_decode, time_bi
 
                                 if PA_train.X.shape[1]==0 or PA_test.X.shape[1]==0:
                                     continue
-
+                                
+                                
                                 # if time_bin_size is not None:
                                 #     print(PA_train.X.shape)
                                 #     PA_train = PA_train.agg_by_time_windows_binned(time_bin_size, slide)
@@ -1456,7 +1471,6 @@ def decodewrapouterloop_categorical_cross_time(DFallpa, list_var_decode, time_bi
                                     if X_train is None or X_test is None:
                                         print("SKIPPING, becuase only not enough data:")
                                         continue
-
                                     if len(set(labels_train))<2 or len(set(labels_test))<2:
                                         print("SKIPPING, becuase only one label:")
                                         print("Train:", set(labels_train))
@@ -1504,7 +1518,8 @@ def decodewrapouterloop_categorical_cross_time(DFallpa, list_var_decode, time_bi
 
 
 def decodewrapouterloop_categorical_cross_time_cross_var(DFallpa, list_var_decode_train_test,
-                                                         time_bin_size, slide, savedir=None):
+                                                         time_bin_size, slide, savedir=None, extract_params=True,
+                                                         ignore_same_events=True, which_level="trial"):
     """ Decode across events_taskkinds and time, asking how decoder generalizes, where
     now trains to decode one variable, and asks how well that decoder generalizes to
     decode another variable. THis only works for things liek seqc_0_shape --> seqc_1_shape,
@@ -1515,7 +1530,13 @@ def decodewrapouterloop_categorical_cross_time_cross_var(DFallpa, list_var_decod
 
     :param: list_var_decode_train_test, list of list, where each inner 2-list is [var_train, var_test]
     """
-    list_br, list_tw, list_ev, n_strokes_max = decodewrapouterloop_preprocess_extract_params(DFallpa)
+    if extract_params:
+        list_br, list_tw, list_ev, n_strokes_max = decodewrapouterloop_preprocess_extract_params(DFallpa)
+    else:
+        list_br = DFallpa['bregion'].unique().tolist()
+        list_tw = DFallpa['twind'].unique().tolist()
+        list_ev = DFallpa['event'].unique().tolist()
+        n_strokes_max = None
 
     assert len(DFallpa["twind"].unique())==1, "not big deal. just change code below to iter over all (ev, tw)."
 
@@ -1524,12 +1545,14 @@ def decodewrapouterloop_categorical_cross_time_cross_var(DFallpa, list_var_decod
         for tw in list_tw:
             for i, ev_train in enumerate(list_ev):
                 for j, ev_test in enumerate(list_ev):
-                    if j>i: # Dont so same events.
+                    if ignore_same_events and j<=i: # Dont so same events.
+                        print("skipping same event")
+                    else:
                         print(br, tw, ev_train, ev_test)
 
                         # TRAIN
-                        PA_train_orig = extract_single_pa(DFallpa, br, tw, event=ev_train)
-                        PA_test_orig = extract_single_pa(DFallpa, br, tw, event=ev_test)
+                        PA_train_orig = extract_single_pa(DFallpa, br, tw, event=ev_train, which_level=which_level)
+                        PA_test_orig = extract_single_pa(DFallpa, br, tw, event=ev_test, which_level=which_level)
 
                         list_task_kind_train = PA_train_orig.Xlabels["trials"]["task_kind"].unique()
                         list_task_kind_test = PA_test_orig.Xlabels["trials"]["task_kind"].unique()
@@ -1595,6 +1618,7 @@ def decodewrapouterloop_categorical_cross_time_cross_var(DFallpa, list_var_decod
     # save results (too large, like 1GB. This does to like 10MB).
     if savedir is not None:
         dfres = DFRES.copy()
+        print(len(dfres))
         dfres = dfres.drop(["conf_scores", "labels_test", "labels_predicted"], axis=1)
         path = f"{savedir}/DFRES.pkl"
         pd.to_pickle(dfres, path)
@@ -1934,332 +1958,3 @@ def cleanup_remove_labels_ignore(X, labels):
     labels = [labels[i] for i in inds_keep]
 
     return X, labels, inds_keep
-
-def euclidian_distance_compute_score_single(pa, var, var_others, PLOT=False, PLOT_MASKS=False,
-                                            version_distance="euclidian_unbiased", AGG_BEFORE_DIST=False):
-    """
-    Compute distance between levels of var, within each lev of var_others, and return results in list of dicts.
-    :param pa:
-    :param var:
-    :param var_others:
-    :param PLOT:
-    :param PLOT_MASKS:
-    :param version_distance:
-    :param AGG_BEFORE_DIST: if True, then first Agg, then compute distances between means, else Then
-    compute distance between datapts, and then agg distances. Requires compatiibltiy with inputed version_distance.
-    :return:
-    """
-    from pythonlib.cluster.clustclass import Clusters
-
-    CONTEXT_DIFFERENT_FOR_FIRST_STROKE = True
-    if "seqc_0_shape" in pa.Xlabels["trials"].columns:
-        # Then this is trial-level. ignore this stroke-index based constarint
-        CONTEXT_DIFFERENT_FOR_FIRST_STROKE = False
-    else:
-        "stroke_index_is_first" in pa.Xlabels["trials"].columns
-
-    ALSO_COLLECT_SAME_EFFECT = False # NOTE: This is incorrect - it is just "null" data.
-    if ALSO_COLLECT_SAME_EFFECT:
-        assert AGG_BEFORE_DIST==False, "cannot get same effect if agg first"
-
-    assert pa.X.shape[2]==1, "must be scalar"
-
-    if AGG_BEFORE_DIST:
-        # Agg, then compute distances between means
-        # 1. agg before computing distances (quicker)
-        pa = pa.slice_and_agg_wrapper("trials", [var]+var_others)
-        assert version_distance in ["euclidian"]
-    else:
-        # Then compute distance between datapts, and then agg distances
-        pa = pa
-        assert version_distance in ["euclidian_unbiased"]
-
-    # Create clusters
-    dflab = pa.Xlabels["trials"]
-    Xthis = pa.X.squeeze(axis=2).T # (ntrials, ndims)
-    print("  Final Scalar data (trial, dims):", Xthis.shape)
-
-    label_vars = [var]+var_others
-    labels_rows = dflab.loc[:, label_vars].values.tolist()
-    labels_rows = [tuple(x) for x in labels_rows] # list of tuples
-    params = {"label_vars":label_vars}
-    Cl = Clusters(Xthis, labels_rows, ver="rsa", params=params)
-
-    # convert to distance matrix
-    if AGG_BEFORE_DIST:
-        Cldist = Cl.distsimmat_convert(version_distance)
-    else:
-        Cldist = Cl.distsimmat_convert_distr(label_vars, version_distance, accurately_estimate_diagonal=ALSO_COLLECT_SAME_EFFECT)
-
-    # version_distance = "pearson"
-    # Cldist = Cl.distsimmat_convert(version_distance)
-    if PLOT:
-        Cldist.rsa_plot_heatmap()
-
-    # Get masks of context
-    path_for_save_print_lab_each_mask = None
-    if CONTEXT_DIFFERENT_FOR_FIRST_STROKE:
-        # This has no effect on "same context", but ensures that "diff" context cases have same
-        # "stroke_index_is_first". This is becuase first stroke is usually different (due to reach from onset).
-        diffctxt_vars_diff = [var for var in var_others if not var=="stroke_index_is_first"]
-        diffctxt_vars_same = ["stroke_index_is_first"]
-        MASKS, fig, axes = Cldist.rsa_mask_context_helper(var, var_others, "diff_specific_lenient",
-                                  diffctxt_vars_same, diffctxt_vars_diff, PLOT=True,
-                                  path_for_save_print_lab_each_mask=path_for_save_print_lab_each_mask)
-        # -- samnity check is same as other version.
-        _MASKS, _, _ = Cldist.rsa_mask_context_helper(var, var_others, "diff_at_least_one", PLOT=PLOT_MASKS)
-        for _ver in ["context_same", "effect_same", "effect_diff"]:
-            assert np.all(_MASKS[_ver] == MASKS[_ver]), "SAnity check failed! bug in code?"
-    else:
-        MASKS, fig, axes = Cldist.rsa_mask_context_helper(var, var_others, "diff_at_least_one", PLOT=PLOT_MASKS)
-    # Compute score
-    # 1. Within each context, average pairwise distance between levels of effect var
-    map_grp_to_mask = Cldist.rsa_mask_context_split_levels_of_conj_var(var_others, PLOT=PLOT_MASKS, exclude_diagonal=False)
-    ma_ut = Cldist._rsa_matindex_generate_upper_triangular()
-
-    # For each levo, compute mean distance
-    res = []
-    for grp, ma in map_grp_to_mask.items():
-        ma_final = ma & MASKS["effect_diff"] & ma_ut
-        dist = Cldist.Xinput[ma_final].mean()
-        res.append({
-            "var":var,
-            "var_others":tuple(var_others),
-            "effect_samediff":"diff",
-            "context_samediff":"same",
-            "levo":grp,
-            "dist":dist,
-        })
-
-        # Also collect "same" effect (and same context, as above)
-        if ALSO_COLLECT_SAME_EFFECT: # NOTE: This is incorrect - it is just "null" data.
-            ma_final = ma & MASKS["effect_same"]
-            dist = Cldist.Xinput[ma_final].mean()
-            res.append({
-                "var":var,
-                "var_others":tuple(var_others),
-                "effect_samediff":"same",
-                "context_samediff":"same",
-                "levo":grp,
-                "dist":dist,
-            })
-
-        # Also collect (same effect, diff context)
-        # - same effect diff context
-        ma_final = MASKS["effect_same"] & MASKS["context_diff"] & ma_ut
-        dist = Cldist.Xinput[ma_final].mean()
-        res.append({
-            "var":var,
-            "var_others":tuple(var_others),
-            "effect_samediff":"same",
-            "context_samediff":"diff",
-            "levo":grp,
-            "dist":dist,
-        })
-
-        # - any effect, diff context
-        ma_final = MASKS["context_diff"] & ma_ut
-        dist = Cldist.Xinput[ma_final].mean()
-        res.append({
-            "var":var,
-            "var_others":tuple(var_others),
-            "effect_samediff":"any",
-            "context_samediff":"diff",
-            "levo":grp,
-            "dist":dist,
-        })
-
-    #### STUFF THAT USES Pairwise data (Get pairwise distnaces)
-    Cldist_each_dat = Cl.distsimmat_convert("euclidian")
-
-    # Get masks of context
-    MASKS, _, _ = Cldist_each_dat.rsa_mask_context_helper(var, var_others, "diff_at_least_one", PLOT=False)
-    map_grp_to_mask = Cldist_each_dat.rsa_mask_context_split_levels_of_conj_var(var_others, PLOT=False, exclude_diagonal=True)
-    for grp, ma in map_grp_to_mask.items():
-
-        # Also collect "same" effect (and same context, as above)
-        ma_final = ma & MASKS["effect_same"]
-        if False:
-            # Mean pairwise distance
-            dist = Cldist_each_dat.Xinput[ma_final].mean()
-        else:
-            # 95th percentile - i.e., "width" of distribution.
-            # dist = np.percentile(Cldist_each_dat.Xinput[ma_final].flatten(), 95)
-            dist = Cldist_each_dat.Xinput[ma_final].mean()
-        res.append({
-            "var":var,
-            "var_others":tuple(var_others),
-            "effect_samediff":"same_pt_pairs",
-            "context_samediff":"same",
-            "levo":grp,
-            "dist":dist,
-        })
-
-    return res
-
-def euclidian_distance_compute(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT_MASKS,
-                               twind, tbin_dur, tbin_slice, savedir,
-                               PLOT_STATE_SPACE = True, nmin_trials_per_lev=None,
-                               version_distance="euclidian_unbiased",
-                               NPCS_KEEP=None):
-    """
-    Wrapper to compute all distances ...
-
-    :param PA:
-    :param LIST_VAR:
-    :param LIST_VARS_OTHERS:
-    :param PLOT:
-    :param PLOT_MASKS:
-    :param twind:
-    :param tbin_dur:
-    :param tbin_slice:
-    :param savedir:
-    :param SHUFFLE:
-    :param PLOT_STATE_SPACE:
-    :param nmin_trials_per_lev:
-    :return:
-    """
-    from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars
-
-    if version_distance=="euclidian_unbiased":
-        DO_SHUFFLE = False
-        AGG_BEFORE_DIST = False
-    elif version_distance=="euclidian":
-        DO_SHUFFLE = True
-        AGG_BEFORE_DIST=True
-        N_SHUFF = 5
-    else:
-        assert False
-
-    pca_frac_min_keep = 0.01
-    pca_frac_var_keep = 0.75
-    if False:
-        # empriicalyl this seems good
-        how_decide_npcs_keep = "cumvar"
-    else:
-        how_decide_npcs_keep = "minvar"
-
-    ############# First, Extract data in PC space
-    plot_pca_explained_var_path = f"{savedir}/pca_explained_var.pdf"
-    plot_loadings_path = f"{savedir}/pca_loadings_heatmap.pdf"
-    X, PApca, _, pca = PA.dataextract_state_space_decode_flex(twind, tbin_dur, tbin_slice, reshape_method="trials_x_chanstimes",
-                                           pca_reduce=True, pca_frac_var_keep=pca_frac_var_keep,
-                                            how_decide_npcs_keep=how_decide_npcs_keep, pca_frac_min_keep=pca_frac_min_keep,
-                                           plot_pca_explained_var_path=plot_pca_explained_var_path, plot_loadings_path=plot_loadings_path,
-                                                              npcs_keep_force=NPCS_KEEP)
-
-    ########### Compute global distances BEFORE pruning data
-    # To normalize, compute distance across datapts
-    from pythonlib.cluster.clustclass import Clusters
-    labels_rows = None
-    Cl = Clusters(X, labels_rows)
-    Cldistall = Cl.distsimmat_convert("euclidian")
-    ma = Cldistall._rsa_matindex_generate_upper_triangular()
-    dist_all = Cldistall.Xinput[ma].flatten()
-    if PLOT:
-        # Plot distribution
-        fig, ax = plt.subplots()
-        ax.hist(dist_all, bins=20)
-    # get 95th percentile of distance
-    DIST_NULL_50 = np.percentile(dist_all, 50)
-    DIST_NULL_95 = np.percentile(dist_all, 95)
-    DIST_NULL_98 = np.percentile(dist_all, 98)
-    print("DIST_NULL_50", DIST_NULL_50)
-    print("DIST_NULL_95", DIST_NULL_95)
-    print("DIST_NULL_98", DIST_NULL_98)
-
-    ############ SCore, for each variable
-    RES = []
-    for var, var_others in zip(LIST_VAR, LIST_VARS_OTHERS):
-        print("RUNNING: ", var, " -- ", var_others)
-
-        # Copy pa for this
-        pa = PApca.copy()
-
-        ############### PRUNE DATA, TO GET ENOUGH FOR THIS VARIABLE
-        # # Prep by keeping only if enough data
-        # from neuralmonkey.analyses.rsa import preprocess_rsa_prepare_popanal_wrapper
-        # preprocess_rsa_prepare_popanal_wrapper(pa, )
-
-        # Get data split by othervar
-        # Return dict[levo] --> data
-        prune_min_n_levs = 2
-
-        # Prune data to just cases with at least 2 levels of decode var
-        plot_counts_heatmap_savepath = f"{savedir}/counts_heatmap-var={var}-ovar={'|'.join(var_others)}.pdf"
-        if nmin_trials_per_lev is not None:
-            prune_min_n_trials = nmin_trials_per_lev
-        else:
-            prune_min_n_trials = N_MIN_TRIALS
-        dflab = pa.Xlabels["trials"]
-        dfout, dict_dfthis = extract_with_levels_of_conjunction_vars(dflab, var, var_others,
-                                                                 n_min_across_all_levs_var=prune_min_n_trials,
-                                                                 lenient_allow_data_if_has_n_levels=prune_min_n_levs,
-                                                                 prune_levels_with_low_n=True,
-                                                                 ignore_values_called_ignore=True,
-                                                                 plot_counts_heatmap_savepath=plot_counts_heatmap_savepath,
-                                                                 balance_no_missed_conjunctions=False)
-        # for levo, dfthis in dict_dfthis.items():
-        #     print(levo, len(dfthis))
-        if len(dfout)==0:
-            print("all data pruned!!")
-            continue
-
-        # Only keep the indices in dfout
-        print("  Pruning for this var adn conjunction. Original length:", pa.X.shape[1], ", pruned length:", len(dfout))
-        pa = pa.slice_by_dim_indices_wrapper("trials", dfout["_index"].tolist(), True)
-
-        ######################## COMPUTE DISTANCES between levels of var
-        if PLOT:
-            fig, ax = plt.subplots()
-            chan = pa.Chans[0]
-            pa.plotwrapper_smoothed_fr_split_by_label("trials", var, ax, chan=chan)
-            plt.close("all")
-
-        res = euclidian_distance_compute_score_single(pa, var, var_others, PLOT, PLOT_MASKS,
-                                                      version_distance=version_distance, AGG_BEFORE_DIST=AGG_BEFORE_DIST)
-        for r in res:
-            r["shuffled"] = False
-            r["shuffled_iter"] = -1
-
-        # Collect
-        RES.extend(res)
-
-        ######## STATE SPACE PLOTS
-        if PLOT_STATE_SPACE:
-            from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_scalar_WRAPPER
-            dflab = pa.Xlabels["trials"]
-            Xthis = pa.X.squeeze(axis=2).T # (ntrials, ndims)
-            # list_dims = [(0,1), (2,3)]
-            list_dims = [(0,1)]
-            trajgood_plot_colorby_splotby_scalar_WRAPPER(Xthis, dflab, var, savedir,
-                                                         vars_subplot=var_others, list_dims=list_dims)
-
-        ############### SHUFFLE CONTROLS
-        if DO_SHUFFLE:
-            from pythonlib.tools.pandastools import shuffle_dataset_hierarchical
-            for i_shuff in range(N_SHUFF):
-                print("RUNNING SHUFFLE, iter:", i_shuff)
-
-                # 0. Create shuffled dataset
-                PApcaSHUFF = pa.copy()
-                dflab = PApcaSHUFF.Xlabels["trials"]
-                dflabSHUFF = shuffle_dataset_hierarchical(dflab, [var], var_others)
-                PApcaSHUFF.Xlabels["trials"] = dflabSHUFF
-
-                res = euclidian_distance_compute_score_single(PApcaSHUFF, var, var_others,
-                                                              version_distance=version_distance, AGG_BEFORE_DIST=AGG_BEFORE_DIST)
-                for r in res:
-                    r["shuffled"] = True
-                    r["shuffled_iter"] = i_shuff
-
-                # Collect
-                RES.extend(res)
-
-    # Get score normalized against global distance
-    dfres = pd.DataFrame(RES)
-    dfres["DIST_NULL_50"] = DIST_NULL_50
-    dfres["DIST_NULL_95"] = DIST_NULL_95
-    dfres["DIST_NULL_98"] = DIST_NULL_98
-
-    return dfres
