@@ -1181,9 +1181,10 @@ class PopAnal():
                 assert isinstance(_var, str)
                 assert isinstance(_levs, (list, tuple))
 
-                inds = pa.Xlabels["trials"][pa.Xlabels["trials"][_var].isin(_levs)].index.tolist()
-                pa = pa.slice_by_dim_indices_wrapper("trials", inds)
-                # pa.Xlabels["trials"] = pa.Xlabels["trials"][pa.Xlabels["trials"][_var].isin(_levs)].reset_index(drop=True)
+                if len(pa.Xlabels["trials"])>0:
+                    inds = pa.Xlabels["trials"][pa.Xlabels["trials"][_var].isin(_levs)].index.tolist()
+                    pa = pa.slice_by_dim_indices_wrapper("trials", inds)
+                    # pa.Xlabels["trials"] = pa.Xlabels["trials"][pa.Xlabels["trials"][_var].isin(_levs)].reset_index(drop=True)
         return pa
 
     def slice_by_labels(self, dim_str, dim_variable, list_values, verbose=False):

@@ -1215,7 +1215,10 @@ def dataset_apply_params(D, DS, ANALY_VER, animal, DATE, save_substroke_preproce
         # Shape sequence for each trial:
         D.seqcontext_extract_shapes_in_beh_order_append_column()
 
-        return D, DS, params
+        # Rename so I remember that this is NOT the final DS. This is just used for pruning D
+        DS_for_pruning_D = DS
+
+        return D, DS_for_pruning_D, params
 
 
 def conjunctions_print_plot_all(ListD, SAVEDIR, ANALY_VER, which_level="trial"):
@@ -1278,7 +1281,14 @@ def conjunctions_print_plot_all(ListD, SAVEDIR, ANALY_VER, which_level="trial"):
 
     ### STROKE LEVEL - heatmaps of (shape, location) vs. index
     from pythonlib.dataset.dataset_strokes import DatStrokes
+    # D.sketchpad_fixation_append_as_string()
     DS = DatStrokes(Dpruned)
+    # DS.dataset_append_column("epoch") 
+    # DS.dataset_append_column("origin_string") 
+
+    DS.dataset_append_column("block")
+    list_block = DS.Dat["block"].unique().tolist()
+
     for task_kind in ["prims_single", "prims_on_grid"]:
         dfthis = DS.Dat[DS.Dat["task_kind"]==task_kind]
         
@@ -1288,12 +1298,32 @@ def conjunctions_print_plot_all(ListD, SAVEDIR, ANALY_VER, which_level="trial"):
             savefig(fig, path)
 
             # Dissociate stroke index from remaining num strokes.
-            fig = grouping_plot_n_samples_conjunction_heatmap(dfthis, var1="stroke_index", 
-                                                              var2="stroke_index_fromlast", vars_others=["shape", "gridloc"])
-            path = f"{sdir}/STROKELEVEL-conjunctions_stroke_index-task_kind_{task_kind}.pdf"
-            savefig(fig, path)
+            if len(dfthis["shape"].unique())<30:
+                fig = grouping_plot_n_samples_conjunction_heatmap(dfthis, var1="stroke_index", 
+                                                                var2="stroke_index_fromlast", vars_others=["shape", "gridloc"])
+                path = f"{sdir}/STROKELEVEL-conjunctions_stroke_index-task_kind_{task_kind}.pdf"
+                savefig(fig, path)
 
             plt.close("all")
+        
+        # Also split by block
+        for bk in list_block:
+            dfthis = DS.Dat[(DS.Dat["task_kind"]==task_kind) & (DS.Dat["block"]==bk)]
+            
+            if len(dfthis)>10:
+                fig = grouping_plot_n_samples_conjunction_heatmap(dfthis, var1="shape", var2="gridloc", vars_others=["stroke_index"])
+                path = f"{sdir}/STROKELEVEL-conjunctions_shape_gridloc-task_kind_{task_kind}-BLOCK_{bk}.pdf"
+                savefig(fig, path)
+
+                # Dissociate stroke index from remaining num strokes.
+                if len(dfthis["shape"].unique())<30 and not task_kind=="prims_single":
+                    fig = grouping_plot_n_samples_conjunction_heatmap(dfthis, var1="stroke_index", 
+                                                                    var2="stroke_index_fromlast", vars_others=["shape", "gridloc"])
+                    path = f"{sdir}/STROKELEVEL-conjunctions_stroke_index-task_kind_{task_kind}-BLOCK_{bk}.pdf"
+                    savefig(fig, path)
+
+                plt.close("all")
+
 
 def _conjunctions_print_plot_all(DF, LIST_VAR, LIST_VARS_CONJUNCTION, sdir, 
         N_MIN, Dplotter):

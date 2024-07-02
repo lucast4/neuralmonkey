@@ -54,8 +54,8 @@ class MultSessions(object):
                 ind+=1
         print("Generated index mappers!")
 
-
-    def index_convert(self, index, output="sn_trial"):
+    # def index_convert(self, index, output="sn_trial"):
+    def index_convert_trial_trialcode_flex(self, index, output="sn_trial"):
         """ 
         Flexible, helps convert multiple possible ways of indexing trials into 
         Session object and trial within that Session.
