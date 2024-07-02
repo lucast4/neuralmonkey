@@ -35,7 +35,8 @@ balance_same_levels_across_ovar = False # Then prunes levs of var so that all le
 
 FR_SM_STD = 0.04
 
-SPIKES_VERSION = "tdt" # since Snippets not yet extracted for ks
+# SPIKES_VERSION = "tdt" # since Snippets not yet extracted for ks
+SPIKES_VERSION = "kilosort_if_exists" # since Snippets not yet extracted for ks
 prune_low_fr_sites = True
 prune_low_fr_sites_thresh = 1.5
 
@@ -44,9 +45,9 @@ MULTIPROCESS_N_CORES = 2
 
 def get_events_keep(which_level):
     if which_level=="trial":
-        # EVENTS_KEEP = ['03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0']
+        EVENTS_KEEP = ['03_samp', '04_go_cue', '05_first_raise', '06_on_strokeidx_0']
         # EVENTS_KEEP = ['03_samp', '04_go_cue', '06_on_strokeidx_0']
-        EVENTS_KEEP = ['03_samp']
+        # EVENTS_KEEP = ['03_samp']
     elif which_level=="stroke":
         EVENTS_KEEP = ["00_stroke"]
     else:
