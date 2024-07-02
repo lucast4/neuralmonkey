@@ -245,7 +245,7 @@ def extract_neural_snippets_aligned_to(MS, DS,
 
         # --- NEURAL
         # Find the trial in neural data
-        SNthis, trial_neural = MS.index_convert(trialcode)[:2]
+        SNthis, trial_neural = MS.index_convert_trial_trialcode_flex(trialcode)[:2]
         trial_neural2 = SNthis.datasetbeh_trialcode_to_trial(trialcode)
         assert trial_neural==trial_neural2
         del trial_neural2
