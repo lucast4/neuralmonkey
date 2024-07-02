@@ -16,9 +16,11 @@ PATH_TO_KILOSORT_CODE = '/gorilla1/code/kilosort-2.5';
 MACHINE = MACHINE(1:end-1); % weird character at end for gorilla.
 switch MACHINE
     case 'lucast4-MS-7B98' % gorilla
-        SAVEDIR_FINAL_SERVER =  '/mnt/Freiwald_kgupta/kgupta/neural_data/postprocess'; % final, so all machines can access.
-        LOADDIR_BASE = '/mnt/Freiwald_kgupta/kgupta/neural_data'; % location of kilosorted data
-        SAVEDIR_LOCAL = '/gorilla4/neural_preprocess_kilosort'; % fast ssd
+        SAVEDIR_FINAL_SERVER =  '/mnt/Freiwald/kgupta/neural_data/postprocess'; % final, so all machines can access.
+%         LOADDIR_BASE = '/mnt/Freiwald_kgupta/kgupta/neural_data'; % location of kilosorted data
+%         SAVEDIR_LOCAL = '/gorilla4/neural_preprocess_kilosort'; % fast ssd
+        LOADDIR_BASE = '/gorilla4/kilosort-2024/kilosort_data';      
+        SAVEDIR_LOCAL = '/gorilla5/neural_preprocess_kilosort'; % fast ssd
     case 'lemur'
         SAVEDIR_FINAL_SERVER =  '/mnt/Freiwald/kgupta/neural_data/postprocess'; % final, so all machines can access.
         % also change in kspostprocess_extract
