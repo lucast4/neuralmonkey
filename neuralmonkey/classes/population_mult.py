@@ -16,37 +16,53 @@ import  matplotlib.pyplot as plt
 
 # (animal, date, question) --> DFallPA
 
-def load_handsaved_wrapper(animal=None, date=None, version=None):
+def load_handsaved_wrapper(animal=None, date=None, version=None, combine_areas=True, 
+                           return_none_if_no_exist=False, use_time = True):
     """ Load a pre-saved DfallPA -- not systematic, just hand saved versions.
     """ 
 
-    if animal == "Diego" and date == 230615 and version == "trial":
-        path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230615-trial-kilosort_if_exists-norm=None-combine=True.pkl" # SP, shape vs. loc, all events, good.
-    elif animal == "Pancho" and date == 220715 and version == "trial":
-        path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Pancho-220715-trial-kilosort_if_exists-norm=None-combine=True.pkl" # SP, has all events.
-    elif animal == "Diego" and date == 230630 and version == "trial":
-        path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230630-trial-kilosort_if_exists-norm=None-combine=True.pkl"
-    elif animal == "Diego" and date == 230630 and version == "stroke":
-        path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230630-stroke-kilosort_if_exists-norm=None-combine=True.pkl"
-    elif animal == "Diego" and date == 240612 and version == "trial":
-        # PROBLEM - is not rule extraction! Just PIG
-        path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-240612-trial-kilosort_if_exists-norm=None-combine=True.pkl"
-    elif animal == "Diego" and date == 240612 and version == "stroke":
-        # PROBLEM - is not rule extraction! Just PIG
-        path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-240612-stroke-kilosort_if_exists-norm=None-combine=True.pkl"
-    elif animal == "Diego" and date == 240614 and version == "trial":
-        # PROBLEM - is not rule extraction! Just PIG
-        path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-240614-trial-kilosort_if_exists-norm=None-combine=True.pkl"
-    elif animal == "Diego" and date == 240614 and version == "stroke":
-        # PROBLEM - is not rule extraction! Just PIG
-        path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-240614-stroke-kilosort_if_exists-norm=None-combine=True.pkl"
-    elif animal == "Diego" and date == 240619 and version == "trial":
-        # PROBLEM - is not rule extraction! Just PIG
-        path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-240619-trial-kilosort_if_exists-norm=None-combine=True.pkl"
-    elif animal == "Diego" and date == 240619 and version == "stroke":
-        # PROBLEM - is not rule extraction! Just PIG
-        path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-240619-stroke-kilosort_if_exists-norm=None-combine=True.pkl"
-    elif animal is None and date is None:
+    if animal is not None:
+        # Load using params input
+        norm = None
+        if use_time:
+            t1 = -1.0
+            t2 = 1.8
+            path = f"/lemur2/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-{animal}-{date}-{version}-kilosort_if_exists-norm={norm}-combine={combine_areas}-t1={t1}-t2={t2}.pkl"
+        else:
+            path = f"/lemur2/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-{animal}-{date}-{version}-kilosort_if_exists-norm={norm}-combine={combine_areas}.pkl"
+            
+        # if animal == "Diego" and date == 230615 and version == "trial":
+        #     path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230615-trial-kilosort_if_exists-norm=None-combine=True.pkl" # SP, shape vs. loc, all events, good.
+        # elif animal == "Pancho" and date == 220715 and version == "trial":
+        #     path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Pancho-220715-trial-kilosort_if_exists-norm=None-combine=True.pkl" # SP, has all events.
+        # elif animal == "Diego" and date == 230630 and version == "trial":
+        #     path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230630-trial-kilosort_if_exists-norm=None-combine=True.pkl"
+        # elif animal == "Diego" and date == 230630 and version == "stroke":
+        #     path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230630-stroke-kilosort_if_exists-norm=None-combine=True.pkl"
+        # elif animal == "Diego" and date == 240612 and version == "trial":
+        #     # PROBLEM - is not rule extraction! Just PIG
+        #     path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-240612-trial-kilosort_if_exists-norm=None-combine=True.pkl"
+        # elif animal == "Diego" and date == 240612 and version == "stroke":
+        #     # PROBLEM - is not rule extraction! Just PIG
+        #     path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-240612-stroke-kilosort_if_exists-norm=None-combine=True.pkl"
+        # elif animal == "Diego" and date == 240614 and version == "trial":
+        #     # PROBLEM - is not rule extraction! Just PIG
+        #     path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-240614-trial-kilosort_if_exists-norm=None-combine=True.pkl"
+        # elif animal == "Diego" and date == 240614 and version == "stroke":
+        #     # PROBLEM - is not rule extraction! Just PIG
+        #     path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-240614-stroke-kilosort_if_exists-norm=None-combine=True.pkl"
+        # elif animal == "Diego" and date == 240619 and version == "trial":
+        #     # PROBLEM - is not rule extraction! Just PIG
+        #     path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-240619-trial-kilosort_if_exists-norm=None-combine=True.pkl"
+        # elif animal == "Diego" and date == 240619 and version == "stroke":
+        #     # PROBLEM - is not rule extraction! Just PIG
+        #     path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-240619-stroke-kilosort_if_exists-norm=None-combine=True.pkl"
+        # elif animal == "Pancho" and date == 230623 and version == "trial":
+        #     # PROBLEM - is not rule extraction! Just PIG
+        #     path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Pancho-230623-trial-kilosort_if_exists-norm=None-combine=True.pkl"
+    else:
+        # Load by manully modifying code.
+
         # NEWER (After adding epoch variables)
         # path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/DFallpa_Diego_230823_RULESW_BASE_stroke.pkl"
         # path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/DFallpa_Diego_230928_RULE_BASE_stroke.pkl"
@@ -81,20 +97,25 @@ def load_handsaved_wrapper(animal=None, date=None, version=None):
         # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Pancho-220608-trial-tdt-norm=None-combine=True.pkl" # SP, all events, good
         # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-240516-trial-kilosort_if_exists-norm=None-combine=True.pkl" # Novel prims.
 
-        # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230616-trial-kilosort_if_exists-norm=across_time_bins-combine=True.pkl"
         # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-240604-trial-kilosort_if_exists-norm=None-combine=True-RAW.pkl"
 
         # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230630-trial-kilosort_if_exists-norm=None-combine=True.pkl"
         # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230630-stroke-kilosort_if_exists-norm=None-combine=True.pkl"
 
         path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-231211-trial-kilosort_if_exists-norm=None-combine=True.pkl" # CHAR
+        
+        path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230616-trial-kilosort_if_exists-norm=None-combine=True.pkl"
+        path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230615-trial-kilosort_if_exists-norm=None-combine=True.pkl"
 
-        # 
+    # else:
+    #     print(animal, date, version)
+    #     assert False
+
+    if not os.path.exists(path) and return_none_if_no_exist:
+        return None
     else:
-        print(animal, date, version)
-        assert False
-    DFallpa = pd.read_pickle(path)
-    return DFallpa
+        DFallpa = pd.read_pickle(path)
+        return DFallpa
 
 
 def dfallpa_preprocess_fr_normalization(DFallpa, fr_normalization_method, savedir=None):
@@ -1140,9 +1161,10 @@ def extract_single_pa(DFallpa, bregion, twind=None, which_level = "trial", event
 
     tmp = DFallpa[a & b & c & d]
     if not len(tmp)==1:
+        print(DFallpa)
         print(tmp)
+        print(which_level, event, bregion, twind)
         assert False
-    assert len(tmp)==1
     pa = tmp[pa_field].values[0].copy()
 
     return pa
@@ -1303,6 +1325,244 @@ def dfpa_group_and_split(DFallpa, vars_to_concat=None, vars_to_split=None,
     return DFallpa
 
 
+def dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT = False):
+    """
+    Concat all events fore ach bregion, compute scores of FR and FR modulation, and then 
+    determine which channels are bad, then modify all pa in DFallpa to keep just those
+    channels.
+
+    TODO: In progress -- see TODO within. Tends to be conservative (keeps noise)
+    """
+    from pythonlib.tools.plottools import savefig
+
+    events_keep = ["03_samp", "05_first_raise", "06_on_strokeidx_0"]
+    list_bregion = DFallpa["bregion"].unique().tolist()
+
+    # - smooth the fr
+    dur = 0.2
+    slide = 0.01
+
+    savedir = f"/tmp/chans_pruning"
+    os.makedirs(savedir, exist_ok=True)
+
+    # For each bregion, track which channels to exclude
+    # (keep if value is HIGHER than any of these criteria)
+    # NOTE: these I determined empricallyl to be conservative, for Diego, 240619
+    
+    # with sm (0.2, 0.01)
+    # THRESH_FR_RATIO_CLEAN = 0.5
+    # THRESH_FR_RATIO_NOISY = 3.2
+    # THRESH_FR_STD_MEAN = 0.1
+
+    # No smoothing (empriical, not the closest look)
+    THRESH_FR_RATIO_CLEAN = 0.7
+    THRESH_FR_RATIO_NOISY = 5.5
+    THRESH_FR_STD_MEAN = 0.25
+    THRESH_FR_MOD_VS_MEAN = 0.25
+    THRESH_FR_TRIALSTD_MEAN = 0.25
+
+    # Collect all chans for each bregion
+    MAP_REGION_TO_CHANS_KEEP = {}
+    for bregion in list_bregion:
+
+        list_pa = DFallpa[
+            (DFallpa["bregion"] == bregion) &
+            (DFallpa["event"].isin(events_keep))
+            ]["pa"].tolist()
+        list_event = DFallpa[
+            (DFallpa["bregion"] == bregion) &
+            (DFallpa["event"].isin(events_keep))
+            ]["event"].tolist()
+
+        # Smooth the fr
+        if False:
+            list_pa = [pa.agg_by_time_windows_binned(dur, slide) for pa in list_pa]
+
+        # Confirm that trials are matched.
+        trialcodes = None
+        chans = None
+        for pa in list_pa:
+            if trialcodes is None:
+                trialcodes = pa.Xlabels["trials"]["trialcode"].tolist()
+                chans = pa.Chans
+            else:
+                assert trialcodes == pa.Xlabels["trials"]["trialcode"].tolist()
+                assert chans == pa.Chans
+
+        # Get concated data
+        X = np.concatenate([pa.X for pa in list_pa], axis=2) # (nchans, ntrials, ntimes_concatenated)
+        
+        # Get derived metrics
+        # global mean fr for each chan
+        fr_mean_all = np.mean(X.reshape(X.shape[0], -1), axis=1) # (nchans, )
+
+        # "Modulation", two methods
+        # i. for each trial, get std across time. Then average that std across trials.
+        fr_std_trial_noisy = np.mean(np.std(X, axis=2), axis=1) # (nchans, )
+        # ii. get mean fr (timecourse), then get std of that over time
+        fr_std_trial_clean = np.std(np.mean(X, axis=1), axis=1)
+
+        # std of trial-mean fr
+        fr_std_trialmean = np.std(np.mean(X, axis=2), axis=1) # (nchans, )
+
+        ### Plots
+        if PLOT:
+            for fr_std_version in ["noisy", "clean"]:
+                if fr_std_version=="noisy":
+                    fr_std_trial = fr_std_trial_noisy
+                elif fr_std_version=="clean":
+                    fr_std_trial = fr_std_trial_clean
+                else:
+                    assert False
+
+                fig, axes = plt.subplots(2, 4, figsize=(4*7, 2*7))
+
+                ax = axes.flatten()[0]
+                s = ax.scatter(fr_mean_all, fr_std_trial, c=fr_std_trialmean, cmap="gray")
+                for ch, x, y in zip(chans, fr_mean_all, fr_std_trial):
+                    ax.text(x, y, ch, color="m", alpha=0.8, fontsize=7)
+                plt.colorbar(s)
+                ax.set_xlabel("mean fr (global)")
+                ax.set_ylabel("mean of trial-std fr")
+                ax.set_title("color=std of trial-mean fr")
+                ax.set_xlim(xmin=0)
+                ax.set_ylim(ymin=0)
+
+                ax = axes.flatten()[1]
+                s = ax.scatter(fr_mean_all, fr_std_trialmean, c=fr_std_trial, cmap="gray")
+                for ch, x, y in zip(chans, fr_mean_all, fr_std_trialmean):
+                    ax.text(x, y, ch, color="m", alpha=0.8, fontsize=7)
+                plt.colorbar(s)
+                ax.set_xlabel("mean fr (global)")
+                ax.set_ylabel("std of trial-mean fr")
+                ax.set_title("color=mean of trial-std fr")
+                ax.set_xlim(xmin=0)
+                ax.set_ylim(ymin=0)
+
+                ax = axes.flatten()[2]
+                s = ax.scatter(fr_std_trialmean, fr_std_trial, c=fr_mean_all, cmap="gray")
+                for ch, x, y in zip(chans, fr_std_trialmean, fr_std_trial):
+                    ax.text(x, y, ch, color="m", alpha=0.8, fontsize=7)
+                plt.colorbar(s)
+                ax.set_xlabel("std of trial-mean fr")
+                ax.set_ylabel("mean of trial-std fr")
+                ax.set_title("color=mean fr. (high y-value is good)")
+                ax.set_xlim(xmin=0)
+                ax.set_ylim(ymin=0)
+
+                ax = axes.flatten()[3]
+                fr_std_ratio = fr_std_trial/fr_std_trialmean
+                s = ax.scatter(fr_mean_all, fr_std_ratio, c=fr_std_trial, cmap="gray")
+                for ch, x, y in zip(chans, fr_mean_all, fr_std_ratio):
+                    ax.text(x, y, ch, color="m", alpha=0.8, fontsize=7)
+                plt.colorbar(s)
+                ax.set_xlabel("mean fr (global)")
+                ax.set_ylabel("fr std ratio (mean of trialstd / std of trialmean")
+                ax.set_title("[goal: high y] color=mean of trial-std fr")
+                ax.set_xlim(xmin=0)
+                ax.set_ylim(ymin=0)
+
+                ax = axes.flatten()[4]
+                fr_std_over_fr_mean = fr_std_trial/fr_mean_all
+                s = ax.scatter(fr_mean_all, fr_std_over_fr_mean, c=fr_std_trial, cmap="gray")
+                for ch, x, y in zip(chans, fr_mean_all, fr_std_over_fr_mean):
+                    ax.text(x, y, ch, color="m", alpha=0.8, fontsize=7)
+                plt.colorbar(s)
+                ax.set_xlabel("mean fr (global)")
+                ax.set_ylabel("fr_std_over_fr_mean")
+                ax.set_title("[goal: high y] color=mean of trial-std fr")
+                ax.set_xlim(xmin=0)
+                ax.set_ylim(ymin=0)
+
+                ax = axes.flatten()[5]
+                s = ax.scatter(fr_std_over_fr_mean, fr_std_ratio, c=fr_mean_all, cmap="gray")
+                for ch, x, y in zip(chans, fr_std_over_fr_mean, fr_std_ratio):
+                    ax.text(x, y, ch, color="m", alpha=0.8, fontsize=7)
+                plt.colorbar(s)
+                ax.set_xlabel("fr_std_over_fr_mean")
+                ax.set_ylabel("fr std ratio (mean of trialstd / std of trialmean")
+                ax.set_title("[goal: high both x and y] color=mean of fr")
+                ax.set_xlim(xmin=0)
+                ax.set_ylim(ymin=0)
+
+                # ----------------------
+                ax = axes.flatten()[6]
+                s = ax.scatter(fr_std_trial_noisy, fr_std_trial_clean, c=fr_mean_all, cmap="gray")
+                for ch, x, y in zip(chans, fr_std_trial_noisy, fr_std_trial_clean):
+                    ax.text(x, y, ch, color="m", alpha=0.8, fontsize=7)
+                plt.colorbar(s)
+                ax.set_xlabel("mean of trial-std fr [noisy]")
+                ax.set_ylabel("mean of trial-std fr [clean]")
+                ax.set_title("color=mean fr")
+                ax.set_xlim(xmin=0)
+                ax.set_ylim(ymin=0)
+
+                savefig(fig, f"{savedir}/stats-{bregion}-fr_std_version={fr_std_version}.pdf")
+                plt.close("all")
+
+        ### Final diagnostic scores
+        fr_std_ratio_clean = fr_std_trial_clean/fr_std_trialmean
+        fr_std_ratio_noisy = fr_std_trial_noisy/fr_std_trialmean
+        fr_std_over_fr_mean = fr_std_trial_clean/fr_mean_all
+        fr_mod_vs_mean = fr_std_trial_clean/fr_mean_all
+        fr_trialstd_vs_mean = fr_std_trialmean/fr_mean_all
+
+        # TODO: another metric which is:
+        # THis might be best? Since the above incorreclty penalize you for modulation across trials
+
+        # Save text file of the scores and chans
+        from pythonlib.tools.listtools import stringify_list
+        from pythonlib.tools.expttools import writeStringsToFile
+
+        for scores, name in zip(
+            [fr_std_ratio_clean, fr_std_ratio_noisy, fr_std_over_fr_mean, fr_mod_vs_mean, fr_trialstd_vs_mean],
+            ["fr_std_ratio_clean", "fr_std_ratio_noisy", "fr_std_over_fr_mean", "fr_mod_vs_mean", "fr_trialstd_vs_mean"]):
+
+            tmp = [(score, chan) for score, chan in zip(scores, chans)]
+            score_chan_sorted = sorted(tmp, key=lambda x: x[0])
+            score_chan_sorted_str = [stringify_list(x, return_as_str=True, separator="  --  ") for x in score_chan_sorted]
+            
+            fname = f"{savedir}/{bregion}-{name}.txt"
+            writeStringsToFile(fname, score_chan_sorted_str)
+
+        # Plot each chan
+        if PLOT:
+            from pythonlib.tools.plottools import share_axes
+            sdir = f"{savedir}/{bregion}"
+            os.makedirs(sdir, exist_ok=True)
+            for chan in pa.Chans:
+                fig, axes = plt.subplots(2, 2, figsize=(10,10))
+                for pa, event, ax in zip(list_pa, list_event, axes.flatten()):
+                    pa.plotwrapper_smoothed_fr_split_by_label("trials", "seqc_0_shape", chan=chan, ax=ax)
+                    # ax.set_ylim(ymin=0)
+                    ax.axhline(0)
+                    ax.set_title(event)
+                share_axes(axes, "y")
+                savefig(fig, f"{sdir}/chan={chan}.pdf")
+                plt.close("all")
+        
+        ### Decide which chans to keep
+        a = fr_std_ratio_clean > THRESH_FR_RATIO_CLEAN
+        b = fr_std_ratio_noisy > THRESH_FR_RATIO_NOISY
+        c = fr_std_over_fr_mean > THRESH_FR_STD_MEAN
+        d = fr_mod_vs_mean > THRESH_FR_MOD_VS_MEAN
+        e = fr_trialstd_vs_mean > THRESH_FR_TRIALSTD_MEAN
+
+        inds = a | b | c | d | e
+        chans_keep = [chans[i] for i in np.argwhere(inds)[:,-1]]
+        print("Keep, for ", bregion, " ...", sum(inds), "/", len(inds))
+        MAP_REGION_TO_CHANS_KEEP[bregion] = chans_keep
+
+    # Prune DFallpa to keep just those chans
+    list_pa = []
+    for i, row in DFallpa.iterrows():
+        bregion = row["bregion"]
+        pa = row["pa"]
+        pathis = pa.slice_by_dim_values_wrapper("chans", MAP_REGION_TO_CHANS_KEEP[bregion])
+        list_pa.append(pathis)
+    DFallpa["pa"] = list_pa    
+
+
 def dfpa_concat_normalize_fr_split_multbregion_flex(DFallpa, fr_mean_subtract_method = "across_time_bins", PLOT = False):
     """
     For each bregion, concat across events (in time dimension) and run normalization, and then split back.
@@ -1375,6 +1635,8 @@ def dfpa_concat_pca_split_multbregion(DFallpa, sm_dur=0.1, sm_slide=0.01,
     then split back again into a new column in DFallpa, called pa_pca.
     
     Optionally smooth data before pca
+    
+    NOTE: only run once, and cannot rerun if fails, since does partial mods...
 
     PARAMS:
     - sm_dur, sm_slide, params for smoothing. make None to skip.
@@ -1407,7 +1669,9 @@ def dfpa_concat_pca_split_multbregion(DFallpa, sm_dur=0.1, sm_slide=0.01,
                 pa.plotNeurHeat(0)
 
         # Pull out the single PA
-        assert len(DFALLPA)==1
+        if len(DFALLPA)!=1:
+            print(DFALLPA)
+            assert False
         PA = DFALLPA["pa_sm"].values[0]
 
         # Do PCA

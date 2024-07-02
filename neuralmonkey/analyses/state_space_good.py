@@ -24,35 +24,41 @@ from pythonlib.tools.plottools import savefig
 LABELS_IGNORE = ["IGN", ("IGN",), "IGNORE", ("IGNORE",)] # values to ignore during dcode.
 N_MIN_TRIALS = 5 # min trials per level, otherwise throws level out.
 
-def _popanal_preprocess_normalize(PA, PLOT=False):
+def _popanal_preprocess_normalize_softzscore(PA, PLOT=False):
     """ Normalize firing rates so that similar acorss neruons (higha nd low fr) whiel
     still having higher for high fr.
     Similar to "soft normalization" used by Churchland group.
     """
 
     x = PA.X.reshape(PA.X.shape[0], -1)
-
-    # STD (across all trials and times)
-    normvec = np.std(x, axis=1)
-    assert len(normvec.shape)==1
-    normvec = np.reshape(normvec, [normvec.shape[0], 1,1]) # (chans, 1, 1) # std for each chan, across (times, trials).
-    normmin = np.percentile(normvec, [2.5]) # get the min (std fr across time/conditions) across channels, add this on to still have
-
-    # min fr, to make this a "soft" normalization
-    frmean_each_chan = np.mean(x, axis=1) # (chans, 1, 1) # std for each chan, across (times, trials).
-    frmin = np.min(frmean_each_chan) # (chans, 1, 1)) # min (mean fr across time/condition) across chans
-    # frmin = np.min(np.mean(np.mean(PA.X, axis=1, keepdims=True), axis=2, keepdims=True)) # (chans, 1, 1)) # min (mean fr across time/condition) across chans
-
-    # to further help making this "soft"
-    abs_fr_min = 3 # any fr around this low, want to penalize drastically, effectively making it not contyribute much to population activit.
-
-    # DENOM = (normvec+normmin)
-    # DENOM = (normvec + normmin + frmin + abs_fr_min) # To further lower infleunce of low FR neurons (started 2/8/24, 2:55pm)
-    DENOM = (normvec + frmin + abs_fr_min) # To make more similar across chans. (started 2/11/24)
+    
+    x, DENOM, CENTER = _popanal_preprocess_normalize_softzscore_raw(x)
 
     # Do normalization.
     PAnorm = PA.copy()
-    PAnorm.X = PAnorm.X/DENOM
+    PAnorm.X = PAnorm.X/DENOM[:, :, None]
+
+    # # STD (across all trials and times)
+    # normvec = np.std(x, axis=1)
+    # assert len(normvec.shape)==1
+    # normvec = np.reshape(normvec, [normvec.shape[0], 1,1]) # (chans, 1, 1) # std for each chan, across (times, trials).
+    # normmin = np.percentile(normvec, [2.5]) # get the min (std fr across time/conditions) across channels, add this on to still have
+
+    # # min fr, to make this a "soft" normalization
+    # frmean_each_chan = np.mean(x, axis=1) # (chans, 1, 1) # std for each chan, across (times, trials).
+    # frmin = np.min(frmean_each_chan) # (chans, 1, 1)) # min (mean fr across time/condition) across chans
+    # # frmin = np.min(np.mean(np.mean(PA.X, axis=1, keepdims=True), axis=2, keepdims=True)) # (chans, 1, 1)) # min (mean fr across time/condition) across chans
+
+    # # to further help making this "soft"
+    # abs_fr_min = 3 # any fr around this low, want to penalize drastically, effectively making it not contyribute much to population activit.
+
+    # # DENOM = (normvec+normmin)
+    # # DENOM = (normvec + normmin + frmin + abs_fr_min) # To further lower infleunce of low FR neurons (started 2/8/24, 2:55pm)
+    # DENOM = (normvec + frmin + abs_fr_min) # To make more similar across chans. (started 2/11/24)
+
+    # # Do normalization.
+    # PAnorm = PA.copy()
+    # PAnorm.X = PAnorm.X/DENOM
 
     if PLOT:
         from pythonlib.tools.plottools import plotScatter45
@@ -102,6 +108,56 @@ def _popanal_preprocess_normalize(PA, PLOT=False):
 
     return PAnorm, fig
 
+def _popanal_preprocess_normalize_softzscore_raw(x):
+    """ 
+    Normalize firing rates so that similar acorss neruons (higha nd low fr) whiel
+    still having higher for high fr.
+    Similar to "soft normalization" used by Churchland group.
+    
+    PARAMS:
+    - x, (nchans, ndat), where ndat is usually (trials x times)
+    RETURNS:
+    - x_norm, (nchans, ndat), rescaled, then mean-subtracted (global mean)
+    - DENOM, (nchans, 1)
+    - CENTER, (nchans, 1)
+    -- can apply DENOM and CENTER to x to return x:
+        x_norm = x.copy()
+        x_norm = x_norm/DENOM
+        x_norm = x_norm-CENTER
+    """
+
+    assert len(x.shape)==2
+
+    #### (1) How much to rescale FR
+    # STD (across all trials and times)
+    normvec = np.std(x, axis=1)
+    assert len(normvec.shape)==1
+    # normvec = np.reshape(normvec, [normvec.shape[0]]) # (chans, 1, 1) # std for each chan, across (times, trials).
+    normvec = np.reshape(normvec, [normvec.shape[0], 1]) # (chans,) # std for each chan, across (times, trials).
+    normmin = np.percentile(normvec, [2.5]) # get the min (std fr across time/conditions) across channels, add this on to still have
+
+    # min fr, to make this a "soft" normalization
+    frmean_each_chan = np.mean(x, axis=1) # (chans, 1, 1) # std for each chan, across (times, trials).
+    frmin = np.min(frmean_each_chan) # (chans, 1, 1)) # min (mean fr across time/condition) across chans
+    # frmin = np.min(np.mean(np.mean(PA.X, axis=1, keepdims=True), axis=2, keepdims=True)) # (chans, 1, 1)) # min (mean fr across time/condition) across chans
+
+    # to further help making this "soft"
+    abs_fr_min = 3 # any fr around this low, want to penalize drastically, effectively making it not contyribute much to population activit.
+
+    # DENOM = (normvec+normmin)
+    # DENOM = (normvec + normmin + frmin + abs_fr_min) # To further lower infleunce of low FR neurons (started 2/8/24, 2:55pm)
+    DENOM = (normvec + frmin + abs_fr_min) # To make more similar across chans. (started 2/11/24)
+
+    # Do normalization.
+    x_norm = x.copy()
+    assert len(DENOM.shape)==len(x_norm.shape)
+    x_norm = x_norm/DENOM
+
+    #### (2) After rescaling (by dividing), get mean (which will be subtracted to do soft z-score)
+    CENTER = np.mean(x_norm, axis=1, keepdims=True)
+    x_norm = x_norm-CENTER
+
+    return x_norm, DENOM, CENTER
 
 def popanal_preprocess_scalar_normalization(PA, grouping_vars, subtract_mean_each_level_of_var="IGNORE",
                                             plot_example_chan_number=None, plot_example_split_var_string=None,
@@ -127,7 +183,7 @@ def popanal_preprocess_scalar_normalization(PA, grouping_vars, subtract_mean_eac
 
     # 1) First, rescale all FR (as in Churchland stuff), but isntead of using
     # range, use std (like z-score)
-    PAnorm_pre, _ = _popanal_preprocess_normalize(PA)
+    PAnorm_pre, _ = _popanal_preprocess_normalize_softzscore(PA)
     PAnorm = PAnorm_pre.copy()
 
     # if False:
@@ -996,48 +1052,50 @@ def _trajgood_make_colors_discrete_var(labels, which_dim_of_labels_to_use=None):
     - color_type, str, either "cont" or "discrete".
     - colors, list of colors, matching input labels.
     """
+    from pythonlib.tools.plottools import color_make_map_discrete_labels
+    return color_make_map_discrete_labels(labels, which_dim_of_labels_to_use)
+        
+    # if which_dim_of_labels_to_use is None:
+    #     labels_for_color = labels
+    # else:
+    #     labels_for_color = [lab[which_dim_of_labels_to_use] for lab in labels]
+    # labels_color_uniq = sort_mixed_type(list(set(labels_for_color)))
 
-    if which_dim_of_labels_to_use is None:
-        labels_for_color = labels
-    else:
-        labels_for_color = [lab[which_dim_of_labels_to_use] for lab in labels]
-    labels_color_uniq = sort_mixed_type(list(set(labels_for_color)))
+    # if len(set([type(x) for x in labels_color_uniq]))>1:
+    #     # more than one type...
+    #     color_type = "discr"
+    #     pcols = makeColors(len(labels_color_uniq))
+    #     _map_lev_to_color = {}
+    #     for lev, pc in zip(labels_color_uniq, pcols):
+    #         _map_lev_to_color[lev] = pc
+    # # continuous?
+    # elif len(labels_color_uniq)>50 and isinstance(labels_color_uniq[0], (int)):
+    #     color_type = "cont"
+    #     # from pythonlib.tools.plottools import map_continuous_var_to_color_range as mcv
+    #     # valmin = min(df[var_color_by])
+    #     # valmax = max(df[var_color_by])
+    #     # def map_continuous_var_to_color_range(vals):
+    #     #     return mcv(vals, valmin, valmax)
+    #     # label_rgbs = map_continuous_var_to_color_range(df[var_color_by])
+    #     _map_lev_to_color = None
+    # elif len(labels_color_uniq)>8 and isinstance(labels_color_uniq[0], (np.ndarray, float)):
+    #     color_type = "cont"
+    #     _map_lev_to_color = None
+    # else:
+    #     color_type = "discr"
+    #     # label_rgbs = None
+    #     pcols = makeColors(len(labels_color_uniq))
+    #     _map_lev_to_color = {}
+    #     for lev, pc in zip(labels_color_uniq, pcols):
+    #         _map_lev_to_color[lev] = pc
 
-    if len(set([type(x) for x in labels_color_uniq]))>1:
-        # more than one type...
-        color_type = "discr"
-        pcols = makeColors(len(labels_color_uniq))
-        _map_lev_to_color = {}
-        for lev, pc in zip(labels_color_uniq, pcols):
-            _map_lev_to_color[lev] = pc
-    # continuous?
-    elif len(labels_color_uniq)>50 and isinstance(labels_color_uniq[0], (int)):
-        color_type = "cont"
-        # from pythonlib.tools.plottools import map_continuous_var_to_color_range as mcv
-        # valmin = min(df[var_color_by])
-        # valmax = max(df[var_color_by])
-        # def map_continuous_var_to_color_range(vals):
-        #     return mcv(vals, valmin, valmax)
-        # label_rgbs = map_continuous_var_to_color_range(df[var_color_by])
-        _map_lev_to_color = None
-    elif len(labels_color_uniq)>8 and isinstance(labels_color_uniq[0], (np.ndarray, float)):
-        color_type = "cont"
-        _map_lev_to_color = None
-    else:
-        color_type = "discr"
-        # label_rgbs = None
-        pcols = makeColors(len(labels_color_uniq))
-        _map_lev_to_color = {}
-        for lev, pc in zip(labels_color_uniq, pcols):
-            _map_lev_to_color[lev] = pc
+    # # Return the color for each item
+    # if _map_lev_to_color is None:
+    #     colors = labels_color_uniq
+    # else:
+    #     colors = [_map_lev_to_color[lab] for lab in labels_for_color]
 
-    # Return the color for each item
-    if _map_lev_to_color is None:
-        colors = labels_color_uniq
-    else:
-        colors = [_map_lev_to_color[lab] for lab in labels_for_color]
-
-    return _map_lev_to_color, color_type, colors
+    # return _map_lev_to_color, color_type, colors
 
 def trajgood_plot_colorby_splotbydims_scalar(X, labels_color, list_dims,
                                          overlay_mean=False, plot_text_over_examples=False,
