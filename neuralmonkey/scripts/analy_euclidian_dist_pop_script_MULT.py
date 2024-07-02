@@ -25,10 +25,16 @@ def load_preprocess_concat_mult_sessions(animal, save_suffix, new_varied_hyperpa
                                          dim_red_method=None, NPCS_KEEP=None, extra_dimred_method_n_components=None,
                                          umap_n_neighbors=None, savedir_suffix=None,
                                          skip_dates_dont_exist=False,
-                                         new_mult_savedir_suffix = None):
+                                         new_mult_savedir_suffix = None, 
+                                         HACK=False):
     """ Loads, preprocesses (each individualy) and concats
     """
     # Get params
+    which_level = "stroke"
+    event = "00_stroke"
+    spks = "kilosort_if_exists"
+    combarea = False
+
     if animal=="Diego":
         if new_varied_hyperparams:
             twind_analy = (-0.1, 0.2)
@@ -49,7 +55,8 @@ def load_preprocess_concat_mult_sessions(animal, save_suffix, new_varied_hyperpa
             question = "RULESW_ANBMCK_DIR_STROKE"
             fr_normalization_method = "across_time_bins"
         elif save_suffix=="sh_vs_col":
-            dates = [230910, 230912, 230927, 231001]
+            # dates = [230910, 230912, 230927, 231001]
+            dates = [230910, 230912, 230927] # 231001 need to figure our neural preprpcessing.
             question = "RULESW_ANBMCK_COLRANK_STROKE"
             fr_normalization_method = "across_time_bins"
         else:
@@ -98,12 +105,27 @@ def load_preprocess_concat_mult_sessions(animal, save_suffix, new_varied_hyperpa
             # Old method, using pca-->umap, before adding variation in hyperparams
             SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/EUCLIDIAN_DIST/{animal}-{d}/{question}-fr_normalization_method={fr_normalization_method}-NPCS_KEEP=10/twind_analy={twind_analy}-tbin_dur=0.1"
         else:
-            # if savedir_suffix is not None:
-            SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/EUCLIDIAN_DIST/{animal}-{d}/{question}-norm={fr_normalization_method}-dr={dim_red_method}-NPC={NPCS_KEEP}-nc={extra_dimred_method_n_components}-un={umap_n_neighbors}-suff={savedir_suffix}/twinda={twind_analy}-tbin=0.1"
-            # else:
-            #     SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/EUCLIDIAN_DIST/{animal}-{d}/{question}-norm={fr_normalization_method}-dr={dim_red_method}-NPC={NPCS_KEEP}-nc={extra_dimred_method_n_components}-un={umap_n_neighbors}/twinda={twind_analy}-tbin=0.1"
+            # - new version, look for this. if doesnt exist, then use old versoin
+            if isinstance(NPCS_KEEP, (list, tuple)):
+                # Then iterate over thema nd take the first one that matches
+                _found = False
+                for _NPCS_KEEP in NPCS_KEEP:
+                    SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/EUCLIDIAN_DIST/{animal}-{d}/scalar-wl={which_level}-ev={event}-spks={spks}-combarea={combarea}/{question}-norm={fr_normalization_method}-dr={dim_red_method}-NPC={_NPCS_KEEP}-nc={extra_dimred_method_n_components}-un={umap_n_neighbors}-suff={savedir_suffix}/twinda={twind_analy}-tbin=0.1"
+                    if os.path.exists(f"{SAVEDIR}/DFRES.pkl"):
+                        print("FOund, using this NPCS_KEEP:", _NPCS_KEEP)
+                        _found = True
+                        break
+                if not _found and HACK:
+                    # THen jkust use PCA, not DPCA
+                    SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/EUCLIDIAN_DIST/{animal}-{d}/scalar-wl={which_level}-ev={event}-spks={spks}-combarea={combarea}/{question}-norm={fr_normalization_method}-dr=pca-NPC=10-nc={extra_dimred_method_n_components}-un={umap_n_neighbors}-suff={None}/twinda={twind_analy}-tbin=0.1"
 
-        if not os.path.exists(SAVEDIR):
+            else:
+                SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/EUCLIDIAN_DIST/{animal}-{d}/scalar-wl={which_level}-ev={event}-spks={spks}-combarea={combarea}/{question}-norm={fr_normalization_method}-dr={dim_red_method}-NPC={NPCS_KEEP}-nc={extra_dimred_method_n_components}-un={umap_n_neighbors}-suff={savedir_suffix}/twinda={twind_analy}-tbin=0.1"
+                if not os.path.exists(f"{SAVEDIR}/DFRES.pkl"):        
+                    # Old version
+                    SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/EUCLIDIAN_DIST/{animal}-{d}/{question}-norm={fr_normalization_method}-dr={dim_red_method}-NPC={NPCS_KEEP}-nc={extra_dimred_method_n_components}-un={umap_n_neighbors}-suff={savedir_suffix}/twinda={twind_analy}-tbin=0.1"
+
+        if not os.path.exists(f"{SAVEDIR}/DFRES.pkl"):
             if skip_dates_dont_exist:
                 print("******** SKIPPING, doesnt exist:", d, SAVEDIR)
                 continue
@@ -186,9 +208,33 @@ def plot_all(DFRES, DFRES_PIVOT_DISTR, DFRES_PIVOT_PAIRWISE, DFRES_PIVOT_YUE, pl
     # (2) Pairwise (combining all data, i.e., datapt = levo, not rigorous)
     plot_pairwise_all_wrapper(DFRES, SAVEDIR_ANALYSIS)
 
+    # (5) Clean histograms
+    from neuralmonkey.scripts.analy_euclidian_dist_pop_script import plot_histograms_clean_wrapper
+    # dat_level = "distr"
+    effect_context = "diff|same"
+    # bregions_plot = ["M1_m", "PMv_m", "PMd_p", "dlPFC_a", "vlPFC_p", ]
+    # bregions_plot = ["M1_m", "dlPFC_a", "preSMA_a"]
+    bregions_plot = ["M1_m", "preSMA_a"]
+
+    list_yvar_dat_level = [
+        ["dist_norm_95", "distr"],
+        ["dist_norm_95", "pts_yue_diff"],
+    ]
+    for yvar, dat_level in list_yvar_dat_level:
+        plot_histograms_clean_wrapper(DFRES, SAVEDIR_ANALYSIS, dat_level, effect_context,
+                                      ythis=yvar, bregions_plot=bregions_plot)
+
     # (3) Plot pairwise data, (one datapt per date, rigorous)
     LIST_LIST_VVO_XY, LIST_dir_suffix = params_pairwise_variables_for_plotting()
 
+    # (4) Pairwise, superv vs. nonsuperv, shape vs dir, etc.
+    # NOTE: the agged version is already done above in plot_pairwise_all_wrapper. Here is doing split by bregion, one
+    # dot per date.
+    for VERSION in ["nosup_vs_sup", "shape_vs_dir", "nocol_vs_col"]:
+    # for VERSION in ["nocol_vs_col"]:
+        _plot_pairwise_btw_levels_for_seqsup(DFRES, SAVEDIR_ANALYSIS, VERSION=VERSION, one_subplot_per_bregion=True)
+
+    # Slow - do this last.
     # Have preSMA separate from other (syntax).
     map_subplot_var_to_new_subplot_var = {
         "preSMA_a":"preSMA_a",
@@ -202,8 +248,8 @@ def plot_all(DFRES, DFRES_PIVOT_DISTR, DFRES_PIVOT_PAIRWISE, DFRES_PIVOT_YUE, pl
             ["one_subplot_per_bregion", False, map_subplot_var_to_new_subplot_var],
             ]:
             for DFTHIS, dat_lev, ythis in [
-                [DFRES, "distr", "dist_norm_95"],
-                [DFRES, "pts_yue_log", "dist"],
+                # [DFRES, "distr", "dist_norm_95"],
+                # [DFRES, "pts_yue_log", "dist"],
                 [DFRES, "pts_yue_diff", "dist_norm_95"]
                 ]:
 
@@ -216,42 +262,28 @@ def plot_all(DFRES, DFRES_PIVOT_DISTR, DFRES_PIVOT_PAIRWISE, DFRES_PIVOT_YUE, pl
                                                     map_subplot_var_to_new_subplot_var=map_subplot)
                 plt.close("all")
 
-    # (4) Pairwise, superv vs. nonsuperv, shape vs dir, etc.
-    # NOTE: the agged version is already done above in plot_pairwise_all_wrapper. Here is doing split by bregion, one
-    # dot per date.
-    for VERSION in ["nosup_vs_sup", "shape_vs_dir", "nocol_vs_col"]:
-    # for VERSION in ["nocol_vs_col"]:
-        _plot_pairwise_btw_levels_for_seqsup(DFRES, SAVEDIR_ANALYSIS, VERSION=VERSION, one_subplot_per_bregion=True)
-
-    # (5) Clean histograms
-    from neuralmonkey.scripts.analy_euclidian_dist_pop_script import plot_histograms_clean_wrapper
-    # dat_level = "distr"
-    effect_context = "diff|same"
-    # bregions_plot = ["M1_m", "PMv_m", "PMd_p", "dlPFC_a", "vlPFC_p", ]
-    # bregions_plot = ["M1_m", "dlPFC_a", "preSMA_a"]
-    bregions_plot = ["M1_m", "preSMA_a"]
-
-    list_yvar_dat_level = [
-        ["dist_norm_95", "distr"],
-        ["dist", "pts_yue_log"],
-    ]
-    for yvar, dat_level in list_yvar_dat_level:
-        plot_histograms_clean_wrapper(DFRES, SAVEDIR_ANALYSIS, dat_level, effect_context,
-                                      ythis=yvar, bregions_plot=bregions_plot)
-
 
 if __name__=="__main__":
 
     animal = sys.argv[1]
     save_suffix = sys.argv[2] # a code name for this analysis (e.g., two_shape_sets)
-
-    dim_red_method = "pca"
-    NPCS_KEEP = 10
-    extra_dimred_method_n_components = None
-    umap_n_neighbors = None
-    savedir_suffix = None
-    new_mult_savedir_suffix = "PCA"
+    HACK = True
     skip_dates_dont_exist = False
+
+    if False: # Good, PCA
+        dim_red_method = "pca"
+        NPCS_KEEP = 10
+        extra_dimred_method_n_components = None
+        umap_n_neighbors = None
+        savedir_suffix = None
+        new_mult_savedir_suffix = "PCA"
+    else:
+        dim_red_method = "superv_dpca"
+        NPCS_KEEP = (6, 5, None)
+        extra_dimred_method_n_components = None
+        umap_n_neighbors = None
+        savedir_suffix = "syntax_role"
+        new_mult_savedir_suffix = f"{dim_red_method}-{save_suffix}-{NPCS_KEEP}"
 
     # (1) Load all data
     # DFRES, DFRES_PIVOT_DISTR, DFRES_PIVOT_PAIRWISE, DFRES_PIVOT_YUE, SAVEDIR_ANALYSIS, params, plot_params = load_preprocess_concat_mult_sessions(
@@ -261,7 +293,8 @@ if __name__=="__main__":
                                             dim_red_method=dim_red_method, NPCS_KEEP=NPCS_KEEP, 
                                             extra_dimred_method_n_components=extra_dimred_method_n_components,
                                             umap_n_neighbors=umap_n_neighbors, savedir_suffix=savedir_suffix,
-                                            skip_dates_dont_exist=skip_dates_dont_exist, new_mult_savedir_suffix=new_mult_savedir_suffix)
+                                            skip_dates_dont_exist=skip_dates_dont_exist, new_mult_savedir_suffix=new_mult_savedir_suffix,
+                                            HACK=HACK)
 
 
     # (2) Plot

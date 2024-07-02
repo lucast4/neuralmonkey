@@ -56,6 +56,18 @@ def _get_list_twind_by_animal(animal, event, trajectories_method, HACK_TRAJS_JUS
         else:
             print(animal)
             assert False
+    elif trajectories_method=="scalar" and event=="03_samp":
+        LIST_TWIND = [
+            (0.1, 0.5),
+        ]
+    elif trajectories_method=="scalar" and event=="04_go_cue":
+        LIST_TWIND = [
+            (-0.55, -0.05), # GOOD
+        ]
+    elif trajectories_method=="scalar" and event=="05_first_raise":
+        LIST_TWIND = [
+            (-0.25, 0.2), # GOOD
+        ]
     elif trajectories_method=="traj_to_scalar" and event=="03_samp":
         if HACK_TRAJS_JUST_FOR_PLOTTING_NICE:
             LIST_TWIND = [
@@ -394,9 +406,9 @@ def _plot_pairwise_btw_vvo_general_MULT(DFRES_MULT, ythis, SAVEDIR, LIST_VVO_XY,
                                                             var_subplot, ythis, var_datapt,
                                                             shareaxes=True, plot_text=plot_text, SIZE=4,
                                                             map_subplot_var_to_new_subplot_var=map_subplot_var_to_new_subplot_var)
-
-                    path = f"{savedirthis}/ythis={ythis}.pdf"
-                    savefig(fig, path)
+                    if fig is not None:
+                        path = f"{savedirthis}/ythis={ythis}.pdf"
+                        savefig(fig, path)
 
                     plt.close("all")
     plt.close("all")
@@ -430,7 +442,7 @@ def _plot_pairwise_btw_vvo_general(DFRES, SAVEDIR, LIST_VVO_XY, dir_suffix=None)
     ythis_done = [] # hacky, to maek sure dont overwrite plot with same ythis name.
     for DFTHIS, dat_lev, ythis in [
         [DFRES, "distr", "dist_norm_95"],
-        [DFRES, "pts_yue_log", "dist"],
+        # [DFRES, "pts_yue_log", "dist"],
         [DFRES, "pts_yue_diff", "dist_norm_95"],
         # [DFRES_PIVOT_YUE, "dist_yue_diff"],
         # [DFRES_PIVOT_YUE, "dist_yue"],
@@ -463,8 +475,9 @@ def _plot_pairwise_btw_vvo_general(DFRES, SAVEDIR, LIST_VVO_XY, dir_suffix=None)
                 _, fig = plot_45scatter_means_flexible_grouping(dfthis, "var_var_others", vvo_x, vvo_y,
                                                         var_subplot, ythis, "bregion",
                                                         shareaxes=False, SIZE=4)
-                path = f"{savedirthis}/ythis={ythis}.pdf"
-                savefig(fig, path)
+                if fig is not None:
+                    path = f"{savedirthis}/ythis={ythis}.pdf"
+                    savefig(fig, path)
 
                 plt.close("all")
             else:
@@ -578,10 +591,12 @@ def _plot_pairwise_btw_levels_for_seqsup(DFRES, SAVEDIR, VERSION="nosup_vs_sup",
 
     conversions = {}
     list_levo_simp = []
+    list_ovar_tuple = []
     for i, row in DFRES.iterrows():
 
         if isinstance(row["levo"], str):
             levo_new = row["levo"]
+            ovar_tuple = row[_var]
         else:
             # (1) Remove the epoch from levo...
             if "epoch_rand" in row[_var]:
@@ -589,6 +604,7 @@ def _plot_pairwise_btw_levels_for_seqsup(DFRES, SAVEDIR, VERSION="nosup_vs_sup",
             else:
                 idx_epoch = row[_var].index("epoch")
             levo_new = list(row["levo"][:idx_epoch]) + list(row["levo"][idx_epoch+1:])
+            ovar_tuple = tuple(list(row[_var][:idx_epoch]) + list(row[_var][idx_epoch+1:]))
 
             # (2) Replace the epochset with a generic term
             epochset = levo_new[0]
@@ -606,13 +622,17 @@ def _plot_pairwise_btw_levels_for_seqsup(DFRES, SAVEDIR, VERSION="nosup_vs_sup",
             levo_new = tuple(levo_new)
 
         list_levo_simp.append(levo_new)
+        list_ovar_tuple.append(ovar_tuple)
         if row["levo"] not in conversions:
             conversions[row["levo"]] = levo_new
         else:
             assert conversions[row["levo"]] == levo_new
 
     DFRES = DFRES.copy()
+    
     DFRES["levo"] = list_levo_simp
+    DFRES[_var] = list_ovar_tuple
+
     print("Made these levo name conversions...")
     for k, v in conversions.items():
         print(k, "-->", v)
@@ -641,21 +661,28 @@ def _plot_pairwise_btw_levels_for_seqsup(DFRES, SAVEDIR, VERSION="nosup_vs_sup",
                     idx_check = None
 
                 # Determoine if this is to keeop
-                if idx_check is None:
-                    # seuqence supevision is not even a relevnat part of this variables.
-                    pass
-                elif row["levo"][0] == ("LEFTOVER",):
-                    # Is not motor controlled (same beh)
-                    pass
-                elif row["levo"][idx_check] == False:
-                    if row["levo"] not in possible_lev_x:
-                        possible_lev_x.append(row["levo"])
-                elif row["levo"][idx_check] == True:
-                    if row["levo"] not in possible_lev_y:
-                        possible_lev_y.append(row["levo"])
-                else:
+                try:
+                    if idx_check is None:
+                        # seuqence supevision is not even a relevnat part of this variables.
+                        pass
+                    elif row["levo"][0] == ("LEFTOVER",):
+                        # Is not motor controlled (same beh)
+                        pass
+                    elif row["levo"][idx_check] == False:
+                        if row["levo"] not in possible_lev_x:
+                            possible_lev_x.append(row["levo"])
+                    elif row["levo"][idx_check] == True:
+                        if row["levo"] not in possible_lev_y:
+                            possible_lev_y.append(row["levo"])
+                    else:
+                        print(row["levo"])
+                        assert False
+                except Exception as err:
+                    print(idx_check)
                     print(row["levo"])
-                    assert False
+                    print(len(row["levo"]))
+                    print(row[_var])
+                    raise err
 
             # combine all levels
             possible_levels = possible_lev_x + possible_lev_y
@@ -698,7 +725,8 @@ def _plot_pairwise_btw_levels_for_seqsup(DFRES, SAVEDIR, VERSION="nosup_vs_sup",
         # assert False
         list_yvar_dat_level = [
             ["dist_norm_95", "distr"],
-            ["dist", "pts_yue_log"],
+            ["dist_norm_95", "pts_yue_diff"],
+            # ["dist", "pts_yue_log"],
         ]
         for lev_x in possible_lev_x:
             for lev_y in possible_lev_y:
@@ -844,15 +872,14 @@ def plot_all_results_yue(DFRES, SAVEDIR, PLOT=True):
     DFRES_PIVOT = sort_df(DFRES_PIVOT)
 
     if PLOT:
+        # for yvarthis in ["dist_yue", "dist_yue_log", "dist_yue_diff"]:
         for yvarthis in ["dist_yue", "dist_yue_log", "dist_yue_diff"]:
             fig = sns.catplot(data=DFRES_PIVOT, x="bregion", y=yvarthis, col="var_var_others",
                               col_wrap=3, aspect=1.57, alpha=0.4, height=6)
-            if yvarthis in ["dist_yue_log", "dist_yue_diff"]: # aling to 0
-                map_function_tofacet(fig, lambda ax: ax.axhline(0, color="k", alpha=0.4))
-            elif yvarthis=="dist_yue":
+            if yvarthis=="dist_yue":
                 map_function_tofacet(fig, lambda ax: ax.axhline(1, color="k", alpha=0.4))
             else:
-                assert False
+                map_function_tofacet(fig, lambda ax: ax.axhline(0, color="k", alpha=0.4))
 
             rotateLabel(fig)
             savefig(fig, f"{savedir}/overview_scatter-YUE-{yvarthis}.pdf")
@@ -888,6 +915,9 @@ def compute_all_derived_metrics(DFRES):
     """
     from pythonlib.tools.pandastools import pivot_table
     from pythonlib.tools.pandastools import stringify_values
+
+    from pythonlib.tools.pandastools import _check_index_reseted
+    _check_index_reseted(DFRES)
 
     if "shuffled" not in DFRES:
         DFRES["shuffled"] = False
@@ -1047,7 +1077,7 @@ def compute_all_derived_metrics(DFRES):
 
     return DFRES_ORIG, DFRES_PIVOT_DISTR, DFRES_PIVOT_PAIRWISE, DFRES_PIVOT_YUE, plot_params
 
-def plot_histograms_clean_wrapper(DFRES, SAVEDIR, dat_level = "distr", effect_context = "diff|same",
+def plot_histograms_clean_wrapper(DFRES, SAVEDIR, dat_level = "pts_yue_diff", effect_context = "diff|same",
                                   ythis = "dist_norm_95",
                                   bregions_plot=None):
     """
@@ -1108,7 +1138,7 @@ def plot_histograms_clean_wrapper(DFRES, SAVEDIR, dat_level = "distr", effect_co
                                    bregions_plot=bregions_plot, ythis=ythis)
 
 def _plot_histograms_clean(DFRES, list_vvo, savedir, effect_context="diff|same",
-                           dat_level="distr", bregions_plot=None,
+                           dat_level="pts_yue_diff", bregions_plot=None,
                            ythis = "dist_norm_95"):
     """
     Helper to plot clean plots of many kinds, focusing on speicifc variables, including specific brain regions
@@ -1202,6 +1232,107 @@ def _plot_histograms_clean(DFRES, list_vvo, savedir, effect_context="diff|same",
                               savedirthis, savesuffix=vvo)
     plt.close("all")
 
+
+def plot_all_results_time_trajectories(DFRES, SAVEDIR):
+    """
+    Run this in addition to plot_all_results, if this expt is taking
+    distance between time-varying trajectories.
+
+    """
+    from neuralmonkey.scripts.analy_euclidian_dist_pop_script import compute_all_derived_metrics
+    from pythonlib.tools.pandastools import append_col_with_grp_index
+    from pythonlib.tools.pandastools import summarize_featurediff
+    from pythonlib.tools.pandastools import plot_45scatter_means_flexible_grouping
+    from pythonlib.tools.snstools import rotateLabel
+    from pythonlib.tools.plottools import savefig
+    from pythonlib.tools.snstools import map_function_tofacet
+
+
+
+    # Prepare DFRES
+    if "shuffled" not in DFRES:
+        DFRES["shuffled"] = False
+    if "twind" not in DFRES:
+        DFRES["twind"] = "dummy"
+    if "event" not in DFRES:
+        DFRES["event"] = "dummy"
+    assert "shuffled_time" in DFRES, "this is not time-varying..."
+    DFRES, _, _, _, plot_params = compute_all_derived_metrics(DFRES)
+    DFRES = append_col_with_grp_index(DFRES, ["effect_samediff", "context_samediff", "shuffled_time"], "effect_context_shuff")
+    
+    # Always run this once, if in low-level plots.
+    from pythonlib.tools.pandastools import stringify_values
+    DFRES = stringify_values(DFRES)
+
+    savedir = f"{SAVEDIR}/FIGURES_TIME_TRAJ"
+    os.makedirs(savedir, exist_ok=True)
+
+    # Sammary bar plots
+    for vvo in DFRES["var_var_others"].unique():
+        for y in ["dist", "dist_norm_95"]:
+            dfthis = DFRES[DFRES["var_var_others"] == vvo]
+
+            # fig = sns.catplot(data=dfthis, x="bregion", y=y, hue="effect_context", kind="bar", aspect=2, col="shuffled_time", 
+            #             row="dat_level", sharey=False)
+
+            fig = sns.catplot(data=dfthis, x="bregion", y=y, hue="effect_context_shuff", kind="bar", aspect=1.7, 
+                        height=6, errorbar=('ci', 68), row="dat_level", sharey=False)
+            rotateLabel(fig)
+            map_function_tofacet(fig, lambda ax: ax.axhline(0, color="k", alpha=0.4))
+            savefig(fig, f"{savedir}/overview_bar-vvo={vvo}-{y}.pdf")        
+        plt.close("all")
+
+    # Plot scatter (compare shuffled time to not)
+    for dat_level in DFRES["dat_level"].unique():
+        for vvo in DFRES["var_var_others"].unique():
+            dfthis = DFRES[(DFRES["dat_level"]==dat_level) & (DFRES["var_var_others"]==vvo)]
+            for y in ["dist", "dist_norm_95"]:
+                _, fig = plot_45scatter_means_flexible_grouping(dfthis, "shuffled_time", True, False,
+                                                    "effect_context", "dist", "bregion");
+                if fig is not None:
+                    savefig(fig, f"{savedir}/scatterbyshuff-dat_level={dat_level}-vvo={vvo}-y={y}.pdf")
+        plt.close("all")
+        
+
+    # Summarize in 45 deg plot
+    for vvo in DFRES["var_var_others"].unique():
+        for shuff in [True, False]:
+            for y in ["dist", "dist_norm_95"]:
+                dfthis = DFRES[(DFRES["var_var_others"]==vvo) & (DFRES["shuffled_time"]==shuff)]
+                _, fig = plot_45scatter_means_flexible_grouping(dfthis, "effect_context", "same|diff", "diff|same",
+                                                    "dat_level", y, "bregion");
+                if fig is not None:
+                    savefig(fig, f"{savedir}/scatterbyvar-vvo={vvo}-shuff={shuff}-y={y}.pdf")
+        plt.close("all")
+
+    ######## NORMALIZING BY SUBTRACTING TIME-SHUFFLED
+    # Normalize against time-shuffled
+    #TODO: first, get all on same scale against the mean 95th
+    # aggregate
+    yvar = "dist_norm_95"
+    dfsummary, dfsummaryflat, COLNAMES_NOABS, COLNAMES_ABS, COLNAMES_DIFF = summarize_featurediff(DFRES, 
+                                                    "shuffled_time", [True, False], 
+                                                    [yvar], ["index_var", "var", "var_others", "var_var_others", 
+                                                             "effect_samediff", "context_samediff", 
+                                                            "effect_context", "leveff", "levo", "dat_level", "bregion",
+                                                            "twind_analy", "twind", "event"])
+
+    fig = sns.catplot(data=dfsummaryflat, x="bregion", y="value", hue="effect_context", kind="bar", aspect=2, 
+                col="var_var_others", row="dat_level", sharey=False)
+    rotateLabel(fig)
+    map_function_tofacet(fig, lambda ax: ax.axhline(0, color="k", alpha=0.4))
+    savefig(fig, f"{savedir}/MINUSTIMESHUFF-overview_bar-y={yvar}.pdf")
+    plt.close("all")
+    
+    for vvo in dfsummaryflat["var_var_others"].unique():
+        dfthis = dfsummaryflat[dfsummaryflat["var_var_others"]==vvo]
+        _, fig = plot_45scatter_means_flexible_grouping(dfthis, "effect_context", "same|diff", "diff|same",
+                                            "dat_level", "value", "bregion")
+        if fig is not None:
+            savefig(fig, f"{savedir}/MINUSTIMESHUFF-scatter-vvo={vvo}-y={yvar}.pdf")
+    plt.close("all")
+        
+
 def plot_all_results(DFRES, SAVEDIR):
     """
     Wrapper to make all main plots of reusults.
@@ -1209,150 +1340,6 @@ def plot_all_results(DFRES, SAVEDIR):
     :param SAVEDIR:
     :return:
     """
-    from pythonlib.tools.pandastools import pivot_table
-    import seaborn as sns
-    from pythonlib.tools.snstools import rotateLabel
-    from pythonlib.tools.plottools import savefig
-    from pythonlib.tools.pandastools import summarize_featurediff, plot_subplots_heatmap, stringify_values
-    from pythonlib.tools.snstools import map_function_tofacet
-
-    # # Compute normalized distnaces
-    # DFRES, DIST_NULL = compute_normalized_distances(DFRES)
-    # # DIST_NULL = "DIST_NULL_98"
-    # # DFRES["dist_norm_95"] = DFRES["dist"]/DFRES[DIST_NULL]
-    # # # DFRES["dist_norm_95"] = DFRES["dist"]/DFRES["DIST_NULL_95"]
-    # # # DFRES["dist_norm_50"] = DFRES["dist"]/DFRES["DIST_NULL_50"]
-    # # DFRES["var_others"] = [tuple(x) for x in DFRES["var_others"]]
-    # # DFRES = append_col_with_grp_index(DFRES, ["index_var", "var", "var_others"], "var_var_others")
-    # # DFRES = append_col_with_grp_index(DFRES, ["effect_samediff", "context_samediff"], "effect_context")
-    #
-    # # Stringify, or else will fail groupby step
-    # DFRES = stringify_values(DFRES)
-    #
-    # ###########################################################################
-    # # Get dataframe with each row being a specific set of variables.
-    # DFRES_PIVOT = pivot_table(DFRES, ["animal", "date", "var", "var_others", "shuffled", "bregion", "twind",
-    #                                   "event", "var_var_others", "dat_level"], ["effect_context"],
-    #                           ["dist_norm_95"], flatten_col_names=True).reset_index(drop=True)
-    #
-    # # Compute effects tha DFRES_PIVOT[DFRES_PIVOT["dat_level"] == "pts"].reset_index(drop=True)t require inputs from multiple distance metrics.
-    # DFRES_PIVOT_DISTR = DFRES_PIVOT[DFRES_PIVOT["dat_level"] == "distr"].reset_index(drop=True)
-    # DFRES_PIVOT_DISTR["effect_index"] = DFRES_PIVOT_DISTR["dist_norm_95-diff|same"] / (DFRES_PIVOT_DISTR["dist_norm_95-diff|same"] + DFRES_PIVOT_DISTR["dist_norm_95-same|diff"])
-    #
-    # # Keep only the data using pairwise distances
-    # DFRES_PIVOT_PAIRWISE = DFRES_PIVOT[DFRES_PIVOT["dat_level"] == "pts"].reset_index(drop=True)
-    #
-    # DFRES_PIVOT_PAIRWISE["effect_index"] = DFRES_PIVOT_PAIRWISE["dist_norm_95-diff|same"] / (DFRES_PIVOT_PAIRWISE["dist_norm_95-diff|same"] + DFRES_PIVOT_PAIRWISE["dist_norm_95-same|diff"])
-    #
-    # DFRES_PIVOT_PAIRWISE["norm_dist_effect"] = DFRES_PIVOT_PAIRWISE["dist_norm_95-diff|same"]-DFRES_PIVOT_PAIRWISE["dist_norm_95-same|same"]
-    # # This makes less sense --> diff|diff can be different for many reasons, emprticlaly doesnt match intuition that well
-    # # DFRES_PIVOT_PAIRWISE["norm_dist_context"] = DFRES_PIVOT_PAIRWISE["dist_norm_95-same|diff"] - DFRES_PIVOT_PAIRWISE["dist_norm_95-diff|diff"]
-    # DFRES_PIVOT_PAIRWISE["norm_dist_context"] = DFRES_PIVOT_PAIRWISE["dist_norm_95-same|diff"] - DFRES_PIVOT_PAIRWISE["dist_norm_95-same|same"]
-    # DFRES_PIVOT_PAIRWISE["norm_dist_both"] = DFRES_PIVOT_PAIRWISE["norm_dist_effect"] - DFRES_PIVOT_PAIRWISE["norm_dist_context"]
-    # # DFRES_PIVOT_PAIRWISE["norm_dist_effect"] = DFRES_PIVOT_PAIRWISE["dist_norm_95-diff|same"]/DFRES_PIVOT_PAIRWISE["dist_norm_95-same|same"]
-    # # DFRES_PIVOT_PAIRWISE["norm_dist_context"] = DFRES_PIVOT_PAIRWISE["dist_norm_95-same|diff"]/DFRES_PIVOT_PAIRWISE["dist_norm_95-diff|diff"]
-    # # DFRES_PIVOT_PAIRWISE["norm_dist_both"] = DFRES_PIVOT_PAIRWISE["norm_dist_effect"]/DFRES_PIVOT_PAIRWISE["norm_dist_context"]
-    #
-    # ################### Good normalization method...
-    # # - First, cap everything by min and max (normalize all do (diff, diff) (so max is 1))
-    # SS = DFRES_PIVOT_PAIRWISE["dist_norm_95-same|same"].values
-    # DD = DFRES_PIVOT_PAIRWISE["dist_norm_95-diff|diff"].values
-    # DS = DFRES_PIVOT_PAIRWISE["dist_norm_95-diff|same"].values
-    # SD = DFRES_PIVOT_PAIRWISE["dist_norm_95-same|diff"].values
-    # MIN = SS
-    # MAX = DD
-    #
-    # # Requiored, or else faiols downstream beacuse A will be neg
-    # SS[SS > DD] = 0.99*DD[SS > DD]
-    #
-    # # - clamp
-    # DS[DS < MIN] = MIN[DS < MIN]
-    # DS[DS > MAX] = MAX[DS > MAX]
-    # SD[SD < MIN] = MIN[SD < MIN]
-    # SD[SD > MAX] = MAX[SD > MAX]
-    #
-    # def _compute_scores(A, B, C, D, ignore_division=False):
-    #
-    #     for _x in [A, B, C, D]:
-    #         # print(_x[~np.isnan(_x)])
-    #         # print(_x[~np.isnan(_x)]>=0)
-    #         if not np.all(_x[~np.isnan(_x)]>=0.):
-    #             assert False
-    #     # assert np.all(A>=0)
-    #     # assert np.all(B>=0)
-    #     # assert np.all(C>=0)
-    #     # assert np.all(D>=0)
-    #
-    #     if ignore_division:
-    #         s1, s2 = None, None
-    #     else:
-    #         s1 = (A/B) * (C/D) # aka (A*C)/(B*D)
-    #         s2 = (A*C) - (B*D)
-    #
-    #     ################
-    #     s3 = 0.5 * (A - B) + (C - D)
-    #
-    #     a = A - B
-    #     b = C - D
-    #     a[a<0] = 0. # to make sure dont multiply neg by neg.
-    #     b[b<0] = 0.
-    #     s4 = a * b
-    #
-    #     a = A - D
-    #     b = C - B
-    #     a[a<0] = 0. # to make sure dont multiply neg by neg.
-    #     b[b<0] = 0.
-    #     s5 = a * b
-    #
-    #     return s1, s2, s3, s4, s5
-    #
-    # # SCores that use ratios
-    # A = DS/SS
-    # B = DD/DS
-    # C = DD/SD
-    # D = SD/SS
-    # # -- good ones:
-    # s1, s2, s3, s4, s5 = _compute_scores(A, B, C, D)
-    # DFRES_PIVOT_PAIRWISE["gen_idx_ratio_1"] = s1
-    # DFRES_PIVOT_PAIRWISE["gen_idx_ratio_2"] = s2
-    # # -- Just testing
-    # DFRES_PIVOT_PAIRWISE["gen_idx_ratio_3"] = s3
-    # DFRES_PIVOT_PAIRWISE["gen_idx_ratio_4"] = s4
-    # DFRES_PIVOT_PAIRWISE["gen_idx_ratio_5"] = s5
-    #
-    # # Scores that use differences
-    # A = DS - SS
-    # B = DD - DS
-    # C = DD - SD
-    # D = SD - SS
-    # s1, s2, s3, s4, s5 = _compute_scores(A, B, C, D, ignore_division=True)
-    #
-    # # -- Just testing:
-    # # DFRES_PIVOT_PAIRWISE["gen_idx_diff_1"] = s1 # Skip, they can fail.
-    # # DFRES_PIVOT_PAIRWISE["gen_idx_diff_2"] = s2
-    # # -- good ones
-    # DFRES_PIVOT_PAIRWISE["gen_idx_diff_3"] = s3
-    # DFRES_PIVOT_PAIRWISE["gen_idx_diff_4"] = s4
-    # DFRES_PIVOT_PAIRWISE["gen_idx_diff_5"] = s5
-    #
-    # ############## OLDER VERSION OF GENERLAZATION INDEX
-    # # 1. normalize all do (diff, diff) (so max is 1)
-    # yvar = "dist_norm_95"
-    # for ef in ["same", "diff"]:
-    #     for ctxt in ["same", "diff"]:
-    #         DFRES_PIVOT_PAIRWISE[f"DIST-{ef}|{ctxt}"] = DFRES_PIVOT_PAIRWISE[f"{yvar}-{ef}|{ctxt}"]/DFRES_PIVOT_PAIRWISE[f"{yvar}-diff|diff"]
-    #
-    # # 2.
-    # A = DFRES_PIVOT_PAIRWISE[f"DIST-diff|same"] - DFRES_PIVOT_PAIRWISE[f"DIST-same|same"]
-    # B = DFRES_PIVOT_PAIRWISE[f"DIST-diff|diff"] - DFRES_PIVOT_PAIRWISE[f"DIST-same|diff"]
-    # C = (DFRES_PIVOT_PAIRWISE[f"DIST-diff|diff"] - DFRES_PIVOT_PAIRWISE[f"DIST-same|same"]) + 0.02 # 0.02 is to reduce noise.
-    # DFRES_PIVOT_PAIRWISE["generalization_index"] = A*B
-    # DFRES_PIVOT_PAIRWISE["generalization_index_scaled"] = (A/C) * (B/C)
-
-    # # Sort, for consistent plotting across expts.
-    # DFRES_PIVOT_PAIRWISE = sort_df(DFRES_PIVOT_PAIRWISE)
-    # DFRES = sort_df(DFRES)
-    # DFRES_PIVOT_DISTR = sort_df(DFRES_PIVOT_DISTR)
 
     DFRES, DFRES_PIVOT_DISTR, DFRES_PIVOT_PAIRWISE, DFRES_PIVOT_YUE, plot_params = compute_all_derived_metrics(DFRES)
     return _plot_all_results(DFRES, DFRES_PIVOT_DISTR, DFRES_PIVOT_PAIRWISE, plot_params, SAVEDIR)
@@ -1392,7 +1379,7 @@ def _plot_all_results(DFRES, DFRES_PIVOT_DISTR, DFRES_PIVOT_PAIRWISE, plot_param
         [DIST_NULL, "dist"],
         ["dist_norm_95", "distr"],
         ["dist_norm_95", "pts"],
-        ["dist", "pts_yue_log"],
+        # ["dist", "pts_yue_log"],
         ["dist_norm_95", "pts_yue_diff"],
     ]
 
@@ -1404,16 +1391,16 @@ def _plot_all_results(DFRES, DFRES_PIVOT_DISTR, DFRES_PIVOT_PAIRWISE, plot_param
             if ONLY_ESSENTIALS:
                 if not yvarthis == yvar:
                     continue
-                if not dat_level in ["pts", "distr"]:
+                if not dat_level in ["pts_yue_diff", "distr"]:
                     continue
 
             fig = sns.catplot(data=dfthis, x="bregion", y=yvarthis, col="var_var_others", hue="effect_context",
                               col_wrap=3, aspect=1.57, alpha=0.4, height=6)
             rotateLabel(fig)
-            if dat_level=="distr":
-                map_function_tofacet(fig, lambda ax: ax.axhline(0, color="k", alpha=0.4))
-            elif dat_level=="pts_yue":
+            if dat_level=="pts_yue":
                 map_function_tofacet(fig, lambda ax: ax.axhline(1, color="k", alpha=0.4))
+            else:
+                map_function_tofacet(fig, lambda ax: ax.axhline(0, color="k", alpha=0.4))
             savefig(fig, f"{savedir}/overview_scatter-{dat_level}-{yvarthis}.pdf")
 
             fig = sns.catplot(data=dfthis, x="bregion", y=yvarthis, col="var_var_others", hue="effect_context",
@@ -1479,7 +1466,7 @@ def _plot_all_results(DFRES, DFRES_PIVOT_DISTR, DFRES_PIVOT_PAIRWISE, plot_param
         #     ["dist_norm_95", "pts_yue_diff"],
         # ]
         list_yvar_dat_level = [
-            ["dist", "pts_yue_log"],
+            ["dist_norm_95", "pts_yue_diff"],
         ]
         for yvarthis, dat_level in list_yvar_dat_level:
         # for dat_level in DFRES["dat_level"].unique():
@@ -1544,8 +1531,8 @@ if __name__=="__main__":
     # LIST_TWIND = _get_list_twind_by_animal(animal)
 
     ############## HIGH-LEVEL PARAMS
-    # TRAJECTORIES_METHOD = "scalar"
-    TRAJECTORIES_METHOD = "traj_to_scalar"
+    TRAJECTORIES_METHOD = "scalar"
+    # TRAJECTORIES_METHOD = "traj_to_scalar"
     # TRAJECTORIES_METHOD = "traj_to_timeseries"
 
     HACK_TRAJS_JUST_FOR_PLOTTING_NICE = False # To plot with wider time windows, clean version of state space plots, and wont spend time computing euclidian distance.
@@ -1586,8 +1573,16 @@ if __name__=="__main__":
 
     # DONT COMBINE, use questions.
     combine_trial_and_stroke = False
-    which_level = sys.argv[4]
     dir_suffix = question
+
+    # # HACKY - hard code event...
+    # if which_level in ["stroke", "stroke_off"]:
+    #     EVENT_KEEP = "00_stroke"
+    # elif which_level == "trial":
+    #     EVENT_KEEP = "03_samp"
+    #     # EVENT_KEEP = "06_on_strokeidx_0"
+    # else:
+    #     assert False
 
     # Final version, this is best
     from neuralmonkey.metadat.analy.anova_params import params_getter_euclidian_vars
@@ -1605,192 +1600,42 @@ if __name__=="__main__":
         else:
             HYPERPARAM_MODE = False
     else:
-        HYPERPARAM_MODE = True
-
+        HYPERPARAM_MODE = True    
+    
+    ###############################################################
+    ###############################################################
     ## DIM REDUCTION PARAMS
-    if True:
-        if HYPERPARAM_MODE:
-            LIST_DIMRED_METHODS = [ # (dim_red_method, NPCS_KEEP, extra_dimred_method_n_components, umap_n_neighbors, PLOT_STATE_SPACEC)
-                # ["pca", None, None, None, False], # pca (high D)
-                ["pca", 10, None, None, True], # pca (low D)
-                # ["pca", 4, None, None, False], # pca (low D)
-                # ["pca_umap", 10, 2, 40], # pca --> umap [old version]
-                # ["pca_umap", None, 2, 40], # pca --> umap [new version]
-                ["pca_umap", None, 4, 40, False], # pca --> umap [new version]
-                # ["umap", None, 6, 40, False], # umap (high D)
-                # ["umap", None, 2, 40, False], # umap (low D)
-                # ["umap", None, 4, 40, True], # umap (high D)
-                # [None, None, None, None, False], # raw data
-            ]
-        else:
-            # The best params, for main run
-            LIST_DIMRED_METHODS = [ # (dim_red_method, NPCS_KEEP, extra_dimred_method_n_components, umap_n_neighbors)
-                ["pca_umap", 10, 2, 40, True], # pca --> umap [old version]
+    if TRAJECTORIES_METHOD == "traj_to_scalar":
+        # Very hacky, 4/29/24 - to try out traj methods, for SP and PIG
+        LIST_DIMRED_METHODS = [
+            ["pca", 6, None, None, True, None, None]
         ]
-
-        LIST_DIMRED_METHODS = [x + [None, None] for x in LIST_DIMRED_METHODS]
-    else:
-        ########### DPCA
+        
+        # - Append dPCA params
         LIST_SAVEDIR_SUFFIX = []
         LIST_SUPERV_DPCA_PARAMS = []
-        LIST_DIMRED_METHODS = []
+        NPCS_KEEP = 3
+        if question in ["SP_shape_loc", "SP_BASE_trial"]:
+            savedir_suffix = f"seqc_0_shape"
+            superv_dpca_params = {
+                "superv_dpca_var":"seqc_0_shape",
+                "superv_dpca_vars_group":["seqc_0_loc", "gridsize"],
+                "superv_dpca_filtdict":None
+            }
+            LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+            LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
 
-        if question in ["RULE_ANBMCK_STROKE"]:
-
-            if False: # Original set -- still good.
-                # chunk_within_rank
-                savedir_suffix = f"chunk_within_rank_semantic_v2"
-                # (1) var rank, condition on everything else.
-                superv_dpca_params = {
-                    "superv_dpca_var":"chunk_within_rank_semantic_v2",
-                    "superv_dpca_vars_group":["epoch", "chunk_rank", "syntax_concrete", "shape"],
-                    "superv_dpca_filtdict":None
-                }
-                LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
-                LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
-
-                # chunk_within_rank
-                savedir_suffix = f"chunk_within_rank_semantic_v2_gridloc"
-                # (1) var rank, condition on everything else.
-                superv_dpca_params = {
-                    "superv_dpca_var":"chunk_within_rank_semantic_v2",
-                    "superv_dpca_vars_group":["epoch", "chunk_rank", "shape", "syntax_concrete", "gridloc"],
-                    "superv_dpca_filtdict":None
-                }
-                LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
-                LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
-
-                # (3) shape
-                savedir_suffix = f"shape"
-                superv_dpca_params = {
-                    "superv_dpca_var":"shape",
-                    "superv_dpca_vars_group":["epoch", "chunk_within_rank_semantic", "syntax_concrete"], # This seems better...
-                    "superv_dpca_filtdict":None
-                }
-                LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
-                LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
-
-                # (3) shape
-                savedir_suffix = f"shape_gridloc"
-                superv_dpca_params = {
-                    "superv_dpca_var":"shape",
-                    "superv_dpca_vars_group":["epoch", "chunk_within_rank_semantic", "gridloc"],
-                    "superv_dpca_filtdict":None
-                }
-                LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
-                LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
-
-                # # - Supervised
-                savedir_suffix = f"syntax_role"
-                # (1) var rank, condition on everything else.
-                superv_dpca_params = {
-                    "superv_dpca_var":"syntax_role",
-                    "superv_dpca_vars_group":["epoch", "syntax_concrete"],
-                    "superv_dpca_filtdict":None
-                }
-                LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
-                LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
-
-                # # - Supervised
-                savedir_suffix = f"syntax_role_gridloc"
-                # (1) var rank, condition on everything else.
-                superv_dpca_params = {
-                    "superv_dpca_var":"syntax_role",
-                    "superv_dpca_vars_group":["epoch", "syntax_concrete", "gridloc"],
-                    "superv_dpca_filtdict":None
-                }
-                LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
-                LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
-
-                ################## AnBmCk [good]
-                LIST_VAR = [
-                    "shape",
-                    "chunk_within_rank_semantic",
-                    "chunk_within_rank_fromlast",
-                    "chunk_within_rank_fromlast",
-                ]
-                # More restrictive
-                LIST_VARS_OTHERS = [
-                    ["epoch", "chunk_within_rank_semantic"],
-                    ["epoch", "chunk_rank", "shape"],
-                    ["epoch", "chunk_rank", "shape", "syntax_concrete"],
-                    ["epoch", "chunk_rank", "shape", "syntax_concrete", "behseq_locs_clust"],
-                ]
-
-                for cr in [0,1,2]:
-                    savedir_suffix = f"chunk_within_rank_{cr}"
-                    superv_dpca_params = {
-                        "superv_dpca_var":"chunk_within_rank_semantic_v2",
-                        "superv_dpca_vars_group":["epoch", "shape", "syntax_concrete"],
-                        "superv_dpca_filtdict":{"chunk_rank":[cr]}
-                    }
-                    LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
-                    LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
-
-                LIST_CONTEXT = [None for _ in range(len(LIST_VAR))]
-                LIST_PRUNE_MIN_N_LEVS = [1 for _ in range(len(LIST_VAR))]
-                # Use 1 for things that use syntax role as effect. or else will throw out cases with 1 item in given chunk.
-
-                # filtdict = {
-                #     # "stroke_index": list(range(1, 10, 1)), # [1, ..., ]
-                # }
-                # filtdict = {"task_kind":["character"]}
-                filtdict = None
-                LIST_FILTDICT = [
-                    filtdict for _ in range(len(LIST_VAR))
-                ]
-
-            else:
-                # 4/24/24 just to focus on  question of alignemnet to end
-
-                # This is best?
-                savedir_suffix = f"chunk_within_rank_semantic_v3"
-                # (1) var rank, condition on everything else.
-                superv_dpca_params = {
-                    "superv_dpca_var":"chunk_within_rank_semantic_v3",
-                    "superv_dpca_vars_group":["epoch", "chunk_rank", "shape", "syntax_concrete", "gridloc"],
-                    "superv_dpca_filtdict":None
-                }
-                LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
-                LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
-
-                LIST_VAR = [
-                    "chunk_within_rank_semantic_v3",
-                    "chunk_within_rank_semantic",
-                    "chunk_within_rank",
-                    "chunk_within_rank_fromlast",
-                ]
-                # More restrictive
-                LIST_VARS_OTHERS = [
-                    ["chunk_rank", "shape", "chunk_n_in_chunk"],
-                    ["chunk_rank", "shape", "chunk_n_in_chunk"],
-                    ["chunk_rank", "shape", "chunk_n_in_chunk"],
-                    ["chunk_rank", "shape", "chunk_n_in_chunk"],
-                ]
-
-                LIST_CONTEXT = [
-                    {"same":["chunk_rank", "shape"], "diff":["chunk_n_in_chunk"]},
-                    {"same":["chunk_rank", "shape"], "diff":["chunk_n_in_chunk"]},
-                    {"same":["chunk_rank", "shape"], "diff":["chunk_n_in_chunk"]},
-                    {"same":["chunk_rank", "shape"], "diff":["chunk_n_in_chunk"]},
-                    ]
-
-                LIST_PRUNE_MIN_N_LEVS = [2 for _ in range(len(LIST_VAR))]
-                # Use 1 for things that use syntax role as effect. or else will throw out cases with 1 item in given chunk.
-
-                filtdict = {
-                    "stroke_index": list(range(1, 10, 1)), # [1, ..., ]
-                }
-                LIST_FILTDICT = [
-                    filtdict for _ in range(len(LIST_VAR))
-                ]
-
-                ########
-                PLOT_CHUNK_END_STATE_ALIGNMENT = True
+            # (1) gridloc
+            savedir_suffix = f"seqc_0_loc"
+            superv_dpca_params = {
+                "superv_dpca_var":"seqc_0_loc",
+                "superv_dpca_vars_group":["seqc_0_shape", "gridsize"],
+                "superv_dpca_filtdict":None
+            }
+            LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+            LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
 
         elif question in ["SP_BASE_stroke"]:
-            ################# SP
-            # (1) Shape.
             savedir_suffix = f"shape"
             superv_dpca_params = {
                 "superv_dpca_var":"shape",
@@ -1809,108 +1654,526 @@ if __name__=="__main__":
             }
             LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
             LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+            
+        elif question in ["PIG_BASE_stroke"]:
 
-            # (1) Size
-            savedir_suffix = f"gridsize"
-            superv_dpca_params = {
-                "superv_dpca_var":"gridsize",
-                "superv_dpca_vars_group":["shape", "gridloc"],
-                "superv_dpca_filtdict":None
-            }
-            LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
-            LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
-
-            ################ sometimes only few trials, and clean enough...
-            nmin_trials_per_lev = 3
-            LIST_PRUNE_MIN_N_LEVS = [1 for _ in range(len(LIST_VAR))]
-
-        elif question in ["PIG_BASE_stroke", "CHAR_BASE_stroke"]:
-            savedir_suffix = f"shape"
-            # (1) var rank, condition on everything else.
-            superv_dpca_params = {
+            savedir_suffix = f"shape_prims_single"
+            superv_dpca_params={
                 "superv_dpca_var":"shape",
-                "superv_dpca_vars_group":["task_kind", "CTXT_loc_prev", "gridloc", "stroke_index"],
-                "superv_dpca_filtdict":None
+                "superv_dpca_vars_group":["gridloc"],
+                "superv_dpca_filtdict":{"task_kind":["prims_single"]}
             }
+
             LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
             LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
 
-            savedir_suffix = f"stroke_index"
-            # (1) var rank, condition on everything else.
-            superv_dpca_params = {
-                "superv_dpca_var":"stroke_index",
-                "superv_dpca_vars_group":["task_kind", "CTXT_loc_prev", "gridloc", "shape"],
-                "superv_dpca_filtdict":None
-            }
-            LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
-            LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
-
-            savedir_suffix = f"gridloc"
-            # (1) var rank, condition on everything else.
-            superv_dpca_params = {
-                "superv_dpca_var":"gridloc",
-                "superv_dpca_vars_group":["task_kind", "CTXT_loc_prev", "stroke_index", "shape"],
-                "superv_dpca_filtdict":None
-            }
-            LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
-            LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
-
-            savedir_suffix = f"CTXT_loc_next"
-            # (1) var rank, condition on everything else.
-            superv_dpca_params = {
-                "superv_dpca_var":"CTXT_loc_next",
-                "superv_dpca_vars_group":["task_kind", "stroke_index", "CTXT_loc_prev", "shape", "gridloc"],
-                "superv_dpca_filtdict":None
-            }
-            LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
-            LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
-
-            savedir_suffix = f"CTXT_shape_next"
-            # (1) var rank, condition on everything else.
-            superv_dpca_params = {
-                "superv_dpca_var":"CTXT_shape_next",
-                "superv_dpca_vars_group":["task_kind", "stroke_index", "CTXT_loc_prev", "shape", "gridloc"],
-                "superv_dpca_filtdict":None
-            }
-            LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
-            LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
-
-            ###############
+            # TEst generlaization across tgask_kind
             LIST_VAR = [
-                "CTXT_shape_next",
-                "CTXT_loc_next",
                 "shape",
-                "gridloc",
-                "stroke_index",
-                "task_kind",
             ]
-            # More restrictive
             LIST_VARS_OTHERS = [
-                ["task_kind", "stroke_index_is_first", "CTXT_loc_prev", "shape", "gridloc"],
-                ["task_kind", "stroke_index_is_first", "CTXT_loc_prev", "shape", "gridloc"],
-                ["task_kind", "stroke_index_is_first", "gridloc"],
-                ["task_kind", "stroke_index_is_first", "shape"],
-                ["task_kind", "shape", "gridloc"],
-                ["CTXT_loc_prev", "shape", "gridloc"],
+                ["task_kind", "stroke_index", "gridloc"],
             ]
+            LIST_CONTEXT = [
+                {"same":["gridloc"], "diff":["task_kind"]}
+            ]
+            LIST_PRUNE_MIN_N_LEVS = [2]
+            LIST_FILTDICT = [None]
+                        
+        elif question in ["CHAR_BASE_stroke"]:
 
-            LIST_CONTEXT = [None for _ in range(len(LIST_VAR))]
+            # Char  
+            savedir_suffix = f"shape_prims_single"
+            dim_red_method = "superv_dpca"
+            superv_dpca_params={
+                "superv_dpca_var":"shape_semantic",
+                "superv_dpca_vars_group":["task_kind"],
+                "superv_dpca_filtdict":{"task_kind":["prims_single"]}
+            }
 
-            LIST_PRUNE_MIN_N_LEVS = [1 for _ in range(len(LIST_VAR))]
+            LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+            LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
 
-            filtdict = None
+            # Char  
+            savedir_suffix = f"shape_char_stroke0"
+            dim_red_method = "superv_dpca"
+            superv_dpca_params={
+                "superv_dpca_var":"shape_semantic",
+                "superv_dpca_vars_group":["task_kind"],
+                "superv_dpca_filtdict":{"task_kind":["character"], "stroke_index":[0]}
+            }
+
+            LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+            LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+            # Char  
+            savedir_suffix = f"shape_char_strokesothers"
+            dim_red_method = "superv_dpca"
+            superv_dpca_params={
+                "superv_dpca_var":"shape_semantic",
+                "superv_dpca_vars_group":["task_kind"],
+                "superv_dpca_filtdict":{"task_kind":["character"], "stroke_index":[1,2,3,4,5,6,7,8]}
+            }
+
+            LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+            LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+            # TEst generlaization across tgask_kind
+            LIST_VAR = [
+                "shape_semantic",
+                "shape_semantic",
+                "shape_semantic",
+                "shape_semantic",
+            ]
+            LIST_VARS_OTHERS = [
+                ["task_kind"],
+                ["task_kind", "stroke_index"],
+                ["task_kind", "stroke_index"],
+                ["task_kind", "loc_on_clust"],
+            ]
+            LIST_CONTEXT = [
+                {"same":[], "diff":["task_kind"]},
+                {"same":["stroke_index"], "diff":["task_kind"]},
+                {"same":["stroke_index"], "diff":["task_kind"]},
+                {"same":["loc_on_clust"], "diff":["task_kind"]},
+            ]
+            LIST_PRUNE_MIN_N_LEVS = [2 for _ in range(len(LIST_VAR))]
             LIST_FILTDICT = [
-                filtdict for _ in range(len(LIST_VAR))
-            ]
+                {"task_kind":["prims_single", "character"]},
+                {"task_kind":["prims_single", "character"], "stroke_index":[0]},
+                {"task_kind":["prims_single", "character"]}, # Just for visualization of char on other stroke indices
+                {"task_kind":["prims_single", "character"]},
+                ]
+            nmin_trials_per_lev = 3 # chracters, not many trials for each shape.
 
         else:
-            print(question)
+            print("Code it for this question: ", question)
             assert False
 
         for savedir_suffix, superv_dpca_params in zip(LIST_SAVEDIR_SUFFIX, LIST_SUPERV_DPCA_PARAMS):
-            LIST_DIMRED_METHODS.append(["superv_dpca", None, None, None, True, savedir_suffix, superv_dpca_params])
+            LIST_DIMRED_METHODS.append(["superv_dpca", NPCS_KEEP, None, None, PLOT_STATE_SPACE, savedir_suffix, superv_dpca_params])
 
-        assert len(LIST_DIMRED_METHODS)>0
+    else:
+        if True: # 5/16/24 - prep for lab meeting, want to run all Euclidian distances, but first doing dpca to syntax role.
+
+            LIST_SAVEDIR_SUFFIX = []
+            LIST_SUPERV_DPCA_PARAMS = []
+            LIST_DIMRED_METHODS = []
+            NPCS_KEEP = 6
+            PLOT_STATE_SPACE = True
+            COMPUTE_EUCLIDIAN = True
+            
+            if question in ["RULE_ANBMCK_STROKE", "RULESW_ANY_SEQSUP_STROKE"]:
+
+                # # - Supervised
+                savedir_suffix = f"syntax_role"
+                # (1) var rank, condition on everything else.
+                superv_dpca_params = {
+                    "superv_dpca_var":"syntax_role",
+                    "superv_dpca_vars_group":["epoch", "syntax_concrete"],
+                    "superv_dpca_filtdict":None
+                }
+                LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+                LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+                HACKTHIS = False
+                if HACKTHIS:
+                    ############### QUICK HACK, TO PLOT STATE SPACE FOR GOOD EXAMPLE DAYS (before lab meeting, 5/17, mainly goal 
+                    # is to have plots that split by n_in_chunk)
+                    PLOT_STATE_SPACE = True
+                    COMPUTE_EUCLIDIAN = False
+
+                    LIST_VAR = [
+                        "shape",
+                        "chunk_within_rank_semantic",
+                        "chunk_within_rank_fromlast",
+                        "chunk_within_rank",
+                        "chunk_within_rank_fromlast",
+                    ]
+                    # More restrictive
+                    LIST_VARS_OTHERS = [
+                        ["epoch", "chunk_within_rank_semantic"],
+                        ["epoch", "chunk_rank", "shape"],
+                        ["epoch", "chunk_rank", "shape", "syntax_concrete"],
+                        ["epoch", "chunk_rank", "shape", "chunk_n_in_chunk"],
+                        ["epoch", "chunk_rank", "shape", "chunk_n_in_chunk"],
+                    ]
+
+                    LIST_CONTEXT = [None for _ in range(len(LIST_VAR))]
+                    LIST_PRUNE_MIN_N_LEVS = [1 for _ in range(len(LIST_VAR))]
+                    filtdict = None
+                    LIST_FILTDICT = [
+                        filtdict for _ in range(len(LIST_VAR))
+                    ]
+                    ############################### (end HACK)
+
+                    # # Append PCA
+                    # LIST_DIMRED_METHODS.append(["pca", 10, None, None, PLOT_STATE_SPACE, None, None])
+
+                # Append dPCA
+                for savedir_suffix, superv_dpca_params in zip(LIST_SAVEDIR_SUFFIX, LIST_SUPERV_DPCA_PARAMS):
+                    LIST_DIMRED_METHODS.append(["superv_dpca", NPCS_KEEP, None, None, PLOT_STATE_SPACE, savedir_suffix, superv_dpca_params])
+
+
+
+
+            elif question in ["SP_shape_loc", "SP_BASE_trial"]:
+                # Very hacky
+                LIST_DIMRED_METHODS = [
+                    ["pca", 6, None, None, True, None, None]
+                ]
+                
+                # - Append dPCA params
+                LIST_SAVEDIR_SUFFIX = []
+                LIST_SUPERV_DPCA_PARAMS = []
+                NPCS_KEEP = 3
+
+                savedir_suffix = f"seqc_0_shape"
+                superv_dpca_params = {
+                    "superv_dpca_var":"seqc_0_shape",
+                    "superv_dpca_vars_group":["seqc_0_loc", "gridsize"],
+                    "superv_dpca_filtdict":None
+                }
+                LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+                LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+                # (1) gridloc
+                savedir_suffix = f"seqc_0_loc"
+                superv_dpca_params = {
+                    "superv_dpca_var":"seqc_0_loc",
+                    "superv_dpca_vars_group":["seqc_0_shape", "gridsize"],
+                    "superv_dpca_filtdict":None
+                }
+                LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+                LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+                for savedir_suffix, superv_dpca_params in zip(LIST_SAVEDIR_SUFFIX, LIST_SUPERV_DPCA_PARAMS):
+                    LIST_DIMRED_METHODS.append(["superv_dpca", NPCS_KEEP, None, None, PLOT_STATE_SPACE, savedir_suffix, superv_dpca_params])
+
+
+
+            else:
+                print(question)
+                assert False, "you prob dont want to run this hacky params"
+
+            assert len(LIST_DIMRED_METHODS)>0
+        elif False:
+            if HYPERPARAM_MODE:
+                if TRAJECTORIES_METHOD =="traj_to_scalar":
+                    LIST_DIMRED_METHODS = [ # (dim_red_method, NPCS_KEEP, extra_dimred_method_n_components, umap_n_neighbors, PLOT_STATE_SPACEC)
+                        ["pca", 6, None, None, PLOT_STATE_SPACE], # pca (low D)
+                    ]
+                elif TRAJECTORIES_METHOD == "scalar":
+                    # LIST_DIMRED_METHODS = [ # (dim_red_method, NPCS_KEEP, extra_dimred_method_n_components, umap_n_neighbors, PLOT_STATE_SPACEC)
+                    #     # ["pca", None, None, None, False], # pca (high D)
+                    #     ["pca", 10, None, None, True], # pca (low D)
+                    #     # ["pca", 4, None, None, False], # pca (low D)
+                    #     # ["pca_umap", 10, 2, 40], # pca --> umap [old version]
+                    #     # ["pca_umap", None, 2, 40], # pca --> umap [new version]
+                    #     ["pca_umap", None, 4, 40, False], # pca --> umap [new version]
+                    #     # ["umap", None, 6, 40, False], # umap (high D)
+                    #     # ["umap", None, 2, 40, False], # umap (low D)
+                    #     # ["umap", None, 4, 40, True], # umap (high D)
+                    #     # [None, None, None, None, False], # raw data
+                    # ]
+                    LIST_DIMRED_METHODS = [ # (dim_red_method, NPCS_KEEP, extra_dimred_method_n_components, umap_n_neighbors, PLOT_STATE_SPACEC)
+                        ["pca", 10, None, None, PLOT_STATE_SPACE], # pca (low D)
+                    ]
+                else:
+                    assert False
+            else:
+                # The best params, for main run
+                LIST_DIMRED_METHODS = [ # (dim_red_method, NPCS_KEEP, extra_dimred_method_n_components, umap_n_neighbors)
+                    ["pca_umap", 10, 2, 40, True], # pca --> umap [old version]
+            ]
+
+            LIST_DIMRED_METHODS = [x + [None, None] for x in LIST_DIMRED_METHODS]
+        else:
+            ########### DPCA
+            LIST_SAVEDIR_SUFFIX = []
+            LIST_SUPERV_DPCA_PARAMS = []
+            LIST_DIMRED_METHODS = []
+
+            if question in ["RULE_ANBMCK_STROKE"]:
+
+                if False: # Original set -- still good.
+                    # chunk_within_rank
+                    savedir_suffix = f"chunk_within_rank_semantic_v2"
+                    # (1) var rank, condition on everything else.
+                    superv_dpca_params = {
+                        "superv_dpca_var":"chunk_within_rank_semantic_v2",
+                        "superv_dpca_vars_group":["epoch", "chunk_rank", "syntax_concrete", "shape"],
+                        "superv_dpca_filtdict":None
+                    }
+                    LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+                    LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+                    # chunk_within_rank
+                    savedir_suffix = f"chunk_within_rank_semantic_v2_gridloc"
+                    # (1) var rank, condition on everything else.
+                    superv_dpca_params = {
+                        "superv_dpca_var":"chunk_within_rank_semantic_v2",
+                        "superv_dpca_vars_group":["epoch", "chunk_rank", "shape", "syntax_concrete", "gridloc"],
+                        "superv_dpca_filtdict":None
+                    }
+                    LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+                    LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+                    # (3) shape
+                    savedir_suffix = f"shape"
+                    superv_dpca_params = {
+                        "superv_dpca_var":"shape",
+                        "superv_dpca_vars_group":["epoch", "chunk_within_rank_semantic", "syntax_concrete"], # This seems better...
+                        "superv_dpca_filtdict":None
+                    }
+                    LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+                    LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+                    # (3) shape
+                    savedir_suffix = f"shape_gridloc"
+                    superv_dpca_params = {
+                        "superv_dpca_var":"shape",
+                        "superv_dpca_vars_group":["epoch", "chunk_within_rank_semantic", "gridloc"],
+                        "superv_dpca_filtdict":None
+                    }
+                    LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+                    LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+                    # # - Supervised
+                    savedir_suffix = f"syntax_role"
+                    # (1) var rank, condition on everything else.
+                    superv_dpca_params = {
+                        "superv_dpca_var":"syntax_role",
+                        "superv_dpca_vars_group":["epoch", "syntax_concrete"],
+                        "superv_dpca_filtdict":None
+                    }
+                    LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+                    LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+                    # # - Supervised
+                    savedir_suffix = f"syntax_role_gridloc"
+                    # (1) var rank, condition on everything else.
+                    superv_dpca_params = {
+                        "superv_dpca_var":"syntax_role",
+                        "superv_dpca_vars_group":["epoch", "syntax_concrete", "gridloc"],
+                        "superv_dpca_filtdict":None
+                    }
+                    LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+                    LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+                    ################## AnBmCk [good]
+                    LIST_VAR = [
+                        "shape",
+                        "chunk_within_rank_semantic",
+                        "chunk_within_rank_fromlast",
+                        "chunk_within_rank_fromlast",
+                        "chunk_within_rank",
+                        "chunk_within_rank_fromlast",
+                    ]
+                    # More restrictive
+                    LIST_VARS_OTHERS = [
+                        ["epoch", "chunk_within_rank_semantic"],
+                        ["epoch", "chunk_rank", "shape"],
+                        ["epoch", "chunk_rank", "shape", "syntax_concrete"],
+                        ["epoch", "chunk_rank", "shape", "syntax_concrete", "behseq_locs_clust"],
+                        ["epoch", "chunk_rank", "shape", "chunk_n_in_chunk"],
+                        ["epoch", "chunk_rank", "shape", "chunk_n_in_chunk"],
+                    ]
+
+                    for cr in [0,1,2]:
+                        savedir_suffix = f"chunk_within_rank_{cr}"
+                        superv_dpca_params = {
+                            "superv_dpca_var":"chunk_within_rank_semantic_v2",
+                            "superv_dpca_vars_group":["epoch", "shape", "syntax_concrete"],
+                            "superv_dpca_filtdict":{"chunk_rank":[cr]}
+                        }
+                        LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+                        LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+                    LIST_CONTEXT = [None for _ in range(len(LIST_VAR))]
+                    LIST_PRUNE_MIN_N_LEVS = [1 for _ in range(len(LIST_VAR))]
+                    # Use 1 for things that use syntax role as effect. or else will throw out cases with 1 item in given chunk.
+
+                    # filtdict = {
+                    #     # "stroke_index": list(range(1, 10, 1)), # [1, ..., ]
+                    # }
+                    # filtdict = {"task_kind":["character"]}
+                    filtdict = None
+                    LIST_FILTDICT = [
+                        filtdict for _ in range(len(LIST_VAR))
+                    ]
+
+                else:
+                    # 4/24/24 just to focus of question of alignemnet to end
+
+                    # This is best?
+                    savedir_suffix = f"chunk_within_rank_semantic_v3"
+                    # (1) var rank, condition on everything else.
+                    superv_dpca_params = {
+                        "superv_dpca_var":"chunk_within_rank_semantic_v3",
+                        "superv_dpca_vars_group":["epoch", "chunk_rank", "shape", "syntax_concrete", "gridloc"],
+                        "superv_dpca_filtdict":None
+                    }
+                    LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+                    LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+                    LIST_VAR = [
+                        "chunk_within_rank_semantic_v3",
+                        "chunk_within_rank_semantic",
+                        "chunk_within_rank",
+                        "chunk_within_rank_fromlast",
+                    ]
+                    # More restrictive
+                    LIST_VARS_OTHERS = [
+                        ["chunk_rank", "shape", "chunk_n_in_chunk"],
+                        ["chunk_rank", "shape", "chunk_n_in_chunk"],
+                        ["chunk_rank", "shape", "chunk_n_in_chunk"],
+                        ["chunk_rank", "shape", "chunk_n_in_chunk"],
+                    ]
+
+                    LIST_CONTEXT = [
+                        {"same":["chunk_rank", "shape"], "diff":["chunk_n_in_chunk"]},
+                        {"same":["chunk_rank", "shape"], "diff":["chunk_n_in_chunk"]},
+                        {"same":["chunk_rank", "shape"], "diff":["chunk_n_in_chunk"]},
+                        {"same":["chunk_rank", "shape"], "diff":["chunk_n_in_chunk"]},
+                        ]
+
+                    LIST_PRUNE_MIN_N_LEVS = [2 for _ in range(len(LIST_VAR))]
+                    # Use 1 for things that use syntax role as effect. or else will throw out cases with 1 item in given chunk.
+
+                    filtdict = {
+                        "stroke_index": list(range(1, 10, 1)), # [1, ..., ]
+                    }
+                    LIST_FILTDICT = [
+                        filtdict for _ in range(len(LIST_VAR))
+                    ]
+
+                    ########
+                    PLOT_CHUNK_END_STATE_ALIGNMENT = True
+
+            elif question in ["SP_BASE_stroke"]:
+                ################# SP
+                # (1) Shape.
+                savedir_suffix = f"shape"
+                superv_dpca_params = {
+                    "superv_dpca_var":"shape",
+                    "superv_dpca_vars_group":["gridloc", "gridsize"],
+                    "superv_dpca_filtdict":None
+                }
+                LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+                LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+                # (1) gridloc
+                savedir_suffix = f"gridloc"
+                superv_dpca_params = {
+                    "superv_dpca_var":"gridloc",
+                    "superv_dpca_vars_group":["shape", "gridsize"],
+                    "superv_dpca_filtdict":None
+                }
+                LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+                LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+                # (1) Size
+                savedir_suffix = f"gridsize"
+                superv_dpca_params = {
+                    "superv_dpca_var":"gridsize",
+                    "superv_dpca_vars_group":["shape", "gridloc"],
+                    "superv_dpca_filtdict":None
+                }
+                LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+                LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+                ################ sometimes only few trials, and clean enough...
+                nmin_trials_per_lev = 3
+                LIST_PRUNE_MIN_N_LEVS = [1 for _ in range(len(LIST_VAR))]
+
+            elif question in ["PIG_BASE_stroke", "CHAR_BASE_stroke"]:
+                savedir_suffix = f"shape"
+                # (1) var rank, condition on everything else.
+                superv_dpca_params = {
+                    "superv_dpca_var":"shape",
+                    "superv_dpca_vars_group":["task_kind", "CTXT_loc_prev", "gridloc", "stroke_index"],
+                    "superv_dpca_filtdict":None
+                }
+                LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+                LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+                savedir_suffix = f"stroke_index"
+                # (1) var rank, condition on everything else.
+                superv_dpca_params = {
+                    "superv_dpca_var":"stroke_index",
+                    "superv_dpca_vars_group":["task_kind", "CTXT_loc_prev", "gridloc", "shape"],
+                    "superv_dpca_filtdict":None
+                }
+                LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+                LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+                savedir_suffix = f"gridloc"
+                # (1) var rank, condition on everything else.
+                superv_dpca_params = {
+                    "superv_dpca_var":"gridloc",
+                    "superv_dpca_vars_group":["task_kind", "CTXT_loc_prev", "stroke_index", "shape"],
+                    "superv_dpca_filtdict":None
+                }
+                LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+                LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+                savedir_suffix = f"CTXT_loc_next"
+                # (1) var rank, condition on everything else.
+                superv_dpca_params = {
+                    "superv_dpca_var":"CTXT_loc_next",
+                    "superv_dpca_vars_group":["task_kind", "stroke_index", "CTXT_loc_prev", "shape", "gridloc"],
+                    "superv_dpca_filtdict":None
+                }
+                LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+                LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+                savedir_suffix = f"CTXT_shape_next"
+                # (1) var rank, condition on everything else.
+                superv_dpca_params = {
+                    "superv_dpca_var":"CTXT_shape_next",
+                    "superv_dpca_vars_group":["task_kind", "stroke_index", "CTXT_loc_prev", "shape", "gridloc"],
+                    "superv_dpca_filtdict":None
+                }
+                LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+                LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+                ###############
+                LIST_VAR = [
+                    "CTXT_shape_next",
+                    "CTXT_loc_next",
+                    "shape",
+                    "gridloc",
+                    "stroke_index",
+                    "task_kind",
+                ]
+                # More restrictive
+                LIST_VARS_OTHERS = [
+                    ["task_kind", "stroke_index_is_first", "CTXT_loc_prev", "shape", "gridloc"],
+                    ["task_kind", "stroke_index_is_first", "CTXT_loc_prev", "shape", "gridloc"],
+                    ["task_kind", "stroke_index_is_first", "gridloc"],
+                    ["task_kind", "stroke_index_is_first", "shape"],
+                    ["task_kind", "shape", "gridloc"],
+                    ["CTXT_loc_prev", "shape", "gridloc"],
+                ]
+
+                LIST_CONTEXT = [None for _ in range(len(LIST_VAR))]
+
+                LIST_PRUNE_MIN_N_LEVS = [1 for _ in range(len(LIST_VAR))]
+
+                filtdict = None
+                LIST_FILTDICT = [
+                    filtdict for _ in range(len(LIST_VAR))
+                ]
+
+            else:
+                print(question)
+                assert False
+
+            for savedir_suffix, superv_dpca_params in zip(LIST_SAVEDIR_SUFFIX, LIST_SUPERV_DPCA_PARAMS):
+                LIST_DIMRED_METHODS.append(["superv_dpca", None, None, None, PLOT_STATE_SPACE, savedir_suffix, superv_dpca_params])
+
+            assert len(LIST_DIMRED_METHODS)>0
 
     for x in LIST_DIMRED_METHODS:
         assert len(x)==7
@@ -1919,20 +2182,20 @@ if __name__=="__main__":
     from neuralmonkey.analyses.rsa import rsagood_questions_dict, rsagood_questions_params
     q_params = rsagood_questions_dict(animal, date, question)[question]
     if which_level=="trial":
-        events_keep = ["03_samp", "04_go_cue", "06_on_strokeidx_0"]
-    elif which_level=="stroke":
+        # events_keep = ["03_samp", "04_go_cue", "05_first_raise", "06_on_strokeidx_0"]
+        events_keep = ["03_samp", "04_go_cue", "05_first_raise", "06_on_strokeidx_0"]
+    elif which_level in ["stroke", "stroke_off"]:
         events_keep = ["00_stroke"]
     else:
         print(question)
         assert False
 
+    ############### HACK
     HACK_RENAME_SHAPES = "CHAR" in question
 
-    ############### PARAMS
-    exclude_bad_areas = True
-    combine_into_larger_areas = False
-    list_time_windows = [(-0.6, 0.6)]
-    EVENTS_IGNORE = [] # To reduce plots
+    if HACK_TRAJS_JUST_FOR_PLOTTING_NICE:
+        # To make plots cleaner, e.g., for char projected on SP subspaces
+        nmin_trials_per_lev = 6
 
     if question=="SP_novel_shape":
         TASK_KIND_RENAME_AS_NOVEL_SHAPE=True
@@ -1965,183 +2228,256 @@ if __name__=="__main__":
 
     # Iterate over all dim reduction methods
     # for NPCS_KEEP in LIST_NPCS_KEEP:
-    for dim_red_method, NPCS_KEEP, extra_dimred_method_n_components, umap_n_neighbors, PLOT_STATE_SPACE, savedir_suffix, superv_dpca_params in LIST_DIMRED_METHODS:
-        for fr_normalization_method in LIST_FR_NORMALIZATION:
+    for EVENT_KEEP in events_keep:
+        for dim_red_method, NPCS_KEEP, extra_dimred_method_n_components, umap_n_neighbors, PLOT_STATE_SPACE, savedir_suffix, superv_dpca_params in LIST_DIMRED_METHODS:
+            for fr_normalization_method in LIST_FR_NORMALIZATION:
 
-            ###########
-            SAVEDIR_ANALYSIS = f"{PATH_ANALYSIS_OUTCOMES}/recordings/main/EUCLIDIAN_DIST/{animal}-{date}/{dir_suffix}-norm={fr_normalization_method}-dr={dim_red_method}-NPC={NPCS_KEEP}-nc={extra_dimred_method_n_components}-un={umap_n_neighbors}-suff={savedir_suffix}"
-            os.makedirs(SAVEDIR_ANALYSIS, exist_ok=True)
-            print("SAVING AT:", SAVEDIR_ANALYSIS)
+                ###########
+                if HACK_TRAJS_JUST_FOR_PLOTTING_NICE:
+                    tmp = "NICE_TRAJ--"
+                else:
+                    tmp = ""
+                if TRAJECTORIES_METHOD == "scalar":
+                    SAVEDIR_ANALYSIS = f"{PATH_ANALYSIS_OUTCOMES}/recordings/main/EUCLIDIAN_DIST/{animal}-{date}/{tmp}{TRAJECTORIES_METHOD}-wl={which_level}-ev={EVENT_KEEP}-spks={SPIKES_VERSION}-combarea={combine_into_larger_areas}/{dir_suffix}-norm={fr_normalization_method}-dr={dim_red_method}-NPC={NPCS_KEEP}-nc={extra_dimred_method_n_components}-un={umap_n_neighbors}-suff={savedir_suffix}"
+                elif TRAJECTORIES_METHOD == "traj_to_scalar":
+                    SAVEDIR_ANALYSIS = f"{PATH_ANALYSIS_OUTCOMES}/recordings/main/EUCLIDIAN_DIST/{animal}-{date}/{tmp}{TRAJECTORIES_METHOD}-wl={which_level}-ev={EVENT_KEEP}-spks={SPIKES_VERSION}-combarea={combine_into_larger_areas}/{dir_suffix}-norm={fr_normalization_method}-dr={dim_red_method}-NPC={NPCS_KEEP}-nc={extra_dimred_method_n_components}-un={umap_n_neighbors}-suff={savedir_suffix}"
+                else:
+                    print(TRAJECTORIES_METHOD)
+                    assert False, "code it"
 
-            if LOAD_AND_PLOT_RESULTS_ONLY==False:
-                # Make a copy of all PA before normalization
-                DFallpa = DFALLPA.copy()
-                list_pa = [pa.copy() for pa in DFallpa["pa"]]
-                DFallpa["pa"] = list_pa
+                os.makedirs(SAVEDIR_ANALYSIS, exist_ok=True)
+                print("SAVING AT:", SAVEDIR_ANALYSIS)
 
-                ############################ SAVE PARAMS
-                writeDictToTxt({
-                    "events_keep":events_keep,
-                    "question":question,
-                    "q_params":q_params,
-                    "combine_trial_and_stroke":combine_trial_and_stroke,
-                    "which_level":which_level,
-                    "HACK_RENAME_SHAPES":HACK_RENAME_SHAPES,
-                    "exclude_bad_areas":exclude_bad_areas,
-                    "SPIKES_VERSION":SPIKES_VERSION,
-                    "combine_into_larger_areas":combine_into_larger_areas,
-                    "list_time_windows":list_time_windows,
-                    "fr_normalization_method":fr_normalization_method,
-                    "nmin_trials_per_lev":nmin_trials_per_lev,
-                    "savedir_suffix":savedir_suffix,
-                    "superv_dpca_params":superv_dpca_params
-                    },
-                    f"{SAVEDIR_ANALYSIS}/params.txt")
+                if LOAD_AND_PLOT_RESULTS_ONLY==False:
+                    # Make a copy of all PA before normalization
+                    DFallpa = DFALLPA.copy()
+                    list_pa = [pa.copy() for pa in DFallpa["pa"]]
+                    DFallpa["pa"] = list_pa
 
-                #################### Normalize PA firing rates if needed
-                path_to_save_example_fr_normalization = f"{SAVEDIR_ANALYSIS}/example_fr_normalization.png"
-                if fr_normalization_method is not None:
-                    if fr_normalization_method=="each_time_bin":
-                        # Then demean in each time bin indepednently
-                        subtract_mean_at_each_timepoint = True
-                        subtract_mean_across_time_and_trial = False
-                    elif fr_normalization_method=="across_time_bins":
-                        # ALl time bins subtract the same scalar --> maintains temporal moudlation.
-                        subtract_mean_at_each_timepoint = False
-                        subtract_mean_across_time_and_trial = True
-                    else:
-                        print(fr_normalization_method)
-                        assert False
+                    ########### HACK - Testing generalization of shapes to char, then keep only the shapes presenta cross SP and char
+                    if question in ["CHAR_BASE_stroke"]:
+                        # [Optional, for char] Keep only shapes that exist in every context
+                        from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper
+                        dflab = DFallpa["pa"].values[0].Xlabels["trials"]
+                        dflabthis = dflab[dflab["task_kind"].isin(["character", "prims_single"])].reset_index(drop=True)
+                        _, dict_dfthis = extract_with_levels_of_conjunction_vars_helper(dflabthis, "task_kind", ["shape_semantic"], 
+                                                                                        n_min_per_lev=nmin_trials_per_lev,
+                                                                    plot_counts_heatmap_savepath=f"{SAVEDIR_ANALYSIS}/CHAR_HACK_COUNTS.png")
+                        shapes_keep = dict_dfthis.keys()
+                        shapes_keep = [x[0] for x in list(dict_dfthis.keys())]
 
-                    from neuralmonkey.analyses.state_space_good import popanal_preprocess_scalar_normalization
-                    list_panorm = []
+                        for filtdict in LIST_FILTDICT:
+                            filtdict["shape_semantic"] = shapes_keep
 
-                    for i, pa in enumerate(DFallpa["pa"].tolist()):
-                        if path_to_save_example_fr_normalization is not None and i==0:
-                            plot_example_chan_number = pa.Chans[0]
-                            if which_level=="trial":
-                                plot_example_split_var_string = "seqc_0_shape"
-                            elif which_level=="stroke":
-                                plot_example_split_var_string = "shape"
-                            else:
-                                plot_example_split_var_string = q_params["effect_vars"][0]
+                        # HACKY - filter to just keep these shapes, and relevant task kind , so that
+                        # This is done BEFORE dim reduction, to maximally separate them
+                        list_pa_new = []
+                        for pa in DFallpa["pa"].values:
+                            list_pa_new.append(
+                                pa.slice_by_labels_filtdict({
+                                "task_kind":["character", "prims_single"],
+                                "shape_semantic":shapes_keep,
+                                }))
+                        DFallpa["pa"] = list_pa_new
+
+                    ############################ SAVE PARAMS
+                    writeDictToTxt({
+                        "events_keep":events_keep,
+                        "question":question,
+                        "q_params":q_params,
+                        "combine_trial_and_stroke":combine_trial_and_stroke,
+                        "which_level":which_level,
+                        "HACK_RENAME_SHAPES":HACK_RENAME_SHAPES,
+                        "exclude_bad_areas":exclude_bad_areas,
+                        "SPIKES_VERSION":SPIKES_VERSION,
+                        "combine_into_larger_areas":combine_into_larger_areas,
+                        "list_time_windows":list_time_windows,
+                        "fr_normalization_method":fr_normalization_method,
+                        "nmin_trials_per_lev":nmin_trials_per_lev,
+                        "savedir_suffix":savedir_suffix,
+                        "superv_dpca_params":superv_dpca_params
+                        },
+                        f"{SAVEDIR_ANALYSIS}/params.txt")
+
+                    #################### Normalize PA firing rates if needed
+                    path_to_save_example_fr_normalization = f"{SAVEDIR_ANALYSIS}/example_fr_normalization.png"
+                    if fr_normalization_method is not None:
+                        if fr_normalization_method=="each_time_bin":
+                            # Then demean in each time bin indepednently
+                            subtract_mean_at_each_timepoint = True
+                            subtract_mean_across_time_and_trial = False
+                        elif fr_normalization_method=="across_time_bins":
+                            # ALl time bins subtract the same scalar --> maintains temporal moudlation.
+                            subtract_mean_at_each_timepoint = False
+                            subtract_mean_across_time_and_trial = True
                         else:
-                            plot_example_chan_number = None
-                        PAnorm, PAscal, PAscalagg, fig, axes, groupdict = popanal_preprocess_scalar_normalization(pa, None,
-                                                                                                          DO_AGG_TRIALS=False,
-                                                                                                          plot_example_chan_number=plot_example_chan_number,
-                                                                                                            plot_example_split_var_string = plot_example_split_var_string,
-                                                                                                          subtract_mean_at_each_timepoint=subtract_mean_at_each_timepoint,
-                                                                                                          subtract_mean_across_time_and_trial=subtract_mean_across_time_and_trial)
-                        if path_to_save_example_fr_normalization is not None and i==0:
-                            savefig(fig, path_to_save_example_fr_normalization)
-                        list_panorm.append(PAnorm)
-                    DFallpa["pa"] = list_panorm
+                            print(fr_normalization_method)
+                            assert False
 
-            ########################################
-            for twind_analy in LIST_TWIND:
-                for tbin_dur in LIST_TBIN_DUR:
-                    tbin_slice = tbin_dur
+                        from neuralmonkey.analyses.state_space_good import popanal_preprocess_scalar_normalization
+                        list_panorm = []
 
-                    SAVEDIR = f"{SAVEDIR_ANALYSIS}/twinda={twind_analy}-tbin={tbin_dur}"
-
-                    ################# GET DFRES
-                    if LOAD_AND_PLOT_RESULTS_ONLY:
-                        # LOAD pre-computed results
-                        path = f"{SAVEDIR}/DFRES.pkl"
-                        DFRES = pd.read_pickle(path)
-                    else:
-                        # Compute results new
-                        os.makedirs(SAVEDIR, exist_ok=True)
-                        print("THIS TBIN_DUR", SAVEDIR)
-
-                        # Save all the params
-                        from pythonlib.tools.expttools import writeDictToTxtFlattened
-                        path = f"{SAVEDIR}/params_var.txt"
-                        writeDictToTxtFlattened({
-                            "LIST_VAR":{i:x for i, x in enumerate(LIST_VAR)},
-                            "LIST_VARS_OTHERS":{i:x for i, x in enumerate(LIST_VARS_OTHERS)},
-                            "LIST_CONTEXT":{i:x for i, x in enumerate(LIST_CONTEXT)},
-                            "LIST_PRUNE_MIN_N_LEVS":{i:x for i, x in enumerate(LIST_PRUNE_MIN_N_LEVS)},
-                            "LIST_FILTDICT":{i:x for i, x in enumerate(LIST_FILTDICT)},
-                            "NPCS_KEEP":NPCS_KEEP,
-                            "fr_normalization_method":fr_normalization_method,
-                            "tbin_dur":tbin_dur,
-                            "twind_analy":twind_analy,
-                            "dim_red_method":dim_red_method,
-                            "extra_dimred_method_n_components":extra_dimred_method_n_components,
-                            "umap_n_neighbors":umap_n_neighbors
-                        }, path)
-
-                        #### COLLECT DATA
-                        # from neuralmonkey.analyses.decode_good import euclidian_distance_compute
-                        from neuralmonkey.analyses.state_space_good import euclidian_distance_compute, euclidian_distance_compute_AnBmCk_endpoint
-                        list_dfres = []
-                        for i, row in DFallpa.iterrows():
-                            br = row["bregion"]
-                            tw = row["twind"]
-                            ev = row["event"]
-                            PA = row["pa"]
-
-                            print("bregion, twind_analy, tbin_dur: ", br, twind_analy, tbin_dur)
-
-                            savedir = f"{SAVEDIR}/each_region/{br}-twind_analy={twind_analy}"
-                            os.makedirs(savedir, exist_ok=True)
-
-                            if dim_red_method is None:
-                                # Then this is just plotting raw data...
-                                _plot_state_space = False
+                        for i, pa in enumerate(DFallpa["pa"].tolist()):
+                            if path_to_save_example_fr_normalization is not None and i==0:
+                                plot_example_chan_number = pa.Chans[0]
+                                if which_level=="trial":
+                                    plot_example_split_var_string = "seqc_0_shape"
+                                elif which_level=="stroke":
+                                    plot_example_split_var_string = "shape"
+                                else:
+                                    plot_example_split_var_string = q_params["effect_vars"][0]
                             else:
-                                _plot_state_space = PLOT_STATE_SPACE
-                            dfres, PAredu = euclidian_distance_compute(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT_MASKS,
-                                                               twind_analy, tbin_dur, tbin_slice, savedir,
-                                                               PLOT_STATE_SPACE=_plot_state_space,
-                                                               nmin_trials_per_lev=nmin_trials_per_lev,
-                                                               LIST_CONTEXT=LIST_CONTEXT, LIST_FILTDICT=LIST_FILTDICT,
-                                                               LIST_PRUNE_MIN_N_LEVS=LIST_PRUNE_MIN_N_LEVS,
-                                                               dim_red_method = dim_red_method,
-                                                               extra_dimred_method_n_components = extra_dimred_method_n_components,
-                                                               NPCS_KEEP=NPCS_KEEP,
-                                                               umap_n_neighbors=umap_n_neighbors,
-                                                               superv_dpca_params=superv_dpca_params,
-                                                                       return_PAredu=True)
-                            plt.close("all")
+                                plot_example_chan_number = None
+                            PAnorm, PAscal, PAscalagg, fig, axes, groupdict = popanal_preprocess_scalar_normalization(pa, None,
+                                                                                                            DO_AGG_TRIALS=False,
+                                                                                                            plot_example_chan_number=plot_example_chan_number,
+                                                                                                                plot_example_split_var_string = plot_example_split_var_string,
+                                                                                                            subtract_mean_at_each_timepoint=subtract_mean_at_each_timepoint,
+                                                                                                            subtract_mean_across_time_and_trial=subtract_mean_across_time_and_trial)
+                            if path_to_save_example_fr_normalization is not None and i==0:
+                                savefig(fig, path_to_save_example_fr_normalization)
+                            list_panorm.append(PAnorm)
+                        DFallpa["pa"] = list_panorm
 
-                            try:
-                                if PLOT_CHUNK_END_STATE_ALIGNMENT:
-                                    # HACKY - plots related to chunks, testing alignement to endpoint of chunk.
-                                    savedir = f"{SAVEDIR}/END_STATE_ALIGNMENT/{br}"
-                                    os.makedirs(savedir, exist_ok=True)
-                                    euclidian_distance_compute_AnBmCk_endpoint(PAredu, savedir)
-                            except Exception as err:
-                                print("************ FAILED euclidian_distance_compute_AnBmCk_endpoint")
-                                print(err)
-                                pass
+                ########################################
+                LIST_TWIND, LIST_TBIN_DUR, LIST_TBIN_SLIDE = _get_list_twind_by_animal(animal, EVENT_KEEP, 
+                                                                                       TRAJECTORIES_METHOD, HACK_TRAJS_JUST_FOR_PLOTTING_NICE=HACK_TRAJS_JUST_FOR_PLOTTING_NICE)
+                for twind_analy in LIST_TWIND:
+                    for tbin_dur, tbin_slice in zip(LIST_TBIN_DUR, LIST_TBIN_SLIDE):
 
-                            if dfres is not None and len(dfres)>0:
-                                dfres["bregion"] = br
-                                dfres["twind"] = [tw for _ in range(len(dfres))]
-                                dfres["twind_analy"] = [twind_analy for _ in range(len(dfres))]
-                                dfres["event"] = ev
-                                dfres["savedir_suffix"] = savedir_suffix
-                                list_dfres.append(dfres)
+                        SAVEDIR = f"{SAVEDIR_ANALYSIS}/twinda={twind_analy}-tbin={tbin_dur}"
 
-                        # Concat
-                        if len(list_dfres)>0:
-                            DFRES = pd.concat(list_dfres).reset_index(drop=True)
-
-                            # SAVE
+                        ################# GET DFRES
+                        if LOAD_AND_PLOT_RESULTS_ONLY:
+                            # LOAD pre-computed results
                             path = f"{SAVEDIR}/DFRES.pkl"
-                            pd.to_pickle(DFRES, path)
-                            print("Saved to: ", path)
+                            DFRES = pd.read_pickle(path)
                         else:
-                            DFRES = None
+                            # Compute results new
+                            os.makedirs(SAVEDIR, exist_ok=True)
+                            print("THIS TBIN_DUR", SAVEDIR)
 
-                    ############ PLOTS
-                    if DFRES is not None and not SKIP_EUCL_PLOTS:
-                        try:
+                            # Save all the params
+                            from pythonlib.tools.expttools import writeDictToTxtFlattened
+                            path = f"{SAVEDIR}/params_var.txt"
+                            writeDictToTxtFlattened({
+                                "LIST_VAR":{i:x for i, x in enumerate(LIST_VAR)},
+                                "LIST_VARS_OTHERS":{i:x for i, x in enumerate(LIST_VARS_OTHERS)},
+                                "LIST_CONTEXT":{i:x for i, x in enumerate(LIST_CONTEXT)},
+                                "LIST_PRUNE_MIN_N_LEVS":{i:x for i, x in enumerate(LIST_PRUNE_MIN_N_LEVS)},
+                                "LIST_FILTDICT":{i:x for i, x in enumerate(LIST_FILTDICT)},
+                                "NPCS_KEEP":NPCS_KEEP,
+                                "fr_normalization_method":fr_normalization_method,
+                                "tbin_dur":tbin_dur,
+                                "tbin_slice":tbin_slice,
+                                "twind_analy":twind_analy,
+                                "dim_red_method":dim_red_method,
+                                "extra_dimred_method_n_components":extra_dimred_method_n_components,
+                                "umap_n_neighbors":umap_n_neighbors,
+                                "TRAJECTORIES_METHOD":TRAJECTORIES_METHOD,
+                                "event_keep":EVENT_KEEP
+                            }, path)
+
+
+                            #### COLLECT DATA
+                            # from neuralmonkey.analyses.decode_good import euclidian_distance_compute
+                            from neuralmonkey.analyses.state_space_good import euclidian_distance_compute_scalar, euclidian_distance_compute_AnBmCk_endpoint, euclidian_distance_compute_trajectories
+                            list_dfres = []
+                            for i, row in DFallpa.iterrows():
+                                br = row["bregion"]
+                                tw = row["twind"]
+                                if "event" not in DFallpa.columns:
+                                    print(DFallpa)
+                                    print(DFallpa.columns)
+                                    assert False
+                                ev = row["event"]
+                                PA = row["pa"]
+
+                                if not ev == EVENT_KEEP:
+                                    continue
+
+                                print("bregion, twind_analy, tbin_dur: ", br, twind_analy, tbin_dur)
+
+                                savedir = f"{SAVEDIR}/each_region/{br}-twind_analy={twind_analy}"
+                                os.makedirs(savedir, exist_ok=True)
+
+                                if TRAJECTORIES_METHOD == "scalar":
+                                    if dim_red_method is None:
+                                        # Then this is just plotting raw data...
+                                        _plot_state_space = False
+                                    else:
+                                        _plot_state_space = PLOT_STATE_SPACE
+                                    dfres, PAredu = euclidian_distance_compute_scalar(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT_MASKS,
+                                                                    twind_analy, tbin_dur, tbin_slice, savedir,
+                                                                    PLOT_STATE_SPACE=_plot_state_space,
+                                                                    nmin_trials_per_lev=nmin_trials_per_lev,
+                                                                    LIST_CONTEXT=LIST_CONTEXT, LIST_FILTDICT=LIST_FILTDICT,
+                                                                    LIST_PRUNE_MIN_N_LEVS=LIST_PRUNE_MIN_N_LEVS,
+                                                                    dim_red_method = dim_red_method,
+                                                                    extra_dimred_method_n_components = extra_dimred_method_n_components,
+                                                                    NPCS_KEEP=NPCS_KEEP,
+                                                                    umap_n_neighbors=umap_n_neighbors,
+                                                                    superv_dpca_params=superv_dpca_params,
+                                                                    return_PAredu=True)
+                                    
+                                    try:
+                                        if PLOT_CHUNK_END_STATE_ALIGNMENT:
+                                            # HACKY - plots related to chunks, testing alignement to endpoint of chunk.
+                                            savedir = f"{SAVEDIR}/END_STATE_ALIGNMENT/{br}"
+                                            os.makedirs(savedir, exist_ok=True)
+                                            euclidian_distance_compute_AnBmCk_endpoint(PAredu, savedir)
+                                    except Exception as err:
+                                        print("************ FAILED euclidian_distance_compute_AnBmCk_endpoint")
+                                        print(err)
+                                        pass
+
+                                elif TRAJECTORIES_METHOD == "traj_to_scalar":
+                                    PLOT_TRAJS = True
+                                    PLOT_HEATMAPS = False
+                                    dfres = euclidian_distance_compute_trajectories(PA, LIST_VAR, LIST_VARS_OTHERS, twind_analy, tbin_dur,
+                                                            tbin_slice, savedir, PLOT_TRAJS=PLOT_TRAJS, PLOT_HEATMAPS=PLOT_HEATMAPS,
+                                                            nmin_trials_per_lev=nmin_trials_per_lev,
+                                                            LIST_CONTEXT=LIST_CONTEXT, LIST_FILTDICT=LIST_FILTDICT,
+                                                            LIST_PRUNE_MIN_N_LEVS=LIST_PRUNE_MIN_N_LEVS,
+                                                            NPCS_KEEP=NPCS_KEEP,
+                                                            dim_red_method = dim_red_method, superv_dpca_params=superv_dpca_params,
+                                                            COMPUTE_EUCLIDIAN = COMPUTE_EUCLIDIAN, PLOT_CLEAN_VERSION = PLOT_CLEAN_VERSION)
+                                else:
+                                    print(TRAJECTORIES_METHOD)
+                                    assert False
+
+                                plt.close("all")
+
+                                if dfres is not None and len(dfres)>0:
+                                    dfres["bregion"] = br
+                                    dfres["twind"] = [tw for _ in range(len(dfres))]
+                                    dfres["twind_analy"] = [twind_analy for _ in range(len(dfres))]
+                                    dfres["event"] = ev
+                                    dfres["savedir_suffix"] = savedir_suffix
+                                    list_dfres.append(dfres)
+
+                            # Concat
+                            if COMPUTE_EUCLIDIAN and len(list_dfres)>0:
+                                DFRES = pd.concat(list_dfres).reset_index(drop=True)
+
+                                # SAVE
+                                path = f"{SAVEDIR}/DFRES.pkl"
+                                pd.to_pickle(DFRES, path)
+                                print("Saved to: ", path)
+                            else:
+                                # SKip saving
+                                DFRES = None
+
+                        ############ PLOTS
+                        if DFRES is not None and not SKIP_EUCL_PLOTS:
+                            # try:
                             # (1) All main plots, scores, distributions
-                            plot_all_results(DFRES, SAVEDIR)
+                            if "shuffled_time" in DFRES.columns:
+                                # Results from euclidian_distance_compute_trajectories()
+                                DFRES_NOSHUFF = DFRES[DFRES["shuffled_time"] == False].reset_index(drop=True)
+                                plot_all_results(DFRES_NOSHUFF, SAVEDIR)
+                            else:
+                                plot_all_results(DFRES, SAVEDIR)
 
                             # (2) Like above, but a few, using Yue neural moduluation
                             # try:
@@ -2152,8 +2488,12 @@ if __name__=="__main__":
 
                             # (3) Pairwise plots
                             plot_pairwise_all_wrapper(DFRES, SAVEDIR)
-                        except Exception as err:
-                            print("------------------------")
-                            print(err)
-                            print("SKIPPING PLOTS!!")
-                            pass
+
+                            if TRAJECTORIES_METHOD == "traj_to_scalar":
+                                plot_all_results_time_trajectories(DFRES, SAVEDIR)
+                            # except Exception as err:
+                            #     print("------------------------")
+                            #     print("THIS ERROR: ", err)
+                            #     print("SKIPPING PLOTS!!")
+                            #     pass
+                            
