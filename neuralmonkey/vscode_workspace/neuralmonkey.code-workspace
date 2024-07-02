@@ -1,0 +1,24 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		},
+		{
+			"path": "../../../pythonlib/pythonlib"
+		},
+		{
+			"path": "../../../drawmonkey/notebooks_datasets"
+		},
+		{
+			"path": "../../../../miniconda3/envs/drag2_matlab/lib/python3.8/site-packages/slicetca"
+		}
+	],
+	"settings": {
+		"files.exclude": {
+			"**/__pycache__": true,
+			"**/kilosort": true,
+			"**/metadat/units*": true,
+			"**/slicetca": true
+		}
+	}
+}
