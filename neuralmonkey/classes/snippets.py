@@ -213,7 +213,7 @@ def concat_mult_snippets(list_sp, MS, SITES_COMBINE_METHODS = "intersect",
     return SPall
 
 def load_and_concat_mult_snippets(MS, which_level, events_keep, SITES_COMBINE_METHODS = "intersect",
-    DEBUG = False, prune_low_fr_sites=True, REGENERATE_SNIPPETS=True):
+    DEBUG = False, prune_low_fr_sites=True, REGENERATE_SNIPPETS=True, PRE_DUR=None, POST_DUR=None):
     """ [GOOD] For both loading pre-saved Snippets and regenerating new Snippets.
     previously saved snippets using save_v2
     PARAMS:
@@ -233,7 +233,7 @@ def load_and_concat_mult_snippets(MS, which_level, events_keep, SITES_COMBINE_ME
         # EVENTS_KEEP = None
         # which_level = "trial"
         # EVENTS_KEEP = ["03_samp", "go_cue"]
-        list_sp = extract_snippets_all_sessions(MS, which_level, events_keep, 1, False)
+        list_sp = extract_snippets_all_sessions(MS, which_level, events_keep, 1, False, PRE_DUR=PRE_DUR, POST_DUR=POST_DUR)
         SAVEDIR_ALL = None
     else:
         import os
@@ -7308,7 +7308,7 @@ class Snippets(object):
                                      use_strings=False)
             self.DfScalar = append_col_with_grp_index(self.DfScalar, ["trialcode", "stroke_index"], new_col_name="trialcode_strokeidx",
                                      use_strings=False)
-            self.DfScalar = DS.dataset_slice_by_trialcode_strokeindex(tcs, sis, df=self.DfScalar,
+            self.DfScalar = DS_for_pruning_D.dataset_slice_by_trialcode_strokeindex(tcs, sis, df=self.DfScalar,
                                                                           assert_exactly_one_each=False)
             print("... End len: ", len(self.DfScalar))
 
@@ -7408,7 +7408,7 @@ class Snippets(object):
             # for suff in ["shape", "loc", "loc_local"]:
             # for suff in ["shape", "loc"]:
             for suff in ["shape", "loc", "shapesem", "locon", "locx", "locy",
-                         "center_binned", "locon_binned", "shapesemcat", "angle", "angle_binned",
+                         "center_binned", "locon_binned", "shapesemcat", "shapesemgrp", "angle", "angle_binned",
                          "loc_on_clust"]:
                 # locon_bin_in_loc
                 list_features_extraction_trial.append(f"seqc_{i}_{suff}")

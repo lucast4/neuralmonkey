@@ -19,20 +19,26 @@ from pythonlib.tools.exceptions import NotEnoughDataException
 SPIKES_VERSION = "tdt" # Still improving ks curation.
 LIST_WHICH_LEVEL = ["trial", "stroke", "stroke_off"]
 FORCE_EXTRACT = 0
-PRE_DUR = -0.8
-POST_DUR = 0.8
+# PRE_DUR = -0.8
+# POST_DUR = 0.8
 SAVEDIR_BASE = "/gorilla1/analyses/recordings/main/anova"
 
 
 
 def extract_snippets_all_sessions(MS, which_level, EVENTS_KEEP=None, FORCE_EXTRACT=0, do_save=True,
-                                  LIST_SESSIONS=None, DEBUG=False):
+                                  LIST_SESSIONS=None, DEBUG=False, PRE_DUR = None, POST_DUR = None):
     """ To extract SP for each sn in MS, optioanlly loading or extracting from
     scratch
     PARAMS:
     - FORCE_EXTRACT, int, if 1 then reextracts even if finds saved version.
     - do_save, bool, save
     """
+
+    
+    if PRE_DUR is None:
+        PRE_DUR = -0.8
+    if POST_DUR is None:
+        POST_DUR = 0.8
 
     animal = MS.animal()
     DATE = MS.date()
