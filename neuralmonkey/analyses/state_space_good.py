@@ -113,9 +113,9 @@ def _popanal_preprocess_normalize_softzscore_raw(x):
     Normalize firing rates so that similar acorss neruons (higha nd low fr) whiel
     still having higher for high fr.
     Similar to "soft normalization" used by Churchland group.
-    
+
     PARAMS:
-    - x, (nchans, ndat), where ndat is usually (trials x times)
+    - x, (nchans, ndat), where ndat is usually (trials x times). Raw (or sqrt transfomred) firing rates
     RETURNS:
     - x_norm, (nchans, ndat), rescaled, then mean-subtracted (global mean)
     - DENOM, (nchans, 1)

@@ -103,9 +103,10 @@ def load_handsaved_wrapper(animal=None, date=None, version=None, combine_areas=T
         # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230630-stroke-kilosort_if_exists-norm=None-combine=True.pkl"
 
         path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-231211-trial-kilosort_if_exists-norm=None-combine=True.pkl" # CHAR
-        
-        path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230616-trial-kilosort_if_exists-norm=None-combine=True.pkl"
-        path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230615-trial-kilosort_if_exists-norm=None-combine=True.pkl"
+        path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-231211-stroke-kilosort_if_exists-norm=None-combine=True.pkl" 
+    
+        # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230616-trial-kilosort_if_exists-norm=None-combine=True.pkl"
+        # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230615-trial-kilosort_if_exists-norm=None-combine=True.pkl"
 
     # else:
     #     print(animal, date, version)
@@ -1151,13 +1152,18 @@ def extract_single_pa(DFallpa, bregion, twind=None, which_level = "trial", event
     """
 
     if twind is None:
-        assert len(DFallpa["twind"].unique())==1
-        twind = DFallpa["twind"].values[0]
+        list_twind = DFallpa["twind"].unique().tolist()
+    else:
+        list_twind = [twind]
+    # if twind is None:
+    #     assert len(DFallpa["twind"].unique())==1
+    #     twind = DFallpa["twind"].values[0]
+
 
     a = DFallpa["which_level"]==which_level
     b = DFallpa["event"]==event
     c = DFallpa["bregion"]==bregion
-    d = DFallpa["twind"]==twind
+    d = DFallpa["twind"].isin(list_twind)
 
     tmp = DFallpa[a & b & c & d]
     if not len(tmp)==1:
@@ -1335,7 +1341,12 @@ def dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT = False):
     """
     from pythonlib.tools.plottools import savefig
 
-    events_keep = ["03_samp", "05_first_raise", "06_on_strokeidx_0"]
+    if DFallpa["event"].unique().tolist() == ["00_stroke"]:
+        # THis is the only event
+        events_keep = ["00_stroke"]
+    else:
+        events_keep = ["03_samp", "05_first_raise", "06_on_strokeidx_0"]
+
     list_bregion = DFallpa["bregion"].unique().tolist()
 
     # - smooth the fr
@@ -1355,11 +1366,16 @@ def dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT = False):
     # THRESH_FR_STD_MEAN = 0.1
 
     # No smoothing (empriical, not the closest look)
-    THRESH_FR_RATIO_CLEAN = 0.7
+    THRESH_FR_RATIO_CLEAN = 0.65
     THRESH_FR_RATIO_NOISY = 5.5
-    THRESH_FR_STD_MEAN = 0.25
-    THRESH_FR_MOD_VS_MEAN = 0.25
-    THRESH_FR_TRIALSTD_MEAN = 0.25
+    THRESH_FR_STD_MEAN = 0.2
+    THRESH_FR_MOD_VS_MEAN = 0.2
+    THRESH_FR_TRIALSTD_MEAN = 0.2
+    # THRESH_FR_RATIO_CLEAN = 0.8
+    # THRESH_FR_RATIO_NOISY = 65
+    # THRESH_FR_STD_MEAN = 0.35
+    # THRESH_FR_MOD_VS_MEAN = 0.35
+    # THRESH_FR_TRIALSTD_MEAN = 0.35
 
     # Collect all chans for each bregion
     MAP_REGION_TO_CHANS_KEEP = {}
@@ -1373,6 +1389,10 @@ def dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT = False):
             (DFallpa["bregion"] == bregion) &
             (DFallpa["event"].isin(events_keep))
             ]["event"].tolist()
+
+        if len(list_pa)==0:
+            print(events_keep)
+            assert False, "probably need to update events_keep"
 
         # Smooth the fr
         if False:
@@ -1812,13 +1832,17 @@ def dfpa_match_chans_across_pa_each_bregion(DFallpa):
     for bregion in DFallpa["bregion"].unique():
         # keep only channels that are common across all pa
         _dfallpa = DFallpa[DFallpa["bregion"] == bregion]
+
+        # Find chans common across pa
         chans_all = None
         for pa in _dfallpa["pa"]:
+            print(bregion, " ... ", len(pa.Chans))
             if chans_all is None:
                 chans_all = pa.Chans
             else:
                 chans_all = [ch for ch in chans_all if ch in pa.Chans]
-            map_bregion_to_chans[bregion] = chans_all
+        
+        map_bregion_to_chans[bregion] = chans_all
         print(bregion, " -- n chans final: ", len(chans_all))
 
     # Replace PA for each row of DFallpa

@@ -22,6 +22,7 @@ class Decoder():
         For decoer variations, just make multiple Decoder() instances.
         """
         self.PAtrain = PAtrain
+        assert PAtrain.X.shape[2]==1, "must pass in (nchans, ndatapts, 1) -- i.e. already time-averaged"
         
         self.VarDecode = var_decode
         self.Params = {
@@ -30,8 +31,10 @@ class Decoder():
 
         # Store some params
         self.LabelsUnique = sorted(self.PAtrain.Xlabels["trials"][self.VarDecode].unique().tolist())
+        # Initialize
+        self.LabelsDecoderGood = None
 
-    def train_decoder(self, PLOT=False):
+    def train_decoder(self, PLOT=False, do_upsample_balance=True, do_upsample_balance_fig_path_nosuff=None):
         """ Train a decoder and store it in self
         """
 
@@ -62,6 +65,11 @@ class Decoder():
         # times = pathis.Times
         dflab = pathis.Xlabels["trials"]
         labels = dflab[var_decode].tolist()
+        
+        if do_upsample_balance:
+            print("Upsampling dataset...")
+            from neuralmonkey.analyses.decode_good import decode_upsample_dataset
+            X, labels = decode_upsample_dataset(X, labels, do_upsample_balance_fig_path_nosuff)
 
         if False:
             # Stack presamp (label="presamp") and postsamp (label="shape X")
@@ -738,7 +746,7 @@ class Decoder():
                 # ax.set_xticks(dict_plot_vals["xticks"], labels=dict_plot_vals["xtick_labels"])
 
         return resthis
-    
+
     def scalar_score_extract_df(self, PA, twind, tbin_dur=None, score_ver="mean", cols_append=None, 
                                 labels_decoder_good=None, prune_labels_exist_in_train_and_test=False,
                                 var_decode=None):
@@ -860,56 +868,37 @@ class Decoder():
     
 
 ######## HELPER FUNCTIONS
-def train_decoder_helper(DFallpa, bregion, var_train="seqc_0_shape", event_train=None, 
-                            twind_train = None,
-                            PLOT=False, include_null_data=False,
-                            n_min_per_var=5, filterdict_train=None,
-                            which_level="trial", decoder_method_index=None):
+def train_decoder_helper_extract_train_dataset(DFallpa, bregion, var_train, event_train, twind_train, 
+                                               include_null_data=False, n_min_per_var=5, filterdict_train=None,
+                                               which_level="trial", decoder_method_index=None, PLOT=False):
     """
-    Train a decoder for this bregion and train variables.
-    PARAMS:
-    - include_null_data, bool, if True, then includes "pre-samp" data as a "null" label. Tends to
-    make decoding post-samp worse.
-    - n_min_per_var, keeps only those levels of var_train which have at least this many trials.
+    Extract training data given some codeword inputs, Returns data where each datapt is (nchans, 1) vector, and each has associated label baseed on var_train
+    RETURNS:
+    - pa_train_all, holding training data, shape (chans, datapts, 1)
+    - _twind_train, becuase twind has changed, pass this into testing
+    - PAtrain, training trials, before split into vecotrs for pa_train_all
     """
 
-    from neuralmonkey.analyses.decode_moment import Decoder
-    # var = "seqc_0_shapesemgrp" # Decoded variable
+    from neuralmonkey.classes.population_mult import extract_single_pa
     from pythonlib.tools.pandastools import extract_with_levels_of_var_good
-    from neuralmonkey.classes.population import concatenate_popanals_flexible
 
     if decoder_method_index is None:
         decoder_method_index = 2
-
-    if event_train is None:
-        event_train = "03_samp"
-    if twind_train is None:
-        twind_train = (0.1, 0.9)
     if include_null_data:
         twind_train_null = (-0.8, -0.1)
     else:
         twind_train_null = None
 
-    from neuralmonkey.classes.population_mult import extract_single_pa
     PAtrain = extract_single_pa(DFallpa, bregion, None, which_level, event_train)
-    # _DFallpa = DFallpa[(DFallpa["bregion"] == bregion) & (DFallpa["event"] == event_train)].reset_index(drop=True)
-    # PAtrain = _DFallpa["pa"].values[0]
     if PLOT:
         PAtrain.plotNeurHeat(trial=100)
 
-    # Train decoder on trials that only have one stroke..
-    dflab = PAtrain.Xlabels["trials"]
-
-    if filterdict_train is not None:
-        for col, vals in filterdict_train.items():
-            dflab = dflab[dflab[col].isin(vals)]
-        inds = dflab.index.tolist()
-        # inds = dflab[dflab["FEAT_num_strokes_task"]==1].index.tolist()
-        PAtrain = PAtrain.slice_by_dim_indices_wrapper("trials", inds)
+    ###### FILTER trials, if required.
+    # dflab = PAtrain.Xlabels["trials"]
+    PAtrain = PAtrain.slice_by_labels_filtdict(filterdict_train)
 
     # Prune to keep only cases with at least n trials per label
     _, inds_keep = extract_with_levels_of_var_good(PAtrain.Xlabels["trials"], [var_train], n_min_per_var=n_min_per_var)
-
     print("Keeping n trials / total: ", len(inds_keep), "/", len(PAtrain.Trials))
     PAtrain = PAtrain.slice_by_dim_indices_wrapper("trials", inds_keep)
     
@@ -937,9 +926,6 @@ def train_decoder_helper(DFallpa, bregion, var_train="seqc_0_shape", event_train
         pa_train_all.Times = [0]
         _twind_train = [-1, 1]
 
-
-        Dc = Decoder(pa_train_all, var_train, _twind_train)
-        Dc.train_decoder(PLOT=PLOT)
     elif decoder_method_index==2:
         ##### Method 2 -- use each time bin
         # PAtrain = PAtrain.slice_by_dim_values_wrapper("times", twind)
@@ -948,6 +934,8 @@ def train_decoder_helper(DFallpa, bregion, var_train="seqc_0_shape", event_train
 
         dur = 0.3
         slide = 0.1
+        # dur = 0.3
+        # slide = 0.02    
 
         # Get post-samp time bins
         reshape_method = "chans_x_trialstimes"
@@ -983,88 +971,114 @@ def train_decoder_helper(DFallpa, bregion, var_train="seqc_0_shape", event_train
         # Update the params
         _twind_train = [-1, 1]
 
-        Dc = Decoder(pa_train_all, var_train, _twind_train)
-        Dc.train_decoder(PLOT=PLOT)
     else:
         assert False
 
+    return pa_train_all, _twind_train, PAtrain
+
+
+def train_decoder_helper(DFallpa, bregion, var_train="seqc_0_shape", event_train=None, 
+                            twind_train = None,
+                            PLOT=True, include_null_data=False,
+                            n_min_per_var=5, filterdict_train=None,
+                            which_level="trial", decoder_method_index=None,
+                            savedir=None, n_min_per_var_good = 10,
+                            do_upsample_balance=False, do_upsample_balance_fig_path_nosuff=None):
+    """
+    Train a decoder for this bregion and train variables, and make relevant plots, and with variaous 
+    preprocessing methods optional.
+    PARAMS:
+    - include_null_data, bool, if True, then includes "pre-samp" data as a "null" label. Tends to
+    make decoding post-samp worse.
+    - n_min_per_var, keeps only those levels of var_train which have at least this many trials.
+    """
+
+    from neuralmonkey.analyses.decode_moment import Decoder
+    # var = "seqc_0_shapesemgrp" # Decoded variable
+    from pythonlib.tools.pandastools import extract_with_levels_of_var_good
+    from neuralmonkey.classes.population import concatenate_popanals_flexible
+    from pythonlib.tools.pandastools import extract_with_levels_of_var_good
+
+    if decoder_method_index is None:
+        decoder_method_index = 2
+
+    if event_train is None:
+        event_train = "03_samp"
+    if twind_train is None:
+        twind_train = (0.1, 0.9)
+
+    pa_train_all, _twind_train, PAtrain = train_decoder_helper_extract_train_dataset(DFallpa, bregion, var_train, 
+                                                                                     event_train, twind_train,  
+                                                                                     include_null_data, n_min_per_var, filterdict_train,
+                                                                                     which_level, decoder_method_index, PLOT)
+
+    # Train
+    Dc = Decoder(pa_train_all, var_train, _twind_train)
+    Dc.train_decoder(PLOT, do_upsample_balance, do_upsample_balance_fig_path_nosuff)
+
+    # A flag for "good" labels --> i.e. those in decoder that enough trials. 
+    _df, _ = extract_with_levels_of_var_good(PAtrain.Xlabels["trials"], [Dc.VarDecode], n_min_per_var_good)
+    labels_decoder_good = _df[Dc.VarDecode].unique().tolist()
+    Dc.LabelsDecoderGood = labels_decoder_good
+
+    if PLOT:
+        # Plot n trials for training
+        from pythonlib.tools.pandastools import grouping_plot_n_samples_conjunction_heatmap
+        fig = grouping_plot_n_samples_conjunction_heatmap(PAtrain.Xlabels["trials"], var_train, "task_kind", None)
+        savefig(fig, f"{savedir}/counts-var_train={var_train}.pdf")
+
     return PAtrain, Dc
 
-def pipeline_train_test_scalar_score(DFallpa, bregion, 
-                                     var_train, event_train, twind_train, filterdict_train,
-                                     var_test, event_test, list_twind_test, filterdict_test,
-                                     savedir, include_null_data=True, decoder_method_index=None,
-                                     prune_labels_exist_in_train_and_test=True, PLOT=True,
-                                     which_level_test="trial", n_min_per_var=None,
-                                     subtract_baseline=False, subtract_baseline_twind=None):
+def test_decoder_helper(Dc, DFallpa, bregion, var_test, event_test, list_twind_test, filterdict_test,
+                        which_level_test, savedir, prune_labels_exist_in_train_and_test=True, PLOT=True,
+                        subtract_baseline=False, subtract_baseline_twind=None):
     """
-    Helper to extract dataframe holding decode score for each row of this bregion's test dataset (PA)
-    
-    WRitten when doing the Shape seuqence TI stuff.
-
+    Test decode for a dataset, here helsp extract that dataset and runs testing using decoder in Dc.
     PARAMS:
-    - subtract_baseline, bool, if True, then extracts data using twind in subtract_baseline_twind, and subtracts 
-    the resulting scores from each twind in list_twind_test (ie each datapt) -- new column: score_min_base
+    - list_twind_test, list of twinds, tests each of those. Useful if one twind is pre-event and one is post.
+    - prune_labels_exist_in_train_and_test, bool, useful for cleaning up results.
+    - subtract_baseline, bool, to subtract pre-event (Usually) from each datapt, where the time of the event is
+    given by subtract_baseline_twind
     RETURNS:
-    - (Mainly goal is saves plots and data)
-    - dfscores, Dc, PAtrain, PAtest
+    - dfscores, dataframe holding score, where each row is a trial x decoder class.
+    - PAtest, the testing trials used to construct dfscores.
     """
     from neuralmonkey.classes.population_mult import extract_single_pa
     import seaborn as sns
     from pythonlib.tools.pandastools import plot_subplots_heatmap
     from pythonlib.tools.snstools import rotateLabel
+    from pythonlib.tools.pandastools import extract_with_levels_of_var_good
 
-    ### Train decoder
-    # include_null_data=True
-    if n_min_per_var is None:
-        n_min_per_var=3
-    PAtrain, Dc = train_decoder_helper(DFallpa, bregion, var_train=var_train, event_train=event_train, twind_train=twind_train,
-                                                PLOT=False, include_null_data=include_null_data, n_min_per_var=n_min_per_var,
-                                                filterdict_train=filterdict_train, decoder_method_index=decoder_method_index)
-    
+    assert len(list_twind_test)>0
+
     ### Get testing data
     PAtest = extract_single_pa(DFallpa, bregion, None, which_level=which_level_test, event=event_test)
-    dflab = PAtest.Xlabels["trials"]
-
-    if filterdict_test is not None:
-        for col, vals in filterdict_test.items():
-            print(f"filtering with {col}, starting len...", len(dflab))
-            dflab = dflab[dflab[col].isin(vals)]
-            print("... ending len: ", len(dflab))
-        inds = dflab.index.tolist()
-        PAtest = PAtest.slice_by_dim_indices_wrapper("trials", inds)
-    assert len(dflab)>0, "All data pruned!!!"
-
-    # Evaluate by score
-    if False: # Doing better using below code
-        # # zlims = [0, 0.1]
-        # zlims = [0, 0.8]
-        shapes = PAtest.Xlabels["trials"][var_test].unique().tolist()
-        shapes_sorted = Dc.labels_sort_according_to_decoder_indices(shapes)
-        Dc.scalar_score_twinds_trialgroupings([var_train], list_twind_test, PA=PAtest, vars_trial_levels_sorted=shapes_sorted, zlims=zlims)
-
+    PAtest = PAtest.slice_by_labels_filtdict(filterdict_test)
+    # if filterdict_test is not None:
+    #     for col, vals in filterdict_test.items():
+    #         print(f"filtering with {col}, starting len...", len(dflab))
+    #         dflab = dflab[dflab[col].isin(vals)]
+    #         print("... ending len: ", len(dflab))
+    #     inds = dflab.index.tolist()
+    #     PAtest = PAtest.slice_by_dim_indices_wrapper("trials", inds)
+    # assert len(dflab)>0, "All data pruned!!!"
 
     ### Extract df summarizing all scalar scores
-    
-    # A flag for "good" labels --> i.e. those in decoder that enough trials. 
-    from pythonlib.tools.pandastools import extract_with_levels_of_var_good
-    n_min_per_var_good = 10 # min trials, to call this label good
-    _df, _ = extract_with_levels_of_var_good(PAtrain.Xlabels["trials"], [var_train], n_min_per_var_good)
-    labels_decoder_good = _df[var_train].unique().tolist()
+    labels_decoder_good = Dc.LabelsDecoderGood
 
     # Collect scores across all twinds for testing
     list_df = []
     for twind in list_twind_test:
         _dfscores = Dc.scalar_score_extract_df(PAtest, twind, labels_decoder_good=labels_decoder_good, 
-                                               prune_labels_exist_in_train_and_test=prune_labels_exist_in_train_and_test,
-                                               var_decode=var_test)
+                                            prune_labels_exist_in_train_and_test=prune_labels_exist_in_train_and_test,
+                                            var_decode=var_test)
         list_df.append(_dfscores)
 
     # Also get baseline?
     if subtract_baseline:
         _dfscores_base = Dc.scalar_score_extract_df(PAtest, subtract_baseline_twind, labels_decoder_good=labels_decoder_good, 
-                                               prune_labels_exist_in_train_and_test=prune_labels_exist_in_train_and_test,
-                                               var_decode=var_test)
+                                            prune_labels_exist_in_train_and_test=prune_labels_exist_in_train_and_test,
+                                            var_decode=var_test)
         
         # DO subtraction
         for _dfscores in list_df:
@@ -1074,16 +1088,12 @@ def pipeline_train_test_scalar_score(DFallpa, bregion,
     # Finalize by concatting.
     dfscores = pd.concat(list_df).reset_index(drop=True)
 
-    if False:
-        from pythonlib.tools.pandastools import grouping_print_n_samples
-        grouping_print_n_samples(dfscores, ["decoder_class_semantic_str", "pa_class_is_in_decoder", "decoder_class_is_in_pa", "pa_class", "decoder_class"])
-
     ### Plots
     if PLOT:
-        # Plot n trials for training
-        from pythonlib.tools.pandastools import grouping_plot_n_samples_conjunction_heatmap
-        fig = grouping_plot_n_samples_conjunction_heatmap(PAtrain.Xlabels["trials"], var_train, "task_kind", None)
-        savefig(fig, f"{savedir}/counts-var_train={var_train}.pdf")
+        # # Plot n trials for training
+        # from pythonlib.tools.pandastools import grouping_plot_n_samples_conjunction_heatmap
+        # fig = grouping_plot_n_samples_conjunction_heatmap(PAtrain.Xlabels["trials"], var_train, "task_kind", None)
+        # savefig(fig, f"{savedir}/counts-var_train={var_train}.pdf")
 
         row_values = sorted(dfscores["pa_class"].unique())
         col_values = sorted(dfscores["decoder_class"].unique())
@@ -1096,11 +1106,11 @@ def pipeline_train_test_scalar_score(DFallpa, bregion,
             df = dfscores[dfscores["twind"] == twind].reset_index(drop=True)
             fig, axes = plot_subplots_heatmap(df, "pa_class", "decoder_class", "score", "pa_class_is_in_decoder", False, True,
                                 row_values=row_values, col_values=col_values)
-            savefig(fig, f"{savedir}/heatmap-pa_class-vs-decoder_class-twind={twind}-1.pdf")
+            savefig(fig, f"{savedir}/heatmap-pa_class-vs-decoder_class-twind={twind}-sub=pa_class_is_in_decoder.pdf")
             
             fig, axes = plot_subplots_heatmap(df, "pa_class", "decoder_class", "score", "decoder_class_good", False, True,
                                 row_values=row_values, col_values=col_values)
-            savefig(fig, f"{savedir}/heatmap-pa_class-vs-decoder_class-twind={twind}-2.pdf")
+            savefig(fig, f"{savedir}/heatmap-pa_class-vs-decoder_class-twind={twind}-sub=decoder_class_good.pdf")
             
             fig = sns.catplot(data=df, x="decoder_class", y="score", col="pa_class", col_wrap=6, alpha=0.2, 
                         jitter=True, hue="decoder_class_semantic_str")
@@ -1150,18 +1160,410 @@ def pipeline_train_test_scalar_score(DFallpa, bregion,
 
         plt.close("all")
 
+    return dfscores, PAtest
+
+def pipeline_train_test_scalar_score(DFallpa, bregion, 
+                                     var_train, event_train, twind_train, filterdict_train,
+                                     var_test, event_test, list_twind_test, filterdict_test,
+                                     savedir, include_null_data=False, decoder_method_index=None,
+                                     prune_labels_exist_in_train_and_test=True, PLOT=True,
+                                     which_level_train="trial", which_level_test="trial", n_min_per_var=None,
+                                     subtract_baseline=False, subtract_baseline_twind=None,
+                                     do_upsample_balance=False):
+    """
+    Helper to extract dataframe holding decode score for each row of this bregion's test dataset (PA)
+    
+    WRitten when doing the Shape seuqence TI stuff.
+
+    PARAMS:
+    - subtract_baseline, bool, if True, then extracts data using twind in subtract_baseline_twind, and subtracts 
+    the resulting scores from each twind in list_twind_test (ie each datapt) -- new column: score_min_base
+    RETURNS:
+    - (Mainly goal is saves plots and data)
+    - dfscores, Dc, PAtrain, PAtest
+    """
+    from neuralmonkey.classes.population_mult import extract_single_pa
+    import seaborn as sns
+    from pythonlib.tools.pandastools import plot_subplots_heatmap
+    from pythonlib.tools.snstools import rotateLabel
+
+    ### Train decoder
+    # include_null_data=True
+    if n_min_per_var is None:
+        n_min_per_var=3
+    n_min_per_var_good = 10
+
+    do_upsample_balance_fig_path_nosuff = f"{savedir}/upsample_pcs"
+    PAtrain, Dc = train_decoder_helper(DFallpa, bregion, var_train, event_train, twind_train,
+                                       PLOT, include_null_data, n_min_per_var, filterdict_train,
+                                       which_level_train, decoder_method_index, savedir, n_min_per_var_good,
+                                       do_upsample_balance, do_upsample_balance_fig_path_nosuff)
+    
+    dfscores, PAtest = test_decoder_helper(Dc, DFallpa, bregion, var_test, event_test, list_twind_test, filterdict_test,
+                        which_level_test, savedir, prune_labels_exist_in_train_and_test, PLOT,
+                        subtract_baseline, subtract_baseline_twind)
+    
     # Save params
     from pythonlib.tools.expttools import writeDictToTxtFlattened
     writeDictToTxtFlattened({
         "bregion":bregion, 
-        "var_train":var_train, 
+        "var_train":Dc.VarDecode, 
         "event_train":event_train, 
         "twind_train":twind_train, 
         "filterdict_train":filterdict_train,
         "var_test": var_test, 
         "event_test": event_test, 
         "list_twind_test": list_twind_test, 
-        "filterdict_test":filterdict_test
+        "filterdict_test":filterdict_test,
+        "which_level_train":which_level_train,
+        "which_level_test":which_level_test,
+        "include_null_data":include_null_data,
+        "decoder_method_index":decoder_method_index,
+        "prune_labels_exist_in_train_and_test":prune_labels_exist_in_train_and_test,
+        "n_min_per_var":n_min_per_var,
+        "subtract_baseline":subtract_baseline,
+        "subtract_baseline_twind":subtract_baseline_twind
     }, path=f"{savedir}/params.txt")
 
     return dfscores, Dc, PAtrain, PAtest
+
+
+def pipeline_train_test_scalar_score_mult_train_dataset(DFallpa, bregion, 
+                                     list_train_dataset, list_var_train, 
+                                     var_test, event_test, list_twind_test, filterdict_test, 
+                                     which_level_test="trial",
+                                     savedir=None, include_null_data=False, decoder_method_index=None,
+                                     prune_labels_exist_in_train_and_test=True, PLOT=True, n_min_per_var=None,
+                                     subtract_baseline=False, subtract_baseline_twind=None,
+                                     do_upsample_balance=True, n_min_per_var_good=10):
+    """
+    Helper to extract dataframe holding decode score for each row of this bregion's test dataset (PA)
+    
+    WRitten when doing the Shape seuqence TI stuff.
+
+    This differs from pipeline_train_test_scalar_score, in that here can concatenate multiple datasets intoa  single 
+    dataset before training.
+
+    PARAMS:
+    list_train_dataset = ["sp_samp", "pig_samp", "pre_stroke"]
+    list_var_train = ["seqc_0_shapesemgrp", "seqc_0_shapesemgrp", "shape_semantic_grp"]
+    list_twind_pa = [(-1, 1), (-1, 1), (-0.8, 1.2)]
+    - subtract_baseline, bool, if True, then extracts data using twind in subtract_baseline_twind, and subtracts 
+    the resulting scores from each twind in list_twind_test (ie each datapt) -- new column: score_min_base
+    - n_min_per_var, n mins per var, applies independelt to EACH dataset in list_train_dataset, therefore this can be low.
+    RETURNS:
+    - (Mainly goal is saves plots and data)
+    - dfscores, Dc, PAtrain, PAtest
+    """
+    from neuralmonkey.classes.population_mult import extract_single_pa
+    import seaborn as sns
+    from pythonlib.tools.pandastools import plot_subplots_heatmap
+    from pythonlib.tools.snstools import rotateLabel
+    from neuralmonkey.classes.population import concatenate_popanals_flexible
+    from neuralmonkey.scripts.analy_pig_decode_moment_syntaxTI import get_dataset_params
+
+    assert len(list_var_train)==len(list_train_dataset), "mistake in entry"
+    # New method --> concatenate multiple data events to train decoder.
+    # list_train_params = []
+    # for train_dataset in list_train_dataset:
+    #     event_train, twind_train, filterdict_train, _, _ = get_dataset_params(train_dataset)
+
+    list_train_params = [get_dataset_params(train_dataset) for train_dataset in list_train_dataset]
+
+    list_pa_train = []
+    list_dflab_beforesplit = [] # collect list of labels, to then evaluate which has enough data
+    for i, (params, var_train) in enumerate(zip(list_train_params, list_var_train)):
+        pa_train, _twind_train, PAtrain = train_decoder_helper_extract_train_dataset(DFallpa, bregion, var_train, params[0], 
+                                                params[1], include_null_data, 
+                                                n_min_per_var, params[2], params[4], decoder_method_index, PLOT=False)
+        
+
+        if PLOT:
+            # Plot n trials for training
+            from pythonlib.tools.pandastools import grouping_plot_n_samples_conjunction_heatmap
+            fig = grouping_plot_n_samples_conjunction_heatmap(PAtrain.Xlabels["trials"], var_train, "task_kind", None)
+            savefig(fig, f"{savedir}/counts-var_train=train_dataset_idx={i}-var_train={var_train}.pdf")
+
+        # Assing a common variable for var_train
+        pa_train.Xlabels["trials"]["var_train"] = pa_train.Xlabels["trials"][var_train]
+        PAtrain.Xlabels["trials"]["var_train"] = PAtrain.Xlabels["trials"][var_train]
+        
+        list_dflab_beforesplit.append(PAtrain.Xlabels["trials"])
+
+        # Sanity
+        if len(list_pa_train)>0:
+            assert list_pa_train[-1].X.shape[0] == pa_train.X.shape[0]
+            assert list_pa_train[-1].X.shape[2] == pa_train.X.shape[2]
+        
+        list_pa_train.append(pa_train)
+        print("Extracted a single pa_train: ", pa_train.X.shape)
+        # print(PAtrain.X.shape)
+
+    # Concatenate all the training data
+    pa_train_all, _= concatenate_popanals_flexible(list_pa_train)
+
+    # Train
+    print("Input data to train decoder: ", pa_train_all.X.shape)
+
+    Dc = Decoder(pa_train_all, "var_train", _twind_train)
+    do_upsample_balance_fig_path_nosuff = f"{savedir}/upsample_pcs"
+    Dc.train_decoder(PLOT, do_upsample_balance, do_upsample_balance_fig_path_nosuff)
+
+
+    # A flag for "good" labels --> i.e. those in decoder that enough trials. 
+    from pythonlib.tools.pandastools import extract_with_levels_of_var_good
+    df = pd.concat(list_dflab_beforesplit).reset_index(drop=True)
+    _df, _ = extract_with_levels_of_var_good(df, ["var_train"], n_min_per_var_good)
+    labels_decoder_good = _df[Dc.VarDecode].unique().tolist()
+    Dc.LabelsDecoderGood = labels_decoder_good
+
+    # Run test
+    dfscores, PAtest = test_decoder_helper(Dc, DFallpa, bregion, var_test, event_test, list_twind_test, filterdict_test,
+                            which_level_test, savedir, prune_labels_exist_in_train_and_test, PLOT, subtract_baseline, 
+                            subtract_baseline_twind)
+
+    # Save params
+    from pythonlib.tools.expttools import writeDictToTxtFlattened
+    writeDictToTxtFlattened({
+        "bregion":bregion, 
+        "list_train_dataset":list_train_dataset,
+        "list_var_train":list_var_train,
+        "var_test": var_test, 
+        "event_test": event_test, 
+        "list_twind_test": list_twind_test, 
+        "filterdict_test":filterdict_test,
+        "which_level_test":which_level_test,
+        "include_null_data":include_null_data,
+        "decoder_method_index":decoder_method_index,
+        "prune_labels_exist_in_train_and_test":prune_labels_exist_in_train_and_test,
+        "n_min_per_var":n_min_per_var,
+        "subtract_baseline":subtract_baseline,
+        "subtract_baseline_twind":subtract_baseline_twind
+    }, path=f"{savedir}/params.txt")
+
+    return dfscores, Dc, PAtrain, PAtest
+
+
+def analy_chars_score_postsamp(DFallpa, SAVEDIR):
+    """
+    Speicific analysis script for characters, 
+    Ask if shape represetnations are activatied during char planning (post-samp), using variety of 
+    methods for training decoder.
+
+    For each run, trains decoder for shape (e..g, using sp and pig samp).
+
+    Then tests on post-samp for char.
+
+    Plots assess whether activation for 1st, 2nd ... strokes are > chance.
+
+    """
+    from neuralmonkey.scripts.analy_pig_decode_moment_syntaxTI import get_dataset_params
+    import os
+
+    # Hard coded params:
+    include_null_data = False
+    n_min_per_var = 3
+    subtract_baseline=False
+    subtract_baseline_twind=(-0.45, -0.05)
+    PLOT = True
+
+    ### Test params
+    # - post-samp
+    # test_dataset = "char_samp_post"
+    # var_test = "seqc_1_shapesemgrp"
+    test_dataset = "char_samp_post"
+    var_test = "seqc_0_shapesemgrp"
+
+    ######### TRAINING PARAMS
+    LIST_TRAIN_DATASET = []
+    LIST_VAR_TRAIN = []
+    LIST_SAVE_SUFF = []
+
+    ### Train params
+    list_train_dataset = ["sp_samp", "pig_samp", "sp_pig_pre_stroke_all"]
+    list_var_train = ["seqc_0_shapesemgrp", "seqc_0_shapesemgrp", "shape_semantic_grp"]
+    save_suff = "|".join(list_train_dataset)
+    LIST_TRAIN_DATASET.append(list_train_dataset)
+    LIST_VAR_TRAIN.append(list_var_train)
+    LIST_SAVE_SUFF.append(save_suff)
+
+    list_train_dataset = ["sp_samp", "pig_samp"]
+    list_var_train = ["seqc_0_shapesemgrp", "seqc_0_shapesemgrp"]
+    save_suff = "|".join(list_train_dataset)
+    LIST_TRAIN_DATASET.append(list_train_dataset)
+    LIST_VAR_TRAIN.append(list_var_train)
+    LIST_SAVE_SUFF.append(save_suff)
+
+    list_train_dataset = ["sp_samp"]
+    list_var_train = ["seqc_0_shapesemgrp"]
+    save_suff = "|".join(list_train_dataset)
+    LIST_TRAIN_DATASET.append(list_train_dataset)
+    LIST_VAR_TRAIN.append(list_var_train)
+    LIST_SAVE_SUFF.append(save_suff)
+
+    list_train_dataset = ["pig_samp"]
+    list_var_train = ["seqc_0_shapesemgrp"]
+    save_suff = "|".join(list_train_dataset)
+    LIST_TRAIN_DATASET.append(list_train_dataset)
+    LIST_VAR_TRAIN.append(list_var_train)
+    LIST_SAVE_SUFF.append(save_suff)
+
+    list_train_dataset = ["sp_pig_pre_stroke_all"]
+    list_var_train = ["shape_semantic_grp"]
+    save_suff = "|".join(list_train_dataset)
+    LIST_TRAIN_DATASET.append(list_train_dataset)
+    LIST_VAR_TRAIN.append(list_var_train)
+    LIST_SAVE_SUFF.append(save_suff)
+
+    # Extract some params
+    list_bregion = DFallpa["bregion"].unique().tolist()
+    event_test, _, filterdict_test, list_twind_test, which_level_test = get_dataset_params(test_dataset)
+
+    for list_train_dataset, list_var_train, save_suff in zip(LIST_TRAIN_DATASET, LIST_VAR_TRAIN, LIST_SAVE_SUFF):
+        for bregion in list_bregion:
+            # Other params
+            savedir = f"{SAVEDIR}/traindata={save_suff}-testdata={test_dataset}/{bregion}/decoder_training_mult"
+            os.makedirs(savedir, exist_ok=True)
+            print(savedir)
+
+            dfscores, Dc, PAtrain, PAtest = pipeline_train_test_scalar_score_mult_train_dataset(DFallpa, bregion, 
+                                                list_train_dataset, list_var_train, 
+                                                var_test, event_test, list_twind_test, filterdict_test, 
+                                                which_level_test, savedir, include_null_data, 
+                                                prune_labels_exist_in_train_and_test=True, PLOT=PLOT, n_min_per_var=n_min_per_var,
+                                                subtract_baseline=subtract_baseline, subtract_baseline_twind=subtract_baseline_twind)
+            
+            # APPEND info related to trials.
+            dflab = PAtest.Xlabels["trials"]
+            list_decoder_class_idx_in_shapes_drawn = []
+            list_decoder_class_was_drawn = []
+            list_decoder_class_was_seen = []
+            list_decoder_class_was_first_drawn = []
+
+            for _i, row in dfscores.iterrows():
+
+                decoder_class = row["decoder_class"]
+                pa_idx = row["pa_idx"]
+                trialcode = row["trialcode"]
+                epoch = row["epoch"]
+
+                shapes_drawn = dflab.iloc[pa_idx]["shapes_drawn"]
+                FEAT_num_strokes_beh = dflab.iloc[pa_idx]["FEAT_num_strokes_beh"]
+                # shapes_visible = dflab.iloc[pa_idx]["taskconfig_shp"]
+                if decoder_class in shapes_drawn:
+                    decoder_class_idx_in_shapes_drawn = shapes_drawn.index(decoder_class)
+                else:
+                    decoder_class_idx_in_shapes_drawn = -1
+                
+                assert FEAT_num_strokes_beh==len(shapes_drawn)
+                assert decoder_class_idx_in_shapes_drawn<FEAT_num_strokes_beh
+                
+                list_decoder_class_idx_in_shapes_drawn.append(decoder_class_idx_in_shapes_drawn)
+                list_decoder_class_was_drawn.append(decoder_class in shapes_drawn)
+                # list_decoder_class_was_seen.append(decoder_class in shapes_visible)
+                list_decoder_class_was_first_drawn.append(decoder_class == shapes_drawn[0])
+                
+            dfscores["decoder_class_idx_in_shapes_drawn"] = list_decoder_class_idx_in_shapes_drawn
+            dfscores["decoder_class_was_drawn"] = list_decoder_class_was_drawn
+            # dfscores["decoder_class_was_seen"] = list_decoder_class_was_seen
+            dfscores["decoder_class_was_first_drawn"] = list_decoder_class_was_first_drawn
+
+            dfscores["FEAT_num_strokes_beh"] = [dflab.iloc[pa_idx]["FEAT_num_strokes_beh"] for pa_idx in dfscores["pa_idx"]]
+            dfscores["bregion"] = bregion
+
+
+            # Normalize decode by subtracting mean within each decoder class
+            from pythonlib.tools.pandastools import datamod_normalize_row_after_grouping_return_same_len_df
+            dfscores, _, _ = datamod_normalize_row_after_grouping_return_same_len_df(dfscores, "decoder_class_was_drawn", 
+                                                                                    ["decoder_class"], "score", False, True, True)
+
+
+            # (1) keep only successful trials.
+            # Keep good characters
+            trialcodes_success = dflab[dflab["FEAT_num_strokes_beh"]>1]["trialcode"].tolist()
+            print("dfscores, before prune to good trialcodes... ", len(dfscores))
+            dfscores_success = dfscores[dfscores["trialcode"].isin(trialcodes_success)].reset_index(drop=True)
+            print("... after ", len(dfscores_success))
+
+
+            from pythonlib.tools.pandastools import stringify_values
+            dfscores_str = stringify_values(dfscores)
+            dfscores_str_success = stringify_values(dfscores_success)
+
+            ############# PLOTS
+            savedir = f"{SAVEDIR}/traindata={save_suff}-testdata={test_dataset}/{bregion}/summary_plots"
+            os.makedirs(savedir, exist_ok=True)
+
+            dfthis = dfscores_str_success
+            for var_score in ["score", "score_norm"]:
+                # from neuralmonkey.scripts.analy_pig_decode_moment_syntaxTI import plot_scalar_all
+                # plot_scalar_all(dfscores_str_success, savedir, var_score="score")
+                import seaborn as sns
+
+                for hue in [None, "FEAT_num_strokes_beh", "decoder_class", "decoder_class_good"]:
+                    fig = sns.catplot(data=dfthis, x = "decoder_class_idx_in_shapes_drawn", y=var_score, 
+                                    col="bregion", col_wrap=6,
+                                        kind="point", errorbar=("ci", 68), hue = hue)
+                    for ax in fig.axes.flatten():
+                        ax.axhline(0, color="k", alpha=0.5)
+                    savefig(fig, f"{savedir}/catplot-decoder_class_idx_in_shapes_drawn-hue={hue}-var_score={var_score}.pdf")
+                    plt.close("all")
+
+                import seaborn as sns
+
+                for hue in [None, "FEAT_num_strokes_beh", "decoder_class", "decoder_class_good"]:
+                    fig = sns.catplot(data=dfthis, x = "decoder_class_idx_in_shapes_drawn", y=var_score, 
+                                    col="bregion", col_wrap=6,
+                                        kind="point", errorbar=("ci", 68), hue = hue)
+                    for ax in fig.axes.flatten():
+                        ax.axhline(0, color="k", alpha=0.5)
+                    # savefig(fig, f"{savedir}/catplot-decoder_class_idx_in_shapes_drawn-hue={hue}-var_score={var_score}.pdf")
+                    # plt.close("all")
+
+                import seaborn as sns
+                for hue in [None, "FEAT_num_strokes_beh", "decoder_class"]:
+                    fig = sns.catplot(data=dfthis, x = "decoder_class_was_drawn", y=var_score, 
+                                    col="decoder_class_good", col_wrap=6,
+                                        kind="point", errorbar=("ci", 68), hue = hue)
+                    for ax in fig.axes.flatten():
+                        ax.axhline(0, color="k", alpha=0.5)
+                    # savefig(fig, f"{savedir}/catplot-decoder_class_idx_in_shapes_drawn-hue={hue}-var_score={var_score}.pdf")
+                    # plt.close("all")
+
+                from pythonlib.tools.pandastools import plot_subplots_heatmap
+                if var_score == "score":
+                    norm_method = None
+                    zlims = [0, 0.45]
+                    diverge = False
+                elif var_score == "score_norm":
+                    norm_method = None
+                    zlims = [-0.28, 0.28]
+                    diverge = True
+                elif var_score == "score_min_base":
+                    norm_method = None
+                    zlims = [-0.3, 0.3]
+                    diverge = True
+                else:
+                    assert False
+
+                row_var = "decoder_class_idx_in_shapes_drawn"
+                col_var = "FEAT_num_strokes_beh"
+                sub_var = "bregion"
+                row_values = sorted(dfthis[row_var].unique())[::-1]
+                col_values = sorted(dfthis[col_var].unique())
+                fig, axes = plot_subplots_heatmap(dfthis, row_var, col_var, var_score, sub_var,
+                                    annotate_heatmap=False, norm_method=norm_method, 
+                                    row_values=row_values, col_values=col_values, ZLIMS=zlims, share_zlim=True, W=6, diverge=diverge)
+                savefig(fig, f"{savedir}/heatmap-{row_var}-vs-{col_var}-var_score={var_score}.pdf")
+
+                row_var = "decoder_class"
+                col_var = "decoder_class_was_drawn"
+                sub_var = "decoder_class_good"
+                row_values = sorted(dfthis[row_var].unique())[::-1]
+                col_values = sorted(dfthis[col_var].unique())
+                fig, axes = plot_subplots_heatmap(dfthis, row_var, col_var, var_score, sub_var,
+                                    annotate_heatmap=False, norm_method=norm_method, 
+                                    row_values=row_values, col_values=col_values, ZLIMS=zlims, share_zlim=True, W=6, diverge=diverge)
+                savefig(fig, f"{savedir}/heatmap-{row_var}-vs-{col_var}-var_score={var_score}.pdf")
+
+                plt.close("all")
