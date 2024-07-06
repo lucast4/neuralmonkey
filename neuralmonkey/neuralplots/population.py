@@ -15,7 +15,8 @@ def subsample_rand(X, n_rand):
     inds = random.sample(range(X.shape[0]), n_rand)
     return X[inds, ...], inds
 
-def plotNeurHeat(X, ax=None, barloc="right", robust=True, zlims = None):
+def plotNeurHeat(X, ax=None, barloc="right", robust=True, zlims = None,
+                 times=None):
     """ plot heatmap for data X.
     X must be (neuron, time)
     """
@@ -24,12 +25,15 @@ def plotNeurHeat(X, ax=None, barloc="right", robust=True, zlims = None):
 
     if ax is None:
         fig, ax = plt.subplots(figsize=(10,5))
+
     
     # X = self.activations[pop][tasknum]
     X_nonan = X[:]
     X_nonan = X_nonan[~np.isnan(X_nonan)]
     minmax = (np.min(X_nonan), np.max(X_nonan))
 
+    if times is None:
+        times = list(range(X.shape[1]))
     # plot
     if zlims is not None: 
         sns.heatmap(X, ax=ax, cbar=False, cbar_kws = dict(use_gridspec=False,location=barloc), 
@@ -40,6 +44,8 @@ def plotNeurHeat(X, ax=None, barloc="right", robust=True, zlims = None):
     # ax.set_title(f"{pop}|{minmax[0]:.2f}...{minmax[1]:.2f}")
     ax.set_xlabel(f"robust={robust}|{minmax[0]:.2f}...{minmax[1]:.2f}")
     ax.set_ylabel('neuron #')
+    indtimes = list(range(len(times)))
+    ax.set_xticks([indtimes[0], indtimes[-1]], labels=[times[0], times[-1]])
         
 # def plotNeurTimecourseSingleTrace(x, times, ax):
 #     """ plot a single fr trace on axis

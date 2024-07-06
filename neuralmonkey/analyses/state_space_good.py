@@ -2283,6 +2283,8 @@ def dimredgood_pca_project(components, X, plot_pca_explained_var_path=None,
                            ):
     """
     Project new data onto a subspace, e.g.,, PCA subspace, and compute variance explained.
+    
+    PARAMS
     :param components: pca loadings, (n_components, n_features)
     :param X: data to project, already demeaned, etc. and already reshaped to (ntrials, nfeats),
     except if do_additional_reshape_from_ChTrTi==True, in which case input is (nchans, ntrials, ntimesS),
@@ -2314,7 +2316,8 @@ def dimredgood_pca_project(components, X, plot_pca_explained_var_path=None,
     # Sanity checks
     assert X.shape[1] == components.shape[1]
     # print("HERE", np.mean(X, axis=0))
-    assert np.all(np.mean(X, axis=0)<0.1)
+    if False: # Need this False in order to project data that hasnt had each time bin subtracted...
+        assert np.all(np.mean(X, axis=0)<0.1)
     # assert isnear(np.mean(X, axis=0), np.zeros(X.shape)) # Check that X is zeroed, or else the variance calcualtion may be weird.
 
     # Compute projection

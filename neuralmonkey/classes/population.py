@@ -1542,16 +1542,18 @@ class PopAnal():
     #     return Cl
 
     def dataextract_pca_demixed_subspace(self, var_pca, vars_grouping,
-                                                pca_twind, pca_tbindur,
+                                                pca_twind, pca_tbindur, # -- PCA params start
                                                 filtdict=None, savedir_plots=None,
                                                 raw_subtract_mean_each_timepoint=True,
                                                 pca_subtract_mean_each_level_grouping=True,
                                                 n_min_per_lev_lev_others=5, prune_min_n_levs = 2,
-                                                n_pcs_subspace_max = None,
+                                                n_pcs_subspace_max = None, 
                                                 do_pca_after_project_on_subspace=False,
                                                 PLOT_STEPS=False, SANITY=False,
                                                 reshape_method="trials_x_chanstimes",
-                                                pca_tbin_slice=None):
+                                                pca_tbin_slice=None, return_raw_data=False,
+                                                proj_twind=None, proj_tbindur=None, proj_tbin_slice=None, # --- Extra params for projecting data to PC space
+                                                ):
         """
         Helper to construct pca space (deminxed pca) in flexible ways, and then project raw data onto this space.
         Uses representations that are sliced data (n sub slices, concate into vector).
@@ -1587,6 +1589,8 @@ class PopAnal():
         :param do_pca_after_project_on_subspace, bool, if True, does on final after proj. Useful if want to rotate
         final data but this usually shouldnt be done.
         :param PLOT_STEPS:
+        :param return_raw_data: bool, return data that has not yet been sliced for pca.
+
         :return:
         - Xredu, (ntrials, npc dims)
         - Xfinal, (ntrials, nchan * timesteps), data immed before pCA
@@ -1598,8 +1602,18 @@ class PopAnal():
         """
         from neuralmonkey.analyses.state_space_good import dimredgood_pca_project
 
+        ###### Prep variables
         if n_pcs_subspace_max is None:
             n_pcs_subspace_max = 10
+
+        # Params for windowing data before projecting to pc space. By default use the same params as 
+        # for fitting PCA.
+        if proj_twind is None:
+            proj_twind = pca_twind
+        if proj_tbindur is None:
+            proj_tbindur = pca_tbindur
+        if proj_tbin_slice is None:
+            proj_tbin_slice = pca_tbin_slice
 
         if isinstance(var_pca, (list, tuple)):
             # conjunctive variable...
@@ -1621,7 +1635,7 @@ class PopAnal():
         if PLOT_STEPS:
             self.plotwrapper_smoothed_fr_split_by_label_and_subplots(chan, var_pca, vars_grouping)
 
-        ############### DO ALL NORMALIZING ON RAW DATA, BEFORE take avg and do pca, so that can pass in raw and project to pc space.
+        ############### ALL NORMALIZING ON RAW DATA, BEFORE take avg and do pca, so that can pass in raw and project to pc space.
         PAraw = self.copy()
 
         if raw_subtract_mean_each_timepoint:
@@ -1629,7 +1643,7 @@ class PopAnal():
             if PLOT_STEPS:
                 PAraw.plotwrapper_smoothed_fr_split_by_label_and_subplots(chan, var_pca, vars_grouping)
 
-        ############### Perform PCA
+        ############### Perform PCA -- (1) Extract data for computing projection
         pa = PAraw.copy()
 
         # Apply filtdict
@@ -1685,6 +1699,7 @@ class PopAnal():
             if PLOT_STEPS:
                 pa.plotwrapper_smoothed_fr_split_by_label_and_subplots(chan, var_pca, vars_grouping)
 
+        ############### Perform PCA -- (2) Fit PCA
         # Do PCA for each time window (normalize within that window)
         plot_pca_explained_var_path = f"{savedir_plots}/expvar.pdf"
         plot_loadings_path = f"{savedir_plots}/loadings.pdf"
@@ -1731,9 +1746,105 @@ class PopAnal():
                                                             skip_subplots_lack_mult_colors=False,
                                                             save_suffix=save_suffix)
 
+        ########### (3) Project RAW data back into this space
+        if True:
+            Xredu, PAredu, stats_redu, Xfinal_before_redu, pca = PAraw.dataextract_pca_demixed_subspace_project(pca, proj_twind, 
+                                                proj_tbindur, proj_tbin_slice, reshape_method,
+                                                dimredgood_pca_project_do_reshape, n_pcs_subspace_max, do_pca_after_project_on_subspace,
+                                                savedir_plots)
+        else:
+            # - preprocess data
+            Xfinal_before_redu, PAfinal_before_redu, _, _, _ = PAraw.dataextract_state_space_decode_flex(pca_twind, pca_tbindur, pca_tbin_slice,
+                                                                                    reshape_method=reshape_method, pca_reduce=False,
+                                                                                    norm_subtract_single_mean_each_chan=False)
+            
+            ### Project all raw data
+            plot_pca_explained_var_path = f"{savedir_plots}/expvar_reproj_raw.pdf"
+            Xredu, stats_redu, Xredu_in_orig_shape = dimredgood_pca_project(pca["components"], 
+                                                                            Xfinal_before_redu, 
+                                                                            plot_pca_explained_var_path=plot_pca_explained_var_path,
+                                                                            do_additional_reshape_from_ChTrTi=dimredgood_pca_project_do_reshape)
+
+            if dimredgood_pca_project_do_reshape:
+                # TRAJ, returns (ndims, ntrials,  ntimes)
+                del Xredu
+
+                # Keep only n final dimensions in subspace
+                if n_pcs_subspace_max is not None and n_pcs_subspace_max <= Xredu_in_orig_shape.shape[0]:
+                    Xredu_in_orig_shape = Xredu_in_orig_shape[:n_pcs_subspace_max, :, :]
+
+                if do_pca_after_project_on_subspace:
+                    assert False, "not yet coded for trajecroreis"
+                    # Optionally, do PCA again on raw data that was projected into this subspace (useful for visualization).
+                    # [IGNORE -- this is counterproductive]. This is just for rotation...
+                    from neuralmonkey.analyses.state_space_good import dimredgood_pca
+                    plot_pca_explained_var_path_this = f"{savedir_plots}/expvar_pca_after_subspace_projection.pdf"
+                    plot_loadings_path_this = f"{savedir_plots}/loadings_pca_after_subspace_projection.pdf"
+                    Xredu, _, _ = dimredgood_pca(Xredu, how_decide_npcs_keep = "keep_all",
+                                    plot_pca_explained_var_path=plot_pca_explained_var_path_this,
+                                plot_loadings_path=plot_loadings_path_this)
+
+                # Get a PA holding final projected data
+                PAredu = PAfinal_before_redu.copy_replacing_X(Xredu_in_orig_shape)
+
+                # print(Xredu_in_orig_shape.shape) # (npcs, ntrials, ntimes)
+                # print(PAredu.X.shape) # (npcs, ntrials, ntimes)
+                # print(Xfinal_before_redu.shape) # (nchans, ntrials, ntimes)
+                # print(pca["X_before_dimred"].shape) # (nchans, ngroups, ntimes)
+                # assert False
+                return Xredu_in_orig_shape, PAredu, stats_redu, Xfinal_before_redu, pca
+
+            else:
+                # SCALAR, returns (ntrials, ndims)
+
+                # Keep only n final dimensions in subspace
+                if n_pcs_subspace_max is not None and n_pcs_subspace_max <= Xredu.shape[1]:
+                    Xredu = Xredu[:, :n_pcs_subspace_max]
+
+                if do_pca_after_project_on_subspace:
+                    # Optionally, do PCA again on raw data that was projected into this subspace (useful for visualization).
+                    # [IGNORE -- this is counterproductive]. This is just for rotation...
+                    from neuralmonkey.analyses.state_space_good import dimredgood_pca
+                    plot_pca_explained_var_path_this = f"{savedir_plots}/expvar_pca_after_subspace_projection.pdf"
+                    plot_loadings_path_this = f"{savedir_plots}/loadings_pca_after_subspace_projection.pdf"
+                    Xredu, _, _ = dimredgood_pca(Xredu, how_decide_npcs_keep = "keep_all",
+                                    plot_pca_explained_var_path=plot_pca_explained_var_path_this,
+                                plot_loadings_path=plot_loadings_path_this)
+
+                # Get a PA holding final projected data
+                assert len(PAfinal_before_redu.Xlabels["trials"]) == Xredu.shape[0]
+                PAredu = PopAnal(Xredu.T[:, :, None].copy(), [0])  # (ndimskeep, ntrials, 1)
+                PAredu.Xlabels = {dim:df.copy() for dim, df in PAfinal_before_redu.Xlabels.items()}
+
+                # print(Xredu.shape)
+                # print(PAredu.X.shape)
+                # print(Xfinal_before_redu.shape)
+                # print(pca["X_before_dimred"].shape)
+                # assert False
+                return Xredu, PAredu, stats_redu, Xfinal_before_redu, pca
+        
+        if return_raw_data:
+            return Xredu, PAredu, stats_redu, Xfinal_before_redu, pca, PAraw
+        else:
+            return Xredu, PAredu, stats_redu, Xfinal_before_redu, pca
+
+    
+    def dataextract_pca_demixed_subspace_project(self, pca, pca_twind, pca_tbindur, pca_tbin_slice, reshape_method,
+                                                 dimredgood_pca_project_do_reshape, n_pcs_subspace_max, do_pca_after_project_on_subspace,
+                                                 savedir_plots):
+        """
+        Project raw data into pc space.
+        Assumes that self.X is already preprocessed to allow directly projecting with components from pca
+        PARAMS:
+        - pca, pc matrices. See use within.
+        RETURNS:
+        - Xredu, PAredu, stats_redu, Xfinal_before_redu, pca
+        """
+        from neuralmonkey.analyses.state_space_good import dimredgood_pca_project
+
         ########### Project RAW data back into this space
         # - preprocess data
-        Xfinal_before_redu, PAfinal_before_redu, _, _, _ = PAraw.dataextract_state_space_decode_flex(pca_twind, pca_tbindur, pca_tbin_slice,
+        Xfinal_before_redu, PAfinal_before_redu, _, _, _ = self.dataextract_state_space_decode_flex(pca_twind, pca_tbindur, pca_tbin_slice,
                                                                                  reshape_method=reshape_method, pca_reduce=False,
                                                                                  norm_subtract_single_mean_each_chan=False)
         
@@ -1801,6 +1912,7 @@ class PopAnal():
             # print(pca["X_before_dimred"].shape)
             # assert False
             return Xredu, PAredu, stats_redu, Xfinal_before_redu, pca
+
 
     def dataextract_state_space_decode_flex(self, twind_overall=None,
                                             tbin_dur=None, tbin_slide=None,
@@ -2564,7 +2676,7 @@ class PopAnal():
     ### PLOTTING
     def plotNeurHeat(self, trial, version="raw", **kwargs):
         X = self.extract_activity_copy(trial, version)
-        return plotNeurHeat(X, **kwargs)
+        return plotNeurHeat(X, times=self.Times, **kwargs)
 
     def plotNeurTimecourse(self, trial, version="raw", **kwargs):
         X = self.extract_activity_copy(trial, version)
@@ -2658,7 +2770,7 @@ class PopAnal():
                                               plot_indiv=False, plot_summary=True,
                                               event_bounds=[None, None, None],
                                               add_legend=True, legend_levels=None,
-                                               chan=None):
+                                               chan=None, dict_lev_color=None):
         """ Plot separate smoothed fr traces, overlaid on single plot, each a different
         level of an inputted variable
         PARAMS:
@@ -2689,11 +2801,15 @@ class PopAnal():
         if legend_levels is None:
             # then use the levels within here
             legend_levels = list_levels_matching_pa
-        pcols = makeColors(len(legend_levels))
-        dict_lev_color = {}
 
-        for pc, lev in zip(pcols, legend_levels):
-            dict_lev_color[lev] = pc
+        if dict_lev_color is None:
+            from pythonlib.tools.plottools import color_make_map_discrete_labels
+            dict_lev_color, _, _ = color_make_map_discrete_labels(list_levels_matching_pa)
+
+        # dict_lev_color = {}
+        # pcols = makeColors(len(legend_levels))
+        # for pc, lev in zip(pcols, legend_levels):
+        #     dict_lev_color[lev] = pc
 
         for pa, lev in zip(list_pa, list_levels_matching_pa):
             pcol = dict_lev_color[lev]
@@ -2704,9 +2820,9 @@ class PopAnal():
         # add legend
         if add_legend:
             from pythonlib.tools.plottools import legend_add_manual
-            legend_add_manual(ax, legend_levels, pcols, 0.2)
+            legend_add_manual(ax, dict_lev_color.keys(), dict_lev_color.values(), 0.2)
 
-        return pcols
+        return dict_lev_color.values()
 
     def plotwrapper_smoothed_fr_split_by_label_and_subplots(self, chan, var, vars_subplots):
         """

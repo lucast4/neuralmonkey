@@ -106,7 +106,9 @@ def load_handsaved_wrapper(animal=None, date=None, version=None, combine_areas=T
         path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-231211-stroke-kilosort_if_exists-norm=None-combine=True.pkl" 
     
         # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230616-trial-kilosort_if_exists-norm=None-combine=True.pkl"
-        # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230615-trial-kilosort_if_exists-norm=None-combine=True.pkl"
+        path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230615-trial-kilosort_if_exists-norm=None-combine=True.pkl"
+        
+        # path = /home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-240523-trial-kilosort_if_exists-norm=None-combine=True-t1=-1.0-t2=1.8.pkl # psycho prims (structured)
 
     # else:
     #     print(animal, date, version)
@@ -1647,7 +1649,10 @@ def dfpa_concat_normalize_fr_split_multbregion_flex(DFallpa, fr_mean_subtract_me
 
 
 def dfpa_concat_pca_split_multbregion(DFallpa, sm_dur=0.1, sm_slide=0.01,
-                                      npcs_keep_force=10):
+                                      npcs_keep_force=15,
+                                      twind = None,
+                                      pca_method = "trials",
+                                      pcamean_var = None, pcamean_vars_grouping = None):
     """
     Project data to a single PC space across all events, for each bregion.
 
@@ -1661,6 +1666,11 @@ def dfpa_concat_pca_split_multbregion(DFallpa, sm_dur=0.1, sm_slide=0.01,
     PARAMS:
     - sm_dur, sm_slide, params for smoothing. make None to skip.
     - npcs_keep_force, take this many PCs
+    - twind, (t1, t2), for slicing out data before concating
+    - pca_method, str, see within.
+    [if pca_method=="trial_means"]
+    - pcamean_var, str, which variable to take mean over trials for.
+    - pcamean_vars_grouping, grouping, within each group will take means for eahc level of pcamean_var
 
     RETURNS:
     - Modifies DFallpa, to add new column pa_pca, holding copy of pa, with data in pc space
@@ -1670,6 +1680,17 @@ def dfpa_concat_pca_split_multbregion(DFallpa, sm_dur=0.1, sm_slide=0.01,
     # First, prep by adding pa_pca copy
     DFallpa["pa_pca"] = [pa.copy() for pa in DFallpa["pa"]]
 
+    def preprocess_pa(pa):
+        if twind is not None:
+            pa = pa.slice_by_dim_values_wrapper("times", twind)
+        else:
+            pa = pa.copy()
+
+        if sm_dur is not None:
+            pa = pa.agg_by_time_windows_binned(sm_dur, sm_slide)
+        
+        return pa
+
     list_bregion = DFallpa["bregion"].unique().tolist()
     for bregion in list_bregion:
         print("Running .. ", bregion)
@@ -1678,7 +1699,7 @@ def dfpa_concat_pca_split_multbregion(DFallpa, sm_dur=0.1, sm_slide=0.01,
         dfallpa = DFallpa[DFallpa["bregion"] == bregion].reset_index(drop=True)
 
         # (0) Do smoothing here first, becuase after concat will lost time dim information
-        dfallpa["pa_sm"] = [pa.agg_by_time_windows_binned(sm_dur, sm_slide) for pa in dfallpa["pa"]] # smoothed
+        dfallpa["pa_sm"] = [preprocess_pa(pa) for pa in dfallpa["pa"]] # smoothed
 
         # (1) Concat all the PA into a singel pa
         DFALLPA = dfpa_group_and_split(dfallpa, ["event"], concat_dim="times", pa_column="pa_sm")
@@ -1695,24 +1716,73 @@ def dfpa_concat_pca_split_multbregion(DFallpa, sm_dur=0.1, sm_slide=0.01,
         PA = DFALLPA["pa_sm"].values[0]
 
         # Do PCA
-        tbin_dur = "ignore"
-        tbin_slide = None
-        if True:
-            # To plot things for each pc run
-            plot_pca_explained_var_path = f"/tmp/plot_pca_explained_var_path-{bregion}.pdf"
-            plot_loadings_path = f"/tmp/plot_loadings_path-{bregion}.pdf"
+        if pca_method == "trials":
+            # Data are trials.
+            tbin_dur = "ignore"
+            tbin_slide = None
+            if True:
+                # To plot things for each pc run
+                plot_pca_explained_var_path = f"/tmp/plot_pca_explained_var_path-{bregion}.pdf"
+                plot_loadings_path = f"/tmp/plot_loadings_path-{bregion}.pdf"
+            else:
+                plot_pca_explained_var_path = None
+                plot_loadings_path = None
+            norm_subtract_single_mean_each_chan = True
+            _, PAfinal, _, _, _ = PA.dataextract_state_space_decode_flex(None, tbin_dur, tbin_slide, 
+                                                                    "chans_x_trials_x_times",
+                                                                    pca_reduce=True,
+                                                                    plot_pca_explained_var_path=plot_pca_explained_var_path, 
+                                                                    plot_loadings_path=plot_loadings_path,
+                                                                    norm_subtract_single_mean_each_chan=norm_subtract_single_mean_each_chan,
+                                                                    npcs_keep_force=npcs_keep_force)
+            plt.close("all")
+        elif pca_method == "trial_means":
+            # first take mean over trials to group by a variable (e.g., shape), then do PCA as you would above.
+
+            savedir_plots = f"/tmp/pca_plots"
+            os.makedirs(savedir_plots, exist_ok=True)
+
+            var_pca = pcamean_var
+            vars_grouping = pcamean_vars_grouping
+            n_pcs_subspace_max = npcs_keep_force
+
+            # Fixed params
+            raw_subtract_mean_each_timepoint = False
+            pca_subtract_mean_each_level_grouping = True
+            n_min_per_lev_lev_others = 4
+            prune_min_n_levs = 2
+
+            # PCA time window -- use specific smaller window for fitting PC
+            # pca_twind = pcamean_pca_twind
+            pca_twind = None
+            pca_tbindur = "ignore"
+            pca_tbin_slice = None
+
+            # Data projection time window -- keep larger window for data
+            # print(PA.Times)
+            # proj_twind = (PA.Times[0]-0.1, PA.Times[-1]+0.1) # use entire window
+            proj_twind=None
+            proj_tbindur = "ignore"
+            proj_tbin_slice = None
+
+            _, PAfinal, _, _, _ = PA.dataextract_pca_demixed_subspace(var_pca, vars_grouping,
+                                                            pca_twind, pca_tbindur,
+                                                            savedir_plots=savedir_plots,
+                                                            raw_subtract_mean_each_timepoint=raw_subtract_mean_each_timepoint,
+                                                            pca_subtract_mean_each_level_grouping=pca_subtract_mean_each_level_grouping,
+                                                            n_min_per_lev_lev_others=n_min_per_lev_lev_others, prune_min_n_levs = prune_min_n_levs,
+                                                            n_pcs_subspace_max = n_pcs_subspace_max,
+                                                            do_pca_after_project_on_subspace=False,
+                                                            PLOT_STEPS=False, SANITY=False,
+                                                            reshape_method="chans_x_trials_x_times",
+                                                            pca_tbin_slice=pca_tbin_slice, 
+                                                            proj_twind = proj_twind, proj_tbindur = proj_tbindur, 
+                                                            proj_tbin_slice = proj_tbin_slice)
+            
+            plt.close("all")
         else:
-            plot_pca_explained_var_path = None
-            plot_loadings_path = None
-        norm_subtract_single_mean_each_chan = True
-        _, PAfinal, _, _, _ = PA.dataextract_state_space_decode_flex(None, tbin_dur, tbin_slide, 
-                                                                "chans_x_trials_x_times",
-                                                                pca_reduce=True,
-                                                                plot_pca_explained_var_path=plot_pca_explained_var_path, 
-                                                                plot_loadings_path=plot_loadings_path,
-                                                                norm_subtract_single_mean_each_chan=norm_subtract_single_mean_each_chan,
-                                                                npcs_keep_force=npcs_keep_force)
-        plt.close("all")
+            print(pca_method)
+            assert False
 
         ### Split the neural activity back into separate events
 
@@ -1731,7 +1801,11 @@ def dfpa_concat_pca_split_multbregion(DFallpa, sm_dur=0.1, sm_slide=0.01,
         pa_combined = PAfinal
         for i, j, pa_sm, pa_pca in zip(ons, offs, dfallpa["pa_sm"].tolist(), dfallpa["pa_pca"].tolist()):
             x = pa_combined.X[:,:,i:j] # sliced data
-            assert x.shape[1:] == pa_sm.X.shape[1:]
+
+            if not x.shape[1:] == pa_sm.X.shape[1:]:
+                print(x.shape)
+                print(pa_sm.X.shape[1:])
+                assert False
 
             # Modiofuy the copy of the original that holds pca data
             pa_pca.replace_X(x, pa_sm.Times, list(range(npcs_keep_force)))
