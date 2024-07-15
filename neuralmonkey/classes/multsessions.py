@@ -14,7 +14,7 @@ class MultSessions(object):
         assert len(list_sessions)>0
         
         self.SessionsList = list_sessions
-
+        self.Datasetbeh = None
         self._generate_index() 
 
 
@@ -101,20 +101,44 @@ class MultSessions(object):
 
     ########### DATASET beh
     def datasetbeh_extract(self):
-        """ Get concatenated dataset
+        """ Get concatenated dataset, 
+        First time will extract and cache.
         RETURNS:
         - D, concatted dataset
         """
         from pythonlib.dataset.analy_dlist import concatDatasets
 
-        Dlist = []
-        for sn in self.SessionsList:
-            Dlist.append(sn.Datasetbeh)
+        if self.Datasetbeh is None:
+            # Load it for one time.
 
-        # Merge datasets
-        D = concatDatasets(Dlist)
+            if len(self.SessionsList)==1:
+                # Just use the one.
+                D = self.SessionsList[0].Datasetbeh
+            else:
+                from pythonlib.dataset.dataset import load_dataset_daily_helper
 
-        return D
+                # Get for this day.
+                # Better than concatting -- load from scratch, can't trust concatDatasets, sometimes for cases
+                # where use prims labeled by cluster, it changes...
+                # Merge datasets
+                D = load_dataset_daily_helper(self.animal(), self.date())
+
+                # prune to just the trialcodes that exist
+                trialcodes = []
+                for sn in self.SessionsList:
+                    trialcodes.extend(sn.Datasetbeh.Dat["trialcode"].unique().tolist())
+                trialcodes = list(set(trialcodes))
+
+                D.Dat = D.Dat[D.Dat["trialcode"].isin(trialcodes)].reset_index(drop=True)
+
+                # Dlist = []
+                # for sn in self.SessionsList:
+                #     Dlist.append(sn.Datasetbeh)
+                # D = concatDatasets(Dlist)
+
+            self.Datasetbeh = D
+
+        return self.Datasetbeh
 
     #################### UTILS
     def prune_remove_sessions_too_few_trials(self, min_n_trials):

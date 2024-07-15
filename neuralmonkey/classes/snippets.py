@@ -7122,6 +7122,7 @@ class Snippets(object):
         #     self.DfScalar = self.DfScalar.drop([v for v in vars if v in self.DfScalar.columns], axis=1)
         #     self.DfScalar = self.DfScalar.join(dfslice.loc[:, [column]])
         #     # merge_subset_indices_prioritizing_second(self.DfScalar, dfslice.loc[:, column])
+
     def datasetbeh_extract_dataset(self, kind="dataset"):
         """ Extract Dataset object concated across all sessions, for this Snippets.
         Either trial dataset ("dataset") or strokes ("datstrokes").
@@ -7153,24 +7154,31 @@ class Snippets(object):
                 print("Snippets -- extracting beh dataset for first time! (concatting and tokens preprocess)")
                 # Do concat and preprocessing, one time.
                 from pythonlib.dataset.analy_dlist import concatDatasets
+                from neuralmonkey.classes.multsessions import MultSessions
                 list_sn = self._session_extract_all()
-                Dall = concatDatasets([sn.Datasetbeh for sn in list_sn])
+                if True:
+                    # Bettter
+                    MS = MultSessions(list_sn)
+                    Dall = MS.datasetbeh_extract()
+                else:
+                    # cocnat can do weird things
+                    Dall = concatDatasets([sn.Datasetbeh for sn in list_sn])
 
-                if Dall.TokensStrokesBeh is None:
-                    for sn in list_sn:
-                        print(sn.Datasetbeh.TokensStrokesBeh)
-                    print("If print is not None, then this failed in concatDataset")
-                    assert False
-                    
-                # Preprocess dataset
-                if False:
-                    # No need, since these datasets have each already been preprocessed...
-                    Dall._cleanup_preprocess_each_time_load_dataset()
+                    if Dall.TokensStrokesBeh is None:
+                        for sn in list_sn:
+                            print(sn.Datasetbeh.TokensStrokesBeh)
+                        print("If print is not None, then this failed in concatDataset")
+                        assert False
+                        
+                    # Preprocess dataset
+                    if False:
+                        # No need, since these datasets have each already been preprocessed...
+                        Dall._cleanup_preprocess_each_time_load_dataset()
 
-                if False: # Moved to concat Datasets
-                    # Preprocess to get all toekns-related variables, etc.
-                    # Have to redo, becuase must cluster variables across entire dataset.
-                    Dall.tokens_preprocess_wrapper_good()
+                    if False: # Moved to concat Datasets
+                        # Preprocess to get all toekns-related variables, etc.
+                        # Have to redo, becuase must cluster variables across entire dataset.
+                        Dall.tokens_preprocess_wrapper_good()
 
                 self.Datasetbeh = Dall
 
