@@ -20,6 +20,8 @@ if __name__=="__main__":
     date = int(sys.argv[2])
     combine_areas = bool(int(sys.argv[3]))
 
+    classifier_ver = "logistic"
+
     use_final_params = True
     # animal = "Diego"
     # date = 240619
@@ -44,9 +46,10 @@ if __name__=="__main__":
                     # preprocess_pca = False
 
                     #####################################
-                    DFallpa = load_handsaved_wrapper(animal=animal, date=date, version="trial", combine_areas=combine_areas)
+                    DFallpa = load_handsaved_wrapper(animal=animal, date=date, version="trial", combine_areas=combine_areas, use_time = False)
 
-                    SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/decode_moment/PIG/pipeline_train_test_scalar_score/{animal}-{date}-norm={fr_normalization_method}-pca={preprocess_pca}-inclnull={include_null_data}-decoder={decoder_method_index}"
+
+                    SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/decode_moment/PIG/pipeline_train_test_scalar_score/{animal}-{date}-norm={fr_normalization_method}-pca={preprocess_pca}-inclnull={include_null_data}-decoder={decoder_method_index}-classver={classifier_ver}"
                     os.makedirs(SAVEDIR, exist_ok=True)
 
                     #################### PREPROCESSING
@@ -132,7 +135,9 @@ if __name__=="__main__":
 
                             dfscores, _, _, _ = pipeline_train_test_scalar_score(DFallpa, bregion, var_train, event_train, twind_train, filterdict_train,
                                                                 var_test, event_test, list_twind_test, filterdict_test, savedir,
-                                                                include_null_data=include_null_data, decoder_method_index=decoder_method_index)
+                                                                include_null_data=include_null_data, decoder_method_index=decoder_method_index,
+                                                                allow_multiple_twind_test=True,
+                                                                classifier_version=classifier_ver)
                             
                             RES.append({
                                 "dfscores":dfscores,
