@@ -3251,6 +3251,38 @@ def rsagood_questions_params(question):
         plot_pairwise_distmats_variables = None
         plot_pairwise_distmats_twinds = None
 
+    elif question=="SP_psycho_trial":
+        # for Single prims, strokes.
+        # Is more lenient in pruning data.
+
+        effect_vars = ["seqc_0_shape"]
+        list_which_level = ["trial"] # Whihc which_level to keep
+
+        ## For "stroke" and "stroke_off" which_levels
+        # - include all strokes within sequence
+        exclude_last_stroke=False
+        exclude_first_stroke=False
+        keep_only_first_stroke=False
+        min_taskstrokes = 1
+        max_taskstrokes = 10
+
+        ## Params which apply AFTER you have concated across which_level
+        # Which events to prune to
+        events_keep = [
+            '03_samp',
+            '06_on_strokeidx_0']
+        ANALY_VER = "singleprim_psycho"
+
+        # If this requires slicing and agging DFallpa
+        slice_agg_slices = None
+        slice_agg_vars_to_split = None
+
+        list_subtract_mean_each_level_of_var = [None]
+
+        # Which variables to plot all the pairwise distmats for
+        plot_pairwise_distmats_variables = None
+        plot_pairwise_distmats_twinds = None
+
     elif question=="SP_shape_loc_size":
         ## Params which apply across all which_level
         effect_vars = ["seqc_0_shape", "seqc_0_loc", "gridsize"]

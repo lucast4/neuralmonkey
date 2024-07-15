@@ -9,7 +9,7 @@ ONLY_ESSENTIAL_VARS = False # then just the first var, assuemd to be most import
 
 ##################
 LIST_ANALYSES = ["rulesw", "rulesingle", "ruleswALLDATA", "ruleswERROR", "singleprimvar", "seqcontextvar",
-                 "seqcontext", "singleprim", "charstrokes", "chartrial", "substrokes_sp", "PIG_BASE"] # repo of possible analses,
+                 "seqcontext", "singleprim", "charstrokes", "chartrial", "substrokes_sp", "PIG_BASE", "singleprim_psycho"] # repo of possible analses,
 
 # - rulesw, rule switching
 # - rulesingle, a single rule, look for draw program representations.
@@ -48,7 +48,7 @@ def _params_score_sequence_ver(animal, DATE, ANALY_VER):
         else:
             print(animal, DATE)
             assert False
-    elif ANALY_VER in ["singleprimvar", "seqcontext", "singleprim", "seqcontextvar", "charstrokes", "chartrial", "substrokes_sp", "PIG_BASE"]:
+    elif ANALY_VER in ["singleprimvar", "seqcontext", "singleprim", "singleprim_psycho", "singleprim_psycho", "seqcontextvar", "charstrokes", "chartrial", "substrokes_sp", "PIG_BASE"]:
         DO_SCORE_SEQUENCE_VER = None
     else:
         assert False
@@ -1420,8 +1420,6 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
         preprocess_steps_append = ["correct_sequencing_binary_score",
             "one_to_one_beh_task_strokes_allow_unfinished"]
     elif ANALY_VER in ["rulesingle"]:
-        # preprocess_steps_append = ["correct_sequencing_binary_score",
-        #     "one_to_one_beh_task_strokes"]
         preprocess_steps_append = ["correct_sequencing_binary_score",
             "one_to_one_beh_task_strokes_allow_unfinished"]
     elif ANALY_VER in ["ruleswALLDATA"]:
@@ -1432,8 +1430,8 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
         preprocess_steps_append = ["wrong_sequencing_binary_score"]
     elif ANALY_VER in ["seqcontext", "singleprimvar", "seqcontextvar", "PIG_BASE"]:
         preprocess_steps_append = ["one_to_one_beh_task_strokes_allow_unfinished"]
-    elif ANALY_VER in ["singleprim"]:
-        preprocess_steps_append = ["one_to_one_beh_task_strokes", "remove_online_abort"]
+    elif ANALY_VER in ["singleprim", "singleprim_psycho"]:
+        preprocess_steps_append = ["beh_strokes_one", "remove_online_abort"]
     elif ANALY_VER in ["charstrokes", "chartrial"]:
         # Dont carea bout match btw beh and task strokes
         preprocess_steps_append = ["remove_online_abort"]
@@ -1502,7 +1500,7 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
         EXTRACT_EPOCHSETS_trial_label = "taskconfig_shploc"
         EXTRACT_EPOCHSETS_n_max_epochs = 10 # make this higher, since these are usually clean expts.
         EXTRACT_EPOCHSETS_merge_sets = True
-    elif ANALY_VER in ["singleprim", "seqcontext", "charstrokes", "chartrial", "substrokes_sp", "PIG_BASE"]:
+    elif ANALY_VER in ["singleprim_psycho", "singleprim", "seqcontext", "charstrokes", "chartrial", "substrokes_sp", "PIG_BASE"]:
         # DO_CHARSEQ_VER = None
         # EXTRACT_EPOCHSETS = False
         # EXTRACT_EPOCHSETS_trial_label = None
@@ -1567,6 +1565,11 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
         # Ignore, since already pruned at substrokes level.
         datasetstrokes_extract_to_prune_trial = None
         datasetstrokes_extract_to_prune_stroke_and_get_features = None
+    elif ANALY_VER in ["singleprim_psycho"]:
+        # Single prim -- most stringent
+        # datasetstrokes_extract_to_prune_trial = "singleprim_psycho"
+        datasetstrokes_extract_to_prune_trial = "singleprim_psycho_noabort"
+        datasetstrokes_extract_to_prune_stroke_and_get_features = None
     elif ANALY_VER in ["singleprim", "singleprimvar"]:
         # Single prim -- most stringent
         datasetstrokes_extract_to_prune_trial = "singleprim"
@@ -1600,7 +1603,7 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
         substrokes_features_do_extraction = True
     elif ANALY_VER in ["singleprim", "singleprimvar", "seqcontext",
                        "charstrokes", "chartrial", "PIG_BASE",
-                       "rulesingle", "rulesw"]:
+                       "rulesingle", "rulesw", "singleprim_psycho"]:
         substrokes_features_do_extraction = False
     else:
         print(ANALY_VER)
