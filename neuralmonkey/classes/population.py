@@ -645,7 +645,7 @@ class PopAnal():
     #     # convert from indices to times
     #     time_wind = [self.Times[ind1], self.Times[ind2]]
     #     return self.slice_by_dim_indices_wrapper("times", time_wind)
-    #
+    # 
     # def bin_time(self):
 
 
@@ -718,6 +718,8 @@ class PopAnal():
             pa = self._slice_by_trial(inds, return_as_popanal=True)
             if len(self.Xlabels["trials"])>0:
                 # then slice it
+                from pythonlib.tools.pandastools import _check_index_reseted
+                _check_index_reseted(self.Xlabels["trials"])
                 dfnew = self.Xlabels["trials"].iloc[inds].reset_index(drop=True).copy()
             else:
                 dfnew = pd.DataFrame()
@@ -990,6 +992,9 @@ class PopAnal():
 
         """
 
+        if DUR is None:
+            return self.copy()
+        
         # Only contineu if DUR is larger than the largest period between adjacent samples.
         max_period = np.max(np.diff(self.Times))
 
@@ -1434,32 +1439,49 @@ class PopAnal():
 
     def dataextract_as_distance_matrix_clusters_flex(self, var_group,
                                                      version_distance="euclidian",
-                                                     accurately_estimate_diagonal=False):
+                                                     accurately_estimate_diagonal=False,
+                                                     agg_before_distance=False,
+                                                     return_as_single_mean_over_time=False):
         """
         GOOD - Extract distance matrix between trials, with flexible ways of c,m,puting and agging over variables.
-        :params: var_group, determines the trial labels kept in Cl, and, if vd is distributional, then
+        :params: var_group,list, determines the trial labels kept in Cl, and, if vd is distributional, then
         how to group trials into distributiosn
         :params: accurately_estimate_diagonal, bool, True means faster compute. In general I don't use
         the diagonal, so leave false.
+        :agg_before_distance: bool, only applies for version_distance that is not distributional. By defautl (FAlse),
+        returns distance between trials. If True, then first agg so returns shape (n levels of var_group, n levels of var_group)
         :return:
         - LIST_CLDIST, List of Cl, each holding distance of shape (ntrials, trials), if version_distance 
         is pairwise between pts, or shape (ngroups, ngroups), if version_distance is distribugtional (ie.
         is pairwise between levels of conjucntion of var_group)
         """
         from pythonlib.cluster.clustclass import Clusters
+
+        if version_distance == "euclidian":
+            version_distance_is_not_distributional = True
+        elif version_distance == "euclidian_unbiased":
+            version_distance_is_not_distributional = False
+        else:
+            print(version_distance)
+            assert False, "fill this in"
         
-        # How to deal with multiple time windows.
-        
+        # version_distance_is_not_distributional = version_distance=="euclidian"
+
+        if agg_before_distance and version_distance_is_not_distributional:
+            PA = self.slice_and_agg_wrapper("trials", var_group)
+        else:
+            PA = self.copy()
+
         # Option 1 - do independently for each time bin, and return list of all results.
         # - Collect Cldists, one for each time bin
         LIST_CLDIST = []
         LIST_TIME = []
-        ntimes = self.X.shape[2]
+        ntimes = PA.X.shape[2]
         print("... computing distance matrices, using distnace:", version_distance)
         for i_time in range(ntimes):
             
             # make a pa that just has this one time bin
-            pa_single_time = self.slice_by_dim_indices_wrapper("times", [i_time, i_time])
+            pa_single_time = PA.slice_by_dim_indices_wrapper("times", [i_time, i_time])
             assert pa_single_time.X.shape[2]==1
             
             # Create clusters
@@ -1495,7 +1517,7 @@ class PopAnal():
                     Cldist = Cl.distsimmat_convert_distr(label_vars, version_distance, accurately_estimate_diagonal=accurately_estimate_diagonal)
             
             LIST_CLDIST.append(Cldist)
-            LIST_TIME.append(self.Times[i_time])
+            LIST_TIME.append(PA.Times[i_time])
 
         # Sanity check that all Cl match
         labels = None
@@ -1509,37 +1531,19 @@ class PopAnal():
                 assert labels_cols == Cldist.LabelsCols
                 labels_cols = Cldist.LabelsCols
 
-        return LIST_CLDIST, LIST_TIME
-
-    # def dataextract_as_clusters_after_conj_grouping(self, vars_grp_and_extract, do_agg_by_grouping=False):
-    #     """
-    #     Extract clusters represntation of PA.X, which is (
-    #     :param vars_grp_and_extract:
-    #     :param do_agg_by_grouping:
-    #     :return:
-    #     """
-    #     from pythonlib.cluster.clustclass import Clusters
-    #
-    #     if agg_by_grouping:
-    #         pa = self.slice_and_agg_wrapper("trials", vars_grp_and_extract)
-    #     else:
-    #         pa = self.copy()
-    #
-    #     label_vars = vars_grp_and_extract
-    #     dflab = pa.Xlabels["trials"]
-    #     labels_rows = dflab.loc[:, label_vars].values.tolist()
-    #     labels_rows = [tuple(x) for x in labels_rows] # list of tuples
-    #     params = {
-    #         "label_vars":label_vars,
-    #     }
-    #
-    #     # If >1 time dimension, take mean over time.
-    #     if pa.X.shape[2]>1:
-    #         pa = pa.agg_wrapper("times")
-    #
-    #     Cl = Clusters(pa.X, labels_rows, ver="rsa", params=params)
-    #
-    #     return Cl
+        if return_as_single_mean_over_time:
+            ### Take mean distance over time, and construct a single Clusters
+            Xinpput_mean = np.mean(np.stack([Cldist.Xinput for Cldist in LIST_CLDIST], axis=0), axis=0)
+            params = {
+                "label_vars":LIST_CLDIST[0].Params["label_vars"],
+                "version_distance":LIST_CLDIST[0].Params["version_distance"],
+                "Clraw":None,
+            }
+            list_lab = LIST_CLDIST[0].Labels
+            Cldist = Clusters(Xinpput_mean, list_lab, list_lab, ver="dist", params=params)
+            return Cldist
+        else:
+            return LIST_CLDIST, LIST_TIME
 
     def dataextract_pca_demixed_subspace(self, var_pca, vars_grouping,
                                                 pca_twind, pca_tbindur, # -- PCA params start
@@ -1601,6 +1605,9 @@ class PopAnal():
         RETURNS None if no data found for this var_pca
         """
         from neuralmonkey.analyses.state_space_good import dimredgood_pca_project
+
+        if savedir_plots is None:
+            savedir_plots = "/tmp"
 
         ###### Prep variables
         if n_pcs_subspace_max is None:

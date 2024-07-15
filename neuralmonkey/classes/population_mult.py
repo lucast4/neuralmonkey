@@ -1333,6 +1333,32 @@ def dfpa_group_and_split(DFallpa, vars_to_concat=None, vars_to_split=None,
     return DFallpa
 
 
+def dfpa_concatbregion_preprocess_wrapper(DFallpa, fr_mean_subtract_method = "across_time_bins"):
+    """
+    Apply seuqence of preprocessing steps to cases where multkiple events' PA were combined in DFallpa.
+    I used this for decode moment stuff (around Jul 2024).
+    Modifies DFallpa
+    # fr_mean_subtract_method = "each_time_bin"
+    """
+
+    # (1) Prune to chans that are common across pa for each bregion (intersection of chans)|
+    dfpa_match_chans_across_pa_each_bregion(DFallpa)
+
+    # (2) Clean bad chans
+    dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT=False)
+
+    # (3) Sqrt transform
+    for pa in DFallpa["pa"]:
+        pa.X = pa.X**0.5
+
+    # (4) Normalize FR    
+    PLOT=False
+    # pa = DFallpa["pa"].values[10]
+    # pa.plotNeurHeat(0)
+    dfpa_concat_normalize_fr_split_multbregion_flex(DFallpa, fr_mean_subtract_method, PLOT)
+    # pa = DFallpa["pa"].values[10]
+    # pa.plotNeurHeat(0)
+
 def dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT = False):
     """
     Concat all events fore ach bregion, compute scores of FR and FR modulation, and then 
@@ -1347,6 +1373,9 @@ def dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT = False):
         # THis is the only event
         events_keep = ["00_stroke"]
     else:
+        # Just use the events that ahve the same trialcodes and chans.
+        # You must have already pruned chans to be same!
+        # events_keep = DFallpa["event"].unique().tolist()
         events_keep = ["03_samp", "05_first_raise", "06_on_strokeidx_0"]
 
     list_bregion = DFallpa["bregion"].unique().tolist()
@@ -1409,7 +1438,14 @@ def dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT = False):
                 chans = pa.Chans
             else:
                 assert trialcodes == pa.Xlabels["trials"]["trialcode"].tolist()
-                assert chans == pa.Chans
+                assert chans == pa.Chans, "You must have already pruned chans to be same! See dfpa_concatbregion_preprocess_wrapper"
+        
+        # if bregion =="PMd":
+        #     print(chans)
+        #     print(len(list_pa))
+        #     for pa in list_pa:
+        #         print(pa.Chans)
+        #     assert False
 
         # Get concated data
         X = np.concatenate([pa.X for pa in list_pa], axis=2) # (nchans, ntrials, ntimes_concatenated)
@@ -1575,11 +1611,22 @@ def dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT = False):
         print("Keep, for ", bregion, " ...", sum(inds), "/", len(inds))
         MAP_REGION_TO_CHANS_KEEP[bregion] = chans_keep
 
+    # print("----------")
+    # for pa in DFallpa["pa"]:
+    #     print(pa.Chans)
+    # print(MAP_REGION_TO_CHANS_KEEP)
+    # print(DFallpa)
+    # print("----------")
+    
     # Prune DFallpa to keep just those chans
     list_pa = []
     for i, row in DFallpa.iterrows():
         bregion = row["bregion"]
         pa = row["pa"]
+        # print("----")
+        # print(bregion)
+        # print(pa.Chans)
+        # print(MAP_REGION_TO_CHANS_KEEP[bregion])
         pathis = pa.slice_by_dim_values_wrapper("chans", MAP_REGION_TO_CHANS_KEEP[bregion])
         list_pa.append(pathis)
     DFallpa["pa"] = list_pa    

@@ -7167,8 +7167,10 @@ class Snippets(object):
                     # No need, since these datasets have each already been preprocessed...
                     Dall._cleanup_preprocess_each_time_load_dataset()
 
-                # Preprocess to get all toekns-related variables, etc.
-                Dall.tokens_preprocess_wrapper_good()
+                if False: # Moved to concat Datasets
+                    # Preprocess to get all toekns-related variables, etc.
+                    # Have to redo, becuase must cluster variables across entire dataset.
+                    Dall.tokens_preprocess_wrapper_good()
 
                 self.Datasetbeh = Dall
 
@@ -7388,7 +7390,7 @@ class Snippets(object):
                                     "TokTask", "stroke_index_is_first", "stroke_index_is_last_tskstks",
                                     "loc_on_clust", "CTXT_loconclust_prev", "CTXT_loconclust_next",
                                     "loc_off_clust", "CTXT_locoffclust_prev", "CTXT_locoffclust_next",
-                                    "shape_semantic", "shape_semantic_cat"]
+                                    "shape_semantic", "shape_semantic_cat", "shape_semantic_grp"]
                                     # "shape_is_novel"]
                                     # "distcum", "displacement", "circularity"]
                                     # "distcum", "displacement", "circularity"]
@@ -7402,8 +7404,19 @@ class Snippets(object):
         list_features_extraction_trial = ["shape_is_novel_all", "shape_semantic_labels", "shape_is_novel_list",
                                           "taskconfig_shp", "taskconfig_shploc", "taskconfig_loc",
                                           "Tkbeh_stkbeh", "Tkbeh_stktask", "Tktask",
-                                          "taskconfig_shp_SHSEM", "taskconfig_shploc_SHSEM"                                          ]
-        n_strok_max = 6
+                                          "taskconfig_shp_SHSEM", "taskconfig_shploc_SHSEM"]
+
+        for i in range(20):
+            if f"seqc_{i}_shape" not in D.Dat.columns:
+                n_strok_max = i
+                break
+        
+        if n_strok_max < max(D.Dat["FEAT_num_strokes_beh"]):
+            print(n_strok_max)
+            print(max(D.Dat["FEAT_num_strokes_beh"]))
+            print(sorted(D.Dat.columns.tolist()))
+            assert False, "Fix this bug"
+            
         for i in range(n_strok_max):
             # for suff in ["shape", "loc", "loc_local"]:
             # for suff in ["shape", "loc"]:
