@@ -1990,7 +1990,8 @@ def trajgood_plot_colorby_splotby(df, var_color_by, var_subplots, dims=(0,1),
                                    ntrials=5, plot_dots_on_traj=True,
                                    overlay_trials_on_mean=False, 
                                    n_trials_overlay_on_mean=5,
-                                   xlim_force=None, ylim_force=None):
+                                   xlim_force=None, ylim_force=None, SIZE=3.5,
+                                   ncols=3):
     """ [GOOD], to plot trajectories colored by one variable, and split across subplots by another
     variable.
     PARAMS:
@@ -2029,9 +2030,8 @@ def trajgood_plot_colorby_splotby(df, var_color_by, var_subplots, dims=(0,1),
 
     # One subplot per othervar
     levs_other = sort_mixed_type(df[var_subplots].unique().tolist())
-    ncols = 3
     nrows = int(np.ceil(len(levs_other)/ncols))
-    fig, axes = plt.subplots(nrows, ncols, sharex=True, sharey=True, figsize=(ncols*3.5, nrows*3.5))
+    fig, axes = plt.subplots(nrows, ncols, sharex=True, sharey=True, figsize=(ncols*SIZE, nrows*SIZE), squeeze=False)
     for ax, levo in zip(axes.flatten(), levs_other):
         ax.set_title(levo)
         dfthis = df[df[var_subplots]==levo]
