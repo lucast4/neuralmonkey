@@ -343,16 +343,18 @@ flist = fieldnames(struct_inds_unchanged);
 for i=1:length(flist)
     
     f = flist{i};
-    savethis = [SAVEDIR_FINAL '/CLEAN_BEFORE_MERGE/curated_changes_waveforms/' f];
-    mkdir(savethis);
-    disp(savethis);
-    inds= struct_inds_unchanged.(f);
-    plot_decision_boundaries = false;
-    datstruct_this = DATSTRUCT(inds);
-    datstruct_plot_waveforms_all(datstruct_this, savethis, THRESH_SU_SNR, ...
-        THRESH_SU_ISI, THRESH_ARTIFACT_SHARP, THRESH_ARTIFACT_SHARP_LOW, ...
-        THRESH_ARTIFACT_ISI, MIN_SNR, plot_decision_boundaries, ...
-        SKIP_NOISE);
+    if strcmp(f, 'noise_noise') % Just do this, otherwise too many plots
+        savethis = [SAVEDIR_FINAL '/CLEAN_BEFORE_MERGE/curated_changes_waveforms/' f];
+        mkdir(savethis);
+        disp(savethis);
+        inds= struct_inds_unchanged.(f);
+        plot_decision_boundaries = false;
+        datstruct_this = DATSTRUCT(inds);
+        datstruct_plot_waveforms_all(datstruct_this, savethis, THRESH_SU_SNR, ...
+            THRESH_SU_ISI, THRESH_ARTIFACT_SHARP, THRESH_ARTIFACT_SHARP_LOW, ...
+            THRESH_ARTIFACT_ISI, MIN_SNR, plot_decision_boundaries, ...
+            SKIP_NOISE);
+    end
 end
 
 % Make sure to save the indices.
