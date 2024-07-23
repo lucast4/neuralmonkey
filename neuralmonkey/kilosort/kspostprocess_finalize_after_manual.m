@@ -134,7 +134,7 @@ disp('(Index: label_old --> label_new)');
 writematrix('(Index: label_old --> label_new)',notefile,'WriteMode','append');
 
 struct_inds_changed = struct;
-
+struct_inds_unchanged = struct;
 for i=1:length(DATSTRUCT)
     if ~strcmp(DATSTRUCT(i).label_final, DATSTRUCT_MOD(i).label_final)
         s = [num2str(i) ': ' DATSTRUCT(i).label_final ' -> ' DATSTRUCT_MOD(i).label_final];
@@ -148,6 +148,18 @@ for i=1:length(DATSTRUCT)
         else
             struct_inds_changed.(f) = [i];
         end
+    else
+        % s = [num2str(i) ': ' DATSTRUCT(i).label_final ' -> ' DATSTRUCT_MOD(i).label_final];
+        % disp(s);
+        % writematrix(s,notefile,'WriteMode','append');
+        
+        % Collect indices
+        f = [DATSTRUCT(i).label_final '_' DATSTRUCT_MOD(i).label_final];
+        if isfield(struct_inds_unchanged, f)
+            struct_inds_unchanged.(f) = [struct_inds_unchanged.(f), i];
+        else
+            struct_inds_unchanged.(f) = [i];
+        end        
     end
 end
 
@@ -319,6 +331,33 @@ end
 
 % Make sure to save the indices.
 save([SAVEDIR_FINAL '/struct_inds_changed.mat'], 'struct_inds_changed');
+
+
+%% #############################
+%% Plot waveforms of all clusters that did NOT CHANGE.
+
+disp('Plotting waveforms: the ones changed by hand ... ');
+SKIP_NOISE = false;
+
+flist = fieldnames(struct_inds_unchanged);
+for i=1:length(flist)
+    
+    f = flist{i};
+    savethis = [SAVEDIR_FINAL '/CLEAN_BEFORE_MERGE/curated_changes_waveforms/' f];
+    mkdir(savethis);
+    disp(savethis);
+    inds= struct_inds_unchanged.(f);
+    plot_decision_boundaries = false;
+    datstruct_this = DATSTRUCT(inds);
+    datstruct_plot_waveforms_all(datstruct_this, savethis, THRESH_SU_SNR, ...
+        THRESH_SU_ISI, THRESH_ARTIFACT_SHARP, THRESH_ARTIFACT_SHARP_LOW, ...
+        THRESH_ARTIFACT_ISI, MIN_SNR, plot_decision_boundaries, ...
+        SKIP_NOISE);
+end
+
+% Make sure to save the indices.
+save([SAVEDIR_FINAL '/struct_inds_changed.mat'], 'struct_inds_changed');
+
 
 %% DONE!
 
