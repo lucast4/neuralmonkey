@@ -208,13 +208,11 @@ def dfallpa_preprocess_condition(DFallpa, shape_var_suff="shape", loc_var_suff="
 
     for i, row in DFallpa.iterrows():
         if row["which_level"] == "trial":
+            print(row["bregion"])
             PA = row["pa"]
             dflab = PA.Xlabels["trials"]
-
-            print(i)
+            
             nstrokes_max = max(dflab["FEAT_num_strokes_beh"])
-            print(sorted(dflab.columns))
-            print(nstrokes_max)
             
             # (1) shapes drawn (tuple of shapes)
             list_shapes_drawn = []
@@ -251,19 +249,21 @@ import seaborn as sns
 
 
 
-def prepare_beh_dataset(animal, date, do_syntax_rule_stuff=True):
+def prepare_beh_dataset(animal, date, do_syntax_rule_stuff=True, return_MS=False):
     
-    if False:
+    if return_MS:
         # (1) Load session object
         from neuralmonkey.classes.session import load_mult_session_helper
         spikes_version = "kilosort_if_exists"
         MS = load_mult_session_helper(date, animal, MINIMAL_LOADING=True, spikes_version=spikes_version) 
+        D = MS.datasetbeh_extract().copy() # Must be copy, since need to unlock for preprocessing
 
-        D = MS.datasetbeh_extract().copy()
+        print("D.LockPreprocess", D.LockPreprocess)
     else:
         from pythonlib.dataset.dataset import load_dataset_daily_helper
         MS = None
         D = load_dataset_daily_helper(animal, date)
+    print("D.LockPreprocess", D.LockPreprocess)
 
     # Map from location to shape on this trial
     map_trialcode_loc_to_shape = {}
@@ -275,6 +275,7 @@ def prepare_beh_dataset(animal, date, do_syntax_rule_stuff=True):
             map_trialcode_loc_to_shape[(trialcode, loc)] = sh
 
     if do_syntax_rule_stuff:
+        print("D.LockPreprocess", D.LockPreprocess)
         D.preprocessGood(params=["remove_baseline"])
 
         D.grammarparses_syntax_concrete_append_column(PRINT=False)
@@ -307,108 +308,110 @@ def prepare_beh_dataset(animal, date, do_syntax_rule_stuff=True):
 
 
 def get_dataset_params(dataset_name):
-    which_level = "trial"
+    from neuralmonkey.analyses.decode_moment import pipeline_get_dataset_params_from_codeword
+    return pipeline_get_dataset_params_from_codeword(dataset_name)
+    # which_level = "trial"
 
-    SP_HOLD_DUR = 1.2
-    # PIG_HOLD_DUR = 1.2
-    PIG_HOLD_DUR = 1.8
+    # SP_HOLD_DUR = 1.2
+    # # PIG_HOLD_DUR = 1.2
+    # PIG_HOLD_DUR = 1.8
 
-    if dataset_name == "sp_samp":
-        event = "03_samp"
-        twind = (0.1, SP_HOLD_DUR)
-        list_twind = [(-0.9, -0.1), twind]
-        filterdict = {"FEAT_num_strokes_task":[1]}
+    # if dataset_name == "sp_samp":
+    #     event = "03_samp"
+    #     twind = (0.1, SP_HOLD_DUR)
+    #     list_twind = [(-0.9, -0.1), twind]
+    #     filterdict = {"FEAT_num_strokes_task":[1]}
 
-    elif dataset_name == "pig_samp":
-        event = "03_samp"
-        twind = (0.1, PIG_HOLD_DUR)
-        list_twind = [(-0.9, -0.1), twind]
-        filterdict = {"FEAT_num_strokes_task":[2,3,4,5,6,7,8], 
-                      "task_kind":["prims_on_grid"]
-                      }
+    # elif dataset_name == "pig_samp":
+    #     event = "03_samp"
+    #     twind = (0.1, PIG_HOLD_DUR)
+    #     list_twind = [(-0.9, -0.1), twind]
+    #     filterdict = {"FEAT_num_strokes_task":[2,3,4,5,6,7,8], 
+    #                   "task_kind":["prims_on_grid"]
+    #                   }
 
-    elif dataset_name == "char_samp_post":
-        event = "03_samp"
-        twind = (0.1, PIG_HOLD_DUR)
-        list_twind = [twind]
-        filterdict = {
-            "FEAT_num_strokes_task":[2,3,4,5,6,7,8], 
-            "task_kind":["character"]
-            }
+    # elif dataset_name == "char_samp_post":
+    #     event = "03_samp"
+    #     twind = (0.1, PIG_HOLD_DUR)
+    #     list_twind = [twind]
+    #     filterdict = {
+    #         "FEAT_num_strokes_task":[2,3,4,5,6,7,8], 
+    #         "task_kind":["character"]
+    #         }
 
-    elif dataset_name == "pig_samp_post":
-        event = "03_samp"
-        twind = (0.1, PIG_HOLD_DUR)
-        list_twind = [twind]
-        filterdict = {"FEAT_num_strokes_task":[2,3,4,5,6,7,8], 
-                      "task_kind":["prims_on_grid"]
-                      }
+    # elif dataset_name == "pig_samp_post":
+    #     event = "03_samp"
+    #     twind = (0.1, PIG_HOLD_DUR)
+    #     list_twind = [twind]
+    #     filterdict = {"FEAT_num_strokes_task":[2,3,4,5,6,7,8], 
+    #                   "task_kind":["prims_on_grid"]
+    #                   }
 
-    elif dataset_name == "pig_samp_post_early":
-        event = "03_samp"
-        twind = (0.1, PIG_HOLD_DUR/2)
-        list_twind = [twind]
-        filterdict = {"FEAT_num_strokes_task":[2,3,4,5,6,7,8], 
-                      "task_kind":["prims_on_grid"]
-                      }
+    # elif dataset_name == "pig_samp_post_early":
+    #     event = "03_samp"
+    #     twind = (0.1, PIG_HOLD_DUR/2)
+    #     list_twind = [twind]
+    #     filterdict = {"FEAT_num_strokes_task":[2,3,4,5,6,7,8], 
+    #                   "task_kind":["prims_on_grid"]
+    #                   }
 
-    elif dataset_name == "pig_samp_post_late":
-        event = "03_samp"
-        twind = (PIG_HOLD_DUR/2, PIG_HOLD_DUR)
-        list_twind = [twind]
-        filterdict = {"FEAT_num_strokes_task":[2,3,4,5,6,7,8], 
-                      "task_kind":["prims_on_grid"]
-                      }
+    # elif dataset_name == "pig_samp_post_late":
+    #     event = "03_samp"
+    #     twind = (PIG_HOLD_DUR/2, PIG_HOLD_DUR)
+    #     list_twind = [twind]
+    #     filterdict = {"FEAT_num_strokes_task":[2,3,4,5,6,7,8], 
+    #                   "task_kind":["prims_on_grid"]
+    #                   }
 
-    elif dataset_name == "sp_prestroke":
-        event = "06_on_strokeidx_0"
-        twind = (-0.6, 0)
-        list_twind = [twind, (0, 0.6)]
-        filterdict = {"FEAT_num_strokes_task":[1]}
-
-    elif dataset_name == "pig_prestroke":
-        event = "06_on_strokeidx_0"
-        twind = (-0.6, 0)
-        list_twind = [twind, (0, 0.6)]
-        filterdict = {
-            "FEAT_num_strokes_task":[2,3,4,5,6,7,8],
-            "task_kind":["prims_on_grid"]}
-
-    # elif dataset_name == "test":
+    # elif dataset_name == "sp_prestroke":
     #     event = "06_on_strokeidx_0"
-    #     twind = (-0.6, -0.1)
+    #     twind = (-0.6, 0)
+    #     list_twind = [twind, (0, 0.6)]
+    #     filterdict = {"FEAT_num_strokes_task":[1]}
+
+    # elif dataset_name == "pig_prestroke":
+    #     event = "06_on_strokeidx_0"
+    #     twind = (-0.6, 0)
+    #     list_twind = [twind, (0, 0.6)]
+    #     filterdict = {
+    #         "FEAT_num_strokes_task":[2,3,4,5,6,7,8],
+    #         "task_kind":["prims_on_grid"]}
+
+    # # elif dataset_name == "test":
+    # #     event = "06_on_strokeidx_0"
+    # #     twind = (-0.6, -0.1)
+    # #     list_twind = [twind]
+    # #     filterdict = {
+    # #         "task_kind":["prims_single", "prims_on_grid"]}
+
+    # elif dataset_name == "sp_pig_samp_post":
+    #     event = "03_samp"
+    #     twind = (0.1, SP_HOLD_DUR)
     #     list_twind = [twind]
     #     filterdict = {
     #         "task_kind":["prims_single", "prims_on_grid"]}
 
-    elif dataset_name == "sp_pig_samp_post":
-        event = "03_samp"
-        twind = (0.1, SP_HOLD_DUR)
-        list_twind = [twind]
-        filterdict = {
-            "task_kind":["prims_single", "prims_on_grid"]}
+    # elif dataset_name == "sp_pig_pre_stroke_all":
+    #     event = "00_stroke"
+    #     # twind = (-0.6, -0.1)
+    #     twind = (-0.5, -0.15)
+    #     list_twind = [twind]
+    #     filterdict = {"task_kind":["prims_single", "prims_on_grid"]}
+    #     which_level = "stroke"
 
-    elif dataset_name == "sp_pig_pre_stroke_all":
-        event = "00_stroke"
-        # twind = (-0.6, -0.1)
-        twind = (-0.5, -0.15)
-        list_twind = [twind]
-        filterdict = {"task_kind":["prims_single", "prims_on_grid"]}
-        which_level = "stroke"
+    # elif dataset_name == "pig_gaps_0_1":
+    #     # gap between firs and 2nd storkes-- i.e,, preostroke stroke 1
+    #     event = "00_stroke"
+    #     twind = (-0.6, 0)
+    #     list_twind = [twind]
+    #     filterdict = {"stroke_index":[1]}
+    #     which_level = "stroke"
 
-    elif dataset_name == "pig_gaps_0_1":
-        # gap between firs and 2nd storkes-- i.e,, preostroke stroke 1
-        event = "00_stroke"
-        twind = (-0.6, 0)
-        list_twind = [twind]
-        filterdict = {"stroke_index":[1]}
-        which_level = "stroke"
+    # else:
+    #     print(dataset_name)
+    #     assert False
 
-    else:
-        print(dataset_name)
-        assert False
-
-    return event, twind, filterdict, list_twind, which_level
+    # return event, twind, filterdict, list_twind, which_level
 
 def probs_timecourse_normalize(Dc, PAprobs, norm_method, map_tc_to_syntaxconcrete=None, 
                                twind_base = None, map_decoder_class_to_baseline_trials=None,
