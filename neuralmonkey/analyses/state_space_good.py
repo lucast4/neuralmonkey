@@ -1482,7 +1482,7 @@ def trajgood_plot_colorby_splotby_scalar_WRAPPER(X, dflab, var_color, savedir,
     :param var_color:
     :param savedir:
     :param vars_subplot:
-    :param list_dims:
+    :param list_dims: list of 2-tuples
     :param STROKES_BEH:
     :param STROKES_TASK:
     :param overlay_mean_var_color, str, which variable (in var_color, if it is list) to use for coloring. This doesnt affect
@@ -1510,7 +1510,10 @@ def trajgood_plot_colorby_splotby_scalar_WRAPPER(X, dflab, var_color, savedir,
         colorby_ind_in_vars_mean = None
 
     assert len(X.shape)==2
-    assert len(X)==len(dflab)
+    if not len(X)==len(dflab):
+        print(X.shape)
+        print(len(dflab))
+        assert False
 
     if list_dims is None:
         list_dims = [(0,1,2)]
@@ -1518,6 +1521,21 @@ def trajgood_plot_colorby_splotby_scalar_WRAPPER(X, dflab, var_color, savedir,
     # Make sure is lewngth 3
     list_dims = [list(dims)+[max(dims)+1] if len(dims)==2 else dims for dims in list_dims]
 
+    list_dims_keep = []
+    for dims in list_dims:
+        # Determine if keep this dims
+        keep = True
+        for d in dims[:2]: # Just take 2, since 3rd is optional
+            if X.shape[1]<d+1:
+                print("Excluding this dims .. (not enough data)", dims, "data : ", X.shape)
+                # print(X.shape)
+                # print(list_dims)
+                # assert False, "cannot get these dims"   
+                keep = False
+        if keep:
+            list_dims_keep.append(dims)
+    list_dims = list_dims_keep
+    assert len(list_dims)>0
     # else:
     #     if plot_3D:
     #         for dims in list_dims:

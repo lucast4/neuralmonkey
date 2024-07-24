@@ -25,8 +25,12 @@ def load_handsaved_wrapper(animal=None, date=None, version=None, combine_areas=T
         # Load using params input
         norm = None
         if use_time:
-            t1 = -1.0
-            t2 = 1.8
+            if version == "saccade_fix_on":
+                t1 = -0.4
+                t2 = 0.4
+            else:
+                t1 = -1.0
+                t2 = 1.8
             path = f"/lemur2/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-{animal}-{date}-{version}-kilosort_if_exists-norm={norm}-combine={combine_areas}-t1={t1}-t2={t2}.pkl"
         else:
             path = f"/lemur2/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-{animal}-{date}-{version}-kilosort_if_exists-norm={norm}-combine={combine_areas}.pkl"
@@ -1029,6 +1033,14 @@ def dfallpa_extraction_load_wrapper(animal, date, question, list_time_windows, w
 
         ## Load Snippets
         MS = load_mult_session_helper(date, animal, spikes_version=SPIKES_VERSION)
+
+        # If this is aligned to fixations, first extract them.
+        if which_level == "saccade_fix_on":
+            for sn in MS.SessionsList:
+                if not sn.clusterfix_check_if_preprocessing_complete():
+                    sn.extract_and_save_clusterfix_results()
+            
+        # Get DFallpa
         DFallpa = dfallpa_extraction_load_wrapper_from_MS(MS, question, list_time_windows, which_level, events_keep,
                                                           combine_into_larger_areas, exclude_bad_areas, bin_by_time_dur,
                                                           bin_by_time_slide, slice_agg_slices, slice_agg_vars_to_split,
@@ -1038,9 +1050,6 @@ def dfallpa_extraction_load_wrapper(animal, date, question, list_time_windows, w
                                                           fr_normalization_method=fr_normalization_method,
                                                           path_to_save_example_fr_normalization=path_to_save_example_fr_normalization,
                                                           prune_low_fr_sites=prune_low_fr_sites)
-
-    # cleanup
-    # for pa in DFallpa.
 
     return DFallpa
 
@@ -1162,7 +1171,13 @@ def extract_single_pa(DFallpa, bregion, twind=None, which_level = "trial", event
     #     twind = DFallpa["twind"].values[0]
 
 
+    # assert twind is not None
+    # display(DFallpa)
+    # assert False
     a = DFallpa["which_level"]==which_level
+    # print(a)
+    # print(which_level, type(which_level))
+    # assert False
     b = DFallpa["event"]==event
     c = DFallpa["bregion"]==bregion
     d = DFallpa["twind"].isin(list_twind)
@@ -1170,8 +1185,9 @@ def extract_single_pa(DFallpa, bregion, twind=None, which_level = "trial", event
     tmp = DFallpa[a & b & c & d]
     if not len(tmp)==1:
         print(DFallpa)
-        print(tmp)
-        print(which_level, event, bregion, twind)
+        print(len(tmp))
+        print(which_level, event, bregion, list_twind)
+        print(sum(a), sum(b), sum(c), sum(d))
         assert False
     pa = tmp[pa_field].values[0].copy()
 
@@ -1372,6 +1388,9 @@ def dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT = False):
     if DFallpa["event"].unique().tolist() == ["00_stroke"]:
         # THis is the only event
         events_keep = ["00_stroke"]
+    elif DFallpa["event"].unique().tolist() == ["fixon_preparation"]:
+        # THis is the only event
+        events_keep = ["fixon_preparation"]
     else:
         # Just use the events that ahve the same trialcodes and chans.
         # You must have already pruned chans to be same!

@@ -1148,6 +1148,26 @@ class PopAnal():
         pa = self.slice_by_dim_indices_wrapper(dim_str, inds)
         return pa
 
+    def slice_extract_with_levels_of_conjunction_vars_as_dictpa(self, var, vars_others,
+                                                      prune_min_n_trials=5, prune_min_n_levs=2,
+                                                      plot_counts_heatmap_savepath=None):
+        """
+        See slice_extract_with_levels_of_conjunction_vars, here does same, but returns as dict, 
+        grp:pa
+        """
+
+        _, _, dict_dfthis = self.slice_extract_with_levels_of_conjunction_vars(var, vars_others, 
+                                                                               prune_min_n_trials=prune_min_n_trials, 
+                                                                               prune_min_n_levs=prune_min_n_levs,
+                                                                               plot_counts_heatmap_savepath=plot_counts_heatmap_savepath)
+        dict_pa = {}
+        for grp, _df in dict_dfthis.items():
+            # print(grp, _df["_index"].tolist())
+            dict_pa[grp] = self.slice_by_dim_indices_wrapper("trials", _df["_index"].tolist(), True)
+            
+        return dict_pa
+        
+    
     def slice_extract_with_levels_of_conjunction_vars(self, var, vars_others,
                                                       prune_min_n_trials=5, prune_min_n_levs=2,
                                                       plot_counts_heatmap_savepath=None):
@@ -2840,7 +2860,7 @@ class PopAnal():
         :return:
         """
         list_pa, levels = self.split_by_label("trials", vars_subplots)
-        ncols = 8
+        ncols = min([len(list_pa), 8])
         nrows = int(np.ceil(len(levels)/ncols))
         fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*3, nrows*3), sharex=True, sharey=True)
         for ax, lev, pa in zip(axes.flatten(), levels, list_pa):
