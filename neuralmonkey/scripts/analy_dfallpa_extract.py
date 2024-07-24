@@ -24,10 +24,6 @@ SPIKES_VERSION = "kilosort_if_exists" # since Snippets not yet extracted for ks
 # combine_into_larger_areas = False
 
 
-list_time_windows = [(-1.0, 1.8)]
-# list_time_windows = [(-0.8, 1.4)]
-# list_time_windows = [(-0.8, 1.25)]
-# list_time_windows = [(-1., 1.6)]
 # events_keep = None
 # events_keep = ["03_samp", "05_first_raise", "06_on_strokeidx_0"]
 # events_keep = ["03_samp", "05_first_raise", "06_on_strokeidx_0"]
@@ -41,6 +37,15 @@ def extract_dfallpa_helper(animal, date, question, combine_into_larger_areas,
     print("INPUT PARAMS:")
     print("animal, date, question, combine_into_larger_areas")
     print(animal, date, question, combine_into_larger_areas)
+
+    if question=="PIG_BASE_saccade_fix_on":
+        list_time_windows = [(-0.4, 0.4)] # to slice data including just within this time window (realtive to events)
+    else:
+        list_time_windows = [(-1.0, 1.8)]
+        # list_time_windows = [(-0.8, 1.4)]
+        # list_time_windows = [(-0.8, 1.25)]
+        # list_time_windows = [(-1., 1.6)]
+
 
     ### Hard coded params
     do_combine = False
@@ -108,6 +113,8 @@ def extract_dfallpa_helper(animal, date, question, combine_into_larger_areas,
                 events_keep = ["03_samp", "05_first_raise", "06_on_strokeidx_0"]
             elif which_level == "stroke":
                 events_keep = ["00_stroke"]
+            elif which_level == "saccade_fix_on":
+                events_keep = ["00_fixon_preparation"]
             else:
                 assert False
 
@@ -153,6 +160,10 @@ if __name__=="__main__":
     question = sys.argv[3]
     combine_into_larger_areas = bool(int(sys.argv[4])) # 0, 1
     
+    # - To get fixations.
+    # question = "PIG_BASE_saccade_fix_on" # holds variety of prepropoessing steps to clean data, specificalyl for PIG data.
+    # which_level = "saccade_fix_on"
+
     FORCE_REEXTRACT = True
     which_level = "trial"
 
