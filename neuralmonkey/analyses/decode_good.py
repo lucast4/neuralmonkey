@@ -746,7 +746,7 @@ def decodewrap_categorical_timeresolved_cross_condition(pa, var_decode,
         dfresthis, dfres_agg = decode_categorical_cross_condition(Xscal, dflab,
                                                                   var_decode,
                                                                   vars_conj_condition,
-                                                                  do_center=do_center, do_std=do_std)
+                                                                  do_center=do_center, do_std=do_std) 
         if len(dfresthis)>0:
             # print("---------------")
             # display(dfresthis)
@@ -1680,20 +1680,41 @@ def decodewrapouterloop_categorical_cross_time(DFallpa, list_var_decode, time_bi
 
     return DFRES
 
-
 def decodewrapouterloop_categorical_cross_time_cross_var(DFallpa, list_var_decode_train_test,
                                                          time_bin_size, slide, savedir=None, extract_params=True,
-                                                         ignore_same_events=True, which_level="trial"):
+                                                         ignore_same_events=True, which_level="trial",
+                                                         filtdict_train=None, filtdict_test = None,
+                                                         do_split_train_by_context=False, vars_conj_train = None,
+                                                         do_split_test_by_context=False, vars_conj_test = None,
+                                                         conj_n_min_per_lev = 5
+                                                         ):
     """ Decode across events_taskkinds and time, asking how decoder generalizes, where
     now trains to decode one variable, and asks how well that decoder generalizes to
     decode another variable. THis only works for things liek seqc_0_shape --> seqc_1_shape,
     i.e,, variables, with semanticalyl overlapping labels.
 
+    Also can optioanlly split train and test data based on conjunctive vars, and get decode for all pairs
+    of train-test data splits. (e.g, train decoder for variable A, controlling for variable B) and test how
+    well it decodes variable B, controlling for variable A --- where A and B are shape-fixation and seqc_0_shape,
+    for eye fixation data).
+
     Should run this outer loop. goes over all
     events and task_kinds.
 
     :param: list_var_decode_train_test, list of list, where each inner 2-list is [var_train, var_test]
+    :param: do_split_train_by_context, bool, if True, then runs sepeartely for each elvel fo <vars_conj_train>,
+    each time training a new decoder.
+
     """
+    from collections import Counter
+    from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper, _check_index_reseted
+
+    if do_split_train_by_context:
+        assert isinstance(vars_conj_train, (list, tuple))
+    
+    if do_split_test_by_context:
+        assert isinstance(vars_conj_test, (list, tuple))
+
     if extract_params:
         list_br, list_tw, list_ev, n_strokes_max = decodewrapouterloop_preprocess_extract_params(DFallpa)
     else:
@@ -1725,58 +1746,106 @@ def decodewrapouterloop_categorical_cross_time_cross_var(DFallpa, list_var_decod
                             for task_kind_test in list_task_kind_test:
 
                                 PA_train = PA_train_orig.slice_by_labels("trials", "task_kind", [task_kind_train])
-
-                                # print("JHERER", PA_test_orig.X.shape)
                                 PA_test = PA_test_orig.slice_by_labels("trials", "task_kind", [task_kind_test])
 
+                                # Filter
+                                if filtdict_train is not None:
+                                    PA_train = PA_train.slice_by_labels_filtdict(filtdict_train)
+                                if filtdict_test is not None:
+                                    PA_test = PA_test.slice_by_labels_filtdict(filtdict_test)
+
                                 if PA_train.X.shape[1]==0 or PA_test.X.shape[1]==0:
+                                    print("Skipping, becuase filtdict removed all data from PA")
                                     continue
 
                                 for var_decode_train, var_decode_test in list_var_decode_train_test:
+                                    _check_index_reseted(PA_train.Xlabels["trials"])
 
-                                    X_train, labels_train, times_train = preprocess_extract_X_and_labels(PA_train,
-                                                                                         var_decode_train, time_bin_size, slide)
-                                    X_test, labels_test, times_test = preprocess_extract_X_and_labels(PA_test,
-                                                                                          var_decode_test, time_bin_size, slide)
-
-                                    if X_train is None or X_test is None:
-                                        print("SKIPPING, becuase only not enough data:")
-                                        continue
-
-                                    if len(set(labels_train))<2 or len(set(labels_test))<2:
-                                        print("SKIPPING, becuase only one label:")
-                                        print("Train:", set(labels_train))
-                                        print("Test:", set(labels_test))
-                                        continue
-
-                                    # Only do splits if these are same trials
-                                    do_train_test_kfold_splits = labels_train==labels_test
-
-                                    # print("HERERE", X_train.shape)
-                                    # print("HERERE", len(labels_train))
-                                    # print("HERERE", X_test.shape)
-                                    # print("HERERE", len(labels_test))
-
-                                    if savedir is not None:
-                                        savepath_ndata = f"{savedir}/{br}-{tw}-evtrain={ev_train}-evtest={ev_test}-tktrain={task_kind_train}-tktest={task_kind_test}-vartrain={var_decode_train}-vartest={var_decode_test}"
+                                    # ------- Extract train data conjunctions
+                                    if do_split_train_by_context:
+                                        # Then only keep levels of var_conj that have at least 2 levels of train var
+                                        lenient_allow_data_if_has_n_levels = 2
                                     else:
-                                        savepath_ndata = None
+                                        vars_conj_train = ["task_kind"] # This means take all data...
+                                        lenient_allow_data_if_has_n_levels = 1
 
-                                    res = decodewrap_categorical_cross_time(X_train, labels_train, times_train,
-                                                                      X_test, labels_test, times_test,
-                                                                      do_std=False,
-                                                                        do_train_test_kfold_splits=do_train_test_kfold_splits,
-                                                                        savepath_ndata=savepath_ndata)
+                                    _, dict_dfthis_train = extract_with_levels_of_conjunction_vars_helper(PA_train.Xlabels["trials"], var_decode_train, 
+                                                                                                    vars_conj_train, n_min_per_lev=conj_n_min_per_lev,
+                                                                                                    lenient_allow_data_if_has_n_levels=lenient_allow_data_if_has_n_levels)
 
-                                    for r in res:
-                                        r["var_decode_train"]=var_decode_train
-                                        r["var_decode_test"]=var_decode_test
-                                        r["bregion"]=br
-                                        r["event_train"]=ev_train
-                                        r["event_test"]=ev_test
-                                        r["task_kind_train"] = task_kind_train
-                                        r["task_kind_test"] = task_kind_test
-                                    RES.extend(res)
+                                    # ------- Extract test data conjunctions
+                                    if do_split_test_by_context:
+                                        # Then only keep levels of var_conj that have at least 2 levels of train var
+                                        lenient_allow_data_if_has_n_levels = 2
+                                    else:
+                                        vars_conj_test = ["task_kind"] # This means take all data...
+                                        lenient_allow_data_if_has_n_levels = 1
+                                    _, dict_dfthis_test = extract_with_levels_of_conjunction_vars_helper(PA_test.Xlabels["trials"], var_decode_test, 
+                                                                                                    vars_conj_test, n_min_per_lev=conj_n_min_per_lev, 
+                                                                                                    lenient_allow_data_if_has_n_levels=lenient_allow_data_if_has_n_levels)
+                                    plt.close("all")
+
+                                    for grp_train, _df in dict_dfthis_train.items():
+                                        pa_train = PA_train.slice_by_dim_indices_wrapper("trials", _df["_index"].tolist())
+
+                                        for grp_test, _df in dict_dfthis_test.items():
+                                            pa_test = PA_test.slice_by_dim_indices_wrapper("trials", _df["_index"].tolist())
+
+                                            print("... Running decode for TRAIN: (grp, taskkind, n)", grp_train, task_kind_train, "n=", pa_train.X.shape, " -- TEST:", grp_test, task_kind_test, "n=", pa_test.X.shape)
+                                            X_train, labels_train, times_train = preprocess_extract_X_and_labels(pa_train,
+                                                                                                var_decode_train, time_bin_size, slide)
+                                            X_test, labels_test, times_test = preprocess_extract_X_and_labels(pa_test,
+                                                                                                var_decode_test, time_bin_size, slide)
+
+                                            if X_train is None or X_test is None:
+                                                print("SKIPPING, becuase only not enough data:")
+                                                continue
+
+                                            if len(set(labels_train))<2 or len(set(labels_test))<2:
+                                                print("SKIPPING, becuase only one label:")
+                                                print("Train:", set(labels_train))
+                                                print("Test:", set(labels_test))
+                                                continue
+                                            
+                                            # Only run if at least 2 overlapping labels eixst
+                                            if len([lab in set(labels_test) for lab in set(labels_train)])<2:
+                                                print("SKIPPING, because not enough overlap in labels betwen train and test")
+                                                print("Train:", set(labels_train))
+                                                print("Test:", set(labels_test))
+                                                continue
+
+                                            # Only do splits if these are same trials. This is hacky way to assess that
+                                            do_train_test_kfold_splits = labels_train==labels_test
+                                            if savedir is not None:
+                                                savepath_ndata = f"{savedir}/{br}-{tw}-evtrain={ev_train}-evtest={ev_test}-tktrain={task_kind_train}-tktest={task_kind_test}-vartrain={var_decode_train}-vartest={var_decode_test}"
+                                            else:
+                                                savepath_ndata = None
+
+                                            res = decodewrap_categorical_cross_time(X_train, labels_train, times_train,
+                                                                            X_test, labels_test, times_test,
+                                                                            do_std=False,
+                                                                                do_train_test_kfold_splits=do_train_test_kfold_splits,
+                                                                                savepath_ndata=savepath_ndata)
+
+                                            plt.close("all")
+
+                                            for r in res:
+                                                r["var_decode_train"]=var_decode_train
+                                                r["var_decode_test"]=var_decode_test
+                                                r["bregion"]=br
+                                                r["event_train"]=ev_train
+                                                r["event_test"]=ev_test
+                                                r["task_kind_train"] = task_kind_train
+                                                r["task_kind_test"] = task_kind_test
+                                            
+                                                r["grp_train"] = grp_train
+                                                r["grp_test"] = grp_test
+                                                r["labels_exist_train"] = Counter(labels_train)
+                                                r["labels_exist_test"] = Counter(labels_test)
+                                                r["vars_conj_train"] = tuple(vars_conj_train)
+                                                r["vars_conj_test"] = tuple(vars_conj_test)
+                                            RES.extend(res)
+
     DFRES = pd.DataFrame(RES)
 
     # save results (too large, like 1GB. This does to like 10MB).
@@ -1788,6 +1857,116 @@ def decodewrapouterloop_categorical_cross_time_cross_var(DFallpa, list_var_decod
         pd.to_pickle(dfres, path)
 
     return DFRES
+
+# def decodewrapouterloop_categorical_cross_time_cross_var(DFallpa, list_var_decode_train_test,
+#                                                          time_bin_size, slide, savedir=None, extract_params=True,
+#                                                          ignore_same_events=True, which_level="trial"):
+#     """ Decode across events_taskkinds and time, asking how decoder generalizes, where
+#     now trains to decode one variable, and asks how well that decoder generalizes to
+#     decode another variable. THis only works for things liek seqc_0_shape --> seqc_1_shape,
+#     i.e,, variables, with semanticalyl overlapping labels.
+
+#     Should run this outer loop. goes over all
+#     events and task_kinds.
+
+#     :param: list_var_decode_train_test, list of list, where each inner 2-list is [var_train, var_test]
+#     """
+#     if extract_params:
+#         list_br, list_tw, list_ev, n_strokes_max = decodewrapouterloop_preprocess_extract_params(DFallpa)
+#     else:
+#         list_br = DFallpa['bregion'].unique().tolist()
+#         list_tw = DFallpa['twind'].unique().tolist()
+#         list_ev = DFallpa['event'].unique().tolist()
+#         n_strokes_max = None
+
+#     assert len(DFallpa["twind"].unique())==1, "not big deal. just change code below to iter over all (ev, tw)."
+
+#     RES = []
+#     for br in list_br:
+#         for tw in list_tw:
+#             for i, ev_train in enumerate(list_ev):
+#                 for j, ev_test in enumerate(list_ev):
+#                     if ignore_same_events and j<=i: # Dont so same events.
+#                         print("skipping same event")
+#                     else:
+#                         print(br, tw, ev_train, ev_test)
+
+#                         # TRAIN
+#                         PA_train_orig = extract_single_pa(DFallpa, br, tw, event=ev_train, which_level=which_level)
+#                         PA_test_orig = extract_single_pa(DFallpa, br, tw, event=ev_test, which_level=which_level)
+
+#                         list_task_kind_train = PA_train_orig.Xlabels["trials"]["task_kind"].unique()
+#                         list_task_kind_test = PA_test_orig.Xlabels["trials"]["task_kind"].unique()
+
+#                         for task_kind_train in list_task_kind_train:
+#                             for task_kind_test in list_task_kind_test:
+
+#                                 PA_train = PA_train_orig.slice_by_labels("trials", "task_kind", [task_kind_train])
+
+#                                 # print("JHERER", PA_test_orig.X.shape)
+#                                 PA_test = PA_test_orig.slice_by_labels("trials", "task_kind", [task_kind_test])
+
+#                                 if PA_train.X.shape[1]==0 or PA_test.X.shape[1]==0:
+#                                     continue
+
+#                                 for var_decode_train, var_decode_test in list_var_decode_train_test:
+
+#                                     X_train, labels_train, times_train = preprocess_extract_X_and_labels(PA_train,
+#                                                                                          var_decode_train, time_bin_size, slide)
+#                                     X_test, labels_test, times_test = preprocess_extract_X_and_labels(PA_test,
+#                                                                                           var_decode_test, time_bin_size, slide)
+
+#                                     if X_train is None or X_test is None:
+#                                         print("SKIPPING, becuase only not enough data:")
+#                                         continue
+
+#                                     if len(set(labels_train))<2 or len(set(labels_test))<2:
+#                                         print("SKIPPING, becuase only one label:")
+#                                         print("Train:", set(labels_train))
+#                                         print("Test:", set(labels_test))
+#                                         continue
+
+#                                     # Only do splits if these are same trials
+#                                     do_train_test_kfold_splits = labels_train==labels_test
+
+#                                     # print("HERERE", X_train.shape)
+#                                     # print("HERERE", len(labels_train))
+#                                     # print("HERERE", X_test.shape)
+#                                     # print("HERERE", len(labels_test))
+
+#                                     if savedir is not None:
+#                                         savepath_ndata = f"{savedir}/{br}-{tw}-evtrain={ev_train}-evtest={ev_test}-tktrain={task_kind_train}-tktest={task_kind_test}-vartrain={var_decode_train}-vartest={var_decode_test}"
+#                                     else:
+#                                         savepath_ndata = None
+
+#                                     res = decodewrap_categorical_cross_time(X_train, labels_train, times_train,
+#                                                                       X_test, labels_test, times_test,
+#                                                                       do_std=False,
+#                                                                         do_train_test_kfold_splits=do_train_test_kfold_splits,
+#                                                                         savepath_ndata=savepath_ndata)
+
+#                                     for r in res:
+#                                         r["var_decode_train"]=var_decode_train
+#                                         r["var_decode_test"]=var_decode_test
+#                                         r["bregion"]=br
+#                                         r["event_train"]=ev_train
+#                                         r["event_test"]=ev_test
+#                                         r["task_kind_train"] = task_kind_train
+#                                         r["task_kind_test"] = task_kind_test
+#                                     RES.extend(res)
+#     DFRES = pd.DataFrame(RES)
+
+#     # save results (too large, like 1GB. This does to like 10MB).
+#     if savedir is not None:
+#         dfres = DFRES.copy()
+#         print(len(dfres))
+#         dfres = dfres.drop(["conf_scores", "labels_test", "labels_predicted"], axis=1)
+#         path = f"{savedir}/DFRES.pkl"
+#         pd.to_pickle(dfres, path)
+
+#     return DFRES
+
+
 
 def decodewrap_categorical_cross_time(X_train, labels_train, times_train,
                                       X_test, labels_test, times_test,
