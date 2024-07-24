@@ -2,10 +2,22 @@
 """
 import os.path
 
-from pythonlib.globals import PATH_NEURALMONKEY, PATH_DATA_NEURAL_RAW, PATH_DATA_NEURAL_PREPROCESSED, PATH_KS_RAW
+from pythonlib.globals import PATH_NEURALMONKEY, PATH_DATA_NEURAL_RAW, PATH_DATA_NEURAL_PREPROCESSED, PATH_KS_RAW, PATH_SAVE_CLUSTERFIX
 from pythonlib.tools.expttools import writeStringsToFile, makeTimeStamp
 
 from neuralmonkey.classes.session import LOCAL_LOADING_MODE, LOCAL_PATH_PREPROCESSED_DATA
+
+def clusterfix_check_if_preprocessing_complete(animal, date, session_no=0):
+    """
+    Check whether clusterfix (eye tracking) has been done for this day.
+    Assumes that if exists for session 0, then exists for all this date, and doesnt check contents of the folder, just that
+    folder exists and has stuff
+    RETURNS:
+    - bool.
+    """
+    from pythonlib.tools.expttools import checkIfDirExistsAndHasFiles    
+    SAVEDIR = f"{PATH_SAVE_CLUSTERFIX}/{animal}-{date}-{session_no}/clusterfix_result_csvs"
+    return checkIfDirExistsAndHasFiles(SAVEDIR)[1]
 
 def find_ks_cluster_paths(animal, date):
     """

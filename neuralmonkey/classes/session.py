@@ -10891,6 +10891,20 @@ class Session(object):
         print("exporting fixation/saccade csvs...")
         self.extract_and_save_clusterfix_trial_fixsacc_csvs()
 
+    def clusterfix_check_if_preprocessing_complete(self):
+        """
+        Return True if clusterfix has been done on this day, to extract
+        fixation events.
+        """
+        animal = self.Animal 
+        date = self.Date 
+        session_no = self.RecSession
+        from neuralmonkey.utils.directory import clusterfix_check_if_preprocessing_complete
+        return clusterfix_check_if_preprocessing_complete(animal, date, session_no)
+
+        # SAVEDIR = f"{PATH_SAVE_CLUSTERFIX}/{animal}-{date}-{session_no}/clusterfix_result_csvs"
+        # import os
+        # return os.path.exists(SAVEDIR)
 
 #####################################################################
 assert _REGIONS_IN_ORDER == ("M1_m", "M1_l", "PMv_l", "PMv_m",
