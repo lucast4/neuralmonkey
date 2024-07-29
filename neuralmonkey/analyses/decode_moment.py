@@ -9,6 +9,7 @@ from pythonlib.tools.plottools import savefig
 from pythonlib.tools.listtools import sort_mixed_type
 from pythonlib.tools.pandastools import append_col_with_grp_index
 import seaborn as sns
+from pythonlib.tools.pandastools import grouping_plot_n_samples_conjunction_heatmap
 
 # TBIN_DUR = 0.15
 # TBIN_SLIDE = 0.02
@@ -181,7 +182,7 @@ class Decoder():
         for i, lab in enumerate(self.MultiLabelBinarizer.classes_):
             self.MapLabelToIdx[lab] = i
             self.MapIdxToLabel[i] = lab
-
+    
     def _plot_single_trial_helper_color_by(self, color_by, params):
         """
         Helper to return mapping coloring each label, baseed on information for this trial.
@@ -1215,7 +1216,7 @@ class Decoder():
 
         return dfscores
     
-    def scalar_score_compute_metric(self, dfscores, var_score = "score"):
+    def scalar_score_compute_metric(self, dfscores, var_score = "score", version="overall_mean"):
         """
         Good -- get a single score for how well this decoder this doing, is like average over classes of class-specific
         accuracies. for each decoder, get its score for "match" trials minus non-match trials. Then average this over decoders.
@@ -1227,19 +1228,38 @@ class Decoder():
         - yvar, str.
         """
 
+        # Sort by decoder_class and pa_class
+        from pythonlib.tools.pandastools import sort_by_two_columns_separate_keys
+        dfscores = sort_by_two_columns_separate_keys(dfscores, "pa_class", "decoder_class")
+
         # (1) First, agg, so that each pa_class x decoder has single value.
         from pythonlib.tools.pandastools import aggregGeneral, summarize_featurediff
-        dfscores_agg = aggregGeneral(dfscores, ["twind", "pa_class", "decoder_class"], [var_score], ["decoder_class_good", 
-                                                                                "decoder_class_is_in_pa", "same_class", "decoder_idx", "decoder_class_semantic",
-                                                                                    "pa_class_is_in_decoder"])
+        dfscores_agg = aggregGeneral(dfscores, ["twind", "pa_class", "decoder_class"], [var_score], ["same_class"])
 
         # (2) Get diff of match vs. not match
-        dfsummary, _, _, _, _ = summarize_featurediff(dfscores_agg, "same_class", [False, True], [var_score], 
-                            ["twind"])
-        
-        # (3) Return dict summary per twind
+        if version=="overall_mean":
+            dfsummary, _, _, _, _ = summarize_featurediff(dfscores_agg, "same_class", [False, True], [var_score], 
+                                ["twind"])
+            
+            # (3) Return dict summary per twind
+            map_twind_to_score = {row["twind"]:row[yvar] for i, row in dfsummary.iterrows()}
+        elif version=="decoder_class":
+            # one score for each decoder class
+            dfsummary, _, _, _, _ = summarize_featurediff(dfscores_agg, "same_class", [False, True], [var_score], 
+                                ["twind", "decoder_class"])
+            map_twind_to_score = None
+        elif version=="pa_class":
+            # one score for each decoder class
+            dfsummary, _, _, _, _ = summarize_featurediff(dfscores_agg, "same_class", [False, True], [var_score], 
+                                ["twind", "pa_class"])
+            map_twind_to_score = None            
+        elif isinstance(version, (list, tuple)):
+            dfsummary, _, _, _, _ = summarize_featurediff(dfscores_agg, "same_class", [False, True], [var_score], 
+                                version)
+            map_twind_to_score = None            
+        else:
+            assert False
         yvar = f"{var_score}-TrueminFalse"
-        map_twind_to_score = {row["twind"]:row[yvar] for i, row in dfsummary.iterrows()}
 
         return map_twind_to_score, dfsummary, yvar
 
@@ -1255,12 +1275,13 @@ class Decoder():
         import seaborn as sns
         from pythonlib.tools.pandastools import plot_subplots_heatmap
         from pythonlib.tools.snstools import rotateLabel
-        from pythonlib.tools.pandastools import extract_with_levels_of_var_good, stringify_values
+        from pythonlib.tools.pandastools import extract_with_levels_of_var_good, stringify_values, sort_by_two_columns_separate_keys
         from pythonlib.tools.pandastools import summarize_featurediff
 
         print("Saving plots at ... ", savedir)
-
+        dfscores = sort_by_two_columns_separate_keys(dfscores, "pa_class", "decoder_class")
         dfscores = stringify_values(dfscores)
+
         # # Plot n trials for training
         # from pythonlib.tools.pandastools import grouping_plot_n_samples_conjunction_heatmap
         # fig = grouping_plot_n_samples_conjunction_heatmap(PAtrain.Xlabels["trials"], var_train, "task_kind", None)
@@ -1271,9 +1292,10 @@ class Decoder():
         ###
         row_values = sorted(dfscores["pa_class"].unique())
         col_values = sorted(dfscores["decoder_class"].unique())
-        fig, axes = plot_subplots_heatmap(dfscores, "pa_class", "decoder_class", var_score, "twind", False, True,
-                            row_values=row_values, col_values=col_values)
-        savefig(fig, f"{savedir}/heatmap-pa_class-vs-decoder_class.pdf")
+        if False:
+            fig, axes = plot_subplots_heatmap(dfscores, "pa_class", "decoder_class", var_score, "twind", False, True,
+                                row_values=row_values, col_values=col_values)
+            savefig(fig, f"{savedir}/heatmap-pa_class-vs-decoder_class.pdf")
 
         ###
         for twind in list_twind:
@@ -1286,35 +1308,37 @@ class Decoder():
                                 row_values=row_values, col_values=col_values)
             savefig(fig, f"{savedir}/heatmap-pa_class-vs-decoder_class-twind={twind}-sub=decoder_class_good.pdf")
             
-            fig = sns.catplot(data=df, x="decoder_class", y=var_score, col="pa_class", col_wrap=6, alpha=0.2, 
-                        jitter=True, hue="decoder_class_semantic_str")
-            rotateLabel(fig)
-            savefig(fig, f"{savedir}/catplot-score-vs-decoder_class-twind={twind}-1.pdf")
+            if len(df["decoder_class"].unique()) < 20 and len(df["pa_class"].unique()) < 20: # Otherwise is too slow. huge plots. 
+                # if "decoder_class_semantic_str" in df.columns:
+                fig = sns.catplot(data=df, x="decoder_class", y=var_score, col="pa_class", col_wrap=6, alpha=0.2, 
+                            jitter=True, hue="decoder_class_semantic_str")
+                rotateLabel(fig)
+                savefig(fig, f"{savedir}/catplot-score-vs-decoder_class-twind={twind}-1.pdf")
 
-            fig = sns.catplot(data=df, x="decoder_class", y=var_score, col="pa_class", col_wrap=6,
-                    kind="bar", hue="decoder_class_semantic_str")
-            rotateLabel(fig)
-            savefig(fig, f"{savedir}/catplot-score-vs-decoder_class-twind={twind}-2.pdf")
+                fig = sns.catplot(data=df, x="decoder_class", y=var_score, col="pa_class", col_wrap=6,
+                        kind="bar", hue="decoder_class_semantic_str")
+                rotateLabel(fig)
+                savefig(fig, f"{savedir}/catplot-score-vs-decoder_class-twind={twind}-2.pdf")
 
-            fig = sns.catplot(data=df, x="pa_class", y=var_score, col="decoder_class", col_wrap=6, alpha=0.2, 
-                        jitter=True, hue="decoder_class_semantic_str")
-            rotateLabel(fig)
-            savefig(fig, f"{savedir}/catplot-score-vs-pa_class-twind={twind}-1.pdf")
+                fig = sns.catplot(data=df, x="pa_class", y=var_score, col="decoder_class", col_wrap=6, alpha=0.2, 
+                            jitter=True, hue="decoder_class_semantic_str")
+                rotateLabel(fig)
+                savefig(fig, f"{savedir}/catplot-score-vs-pa_class-twind={twind}-1.pdf")
 
-            fig = sns.catplot(data=df, x="pa_class", y=var_score, col="decoder_class", col_wrap=6,
-                    kind="bar", hue="decoder_class_semantic_str")
-            rotateLabel(fig)
-            savefig(fig, f"{savedir}/catplot-score-vs-pa_class-twind={twind}-2.pdf")
+                fig = sns.catplot(data=df, x="pa_class", y=var_score, col="decoder_class", col_wrap=6,
+                        kind="bar", hue="decoder_class_semantic_str")
+                rotateLabel(fig)
+                savefig(fig, f"{savedir}/catplot-score-vs-pa_class-twind={twind}-2.pdf")
 
+            if False:
+                fig = sns.catplot(data=df, x="decoder_class", y=var_score, hue="decoder_class_good", alpha=0.2, 
+                            jitter=True)
+                rotateLabel(fig)
+                savefig(fig, f"{savedir}/catplot-decoder_class-twind={twind}-1.pdf")
 
-            fig = sns.catplot(data=df, x="decoder_class", y=var_score, hue="decoder_class_good", alpha=0.2, 
-                        jitter=True)
-            rotateLabel(fig)
-            savefig(fig, f"{savedir}/catplot-decoder_class-twind={twind}-1.pdf")
-
-            fig = sns.catplot(data=df, x="decoder_class", y=var_score, hue="decoder_class_good", kind="bar")
-            rotateLabel(fig)
-            savefig(fig, f"{savedir}/catplot-decoder_class-twind={twind}-2.pdf")
+                fig = sns.catplot(data=df, x="decoder_class", y=var_score, hue="decoder_class_good", kind="bar")
+                rotateLabel(fig)
+                savefig(fig, f"{savedir}/catplot-decoder_class-twind={twind}-2.pdf")
 
             plt.close("all")
 
@@ -1357,31 +1381,29 @@ class Decoder():
         #                                                                         "decoder_class_is_in_pa", "same_class", "decoder_idx", "decoder_class_semantic",
         #                                                                             "vars_others_grp", "var_test", "decoder_class_was_fixated",
         #                                                                                 "decoder_class_was_first_drawn", "pa_class_is_in_decoder", "twind"])
-        dfscores_agg = aggregGeneral(dfscores, ["twind", "pa_class", "decoder_class"], [var_score], ["decoder_class_good", 
-                                                                                "decoder_class_is_in_pa", "same_class", "decoder_idx", "decoder_class_semantic",
-                                                                                    "pa_class_is_in_decoder"])
+        dfscores_agg = aggregGeneral(dfscores, ["twind", "pa_class", "decoder_class"], [var_score], ["decoder_class_is_in_pa", "same_class", "pa_class_is_in_decoder"])
 
         for var_condition in ["decoder_class", "pa_class"]:
+            # dfsummary, _, _, _, _ = summarize_featurediff(dfscores_agg, "same_class", [False, True], [var_score], 
+            #                     ["decoder_class_good", "decoder_class_is_in_pa", var_condition, "twind"])
             dfsummary, _, _, _, _ = summarize_featurediff(dfscores_agg, "same_class", [False, True], [var_score], 
-                                ["decoder_class_good", "decoder_class_is_in_pa", var_condition, "twind"])
-
-            # print("HERE", dfsummary.columns)
+                                ["decoder_class_is_in_pa", "pa_class_is_in_decoder", var_condition, "twind"])
 
             yvar = f"{var_score}-TrueminFalse"
-            fig = sns.catplot(data=dfsummary, x=var_condition, y=yvar, hue="decoder_class_good", alpha=0.2, jitter=True, col="twind")
+            fig = sns.catplot(data=dfsummary, x=var_condition, y=yvar, hue="pa_class_is_in_decoder", alpha=0.2, jitter=True, col="twind")
             for ax in fig.axes.flatten():
                 ax.axhline(0, color="k", alpha=0.3)
             rotateLabel(fig)
             savefig(fig, f"{savedir}/aggsummary-cond={var_condition}-same_min_diff-1.pdf")
 
-            fig = sns.catplot(data=dfsummary, x=var_condition, y=yvar, hue="decoder_class_good", kind="bar", col="twind")
+            fig = sns.catplot(data=dfsummary, x=var_condition, y=yvar, hue="pa_class_is_in_decoder", kind="bar", col="twind")
             for ax in fig.axes.flatten():
                 ax.axhline(0, color="k", alpha=0.3)
             rotateLabel(fig)
             savefig(fig, f"{savedir}/aggsummary-cond={var_condition}-same_min_diff-2.pdf")
 
             # A single score summarizing, across all pa labels
-            fig = sns.catplot(data=dfsummary, x="twind", y=yvar, kind="bar", col="decoder_class_good")
+            fig = sns.catplot(data=dfsummary, x="twind", y=yvar, kind="bar", col="pa_class_is_in_decoder")
             for ax in fig.axes.flatten():
                 ax.axhline(0, color="k", alpha=0.3)
             rotateLabel(fig)
@@ -1429,7 +1451,9 @@ class Decoder():
             labels_predicted.append(decoder_class_max)
             
             tmp = dfthis["pa_class"].unique().tolist()
-            assert len(tmp)==1, "each datapt (pa_idx) is assumed to have its only duplication be due to time windows. "
+            if not len(tmp)==1:
+                print(tmp)
+                assert False, "each datapt (pa_idx) is assumed to have its only duplication be due to time windows. "
             label_actual = tmp[0]
             labels_test.append(label_actual)
 
@@ -1466,12 +1490,14 @@ class Decoder():
             })
 
         dfaccuracy = pd.DataFrame(accuracy_each)
-
+        annotate_heatmap = len(self.LabelsUnique)<16
         if plot_savedir is not None:
             # Plot summaries of accuracy
             from pythonlib.tools.pandastools import grouping_plot_n_samples_conjunction_heatmap
             for norm_method in [None, "row_sub", "col_sub"]:
-                fig = grouping_plot_n_samples_conjunction_heatmap(dfclasses, "label_actual", "label_predicted", ["twind"], norm_method=norm_method)            
+                fig = grouping_plot_n_samples_conjunction_heatmap(dfclasses, "label_actual", 
+                                                                  "label_predicted", ["twind"], 
+                                                                  norm_method=norm_method, annotate_heatmap=annotate_heatmap)            
                 savefig(fig, f"{plot_savedir}/accuracy_heatmap-norm={norm_method}.pdf")
 
         return score, score_adjusted, dfclasses, dfaccuracy
@@ -1978,9 +2004,22 @@ def train_decoder_helper_extract_train_dataset(DFallpa, bregion, var_train, even
                                                include_null_data=False, n_min_per_var=5, filterdict_train=None,
                                                which_level="trial", decoder_method_index=None, PLOT=False,
                                                downsample_trials=False,
-                                               do_train_splits=False, do_train_splits_nsplits=5):
+                                               do_train_splits=False, do_train_splits_nsplits=5,
+                                               split_method = "train_test"):
     """
-    Wrapper to extract training data given some codeword inputs, Returns data where each datapt is (nchans, 1) vector, and each has associated label baseed on var_train
+    Wrapper to extract training data given some codeword inputs, Returns data where each datapt is (nchans, 1) vector, 
+    and each has associated label baseed on var_train
+
+    Has  many methods to do resampling and train-test splits.
+
+    Useful calls:
+    i. downsample_trials=True, do_train_splits=True, split_method = "train_only"
+    -- get resampled datasets, each is balanced for the variable. Useful if you want to test
+    on a different dataset (e.g., train on one loc, test on other)
+    ii. downsample_trials=True, do_train_splits=True, split_method = "train_test"
+    -- get myultiple train-test splits, each trial contirnbuting to test once only,
+    and balancing the varaible.    
+
     RETURNS:
     - pa_train_all, holding training data, shape (chans, datapts, 1)
     - _twind_train, becuase twind has changed, pass this into testing
@@ -1991,6 +2030,11 @@ def train_decoder_helper_extract_train_dataset(DFallpa, bregion, var_train, even
     from neuralmonkey.classes.population_mult import extract_single_pa
     from pythonlib.tools.pandastools import extract_with_levels_of_var_good
     from neuralmonkey.classes.population import concatenate_popanals_flexible
+    from pythonlib.tools.pandastools import extract_resample_balance_by_var
+    from pythonlib.tools.statstools import balanced_stratified_kfold
+    from sklearn.model_selection import StratifiedKFold
+    from collections import Counter
+    from pythonlib.tools.statstools import balanced_stratified_resample_kfold
 
     if include_null_data:
         twind_train_null = (-0.8, -0.1)
@@ -2000,7 +2044,7 @@ def train_decoder_helper_extract_train_dataset(DFallpa, bregion, var_train, even
     PAtrain = extract_single_pa(DFallpa, bregion, None, which_level, event_train)
     if PLOT:
         PAtrain.plotNeurHeat(trial=100)
-
+    
     if np.any(np.isnan(PAtrain.X)):
         print(PAtrain.X)
         print(DFallpa, bregion, None, which_level, event_train)
@@ -2019,61 +2063,113 @@ def train_decoder_helper_extract_train_dataset(DFallpa, bregion, var_train, even
     _, inds_keep = extract_with_levels_of_var_good(PAtrain.Xlabels["trials"], [var_train], n_min_per_var=n_min_per_var)
     print("Keeping n trials / total: ", len(inds_keep), "/", len(PAtrain.Trials))
     PAtrain = PAtrain.slice_by_dim_indices_wrapper("trials", inds_keep)
-    
+    if len(inds_keep)==0 and do_train_splits:
+        return None
+    elif len(inds_keep)==0 and not do_train_splits:
+        return None, None, None
+
     if np.any(np.isnan(PAtrain.X)):
         print(PAtrain.X)
         print(DFallpa, bregion, None, which_level, event_train)
         assert False
 
-    # Balance by resampling, optionally
-    if downsample_trials==True and do_train_splits==False:
-        # NOTE: shoudl do here, isntead of on output, since this keeps trials as the manipulated data level.
-        from pythonlib.tools.pandastools import extract_resample_balance_by_var
-        dflab = PAtrain.Xlabels["trials"]
-        _dflab = extract_resample_balance_by_var(dflab, var_train, "min", "replacement", assert_all_rows_unique=True)
-        inds_keep = sorted(_dflab.index.tolist())
-        print(f"Downsampling (balance) PAtrain from {len(dflab)} rows to {len(inds_keep)} rows.")
-        PAtrain = PAtrain.slice_by_dim_indices_wrapper("trials", inds_keep)
-    
-    if do_train_splits:
-        # Given PAtrain, get train/test splits
-        from sklearn.model_selection import StratifiedKFold
-        dflab = PAtrain.Xlabels["trials"]
-        labels = dflab[var_train].tolist()        
-
-        if downsample_trials:
-            # Then do balancing of training trials.
-            from pythonlib.tools.statstools import balanced_stratified_kfold
-            folds = balanced_stratified_kfold(np.zeros(len(labels)), labels, n_splits=do_train_splits_nsplits)
-        else:
-            from collections import Counter
-            do_train_splits_nsplits = min([do_train_splits_nsplits, min(Counter(labels).values())])
-            print(f"[not balanced] Doing {do_train_splits_nsplits} splits")
-            skf = StratifiedKFold(n_splits=do_train_splits_nsplits, shuffle=True)
-            folds = list(skf.split(np.zeros(len(labels)), labels)) # folds[0], 2-tuple of arays of ints
-
-        trainsets = []
-        for i, (train_index, test_index) in enumerate(folds):
-            # print("-----", i)
-            # print(train_index)    
-            # print(test_index)
-            PAtrain_train = PAtrain.slice_by_dim_indices_wrapper("trials", train_index, reset_trial_indices=True)
-            pa_train_all, _twind_train, _ = train_decoder_helper_extract_train_dataset_slice(PAtrain_train, var_train, twind_train, 
-                                                twind_train_null=twind_train_null, decoder_method_index=decoder_method_index)
-            trainsets.append({
-                "pa_train_all":pa_train_all,
-                "_twind_train":_twind_train,
-                "PAtrain_train":PAtrain_train,
-                "train_index_PAtrain_orig":train_index,
-                "test_index_PAtrain_orig":test_index,
-                "PAtrain_orig":PAtrain
-            })
-        return trainsets
-    else:
+    ### Methods to get training datasets, conjunctions of (splits, split_method, and downsample)
+    if do_train_splits==False:
+        # Simplest, a single train dataset
         # Return a single training set
+
+        if downsample_trials==True:
+            # Return balanced dataset, a single random sample.
+            # NOTE: shoudl do here, isntead of on output, since this keeps trials as the manipulated data level.
+            # NOTE: this can be a bad method if some classes have few trials. Pulls every other class down.
+            print("do_train_splits==False -- downsample_trials==True")
+            dflab = PAtrain.Xlabels["trials"]
+            _dflab = extract_resample_balance_by_var(dflab, var_train, "min", "replacement", assert_all_rows_unique=True)
+            inds_keep = sorted(_dflab.index.tolist())
+            print(f"Downsampling (balance) PAtrain from {len(dflab)} rows to {len(inds_keep)} rows.")
+            PAtrain = PAtrain.slice_by_dim_indices_wrapper("trials", inds_keep)
+        else:
+            print("do_train_splits==False -- downsample_trials==False")
+
         pa_train_all, _twind_train, PAtrain = train_decoder_helper_extract_train_dataset_slice(PAtrain, var_train, twind_train, 
                                                         twind_train_null=twind_train_null, decoder_method_index=decoder_method_index)
         return pa_train_all, _twind_train, PAtrain
+    else:
+        # Get multiple training sets... resampled in particular way.
+        dflab = PAtrain.Xlabels["trials"]
+        labels = dflab[var_train].tolist()        
+
+        # (1) # On each fold, get (traininds, testinds).
+        if split_method == "train_test":
+            do_train_splits_nsplits = min([do_train_splits_nsplits, min(Counter(labels).values())]) # so that each test trial is done once and only once.
+            if downsample_trials:
+                # Then do balancing of training trials.
+                print(f"split_method={split_method}, downsample_trials={downsample_trials}, nsplits={do_train_splits_nsplits}")
+                folds = balanced_stratified_kfold(np.zeros(len(labels)), labels, n_splits=do_train_splits_nsplits)
+            else:
+                # Else just get splits, ignoring whether is balanced.
+                # print(f"[not balanced] Doing {do_train_splits_nsplits} splits")
+                print(f"split_method={split_method}, downsample_trials={downsample_trials}, nsplits={do_train_splits_nsplits}")
+                skf = StratifiedKFold(n_splits=do_train_splits_nsplits, shuffle=True)
+                folds = list(skf.split(np.zeros(len(labels)), labels)) # folds[0], 2-tuple of arays of ints
+
+            # Construct trainsets
+            trainsets = []
+            for _, (train_index, test_index) in enumerate(folds):
+                #TODO: This is waste of time to collect for both 
+                # Datasets for training data
+                PAtrain_train = PAtrain.slice_by_dim_indices_wrapper("trials", train_index, reset_trial_indices=True)
+                pa_train_all, _twind_train, _ = train_decoder_helper_extract_train_dataset_slice(PAtrain_train, var_train, twind_train, 
+                                                    twind_train_null=twind_train_null, decoder_method_index=decoder_method_index)
+                
+                # # also get one that combines trian and test indices
+                # both_indices = [int(i) for i in train_index] + [int(i) for i in test_index]
+                # PAtrain_traintest = PAtrain.slice_by_dim_indices_wrapper("trials", both_indices, reset_trial_indices=True)
+                # pa_traintest_all, _twind_traintest, _ = train_decoder_helper_extract_train_dataset_slice(PAtrain_traintest, var_train, twind_train, 
+                #                                     twind_train_null=twind_train_null, decoder_method_index=decoder_method_index)
+                
+                # assert _twind_traintest == _twind_train
+                
+                trainsets.append({
+                    "pa_train_all":pa_train_all, # Training indice, chopping time window up in to pieces.
+                    "PAtrain_train":PAtrain_train,
+                    # "pa_traintest_all":pa_traintest_all, # training + testing indices
+                    # "PAtrain_traintest":PAtrain_traintest,
+                    "_twind_train":_twind_train,
+                    "train_index_PAtrain_orig":train_index,
+                    "test_index_PAtrain_orig":test_index,
+                    "PAtrain_orig":PAtrain
+                })
+
+        # (2) Resample, on each fold getting a single set of inds (training inds)
+        elif split_method == "train_only":
+            if downsample_trials:
+                # This is the only reason you wuld use split_method == "train_only".
+                print(f"split_method={split_method}, downsample_trials={downsample_trials}, nsplits={do_train_splits_nsplits}")
+                folds = balanced_stratified_resample_kfold(None, labels, n_splits=do_train_splits_nsplits) # list of list of ints
+            else:
+                assert False, "no reason to do this..."
+
+            # Construct trainsets
+            trainsets = []
+            for indices in folds:
+
+                # Datasets for training data
+                PAtrain_train = PAtrain.slice_by_dim_indices_wrapper("trials", indices, reset_trial_indices=True)
+                pa_train_all, _twind_train, _ = train_decoder_helper_extract_train_dataset_slice(PAtrain_train, var_train, twind_train, 
+                                                    twind_train_null=twind_train_null, decoder_method_index=decoder_method_index)
+                
+                trainsets.append({
+                    "pa_train_all":pa_train_all, # Training indice, chopping time window up in to pieces.
+                    "PAtrain_train":PAtrain_train,
+                    "_twind_train":_twind_train,
+                    "index_PAtrain_orig":indices,
+                    "PAtrain_orig":PAtrain
+                })
+        else:
+            assert False
+
+        return trainsets
 
     # if decoder_method_index==1:
     #     ##### Method 1 -- use entire window (time mean)
@@ -2158,7 +2254,6 @@ def train_decoder_helper_extract_train_dataset(DFallpa, bregion, var_train, even
     #     assert False
 
     # return pa_train_all, _twind_train, PAtrain
-
 
 def train_decoder_helper(DFallpa, bregion, var_train="seqc_0_shape", event_train=None, 
                             twind_train = None,
@@ -2260,12 +2355,18 @@ def train_decoder_helper_with_splits(DFallpa, bregion, var_train="seqc_0_shape",
                             do_upsample_balance=False, do_upsample_balance_fig_path_nosuff=None,
                             downsample_trials=False, classifier_version="logistic",
                             return_dfscores_train = False,
-                            do_train_splits_nsplits=5):
+                            do_train_splits_nsplits=5, split_method="train_test"):
     """
     IDentical to train_decoder_helper, but do multiple times, each time splitting trials for training data, 
     and return each decoder, already trained, and do plots for each.
     PARAMS:
     - do_train_splits_nsplits, int, how many stratified train-test splits...
+    - combine_train_test_indices, bool (FAlse).
+    --- True, then combines train and test indices to get training setes. This is useful if
+    you will then take Decodersa nd apply to held-out data. i.e. you dont care about the
+    train-test split.
+    --- False, ...
+
     """
 
     from neuralmonkey.analyses.decode_moment import Decoder
@@ -2288,10 +2389,18 @@ def train_decoder_helper_with_splits(DFallpa, bregion, var_train="seqc_0_shape",
                                                                                      which_level, decoder_method_index, PLOT,
                                                                                      downsample_trials=downsample_trials,
                                                                                      do_train_splits=True, 
-                                                                                     do_train_splits_nsplits=do_train_splits_nsplits)
+                                                                                     do_train_splits_nsplits=do_train_splits_nsplits,
+                                                                                     split_method=split_method)
+    if trainsets is None:
+        return [], []
+    
     decoders = []
+    # trainsets_success = []
     for i_ts, ts in enumerate(trainsets):
-        print("Training this classifier version: ", classifier_version, "trainset(splits)=", i_ts)
+        # -- Train on train set indices only.
+        print("Training this classifier version: ", classifier_version, "trainset(split num)=", i_ts)
+        print("... info for this train-test split: ", ts)
+        # Default. Here is training on subset of indices. 
         pa_train_all = ts["pa_train_all"]
         _twind_train = ts["_twind_train"]
         PAtrain_train = ts["PAtrain_train"] # Just those used for training trials, here.
@@ -2299,28 +2408,33 @@ def train_decoder_helper_with_splits(DFallpa, bregion, var_train="seqc_0_shape",
             # Train
             Dc = DecoderEnsemble(pa_train_all, var_train, _twind_train)
             Dc.train_decoder(PLOT, do_upsample_balance, do_upsample_balance_fig_path_nosuff)
+            # success = Dc.train_decoder(PLOT, do_upsample_balance, do_upsample_balance_fig_path_nosuff)
         else:
             # Train
             Dc = Decoder(pa_train_all, var_train, _twind_train)
             Dc.train_decoder(PLOT, do_upsample_balance, do_upsample_balance_fig_path_nosuff, classifier_version=classifier_version)
+        decoders.append(Dc)
 
+        #################### POST-STUFF
         # A flag for "good" labels --> i.e. those in decoder that enough trials. 
         _df, _ = extract_with_levels_of_var_good(PAtrain_train.Xlabels["trials"], [Dc.VarDecode], n_min_per_var_good)
         labels_decoder_good = _df[Dc.VarDecode].unique().tolist()
         Dc.LabelsDecoderGood = labels_decoder_good
 
-        # Save the decoder
-        decoders.append(Dc)
+        # Always make this plot of sample size
+        # Plot n trials for training
+        from pythonlib.tools.pandastools import grouping_plot_n_samples_conjunction_heatmap
+        savedir_this = f"{savedir}/trainsplit={i_ts}"
+        os.makedirs(savedir_this, exist_ok=True)
+        fig = grouping_plot_n_samples_conjunction_heatmap(PAtrain_train.Xlabels["trials"], var_train, "task_kind", None)
+        savefig(fig, f"{savedir_this}/counts-var_train={var_train}.pdf")
+        plt.close("all")
+
+        # Note down the exact trialcodes used. This useful for sanity check downsampling, etc.
+        from pythonlib.tools.pandastools import grouping_print_n_samples
+        grouping_print_n_samples(PAtrain_train.Xlabels["trials"], [var_train, "trialcode"], savepath=f"{savedir_this}/datapts-{var_train}-vs-trialcode.txt")
 
         if PLOT:
-            # Plot n trials for training
-            from pythonlib.tools.pandastools import grouping_plot_n_samples_conjunction_heatmap
-            savedir_this = f"{savedir}/trainsplit={i_ts}"
-            os.makedirs(savedir_this, exist_ok=True)
-
-            fig = grouping_plot_n_samples_conjunction_heatmap(PAtrain_train.Xlabels["trials"], var_train, "task_kind", None)
-            savefig(fig, f"{savedir_this}/counts-var_train={var_train}.pdf")
-
             # Plot scores on TRAIN set
             labels_decoder_good = Dc.LabelsDecoderGood
             dfscores_train = Dc.scalar_score_extract_df(PAtrain_train, twind_train, labels_decoder_good=labels_decoder_good, 
@@ -2328,14 +2442,9 @@ def train_decoder_helper_with_splits(DFallpa, bregion, var_train="seqc_0_shape",
             sdir = f"{savedir_this}/train_set"
             os.makedirs(sdir, exist_ok=True)
             Dc.scalar_score_df_plot_summary(dfscores_train, sdir)      
-        
+    
+    assert len(trainsets)==len(decoders)
     return trainsets, decoders
-
-# def test_decoder_helper_extract_test_dataset(DFallpa, bregion, which_level, event, filterdict):
-#     from neuralmonkey.classes.population_mult import extract_single_pa
-#     PAtest = extract_single_pa(DFallpa, bregion, None, which_level=which_level, event=event)
-#     PAtest = PAtest.slice_by_labels_filtdict(filterdict)
-#     return PAtest
 
 def _test_decoder_helper(Dc, PAtest, var_test, list_twind_test, subtract_baseline=False, PLOT=False, savedir=None,
                          prune_labels_exist_in_train_and_test=True, filterdict_test=None):
@@ -2469,7 +2578,8 @@ def pipeline_train_test_scalar_score_with_splits(DFallpa, bregion,
                                      var_train, event_train, twind_train, filterdict_train,
                                      var_test, event_test, list_twind_test, filterdict_test,
                                      savedir, include_null_data=False, decoder_method_index=None,
-                                     prune_labels_exist_in_train_and_test=True, PLOT=True,
+                                     prune_labels_exist_in_train_and_test=True, 
+                                     PLOT_TRAIN=True, PLOT_TEST_SPLIT=True, PLOT_TEST_CONCATTED=True,
                                      which_level_train="trial", which_level_test="trial", n_min_per_var=None,
                                      subtract_baseline=False, subtract_baseline_twind=None,
                                      do_upsample_balance=True,
@@ -2477,7 +2587,8 @@ def pipeline_train_test_scalar_score_with_splits(DFallpa, bregion,
                                      allow_multiple_twind_test=False,
                                      classifier_version="logistic", # 7/11/24 - decided this, since it seems to do better for chars (same image, dif beh)
                                     #  classifier_version="ensemble",
-                                     do_train_splits_nsplits=5, score_user_test_data=True):
+                                     do_train_splits_nsplits=5, score_user_test_data=True,
+                                     do_agg_of_user_test_data=True, split_method="train_test"):
     """
     Helper to extract dataframe holding decode score for each row of this bregion's test dataset (PA)
     
@@ -2502,20 +2613,28 @@ def pipeline_train_test_scalar_score_with_splits(DFallpa, bregion,
     twind_train = tuple(twind_train)
     list_twind_test = [tuple(twind) for twind in list_twind_test]
 
+    if not allow_multiple_twind_test:
+        assert len(list_twind_test)==1, "you must turn on flag allow_multiple_twind_test"
+
     ### Train decoder
-    # include_null_data=True
     if n_min_per_var is None:
         n_min_per_var=3
     n_min_per_var_good = 10
 
     do_upsample_balance_fig_path_nosuff = f"{savedir}/upsample_pcs"
     trainsets, decoders = train_decoder_helper_with_splits(DFallpa, bregion, var_train, event_train, twind_train,
-                                    PLOT, include_null_data, n_min_per_var, filterdict_train,
+                                    PLOT_TRAIN, include_null_data, n_min_per_var, filterdict_train,
                                     which_level_train, decoder_method_index, savedir, n_min_per_var_good,
                                     do_upsample_balance, do_upsample_balance_fig_path_nosuff,
                                     downsample_trials=downsample_trials, classifier_version=classifier_version,
-                                    return_dfscores_train=True, do_train_splits_nsplits=do_train_splits_nsplits)
-    
+                                    return_dfscores_train=True, do_train_splits_nsplits=do_train_splits_nsplits,
+                                    split_method=split_method)
+    if len(trainsets)==0:
+        # Then no data after filtering...'
+        print("!Skipping, len(trainsets)==0")
+        return None, None, None, None, None, None
+        
+    ################ EVALUATION
     # For each training set, evaluate (i) the test set and (ii) the held-out part of the training set.
     list_dfscores_testsplit = []
     list_dfscores_usertest = []
@@ -2523,23 +2642,28 @@ def pipeline_train_test_scalar_score_with_splits(DFallpa, bregion,
     for i_ts, (Dc, ts) in enumerate(zip(decoders, trainsets)):    
         savedir_this = f"{savedir}/trainsplit={i_ts}-vs-testsplit"
         
-        # (1) Test on held-out data
-        test_index = [int(i) for i in ts["test_index_PAtrain_orig"]] # array of ints
-        PAtrain_orig = ts["PAtrain_orig"]
+        if split_method =="train_test":
+            ### (1) Test on held-out data
+            test_index = [int(i) for i in ts["test_index_PAtrain_orig"]] # array of ints
+            PAtrain_orig = ts["PAtrain_orig"]
 
-        # - slice out test dataset
-        patest = PAtrain_orig.slice_by_dim_indices_wrapper("trials", test_index, reset_trial_indices=True)
+            # - slice out test dataset
+            patest = PAtrain_orig.slice_by_dim_indices_wrapper("trials", test_index, reset_trial_indices=True)
+            dfscores, patest = _test_decoder_helper(Dc, patest, var_test, list_twind_test, subtract_baseline, PLOT_TEST_SPLIT, savedir_this, 
+                                            prune_labels_exist_in_train_and_test)
+            dfscores["train_split_idx"] = i_ts
 
-        dfscores, patest = _test_decoder_helper(Dc, patest, var_test, list_twind_test, subtract_baseline, PLOT, savedir_this, 
-                                        prune_labels_exist_in_train_and_test)
-        dfscores["train_split_idx"] = i_ts
-        list_dfscores_testsplit.append(dfscores)
+            # Modify indices that are specific to this decoder and test set
+            dfscores["pa_idx"] = [(i_ts, pa_idx) for pa_idx in dfscores["pa_idx"]]
+            dfscores["decoder_idx"] = [(i_ts, decoder_idx) for decoder_idx in dfscores["decoder_idx"]]
 
+            list_dfscores_testsplit.append(dfscores)
+
+        ### (2) Test on user-inputted test set.
         if score_user_test_data:
-            # (2) Test on user-inputted test set.
             savedir_this = f"{savedir}/trainsplit={i_ts}-vs-user_inputed_test"
             dfscores, PAtest = test_decoder_helper(Dc, DFallpa, bregion, var_test, event_test, list_twind_test, filterdict_test,
-                                which_level_test, savedir_this, prune_labels_exist_in_train_and_test, PLOT,
+                                which_level_test, savedir_this, prune_labels_exist_in_train_and_test, PLOT_TEST_SPLIT,
                                 subtract_baseline, subtract_baseline_twind, allow_multiple_twind_test=allow_multiple_twind_test)
             dfscores["train_split_idx"] = i_ts
         else:
@@ -2548,8 +2672,54 @@ def pipeline_train_test_scalar_score_with_splits(DFallpa, bregion,
         list_dfscores_usertest.append(dfscores)
 
     # Concat the results
-    dfscores_testsplit = pd.concat(list_dfscores_testsplit).reset_index(drop=True)
     dfscores_usertest = pd.concat(list_dfscores_usertest).reset_index(drop=True)
+
+    ################ COMBINING RESULTS 
+    # Some colums which might differ across train-test splits, give them common fake value here. THse are not important
+    if split_method =="train_test":
+        dfscores_testsplit = pd.concat(list_dfscores_testsplit).reset_index(drop=True)
+        dfscores_testsplit["decoder_class_good"] = True
+        dfscores_testsplit["decoder_class_semantic_str"] = "IGN" # igbnore this.
+    else:
+        dfscores_testsplit = None
+    # del dfscores["decoder_class_semantic_str"]
+    
+    # dfscores_testsplit["decoder_class_semantic_str"] = True
+    # dfscores_testsplit["decoder_class_good"] = True
+    
+    # Combine test results from train-test and from uset test.
+    dfscores_both = None
+    if do_agg_of_user_test_data:
+        # This averages over all train-test splits, so that each test datapt has a single row. Can do this for
+        # user data (but not for split train data) becuyase user data has identical test datapts on each split.
+        from pythonlib.tools.pandastools import aggregGeneral
+        dfscores_usertest = aggregGeneral(dfscores_usertest, 
+                                          ["decoder_idx", "pa_idx", "twind"], 
+                                          ["score"], 
+                                          ["decoder_class", "pa_class", "trialcode", "epoch", "same_class"] # code does sanity check that these are all unqiue values.
+                                          )
+
+        # Optioanlly, concat the two dfscores. This is useful if train-test-split version is testing on one subset of data
+        # and the usertest is testing on other subset. (e.g., I did this for morphset, different susbet of indices)
+        # assert do_agg_of_user_test_data==True, "otherwise rows will be duplicated for teh user-test"
+
+        # 1. santiyc check that they have same columns except train_split_idx
+        if False: # no need, since I am explicitly asking for the columns I need in aggregGeneral.
+            if [col for col in dfscores_testsplit.columns if col not in dfscores_usertest] != ['train_split_idx']:
+                print([col for col in dfscores_testsplit.columns if col not in dfscores_usertest])
+                print([col for col in dfscores_usertest.columns if col not in dfscores_testsplit])
+                assert False, "did you mistakenly throw out columns for dfscores_usertest when doing aggGeneral(dfscores_usertest)?"
+
+        if split_method =="train_test":
+            # Combine split and user test data into a single dataframe
+            dfscores_both = pd.concat([dfscores_testsplit, dfscores_usertest]).reset_index(drop=True)
+            dfscores_both = dfscores_both.drop("train_split_idx", axis=1)
+
+    # Make a final plot of concated test data
+    if PLOT_TEST_CONCATTED:
+        sdir = f"{savedir}/test-concatted-testsplit"
+        os.makedirs(sdir, exist_ok=True)
+        Dc.scalar_score_df_plot_summary(dfscores_testsplit, sdir)
 
     # Save params
     from pythonlib.tools.expttools import writeDictToTxtFlattened
@@ -2578,7 +2748,7 @@ def pipeline_train_test_scalar_score_with_splits(DFallpa, bregion,
         "do_train_splits_nsplits":do_train_splits_nsplits}, 
         path=f"{savedir}/params.txt")
 
-    return dfscores_testsplit, dfscores_usertest, decoders, trainsets, PAtest
+    return dfscores_testsplit, dfscores_usertest, dfscores_both, decoders, trainsets, PAtest
 
 
 def pipeline_get_dataset_params_from_codeword(dataset_name):
@@ -2696,6 +2866,164 @@ def pipeline_get_dataset_params_from_codeword(dataset_name):
     return event, twind, filterdict, list_twind, which_level
 
 
+def pipeline_train_test_scalar_score_split_gridloc(list_loc, savedir_base,
+                                                   DFallpa, bregion, 
+                                     var_train, event_train, twind_train, filterdict_train,
+                                     var_test, event_test, list_twind_test, filterdict_test,
+                                     include_null_data=False, prune_labels_exist_in_train_and_test=True, PLOT=False, PLOT_TEST=True,
+                                     which_level_train="trial", which_level_test="trial", n_min_per_var=None,
+                                     subtract_baseline=False, subtract_baseline_twind=None,
+                                     do_upsample_balance=True, downsample_trials=False,
+                                     allow_multiple_twind_test=False,
+                                     auto_prune_locations=False):
+    """
+    Good wrapper for train and testing, but here splitting so that training and testing on all separate pairs of 
+    gridloc (I.e., testing generalization across gridloc).
+
+    Does not do train-test split of trails, since splits by loc.
+
+    PARAMS:
+    - DFSCORES, one row per (pa_class, decoder_class, twind)
+    - list_loc, list of 2-tuple locations. Each loc gets turn as train and test.
+    """
+    from pythonlib.tools.pandastools import aggregGeneral
+
+
+    if filterdict_train is None:
+        filterdict_train = {}
+    if filterdict_test is None:
+        filterdict_test = {}
+
+
+    # [Optioanlly], Prune to keep only locations which have lots of prims. This wilkl fail if it ends up pruning too much.
+    if auto_prune_locations:
+        from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars
+        # pick the first dflab, assuming this is general
+        dflab = DFallpa["pa"].values[0].Xlabels["trials"]
+        n_min_per_var_this = 3 # shouldnt be the general version. here is just pruning locations.
+        dflab_tmp, _ = extract_with_levels_of_conjunction_vars(dflab, "seqc_0_loc", [var_train], None, 
+                                                            n_min_per_var_this, lenient_allow_data_if_has_n_levels=2, 
+                                                            prune_levels_with_low_n=True, 
+                                                            balance_no_missed_conjunctions=True, balance_force_to_drop_which=1, 
+                                                            plot_counts_heatmap_savepath=f"{savedir_base}/counts_auto_prune_location_post.pdf",
+                                                            plot_counts_heatmap_savepath_pre=f"{savedir_base}/counts_auto_prune_location_pre.pdf")
+        n_shapes_clean = len(dflab_tmp[var_train].unique())
+        n_shapes_before = len(dflab[var_train].unique())
+        print(n_shapes_clean, n_shapes_before)
+
+        n_locs_clean = len(dflab_tmp["seqc_0_loc"].unique())
+        n_locs_before = len(dflab["seqc_0_loc"].unique())
+
+        assert n_locs_before>1, "only one location, even before clean... shoudl not do held-out lcoation expts."
+        assert n_locs_clean>1, "only one location remaining.."
+        assert n_shapes_clean/n_shapes_before>0.8, "lost too many shapes based on pruning..."
+        assert len(dflab_tmp)/len(dflab)>0.8, "threw out too many trials..."
+
+        trialcodes_keep = dflab_tmp["trialcode"].unique().tolist()
+
+        assert "trialcode" not in filterdict_train
+        assert "trialcode" not in filterdict_test
+
+        filterdict_train["trialcode"] = trialcodes_keep
+        filterdict_test["trialcode"] = trialcodes_keep
+        # list_loc = [loc for loc in list_loc if loc in dflab_tmp["seqc_0_loc"].unique().tolist()]
+        list_loc = dflab_tmp["seqc_0_loc"].unique().tolist()
+
+    ### Do decoding
+    list_dfscores_across_locs = []
+    decoders = []
+    list_pa_train = []
+    list_pa_test = []
+    for train_loc in list_loc:
+        for test_loc in list_loc:
+            if train_loc != test_loc:
+                
+                filterdict_train["seqc_0_loc"] = [train_loc]
+                filterdict_test["seqc_0_loc"] = [test_loc]
+
+                print("filterdict_train:", filterdict_train)
+                print("filterdict_test:", filterdict_test)
+                
+                # Other params
+                savedir = f"{savedir_base}/decoder_training-train_loc={train_loc}-test_loc={test_loc}"
+                os.makedirs(savedir, exist_ok=True)
+                print(savedir)
+                    
+                if downsample_trials:
+                    # Then best way is to do multiple-folds, so that you aren't throwing away useful data.
+                    do_train_splits_nsplits=10
+                    PLOT_TRAIN = False
+                    PLOT_TEST_SPLIT = False
+                    PLOT_TEST_CONCATTED = PLOT
+                    score_user_test_data = True
+                    do_agg_of_user_test_data = True
+                    combine_train_test_indices = True # This allows using ALL data (train and test) in location 1 to train.
+                    _, dfscores_usertest, _, decoders, _, PAtest = pipeline_train_test_scalar_score_with_splits(DFallpa, 
+                                                                                    bregion, var_train, event_train, 
+                                                                                    twind_train, filterdict_train,
+                                                        var_test, event_test, list_twind_test, filterdict_test, savedir,
+                                                        include_null_data=include_null_data, 
+                                                        prune_labels_exist_in_train_and_test=prune_labels_exist_in_train_and_test, 
+                                                        PLOT_TRAIN=PLOT_TRAIN, PLOT_TEST_SPLIT=PLOT_TEST_SPLIT, PLOT_TEST_CONCATTED=PLOT_TEST_CONCATTED,
+                                                        which_level_test=which_level_test, n_min_per_var=n_min_per_var,
+                                                        subtract_baseline=subtract_baseline, subtract_baseline_twind=subtract_baseline_twind,
+                                                        do_upsample_balance=do_upsample_balance, downsample_trials=downsample_trials,
+                                                        do_train_splits_nsplits=do_train_splits_nsplits, 
+                                                        score_user_test_data=score_user_test_data, allow_multiple_twind_test=allow_multiple_twind_test,
+                                                        do_agg_of_user_test_data=do_agg_of_user_test_data,
+                                                        split_method="train_only",
+                                                        )
+                    dfscores = dfscores_usertest
+                    Dc = decoders[0]
+                    PAtrain = None
+                else:     
+                    # No need to do splits., Keep all data in training, since train and test are already
+                    # different trials (locations).
+                    dfscores, Dc, PAtrain, PAtest = pipeline_train_test_scalar_score(DFallpa, bregion, var_train, event_train, 
+                                                                                    twind_train, filterdict_train,
+                                                        var_test, event_test, list_twind_test, filterdict_test, savedir,
+                                                        include_null_data=include_null_data, prune_labels_exist_in_train_and_test=prune_labels_exist_in_train_and_test, 
+                                                        PLOT=PLOT, allow_multiple_twind_test=allow_multiple_twind_test,
+                                                        which_level_train=which_level_train, which_level_test=which_level_test, n_min_per_var=n_min_per_var,
+                                                        subtract_baseline=subtract_baseline, subtract_baseline_twind=subtract_baseline_twind,
+                                                        do_upsample_balance=do_upsample_balance, downsample_trials=downsample_trials)
+                
+                
+                
+                
+                fig = grouping_plot_n_samples_conjunction_heatmap(dfscores, "pa_class", "decoder_class", ["twind"]);
+                savefig(fig, f"{savedir}/counts_trials-dfscores.pdf")
+
+                # Store dfscores across locations sets
+                dfscores["train_loc"] = [train_loc for _ in range(len(dfscores))]
+                dfscores["test_loc"] = [test_loc for _ in range(len(dfscores))]
+                dfscores["pa_idx"] = dfscores["trialcode"] # Otherwise pa_idx is not unique across test sets.
+
+                list_dfscores_across_locs.append(dfscores)
+                decoders.append(Dc)
+                list_pa_train.append(PAtrain)
+                list_pa_test.append(PAtest)
+
+    # Concat across location sets, so that final dataframe has one datapt per trialcode.
+    if len(list_dfscores_across_locs)==0:
+        print("! skipping! len(list_dfscores_across_locs)==0")
+        return None
+    
+    dfscores_tmp = pd.concat(list_dfscores_across_locs).reset_index(drop=True)
+    DFSCORES = aggregGeneral(dfscores_tmp, 
+                                        ["decoder_class", "twind", "trialcode"], 
+                                        ["score", "score_norm"], 
+                                        ["pa_class", "epoch", "same_class"] # code does sanity check that these are all unqiue values.
+                                        )
+
+    if PLOT_TEST:
+        # Also plot, for normed score
+        sdir = f"{savedir_base}/test-final"
+        os.makedirs(sdir, exist_ok=True)
+        Dc.scalar_score_df_plot_summary(DFSCORES, sdir, var_score="score")
+
+    return DFSCORES, decoders, list_pa_train, list_pa_test
+
 def pipeline_train_test_scalar_score(DFallpa, bregion, 
                                      var_train, event_train, twind_train, filterdict_train,
                                      var_test, event_test, list_twind_test, filterdict_test,
@@ -2706,7 +3034,8 @@ def pipeline_train_test_scalar_score(DFallpa, bregion,
                                      do_upsample_balance=True,
                                      downsample_trials=False,
                                      allow_multiple_twind_test=False,
-                                     classifier_version="logistic"):
+                                     classifier_version="logistic", 
+                                     PLOT_TEST=None):
                                     #  classifier_version="ensemble"):
     """
     Helper to extract dataframe holding decode score for each row of this bregion's test dataset (PA)
@@ -2728,6 +3057,9 @@ def pipeline_train_test_scalar_score(DFallpa, bregion,
 
     twind_train = tuple(twind_train)
     list_twind_test = [tuple(twind) for twind in list_twind_test]
+
+    if PLOT_TEST is None:
+        PLOT_TEST = PLOT
 
     ### Train decoder
     # include_null_data=True
@@ -2996,45 +3328,6 @@ def analy_eyefixation_dfscores_condition(dfscores, dflab, var_test):
     decoding of shape fixation vs. shape draw.
     """
     assert var_test == "shape-fixation", "assuming this for below."
-
-    # APPEND info related to trials.
-    # list_decoder_class_idx_in_shapes_drawn = []
-    # list_decoder_class_was_drawn = []
-    # list_decoder_class_was_seen = []
-    # list_decoder_class_was_first_drawn = []
-
-    # for _i, row in dfscores.iterrows():
-
-    #     decoder_class = row["decoder_class"]
-    #     pa_idx = row["pa_idx"]
-    #     trialcode = row["trialcode"]
-    #     epoch = row["epoch"]
-
-    #     shapes_drawn = dflab.iloc[pa_idx]["shapes_drawn"]
-    #     FEAT_num_strokes_beh = dflab.iloc[pa_idx]["FEAT_num_strokes_beh"]
-    #     # shapes_visible = dflab.iloc[pa_idx]["taskconfig_shp"]
-    #     if decoder_class in shapes_drawn:
-    #         decoder_class_idx_in_shapes_drawn = shapes_drawn.index(decoder_class)
-    #     else:
-    #         decoder_class_idx_in_shapes_drawn = -1
-        
-    #     assert FEAT_num_strokes_beh==len(shapes_drawn)
-    #     assert decoder_class_idx_in_shapes_drawn<FEAT_num_strokes_beh
-        
-    #     list_decoder_class_idx_in_shapes_drawn.append(decoder_class_idx_in_shapes_drawn)
-    #     list_decoder_class_was_drawn.append(decoder_class in shapes_drawn)
-    #     # list_decoder_class_was_seen.append(decoder_class in shapes_visible)
-    #     list_decoder_class_was_first_drawn.append(decoder_class == shapes_drawn[0])
-        
-    # dfscores["decoder_class_idx_in_shapes_drawn"] = list_decoder_class_idx_in_shapes_drawn
-    # dfscores["decoder_class_was_drawn"] = list_decoder_class_was_drawn
-    # # dfscores["decoder_class_was_seen"] = list_decoder_class_was_seen
-    # dfscores["decoder_class_was_first_drawn"] = list_decoder_class_was_first_drawn
-
-    # from pythonlib.tools.pandastools import append_col_with_grp_index
-    # dfscores = append_col_with_grp_index(dfscores, ["decoder_class_was_drawn", "decoder_class_was_first_drawn"], "decoder_class_was_drawn|firstdrawn")
-    # dfscores["FEAT_num_strokes_beh"] = [dflab.iloc[pa_idx]["FEAT_num_strokes_beh"] for pa_idx in dfscores["pa_idx"]]
-
     
     # Normalize decode by subtracting mean within each decoder class, when it is not fixated
     dfscores["decoder_class_was_fixated"] = [row["decoder_class"] == row["pa_class"] for i, row in dfscores.iterrows()]
@@ -3080,7 +3373,6 @@ def analy_eyefixation_dfscores_condition(dfscores, dflab, var_test):
     dfscores = append_col_with_grp_index(dfscores, ["seqc_0_shape", "shape-fixation"], "shape_draw_fix")
 
     return dfscores
-
 
 
 def analy_chars_dfscores_condition(dfscores, dflab):
@@ -4040,6 +4332,12 @@ def analy_psychoprim_dfscores_condition(dfscores, morphset_this_dfscores, DSmorp
     # -----------------
     dfscores["trial_morph_assigned_to_which_base"] = [map_tcmorphset_to_info[(row["trialcode"], row["morph_set_idx"])][0] for i, row in dfscores.iterrows()]
 
+    # Only keep cases with enough trials
+    n1 = sum(dfscores["trial_morph_assigned_to_which_base"] == "not_enough_trials")
+    n2 = len(dfscores)
+    assert n1/n2<0.3, f"throwing away >0.3 of data. is this expected? {n1}/{n2}"
+    dfscores = dfscores[dfscores["trial_morph_assigned_to_which_base"] != "not_enough_trials"].reset_index(drop=True)
+
     # -----------------
     # New column -- was the decoder for base1 or base2 drawn on this trial.
     # Each trial must get a match to one decoder, even if its ambiguous
@@ -4071,8 +4369,62 @@ def analy_psychoprim_dfscores_condition(dfscores, morphset_this_dfscores, DSmorp
 
     dfscores["decoder_class_was_drawn"] = tmp
 
+    # Assign a new variable, which is (idxwithin, which_assigned), which allows grouping by what actually drawn
+    from pythonlib.tools.pandastools import append_col_with_grp_index
+    dfscores = append_col_with_grp_index(dfscores, ["pa_class", "trial_morph_assigned_to_which_base"], "idx_within|assigned")
+    dfscores = append_col_with_grp_index(dfscores, ["morph_set_idx", "pa_class"], "morph_set_idx|idx_within")
+
+    ### RECODE, to combine data across the two directions (base1 or base2 facing)
+    def F(x):
+        assign = x["trial_morph_assigned_to_which_base"]
+        decoder = x["decoder_class_semantic_good"]
+
+        if decoder == "same":
+            return "same"
+        elif assign in ['not_ambig_base1', 'base1', 'ambig_base1']:
+            if decoder == "base1":
+                return "basethis"
+            elif decoder == "interm1":
+                return "intermthis"
+            if decoder == "base2":
+                return "baseother"
+            elif decoder == "interm2":
+                return "intermother"
+            else:
+                print(decoder)
+                assert False
+        elif assign in ['not_ambig_base2', 'base2', 'ambig_base2']:
+            if decoder == "base1":
+                return "baseother"
+            elif decoder == "interm1":
+                return "intermother"
+            if decoder == "base2":
+                return "basethis"
+            elif decoder == "interm2":
+                return "intermthis"
+            else:
+                assert False
+        
+    dfscores["recoded_decoder"] = [F(row) for i, row in dfscores.iterrows()]
+
+    def F(x):
+        assign = x["trial_morph_assigned_to_which_base"]
+        if assign in ['not_ambig_base1', 'not_ambig_base2']:
+            return "not_ambig"
+        elif assign in ['ambig_base1', 'ambig_base2']:
+            return "ambig"
+        elif assign in ['base1', 'base2']:
+            return "base"
+        else:
+            print(decoder)
+            assert False
+        
+    dfscores["recoded_trial_morph"] = [F(row) for i, row in dfscores.iterrows()]
+
     # Sanity check -- each trialcode has a single case that is True
-    assert np.all(dfscores[dfscores["decoder_class_was_drawn"]==True].groupby(["morph_set_idx", "trialcode"]).size().reset_index(drop=True)==1), "expect each (morph_set_idx, trialcode) to have 1 decoder (i.e, varying by idx within morpht) that matches it"
+    if not np.all(dfscores[dfscores["decoder_class_was_drawn"]==True].groupby(["morph_set_idx", "trialcode"]).size().reset_index(drop=True)==1):
+        print(dfscores[dfscores["decoder_class_was_drawn"]==True].groupby(["morph_set_idx", "trialcode"]).size().reset_index(drop=True))
+        assert np.all(dfscores[dfscores["decoder_class_was_drawn"]==True].groupby(["morph_set_idx", "trialcode"]).size().reset_index(drop=True)==1), "expect each (morph_set_idx, trialcode) to have 1 decoder (i.e, varying by idx within morpht) that matches it"
 
     return dfscores
 
@@ -4087,7 +4439,8 @@ def analy_psychoprim_prepare_beh_dataset(animal, date, savedir="/tmp"):
     MS, D, _, _, _ = prepare_beh_dataset(animal, date, do_syntax_rule_stuff=False)        
 
     # Clean up first --> only trials with one beh stroke
-    D.preprocessGood(params=["beh_strokes_one"])
+    # - one stroke, so that it can be assigned to base 1 or 2 accurately.
+    D.preprocessGood(params=["beh_strokes_one", "remove_online_abort"])
 
     ### Extract all psycho prims stuff
     # How to map back to neural data?
@@ -4363,280 +4716,524 @@ def analy_psychoprim_prepare_beh_dataset(animal, date, savedir="/tmp"):
 
     return DSmorphsets, map_tc_to_morph_info, map_morphset_to_basemorphinfo, map_tcmorphset_to_idxmorph, map_tcmorphset_to_info, map_morphsetidx_to_assignedbase_or_ambig, map_tc_to_morph_status
 
+def _analy_psychoprim_score_postsamp_plot_scores(dfscores, savedir, do_agg_over_trials=True):
+    """
+    Plot results for psychoprim analyses.
+
+    dfscores shoudl have trial-level data. Within here, will first agg so that each datapt is (morphidx, idx_within).
+    """
+    from pythonlib.tools.pandastools import grouping_plot_n_samples_conjunction_heatmap, stringify_values, aggregGeneral
+
+    assert len(dfscores["twind"].unique())==1, "assuming this below"
+    
+    ### First, agg data, so each datapt is single morph_set_idx|idx_within
+    if do_agg_over_trials:
+        dfscores = aggregGeneral(dfscores, ["idx_within|assigned", "morph_set_idx|idx_within", "pa_class", "decoder_class", "twind", "trial_morph_assigned_to_which_base"], ["score", "score_norm"], nonnumercols="all")
+
+    ### 
+    fig = grouping_plot_n_samples_conjunction_heatmap(dfscores, "trial_morph_assigned_to_which_base", "pa_class", ["morph_set_idx"])
+    savefig(fig, f"{savedir}/counts_idx_assigned-1.pdf")
+    
+    fig = grouping_plot_n_samples_conjunction_heatmap(dfscores, "trial_morph_assigned_to_which_base", "pa_class", ["morph_set_idx"])
+    savefig(fig, f"{savedir}/counts_idx_assigned-2.pdf")
+
+
+    for var_score in ["score"]:
+        # var_score = "score_norm"
+
+        for x_var in ["decoder_class_semantic_good", "decoder_class", "recoded_decoder"]:
+
+            if x_var == "decoder_class_semantic_good":
+                x_order = ("base1", "interm1", "same", "interm2", "base2")
+            else:
+                x_order = None
+
+            fig = sns.catplot(data=dfscores, x=x_var, y=var_score, hue="pa_class", kind="point", errorbar=("ci", 68), 
+                            order=x_order)
+            for ax in fig.axes.flatten():
+                ax.axhline(0, color="k", alpha=0.3)
+            savefig(fig, f"{savedir}/decoder_class-x_var={x_var}-var_score={var_score}-1.pdf")
+
+            # for col in [None, "pa_morph_assigned_baseorambig", "trial_morph_assigned_to_which_base", "recoded_trial_morph"]:
+            for col in [None, "trial_morph_assigned_to_which_base", "recoded_trial_morph"]:
+                fig = sns.catplot(data=dfscores, x=x_var, y=var_score, hue="pa_class", kind="point", errorbar=("ci", 68), 
+                                col=col, order=x_order)
+                for ax in fig.axes.flatten():
+                    ax.axhline(0, color="k", alpha=0.3)
+                savefig(fig, f"{savedir}/decoder_class-x_var={x_var}-var_score={var_score}-col={col}-2.pdf")
+
+                fig = sns.catplot(data=dfscores, x=x_var, y=var_score, kind="bar", errorbar=("ci", 68), 
+                                col=col, order=x_order)
+                for ax in fig.axes.flatten():
+                    ax.axhline(0, color="k", alpha=0.3)
+                savefig(fig, f"{savedir}/decoder_class-x_var={x_var}-var_score={var_score}-col={col}-3.pdf")
+
+                fig = sns.catplot(data=dfscores, x=x_var, y=var_score, hue = "morph_set_idx", kind="point", errorbar=("ci", 68), 
+                                col=col, order=x_order)
+                for ax in fig.axes.flatten():
+                    ax.axhline(0, color="k", alpha=0.3)
+                savefig(fig, f"{savedir}/decoder_class-x_var={x_var}-var_score={var_score}-col={col}-4.pdf")
+
+                fig = sns.catplot(data=dfscores, x=x_var, y=var_score, hue = "morph_set_idx|idx_within", kind="point", errorbar=("ci", 68), 
+                                col=col, order=x_order)
+                for ax in fig.axes.flatten():
+                    ax.axhline(0, color="k", alpha=0.3)
+                savefig(fig, f"{savedir}/decoder_class-x_var={x_var}-var_score={var_score}-col={col}-4b.pdf")
+
+                fig = sns.catplot(data=dfscores, x=x_var, y=var_score, hue=col, kind="point", 
+                                errorbar=("ci", 68), col="pa_class", order=x_order)
+                for ax in fig.axes.flatten():
+                    ax.axhline(0, color="k", alpha=0.3)
+                savefig(fig, f"{savedir}/decoder_class-x_var={x_var}-var_score={var_score}-hue={col}-5.pdf")
+
+                if col is not None:
+                    fig = sns.catplot(data=dfscores, x=col, y=var_score, hue = "morph_set_idx", kind="point", errorbar=("ci", 68), 
+                                    col=x_var)
+                    for ax in fig.axes.flatten():
+                        ax.axhline(0, color="k", alpha=0.3)
+                    savefig(fig, f"{savedir}/decoder_class-x_var={x_var}-var_score={var_score}-col={col}-6.pdf")
+
+            if False: # not usefiule
+                sns.catplot(data=dfscores, x="pa_class", y=var_score, hue="decoder_class", kind="point", errorbar=("ci", 68))
+                sns.catplot(data=dfscores, x="pa_class", y=var_score, hue="decoder_class", kind="point", errorbar=("ci", 68), col="pa_morph_assigned_baseorambig")
+
+            from pythonlib.tools.pandastools import plot_subplots_heatmap
+
+            for var_subplot in [None, "morph_set_idx"]:
+                for row_var in ["idx_within|assigned", "trial_morph_assigned_to_which_base", "recoded_trial_morph"]:
+                    for col_var in [x_var]:
+                        if row_var == "trial_morph_assigned_to_which_base":
+                            row_values = ['base1', 'not_ambig_base1', 'ambig_base1', 'ambig_base2', 'not_ambig_base2', 'base2']
+                        else:
+                            row_values = sorted(dfscores[row_var].unique().tolist())
+                        if x_order is None:
+                            x_order = sorted(dfscores[col_var].unique().tolist())
+
+                        # zlims = [0,1]
+                        zlims = None
+                        fig, axes = plot_subplots_heatmap(dfscores, row_var, col_var, var_score, var_subplot, 
+                                                        share_zlim=True, row_values=row_values,
+                                            col_values=x_order, ZLIMS=zlims)
+                        savefig(fig, f"{savedir}/heatmap-varsubplot={var_subplot}-rowvar={row_var}-colvar={col_var}-varscore={var_score}.pdf")
+
+                        plt.close("all")
+    
 
 def analy_psychoprim_score_postsamp(DFallpa, DSmorphsets, 
                                     map_tcmorphset_to_idxmorph, map_morphsetidx_to_assignedbase_or_ambig,
                                     map_tcmorphset_to_info,
-                                    SAVEDIR_BASE, list_bregion=None):
+                                    SAVEDIR_BASE, animal, date,
+                                    list_bregion=None,
+                                    version=1):
     """
-    Wrapper to run main scoring and plots for psychoprim
+    Wrapper to run main scoring and plots for psychoprim.
+    One decoder for each morphset.
     """
 
-    TWIND_TEST = (0.05, 1.2)
-    # TWIND_TEST = (0.1, 0.9)
-    # TWIND_TEST = (0.05, 0.6)
-    # TWIND_TEST = (0.05, 1.2)
+    LIST_TWIND_TEST = [
+        (0.6, 1.2), # second half better for PMv?
+        (0.05, 1.2),
+        (0.05, 0.6),
+    ]
+
     TWIND_TRAIN = (0.05, 1.2)
-    # Subtrract baseline?
+
     subtract_baseline=False
     subtract_baseline_twind=None
     include_null_data = False
     do_upsample_balance=True
-    PLOT_DECODER = True
-    n_min_per_var = 6
-    prune_labels_exist_in_train_and_test = True
+
+    # Plots for each specific morphset.
+    PLOT_DECODER = False
+    PLOT_EACH_MORPHSET = False
+    PLOT_TEST_SPLIT = PLOT_DECODER
+    PLOT_TEST_CONCATTED = PLOT_DECODER
 
     if list_bregion is None:
         list_bregion = DFallpa["bregion"].unique().tolist() 
-    
+
+    # Which version of train-test split?
+    if version==0:
+        # Previous version (ok)
+        # Decoders (0, 1, ..., 99)
+        # Test data: (0, 1, ..., 99), all using train-test split
+        USE_TRAIN_TEST_SPLIT = True # This leads to more accurate esimate for same-condition.
+        prune_labels_exist_in_train_and_test = True # important, if want to have mismatch between train adn test labels
+        train_on_which_prims = "all" # just the 2 base prims
+        score_user_test_data = False
+        do_agg_of_user_test_data = False
+        list_downsample_trials = [False, True] # important to balance across base and morphsets.
+        split_by_gridloc = True
+        test_on_which_prims = "not_trained"
+        assert False, "split_by_gridloc will not work -- as this applies only to user test data. Solution: dont need to do train-test split."
+    elif version == 1:
+        # Good version.
+        # Decoders: (0, 99)
+        # Test data 1: (0, 99) using train-test split
+        # Test data 2: (1, ..., ) morphsetes.
+        # (Then concat test data 1 and 2)
+        # And train-test are different gridloc.
+        USE_TRAIN_TEST_SPLIT = False # This leads to more accurate esimate for same-condition.
+        prune_labels_exist_in_train_and_test = False # important, if want to have mismatch between train adn test labels
+        train_on_which_prims = "base" # just the 2 base prims
+        list_downsample_trials = [False] # no need to balance, as this is comparing two base prims and testing generalization to morphed.
+        split_by_gridloc = True
+        test_on_which_prims = "all" # this is fine, since here is doing generalization across locations.
+    elif version == 2:
+        # Like version 1, but dont split by gridloc. Therefore you need to do train-test split for base prims.
+        # Decoders: (0, 99)
+        # Test data 1: (0, 99) using train-test split
+        # Test data 2: (1, ..., ) morphsetes.
+        # (Then concat test data 1 and 2)
+        USE_TRAIN_TEST_SPLIT = True # This leads to more accurate esimate for same-condition.
+        prune_labels_exist_in_train_and_test = False # important, if want to have mismatch between train adn test labels
+        train_on_which_prims = "base" # just the 2 base prims
+        score_user_test_data = True
+        do_agg_of_user_test_data = True
+        list_downsample_trials = [False] # no need to balance, as this is comparing two base prims and testing generalization to morphed.
+        split_by_gridloc = False
+        test_on_which_prims = "not_trained"
+    else:
+        assert False
+
+    assert split_by_gridloc == True, "currently this is hardcoded, in that there are for loops for gridlocs... shold make that an option instead."
+
     list_morphset = sorted(DSmorphsets.Dat["morph_set_idx"].unique().tolist())
-    for downsample_trials in [False, True]:
-    # for downsample_trials in [False]:
-        SAVEDIR = f"{SAVEDIR_BASE}/downsample_trials={downsample_trials}-TWIND_TEST={TWIND_TEST}"
-        for bregion in list_bregion:
-            list_df = []
-            for morphset in list_morphset:
-                # Given morphset, assign new column which is the trial's role in that morphset.
+    for TWIND_TEST in LIST_TWIND_TEST:
+        for downsample_trials in list_downsample_trials:
+            if downsample_trials:
+                # So that the lowest N doesnt pull all other categories down.
+                n_min_per_var = 9
+            else:
+                n_min_per_var = 6
 
-                for pa in DFallpa["pa"].values:
-                    dflab = pa.Xlabels["trials"]
-                    dflab["idx_morph_temp"] = [map_tcmorphset_to_idxmorph[(tc, morphset)] for tc in dflab["trialcode"]]
-
-                # Train on all the base_prims data
-                idx_exist = sorted(list(set([x for x in dflab["idx_morph_temp"] if x!="not_in_set"])))
-
-                event_train = "03_samp"
-                twind_train = TWIND_TRAIN
-                filterdict_train = {"idx_morph_temp":idx_exist}
-                var_train = "idx_morph_temp"
-
-                # Test on morphed data - get all here
-                var_test = "idx_morph_temp"
-                event_test = "03_samp"
-                filterdict_test = {"idx_morph_temp":idx_exist}
-                list_twind_test = [TWIND_TEST]
-                which_level_test = "trial"
-
-                # Other params
-                savedir = f"{SAVEDIR}/{bregion}/morphset={morphset}/decoder_training"
-                os.makedirs(savedir, exist_ok=True)
-                print(savedir)
+            if version==1:
+                n_min_per_var = 5 # because its generalizing across loc.
                 
-                dfscores, Dc, PAtrain, PAtest = pipeline_train_test_scalar_score(DFallpa, bregion, var_train, event_train, 
-                                                                                twind_train, filterdict_train,
-                                                    var_test, event_test, list_twind_test, filterdict_test, savedir,
-                                                    include_null_data=include_null_data, decoder_method_index=None,
-                                                    prune_labels_exist_in_train_and_test=prune_labels_exist_in_train_and_test, PLOT=PLOT_DECODER,
-                                                    which_level_test=which_level_test, n_min_per_var=n_min_per_var,
-                                                    subtract_baseline=subtract_baseline, subtract_baseline_twind=subtract_baseline_twind,
-                                                    do_upsample_balance=do_upsample_balance, downsample_trials=downsample_trials)
-                
-                dfscores = analy_psychoprim_dfscores_condition(dfscores, morphset, DSmorphsets, map_morphsetidx_to_assignedbase_or_ambig, map_tcmorphset_to_info)
+            SAVEDIR = f"{SAVEDIR_BASE}/downsample_trials={downsample_trials}-TWIND_TEST={TWIND_TEST}-version={version}"
+            
+            for bregion in list_bregion:
 
-                ##### PLOTS
-                savedir = f"{SAVEDIR}/{bregion}/morphset={morphset}/plots"
-                os.makedirs(savedir, exist_ok=True)
-                print("Saving plots at... ", savedir)
 
-                for var_score in ["score", "score_norm"]:
-                    # var_score = "score_norm"
 
-                    for x_var in ["decoder_class_semantic_good", "decoder_class"]:
+                ### Collect data across all morphsets.
+                list_df = []
+                list_morphset = sorted(DSmorphsets.Dat["morph_set_idx"].unique().tolist())
+                for morphset in list_morphset:
+                    # Given morphset, assign new column which is the trial's role in that morphset.
 
-                        if x_var == "decoder_class_semantic_good":
-                            order = ("base1", "interm1", "same", "interm2", "base2")
+                    for pa in DFallpa["pa"].values:
+                        dflab = pa.Xlabels["trials"]
+                        dflab["idx_morph_temp"] = [map_tcmorphset_to_idxmorph[(tc, morphset)] for tc in dflab["trialcode"]]
+
+                    # Train on all the base_prims data
+                    idx_exist = sorted(list(set([x for x in dflab["idx_morph_temp"] if x!="not_in_set"])))
+
+                    event_train = "03_samp"
+                    twind_train = TWIND_TRAIN
+                    var_train = "idx_morph_temp"
+                    if train_on_which_prims == "all": # all within morpjset
+                        idx_train = idx_exist
+                    elif train_on_which_prims == "base": # just the 2 base prims
+                        idx_train = [0, 99]
+                    else:
+                        print(train_on_which_prims)
+                        assert False
+
+                    # Test on morphed data - get all here
+                    # - Test on indices that are not included in training
+                    var_test = "idx_morph_temp"
+                    event_test = "03_samp"
+                    list_twind_test = [TWIND_TEST]
+                    which_level_test = "trial"
+
+                    # Test on which prims? This is "user" inputed test data
+                    if test_on_which_prims == "all":
+                        idx_test = idx_exist
+                    elif test_on_which_prims == "not_trained":
+                        idx_test = [i for i in idx_exist if i not in idx_train]
+                    else:
+                        assert False
+
+                    list_loc = dflab["seqc_0_loc"].unique().tolist()
+                    list_dfscores_across_locs = []
+                    # TODO replace with pipeline_train_test_scalar_score_split_gridloc 
+                    for train_loc in list_loc:
+                        for test_loc in list_loc:
+                            if train_loc != test_loc:
+
+                                filterdict_train = {"idx_morph_temp":idx_train, "seqc_0_loc":[train_loc]}
+                                filterdict_test = {"idx_morph_temp":idx_test, "seqc_0_loc":[test_loc]}
+                                print("filterdict_train:", filterdict_train)
+                                print("filterdict_test:", filterdict_test)
+                                
+                                # Other params
+                                savedir = f"{SAVEDIR}/{bregion}/morphset={morphset}/decoder_training-train_loc={train_loc}-test_loc={test_loc}"
+                                os.makedirs(savedir, exist_ok=True)
+                                print(savedir)
+                                
+                                if USE_TRAIN_TEST_SPLIT:
+                                    do_train_splits_nsplits=10
+                                    dfscores_testsplit, dfscores_usertest, dfscores_both, decoders, trainsets, PAtest = pipeline_train_test_scalar_score_with_splits(DFallpa, 
+                                                                                                    bregion, var_train, event_train, 
+                                                                                                    twind_train, filterdict_train,
+                                                                        var_test, event_test, list_twind_test, filterdict_test, savedir,
+                                                                        include_null_data=include_null_data, decoder_method_index=None,
+                                                                        prune_labels_exist_in_train_and_test=prune_labels_exist_in_train_and_test, 
+                                                                        PLOT_TRAIN=PLOT_DECODER, PLOT_TEST_SPLIT=PLOT_TEST_SPLIT, PLOT_TEST_CONCATTED=PLOT_TEST_CONCATTED,
+                                                                        which_level_test=which_level_test, n_min_per_var=n_min_per_var,
+                                                                        subtract_baseline=subtract_baseline, subtract_baseline_twind=subtract_baseline_twind,
+                                                                        do_upsample_balance=do_upsample_balance, downsample_trials=downsample_trials,
+                                                                        do_train_splits_nsplits=do_train_splits_nsplits, 
+                                                                        score_user_test_data=score_user_test_data, 
+                                                                        do_agg_of_user_test_data=do_agg_of_user_test_data)
+
+                                    if dfscores_testsplit is None:
+                                        # Then no data after filtering.
+                                        print("! skipping! dfscores_testsplit is None")
+                                        continue
+
+                                    dfscores_testsplit["run_morph_set_idx"] = morphset
+                                    dfscores_testsplit = analy_psychoprim_dfscores_condition(dfscores_testsplit, morphset, DSmorphsets, map_morphsetidx_to_assignedbase_or_ambig, map_tcmorphset_to_info)
+                                    fig = grouping_plot_n_samples_conjunction_heatmap(dfscores_testsplit, "pa_class", "decoder_class", ["run_morph_set_idx", "twind"]);
+                                    savefig(fig, f"{savedir}/counts_trials-dfscores_traintestsplit.pdf")
+
+                                    # Which dfscores is the final?
+                                    if version == 0:
+                                        # Use dfscores_testsplit.
+                                        dfscores = dfscores_testsplit
+                                    elif version == 2:
+                                        dfscores_usertest["run_morph_set_idx"] = morphset
+                                        dfscores_both["run_morph_set_idx"] = morphset
+
+                                        dfscores_usertest = analy_psychoprim_dfscores_condition(dfscores_usertest, morphset, DSmorphsets, map_morphsetidx_to_assignedbase_or_ambig, map_tcmorphset_to_info)
+                                        dfscores_both = analy_psychoprim_dfscores_condition(dfscores_both, morphset, DSmorphsets, map_morphsetidx_to_assignedbase_or_ambig, map_tcmorphset_to_info)
+
+                                        fig = grouping_plot_n_samples_conjunction_heatmap(dfscores_usertest, "pa_class", "decoder_class", ["run_morph_set_idx", "twind"]);
+                                        savefig(fig, f"{savedir}/counts_trials-dfscores_usertest.pdf")
+                                        fig = grouping_plot_n_samples_conjunction_heatmap(dfscores_both, "pa_class", "decoder_class", ["run_morph_set_idx", "twind"]);
+                                        savefig(fig, f"{savedir}/counts_trials-dfscores_both.pdf")
+                                        plt.close("all")
+
+                                        # Finally, keep just the combined
+                                        dfscores = dfscores_both
+                                else:
+                                    dfscores, Dc, PAtrain, PAtest = pipeline_train_test_scalar_score(DFallpa, bregion, var_train, event_train, 
+                                                                                                    twind_train, filterdict_train,
+                                                                        var_test, event_test, list_twind_test, filterdict_test, savedir,
+                                                                        include_null_data=include_null_data, decoder_method_index=None,
+                                                                        prune_labels_exist_in_train_and_test=prune_labels_exist_in_train_and_test, PLOT=PLOT_DECODER,
+                                                                        which_level_test=which_level_test, n_min_per_var=n_min_per_var,
+                                                                        subtract_baseline=subtract_baseline, subtract_baseline_twind=subtract_baseline_twind,
+                                                                        do_upsample_balance=do_upsample_balance, downsample_trials=downsample_trials)
+                                    
+                                    dfscores["run_morph_set_idx"] = morphset
+                                    dfscores = analy_psychoprim_dfscores_condition(dfscores, morphset, DSmorphsets, map_morphsetidx_to_assignedbase_or_ambig, map_tcmorphset_to_info)
+
+                                    fig = grouping_plot_n_samples_conjunction_heatmap(dfscores, "pa_class", "decoder_class", ["run_morph_set_idx", "twind"]);
+                                    savefig(fig, f"{savedir}/counts_trials-dfscores.pdf")
+
+                                # Store dfscores across locations sets
+                                dfscores["train_loc"] = [train_loc for _ in range(len(dfscores))]
+                                dfscores["test_loc"] = [test_loc for _ in range(len(dfscores))]
+                                list_dfscores_across_locs.append(dfscores)
+
+                    # Concat across location sets, so that final dataframe has one datapt per trialcode.
+                    if len(list_dfscores_across_locs)==0:
+                        print("! skipping! len(list_dfscores_across_locs)==0")
+                        continue
+                    
+                    from pythonlib.tools.pandastools import aggregGeneral
+                    dfscores_tmp = pd.concat(list_dfscores_across_locs).reset_index(drop=True)
+                    dfscores = aggregGeneral(dfscores_tmp, 
+                                                        ["decoder_class", "twind", "trialcode"], 
+                                                        ["score", "score_norm"], 
+                                                        ["pa_class", "epoch", "same_class"] # code does sanity check that these are all unqiue values.
+                                                        )
+
+                    ##### PLOTS
+                    if PLOT_EACH_MORPHSET:
+                        savedir = f"{SAVEDIR}/{bregion}/morphset={morphset}/plots"
+
+                        os.makedirs(savedir, exist_ok=True)
+                        print("Saving plots at... ", savedir)
+                        _analy_psychoprim_score_postsamp_plot_scores(dfscores, savedir)
+
+
+                    ### Collect
+                    list_df.append(dfscores)
+
+                ### Plot summary
+                DFSCORES_ALL = pd.concat(list_df).reset_index(drop=True)
+
+
+
+                # Save data
+                import pickle
+                savedir = f"{SAVEDIR}/{bregion}"
+                with open(f"{savedir}/DFSCORES.pkl", "wb") as f:
+                    pickle.dump(DFSCORES_ALL, f)
+
+                ############## PRUNE MORPHSETS
+                for morphset_get in [None, "good_ones"]:
+
+
+
+
+                    print("morphset_get:", morphset_get)
+                    if morphset_get == "good_ones":
+                        # Hand modified
+                        if (animal, date) == ("Diego", 240515):
+                            # Angle rotation
+                            morphsets_ignore = [2] # Did most with two strokes...
+                        if (animal, date) == ("Diego", 240523):
+                            # THis is a garbage morphset, is not actually morphing.
+                            morphsets_ignore = [0]
+                        elif (animal, date) == ("Pancho", 240521):
+                            morphsets_ignore = [0] # one base prim is garbage
+                        elif (animal, date) == ("Pancho", 240524):
+                            morphsets_ignore = [4] # doesnt actually vaciallte across tirals
                         else:
-                            order = None
+                            morphsets_ignore = []
+                    elif morphset_get is None:
+                        # Get all morphsets
+                        morphsets_ignore = []
+                    elif isinstance(morphset_get, int):
+                        # get just this one morphset (exclude the others)
+                        morphsets_ignore = [ms for ms in DF_TCRES["run_morphset"].unique().tolist() if ms!=morphset_get]
+                    else:
+                        print(morphset_get)
+                        assert False
+                        # morphsets_ignore = []
+                    morphsets_keep = [ms for ms in DFSCORES_ALL["run_morph_set_idx"].unique().tolist() if ms not in morphsets_ignore]
+                    print("morphsets_ignore: ", morphsets_ignore)
+                    DFSCORES = DFSCORES_ALL[DFSCORES_ALL["run_morph_set_idx"].isin(morphsets_keep)].reset_index(drop=True)
 
-                        fig = sns.catplot(data=dfscores, x=x_var, y=var_score, hue="pa_class", kind="point", errorbar=("ci", 68), 
-                                        order=order)
-                        for ax in fig.axes.flatten():
-                            ax.axhline(0, color="k", alpha=0.3)
-                        savefig(fig, f"{savedir}/decoder_class-x_var={x_var}-var_score={var_score}-1.pdf")
 
-                        fig = sns.catplot(data=dfscores, x=x_var, y=var_score, hue="pa_class", kind="point", errorbar=("ci", 68), 
-                                        col="pa_morph_assigned_baseorambig", order=order)
-                        for ax in fig.axes.flatten():
-                            ax.axhline(0, color="k", alpha=0.3)
-                        savefig(fig, f"{savedir}/decoder_class-x_var={x_var}-var_score={var_score}-2.pdf")
+                    
 
-                        fig = sns.catplot(data=dfscores, x=x_var, y=var_score, hue="pa_morph_assigned_baseorambig", kind="point", 
-                                        errorbar=("ci", 68), col="pa_class", order=order)
-                        for ax in fig.axes.flatten():
-                            ax.axhline(0, color="k", alpha=0.3)
-                        savefig(fig, f"{savedir}/decoder_class-x_var={x_var}-var_score={var_score}-3.pdf")
+                    ################ Plot
+                    savedir = f"{SAVEDIR}/{bregion}/combine_morphsets-all_scalar_summary-morphset_get={morphset_get}"
+                    os.makedirs(savedir, exist_ok=True)
+                    print("Saving plots at... ", savedir)
 
-                        if False: # not usefiule
-                            sns.catplot(data=dfscores, x="pa_class", y=var_score, hue="decoder_class", kind="point", errorbar=("ci", 68))
-                            sns.catplot(data=dfscores, x="pa_class", y=var_score, hue="decoder_class", kind="point", errorbar=("ci", 68), col="pa_morph_assigned_baseorambig")
+                    _analy_psychoprim_score_postsamp_plot_scores(DFSCORES, savedir)
 
-                        from pythonlib.tools.pandastools import plot_subplots_heatmap
+                    ######## PRUNE TO BALANCE DATASET< then plot. E.g.,, want to keep only those (morphset, idx) which
+                    # have data across all decoders (same, intermediate, diff). Otehrwise acorss morphsets/idcs there is
+                    # big difference.
+                    n_min = 1
+                    from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars
 
-                        for var_subplot in [None, "pa_morph_assigned_baseorambig", x_var]:
-                            row_values = sorted(dfscores["pa_class"].unique().tolist())
-                            col_values = sorted(dfscores["decoder_class"].unique().tolist())
+                    ### Q: is the intermediate lower than same and base?
+                    # levels_get = ["base1", "interm1", "same"]
+                    # levels_get = ["base2", "interm2", "same"]
+                    # levels_get = ["base2", "interm2", "same"]
+                    levels_get = ["same", "intermthis", "basethis"]
+                    savedir = f"{SAVEDIR}/{bregion}/combine_morphsets-questions_interm-morphset_get={morphset_get}"
+                    os.makedirs(savedir, exist_ok=True)
 
-                            zlims = [0,1]
-                            fig, axes = plot_subplots_heatmap(dfscores, "pa_class", "decoder_class", var_score, var_subplot, 
-                                                            share_zlim=True, row_values=row_values,
-                                                col_values=col_values, ZLIMS=zlims)
-                            savefig(fig, f"{savedir}/heatmap-subplot={var_subplot}-{var_score}.pdf")
+                    lenient_allow_data_if_has_n_levels = len(levels_get)
+                    dfscores_this, dict_dfthis = extract_with_levels_of_conjunction_vars(DFSCORES, "recoded_decoder", 
+                                                                                ["morph_set_idx|idx_within"], levels_get, n_min,  
+                                                                                lenient_allow_data_if_has_n_levels=lenient_allow_data_if_has_n_levels,
+                                                                                prune_levels_with_low_n=True, 
+                                                                                plot_counts_heatmap_savepath=f"{savedir}/counts_extract.png")
+                    if len(dfscores_this)>0:
+                        _analy_psychoprim_score_postsamp_plot_scores(dfscores_this, savedir)
+
+
+                    ### Q: match the morphset to ask whether ambig is diff from not-ambig
+                    levels_get = ["not_ambig_base1", "ambig_base1"]
+                    savedir = f"{SAVEDIR}/{bregion}/combine_morphsets-questions_ambig_vs_notambig-morphset_get={morphset_get}"
+                    os.makedirs(savedir, exist_ok=True)
+                    dfscores_this, dict_dfthis = extract_with_levels_of_conjunction_vars(DFSCORES, "trial_morph_assigned_to_which_base", 
+                                                                                ["morph_set_idx", "decoder_class_semantic_good"], levels_get, n_min,  
+                                                                                lenient_allow_data_if_has_n_levels=len(levels_get), 
+                                                                                prune_levels_with_low_n=True, 
+                                                                                plot_counts_heatmap_savepath=f"{savedir}/counts_extract.png")
+                    if len(dfscores_this)>0:
+                        _analy_psychoprim_score_postsamp_plot_scores(dfscores_this, savedir)
+
+
+                    # Trial by trial variation in what drawn, given same stimulus
+                    ##### Prep dataset
+                    savedir = f"{SAVEDIR}/{bregion}/combine_morphsets-ambig_trials-morphset_get={morphset_get}"
+                    os.makedirs(savedir, exist_ok=True)
+                    print("Saving plots at... ", savedir)
+
+                    # TODO Agg -- for each decoder, get diff between trials where draw that vs. where not.
+
+                    from pythonlib.tools.pandastools import aggregGeneral
+
+                    # task_vars = ["character"]
+                    task_vars = ["morph_set_idx", "pa_class"]
+
+                    from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper
+                    if True:
+                        # Version 1 - pull out each task ("morph_set_idx", "pa_class") that is ambiguous, along with all decoder classes
+                        dfscores_ambig, dict_df = extract_with_levels_of_conjunction_vars_helper(DFSCORES, "trial_morph_assigned_to_which_base", 
+                                                                                                task_vars, 1, None, 2)
+                        dfscores_ambig_agg = aggregGeneral(dfscores_ambig, task_vars + ["decoder_class", "decoder_class_was_drawn", "trial_morph_assigned_to_which_base"], 
+                                                                ["score", "score_norm"], nonnumercols=["decoder_class_semantic_good"])
+                    else:
+                        # Version 2 - pull out each task ("morph_set_idx", "pa_class") that is ambiguous, and also just the datapts for the base1 and base2 decoders
+                        # i.e, this is subset of above.
+                        dfscores_ambig, dict_df = extract_with_levels_of_conjunction_vars_helper(DFSCORES, "decoder_class_was_drawn", 
+                                                                                            task_vars + ["decoder_class"], 1, None, 2)
+
+                        # Aggregate, so each task contributes exactly 1 datapt to (False, True) for 
+                        # decoder_class_was_drawn
+                        dfscores_ambig_agg = aggregGeneral(dfscores_ambig, task_vars + ["decoder_class", "decoder_class_was_drawn", "trial_morph_assigned_to_which_base"], 
+                                                                ["score", "score_norm"], nonnumercols=["decoder_class_semantic_good"])
+                        
+                    # USeful, for printing conjunctions
+                    if False:
+                        grouping_print_n_samples(dfscores_ambig, task_vars + ["decoder_class", "trial_morph_assigned_to_which_base", "decoder_class_was_drawn"])
+
+                    ##### Plots
+                    from pythonlib.tools.pandastools import plot_45scatter_means_flexible_grouping
+                    for dfthis, dfthis_str in [
+                        (dfscores_ambig, "dfscores_ambig"), 
+                        (dfscores_ambig_agg, "dfscores_ambig_agg")]:
+
+                        for var_score in ["score", "score_norm"]:
+
+                            # Catplot
+                            fig = sns.catplot(data=dfthis, x="trial_morph_assigned_to_which_base", y=var_score, hue="decoder_class_semantic_good", kind="point")
+                            for ax in fig.axes.flatten():
+                                ax.axhline(0, color="k", alpha=0.3)
+                            savefig(fig, f"{savedir}/catplot-dfthis_str={dfthis_str}-var_score={var_score}-1.pdf")
+
+                            fig = sns.catplot(data=dfthis, x="decoder_class_semantic_good", y=var_score, hue="trial_morph_assigned_to_which_base", kind="point")
+                            for ax in fig.axes.flatten():
+                                ax.axhline(0, color="k", alpha=0.3)
+                            savefig(fig, f"{savedir}/catplot-dfthis_str={dfthis_str}-var_score={var_score}-2.pdf")
+
+                            fig = sns.catplot(data=dfthis, x="trial_morph_assigned_to_which_base", y=var_score, hue="decoder_class_semantic_good", kind="point",
+                                            col="morph_set_idx")
+                            for ax in fig.axes.flatten():
+                                ax.axhline(0, color="k", alpha=0.3)
+                            savefig(fig, f"{savedir}/catplot-dfthis_str={dfthis_str}-var_score={var_score}-morph_set_idx-1.pdf")
+
+                            fig = sns.catplot(data=dfthis, x="decoder_class_semantic_good", y=var_score, hue="trial_morph_assigned_to_which_base", kind="point",
+                                            col="morph_set_idx")
+                            for ax in fig.axes.flatten():
+                                ax.axhline(0, color="k", alpha=0.3)
+                            savefig(fig, f"{savedir}/catplot-dfthis_str={dfthis_str}-var_score={var_score}-morph_set_idx-2.pdf")
+
+                            # 45-scatter
+                            _, fig = plot_45scatter_means_flexible_grouping(dfthis, "decoder_class_semantic_good", "base1", "base2",
+                                                                "trial_morph_assigned_to_which_base", var_score, task_vars,
+                                                                plot_text=False, shareaxes=True, SIZE=6, alpha=0.3);
+                            savefig(fig, f"{savedir}/scatter-x=decoder_class_semantic_good-y=trial_morph_assigned_to_which_base-dfthis_str={dfthis_str}-var_score={var_score}.pdf")
+
+                            _, fig = plot_45scatter_means_flexible_grouping(dfthis, "trial_morph_assigned_to_which_base", "ambig_base1", "ambig_base2",
+                                                                "decoder_class_semantic_good", var_score, task_vars,
+                                                                plot_text=False, shareaxes=True, SIZE=6, alpha=0.3);
+                            savefig(fig, f"{savedir}/scatter-x=trial_morph_assigned_to_which_base-y=decoder_class_semantic_good-dfthis_str={dfthis_str}-var_score={var_score}.pdf")
 
                             plt.close("all")
-
-                ### Collect
-                list_df.append(dfscores)
-
-            ### Plot summary
-            DFSCORES = pd.concat(list_df).reset_index(drop=True)
-
-            if False:
-                list_morphset_keep = [1,3,4,5,6] # Just those with ambig cases
-                print(list_morphset_keep)
-
-                DFSCORES = DFSCORES[DFSCORES["morph_set_idx"].isin(list_morphset_keep)].reset_index(drop=True)
-        
-            # Save data
-            import pickle
-            savedir = f"{SAVEDIR}/{bregion}"
-            with open(f"{savedir}/DFSCORES.pkl", "wb") as f:
-                pickle.dump(DFSCORES, f)
-
-            # Plot
-            savedir = f"{SAVEDIR}/{bregion}/combine_morphsets-all_scalar_summary"
-            os.makedirs(savedir, exist_ok=True)
-            print("Saving plots at... ", savedir)
-
-            for var_score in ["score", "score_norm"]:
-                # var_score = "score_norm"
-
-                for x_var in ["decoder_class_semantic_good", "decoder_class"]:
-
-                    if x_var == "decoder_class_semantic_good":
-                        order = ("base1", "interm1", "same", "interm2", "base2")
-                    else:
-                        order = None
-
-
-                    fig = sns.catplot(data=DFSCORES, x=x_var, y=var_score, kind="bar", errorbar=("ci", 68), 
-                                      col = "pa_morph_assigned_baseorambig", order=order)
-                    for ax in fig.axes.flatten():
-                        ax.axhline(0, color="k", alpha=0.3)
-                    savefig(fig, f"{savedir}/decoder_class-x_var={x_var}-var_score={var_score}-1.pdf")
-
-                    fig = sns.catplot(data=DFSCORES, x=x_var, y=var_score, hue="pa_morph_assigned_baseorambig", 
-                                      kind="point", errorbar=("ci", 68), 
-                                    order=order)
-                    for ax in fig.axes.flatten():
-                        ax.axhline(0, color="k", alpha=0.3)
-                    savefig(fig, f"{savedir}/decoder_class-x_var={x_var}-var_score={var_score}-2.pdf")
-
-                    fig = sns.catplot(data=DFSCORES, x=x_var, y=var_score, hue="morph_set_idx", kind="point",
-                                      col="pa_morph_assigned_baseorambig", errorbar=("ci", 68), order=order)
-                    for ax in fig.axes.flatten():
-                        ax.axhline(0, color="k", alpha=0.3)
-                    savefig(fig, f"{savedir}/decoder_class-x_var={x_var}-var_score={var_score}-3.pdf")
-
-                    fig = sns.catplot(data=DFSCORES, x=x_var, y=var_score, hue="pa_morph_assigned_baseorambig", kind="point",
-                                      col="morph_set_idx", errorbar=("ci", 68), order=order)
-                    for ax in fig.axes.flatten():
-                        ax.axhline(0, color="k", alpha=0.3)
-                    savefig(fig, f"{savedir}/decoder_class-x_var={x_var}-var_score={var_score}-4.pdf")
-
-                    plt.close("all")
-
-                for var_subplot in [None, "morph_set_idx"]:
-                    row_values = sorted(DFSCORES["pa_class"].unique().tolist())
-                    col_values = sorted(DFSCORES["decoder_class"].unique().tolist())
-
-                    zlims = [0,1]
-                    fig, axes = plot_subplots_heatmap(DFSCORES, "pa_morph_assigned_baseorambig", 
-                                                        "decoder_class_semantic_good", var_score, var_subplot, 
-                                                        share_zlim=True, row_values=row_values,
-                                        col_values=col_values, ZLIMS=zlims)
-                    savefig(fig, f"{savedir}/heatmap-subplot={var_subplot}-{var_score}.pdf")
-
-                    plt.close("all")
-
-            
-            # Trial by trial variation in what drawn, given same stimulus
-            ##### Prep dataset
-            savedir = f"{SAVEDIR}/{bregion}/combine_morphsets-ambig_trials"
-            os.makedirs(savedir, exist_ok=True)
-            print("Saving plots at... ", savedir)
-
-            # TODO Agg -- for each decoder, get diff between trials where draw that vs. where not.
-
-            from pythonlib.tools.pandastools import aggregGeneral
-
-            # task_vars = ["character"]
-            task_vars = ["morph_set_idx", "pa_class"]
-
-            from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper
-            if True:
-                # Version 1 - pull out each task ("morph_set_idx", "pa_class") that is ambiguous, along with all decoder classes
-                dfscores_ambig, dict_df = extract_with_levels_of_conjunction_vars_helper(DFSCORES, "trial_morph_assigned_to_which_base", 
-                                                                                        task_vars, 1, None, 2)
-                dfscores_ambig_agg = aggregGeneral(dfscores_ambig, task_vars + ["decoder_class", "decoder_class_was_drawn", "trial_morph_assigned_to_which_base"], 
-                                                        ["score", "score_norm"], nonnumercols=["decoder_class_good", "decoder_class_semantic_good"])
-            else:
-                # Version 2 - pull out each task ("morph_set_idx", "pa_class") that is ambiguous, and also just the datapts for the base1 and base2 decoders
-                # i.e, this is subset of above.
-                dfscores_ambig, dict_df = extract_with_levels_of_conjunction_vars_helper(DFSCORES, "decoder_class_was_drawn", 
-                                                                                    task_vars + ["decoder_class"], 1, None, 2)
-
-                # Aggregate, so each task contributes exactly 1 datapt to (False, True) for 
-                # decoder_class_was_drawn
-                dfscores_ambig_agg = aggregGeneral(dfscores_ambig, task_vars + ["decoder_class", "decoder_class_was_drawn", "trial_morph_assigned_to_which_base"], 
-                                                        ["score", "score_norm"], nonnumercols=["decoder_class_good", "decoder_class_semantic_good"])
-                
-            # USeful, for printing conjunctions
-            if False:
-                grouping_print_n_samples(dfscores_ambig, task_vars + ["decoder_class", "trial_morph_assigned_to_which_base", "decoder_class_was_drawn"])
-
-            ##### Plots
-            from pythonlib.tools.pandastools import plot_45scatter_means_flexible_grouping
-            for dfthis, dfthis_str in [
-                (dfscores_ambig, "dfscores_ambig"), 
-                (dfscores_ambig_agg, "dfscores_ambig_agg")]:
-
-                for var_score in ["score", "score_norm"]:
-
-                    # Catplot
-                    fig = sns.catplot(data=dfthis, x="trial_morph_assigned_to_which_base", y=var_score, hue="decoder_class_semantic_good", kind="point")
-                    for ax in fig.axes.flatten():
-                        ax.axhline(0, color="k", alpha=0.3)
-                    savefig(fig, f"{savedir}/catplot-dfthis_str={dfthis_str}-var_score={var_score}-1.pdf")
-
-                    fig = sns.catplot(data=dfthis, x="decoder_class_semantic_good", y=var_score, hue="trial_morph_assigned_to_which_base", kind="point")
-                    for ax in fig.axes.flatten():
-                        ax.axhline(0, color="k", alpha=0.3)
-                    savefig(fig, f"{savedir}/catplot-dfthis_str={dfthis_str}-var_score={var_score}-2.pdf")
-
-                    fig = sns.catplot(data=dfthis, x="trial_morph_assigned_to_which_base", y=var_score, hue="decoder_class_semantic_good", kind="point",
-                                      col="morph_set_idx")
-                    for ax in fig.axes.flatten():
-                        ax.axhline(0, color="k", alpha=0.3)
-                    savefig(fig, f"{savedir}/catplot-dfthis_str={dfthis_str}-var_score={var_score}-morph_set_idx-1.pdf")
-
-                    fig = sns.catplot(data=dfthis, x="decoder_class_semantic_good", y=var_score, hue="trial_morph_assigned_to_which_base", kind="point",
-                                      col="morph_set_idx")
-                    for ax in fig.axes.flatten():
-                        ax.axhline(0, color="k", alpha=0.3)
-                    savefig(fig, f"{savedir}/catplot-dfthis_str={dfthis_str}-var_score={var_score}-morph_set_idx-2.pdf")
-
-                    # 45-scatter
-                    _, fig = plot_45scatter_means_flexible_grouping(dfthis, "decoder_class_semantic_good", "base1", "base2",
-                                                        "trial_morph_assigned_to_which_base", var_score, task_vars,
-                                                        plot_text=False, shareaxes=True, SIZE=6, alpha=0.3);
-                    savefig(fig, f"{savedir}/scatter-x=decoder_class_semantic_good-y=trial_morph_assigned_to_which_base-dfthis_str={dfthis_str}-var_score={var_score}.pdf")
-
-                    _, fig = plot_45scatter_means_flexible_grouping(dfthis, "trial_morph_assigned_to_which_base", "ambig_base1", "ambig_base2",
-                                                        "decoder_class_semantic_good", var_score, task_vars,
-                                                        plot_text=False, shareaxes=True, SIZE=6, alpha=0.3);
-                    savefig(fig, f"{savedir}/scatter-x=trial_morph_assigned_to_which_base-y=decoder_class_semantic_good-dfthis_str={dfthis_str}-var_score={var_score}.pdf")
-
-                    plt.close("all")
 
 
 def analy_psychoprim_score_postsamp_better(DFallpa, DSmorphsets, 
@@ -4680,6 +5277,7 @@ def analy_psychoprim_score_postsamp_better(DFallpa, DSmorphsets,
 
     if PLOT_EACH_IDX==False:
         PLOT_DECODER = False
+    PLOT_TEST_SPLIT=PLOT_DECODER
 
     # PARAMS = {}
     list_bregion = sorted(DFallpa["bregion"].unique().tolist())
@@ -4729,11 +5327,11 @@ def analy_psychoprim_score_postsamp_better(DFallpa, DSmorphsets,
                 os.makedirs(savedir, exist_ok=True)
                 print(savedir)
 
-                dfscores_testsplit, dfscores_usertest, decoders, trainsets, PAtest = pipeline_train_test_scalar_score_with_splits(DFallpa, bregion, var_train, event_train, 
+                dfscores_testsplit, dfscores_usertest, dfscores_both, decoders, trainsets, PAtest = pipeline_train_test_scalar_score_with_splits(DFallpa, bregion, var_train, event_train, 
                                                                                 twind_train, filterdict_train,
                                                     var_test, event_test, list_twind_test, filterdict_test, savedir,
                                                     include_null_data=include_null_data, decoder_method_index=None,
-                                                    prune_labels_exist_in_train_and_test=prune_labels_exist_in_train_and_test, PLOT=PLOT_DECODER,
+                                                    prune_labels_exist_in_train_and_test=prune_labels_exist_in_train_and_test, PLOT_TRAIN=PLOT_DECODER, PLOT_TEST_SPLIT=PLOT_TEST_SPLIT,
                                                     which_level_test=which_level_test, n_min_per_var=n_min_per_var,
                                                     subtract_baseline=subtract_baseline, subtract_baseline_twind=subtract_baseline_twind,
                                                     do_upsample_balance=do_upsample_balance, downsample_trials=downsample_trials,

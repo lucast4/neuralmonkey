@@ -70,7 +70,7 @@ def decode_resample_balance_dataset(X_train, labels_train, method="upsample",
     # Skip, if only 1 class exists...
     if len(set(labels_train))==1:
         print("SKipping, ony one class lewvel found... [decode_train_model]")
-        return None
+        return None, None
 
     if False:
         print("---------")
