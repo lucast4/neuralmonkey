@@ -2875,7 +2875,7 @@ def pipeline_train_test_scalar_score_split_gridloc(list_loc, savedir_base,
                                      subtract_baseline=False, subtract_baseline_twind=None,
                                      do_upsample_balance=True, downsample_trials=False,
                                      allow_multiple_twind_test=False,
-                                     auto_prune_locations=False):
+                                     auto_prune_locations=False, do_train_splits_nsplits=10):
     """
     Good wrapper for train and testing, but here splitting so that training and testing on all separate pairs of 
     gridloc (I.e., testing generalization across gridloc).
@@ -2900,7 +2900,8 @@ def pipeline_train_test_scalar_score_split_gridloc(list_loc, savedir_base,
         from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars
         # pick the first dflab, assuming this is general
         dflab = DFallpa["pa"].values[0].Xlabels["trials"]
-        n_min_per_var_this = 3 # shouldnt be the general version. here is just pruning locations.
+        # n_min_per_var_this = 3 # shouldnt be the general version. here is just pruning locations.
+        n_min_per_var_this = n_min_per_var # shouldnt be the general version. here is just pruning locations.
         dflab_tmp, _ = extract_with_levels_of_conjunction_vars(dflab, "seqc_0_loc", [var_train], None, 
                                                             n_min_per_var_this, lenient_allow_data_if_has_n_levels=2, 
                                                             prune_levels_with_low_n=True, 
@@ -2916,8 +2917,9 @@ def pipeline_train_test_scalar_score_split_gridloc(list_loc, savedir_base,
 
         assert n_locs_before>1, "only one location, even before clean... shoudl not do held-out lcoation expts."
         assert n_locs_clean>1, "only one location remaining.."
-        assert n_shapes_clean/n_shapes_before>0.8, "lost too many shapes based on pruning..."
-        assert len(dflab_tmp)/len(dflab)>0.8, "threw out too many trials..."
+        if False: # to allow pruning to just high n trials cases.
+            assert n_shapes_clean/n_shapes_before>0.8, "lost too many shapes based on pruning..."
+            assert len(dflab_tmp)/len(dflab)>0.8, "threw out too many trials..."
 
         trialcodes_keep = dflab_tmp["trialcode"].unique().tolist()
 
@@ -2951,7 +2953,6 @@ def pipeline_train_test_scalar_score_split_gridloc(list_loc, savedir_base,
                     
                 if downsample_trials:
                     # Then best way is to do multiple-folds, so that you aren't throwing away useful data.
-                    do_train_splits_nsplits=10
                     PLOT_TRAIN = False
                     PLOT_TEST_SPLIT = False
                     PLOT_TEST_CONCATTED = PLOT
@@ -3827,7 +3828,7 @@ def _analy_chars_score_postsamp_image_distance_neural_distance(PAtest, var_test,
                                                     pca_tbin_slice=pca_tbin_slice)
     
     # Get pairwise distance between trials.
-    from neuralmonkey.analyses.state_space_good import euclidian_distance_compute_trajectories_single
+    # from neuralmonkey.analyses.state_space_good import euclidian_distance_compute_trajectories_single
     twind_eucl = pca_twind
     if False:
         pa = PAtest.slice_by_dim_values_wrapper("times", twind_eucl)
@@ -4432,8 +4433,7 @@ def analy_psychoprim_prepare_beh_dataset(animal, date, savedir="/tmp"):
     """
     Extract beh related to psychometric prims, behavior.
     """
-    from pythonlib.dataset.dataset_analy.psychometric_singleprims import psychogood_preprocess_wrapper, psychogood_plot_drawings_morphsets
-    from pythonlib.dataset.dataset_analy.psychometric_singleprims import psychogood_decide_if_tasks_are_ambiguous
+    from pythonlib.dataset.dataset_analy.psychometric_singleprims import psychogood_preprocess_wrapper, psychogood_plot_drawings_morphsets, psychogood_decide_if_tasks_are_ambiguous, params_remap_angle_to_idx_within_morphset
 
     from neuralmonkey.scripts.analy_pig_decode_moment_syntaxTI import prepare_beh_dataset
     MS, D, _, _, _ = prepare_beh_dataset(animal, date, do_syntax_rule_stuff=False)        
@@ -4461,11 +4461,20 @@ def analy_psychoprim_prepare_beh_dataset(animal, date, savedir="/tmp"):
     #     else:
     #         return inds
 
-    if (animal, date) in [("Diego", 240523), ("Pancho", 240524)]:
+    if (animal, date) in [("Diego", 240523), ("Diego", 240730),
+                          ("Pancho", 240524)]:
         # Structured morphs -- e.g., modify angle of one arm gradaully
         DFRES, DSmorphsets, PARAMS, los_allowed_to_miss = psychogood_preprocess_wrapper(D, PLOT_DRAWINGS=False, 
                                                                                     PLOT_EACH_TRIAL=False, PLOT_SCORES=False,
                                                                                     clean_ver="singleprim_psycho_noabort")
+
+    elif (animal, date) in [("Diego", 240802), ("Pancho", 240802)]:
+        # Structured morphs -- new method, using hand inputed tsc inds
+        from pythonlib.dataset.dataset_analy.psychometric_singleprims import params_extract_psycho_groupings_manual_using_tsc_inds, psychogood_preprocess_wrapper_using_tsc_inds
+        DFRES, DSmorphsets = psychogood_preprocess_wrapper_using_tsc_inds(D, 
+                                        *params_extract_psycho_groupings_manual_using_tsc_inds(animal, date), 
+                                        print_summary=True, PLOT_SCORES=False, PLOT_DRAWINGS = False)
+
     elif (animal, date) in [("Diego", 240522), ("Pancho", 240523)]:
         # Continuous morphs -- i.e., take onset and offset of two base prims to form one single middle prim.
         # Option: continuous morph between two base sets (e.g. take onset of one, and offset of other)
@@ -4479,8 +4488,8 @@ def analy_psychoprim_prepare_beh_dataset(animal, date, savedir="/tmp"):
         }
         DSmorphsets.Dat["morph_idxcode_within_set"] = [map_old_to_new[morph_idxcode_within_set] for morph_idxcode_within_set in DSmorphsets.Dat["morph_idxcode_within_set"]]
     elif (animal, date) in [
-        ("Diego", 240515), ("Diego", 240517), ("Diego", 240521), 
-        ("Pancho", 240516), ("Pancho", 240521),
+        ("Diego", 240515), ("Diego", 240517), ("Diego", 240521), ("Diego", 240731), ("Diego", 240801),  
+        ("Pancho", 240516), ("Pancho", 240521), ("Pancho", 240801),
         ]:
         # Angle morphs
         from pythonlib.dataset.dataset_analy.psychometric_singleprims import preprocess, plot_overview, preprocess_angle_to_morphsets, psychogood_decide_if_tasks_are_ambiguous, psychogood_prepare_for_neural_analy
@@ -4491,8 +4500,13 @@ def analy_psychoprim_prepare_beh_dataset(animal, date, savedir="/tmp"):
             os.makedirs(savedir, exist_ok=True)
             plot_overview(DS, D, savedir)
 
-        DSmorphsets = preprocess_angle_to_morphsets(DSlenient)
+        map_angleidx_to_finalidx, split_by_morphset = params_remap_angle_to_idx_within_morphset(animal, date)
+        DSmorphsets = preprocess_angle_to_morphsets(DSlenient, map_angleidx_to_finalidx, split_by_morphset)
     else:
+        print(animal, date)
+        assert False
+
+    if DSmorphsets is None:
         print(animal, date)
         assert False
 
@@ -4727,9 +4741,17 @@ def _analy_psychoprim_score_postsamp_plot_scores(dfscores, savedir, do_agg_over_
     assert len(dfscores["twind"].unique())==1, "assuming this below"
     
     ### First, agg data, so each datapt is single morph_set_idx|idx_within
+    dfscores_orig = dfscores.copy()
     if do_agg_over_trials:
-        dfscores = aggregGeneral(dfscores, ["idx_within|assigned", "morph_set_idx|idx_within", "pa_class", "decoder_class", "twind", "trial_morph_assigned_to_which_base"], ["score", "score_norm"], nonnumercols="all")
+        dfscores = aggregGeneral(dfscores, 
+                                 ["idx_within|assigned", "morph_set_idx|idx_within", "pa_class", "decoder_class", "twind", "trial_morph_assigned_to_which_base"], 
+                                 ["score", "score_norm"], nonnumercols="all")
 
+    if "morph_set_idx" not in dfscores.columns:
+        assert "morph_set_idx" in dfscores_orig.columns
+        print("This type: ", type(dfscores_orig["morph_set_idx"].tolist()[0]))
+        assert False, "fix this."
+        
     ### 
     fig = grouping_plot_n_samples_conjunction_heatmap(dfscores, "trial_morph_assigned_to_which_base", "pa_class", ["morph_set_idx"])
     savefig(fig, f"{savedir}/counts_idx_assigned-1.pdf")
@@ -4957,99 +4979,128 @@ def analy_psychoprim_score_postsamp(DFallpa, DSmorphsets,
 
                     list_loc = dflab["seqc_0_loc"].unique().tolist()
                     list_dfscores_across_locs = []
-                    # TODO replace with pipeline_train_test_scalar_score_split_gridloc 
-                    for train_loc in list_loc:
-                        for test_loc in list_loc:
-                            if train_loc != test_loc:
 
-                                filterdict_train = {"idx_morph_temp":idx_train, "seqc_0_loc":[train_loc]}
-                                filterdict_test = {"idx_morph_temp":idx_test, "seqc_0_loc":[test_loc]}
-                                print("filterdict_train:", filterdict_train)
-                                print("filterdict_test:", filterdict_test)
+                    savedir = f"{SAVEDIR}/{bregion}/morphset={morphset}"
+                    os.makedirs(savedir, exist_ok=True)
+                    print(savedir)
+
+                    filterdict_train = {"idx_morph_temp":idx_train}
+                    filterdict_test = {"idx_morph_temp":idx_test}
+                    auto_prune_locations=True
+
+                    dfscores, decoders, list_pa_train, list_pa_test = pipeline_train_test_scalar_score_split_gridloc(list_loc, savedir,
+                                                                                                                    DFallpa, 
+                                                                                    bregion, var_train, event_train, 
+                                                                                    twind_train, filterdict_train,
+                                                        var_test, event_test, list_twind_test, filterdict_test, 
+                                                        include_null_data=include_null_data, 
+                                                        prune_labels_exist_in_train_and_test=prune_labels_exist_in_train_and_test, 
+                                                        PLOT=PLOT_DECODER, PLOT_TEST=PLOT_TEST_CONCATTED,
+                                                        which_level_test=which_level_test, n_min_per_var=n_min_per_var,
+                                                        subtract_baseline=subtract_baseline, subtract_baseline_twind=subtract_baseline_twind,
+                                                        do_upsample_balance=do_upsample_balance, downsample_trials=downsample_trials,
+                                                        auto_prune_locations=auto_prune_locations, do_train_splits_nsplits=USE_TRAIN_TEST_SPLIT)
+                    Dc = decoders[0]
+
+                    dfscores["run_morph_set_idx"] = morphset
+                    dfscores = analy_psychoprim_dfscores_condition(dfscores, morphset, DSmorphsets, map_morphsetidx_to_assignedbase_or_ambig, map_tcmorphset_to_info)
+
+                    fig = grouping_plot_n_samples_conjunction_heatmap(dfscores, "pa_class", "decoder_class", ["run_morph_set_idx", "twind"]);
+                    savefig(fig, f"{savedir}/counts_trials-dfscores.pdf")
+
+                    # # TODO replace with pipeline_train_test_scalar_score_split_gridloc 
+                    # for train_loc in list_loc:
+                    #     for test_loc in list_loc:
+                    #         if train_loc != test_loc:
+
+                    #             filterdict_train = {"idx_morph_temp":idx_train, "seqc_0_loc":[train_loc]}
+                    #             filterdict_test = {"idx_morph_temp":idx_test, "seqc_0_loc":[test_loc]}
+                    #             print("filterdict_train:", filterdict_train)
+                    #             print("filterdict_test:", filterdict_test)
                                 
-                                # Other params
-                                savedir = f"{SAVEDIR}/{bregion}/morphset={morphset}/decoder_training-train_loc={train_loc}-test_loc={test_loc}"
-                                os.makedirs(savedir, exist_ok=True)
-                                print(savedir)
+                    #             # Other params
+                    #             savedir = f"{SAVEDIR}/{bregion}/morphset={morphset}/decoder_training-train_loc={train_loc}-test_loc={test_loc}"
+                    #             os.makedirs(savedir, exist_ok=True)
+                    #             print(savedir)
                                 
-                                if USE_TRAIN_TEST_SPLIT:
-                                    do_train_splits_nsplits=10
-                                    dfscores_testsplit, dfscores_usertest, dfscores_both, decoders, trainsets, PAtest = pipeline_train_test_scalar_score_with_splits(DFallpa, 
-                                                                                                    bregion, var_train, event_train, 
-                                                                                                    twind_train, filterdict_train,
-                                                                        var_test, event_test, list_twind_test, filterdict_test, savedir,
-                                                                        include_null_data=include_null_data, decoder_method_index=None,
-                                                                        prune_labels_exist_in_train_and_test=prune_labels_exist_in_train_and_test, 
-                                                                        PLOT_TRAIN=PLOT_DECODER, PLOT_TEST_SPLIT=PLOT_TEST_SPLIT, PLOT_TEST_CONCATTED=PLOT_TEST_CONCATTED,
-                                                                        which_level_test=which_level_test, n_min_per_var=n_min_per_var,
-                                                                        subtract_baseline=subtract_baseline, subtract_baseline_twind=subtract_baseline_twind,
-                                                                        do_upsample_balance=do_upsample_balance, downsample_trials=downsample_trials,
-                                                                        do_train_splits_nsplits=do_train_splits_nsplits, 
-                                                                        score_user_test_data=score_user_test_data, 
-                                                                        do_agg_of_user_test_data=do_agg_of_user_test_data)
+                    #             if USE_TRAIN_TEST_SPLIT:
+                    #                 do_train_splits_nsplits=10
+                    #                 dfscores_testsplit, dfscores_usertest, dfscores_both, decoders, trainsets, PAtest = pipeline_train_test_scalar_score_with_splits(DFallpa, 
+                    #                                                                                 bregion, var_train, event_train, 
+                    #                                                                                 twind_train, filterdict_train,
+                    #                                                     var_test, event_test, list_twind_test, filterdict_test, savedir,
+                    #                                                     include_null_data=include_null_data, decoder_method_index=None,
+                    #                                                     prune_labels_exist_in_train_and_test=prune_labels_exist_in_train_and_test, 
+                    #                                                     PLOT_TRAIN=PLOT_DECODER, PLOT_TEST_SPLIT=PLOT_TEST_SPLIT, PLOT_TEST_CONCATTED=PLOT_TEST_CONCATTED,
+                    #                                                     which_level_test=which_level_test, n_min_per_var=n_min_per_var,
+                    #                                                     subtract_baseline=subtract_baseline, subtract_baseline_twind=subtract_baseline_twind,
+                    #                                                     do_upsample_balance=do_upsample_balance, downsample_trials=downsample_trials,
+                    #                                                     do_train_splits_nsplits=do_train_splits_nsplits, 
+                    #                                                     score_user_test_data=score_user_test_data, 
+                    #                                                     do_agg_of_user_test_data=do_agg_of_user_test_data)
 
-                                    if dfscores_testsplit is None:
-                                        # Then no data after filtering.
-                                        print("! skipping! dfscores_testsplit is None")
-                                        continue
+                    #                 if dfscores_testsplit is None:
+                    #                     # Then no data after filtering.
+                    #                     print("! skipping! dfscores_testsplit is None")
+                    #                     continue
 
-                                    dfscores_testsplit["run_morph_set_idx"] = morphset
-                                    dfscores_testsplit = analy_psychoprim_dfscores_condition(dfscores_testsplit, morphset, DSmorphsets, map_morphsetidx_to_assignedbase_or_ambig, map_tcmorphset_to_info)
-                                    fig = grouping_plot_n_samples_conjunction_heatmap(dfscores_testsplit, "pa_class", "decoder_class", ["run_morph_set_idx", "twind"]);
-                                    savefig(fig, f"{savedir}/counts_trials-dfscores_traintestsplit.pdf")
+                    #                 dfscores_testsplit["run_morph_set_idx"] = morphset
+                    #                 dfscores_testsplit = analy_psychoprim_dfscores_condition(dfscores_testsplit, morphset, DSmorphsets, map_morphsetidx_to_assignedbase_or_ambig, map_tcmorphset_to_info)
+                    #                 fig = grouping_plot_n_samples_conjunction_heatmap(dfscores_testsplit, "pa_class", "decoder_class", ["run_morph_set_idx", "twind"]);
+                    #                 savefig(fig, f"{savedir}/counts_trials-dfscores_traintestsplit.pdf")
 
-                                    # Which dfscores is the final?
-                                    if version == 0:
-                                        # Use dfscores_testsplit.
-                                        dfscores = dfscores_testsplit
-                                    elif version == 2:
-                                        dfscores_usertest["run_morph_set_idx"] = morphset
-                                        dfscores_both["run_morph_set_idx"] = morphset
+                    #                 # Which dfscores is the final?
+                    #                 if version == 0:
+                    #                     # Use dfscores_testsplit.
+                    #                     dfscores = dfscores_testsplit
+                    #                 elif version == 2:
+                    #                     dfscores_usertest["run_morph_set_idx"] = morphset
+                    #                     dfscores_both["run_morph_set_idx"] = morphset
 
-                                        dfscores_usertest = analy_psychoprim_dfscores_condition(dfscores_usertest, morphset, DSmorphsets, map_morphsetidx_to_assignedbase_or_ambig, map_tcmorphset_to_info)
-                                        dfscores_both = analy_psychoprim_dfscores_condition(dfscores_both, morphset, DSmorphsets, map_morphsetidx_to_assignedbase_or_ambig, map_tcmorphset_to_info)
+                    #                     dfscores_usertest = analy_psychoprim_dfscores_condition(dfscores_usertest, morphset, DSmorphsets, map_morphsetidx_to_assignedbase_or_ambig, map_tcmorphset_to_info)
+                    #                     dfscores_both = analy_psychoprim_dfscores_condition(dfscores_both, morphset, DSmorphsets, map_morphsetidx_to_assignedbase_or_ambig, map_tcmorphset_to_info)
 
-                                        fig = grouping_plot_n_samples_conjunction_heatmap(dfscores_usertest, "pa_class", "decoder_class", ["run_morph_set_idx", "twind"]);
-                                        savefig(fig, f"{savedir}/counts_trials-dfscores_usertest.pdf")
-                                        fig = grouping_plot_n_samples_conjunction_heatmap(dfscores_both, "pa_class", "decoder_class", ["run_morph_set_idx", "twind"]);
-                                        savefig(fig, f"{savedir}/counts_trials-dfscores_both.pdf")
-                                        plt.close("all")
+                    #                     fig = grouping_plot_n_samples_conjunction_heatmap(dfscores_usertest, "pa_class", "decoder_class", ["run_morph_set_idx", "twind"]);
+                    #                     savefig(fig, f"{savedir}/counts_trials-dfscores_usertest.pdf")
+                    #                     fig = grouping_plot_n_samples_conjunction_heatmap(dfscores_both, "pa_class", "decoder_class", ["run_morph_set_idx", "twind"]);
+                    #                     savefig(fig, f"{savedir}/counts_trials-dfscores_both.pdf")
+                    #                     plt.close("all")
 
-                                        # Finally, keep just the combined
-                                        dfscores = dfscores_both
-                                else:
-                                    dfscores, Dc, PAtrain, PAtest = pipeline_train_test_scalar_score(DFallpa, bregion, var_train, event_train, 
-                                                                                                    twind_train, filterdict_train,
-                                                                        var_test, event_test, list_twind_test, filterdict_test, savedir,
-                                                                        include_null_data=include_null_data, decoder_method_index=None,
-                                                                        prune_labels_exist_in_train_and_test=prune_labels_exist_in_train_and_test, PLOT=PLOT_DECODER,
-                                                                        which_level_test=which_level_test, n_min_per_var=n_min_per_var,
-                                                                        subtract_baseline=subtract_baseline, subtract_baseline_twind=subtract_baseline_twind,
-                                                                        do_upsample_balance=do_upsample_balance, downsample_trials=downsample_trials)
+                    #                     # Finally, keep just the combined
+                    #                     dfscores = dfscores_both
+                    #             else:
+                    #                 dfscores, Dc, PAtrain, PAtest = pipeline_train_test_scalar_score(DFallpa, bregion, var_train, event_train, 
+                    #                                                                                 twind_train, filterdict_train,
+                    #                                                     var_test, event_test, list_twind_test, filterdict_test, savedir,
+                    #                                                     include_null_data=include_null_data, decoder_method_index=None,
+                    #                                                     prune_labels_exist_in_train_and_test=prune_labels_exist_in_train_and_test, PLOT=PLOT_DECODER,
+                    #                                                     which_level_test=which_level_test, n_min_per_var=n_min_per_var,
+                    #                                                     subtract_baseline=subtract_baseline, subtract_baseline_twind=subtract_baseline_twind,
+                    #                                                     do_upsample_balance=do_upsample_balance, downsample_trials=downsample_trials)
                                     
-                                    dfscores["run_morph_set_idx"] = morphset
-                                    dfscores = analy_psychoprim_dfscores_condition(dfscores, morphset, DSmorphsets, map_morphsetidx_to_assignedbase_or_ambig, map_tcmorphset_to_info)
+                    #                 dfscores["run_morph_set_idx"] = morphset
+                    #                 dfscores = analy_psychoprim_dfscores_condition(dfscores, morphset, DSmorphsets, map_morphsetidx_to_assignedbase_or_ambig, map_tcmorphset_to_info)
 
-                                    fig = grouping_plot_n_samples_conjunction_heatmap(dfscores, "pa_class", "decoder_class", ["run_morph_set_idx", "twind"]);
-                                    savefig(fig, f"{savedir}/counts_trials-dfscores.pdf")
+                    #                 fig = grouping_plot_n_samples_conjunction_heatmap(dfscores, "pa_class", "decoder_class", ["run_morph_set_idx", "twind"]);
+                    #                 savefig(fig, f"{savedir}/counts_trials-dfscores.pdf")
 
-                                # Store dfscores across locations sets
-                                dfscores["train_loc"] = [train_loc for _ in range(len(dfscores))]
-                                dfscores["test_loc"] = [test_loc for _ in range(len(dfscores))]
-                                list_dfscores_across_locs.append(dfscores)
+                    #             # Store dfscores across locations sets
+                    #             dfscores["train_loc"] = [train_loc for _ in range(len(dfscores))]
+                    #             dfscores["test_loc"] = [test_loc for _ in range(len(dfscores))]
+                    #             list_dfscores_across_locs.append(dfscores)
 
-                    # Concat across location sets, so that final dataframe has one datapt per trialcode.
-                    if len(list_dfscores_across_locs)==0:
-                        print("! skipping! len(list_dfscores_across_locs)==0")
-                        continue
+                    # # Concat across location sets, so that final dataframe has one datapt per trialcode.
+                    # if len(list_dfscores_across_locs)==0:
+                    #     print("! skipping! len(list_dfscores_across_locs)==0")
+                    #     continue
                     
-                    from pythonlib.tools.pandastools import aggregGeneral
-                    dfscores_tmp = pd.concat(list_dfscores_across_locs).reset_index(drop=True)
-                    dfscores = aggregGeneral(dfscores_tmp, 
-                                                        ["decoder_class", "twind", "trialcode"], 
-                                                        ["score", "score_norm"], 
-                                                        ["pa_class", "epoch", "same_class"] # code does sanity check that these are all unqiue values.
-                                                        )
+                    # from pythonlib.tools.pandastools import aggregGeneral
+                    # dfscores_tmp = pd.concat(list_dfscores_across_locs).reset_index(drop=True)
+                    # dfscores = aggregGeneral(dfscores_tmp, 
+                    #                                     ["decoder_class", "twind", "trialcode"], 
+                    #                                     ["score", "score_norm"], 
+                    #                                     ["pa_class", "epoch", "same_class"] # code does sanity check that these are all unqiue values.
+                    #                                     )
 
                     ##### PLOTS
                     if PLOT_EACH_MORPHSET:
@@ -5058,7 +5109,6 @@ def analy_psychoprim_score_postsamp(DFallpa, DSmorphsets,
                         os.makedirs(savedir, exist_ok=True)
                         print("Saving plots at... ", savedir)
                         _analy_psychoprim_score_postsamp_plot_scores(dfscores, savedir)
-
 
                     ### Collect
                     list_df.append(dfscores)
@@ -5075,40 +5125,41 @@ def analy_psychoprim_score_postsamp(DFallpa, DSmorphsets,
                     pickle.dump(DFSCORES_ALL, f)
 
                 ############## PRUNE MORPHSETS
-                for morphset_get in [None, "good_ones"]:
+                for morphset_get in [None]:
+                # for morphset_get in [None, "good_ones"]:
 
 
 
+                    # print("morphset_get:", morphset_get)
+                    # if morphset_get == "good_ones":
+                    #     # Hand modified
+                    #     if (animal, date) == ("Diego", 240515):
+                    #         # Angle rotation
+                    #         morphsets_ignore = [2] # Did most with two strokes...
+                    #     if (animal, date) == ("Diego", 240523):
+                    #         # THis is a garbage morphset, is not actually morphing.
+                    #         morphsets_ignore = [0]
+                    #     elif (animal, date) == ("Pancho", 240521):
+                    #         morphsets_ignore = [0] # one base prim is garbage
+                    #     elif (animal, date) == ("Pancho", 240524):
+                    #         morphsets_ignore = [4] # doesnt actually vaciallte across tirals
+                    #     else:
+                    #         morphsets_ignore = []
+                    # elif morphset_get is None:
+                    #     # Get all morphsets
+                    #     morphsets_ignore = []
+                    # elif isinstance(morphset_get, int):
+                    #     # get just this one morphset (exclude the others)
+                    #     morphsets_ignore = [ms for ms in DF_TCRES["run_morphset"].unique().tolist() if ms!=morphset_get]
+                    # else:
+                    #     print(morphset_get)
+                    #     assert False
+                    #     # morphsets_ignore = []
+                    # morphsets_keep = [ms for ms in DFSCORES_ALL["run_morph_set_idx"].unique().tolist() if ms not in morphsets_ignore]
+                    # print("morphsets_ignore: ", morphsets_ignore)
+                    # DFSCORES = DFSCORES_ALL[DFSCORES_ALL["run_morph_set_idx"].isin(morphsets_keep)].reset_index(drop=True)
 
-                    print("morphset_get:", morphset_get)
-                    if morphset_get == "good_ones":
-                        # Hand modified
-                        if (animal, date) == ("Diego", 240515):
-                            # Angle rotation
-                            morphsets_ignore = [2] # Did most with two strokes...
-                        if (animal, date) == ("Diego", 240523):
-                            # THis is a garbage morphset, is not actually morphing.
-                            morphsets_ignore = [0]
-                        elif (animal, date) == ("Pancho", 240521):
-                            morphsets_ignore = [0] # one base prim is garbage
-                        elif (animal, date) == ("Pancho", 240524):
-                            morphsets_ignore = [4] # doesnt actually vaciallte across tirals
-                        else:
-                            morphsets_ignore = []
-                    elif morphset_get is None:
-                        # Get all morphsets
-                        morphsets_ignore = []
-                    elif isinstance(morphset_get, int):
-                        # get just this one morphset (exclude the others)
-                        morphsets_ignore = [ms for ms in DF_TCRES["run_morphset"].unique().tolist() if ms!=morphset_get]
-                    else:
-                        print(morphset_get)
-                        assert False
-                        # morphsets_ignore = []
-                    morphsets_keep = [ms for ms in DFSCORES_ALL["run_morph_set_idx"].unique().tolist() if ms not in morphsets_ignore]
-                    print("morphsets_ignore: ", morphsets_ignore)
-                    DFSCORES = DFSCORES_ALL[DFSCORES_ALL["run_morph_set_idx"].isin(morphsets_keep)].reset_index(drop=True)
-
+                    DFSCORES = DFSCORES_ALL
 
                     
 

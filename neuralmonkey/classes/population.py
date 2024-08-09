@@ -853,14 +853,35 @@ class PopAnal():
         # convert from channel labels to row indices
         if chan_inputed_row_index:
             inds = chans
-            del chans
+            # del chans
         else:
             inds = [self.index_find_this_chan(ch) for ch in chans]
-            del chans
+            # del chans
+
+        if len(self.Chans)<max(inds)+1:
+            # Then not enough chans
+            print(version)
+            print(self.X.shape)
+            print(X.shape)
+            print(inds)
+            print(self.Chans)
+            print(chans)
+            print(chan_inputed_row_index)
+            assert False, "you need to input only chans that exist"
 
         # Slice
-        X = self.extract_activity_copy(version=version)
-        X = X[inds, :, :]
+        try:
+            X = self.extract_activity_copy(version=version)
+            X = X[inds, :, :]
+        except Exception as err:
+            print(version)
+            print(self.X.shape)
+            print(X.shape)
+            print(inds)
+            print(self.Chans)
+            print(chans)
+            print(chan_inputed_row_index)
+            raise err
 
         if return_as_popanal:
             chans_actual = [self.Chans[i] for i in inds]
@@ -1208,7 +1229,9 @@ class PopAnal():
 
                 if len(pa.Xlabels["trials"])>0:
                     inds = pa.Xlabels["trials"][pa.Xlabels["trials"][_var].isin(_levs)].index.tolist()
+                    print(f"pa.slice_by_labels_filtdict, using var={_var}, n before filt: {pa.X.shape}")
                     pa = pa.slice_by_dim_indices_wrapper("trials", inds)
+                    print(f"pa.slice_by_labels_filtdict, using var={_var}, n after filt: {pa.X.shape}")
                     # pa.Xlabels["trials"] = pa.Xlabels["trials"][pa.Xlabels["trials"][_var].isin(_levs)].reset_index(drop=True)
         return pa
 
@@ -1402,6 +1425,17 @@ class PopAnal():
         return ListPA, list_levels
 
     #######################
+    def dataextract_reshape(self, reshape_method="chans_x_trialstimes"):
+        """
+        Holds methods for reshaping data.
+        """
+        if reshape_method=="chans_x_trialstimes":
+            X = self.X.reshape(self.X.shape[0], -1)
+        else:
+            assert False
+
+        return X
+
     def dataextract_as_distance_matrix_clusters_flex_reversed(self, var_group,
                                                      version_distance="euclidian",
                                                      accurately_estimate_diagonal=False):
@@ -1774,6 +1808,13 @@ class PopAnal():
                                                             save_suffix=save_suffix)
 
         ########### (3) Project RAW data back into this space
+        # Figure out how many dimensions to keep (for euclidian).
+        n1 = pca["nclasses_of_var_pca"] # num classes of superv_dpca_var that exist. this is upper bound on dims.
+        n2 = PApca.X.shape[1] # num classes to reach criterion for cumvar for pca.
+        n3 = PApca.X.shape[0] # num dimensions.
+        n_pcs_subspace_max = min([n1, n2, n3, n_pcs_subspace_max])
+        # PApca = PApca.slice_by_dim_indices_wrapper("chans", list(range(n_pcs_keep_euclidian)))
+        
         if True:
             Xredu, PAredu, stats_redu, Xfinal_before_redu, pca = PAraw.dataextract_pca_demixed_subspace_project(pca, proj_twind, 
                                                 proj_tbindur, proj_tbin_slice, reshape_method,
@@ -1855,7 +1896,96 @@ class PopAnal():
         else:
             return Xredu, PAredu, stats_redu, Xfinal_before_redu, pca
 
-    
+    def dataextract_dimred_wrapper(self, scalar_or_traj, version, savedir, 
+                                   twind_pca, tbin_dur=None, tbin_slide=None, 
+                                   NPCS_KEEP = 10,
+                                   dpca_var = None, dpca_vars_group = None, dpca_proj_twind = None, 
+                                   raw_subtract_mean_each_timepoint=False):
+        """
+        Wrapper for all often-used methods for dim reduction
+
+        PARAMS:
+        - scalar_or_traj, str, either "scal" [returns (dims, trials, 1)], or "traj" [returns (dims, trials, timebins)]
+        - version, str, either "pca" or "dpca"
+        - twind_pca, (t1, t2), window to use for pca
+        - tbin_dur, in sec, for smoothing
+        - tbin_slide, in sec, smoothign
+        - NPCS_KEEP, int
+        - dpca_var, str
+        - dpca_vars_group, list of str
+        - dpca_proj_twind = None, 
+        - raw_subtract_mean_each_timepoint=False
+        RETURNS:
+        - PAredu, holding reduced data.
+        """
+
+        PA = self
+
+        if tbin_dur is None:
+            # Assume you want to take all time bins... None takes time average..
+            tbin_dur = "ignore"
+        if tbin_slide is None:
+            # If conitnue with None, then code  makes it equal to tbin_dur
+            tbin_slide = 0.01
+
+        if scalar_or_traj == "traj":
+            reshape_method = "chans_x_trials_x_times"
+        elif scalar_or_traj == "scal":
+            reshape_method = "trials_x_chanstimes"
+        else:
+            assert False
+
+        if version == "pca":
+            # Then just PCA on all data.
+
+            # - normalize - remove time-varying component
+            if raw_subtract_mean_each_timepoint:
+                PA = PA.norm_subtract_trial_mean_each_timepoint()
+            
+            # - PCA
+            if savedir is not None:
+                plot_pca_explained_var_path=f"{savedir}/pcaexp.pdf"
+                plot_loadings_path = f"{savedir}/pcaload.pdf"
+            else:
+                plot_pca_explained_var_path = None
+                plot_loadings_path = None
+
+            print(twind_pca, tbin_dur, tbin_slide)
+            Xredu, PAredu, _, _, _ = PA.dataextract_state_space_decode_flex(twind_pca, tbin_dur, tbin_slide, reshape_method=reshape_method,
+                                                        pca_reduce=True, plot_pca_explained_var_path=plot_pca_explained_var_path, 
+                                                        plot_loadings_path=plot_loadings_path, npcs_keep_force=NPCS_KEEP)    
+            n_pcs_keep_euclidian = PAredu.X.shape[1]
+
+        elif version=="dpca":
+            # Then does targeted dim reduction, first averaging over trials to get means for variable.
+
+            assert dpca_var is not None
+
+            Xredu, PAredu, _, _, pca = PA.dataextract_pca_demixed_subspace(dpca_var, dpca_vars_group,
+                                                            twind_pca, tbin_dur, # -- PCA params start
+                                                            pca_tbin_slice = tbin_slide,
+                                                            savedir_plots=savedir,
+                                                            raw_subtract_mean_each_timepoint=raw_subtract_mean_each_timepoint,
+                                                            pca_subtract_mean_each_level_grouping=True,
+                                                            n_min_per_lev_lev_others=4, prune_min_n_levs = 2,
+                                                            n_pcs_subspace_max = NPCS_KEEP, 
+                                                            reshape_method=reshape_method,
+                                                            proj_twind=dpca_proj_twind)
+                
+
+            # # Figure out how many dimensions to keep (for euclidian).
+            # n1 = pca["nclasses_of_var_pca"] # num classes of superv_dpca_var that exist. this is upper bound on dims.
+            # n2 = PAredu.X.shape[1] # num classes to reach criterion for cumvar for pca.
+            # n3 = PAredu.X.shape[0] # num dimensions.
+            # n_pcs_keep_euclidian = min([n1, n2, n3, NPCS_KEEP])
+            # PAredu = PAredu.slice_by_dim_indices_wrapper("chans", list(range(n_pcs_keep_euclidian)))
+        
+        else:
+            print(version)
+            assert False
+
+        return Xredu, PAredu
+
     def dataextract_pca_demixed_subspace_project(self, pca, pca_twind, pca_tbindur, pca_tbin_slice, reshape_method,
                                                  dimredgood_pca_project_do_reshape, n_pcs_subspace_max, do_pca_after_project_on_subspace,
                                                  savedir_plots):
@@ -2219,6 +2349,9 @@ class PopAnal():
         df = trajgood_construct_df_from_raw(self.X, self.Times, labels, labelvars)
         return df
 
+
+    ###################### EUCLIDIAN DISTNACE
+        
     #######################
     def reshape_by_splitting(self):
         """

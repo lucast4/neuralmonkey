@@ -99,18 +99,18 @@ def load_handsaved_wrapper(animal=None, date=None, version=None, combine_areas=T
         # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230615-trial-kilosort_if_exists-norm=None-combine=True.pkl" # SP, shape vs. loc, all events, good.
         # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Pancho-220715-trial-kilosort_if_exists-norm=None-combine=True.pkl" # SP, has all events.
         # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Pancho-220608-trial-tdt-norm=None-combine=True.pkl" # SP, all events, good
-        # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-240516-trial-kilosort_if_exists-norm=None-combine=True.pkl" # Novel prims.
+        path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-240516-trial-kilosort_if_exists-norm=None-combine=True.pkl" # Novel prims.
 
         # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-240604-trial-kilosort_if_exists-norm=None-combine=True-RAW.pkl"
 
         # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230630-trial-kilosort_if_exists-norm=None-combine=True.pkl"
         # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230630-stroke-kilosort_if_exists-norm=None-combine=True.pkl"
 
-        path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-231211-trial-kilosort_if_exists-norm=None-combine=True.pkl" # CHAR
-        path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-231211-stroke-kilosort_if_exists-norm=None-combine=True.pkl" 
+        # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-231211-trial-kilosort_if_exists-norm=None-combine=True.pkl" # CHAR
+        # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-231211-stroke-kilosort_if_exists-norm=None-combine=True.pkl" 
     
         # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230616-trial-kilosort_if_exists-norm=None-combine=True.pkl"
-        path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230615-trial-kilosort_if_exists-norm=None-combine=True.pkl"
+        # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230615-trial-kilosort_if_exists-norm=None-combine=True.pkl"
         
         # path = /home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-240523-trial-kilosort_if_exists-norm=None-combine=True-t1=-1.0-t2=1.8.pkl # psycho prims (structured)
 

@@ -1471,7 +1471,8 @@ def trajgood_plot_colorby_splotby_scalar_WRAPPER(X, dflab, var_color, savedir,
                                                  connect_means_with_line=False, connect_means_with_line_levels=None,
                                                  SIZE=7, alpha=0.5,
                                                  skip_subplots_lack_mult_colors=True, save_suffix=None,
-                                                 plot_3D = False):
+                                                 plot_3D = False,
+                                                 overlay_mean_orig = False):
     """
     Final wrapper to make many plots, each figure showing supblots one for each levv of otehr var, colored
     by levels of var. Across figures, show different projections to dim pairs. And plot sepraerpte figuers for
@@ -1495,6 +1496,10 @@ def trajgood_plot_colorby_splotby_scalar_WRAPPER(X, dflab, var_color, savedir,
         save_suffix = f"-{save_suffix}"
     else:
         save_suffix = ""
+
+    if overlay_mean:
+        assert isinstance(var_color, list)
+        assert overlay_mean_var_color in var_color
 
     if overlay_mean_var_color is not None and overlay_mean:
         # Currently, overlay_mean_var_color must be subset of var_color
@@ -1585,7 +1590,7 @@ def trajgood_plot_colorby_splotby_scalar_WRAPPER(X, dflab, var_color, savedir,
                                                                                            labels_color, labels_subplot, var_color,
                                                                                            vars_subplot_string, SIZE=7,
                                                                                            alpha=alpha,
-                                                                                           overlay_mean=False,
+                                                                                           overlay_mean=overlay_mean_orig,
                                                                                            text_to_plot=text_to_plot,
                                                                                            skip_subplots_lack_mult_colors=skip_subplots_lack_mult_colors,
                                                                                            n_min_per_levo=n_min_per_levo,
@@ -3695,13 +3700,13 @@ def euclidian_distance_compute_trajectories(PA, LIST_VAR, LIST_VARS_OTHERS, twin
         print(dim_red_method)
         assert False
 
+    reshape_method = "chans_x_trials_x_times"
     if METHOD=="basic":
         # 1. Dim reduction
         # - normalize - remove time-varying component
         PA = PA.norm_subtract_trial_mean_each_timepoint()
         
         # - PCA
-        reshape_method = "chans_x_trials_x_times"
         plot_pca_explained_var_path=f"{savedir}/pcaexp.pdf"
         plot_loadings_path = f"{savedir}/pcaload.pdf"
         umap_n_neighbors = 40
@@ -3718,7 +3723,6 @@ def euclidian_distance_compute_trajectories(PA, LIST_VAR, LIST_VARS_OTHERS, twin
         savedirthis = f"{savedir}/pca_construction"
         os.makedirs(savedirthis, exist_ok=True)
         PLOT_STEPS = False
-        reshape_method = "chans_x_trials_x_times"
         _, PAredu, _, _, pca = PA.dataextract_pca_demixed_subspace(
             superv_dpca_var, superv_dpca_vars_group, twind, tbin_dur, superv_dpca_filtdict, savedirthis,
             n_min_per_lev_lev_others=nmin_trials_per_lev, PLOT_STEPS=PLOT_STEPS, reshape_method=reshape_method,
@@ -3735,7 +3739,8 @@ def euclidian_distance_compute_trajectories(PA, LIST_VAR, LIST_VARS_OTHERS, twin
         # Figure out how many dimensions to keep (for euclidian).
         n1 = pca["nclasses_of_var_pca"] # num classes of superv_dpca_var that exist. this is upper bound on dims.
         n2 = PAredu.X.shape[1] # num classes to reach criterion for cumvar for pca.
-        n_pcs_keep_euclidian = min([n1, n2, NPCS_KEEP])
+        n3 = PAredu.X.shape[0] # num dimensions.
+        n_pcs_keep_euclidian = min([n1, n2, n3, NPCS_KEEP])
         
         PAredu = PAredu.slice_by_dim_indices_wrapper("chans", list(range(n_pcs_keep_euclidian)))
 
@@ -3850,6 +3855,7 @@ def euclidian_distance_compute_trajectories(PA, LIST_VAR, LIST_VARS_OTHERS, twin
         # 2. Plot trajectories
         if PLOT_TRAJS:
             pathis = pa # Use the pruned data for plots.
+            pathis_scalar = pa.agg_wrapper("times")
             # pathis = PAredu
             
             if len(LIST_VAR)<15:
@@ -3875,6 +3881,17 @@ def euclidian_distance_compute_trajectories(PA, LIST_VAR, LIST_VARS_OTHERS, twin
                     trajgood_plot_colorby_splotby_WRAPPER(pathis.X, pathis.Times, pathis.Xlabels["trials"], var, 
                                                         savedir, var_others, list_dims, 
                                                         time_bin_size=time_bin_size, save_suffix=i_var)
+                    
+                    # -- Plot scalar scatterplot too.
+                    dflab = pathis_scalar.Xlabels["trials"]
+                    Xthis = pathis_scalar.X.squeeze(axis=2).T # (n4trials, ndims)
+                    sdir = f"{savedir}/SCALAR"
+                    os.makedirs(sdir, exist_ok=True)
+                    trajgood_plot_colorby_splotby_scalar_WRAPPER(Xthis, dflab, var, sdir,
+                                                                    vars_subplot=var_others, list_dims=list_dims,
+                                                                    skip_subplots_lack_mult_colors=False, save_suffix = i_var)
+                    var_varothers_already_plotted.append((var, tuple(var_others)))
+
                     plt.close("all")
                 else:
                     # Plot a "clean" version (Paper version), including with different x and y lims, so can compare
@@ -3934,6 +3951,18 @@ def euclidian_distance_compute_trajectories(PA, LIST_VAR, LIST_VARS_OTHERS, twin
                                                         savedir, None, list_dims, 
                                                         time_bin_size=time_bin_size, save_suffix=i_var)
                     
+                    # -- Plot scalar scatterplot too.
+                    dflab = pathis_scalar.Xlabels["trials"]
+                    Xthis = pathis_scalar.X.squeeze(axis=2).T # (n4trials, ndims)
+                    sdir = f"{savedir}/SCALAR"
+                    os.makedirs(sdir, exist_ok=True)
+                    trajgood_plot_colorby_splotby_scalar_WRAPPER(Xthis, dflab, var, sdir,
+                                                                    vars_subplot=None, list_dims=list_dims,
+                                                                    skip_subplots_lack_mult_colors=False, save_suffix = i_var)
+                    var_varothers_already_plotted.append((var, tuple(var_others)))
+
+                    plt.close("all")
+
                 plt.close("all")
             
             # Also plot timecourse
@@ -3972,14 +4001,22 @@ def euclidian_distance_compute_trajectories(PA, LIST_VAR, LIST_VARS_OTHERS, twin
 def euclidian_distance_compute_trajectories_single(PA, var_effect, vars_others, context_input=None,
                                                    version_distance="euclidian",
                                                 PLOT_HEATMAPS=False, savedir_heatmaps=None, PLOT_MASKS=False,
-                                                get_reverse_also=True, dir_to_print_lab_each_mask=None):
+                                                get_reverse_also=True, dir_to_print_lab_each_mask=None,
+                                                return_cldist=False, compute_same_diff_scores=True):
     """
-    Compute distance between trajectories (each pair of trajs (i.e, triualsd) returns a single scalar distances, which
-    is the average distance over time)
+    [GOOD]
+
+    Compute distance between trajectories (each pair of trajs (i.e, triualsd) returns a 
+    single scalar distances, which is the average distance over time)
 
     """
     from pythonlib.cluster.clustclass import Clusters
     import numpy as np
+
+    if vars_others is None:
+        vars_others = []
+    if compute_same_diff_scores:
+        assert len(vars_others)>0
 
     # # 3. Compute euclidian
     # # For each timepoint, compute
@@ -4004,6 +4041,7 @@ def euclidian_distance_compute_trajectories_single(PA, var_effect, vars_others, 
         LIST_REVERSE = [False]
 
     list_res = []
+    Cldist_good = None
     for DO_REVERSE_CONTROL in LIST_REVERSE:
         if DO_REVERSE_CONTROL:
             niter = 3
@@ -4016,21 +4054,24 @@ def euclidian_distance_compute_trajectories_single(PA, var_effect, vars_others, 
             # Collect Cldists, one for each time bin
             # Collect 
             if DO_REVERSE_CONTROL:
-                LIST_CLDIST, LIST_TIME = PA.dataextract_as_distance_matrix_clusters_flex_reversed([var_effect] + vars_others, 
-                                                                                            version_distance=version_distance)
+                Cldist = PA.dataextract_as_distance_matrix_clusters_flex_reversed([var_effect] + vars_others, 
+                                                                                            version_distance=version_distance,
+                                                                                            return_as_single_mean_over_time=True)
             else:
-                LIST_CLDIST, LIST_TIME = PA.dataextract_as_distance_matrix_clusters_flex([var_effect] + vars_others, 
-                                                                                            version_distance=version_distance)
-            
-            ### Take mean distance over time, and construct a single Clusters
-            Xinpput_mean = np.mean(np.stack([Cldist.Xinput for Cldist in LIST_CLDIST], axis=0), axis=0)
-            params = {
-                "label_vars":LIST_CLDIST[0].Params["label_vars"],
-                "version_distance":LIST_CLDIST[0].Params["version_distance"],
-                "Clraw":None,
-            }
-            list_lab = LIST_CLDIST[0].Labels
-            Cldist = Clusters(Xinpput_mean, list_lab, list_lab, ver="dist", params=params)
+                Cldist = PA.dataextract_as_distance_matrix_clusters_flex([var_effect] + vars_others, 
+                                                                                            version_distance=version_distance,
+                                                                                            return_as_single_mean_over_time=True)
+                Cldist_good = Cldist
+
+            # ### Take mean distance over time, and construct a single Clusters
+            # Xinpput_mean = np.mean(np.stack([Cldist.Xinput for Cldist in LIST_CLDIST], axis=0), axis=0)
+            # params = {
+            #     "label_vars":LIST_CLDIST[0].Params["label_vars"],
+            #     "version_distance":LIST_CLDIST[0].Params["version_distance"],
+            #     "Clraw":None,
+            # }
+            # list_lab = LIST_CLDIST[0].Labels
+            # Cldist = Clusters(Xinpput_mean, list_lab, list_lab, ver="dist", params=params)
 
             if PLOT_HEATMAPS and savedir_heatmaps is not None:
                 fig, _ = Cldist.rsa_plot_heatmap()
@@ -4038,18 +4079,19 @@ def euclidian_distance_compute_trajectories_single(PA, var_effect, vars_others, 
                     savefig(fig, f"{savedir_heatmaps}/heatmap_average.pdf")
                     plt.close("all")
             
-            ### Compute scores
-            # dir_to_print_lab_each_mask = # good to always save the final data pairs.
-            res, DIST_NULL_50, DIST_NULL_95, DIST_NULL_98 = Cldist.rsa_distmat_score_same_diff_by_context(var_effect, vars_others, 
-                                                                                        context_input, dat_level, 
-                                                                                        PLOT_MASKS,
-                                                                                        dir_to_print_lab_each_mask=dir_to_print_lab_each_mask)
-            for r in res:
-                r["DIST_NULL_98"] = DIST_NULL_98
-                r["shuffled_time"] = DO_REVERSE_CONTROL
-                r["shuffled_time_iter"] = _i
-                
-            list_res.extend(res)
+            ### Compute scores (same vs. diff)
+            if compute_same_diff_scores:
+                # dir_to_print_lab_each_mask = # good to always save the final data pairs.
+                res, DIST_NULL_50, DIST_NULL_95, DIST_NULL_98 = Cldist.rsa_distmat_score_same_diff_by_context(var_effect, vars_others, 
+                                                                                            context_input, dat_level, 
+                                                                                            PLOT_MASKS,
+                                                                                            dir_to_print_lab_each_mask=dir_to_print_lab_each_mask)
+                for r in res:
+                    r["DIST_NULL_98"] = DIST_NULL_98
+                    r["shuffled_time"] = DO_REVERSE_CONTROL
+                    r["shuffled_time_iter"] = _i
+                    
+                list_res.extend(res)
 
     ##### Version 2 -- quicker, treat trajectoreis as single datapts [IGNORE, working, but decided above is better, intergartes with my code better]
 
@@ -4160,8 +4202,10 @@ def euclidian_distance_compute_trajectories_single(PA, var_effect, vars_others, 
 
     # Cldist.rsa_plot_heatmap()
 
-
-    return list_res
+    if return_cldist:
+        return Cldist_good, list_res
+    else:
+        return list_res
 
 
 def euclidian_distance_compute_AnBmCk_endpoint(PAredu, SAVEDIR):
