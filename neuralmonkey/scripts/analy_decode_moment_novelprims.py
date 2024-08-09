@@ -89,18 +89,18 @@ def analy_novelprim_prepare_dataset(DFallpa, animal, date, SAVEDIR_BASE):
     fig = grouping_plot_n_samples_conjunction_heatmap(dflab, "seqc_0_shape_pref", "shape_is_novel_all")
     savefig(fig, f"{SAVEDIR_BASE}/counts_novel_shapes.pdf")
 
-def analy_novelprim_score_postsamp(dfscores, Dc, dflab, savedir):
+def analy_novelprims_dfscores_condition(dfscores, dflab):
     """
-    Summary scores for a single bregion, of variosu "questions" related to novel rims.
-    PARAMS:
-    - dflab, labels across trials.
     """
     import seaborn as sns
     from pythonlib.tools.snstools import rotateLabel
     import seaborn as sns
     from pythonlib.tools.pandastools import plot_45scatter_means_flexible_grouping
 
-    assert dfscores.groupby(["trialcode", "decoder_class"]).size().max() == 1, "mistake, maybe diff train-test splits applied to same trial? this is doublecoutning."
+    if "bregion" in dfscores.columns:
+        assert dfscores.groupby(["bregion", "trialcode", "decoder_class"]).size().max() == 1, "mistake, maybe diff train-test splits applied to same trial? this is doublecoutning."
+    else:
+        assert dfscores.groupby(["trialcode", "decoder_class"]).size().max() == 1, "mistake, maybe diff train-test splits applied to same trial? this is doublecoutning."
 
     # Assign variables
     map_tc_to_novel = {row["trialcode"]:row["shape_is_novel_all"] for i, row in dflab.iterrows()}
@@ -111,6 +111,20 @@ def analy_novelprim_score_postsamp(dfscores, Dc, dflab, savedir):
     dfscores["decoder_shape_novel"] = [map_shape_to_novel[sh] for sh in dfscores["decoder_class"]]
     dfscores["pa_shape_novel"] = [map_shape_to_novel[sh] for sh in dfscores["pa_class"]]
     dfscores["pa_decoder_shape_novel"] = [(map_shape_to_novel[row["pa_class"]], map_shape_to_novel[row["decoder_class"]]) for i, row in dfscores.iterrows()]
+
+    return map_tc_to_novel, map_shape_to_novel
+
+def analy_novelprim_score_postsamp(dfscores, Dc, savedir):
+    """
+    Summary scores for a single bregion, of variosu "questions" related to novel rims.
+    PARAMS:
+    - dflab, labels across trials.
+    """
+    import seaborn as sns
+    from pythonlib.tools.snstools import rotateLabel
+    import seaborn as sns
+    from pythonlib.tools.pandastools import plot_45scatter_means_flexible_grouping
+
 
     # Clean up -- just those novel prims that have consistent behavior.
     if False:
@@ -290,7 +304,10 @@ if __name__=="__main__":
             n_min_per_var = 10
         else:
             n_min_per_var = 7
-            
+        
+        if version == "split_gridloc":
+            n_min_per_var = 6 # to allow gen across loc.
+
         for TWIND_TEST in [(0.05, 1.2), (0.05, 0.6), (0.6, 1.2)]:
             do_upsample_balance=True
             PLOT_DECODER = False
@@ -318,7 +335,7 @@ if __name__=="__main__":
             list_twind_test = [TWIND_TEST]
 
             # Other params
-            SAVEDIR = f"{SAVEDIR_BASE}/downsample_trials={downsample_trials}-TWIND_TEST={TWIND_TEST}-version={version}"
+            SAVEDIR = f"{SAVEDIR_BASE}/downsample_trials={downsample_trials}-TWIND_TEST={TWIND_TEST}-version={version}-nmin={n_min_per_var}"
 
             list_bregion = DFallpa["bregion"].unique().tolist()
             for bregion in list_bregion:
@@ -327,8 +344,9 @@ if __name__=="__main__":
                 print(savedir)
 
                 if version == "split_gridloc":
-                    n_min_per_var = 4 # to allow gen across loc.
-                    n_min_per_var = 5 # to allow gen across loc.
+                    # n_min_per_var = 4 # to allow gen across loc.
+                    # n_min_per_var = 5 # to allow gen across loc.
+                    do_train_splits_nsplits = 6
                     dfscores, decoders, list_pa_train, list_pa_test = pipeline_train_test_scalar_score_split_gridloc(list_loc, savedir,
                                                                                                                     DFallpa, 
                                                                                     bregion, var_train, event_train, 
@@ -340,7 +358,7 @@ if __name__=="__main__":
                                                         which_level_test=which_level_test, n_min_per_var=n_min_per_var,
                                                         subtract_baseline=subtract_baseline, subtract_baseline_twind=subtract_baseline_twind,
                                                         do_upsample_balance=do_upsample_balance, downsample_trials=downsample_trials,
-                                                        auto_prune_locations=auto_prune_locations)
+                                                        auto_prune_locations=auto_prune_locations, do_train_splits_nsplits=do_train_splits_nsplits)
                     Dc = decoders[0]
 
                 else:
@@ -368,6 +386,10 @@ if __name__=="__main__":
                                                             score_user_test_data=score_user_test_data)
                         Dc = decoders[0]
 
+                # Condition dfscores
+                dflab = DFallpa["pa"].values[0].Xlabels["trials"]
+                analy_novelprims_dfscores_condition(dfscores, dflab)
+
                 ### Save this bregion
                 import pickle
                 savedir = f"{SAVEDIR}/{bregion}"
@@ -375,11 +397,12 @@ if __name__=="__main__":
                     pickle.dump(dfscores, f)
                 with open(f"{savedir}/Dc.pkl", "wb") as f:
                     pickle.dump(Dc, f)
+                with open(f"{savedir}/dflab.pkl", "wb") as f:
+                    pickle.dump(dflab, f)
 
                 ######################## PLOTS
                 from neuralmonkey.analyses.decode_moment import analy_psychoprim_score_postsamp
                 savedir = f"{SAVEDIR}/{bregion}/PLOTS"
                 os.makedirs(savedir, exist_ok=True)
                 print(savedir)
-                dflab = DFallpa["pa"].values[0].Xlabels["trials"]
-                analy_novelprim_score_postsamp(dfscores, Dc, dflab, savedir)
+                analy_novelprim_score_postsamp(dfscores, Dc, savedir)

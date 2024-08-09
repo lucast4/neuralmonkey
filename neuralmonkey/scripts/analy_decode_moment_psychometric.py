@@ -2,6 +2,7 @@
 
 import pandas as pd
 import matplotlib.pyplot as plt
+from pythonlib.tools.plottools import savefig
 import os
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -11,11 +12,156 @@ from neuralmonkey.classes.population_mult import extract_single_pa
 from neuralmonkey.analyses.decode_moment import train_decoder_helper
 import sys
 
-from neuralmonkey.classes.population_mult import load_handsaved_wrapper, dfpa_match_chans_across_pa_each_bregion
-from neuralmonkey.classes.population_mult import extract_single_pa
+def analy_psychoprim_statespace_euclidian(DFallpa, SAVEDIR, map_tcmorphset_to_idxmorph, list_morphset):
+    """
+    Plot euclidian distances, looking for categorical represntation, continuous morphts.
+    """
+    from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_WRAPPER, trajgood_plot_colorby_splotby_scalar_WRAPPER
 
+    list_bregion = DFallpa["bregion"].unique().tolist()
 
+    # Extract data for this morphset, wiht labels updated
+    for bregion in list_bregion:
+        for morphset in list_morphset:
+            ############### PREPARE DATASET
+            PA = extract_single_pa(DFallpa, bregion, None, "trial", "03_samp")
 
+            # Given morphset, assign new column which is the trial's role in that morphset.
+            dflab = PA.Xlabels["trials"]
+            dflab["idx_morph_temp"] = [map_tcmorphset_to_idxmorph[(tc, morphset)] for tc in dflab["trialcode"]]
+
+            # keep just trials that are in this morphset
+            idx_exist = list(set([x for x in dflab["idx_morph_temp"] if x!="not_in_set"]))
+            filtdict = {
+                "idx_morph_temp":idx_exist,
+            }
+            PA = PA.slice_by_labels_filtdict(filtdict)
+
+            ############### DIM REDUCTION
+            # Train -- PC space.
+            # -- Params
+            # NPCS_KEEP = 6
+            # twind_train = (0.1, 1.0)
+
+            # -- Fixed params
+            superv_dpca_var = "idx_morph_temp"
+            superv_dpca_vars_group = None
+            tbin_dur = 0.1
+            pca_tbin_slice = 0.01
+
+            for raw_subtract_mean_each_timepoint in [True, False]:
+                for scalar_or_traj in ["scal", "traj"]:
+                    if scalar_or_traj=="traj":
+                        NPCS_KEEP = 6
+                        # list_twind = [(-0.5, 1.2), twind_train]
+                        # list_twind = [(0.1, 1.2), (0.1, 0.6), (0.6, 1.2)]
+                        list_twind = [(0.1, 1.2), (0.6, 1.2)]
+                    else:
+                        NPCS_KEEP = 8
+                        # list_twind = [(0.1, 1.2), (0.1, 0.6), (0.6, 1.2)]
+                        list_twind = [(0.1, 1.2), (0.6, 1.2)]
+
+                    for proj_twind in list_twind:
+                        # for version in ["pca", "dpca"]:
+                        for version in ["dpca"]:
+                            
+                            savedir = f"{SAVEDIR}/statespace_euclidian/bregion={bregion}/morphset={morphset}-ver={scalar_or_traj}-{version}-subtrmean={raw_subtract_mean_each_timepoint}-projtwind={proj_twind}-npcs={NPCS_KEEP}"
+                            os.makedirs(savedir, exist_ok=True)
+
+                            ### DIM REDUCTION
+                            savedirpca = f"{savedir}/pca_construction"
+                            os.makedirs(savedirpca, exist_ok=True)
+                    
+                            Xredu, PAredu = PA.dataextract_dimred_wrapper(scalar_or_traj, version, savedirpca, 
+                                    proj_twind, tbin_dur, pca_tbin_slice, NPCS_KEEP = NPCS_KEEP,
+                                    dpca_var = superv_dpca_var, dpca_vars_group = superv_dpca_vars_group, dpca_proj_twind = None, 
+                                    raw_subtract_mean_each_timepoint=raw_subtract_mean_each_timepoint)
+                            
+
+                            ### STATE SPACE PLOTS
+                            dflab = PAredu.Xlabels["trials"]
+                            times = PAredu.Times
+
+                            if scalar_or_traj == "traj":
+                                ### Trajectory plots 
+                                time_bin_size = 0.05
+                                list_var_color_var_subplot = [
+                                    [superv_dpca_var, None],
+                                ]
+                                LIST_DIMS = [(0,1), (2,3)]
+                                for var_color, var_subplot in list_var_color_var_subplot:
+                                    trajgood_plot_colorby_splotby_WRAPPER(Xredu, times, dflab, var_color, savedir,
+                                                                vars_subplot=var_subplot, list_dims=LIST_DIMS, time_bin_size=time_bin_size)
+                                plt.close("all")
+
+                            elif scalar_or_traj == "scal":
+                                ### Plot scalars
+                                list_var_color_var_subplot = [
+                                    [superv_dpca_var, None],
+                                ]
+                                LIST_DIMS = [(0,1), (2,3)]
+                                for var_color, var_subplot in list_var_color_var_subplot:
+
+                                    trajgood_plot_colorby_splotby_scalar_WRAPPER(Xredu, dflab, var_color, savedir,
+                                                                                    vars_subplot=var_subplot, list_dims=LIST_DIMS,
+                                                                                    overlay_mean_orig=True
+                                                                                    )
+                            else:
+                                assert False
+                            
+                            ############################## EUCLIDIAN DISTANCE
+                            # Euclidian distance between adjacent steps in morphset
+                            from neuralmonkey.analyses.state_space_good import euclidian_distance_compute_trajectories_single
+                            var_effect = "idx_morph_temp"
+                            vars_others = None
+                            PLOT_HEATMAPS = False
+                            Cldist, _ = euclidian_distance_compute_trajectories_single(PAredu, var_effect, vars_others, PLOT_HEATMAPS=PLOT_HEATMAPS, 
+                                                                        savedir_heatmaps=savedir, get_reverse_also=False, return_cldist=True,
+                                                                        compute_same_diff_scores=False)
+                            dfdists = Cldist.rsa_dataextract_with_labels_as_flattened_df(plot_heat=False, exclude_diagonal=True)
+
+                            import seaborn as sns
+                            from pythonlib.tools.pandastools import plot_subplots_heatmap
+
+                            fig, _ =plot_subplots_heatmap(dfdists, "idx_morph_temp_row", "idx_morph_temp_col", "dist", None)
+                            savefig(fig, f"{savedir}/heatmap_distances.pdf")
+
+                            fig = sns.catplot(data=dfdists, x="idx_morph_temp_row", y="dist", hue="idx_morph_temp_col", kind="point")
+                            savefig(fig, f"{savedir}/catplot-1.pdf")
+
+                            # Test hypothesis -- logistic curve
+                            fig = sns.catplot(data=dfdists, x="idx_morph_temp_row", y="dist", col="idx_morph_temp_col", kind="point")
+                            savefig(fig, f"{savedir}/catplot-2.pdf")
+
+                            fig = sns.catplot(data=dfdists, x="idx_morph_temp_row", y="dist", col="idx_morph_temp_col", jitter=True, alpha=0.15)
+                            savefig(fig, f"{savedir}/catplot-3.pdf")
+
+                            fig = sns.catplot(data=dfdists, x="idx_morph_temp_row", y="dist", col="idx_morph_temp_col", kind="violin")
+                            savefig(fig, f"{savedir}/catplot-4.pdf")
+
+                            # For each index, get its distance to its adjacent indices
+                            dfdists = Cldist.rsa_dataextract_with_labels_as_flattened_df(exclude_diagonal=True, plot_heat=False)
+                            # Middle states -- evidence for trial by trial variation? i.e.,
+                            # Scatterplot -- if similar to base1, then is diff from base 2?
+
+                            from pythonlib.tools.pandastools import plot_45scatter_means_flexible_grouping
+                            # subplot = trial kind 
+                            # x and y are "decoders"
+                            # var_datapt = same as "trialcode"
+                            _, fig = plot_45scatter_means_flexible_grouping(dfdists, "idx_morph_temp_col", 0, 99, "idx_morph_temp_row", 
+                                                                "dist", "idx_row", plot_text=False, plot_error_bars=True, SIZE=4.5, 
+                                                                shareaxes=True)
+                            savefig(fig, f"{savedir}/scatter-1.pdf")
+
+                            plt.close("all")
+
+                            # SAVE:
+                            import pickle
+                            with open(f"{savedir}/PAredu.pkl", "wb") as f:
+                                pickle.dump(PAredu, f)
+                            with open(f"{savedir}/Cldist.pkl", "wb") as f:
+                                pickle.dump(Cldist, f)
+                            
 def prune_dfscores_good_morphset(dfscores, morphset_get, animal, date):
     """
     """
@@ -76,7 +222,8 @@ if __name__=="__main__":
 
     PLOT_EACH_IDX = False
 
-    PLOTS_DO = [1]
+    # PLOTS_DO = [1, 2, 0]
+    PLOTS_DO = [3]
 
     for COMBINE_AREAS in LIST_COMBINE_AREAS:
         
@@ -126,3 +273,48 @@ if __name__=="__main__":
                                                 SAVEDIR,
                                                 animal=animal, date=date)
                 
+        if 2 in PLOTS_DO:
+            list_morphset = DSmorphsets.Dat["morph_set_idx"].unique().tolist()
+            analy_psychoprim_statespace_euclidian(DFallpa, SAVEDIR, map_tcmorphset_to_idxmorph, list_morphset)
+
+        if 3 in PLOTS_DO:
+            ### sliceTCA (testing this out..)
+            
+            from neuralmonkey.scripts.analy_slicetca_script import run
+            if True:
+                list_bregion = DFallpa["bregion"].unique().tolist()
+            else:
+                # list_bregion = ["PMv", "PMd", "SMA", "vlPFC", "M1"]
+                list_bregion = ["PMv", "PMd", "M1"]
+
+            list_morphset = DSmorphsets.Dat["morph_set_idx"].unique().tolist()
+            # list_twind_analy = [(-0.1, 1.)]
+
+            list_event_twindanaly = [
+                ("03_samp", (-0.05, 1.1)),
+                ("06_on_strokeidx_0", (-0.1, 0.4)),
+            ]
+
+            # Extract data for this morphset, wiht labels updated
+            for event, twind_analy in list_event_twindanaly:
+                for bregion in list_bregion:
+                    for morphset in list_morphset:
+                        ############### PREPARE DATASET
+                        PA = extract_single_pa(DFallpa, bregion, None, "trial", event)
+
+                        # Given morphset, assign new column which is the trial's role in that morphset.
+                        dflab = PA.Xlabels["trials"]
+                        dflab["idx_morph_temp"] = [map_tcmorphset_to_idxmorph[(tc, morphset)] for tc in dflab["trialcode"]]
+
+                        # keep just trials that are in this morphset
+                        idx_exist = list(set([x for x in dflab["idx_morph_temp"] if x!="not_in_set"]))
+                        filtdict = {
+                            "idx_morph_temp":idx_exist,
+                        }
+                        PA = PA.slice_by_labels_filtdict(filtdict)
+
+                        savedir = f"{SAVEDIR}/sliceTCA/event={event}-twind={twind_analy}/bregion={bregion}/morphset={morphset}"
+                        os.makedirs(savedir, exist_ok=True)
+
+                        list_var_color = ["idx_morph_temp", "seqc_0_loc", "seqc_0_shape"]
+                        run(PA, savedir, twind_analy, list_var_color)
