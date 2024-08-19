@@ -1357,6 +1357,8 @@ def dfpa_concatbregion_preprocess_wrapper(DFallpa, fr_mean_subtract_method = "ac
     # fr_mean_subtract_method = "each_time_bin"
     """
 
+    assert fr_mean_subtract_method in ["across_time_bins", "each_time_bin"]
+
     # (1) Prune to chans that are common across pa for each bregion (intersection of chans)|
     dfpa_match_chans_across_pa_each_bregion(DFallpa)
 

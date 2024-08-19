@@ -1540,7 +1540,9 @@ def trajgood_plot_colorby_splotby_scalar_WRAPPER(X, dflab, var_color, savedir,
         if keep:
             list_dims_keep.append(dims)
     list_dims = list_dims_keep
-    assert len(list_dims)>0
+    if len(list_dims)==0:
+        return
+    # assert len(list_dims)>0
     # else:
     #     if plot_3D:
     #         for dims in list_dims:
@@ -1968,6 +1970,9 @@ def trajgood_plot_colorby_splotby_WRAPPER(X, times, dflab, var_color, savedir,
 
     for dims in list_dims:
         
+        if X.shape[0] < max(dims)+1:
+            continue
+
         # 1) Construct dataframe
         if vars_subplot is None:
             if isinstance(var_color, (list, tuple)):
@@ -2579,81 +2584,100 @@ def euclidian_distance_compute_scalar(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT
 
     ######################## (1) CONSTRUCT A SINGLE SUBSPACE (that all subsequence plots and analyses will be performed on)
     # Get specific params, based on how want to do dim reduction
-    METHOD = "basic"
-    if dim_red_method is None:
-        # Then use raw data
-        pca_reduce = False
-        extra_dimred_method = None
-    elif dim_red_method=="pca":
-        pca_reduce = True
-        extra_dimred_method = None
-    elif dim_red_method=="pca_umap":
-        # PCA --> UMAP
-        pca_reduce = True
-        extra_dimred_method = "umap"
-    elif dim_red_method=="umap":
-        # UMAP
-        pca_reduce = False
-        extra_dimred_method = "umap"
-    elif dim_red_method=="mds":
-        # MDS
-        pca_reduce = False
-        extra_dimred_method = "mds"
-    elif dim_red_method=="superv_dpca":
-        # Supervised, based on DPCA, find subspace for a given variable by doing PCA on the mean values.
-        superv_dpca_var = superv_dpca_params["superv_dpca_var"]
-        superv_dpca_vars_group = superv_dpca_params["superv_dpca_vars_group"]
-        superv_dpca_filtdict = superv_dpca_params["superv_dpca_filtdict"]
-        METHOD = "dpca"
+    if superv_dpca_params is None:
+        dpca_var = None
+        dpca_vars_group = None
+        dpca_filtdict=None
+        dpca_proj_twind = None
     else:
-        print(dim_red_method)
-        assert False
+        dpca_var = superv_dpca_params["superv_dpca_var"]
+        dpca_vars_group = superv_dpca_params["superv_dpca_vars_group"]
+        dpca_filtdict = superv_dpca_params["superv_dpca_filtdict"]
+        dpca_proj_twind = superv_dpca_params["dpca_proj_twind"]
 
-    if METHOD=="basic":
-        # First, Extract data in PC space
-        plot_pca_explained_var_path = f"{savedir}/pca_explained_var.pdf"
-        plot_loadings_path = f"{savedir}/pca_loadings_heatmap.pdf"
-        Xredu, PAredu, _, _, _ = PA.dataextract_state_space_decode_flex(twind, tbin_dur, tbin_slice, reshape_method="trials_x_chanstimes",
-                                               pca_reduce=pca_reduce, plot_pca_explained_var_path=plot_pca_explained_var_path,
-                                                                              plot_loadings_path=plot_loadings_path,
-                                              npcs_keep_force=NPCS_KEEP,
-                                              extra_dimred_method=extra_dimred_method,
-                                              extra_dimred_method_n_components=extra_dimred_method_n_components,
-                                                    umap_n_neighbors = umap_n_neighbors)
-        n_pcs_keep_euclidian = Xredu.shape[1]
-    elif METHOD=="dpca":
-        from neuralmonkey.classes.population import PopAnal
+    Xredu, PAredu = PA.dataextract_dimred_wrapper("scal", dim_red_method, savedir, 
+                                   twind, tbin_dur=tbin_dur, tbin_slide=tbin_slice, 
+                                   NPCS_KEEP = NPCS_KEEP,
+                                   dpca_var = dpca_var, dpca_vars_group = dpca_vars_group, dpca_filtdict=dpca_filtdict, dpca_proj_twind = dpca_proj_twind, 
+                                   raw_subtract_mean_each_timepoint=False,
+                                   umap_n_components=extra_dimred_method_n_components, umap_n_neighbors=umap_n_neighbors)
+    
 
-        savedirthis = f"{savedir}/pca_construction"
-        os.makedirs(savedirthis, exist_ok=True)
-        PLOT_STEPS = False
-        Xredu, PAredu, _, _, pca = PA.dataextract_pca_demixed_subspace(
-            superv_dpca_var, superv_dpca_vars_group, twind, tbin_dur, superv_dpca_filtdict, savedirthis,
-            n_min_per_lev_lev_others=nmin_trials_per_lev, PLOT_STEPS=PLOT_STEPS,
-            n_pcs_subspace_max=NPCS_KEEP)
+    # METHOD = "basic"
+    # if dim_red_method is None:
+    #     # Then use raw data
+    #     pca_reduce = False
+    #     extra_dimred_method = None
+    # elif dim_red_method=="pca":
+    #     pca_reduce = True
+    #     extra_dimred_method = None
+    # elif dim_red_method=="pca_umap":
+    #     # PCA --> UMAP
+    #     pca_reduce = True
+    #     extra_dimred_method = "umap"
+    # elif dim_red_method=="umap":
+    #     # UMAP
+    #     pca_reduce = False
+    #     extra_dimred_method = "umap"
+    # elif dim_red_method=="mds":
+    #     # MDS
+    #     pca_reduce = False
+    #     extra_dimred_method = "mds"
+    # elif dim_red_method=="superv_dpca":
+    #     # Supervised, based on DPCA, find subspace for a given variable by doing PCA on the mean values.
+    #     superv_dpca_var = superv_dpca_params["superv_dpca_var"]
+    #     superv_dpca_vars_group = superv_dpca_params["superv_dpca_vars_group"]
+    #     superv_dpca_filtdict = superv_dpca_params["superv_dpca_filtdict"]
+    #     METHOD = "dpca"
+    # else:
+    #     print(dim_red_method)
+    #     assert False
 
-        if Xredu is None:
-            # Then no data...
-            return None
+    # if METHOD=="basic":
+    #     # First, Extract data in PC space
+    #     plot_pca_explained_var_path = f"{savedir}/pca_explained_var.pdf"
+    #     plot_loadings_path = f"{savedir}/pca_loadings_heatmap.pdf"
+    #     Xredu, PAredu, _, _, _ = PA.dataextract_state_space_decode_flex(twind, tbin_dur, tbin_slice, reshape_method="trials_x_chanstimes",
+    #                                            pca_reduce=pca_reduce, plot_pca_explained_var_path=plot_pca_explained_var_path,
+    #                                                                           plot_loadings_path=plot_loadings_path,
+    #                                           npcs_keep_force=NPCS_KEEP,
+    #                                           extra_dimred_method=extra_dimred_method,
+    #                                           extra_dimred_method_n_components=extra_dimred_method_n_components,
+    #                                                 umap_n_neighbors = umap_n_neighbors)
+    #     n_pcs_keep_euclidian = Xredu.shape[1]
+    # elif METHOD=="dpca":
+    #     from neuralmonkey.classes.population import PopAnal
 
-        # Save a version with full D, for state space
-        # PAredu_orig_dim = PAredu.copy()
+    #     savedirthis = f"{savedir}/pca_construction"
+    #     os.makedirs(savedirthis, exist_ok=True)
+    #     PLOT_STEPS = False
+    #     Xredu, PAredu, _, _, pca = PA.dataextract_pca_demixed_subspace(
+    #         superv_dpca_var, superv_dpca_vars_group, twind, tbin_dur, superv_dpca_filtdict, savedirthis,
+    #         n_min_per_lev_lev_others=nmin_trials_per_lev, PLOT_STEPS=PLOT_STEPS,
+    #         n_pcs_subspace_max=NPCS_KEEP)
 
-        # Figure out how many dimensions to keep (for euclidian).
-        n1 = pca["nclasses_of_var_pca"] # num classes of superv_dpca_var that exist. this is upper bound on dims.
-        n2 = Xredu.shape[1] # num classes to reach criterion for cumvar for pca.
-        n_pcs_keep_euclidian = min([n1, n2])
+    #     if Xredu is None:
+    #         # Then no data...
+    #         return None
 
-        print("dpca, keeping this many dims (final):", n_pcs_keep_euclidian)
-        # # - prune data for euclidian
-        # Xredu = Xredu[:, :n_pcs_keep_euclidian]
-        # dflab = PAredu.Xlabels.copy()
-        # PAredu = PopAnal(Xredu.T[:, :, None], [0])  # (ndimskeep, ntrials, 1)
-        # PAredu.Xlabels = {dim:df.copy() for dim, df in dflab.items()}
+    #     # Save a version with full D, for state space
+    #     # PAredu_orig_dim = PAredu.copy()
 
-    else:
-        print(METHOD)
-        assert False
+    #     # Figure out how many dimensions to keep (for euclidian).
+    #     n1 = pca["nclasses_of_var_pca"] # num classes of superv_dpca_var that exist. this is upper bound on dims.
+    #     n2 = Xredu.shape[1] # num classes to reach criterion for cumvar for pca.
+    #     n_pcs_keep_euclidian = min([n1, n2])
+
+    #     print("dpca, keeping this many dims (final):", n_pcs_keep_euclidian)
+    #     # # - prune data for euclidian
+    #     # Xredu = Xredu[:, :n_pcs_keep_euclidian]
+    #     # dflab = PAredu.Xlabels.copy()
+    #     # PAredu = PopAnal(Xredu.T[:, :, None], [0])  # (ndimskeep, ntrials, 1)
+    #     # PAredu.Xlabels = {dim:df.copy() for dim, df in dflab.items()}
+
+    # else:
+    #     print(METHOD)
+    #     assert False
 
     ############################ (2) Euclidian and State space plots
     if LIST_CONTEXT is not None:
@@ -3670,89 +3694,110 @@ def euclidian_distance_compute_trajectories(PA, LIST_VAR, LIST_VARS_OTHERS, twin
 
     ######################## (1) CONSTRUCT A SINGLE SUBSPACE (that all subsequence plots and analyses will be performed on)
     # Get specific params, based on how want to do dim reduction
-    METHOD = "basic"
-    if dim_red_method is None:
-        # Then use raw data
-        pca_reduce = False
-        extra_dimred_method = None
-    elif dim_red_method=="pca":
-        pca_reduce = True
-        extra_dimred_method = None
-    elif dim_red_method=="pca_umap":
-        # PCA --> UMAP
-        pca_reduce = True
-        extra_dimred_method = "umap"
-    elif dim_red_method=="umap":
-        # UMAP
-        pca_reduce = False
-        extra_dimred_method = "umap"
-    elif dim_red_method=="mds":
-        # MDS
-        pca_reduce = False
-        extra_dimred_method = "mds"
-    elif dim_red_method=="superv_dpca":
-        # Supervised, based on DPCA, find subspace for a given variable by doing PCA on the mean values.
-        superv_dpca_var = superv_dpca_params["superv_dpca_var"]
-        superv_dpca_vars_group = superv_dpca_params["superv_dpca_vars_group"]
-        superv_dpca_filtdict = superv_dpca_params["superv_dpca_filtdict"]
-        METHOD = "dpca"
+    if superv_dpca_params is None:
+        dpca_var = None
+        dpca_vars_group = None
+        dpca_filtdict=None
+        dpca_proj_twind = None
     else:
-        print(dim_red_method)
-        assert False
+        dpca_var = superv_dpca_params["superv_dpca_var"]
+        dpca_vars_group = superv_dpca_params["superv_dpca_vars_group"]
+        dpca_filtdict = superv_dpca_params["superv_dpca_filtdict"]
+        dpca_proj_twind = superv_dpca_params["dpca_proj_twind"]
 
-    reshape_method = "chans_x_trials_x_times"
-    if METHOD=="basic":
-        # 1. Dim reduction
-        # - normalize - remove time-varying component
-        PA = PA.norm_subtract_trial_mean_each_timepoint()
+    Xredu, PAredu = PA.dataextract_dimred_wrapper("traj", dim_red_method, savedir, 
+                                   twind, tbin_dur=tbin_dur, tbin_slide=tbin_slice, 
+                                   NPCS_KEEP = NPCS_KEEP,
+                                   dpca_var = dpca_var, dpca_vars_group = dpca_vars_group, dpca_filtdict=dpca_filtdict, dpca_proj_twind = dpca_proj_twind, 
+                                   raw_subtract_mean_each_timepoint=False,
+                                   umap_n_components=None, umap_n_neighbors=None)
+    
+
+    # ######################## (1) CONSTRUCT A SINGLE SUBSPACE (that all subsequence plots and analyses will be performed on)
+    # # Get specific params, based on how want to do dim reduction
+    # METHOD = "basic"
+    # if dim_red_method is None:
+    #     # Then use raw data
+    #     pca_reduce = False
+    #     extra_dimred_method = None
+    # elif dim_red_method=="pca":
+    #     pca_reduce = True
+    #     extra_dimred_method = None
+    # elif dim_red_method=="pca_umap":
+    #     # PCA --> UMAP
+    #     pca_reduce = True
+    #     extra_dimred_method = "umap"
+    # elif dim_red_method=="umap":
+    #     # UMAP
+    #     pca_reduce = False
+    #     extra_dimred_method = "umap"
+    # elif dim_red_method=="mds":
+    #     # MDS
+    #     pca_reduce = False
+    #     extra_dimred_method = "mds"
+    # elif dim_red_method=="superv_dpca":
+    #     # Supervised, based on DPCA, find subspace for a given variable by doing PCA on the mean values.
+    #     superv_dpca_var = superv_dpca_params["superv_dpca_var"]
+    #     superv_dpca_vars_group = superv_dpca_params["superv_dpca_vars_group"]
+    #     superv_dpca_filtdict = superv_dpca_params["superv_dpca_filtdict"]
+    #     METHOD = "dpca"
+    # else:
+    #     print(dim_red_method)
+    #     assert False
+
+    # reshape_method = "chans_x_trials_x_times"
+    # if METHOD=="basic":
+    #     # 1. Dim reduction
+    #     # - normalize - remove time-varying component
+    #     PA = PA.norm_subtract_trial_mean_each_timepoint()
         
-        # - PCA
-        plot_pca_explained_var_path=f"{savedir}/pcaexp.pdf"
-        plot_loadings_path = f"{savedir}/pcaload.pdf"
-        umap_n_neighbors = 40
-        _, PAredu, _, _, _ = PA.dataextract_state_space_decode_flex(twind, tbin_dur, tbin_slice, reshape_method=reshape_method,
-                                                    pca_reduce=pca_reduce, plot_pca_explained_var_path=plot_pca_explained_var_path, 
-                                                    plot_loadings_path=plot_loadings_path, npcs_keep_force=NPCS_KEEP,
-                                                    extra_dimred_method=extra_dimred_method, umap_n_neighbors = umap_n_neighbors)    
-        n_pcs_keep_euclidian = PAredu.X.shape[1]
+    #     # - PCA
+    #     plot_pca_explained_var_path=f"{savedir}/pcaexp.pdf"
+    #     plot_loadings_path = f"{savedir}/pcaload.pdf"
+    #     umap_n_neighbors = 40
+    #     _, PAredu, _, _, _ = PA.dataextract_state_space_decode_flex(twind, tbin_dur, tbin_slice, reshape_method=reshape_method,
+    #                                                 pca_reduce=pca_reduce, plot_pca_explained_var_path=plot_pca_explained_var_path, 
+    #                                                 plot_loadings_path=plot_loadings_path, npcs_keep_force=NPCS_KEEP,
+    #                                                 extra_dimred_method=extra_dimred_method, umap_n_neighbors = umap_n_neighbors)    
+    #     n_pcs_keep_euclidian = PAredu.X.shape[1]
 
-    elif METHOD=="dpca":
-        # from neuralmonkey.classes.population import PopAnal
-        print("... dpca")
+    # elif METHOD=="dpca":
+    #     # from neuralmonkey.classes.population import PopAnal
+    #     print("... dpca")
 
-        savedirthis = f"{savedir}/pca_construction"
-        os.makedirs(savedirthis, exist_ok=True)
-        PLOT_STEPS = False
-        _, PAredu, _, _, pca = PA.dataextract_pca_demixed_subspace(
-            superv_dpca_var, superv_dpca_vars_group, twind, tbin_dur, superv_dpca_filtdict, savedirthis,
-            n_min_per_lev_lev_others=nmin_trials_per_lev, PLOT_STEPS=PLOT_STEPS, reshape_method=reshape_method,
-            pca_tbin_slice=tbin_slice)
+    #     savedirthis = f"{savedir}/pca_construction"
+    #     os.makedirs(savedirthis, exist_ok=True)
+    #     PLOT_STEPS = False
+    #     _, PAredu, _, _, pca = PA.dataextract_pca_demixed_subspace(
+    #         superv_dpca_var, superv_dpca_vars_group, twind, tbin_dur, superv_dpca_filtdict, savedirthis,
+    #         n_min_per_lev_lev_others=nmin_trials_per_lev, PLOT_STEPS=PLOT_STEPS, reshape_method=reshape_method,
+    #         pca_tbin_slice=tbin_slice)
 
         
-        if PAredu is None:
-            # Then no data...
-            return None
+    #     if PAredu is None:
+    #         # Then no data...
+    #         return None
         
-        # Save a version with full D, for state space
-        # PAredu_orig_dim = PAredu.copy()
+    #     # Save a version with full D, for state space
+    #     # PAredu_orig_dim = PAredu.copy()
 
-        # Figure out how many dimensions to keep (for euclidian).
-        n1 = pca["nclasses_of_var_pca"] # num classes of superv_dpca_var that exist. this is upper bound on dims.
-        n2 = PAredu.X.shape[1] # num classes to reach criterion for cumvar for pca.
-        n3 = PAredu.X.shape[0] # num dimensions.
-        n_pcs_keep_euclidian = min([n1, n2, n3, NPCS_KEEP])
+    #     # Figure out how many dimensions to keep (for euclidian).
+    #     n1 = pca["nclasses_of_var_pca"] # num classes of superv_dpca_var that exist. this is upper bound on dims.
+    #     n2 = PAredu.X.shape[1] # num classes to reach criterion for cumvar for pca.
+    #     n3 = PAredu.X.shape[0] # num dimensions.
+    #     n_pcs_keep_euclidian = min([n1, n2, n3, NPCS_KEEP])
         
-        PAredu = PAredu.slice_by_dim_indices_wrapper("chans", list(range(n_pcs_keep_euclidian)))
+    #     PAredu = PAredu.slice_by_dim_indices_wrapper("chans", list(range(n_pcs_keep_euclidian)))
 
-        # # - prune data for euclidian
-        # Xredu = Xredu[:, :n_pcs_keep_euclidian]
-        # dflab = PAredu.Xlabels.copy()
-        # PAredu = PopAnal(Xredu.T[:, :, None], [0])  # (ndimskeep, ntrials, 1)
-        # PAredu.Xlabels = {dim:df.copy() for dim, df in dflab.items()}
+    #     # # - prune data for euclidian
+    #     # Xredu = Xredu[:, :n_pcs_keep_euclidian]
+    #     # dflab = PAredu.Xlabels.copy()
+    #     # PAredu = PopAnal(Xredu.T[:, :, None], [0])  # (ndimskeep, ntrials, 1)
+    #     # PAredu.Xlabels = {dim:df.copy() for dim, df in dflab.items()}
 
-    else:
-        print(METHOD)
-        assert False    
+    # else:
+    #     print(METHOD)
+    #     assert False    
 
     ############################ (2) Euclidian and State space plots
     if LIST_CONTEXT is not None:
@@ -4054,6 +4099,7 @@ def euclidian_distance_compute_trajectories_single(PA, var_effect, vars_others, 
             # Collect Cldists, one for each time bin
             # Collect 
             if DO_REVERSE_CONTROL:
+                assert False, "Fix this, the return_as_single_mean_over_time deosnt amke sense"
                 Cldist = PA.dataextract_as_distance_matrix_clusters_flex_reversed([var_effect] + vars_others, 
                                                                                             version_distance=version_distance,
                                                                                             return_as_single_mean_over_time=True)
