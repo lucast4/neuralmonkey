@@ -7409,7 +7409,9 @@ class Snippets(object):
                                               "ss_this_ctxt", "CTXT_prev_next", "CTXT_prev_this_next"]
         # supervision_stage_new, trial_neural, "char_seq"
 
-        list_features_extraction_trial = ["shape_is_novel_all", "shape_semantic_labels", "shape_is_novel_list",
+        list_features_extraction_trial = ["shape_is_novel_all", 
+                                        #   "shape_semantic_labels", 
+                                          "shape_is_novel_list",
                                           "taskconfig_shp", "taskconfig_shploc", "taskconfig_loc",
                                           "Tkbeh_stkbeh", "Tkbeh_stktask", "Tktask",
                                           "taskconfig_shp_SHSEM", "taskconfig_shploc_SHSEM"]

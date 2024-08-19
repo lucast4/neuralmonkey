@@ -48,7 +48,7 @@ def _params_score_sequence_ver(animal, DATE, ANALY_VER):
         else:
             print(animal, DATE)
             assert False
-    elif ANALY_VER in ["singleprimvar", "seqcontext", "singleprim", "singleprim_psycho", "singleprim_psycho", "seqcontextvar", "charstrokes", "chartrial", "substrokes_sp", "PIG_BASE"]:
+    elif ANALY_VER in ["singleprimvar", "seqcontext", "singleprim", "singleprim_psycho", "seqcontextvar", "charstrokes", "chartrial", "substrokes_sp", "PIG_BASE"]:
         DO_SCORE_SEQUENCE_VER = None
     else:
         assert False
@@ -1430,8 +1430,10 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
         preprocess_steps_append = ["wrong_sequencing_binary_score"]
     elif ANALY_VER in ["seqcontext", "singleprimvar", "seqcontextvar", "PIG_BASE"]:
         preprocess_steps_append = ["one_to_one_beh_task_strokes_allow_unfinished"]
-    elif ANALY_VER in ["singleprim", "singleprim_psycho"]:
+    elif ANALY_VER in ["singleprim"]:
         preprocess_steps_append = ["beh_strokes_one", "remove_online_abort"]
+    elif ANALY_VER in ["singleprim_psycho"]:
+        preprocess_steps_append = []
     elif ANALY_VER in ["charstrokes", "chartrial"]:
         # Dont carea bout match btw beh and task strokes
         preprocess_steps_append = ["remove_online_abort"]

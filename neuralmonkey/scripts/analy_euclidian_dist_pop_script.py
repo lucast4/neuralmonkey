@@ -76,7 +76,8 @@ def _get_list_twind_by_animal(animal, event, trajectories_method, HACK_TRAJS_JUS
         else:
             LIST_TWIND = [
                 # (-0.05, 0.45),
-                (0.1, 0.5),
+                # (0.1, 0.5),
+                (0.1, 1.0), # 7/24/24 - this should be better
             ]
     elif trajectories_method=="traj_to_scalar" and event in ["00_stroke", "06_on_strokeidx_0"]:
         if HACK_TRAJS_JUST_FOR_PLOTTING_NICE:
@@ -1531,8 +1532,8 @@ if __name__=="__main__":
     # LIST_TWIND = _get_list_twind_by_animal(animal)
 
     ############## HIGH-LEVEL PARAMS
-    TRAJECTORIES_METHOD = "scalar"
-    # TRAJECTORIES_METHOD = "traj_to_scalar"
+    # TRAJECTORIES_METHOD = "scalar"
+    TRAJECTORIES_METHOD = "traj_to_scalar"
     # TRAJECTORIES_METHOD = "traj_to_timeseries"
 
     HACK_TRAJS_JUST_FOR_PLOTTING_NICE = False # To plot with wider time windows, clean version of state space plots, and wont spend time computing euclidian distance.
@@ -1563,12 +1564,12 @@ if __name__=="__main__":
     # else:
     #     SPIKES_VERSION = "tdt" # since Snippets not yet extracted for ks
 
-    nmin_trials_per_lev = 5 # e.g. some cases liek (shape x loc x size)...
+    nmin_trials_per_lev = 4 # e.g. some cases liek (shape x loc x size)...
     LIST_FR_NORMALIZATION = ["across_time_bins"]
 
     # exclude_bad_areas = True
     exclude_bad_areas = True
-    list_time_windows = [(-0.8, 0.8)]
+    list_time_windows = [(-0.8, 1.2)]
     EVENTS_IGNORE = [] # To reduce plots
 
     # DONT COMBINE, use questions.
@@ -1608,13 +1609,15 @@ if __name__=="__main__":
     if TRAJECTORIES_METHOD == "traj_to_scalar":
         # Very hacky, 4/29/24 - to try out traj methods, for SP and PIG
         LIST_DIMRED_METHODS = [
-            ["pca", 6, None, None, True, None, None]
+            # ["pca", 6, None, None, True, None, None]
+            ["pca", 8, None, None, True, None, None]
         ]
         
         # - Append dPCA params
         LIST_SAVEDIR_SUFFIX = []
         LIST_SUPERV_DPCA_PARAMS = []
-        NPCS_KEEP = 3
+        # NPCS_KEEP = 3
+        NPCS_KEEP = 5
         if question in ["SP_shape_loc", "SP_BASE_trial"]:
             savedir_suffix = f"seqc_0_shape"
             superv_dpca_params = {
@@ -1625,15 +1628,16 @@ if __name__=="__main__":
             LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
             LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
 
-            # (1) gridloc
-            savedir_suffix = f"seqc_0_loc"
-            superv_dpca_params = {
-                "superv_dpca_var":"seqc_0_loc",
-                "superv_dpca_vars_group":["seqc_0_shape", "gridsize"],
-                "superv_dpca_filtdict":None
-            }
-            LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
-            LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+            if False:
+                # (1) gridloc
+                savedir_suffix = f"seqc_0_loc"
+                superv_dpca_params = {
+                    "superv_dpca_var":"seqc_0_loc",
+                    "superv_dpca_vars_group":["seqc_0_shape", "gridsize"],
+                    "superv_dpca_filtdict":None
+                }
+                LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+                LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
 
         elif question in ["SP_BASE_stroke"]:
             savedir_suffix = f"shape"
@@ -1813,9 +1817,6 @@ if __name__=="__main__":
                 # Append dPCA
                 for savedir_suffix, superv_dpca_params in zip(LIST_SAVEDIR_SUFFIX, LIST_SUPERV_DPCA_PARAMS):
                     LIST_DIMRED_METHODS.append(["superv_dpca", NPCS_KEEP, None, None, PLOT_STATE_SPACE, savedir_suffix, superv_dpca_params])
-
-
-
 
             elif question in ["SP_shape_loc", "SP_BASE_trial"]:
                 # Very hacky
@@ -2183,7 +2184,8 @@ if __name__=="__main__":
     q_params = rsagood_questions_dict(animal, date, question)[question]
     if which_level=="trial":
         # events_keep = ["03_samp", "04_go_cue", "05_first_raise", "06_on_strokeidx_0"]
-        events_keep = ["03_samp", "04_go_cue", "05_first_raise", "06_on_strokeidx_0"]
+        # events_keep = ["03_samp", "04_go_cue", "05_first_raise", "06_on_strokeidx_0"]
+        events_keep = ["03_samp", "05_first_raise", "06_on_strokeidx_0"]
     elif which_level in ["stroke", "stroke_off"]:
         events_keep = ["00_stroke"]
     else:

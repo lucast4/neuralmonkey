@@ -1185,11 +1185,12 @@ class Session(object):
                 for suffix in ["-4", "-3.5", "-4.5", ""]: 
                     path_maybe = f"{paththis}/spikes_tdt_quick{suffix}"
                     # if os.path.exists(path_maybe):
-
+                    # print("CHECKING ... ", path_maybe, checkIfDirExistsAndHasFiles(path_maybe))
                     if checkIfDirExistsAndHasFiles(path_maybe)[0]:
                         # count how many files
-                        nfiles, list_files = count_n_files_in_dir(path_maybe, "png")
-                        if nfiles>=NCHANS:
+                        # nfiles, list_files = count_n_files_in_dir(path_maybe, "png") # This failed.
+                        nfiles, list_files = count_n_files_in_dir(path_maybe, "mat") # This is the iomportant file
+                        if nfiles == NCHANS*2: # x2, becuase there are 2 .mat files per chan.
                             print("FOund this path for spikes: ", path_maybe)
                             return path_maybe
                 
@@ -1448,6 +1449,7 @@ class Session(object):
         
         if self.Paths['spikes'] is None:
             print("self.Paths['spikes'] is None")
+            print("self.Paths:", self.Paths)
             return False
 
         rs, chan = self.convert_site_to_rschan(site)
@@ -2047,15 +2049,40 @@ class Session(object):
 
         # assert isinstance(DATSTRUCT["times_sec_all"], list), "i am assuming this... for this code below."
         list_times = []
-        for times, rs in zip(DATSTRUCT["times_sec_all"], DATSTRUCT["RSn"]):
+        list_clustinds_without_spikes = []
+        for i, (times, rs) in enumerate(zip(DATSTRUCT["times_sec_all"], DATSTRUCT["RSn"])):
             times = times - onsets_using_rs4_each_rs[int(rs)]
-            times = times[times>=0]
-            assert len(times)>0, "why no spikes"
-            list_times.append(times)
+            times_good = times[times>=0]
+            if len(times_good)==0:
+                # This probably means you lost this cluster some point during day, and
+                # so this session has no spikes. Solution: Exclude this cluster
+                list_clustinds_without_spikes.append(i)
+                # Allow to pass, then count how many clust this hapens to.
+                # print([(k, v[i]) for k, v in DATSTRUCT.items()])
+                # print(times)
+                # print(rs)
+                # print(onsets_using_rs4_each_rs[int(rs)])
+                # self.print_summarize_expt_params()
+                # assert False, "why no spikes"
+            list_times.append(times_good)
         DATSTRUCT["times_sec_all"] = list_times
-        # DATSTRUCT["times_sec_all"] = [times - time_global_start_of_this_session for times in DATSTRUCT["times_sec_all"]]
-        # for ind, times in enumerate(DATSTRUCT["times_sec_all"]):
-        #     DATSTRUCT["times_sec_all"][ind] = times - time_global_start_of_this_session
+
+        # Did any clsuters not have spikes? Is ok if is rare...
+        assert len(list_clustinds_without_spikes)<5, "why so many clusts are mnimssing spikes?"
+        assert len(list_clustinds_without_spikes)/len(DATSTRUCT["times_sec_all"]) < 0.1, "why so many clusts are mnimssing spikes?"
+
+        if False: # To look at all clusts that did ntot have spikes.
+            if len(list_clustinds_without_spikes)>0:
+                print("SOME CLUSTERS DID NOT HAVE SPIKES WITHIN THIS SESSION!! is ok, will skip them")
+                print(len(list_clustinds_without_spikes), list_clustinds_without_spikes)
+                print("n clusts exist: ", len(DATSTRUCT["times_sec_all"]))
+                for clust in list_clustinds_without_spikes:
+                    times = (DATSTRUCT["times_sec_all"][clust])
+                    rs = (DATSTRUCT["RSn"][clust])
+                    print(" ---- clust num: ", clust)
+                    print(onsets_using_rs4_each_rs[int(rs)])
+                    print(times)
+                assert False
 
         # Some metadata
         nbatches = int(np.max(DATSTRUCT["batch"]))
@@ -2078,6 +2105,11 @@ class Session(object):
         clustid_glob = 0 + CLUST_STARTING_INDEX
         for ind in range(len(DATSTRUCT["times_sec_all"])):
             
+            if len(DATSTRUCT["times_sec_all"][ind])==0:
+                # Then this clust had no times within this session. Skip it.
+                assert ind in list_clustinds_without_spikes, "sanity check failed"
+                continue
+
         #     print("-------------------------------------")
         #     for k in DATSTRUCT.keys():
         #         print(k, " -- ", DATSTRUCT[k][ind])
@@ -7558,9 +7590,10 @@ class Session(object):
             trials = list(range(len(self.TrialsOffset)))
 
             ############# VERY HACKY,
-            # if (int(self.Date))==220609 and self.RecSession==0 and self.Animal=="Pancho":
-            #     neural_trials_missing_beh = [858, 859, 860, 861, 862, 863, 864, 865, 866, 867]
-            #     trials = [t for t in trials if t not in neural_trials_missing_beh]
+            # Not sure if this works. It was commented out and then I turned it back on.
+            if (int(self.Date))==220609 and self.RecSession==0 and self.Animal=="Pancho":
+                neural_trials_missing_beh = [858, 859, 860, 861, 862, 863, 864, 865, 866, 867]
+                trials = [t for t in trials if t not in neural_trials_missing_beh]
 
             if only_if_in_dataset:
                 # SHould do this first, since if this trial is not in dataset then it will fail only_if_ml2_fixation_success
