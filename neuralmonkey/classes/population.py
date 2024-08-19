@@ -1,9 +1,9 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-
+import os
 from neuralmonkey.neuralplots.population import plotNeurHeat, plotNeurTimecourse
-
+from pythonlib.tools.plottools import savefig
 
 class PopAnal():
     """ for analysis of population state spaces
@@ -1215,6 +1215,20 @@ class PopAnal():
         else:
             return None, None, None
 
+    def slice_extract_with_levels_of_var_good_prune(self, grp_vars, n_min_per_var):
+        """
+        Preprocess, pruning to keep onl levels of grouping var which have at least
+        <n_min_per_var> many trials
+        RETURNS:
+        - pa, a copy
+        """
+        from pythonlib.tools.pandastools import extract_with_levels_of_var_good
+        dflab = self.Xlabels["trials"]
+        _, inds_keep = extract_with_levels_of_var_good(dflab, grp_vars, n_min_per_var)
+        pa = self.slice_by_dim_indices_wrapper("trials", inds_keep, reset_trial_indices=True)
+        print("Pruned: ", self.X.shape, " --> ", pa.X.shape)
+        return pa
+
     def slice_by_labels_filtdict(self, filtdict):
         """
         Filter based on self.Xlabels["trials"]
@@ -1287,6 +1301,26 @@ class PopAnal():
     #     # inds = dfthis[dfthis[dim_variable]==dim_value].index.tolist()
     #     # pa = self.slice_by_dim_indices_wrapper(dim_str, inds)
     #     # return pa
+
+    def norm_rel_base_window(self, twind_base, method="zscore"):
+        """
+        Normalize actrivity by subtractigin mean acitivty taken from a baseline
+        time window (and then averaged over time). 
+        """
+
+        # Get mean and std for each chan, using a baseline twind
+        pa_base = self.slice_by_dim_values_wrapper("times", twind_base)
+        x = pa_base.dataextract_reshape("chans_x_trialstimes")
+        xmean = np.mean(x, axis=1)[:, None, None]
+        xstd = np.std(x, axis=1)[:, None, None]
+        
+        pa_norm = self.copy()
+        if method=="zscore":
+            pa_norm.X = (pa_norm.X - xmean)/xstd
+        else:
+            assert False
+
+        return pa_norm
 
     def norm_subtract_mean_each_chan(self):
         """
@@ -1383,6 +1417,41 @@ class PopAnal():
         assert len(PA.Trials)==len(self.Trials)
 
         return PA
+    
+    def split_stratified_by_label(self, label_grp_vars, PRINT=False):
+        """
+        REturn two evenly slit PA, using up all the trials in self, and mainting the same proportion of classes of
+        conj-var label_grp_vars (i.e,, stratified).
+        """
+        from pythonlib.tools.statstools import balanced_stratified_resample_kfold
+        from pythonlib.tools.pandastools import append_col_with_grp_index
+        from pythonlib.tools.statstools import stratified_resample_split_kfold
+
+        # COnvert to conjunctive label as strings.
+        assert "tmp" not in self.Xlabels["trials"].columns
+        self.Xlabels["trials"] = append_col_with_grp_index(self.Xlabels["trials"], label_grp_vars, "tmp")
+        labels = self.Xlabels["trials"]["tmp"].tolist()
+        # labels = dflab["tmp"].tolist()
+
+        # Get split indices for the two groups.
+        split_inds = stratified_resample_split_kfold(labels, 1)
+
+        # Generate new pa
+        train_index, test_index = split_inds[0]
+        pa1 = self.slice_by_dim_indices_wrapper("trials", train_index.tolist())
+        pa2 = self.slice_by_dim_indices_wrapper("trials", test_index.tolist())
+
+        if PRINT:
+            print(" --- pa1:")
+            display(pa1.Xlabels["trials"]["tmp"].value_counts())
+            print(" --- pa2:")
+            display(pa2.Xlabels["trials"]["tmp"].value_counts())
+
+        self.Xlabels["trials"] = self.Xlabels["trials"].drop("tmp", axis=1)
+        pa1.Xlabels["trials"] = pa1.Xlabels["trials"].drop("tmp", axis=1)
+        pa2.Xlabels["trials"] = pa2.Xlabels["trials"].drop("tmp", axis=1)
+
+        return pa1, pa2
 
     def split_by_label(self, dim_str, dim_variable_grp):
         """ Splits self into multiple smaller PA, each with a single level for
@@ -1489,7 +1558,6 @@ class PopAnal():
             LIST_TIME.append(self.Times[i_time])
         
         return LIST_CLDIST, LIST_TIME
-
 
     def dataextract_as_distance_matrix_clusters_flex(self, var_group,
                                                      version_distance="euclidian",
@@ -1601,7 +1669,7 @@ class PopAnal():
 
     def dataextract_pca_demixed_subspace(self, var_pca, vars_grouping,
                                                 pca_twind, pca_tbindur, # -- PCA params start
-                                                filtdict=None, savedir_plots=None,
+                                                pca_filtdict=None, savedir_plots=None,
                                                 raw_subtract_mean_each_timepoint=True,
                                                 pca_subtract_mean_each_level_grouping=True,
                                                 n_min_per_lev_lev_others=5, prune_min_n_levs = 2,
@@ -1708,7 +1776,7 @@ class PopAnal():
         pa = PAraw.copy()
 
         # Apply filtdict
-        pa = pa.slice_by_labels_filtdict(filtdict)
+        pa = pa.slice_by_labels_filtdict(pca_filtdict)
 
         # Keep only othervar that has multiple cases of var
         if savedir_plots is not None:
@@ -1810,9 +1878,16 @@ class PopAnal():
         ########### (3) Project RAW data back into this space
         # Figure out how many dimensions to keep (for euclidian).
         n1 = pca["nclasses_of_var_pca"] # num classes of superv_dpca_var that exist. this is upper bound on dims.
+        if n1<4:
+            n1 = 4
         n2 = PApca.X.shape[1] # num classes to reach criterion for cumvar for pca.
+        if n2<4:
+            n2 = 4 # Then ignore it. Someitnes is very low D, but still want to keep dims >0
         n3 = PApca.X.shape[0] # num dimensions.
+        if n3<4:
+            n3 = 4
         n_pcs_subspace_max = min([n1, n2, n3, n_pcs_subspace_max])
+
         # PApca = PApca.slice_by_dim_indices_wrapper("chans", list(range(n_pcs_keep_euclidian)))
         
         if True:
@@ -1896,13 +1971,14 @@ class PopAnal():
         else:
             return Xredu, PAredu, stats_redu, Xfinal_before_redu, pca
 
-    def dataextract_dimred_wrapper(self, scalar_or_traj, version, savedir, 
+    def dataextract_dimred_wrapper(self, scalar_or_traj, dim_red_method, savedir, 
                                    twind_pca, tbin_dur=None, tbin_slide=None, 
                                    NPCS_KEEP = 10,
-                                   dpca_var = None, dpca_vars_group = None, dpca_proj_twind = None, 
-                                   raw_subtract_mean_each_timepoint=False):
+                                   dpca_var = None, dpca_vars_group = None, dpca_filtdict=None, dpca_proj_twind = None, 
+                                   raw_subtract_mean_each_timepoint=False,
+                                   umap_n_components=2, umap_n_neighbors=40):
         """
-        Wrapper for all often-used methods for dim reduction
+        THE Wrapper for all often-used methods for dim reduction
 
         PARAMS:
         - scalar_or_traj, str, either "scal" [returns (dims, trials, 1)], or "traj" [returns (dims, trials, timebins)]
@@ -1916,11 +1992,53 @@ class PopAnal():
         - dpca_proj_twind = None, 
         - raw_subtract_mean_each_timepoint=False
         RETURNS:
+        - Xredu, 
+        --- if scalar_or_traj==scal --> (ntrials, ndims)
+        --- if scalar_or_traj==traj --> (ndims, ntrials, ntimes)
         - PAredu, holding reduced data.
         """
 
         PA = self
 
+        # Extra dim reductions?
+        METHOD = "basic"
+        if dim_red_method is None:
+            # Then use raw data
+            pca_reduce = False
+            extra_dimred_method = None
+            extra_dimred_method_n_components = None
+        elif dim_red_method=="pca":
+            pca_reduce = True
+            extra_dimred_method = None
+            extra_dimred_method_n_components = None
+        elif dim_red_method=="pca_umap":
+            # PCA --> UMAP
+            pca_reduce = True
+            extra_dimred_method = "umap"
+            extra_dimred_method_n_components = umap_n_components
+        elif dim_red_method=="umap":
+            # UMAP
+            pca_reduce = False
+            extra_dimred_method = "umap"
+            extra_dimred_method_n_components = umap_n_components
+        elif dim_red_method=="mds":
+            # MDS
+            pca_reduce = False
+            extra_dimred_method = "mds"
+            extra_dimred_method_n_components = umap_n_components
+        elif dim_red_method in ["dpca", "superv_dpca"]:
+            # Supervised, based on DPCA, find subspace for a given variable by doing PCA on the mean values.
+            assert dpca_var is not None
+            if dpca_vars_group is not None:
+                assert isinstance(dpca_vars_group, (list, tuple))
+            # superv_dpca_var = superv_dpca_params["superv_dpca_var"]
+            # superv_dpca_vars_group = superv_dpca_params["superv_dpca_vars_group"]
+            # superv_dpca_filtdict = superv_dpca_params["superv_dpca_filtdict"]
+            METHOD = "dpca"
+        else:
+            print(dim_red_method)
+            assert False
+        
         if tbin_dur is None:
             # Assume you want to take all time bins... None takes time average..
             tbin_dur = "ignore"
@@ -1928,14 +2046,15 @@ class PopAnal():
             # If conitnue with None, then code  makes it equal to tbin_dur
             tbin_slide = 0.01
 
-        if scalar_or_traj == "traj":
+        if scalar_or_traj in ["traj", "trajectory"]:
             reshape_method = "chans_x_trials_x_times"
-        elif scalar_or_traj == "scal":
+        elif scalar_or_traj in ["scal", "scalar"]:
             reshape_method = "trials_x_chanstimes"
         else:
+            print(scalar_or_traj)
             assert False
 
-        if version == "pca":
+        if METHOD=="basic":
             # Then just PCA on all data.
 
             # - normalize - remove time-varying component
@@ -1952,17 +2071,20 @@ class PopAnal():
 
             print(twind_pca, tbin_dur, tbin_slide)
             Xredu, PAredu, _, _, _ = PA.dataextract_state_space_decode_flex(twind_pca, tbin_dur, tbin_slide, reshape_method=reshape_method,
-                                                        pca_reduce=True, plot_pca_explained_var_path=plot_pca_explained_var_path, 
-                                                        plot_loadings_path=plot_loadings_path, npcs_keep_force=NPCS_KEEP)    
+                                                        pca_reduce=pca_reduce, plot_pca_explained_var_path=plot_pca_explained_var_path, 
+                                                        plot_loadings_path=plot_loadings_path, npcs_keep_force=NPCS_KEEP,
+                                                        extra_dimred_method_n_components = extra_dimred_method_n_components,
+                                                        extra_dimred_method=extra_dimred_method, umap_n_neighbors = umap_n_neighbors)    
             n_pcs_keep_euclidian = PAredu.X.shape[1]
 
-        elif version=="dpca":
+        elif METHOD=="dpca":
             # Then does targeted dim reduction, first averaging over trials to get means for variable.
 
             assert dpca_var is not None
 
             Xredu, PAredu, _, _, pca = PA.dataextract_pca_demixed_subspace(dpca_var, dpca_vars_group,
                                                             twind_pca, tbin_dur, # -- PCA params start
+                                                            dpca_filtdict,
                                                             pca_tbin_slice = tbin_slide,
                                                             savedir_plots=savedir,
                                                             raw_subtract_mean_each_timepoint=raw_subtract_mean_each_timepoint,
@@ -1972,16 +2094,8 @@ class PopAnal():
                                                             reshape_method=reshape_method,
                                                             proj_twind=dpca_proj_twind)
                 
-
-            # # Figure out how many dimensions to keep (for euclidian).
-            # n1 = pca["nclasses_of_var_pca"] # num classes of superv_dpca_var that exist. this is upper bound on dims.
-            # n2 = PAredu.X.shape[1] # num classes to reach criterion for cumvar for pca.
-            # n3 = PAredu.X.shape[0] # num dimensions.
-            # n_pcs_keep_euclidian = min([n1, n2, n3, NPCS_KEEP])
-            # PAredu = PAredu.slice_by_dim_indices_wrapper("chans", list(range(n_pcs_keep_euclidian)))
-        
         else:
-            print(version)
+            print(dim_red_method)
             assert False
 
         return Xredu, PAredu
@@ -3074,6 +3188,223 @@ class PopAnal():
         ax.grid()
 
 
+
+    def plot_state_space_good_wrapper(self, savedir, LIST_VAR, LIST_VARS_OTHERS=None, LIST_FILTDICT=None, LIST_PRUNE_MIN_N_LEVS=None,
+                                      time_bin_size = 0.05, PLOT_CLEAN_VERSION = False, 
+                                      nmin_trials_per_lev=None):
+        """
+        Wrapper to make ALL state space plots, including (i) trajectiroeis (ii) scalars, and (iii) traj vs. time plots.
+        PARAMS:
+        - LIST_VAR, list of str, variable to use for coloring plots. Makes separate plots.
+        - LIST_VARS_OTHERS, list of list/tuples of strings. for splitting into subplots.
+        - LIST_FILTDICT, for filtering before plotting.
+        - LIST_PRUNE_MIN_N_LEVS, list of int.
+        - PLOT_CLEAN_VERSION, bool, if true, then amkes the plot prety.
+        - nmin_trials_per_lev, prunes levels with fewer trials thant his.
+        """
+
+        from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_WRAPPER
+        from pythonlib.tools.pandastools import append_col_with_grp_index
+        from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_scalar_WRAPPER, trajgood_plot_colorby_splotby_WRAPPER
+        from neuralmonkey.analyses.state_space_good import trajgood_construct_df_from_raw, trajgood_plot_colorby_splotby_timeseries
+
+        PAorig = self.copy()
+        if LIST_VARS_OTHERS is None:
+            PAorig.Xlabels["trials"]["dummy"] = "dummy"
+            LIST_VARS_OTHERS = [["dummy"] for _ in range(len(LIST_VAR))]
+        if LIST_FILTDICT is None:
+            LIST_FILTDICT = [None for _ in range(len(LIST_VAR))]
+        if LIST_PRUNE_MIN_N_LEVS is None:
+            LIST_PRUNE_MIN_N_LEVS = [2 for _ in range(len(LIST_VAR))]
+            
+        assert len(LIST_VARS_OTHERS) == len(LIST_VAR)
+        assert len(LIST_FILTDICT) == len(LIST_VAR)
+        assert len(LIST_PRUNE_MIN_N_LEVS) == len(LIST_VAR)
+
+        if len(LIST_VAR)<15:
+            if self.X.shape[0]==3:
+                list_dims = [(0,1), (1,2)]
+            elif self.X.shape[0]>3:
+                list_dims = [(0,1), (2,3)]
+            else:
+                list_dims = [(0,1)]
+        else:
+            # Too slow, just do 1st 2 d
+            list_dims = [(0,1)]
+
+        ### Plot each set of var, var_others
+        vars_already_state_space_plotted = []
+        var_varothers_already_plotted = []
+        heatmaps_already_plotted = []
+        for i_var, (var, var_others, filtdict, prune_min_n_levs) in enumerate(zip(LIST_VAR, LIST_VARS_OTHERS, LIST_FILTDICT, LIST_PRUNE_MIN_N_LEVS)):
+            print("RUNNING: ", i_var,  var, " -- ", var_others)
+
+            # Copy pa for this
+            PA = PAorig.copy()
+
+            ####################### Cleanup PA
+            var_for_name = var
+            if isinstance(var, (tuple, list)):
+                PA.Xlabels["trials"] = append_col_with_grp_index(PA.Xlabels["trials"], var, "_tmp")
+                var = "_tmp"
+
+            if filtdict is not None:
+                for _var, _levs in filtdict.items():
+                    print("len pa bnefore filt this values (var, levs): ", _var, _levs)
+                    PA = PA.slice_by_labels("trials", _var, _levs, verbose=True)
+
+            if nmin_trials_per_lev is not None:
+                prune_min_n_trials = nmin_trials_per_lev
+            else:
+                prune_min_n_trials = 5
+
+            if (var, tuple(var_others)) not in heatmaps_already_plotted:
+                plot_counts_heatmap_savepath = f"{savedir}/{i_var}_counts_heatmap-var={var_for_name}-ovar={'|'.join(var_others)}.pdf"
+                heatmaps_already_plotted.append((var, tuple(var_others)))
+            else:
+                plot_counts_heatmap_savepath = None
+
+            PA, _, _= PA.slice_extract_with_levels_of_conjunction_vars(var, var_others, prune_min_n_trials, prune_min_n_levs,
+                                                            plot_counts_heatmap_savepath=plot_counts_heatmap_savepath)
+            if PA is None:
+                print("all data pruned!!")
+                continue
+            
+            # DEcide if this is trajectory or scalar.
+            if PA.X.shape[2]>1:
+                # Then is trajecotry
+                PA_traj = PA
+                PA_scal = PA.agg_wrapper("times")
+            else:
+                PA_traj = None
+                PA_scal = PA
+
+            ### (1) var -- split by subplotvar
+            if not var_others == "dummy":
+                if (var, var_others) not in var_varothers_already_plotted:
+                    var_varothers_already_plotted.append((var, tuple(var_others)))
+                    # (1a) Traj
+                    sdir = f"{savedir}/TRAJ"
+                    os.makedirs(sdir, exist_ok=True)
+                    if PA_traj is not None:    
+                        if PLOT_CLEAN_VERSION == False:
+                            trajgood_plot_colorby_splotby_WRAPPER(PA_traj.X, PA_traj.Times, PA_traj.Xlabels["trials"], var, 
+                                                                sdir, var_others, list_dims, 
+                                                                time_bin_size=time_bin_size, save_suffix=i_var)
+                        else:
+                            # Plot a "clean" version (Paper version), including with different x and y lims, so can compare
+                            # across plots
+                            ssuff = f"{i_var}"
+                            trajgood_plot_colorby_splotby_WRAPPER(PA_traj.X, PA_traj.Times, PA_traj.Xlabels["trials"], var, 
+                                                                sdir, var_others, list_dims, 
+                                                                time_bin_size=None, save_suffix=ssuff,
+                                                                plot_dots_on_traj=False)
+                            
+                            for xlim_force in [
+                                [-3.2, 3.2],
+                                [-2.4, 2.4],
+                                ]:
+                                for ylim_force in [
+                                    [-1.5, 1.5],
+                                    [-2, 2],
+                                    [-2.5, 2.5],
+                                    ]:
+                                    ssuff = f"{i_var}--xylim={xlim_force}|{ylim_force}"
+                                    trajgood_plot_colorby_splotby_WRAPPER(PA_traj.X, PA_traj.Times, PA_traj.Xlabels["trials"], var, 
+                                                                        sdir, var_others, list_dims, 
+                                                                        time_bin_size=None, save_suffix=ssuff,
+                                                                        plot_dots_on_traj=False,
+                                                                        xlim_force = xlim_force, ylim_force=ylim_force)
+                    # (1b) Scal
+                    dflab = PA_scal.Xlabels["trials"]
+                    Xthis = PA_scal.X.squeeze(axis=2).T # (n4trials, ndims)
+                    sdir = f"{savedir}/SCALAR"
+                    os.makedirs(sdir, exist_ok=True)
+                    trajgood_plot_colorby_splotby_scalar_WRAPPER(Xthis, dflab, var, sdir,
+                                                                    vars_subplot=var_others, list_dims=list_dims,
+                                                                    skip_subplots_lack_mult_colors=False, save_suffix = i_var)
+                    var_varothers_already_plotted.append((var, tuple(var_others)))
+                    plt.close("all")
+                    
+                    # (1c) Timecourse
+                    if PA_traj is not None:
+                        sdir = f"{savedir}/TIMECOURSE"
+                        os.makedirs(sdir, exist_ok=True)
+
+                        plot_trials_n = 5
+                        if var_others is not None:
+                            _vars = [var] + list(var_others)
+                        else:
+                            _vars = [var]
+
+                        df = trajgood_construct_df_from_raw(PA_traj.X, PA_traj.Times, PA_traj.Xlabels["trials"], _vars)
+                        
+                        for dim in [0,1]:
+                        
+                            # - (i) combined, plotting means.
+                            fig, _ = trajgood_plot_colorby_splotby_timeseries(df, var, var_others, dim=dim,
+                                                                            plot_trials_n=plot_trials_n, 
+                                                                            SUBPLOT_OPTION="split_levs")
+                            path = f"{sdir}/TIMECOURSEsplit-color={var}-sub={var_others}-dim={dim}-suff={i_var}.pdf"
+                            print("Saving ... ", path)
+                            savefig(fig, path)
+
+                            # - (2) split
+                            fig, _ = trajgood_plot_colorby_splotby_timeseries(df, var, var_others, dim=dim, plot_trials_n=plot_trials_n,
+                                                                    plot_trials=False, SUBPLOT_OPTION="combine_levs")
+                            path = f"{sdir}/TIMECOURSEcomb-color={var}-sub={var_others}-dim={dim}-suff={i_var}.pdf"
+                            print("Saving ... ", path)
+                            savefig(fig, path)
+                            
+                            plt.close("all")
+
+            ### (2) var  (combining across subplot vars)
+            if var not in vars_already_state_space_plotted:
+                vars_already_state_space_plotted.append(var)
+                # (2a) Traj
+                if PA_traj is not None:    
+                    sdir = f"{savedir}/TRAJ"
+                    os.makedirs(sdir, exist_ok=True)
+                    if PLOT_CLEAN_VERSION:
+                        # Plot a "clean" version (Paper version), including with different x and y lims, so can compare
+                        # across plots
+                        trajgood_plot_colorby_splotby_WRAPPER(PA_traj.X, PA_traj.Times, PA_traj.Xlabels["trials"], var, 
+                                                            sdir, None, list_dims, 
+                                                            time_bin_size=None, save_suffix=i_var,
+                                                            plot_dots_on_traj=False)
+
+                        for xlim_force in [
+                            [-3.2, 3.2],
+                            [-2.4, 2.4],
+                            ]:
+                            for ylim_force in [
+                                [-1.5, 1.5],
+                                [-2, 2],
+                                [-2.5, 2.5],
+                                ]:
+                                ssuff = f"{i_var}--xylim={xlim_force}|{ylim_force}"
+                                trajgood_plot_colorby_splotby_WRAPPER(PA_traj.X, PA_traj.Times, PA_traj.Xlabels["trials"], var, 
+                                                                    sdir, None, list_dims, 
+                                                                    time_bin_size=None, save_suffix=ssuff,
+                                                                    plot_dots_on_traj=False,
+                                                                    xlim_force = xlim_force, ylim_force=ylim_force)
+                    else:
+                        trajgood_plot_colorby_splotby_WRAPPER(PA_traj.X, PA_traj.Times, PA_traj.Xlabels["trials"], var, 
+                                                            sdir, None, list_dims, 
+                                                            time_bin_size=time_bin_size, save_suffix=i_var)
+                # (2b) Scal
+                dflab = PA_scal.Xlabels["trials"]
+                Xthis = PA_scal.X.squeeze(axis=2).T # (n4trials, ndims)
+                sdir = f"{savedir}/SCALAR"
+                os.makedirs(sdir, exist_ok=True)
+                trajgood_plot_colorby_splotby_scalar_WRAPPER(Xthis, dflab, var, sdir,
+                                                                vars_subplot=None, list_dims=list_dims,
+                                                                skip_subplots_lack_mult_colors=False, save_suffix = i_var)
+                var_varothers_already_plotted.append((var, tuple(var_others)))
+
+            plt.close("all")    
+
+        
 def concatenate_popanals_flexible(list_pa, concat_dim="trials", how_deal_with_different_time_values="replace_with_dummy"):
     """ Concatenates popanals (along trial dim) which may have different time bases (but
     the same n time bins.
