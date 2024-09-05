@@ -2152,8 +2152,6 @@ def trajgood_plot_colorby_splotby_timeseries(df, var_color_by, var_subplots,
     from pythonlib.tools.plottools import legend_add_manual
     from neuralmonkey.neuralplots.population import plot_smoothed_fr
 
-    dim = 0
-
     if var_subplots is None:
         df = df.copy()
         df["_dummy"] = "dummy"
@@ -2601,83 +2599,6 @@ def euclidian_distance_compute_scalar(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT
                                    dpca_var = dpca_var, dpca_vars_group = dpca_vars_group, dpca_filtdict=dpca_filtdict, dpca_proj_twind = dpca_proj_twind, 
                                    raw_subtract_mean_each_timepoint=False,
                                    umap_n_components=extra_dimred_method_n_components, umap_n_neighbors=umap_n_neighbors)
-    
-
-    # METHOD = "basic"
-    # if dim_red_method is None:
-    #     # Then use raw data
-    #     pca_reduce = False
-    #     extra_dimred_method = None
-    # elif dim_red_method=="pca":
-    #     pca_reduce = True
-    #     extra_dimred_method = None
-    # elif dim_red_method=="pca_umap":
-    #     # PCA --> UMAP
-    #     pca_reduce = True
-    #     extra_dimred_method = "umap"
-    # elif dim_red_method=="umap":
-    #     # UMAP
-    #     pca_reduce = False
-    #     extra_dimred_method = "umap"
-    # elif dim_red_method=="mds":
-    #     # MDS
-    #     pca_reduce = False
-    #     extra_dimred_method = "mds"
-    # elif dim_red_method=="superv_dpca":
-    #     # Supervised, based on DPCA, find subspace for a given variable by doing PCA on the mean values.
-    #     superv_dpca_var = superv_dpca_params["superv_dpca_var"]
-    #     superv_dpca_vars_group = superv_dpca_params["superv_dpca_vars_group"]
-    #     superv_dpca_filtdict = superv_dpca_params["superv_dpca_filtdict"]
-    #     METHOD = "dpca"
-    # else:
-    #     print(dim_red_method)
-    #     assert False
-
-    # if METHOD=="basic":
-    #     # First, Extract data in PC space
-    #     plot_pca_explained_var_path = f"{savedir}/pca_explained_var.pdf"
-    #     plot_loadings_path = f"{savedir}/pca_loadings_heatmap.pdf"
-    #     Xredu, PAredu, _, _, _ = PA.dataextract_state_space_decode_flex(twind, tbin_dur, tbin_slice, reshape_method="trials_x_chanstimes",
-    #                                            pca_reduce=pca_reduce, plot_pca_explained_var_path=plot_pca_explained_var_path,
-    #                                                                           plot_loadings_path=plot_loadings_path,
-    #                                           npcs_keep_force=NPCS_KEEP,
-    #                                           extra_dimred_method=extra_dimred_method,
-    #                                           extra_dimred_method_n_components=extra_dimred_method_n_components,
-    #                                                 umap_n_neighbors = umap_n_neighbors)
-    #     n_pcs_keep_euclidian = Xredu.shape[1]
-    # elif METHOD=="dpca":
-    #     from neuralmonkey.classes.population import PopAnal
-
-    #     savedirthis = f"{savedir}/pca_construction"
-    #     os.makedirs(savedirthis, exist_ok=True)
-    #     PLOT_STEPS = False
-    #     Xredu, PAredu, _, _, pca = PA.dataextract_pca_demixed_subspace(
-    #         superv_dpca_var, superv_dpca_vars_group, twind, tbin_dur, superv_dpca_filtdict, savedirthis,
-    #         n_min_per_lev_lev_others=nmin_trials_per_lev, PLOT_STEPS=PLOT_STEPS,
-    #         n_pcs_subspace_max=NPCS_KEEP)
-
-    #     if Xredu is None:
-    #         # Then no data...
-    #         return None
-
-    #     # Save a version with full D, for state space
-    #     # PAredu_orig_dim = PAredu.copy()
-
-    #     # Figure out how many dimensions to keep (for euclidian).
-    #     n1 = pca["nclasses_of_var_pca"] # num classes of superv_dpca_var that exist. this is upper bound on dims.
-    #     n2 = Xredu.shape[1] # num classes to reach criterion for cumvar for pca.
-    #     n_pcs_keep_euclidian = min([n1, n2])
-
-    #     print("dpca, keeping this many dims (final):", n_pcs_keep_euclidian)
-    #     # # - prune data for euclidian
-    #     # Xredu = Xredu[:, :n_pcs_keep_euclidian]
-    #     # dflab = PAredu.Xlabels.copy()
-    #     # PAredu = PopAnal(Xredu.T[:, :, None], [0])  # (ndimskeep, ntrials, 1)
-    #     # PAredu.Xlabels = {dim:df.copy() for dim, df in dflab.items()}
-
-    # else:
-    #     print(METHOD)
-    #     assert False
 
     ############################ (2) Euclidian and State space plots
     if LIST_CONTEXT is not None:
@@ -2801,6 +2722,7 @@ def euclidian_distance_compute_scalar(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT
             chan = pa.Chans[0]
             pa.plotwrapper_smoothed_fr_split_by_label("trials", var, ax, chan=chan)
             plt.close("all")
+
         if COMPUTE_EUCLIDIAN:
             from pythonlib.tools.listtools import stringify_list
 
@@ -2810,9 +2732,12 @@ def euclidian_distance_compute_scalar(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT
                 plot_mask_path = f"{savedir}/{i_var}_MASK-var={var_for_name}-ovar={'|'.join(var_others)}-context={context}.pdf" # just diff, or else too lomg. diff is main info anyway
 
             # Keep just the n dims you want
-            pa_eucl = pa.slice_by_dim_indices_wrapper("chans", list(range(n_pcs_keep_euclidian)))
-            print("FINAL DIMENSION OF DATA (after dimredu, before eucl):", pa_eucl.X.shape)
-            
+            if False: # Already done, in dim reductions
+                pa_eucl = pa.slice_by_dim_indices_wrapper("chans", list(range(n_pcs_keep_euclidian)))
+                print("FINAL DIMENSION OF DATA (after dimredu, before eucl):", pa_eucl.X.shape)
+            else:
+                pa_eucl = pa
+                
             if False:
                 # This passes
                 assert np.all(pa.X[:n_pcs_keep_euclidian, :, :] == pa_eucl.X)
@@ -3664,7 +3589,8 @@ def euclidian_distance_compute_trajectories(PA, LIST_VAR, LIST_VARS_OTHERS, twin
                                dim_red_method = "pca", superv_dpca_params=None,
                                RETURN_EACH_TIMES_CLDIST=False,
                                PLOT_CLEAN_VERSION = False,
-                               COMPUTE_EUCLIDIAN=True
+                               COMPUTE_EUCLIDIAN=True, 
+                               get_reverse_also = False
                                ):
     """
     Wrapper to compute all distances between levels of variables, with flecxible abilties for
@@ -3703,7 +3629,10 @@ def euclidian_distance_compute_trajectories(PA, LIST_VAR, LIST_VARS_OTHERS, twin
         dpca_var = superv_dpca_params["superv_dpca_var"]
         dpca_vars_group = superv_dpca_params["superv_dpca_vars_group"]
         dpca_filtdict = superv_dpca_params["superv_dpca_filtdict"]
-        dpca_proj_twind = superv_dpca_params["dpca_proj_twind"]
+        if "dpca_proj_twind" in superv_dpca_params:
+            dpca_proj_twind = superv_dpca_params["dpca_proj_twind"]
+        else:
+            dpca_proj_twind = twind
 
     Xredu, PAredu = PA.dataextract_dimred_wrapper("traj", dim_red_method, savedir, 
                                    twind, tbin_dur=tbin_dur, tbin_slide=tbin_slice, 
@@ -3851,6 +3780,8 @@ def euclidian_distance_compute_trajectories(PA, LIST_VAR, LIST_VARS_OTHERS, twin
             plot_counts_heatmap_savepath = None
 
         # pa_before_prune = pa.copy()
+        if not PLOT_TRAJS:
+            plot_counts_heatmap_savepath = None
         pa, _, _= pa.slice_extract_with_levels_of_conjunction_vars(var, var_others, prune_min_n_trials, prune_min_n_levs,
                                                          plot_counts_heatmap_savepath=plot_counts_heatmap_savepath)
         if pa is None:
@@ -3883,12 +3814,16 @@ def euclidian_distance_compute_trajectories(PA, LIST_VAR, LIST_VARS_OTHERS, twin
                 # Get a single score taking mean over all time (entire traj)
                 # 3. Compute euclidian
                 savedir_heatmaps = f"{savedir}/heatmap_average.pdf"
-                dir_to_print_lab_each_mask = f"{savedir}/final_labels_data_pairs_in_masks-{i_var}-var={var}-ovar={var_others}"
-                os.makedirs(dir_to_print_lab_each_mask, exist_ok=True)
+                if PLOT_TRAJS:
+                    dir_to_print_lab_each_mask = f"{savedir}/final_labels_data_pairs_in_masks-{i_var}-var={var}-ovar={var_others}"
+                    os.makedirs(dir_to_print_lab_each_mask, exist_ok=True)
+                else:
+                    dir_to_print_lab_each_mask = None
                 res = euclidian_distance_compute_trajectories_single(pa, var, var_others, version_distance="euclidian",
                                                                     context_input=context, PLOT_HEATMAPS=PLOT_HEATMAPS, 
                                                                     savedir_heatmaps=savedir_heatmaps,
-                                                                    dir_to_print_lab_each_mask=dir_to_print_lab_each_mask)
+                                                                    dir_to_print_lab_each_mask=dir_to_print_lab_each_mask,
+                                                                    get_reverse_also = get_reverse_also)
                 for r in res:
                     r["shuffled"] = False
                     r["shuffled_iter"] = -1

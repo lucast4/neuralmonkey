@@ -17,7 +17,7 @@ import  matplotlib.pyplot as plt
 # (animal, date, question) --> DFallPA
 
 def load_handsaved_wrapper(animal=None, date=None, version=None, combine_areas=True, 
-                           return_none_if_no_exist=False, use_time = True):
+                           return_none_if_no_exist=False, use_time = True, question=None):
     """ Load a pre-saved DfallPA -- not systematic, just hand saved versions.
     """ 
 
@@ -31,10 +31,16 @@ def load_handsaved_wrapper(animal=None, date=None, version=None, combine_areas=T
             else:
                 t1 = -1.0
                 t2 = 1.8
-            path = f"/lemur2/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-{animal}-{date}-{version}-kilosort_if_exists-norm={norm}-combine={combine_areas}-t1={t1}-t2={t2}.pkl"
+            if question is None:
+                path = f"/lemur2/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-{animal}-{date}-{version}-kilosort_if_exists-norm={norm}-combine={combine_areas}-t1={t1}-t2={t2}.pkl"
+            else:
+                path = f"/lemur2/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-{animal}-{date}-{version}-kilosort_if_exists-norm={norm}-combine={combine_areas}-t1={t1}-t2={t2}-quest={question}.pkl"
+                if not os.path.exists(path):
+                    # Older, without "question" label. You should be the one to decide if this is acceptable.
+                    path = f"/lemur2/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-{animal}-{date}-{version}-kilosort_if_exists-norm={norm}-combine={combine_areas}-t1={t1}-t2={t2}.pkl"
         else:
             path = f"/lemur2/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-{animal}-{date}-{version}-kilosort_if_exists-norm={norm}-combine={combine_areas}.pkl"
-            
+        
         # if animal == "Diego" and date == 230615 and version == "trial":
         #     path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Diego-230615-trial-kilosort_if_exists-norm=None-combine=True.pkl" # SP, shape vs. loc, all events, good.
         # elif animal == "Pancho" and date == 220715 and version == "trial":
@@ -124,6 +130,122 @@ def load_handsaved_wrapper(animal=None, date=None, version=None, combine_areas=T
         DFallpa = pd.read_pickle(path)
         return DFallpa
 
+def dfallpa_preprocess_sitesdirty_single(PA, animal, date, plot_fr_after_replace_trials_dir=None):
+    """
+    Clean up PA using multiple methods, based on firing rate stats, using metrics and decisions already
+    computed.
+    
+    REmoves channels that are unstable FR over day.
+    For each chan, removes trials that are FR outliers, by replacing the trial with the mean over all other trials.
+
+    RETURNS:
+    - PA, a copy of PA, which has been cleaned.
+    """
+    import pandas as pd
+    import pickle
+    from pythonlib.tools.expttools import load_yaml_config
+    from pythonlib.tools.pandastools import savefig
+    from pythonlib.tools.plottools import rotate_x_labels
+
+    # First, check that prepropcess data actually exist
+    LOADDIR = "/lemur2/lucas/neural_preprocess/sitesdirtygood_preprocess"
+    if not os.path.exists(LOADDIR):
+        return
+
+    ### Load information about clean sites.
+    if False:
+        # Old, separate fore ach session
+        path = f"/lemur2/lucas/neural_preprocess/sitesdirtygood_preprocess/{animal}-{date}-0/dfres.pkl"
+        dfres = pd.read_pickle(path)
+
+        path = f"/lemur2/lucas/neural_preprocess/sitesdirtygood_preprocess/{animal}-{date}-0/params.yaml"
+        params = load_yaml_config(path)
+
+        TRIALCODES = params["trialcodes"]
+    else:
+        # New, combining across sesions.
+        path = f"{LOADDIR}/{animal}-{date}-combsess/dfres.pkl"
+        dfres = pd.read_pickle(path)
+
+        path = f"{LOADDIR}/{animal}-{date}-combsess/params_text.yaml"
+        params = load_yaml_config(path)
+
+        path = f"{LOADDIR}/{animal}-{date}-combsess/sessions.pkl"
+        with open(path, "rb") as f:
+            SESSIONS = pickle.load(f)
+
+        path = f"{LOADDIR}/{animal}-{date}-combsess/trialcodes.pkl"
+        with open(path, "rb") as f:
+            TRIALCODES = pickle.load(f)
+
+    PA = PA.copy()
+
+    ### Sanity checks (clean site info matches PA)
+    tmp = dfres["chan"].tolist() # chans in PA exist in dfres
+    assert all([ch in tmp for ch in PA.Chans])
+
+    ### (1) Remove bad chans
+    chans_bad_all = dfres[~dfres["good_chan"]]["chan"].tolist()
+    chans_bad_this_pa = [ch for ch in PA.Chans if ch in chans_bad_all]
+    chans_good_this_pa = [ch for ch in PA.Chans if ch not in chans_bad_all]
+
+    if len(chans_bad_this_pa)>0:
+        print("Removing these bad chans:", chans_bad_this_pa)
+        PA = PA.slice_by_dim_values_wrapper("chans", chans_good_this_pa)
+
+    # Plot exampel chans
+    # PA.plotwrapper_smoothed_fr_split_by_label_and_subplots(37, "seqc_0_shape", "seqc_0_loc")
+
+    ### (2) For each chan, remove the bad trials. Do so by replacing them with the average
+    # Get list of bad trialcodes for this chan
+    # chan = PA.Chans[11]
+    # chan = 354
+    dflab = PA.Xlabels["trials"]
+    # plot_fr_after_replace_trials_dir = "/tmp"
+    
+    # Track what was changed
+    map_chan_to_trialcodes_replaced = {}
+    for chan in PA.Chans:
+        map_chan_to_trialcodes_replaced[chan] = []
+        dfthis = dfres[dfres["chan"] == chan]
+        assert len(dfthis)==1
+        _inds_bad = dfthis["inds_bad"].values[0] # indices into trials
+
+        if len(_inds_bad)>0:
+            trialcodes_bad = [TRIALCODES[i] for i in _inds_bad]
+
+            # get the mean activity for this chan by taking its flanking n trials that are not bad trialcodes
+            # ACTUALLY - get the mean activity for this chan by taking its good trials
+            ind_chan = PA.Chans.index(chan)
+            trialcodes_all = dflab["trialcode"].tolist()
+            trialcodes_good = [tc for tc in trialcodes_all if tc not in trialcodes_bad]
+            inds_trials_good = dflab[dflab["trialcode"].isin(trialcodes_good)].index.tolist()
+            inds_trials_bad = dflab[dflab["trialcode"].isin(trialcodes_bad)].index.tolist()
+            
+            if len(inds_trials_bad)>0: # Then bad trials exist
+                print("chan", chan, "Replacing these trials with mean good trial:", inds_trials_bad)
+
+                if plot_fr_after_replace_trials_dir is not None:                
+                    frvals_old = np.mean(PA.X[ind_chan, :, :], axis=1) # for plotting
+                
+                xmean_good = np.mean(PA.X[ind_chan, inds_trials_good, :], axis=0) # (ntimes,)
+
+                # For each bad trial, replace it with xmean_good
+                map_chan_to_trialcodes_replaced[chan].append(dflab.iloc[inds_trials_bad]["trialcode"].tolist())
+                for ind_trial in inds_trials_bad:
+                    PA.X[ind_chan, ind_trial, :] = xmean_good
+
+                if plot_fr_after_replace_trials_dir is not None:
+                    # Sanity check, compare before and after 
+                    frvals_new = np.mean(PA.X[ind_chan, :, :], axis=1)
+                    fig, ax = plt.subplots(figsize=(40, 5))
+
+                    ax.plot(trialcodes_all, frvals_new, "or", alpha=0.8)
+                    ax.plot(trialcodes_all, frvals_old, "sk", alpha=0.8)
+                    rotate_x_labels(ax, 90)
+                    savefig(fig, f"{plot_fr_after_replace_trials_dir}/fr_after_replace_trial-chan={chan}.pdf")
+                    plt.close("all")    
+    return PA, map_chan_to_trialcodes_replaced
 
 def dfallpa_preprocess_fr_normalization(DFallpa, fr_normalization_method, savedir=None):
     """
@@ -1349,7 +1471,7 @@ def dfpa_group_and_split(DFallpa, vars_to_concat=None, vars_to_split=None,
     return DFallpa
 
 
-def dfpa_concatbregion_preprocess_wrapper(DFallpa, fr_mean_subtract_method = "across_time_bins"):
+def dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, fr_mean_subtract_method = "across_time_bins"):
     """
     Apply seuqence of preprocessing steps to cases where multkiple events' PA were combined in DFallpa.
     I used this for decode moment stuff (around Jul 2024).
@@ -1361,8 +1483,25 @@ def dfpa_concatbregion_preprocess_wrapper(DFallpa, fr_mean_subtract_method = "ac
 
     # (1) Prune to chans that are common across pa for each bregion (intersection of chans)|
     dfpa_match_chans_across_pa_each_bregion(DFallpa)
+    
+    # (2) Remove bad chans based on sitedirty preprocessing (e.g., drift)
+    savedir = "/tmp"
+    list_pa = []
+    for i, row in DFallpa.iterrows():
+        PA = row["pa"]
+        # plot_fr_after_replace_trials_dir = f"{savedir}/{row['bregion']}-{row['event']}"
+        # os.makedirs(plot_fr_after_replace_trials_dir, exist_ok=True)
+        plot_fr_after_replace_trials_dir = None
+        PA, map_chan_to_trialcodes_replaced = dfallpa_preprocess_sitesdirty_single(PA, animal, date, plot_fr_after_replace_trials_dir)
+        list_pa.append(PA)
+    print("PA.X.shape, before and after dfallpa_preprocess_sitesdirty_single")
+    for pa1, pa2 in zip(DFallpa["pa"].tolist(), list_pa):
+        print(pa1.X.shape, " --> ", pa2.X.shape)
+        # print(pa1.X.shape[0], " --> ", pa2.X.shape[0])
+    # Replace PA
+    DFallpa["pa"] = list_pa         
 
-    # (2) Clean bad chans
+    # (2) Clean bad chans (method 1)
     dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT=False)
 
     # (3) Sqrt transform
@@ -1376,6 +1515,7 @@ def dfpa_concatbregion_preprocess_wrapper(DFallpa, fr_mean_subtract_method = "ac
     dfpa_concat_normalize_fr_split_multbregion_flex(DFallpa, fr_mean_subtract_method, PLOT)
     # pa = DFallpa["pa"].values[10]
     # pa.plotNeurHeat(0)
+    
 
 def dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT = False):
     """

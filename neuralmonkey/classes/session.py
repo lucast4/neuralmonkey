@@ -18,6 +18,7 @@ from pythonlib.tools.stroketools import strokesInterpolate2
 from pythonlib.globals import PATH_NEURALMONKEY, PATH_DATA_NEURAL_RAW, PATH_DATA_NEURAL_PREPROCESSED, PATH_MATLAB, PATH_SAVE_CLUSTERFIX
 # PATH_NEURALMONKEY = "/data1/code/python/neuralmonkey/neuralmonkey"
 import pandas as pd
+import seaborn as sns
 
 LOCAL_LOADING_MODE = False
 LOCAL_PATH_PREPROCESSED_DATA = f"{PATH_DATA_NEURAL_PREPROCESSED}/recordings"
@@ -358,10 +359,17 @@ class Session(object):
         """
         from pythonlib.tools.expttools import makeTimeStamp
 
+        if isinstance(datestr, int):
+            datestr = str(datestr)
+
         if (animal=="Diego" and datestr=="231001") or (animal=="Pancho" and datestr=="231020"):
             print("This day has flipped cue-image onset. It will fail photodiode extraction. ")
             print("See Dropbox/Diego_231001_cue_stim_flipped.png and Dropbox/Diego_231001_cue_stim_normal.png")
             print("Solve this using debug_eventcode...ipynb")
+            assert False
+
+        if (animal=="Pancho" and datestr=="220831"):
+            print("This day fails, becuase beh (session 3) = rec sessions 3 and 4. Should fix this.")
             assert False
 
         # if BAREBONES_LOADING:
@@ -664,6 +672,7 @@ class Session(object):
         # Initialize mappers
         self.MapSiteToRegionCombined = {}
         self.MapSiteToRegion = {}
+        # self.MapDatasetKeyTo
 
         # # Check if ks exists.
         # if spikes_version=="kilosort_if_exists":
@@ -925,7 +934,327 @@ class Session(object):
         else:
             # Skip.
             dirty_kinds = []
-        self._sitesdirty_update(dirty_kinds=dirty_kinds)
+        self._sitesdirty_noisy_update(dirty_kinds=dirty_kinds)
+
+    def sitesdirtygood_preprocess_wrapper(self, SAVEDIR=None, nsigma=3.5):
+        """
+        Wrapper for all things for good pruning of chans and trails within chans, based on firing rates
+        stats -- outliers.
+        
+        For each chan, gets stats based on (fr over trials), such as drift and variance fr across blocks of trials.
+        
+        For each chan, get list of trials which are bad, in having mean fr higher or lower than mean trial by nsigma*STD.
+
+        Apply threshold for different metrics, keeping only those chans that pass for all metrics.
+        """
+
+        assert False, "obsolete -- use the one in MultSessions"
+        
+        from pythonlib.tools.snstools import rotateLabel
+        from pythonlib.tools.pandastools import savefig
+
+        # Manually input thresholds
+        # These based on Diego,, 240508.
+        map_var_to_thresholds = {
+            "frstd_spread_index_across_bins":(0, 1),
+            "slope_over_mean":(-0.18, 0.18),
+            "fr_spread_index_across_bins":(0, 0.4),
+            "frac_trials_bad":(0, 0.012)
+        }
+
+        if SAVEDIR is None:
+            from pythonlib.globals import PATH_DATA_NEURAL_PREPROCESSED
+            SAVEDIR = f"{PATH_DATA_NEURAL_PREPROCESSED}/sitesdirtygood_preprocess/{self.Animal}-{self.Date}-{self.RecSession}"
+            os.makedirs(SAVEDIR, exist_ok=True)
+
+        ### First, extract spikes data for each (site, trial)
+        # NOTE: if this is already done, will be very fast.
+        self.sitestats_fr_get_and_save(save=False)
+
+        ### COLLECT ALL DATA        
+        savedir = f"{SAVEDIR}/fr_over_trials"
+        os.makedirs(savedir, exist_ok=True)
+
+        sites = self.sitegetterKS_all_sites()
+        trials = self.get_trials_list()
+        res = []
+        for chan in sites:
+            print(chan)
+            
+            # FR stability/drift
+            frvals, trials_this, times_frac, metrics, inds_bad = self.sitesdirtygood_preprocess_firingrate_drift(
+                chan, trials, savedir, nsigma=nsigma)
+
+            # FR outliers, specific trials.
+            res.append({
+                "chan":chan,
+                "frvals":frvals,
+                "trials":trials_this,
+                "times_frac":times_frac,
+                "inds_bad":inds_bad,
+            })
+            for name, val in metrics.items():
+                res[-1][name] = val
+
+            plt.close("all")
+
+        dfres = pd.DataFrame(res)
+        dfres["bregion"] = [self.sitegetterKS_map_site_to_region(chan) for chan in dfres["chan"].tolist()]
+
+        ### Generate dataframe and add things to it
+        # Quantify, frac trials that are outliers
+        def F(x):
+            return len(x)
+        dfres["n_inds_bad"] = dfres["inds_bad"].apply(F)
+        dfres["n_trials"] = [len(trials) for trials in dfres["trials"]]
+        dfres["frac_trials_bad"] = dfres["n_inds_bad"]/dfres["n_trials"]
+
+        # Which chans pass threshodl
+        # Check which chans are excluded
+        keeps = None
+        for var, threshes in map_var_to_thresholds.items():
+            if all(dfres[var].isna()):
+                continue
+            _keeps = (dfres[var]>=threshes[0]) & (dfres[var]<=threshes[1])
+            if keeps is None:
+                keeps = _keeps
+            else:
+                keeps = keeps & _keeps
+        dfres["good_chan"] = keeps
+
+        #### SAVE DATA
+        pd.to_pickle(dfres, f"{SAVEDIR}/dfres.pkl")
+        dfres.to_csv(f"{SAVEDIR}/dfres.csv")
+        params = {
+            "nsigma":nsigma,
+            "animal":self.Animal,
+            "ExptSynapse":self.ExptSynapse,
+            "date":self.Date,
+            "RecSession":self.RecSession,
+            "spikes_version":self.SPIKES_VERSION,
+            "trials":trials,
+            "chans":sites,
+            "chans_good":dfres[dfres["good_chan"]]["chan"].tolist(),
+            "trialcodes":[self.datasetbeh_trial_to_trialcode(t) for t in trials],
+        }
+        from pythonlib.tools.expttools import writeDictToYaml, writeDictToTxtFlattened
+        writeDictToYaml(params, f"{SAVEDIR}/params.yaml")
+        writeDictToTxtFlattened(params, f"{SAVEDIR}/params_text.yaml")
+
+        ### Plot summary across sites
+        savedir = f"{SAVEDIR}/summary_figures"
+        os.makedirs(savedir, exist_ok=True)
+
+        # plot distribution over chans, of different metrics.
+        vars = ["frstd_spread_index_across_bins", "slope_over_mean", "fr_spread_index_across_bins", "frac_trials_bad"]
+        
+        # Keep only those vars that dont have na. na is becuase not enoughd data to do bins.
+        vars = [v for v in vars if ~np.all(dfres[v].isna())]
+        
+        # (1) val vs. site (catplot)
+        for yvar in vars:
+            # yvar = "fr_spread_index_across_bins"
+            fig = sns.catplot(data=dfres, x="chan", y=yvar, alpha=0.5, hue="bregion", aspect=10, height=4)
+            rotateLabel(fig, 70)
+            savefig(fig, f"{savedir}/catplot-yvar={yvar}.pdf")
+
+        # (2) Pairplot
+        fig = sns.pairplot(data = dfres, x_vars=vars, y_vars=vars, hue="bregion", height=4)
+        savefig(fig, f"{savedir}/pairplot.pdf")
+
+        # (3) Pairplot, with text labeling chans
+        # overlay with text
+        ct = 0
+        chans = dfres["chan"].tolist()
+        assert chans == sites
+        fig, axes = plt.subplots(3,3, figsize=(15, 15))
+        for i in range(len(vars)):
+            for j in range(len(vars)):
+                if j>i:
+                    var1 = vars[i]
+                    var2 = vars[j]
+
+                    ax = axes.flatten()[ct]
+                    if ct==0:
+                        ax.set_title("red=bad chans. red lines=thresholds")
+                    ct+=1
+
+                    # overlay thresholds
+                    thresh_lower, thresh_upper = map_var_to_thresholds[var1]
+                    ax.axvline(thresh_lower, color="r", alpha=0.3)
+                    ax.axvline(thresh_upper, color="r", alpha=0.3)
+
+                    thresh_lower, thresh_upper = map_var_to_thresholds[var2]
+                    ax.axhline(thresh_lower, color="r", alpha=0.3)
+                    ax.axhline(thresh_upper, color="r", alpha=0.3)
+
+                    ax.axhline(0)
+                    ax.axvline(0)
+
+                    # Plot data
+                    x = dfres[var1].values
+                    y = dfres[var2].values
+                    good_chans = dfres["good_chan"].values
+
+                    ax.plot(x[~good_chans], y[~good_chans], ".r", alpha=0.7)
+                    ax.plot(x[good_chans], y[good_chans], ".k", alpha=0.4) # label the bad ones
+                    
+                    for ch, xx, yy in zip(chans, x, y):
+                        # if good:
+                        col = 0.1 + 0.8*np.random.rand(3)
+                        # else:
+                        #     col = "r"
+                        ax.text(xx, yy, ch, color=col, alpha=0.65, fontsize=8)
+
+                    # Labels
+                    ax.set_xlabel(var1)
+                    ax.set_ylabel(var2)
+        savefig(fig, f"{savedir}/pairplot-labeling_chans.pdf")
+        plt.close("all")
+
+        return dfres, params, SAVEDIR
+
+    def sitesdirtygood_preprocess_firingrate_drift(self, chan, trials, savedir=None,
+                                                   ntrials_per_bin = 50, nsigma=3.5):
+        """
+        Score the across-day drift in FR
+        """
+        from pythonlib.tools.datetools import standardize_time_helper
+        from sklearn.linear_model import LinearRegression
+        # import pandas as pde
+        from neuralmonkey.metrics.goodsite import score_firingrate_drift
+
+        # def _threshold_fr(frvals):
+        #     """
+        #     """
+        #     mu = np.mean(frvals)
+        #     sig = np.std(frvals)
+        #     thresh_upper = mu + nsigma*sig
+        #     thresh_lower = mu - nsigma*sig
+        #     inds_bad_bool = (frvals>thresh_upper) | ((frvals<thresh_lower))
+        #     inds_bad = [int(x) for x in np.where(inds_bad_bool)[0]]
+        #     return inds_bad, thresh_lower, thresh_upper, inds_bad_bool
+
+        # def _plot(_x, _y, ax):
+        #     """
+        #     """
+        #     inds_bad, thresh_lower, thresh_upper, inds_bad_bool= _threshold_fr(_y)
+        #     _x_bad = _x[inds_bad]
+        #     _y_bad = _y[inds_bad]
+        #     ax.plot(_x, _y, 'xk');
+        #     ax.plot(_x_bad, _y_bad, 'or')
+        #     # plot text next to each
+        #     for t, fr in zip(_x_bad, _y_bad):
+        #         ax.text(t, fr, f"{t:.2f}", color="r")
+        #     ax.set_ylim(bottom=0.)
+        #     # ax.set_title(f"fr_spread_index_across_bins={fr_spread_index_across_bins.item():.2f}")
+
+        ### Extract data
+        frvals, trials, times_frac, trialcodes = self.sitestats_fr_extract_good(chan, trials, extract_using_smoothed_fr=False, keep_within_events_flanking_trial=True)
+        # # (1) firing rates across trials (one scalar each trial)
+        # list_fr = []
+        # for t in trials:
+        #     list_fr.append(self.sitestats_fr_single(chan, t, extract_using_smoothed_fr=False, keep_within_events_flanking_trial=True))
+        # frvals = np.array(list_fr)
+        # # frvals_sq = frvals**0.5
+
+        # # (2) times (frac of day)
+        # trials = np.array(trials)
+        # dfthis = self.datasetbeh_extract_dataframe(trials)
+        # times_frac = np.array([standardize_time_helper(dt) for dt in dfthis["datetime"].tolist()])
+
+        metrics, inds_bad = score_firingrate_drift(frvals, times_frac, 
+                                                                               trials, ntrials_per_bin, 
+                                                                               nsigma, savedir=savedir, savename=self.sitegetter_summarytext(chan))
+
+        return frvals, trials, times_frac, metrics, inds_bad
+
+        # # (3) Trehshodl the firing rate
+        # inds_bad, thresh_lower, thresh_upper, inds_bad_bool = _threshold_fr(frvals_sq)
+        
+        # ### Metrics (Score drift)_
+        # nbins = int(len(times_frac)/ntrials_per_bin)
+        # if nbins == 1:
+        #     # SKIP THIS, too few trials.
+        #     fr_spread_index_across_bins = None
+        #     slope_over_intercept = None
+        # else:
+        #     # from pythonlib.tools.nptools import bin_values_by_rank
+        #     # bin_values_by_rank(times_frac, nbins)
+
+        #     frvals_sq_no_outlier = frvals_sq[~inds_bad_bool]
+        #     times_frac_no_outlier = times_frac[~inds_bad_bool]
+        #     trials_this_no_outlier = trials_this[~inds_bad_bool]
+
+        #     # (1) linear, across day
+        #     reg = LinearRegression().fit(times_frac_no_outlier[:, None], frvals_sq_no_outlier[:, None])
+        #     slope = reg.coef_.item()
+        #     frmean = np.mean(frvals_sq_no_outlier)
+        #     # intercept = reg.intercept_.item()
+        #     slope_over_mean = slope/frmean # units = intercepts/day
+        #     slope_over_mean = slope_over_mean/24 # units = intercepts/hour.
+        #     # print(slope, intercept, slope_over_intercept)
+
+        #     # (2) any block of time with very diff fr from others?
+        #     # Any trial bins with deviation in fr? Get index of (max - min)/(mean) across 50-trial bins.
+        #     dfrate = pd.DataFrame({"fr":frvals_sq_no_outlier, "times_frac":times_frac_no_outlier, "trials":trials_this_no_outlier})
+        #     dfrate["times_frac_bin"] = pd.qcut(dfrate["times_frac"], nbins) # bin it
+
+        #     fr_max_across_bins = np.max(dfrate.groupby("times_frac_bin").mean()["fr"])
+        #     fr_min_across_bins = np.min(dfrate.groupby("times_frac_bin").mean()["fr"])
+        #     fr_mean_across_bins = np.mean(dfrate.groupby("times_frac_bin").mean()["fr"])
+        #     fr_spread_index_across_bins = (fr_max_across_bins - fr_min_across_bins)/fr_mean_across_bins        
+
+        #     # (3) Any block with very high variance across trials?
+        #     frstd_max_across_bins = np.max(dfrate.groupby("times_frac_bin").std()["fr"])
+        #     frstd_min_across_bins = np.min(dfrate.groupby("times_frac_bin").std()["fr"])
+        #     frstd_mean_across_bins = np.mean(dfrate.groupby("times_frac_bin").std()["fr"])
+        #     frstd_spread_index_across_bins = (frstd_max_across_bins - frstd_min_across_bins)/frstd_mean_across_bins        
+
+        # ### Plots
+        # # for each chan and event, find outlier trials
+        # fig, axes = plt.subplots(5,1, figsize=(10,16))
+
+        # ax = axes.flatten()[0]
+        # ax.hist(frvals, 50, color="k");
+        # ax.set_xlabel("firing rate histogram")
+
+        # ax = axes.flatten()[1]
+        # ax.hist(frvals_sq, 50, log=True, color="g");
+        # ax.set_xlabel("firing rate histogram (sqrt)")
+
+        # ax = axes.flatten()[2]
+        # # print(trials_this)
+        # # print(frvals)
+        # _plot(trials_this, frvals, ax)
+        # ax.set_ylabel("fr (hz)")
+        # ax.set_title(f"slope_over_mean={slope_over_mean:.2f}")
+
+        # ax = axes.flatten()[3]
+        # _plot(trials_this, frvals_sq, ax)
+        # ax.set_ylabel("fr (hz**0.5)")
+        # ax.set_title(f"frstd_spread_index_across_bins={frstd_spread_index_across_bins:.2f}")
+
+        # # Plot against time.
+        # ax = axes.flatten()[4]
+        # _plot(times_frac, frvals_sq, ax)
+        # ax.set_ylabel("fr (hz**0.5)")
+        # ax.set_title(f"fr_spread_index_across_bins={fr_spread_index_across_bins:.2f}")
+
+        # ### SAVE
+        # if savedir is not None:
+        #     from pythonlib.tools.pandastools import savefig
+        #     savefig(fig, f"{savedir}/{self.sitegetter_summarytext(chan)}.pdf")
+
+        # metrics = {
+        #     "fr_spread_index_across_bins":fr_spread_index_across_bins, 
+        #     "frstd_spread_index_across_bins":frstd_spread_index_across_bins, 
+        #     "slope_over_mean":slope_over_mean
+        # }
+
+        # return frvals, trials_this, times_frac, metrics, inds_bad
+
+
 
     def sitesdirty_filter_by_spike_magnitude(self, 
             # MIN_THRESH = 90, # before 2/12/23
@@ -1007,7 +1336,7 @@ class Session(object):
 
         return dfthis
 
-    def _sitesdirty_update(self, dirty_kinds = None):
+    def _sitesdirty_noisy_update(self, dirty_kinds = None):
         """
         Filter sites to find those that are "dirty" based on flexibly criteria (dirty_kinds).
         :param dirty_kinds:
@@ -1045,7 +1374,6 @@ class Session(object):
         RETURNS:
            - Updates self._MapperTrialcode2TrialToTrial
         """
-
         if hasattr(self, "_MapperTrialcode2TrialToTrial") and len(self._MapperTrialcode2TrialToTrial)>0:
             # SANITY CHECK that it mathes current. if not, then error --> misalign betwene nerual and dataset beh
             for trial in self.get_trials_list():
@@ -2489,6 +2817,15 @@ class Session(object):
 
 
     ###################### EXTRACT SPIKES (RAW, PRE-CLIUSTERED)
+    def load_spike_waveforms(self, site):
+        """
+        Helper to load spike waveform from raw. 
+        Might be obsolete.
+        """
+        rs, chan = self.convert_site_to_rschan(site)
+        assert False, "make this auto detect whtehr get tdt or ks. if get ks, then have to extract from raw. See Paolo Emilio stuff."
+        self.load_spike_waveforms_(rs, chan)
+
     def load_spike_waveforms_(self, rs, chan, ver="spikes_tdt_quick"):
         """ Return spike waveforms, pre-extracted
         """
@@ -3643,6 +3980,11 @@ class Session(object):
         """ Return the fd and trial linked to this tdt trial
         """
         fd_setnum, fd_trialnum = self._beh_get_fdnum_trial(trialtdt)
+        # print("-----------------")
+        # print("self.BehFdList", self.BehFdList)
+        # print("fd_setnum", fd_setnum)
+        # print("fd_trialnum", fd_trialnum)
+        # print("trialtdt", trialtdt)
         assert len(self.BehFdList)>fd_setnum, "probably didnt load all beh data. see beh_trial_map_list.py"
         fd = self.BehFdList[fd_setnum]
         if fd is None or fd_trialnum is None:
@@ -4179,41 +4521,89 @@ class Session(object):
 
 
     ########################### Stats for each site
-    def sitestats_fr_single(self, sitenum, trial):
+    def sitestats_fr_extract_good(self, sitenum, trials=None, 
+                                  extract_using_smoothed_fr=False, keep_within_events_flanking_trial=False):
+        """
+        Good, wrapper to extract firing rate across trials (one scalar each trial), along wtih the time of the trial.
+        RETURNS:
+        - frvals, trials, times_frac, each a (ntrials,) array.
+        - trialcodes, list of trialcodes
+        """
+        from pythonlib.tools.datetools import standardize_time_helper
+
+        if trials is None:
+            trials = self.get_trials_list()
+
+        list_fr = []
+        for t in trials:
+            list_fr.append(self.sitestats_fr_single(sitenum, t, extract_using_smoothed_fr, keep_within_events_flanking_trial))
+        frvals = np.array(list_fr)
+
+        # (2) times (frac of day)
+        trials = np.array(trials)
+        dfthis = self.datasetbeh_extract_dataframe(trials)
+        times_frac = np.array([standardize_time_helper(dt) for dt in dfthis["datetime"].tolist()])
+
+        trialcodes = dfthis["trialcode"].tolist()
+
+        
+        return frvals, trials, times_frac, trialcodes
+
+    def sitestats_fr_single(self, sitenum, trial, extract_using_smoothed_fr=False,
+                            keep_within_events_flanking_trial=False):
         """ get fr (sp/s)
         - if fr doesnt exist in self.DatAll, then will add it to the dict.
         """
-        assert self.SPIKES_VERSION=="tdt"
-        dat = self.datall_TDT_KS_slice_single_bysite(sitenum, trial)
-        if "fr" not in dat.keys():
-            if dat["spike_times"] is None:
-                print("****")
-                print(sitenum, trial)
-                print(self.print_summarize_expt_params())
-                assert False, "figure out why this is None. probably in loading (scipy error) and I used to replace errors with None. I should re-extract the spikes."
-            nspikes = len(dat["spike_times"]) 
-            dur = dat["time_dur"]
-            dat["fr"] = nspikes/dur
-        return dat["fr"]
+
+        if extract_using_smoothed_fr:
+            # Then use smoothed fr, which is already extracted. Might be quicker.
+            # This gets within two events that flank trial. So may be different fro below.
+            pa = self.smoothedfr_extract_timewindow_during_trial(sitenum, trial, keep_within_events_flanking_trial)
+            return np.mean(pa.X)
+        else:
+            # Use spike count.
+            # assert self.SPIKES_VERSION=="tdt"
+
+            if keep_within_events_flanking_trial:
+                fr_key = "fr_within_trial"
+            else:
+                fr_key = "fr"
+
+            dat = self.datall_TDT_KS_slice_single_bysite(sitenum, trial)
+            if fr_key not in dat.keys():
+
+                if dat["spike_times"] is None:
+                    print("****")
+                    print(sitenum, trial)
+                    print(self.print_summarize_expt_params())
+                    assert False, "figure out why this is None. probably in loading (scipy error) and I used to replace errors with None. I should re-extract the spikes."
+                
+                st = dat["spike_times"]
+                dur = dat["time_dur"]
+                if keep_within_events_flanking_trial:
+                    # print(st)
+                    # print(dur)
+                    t1, t2 = self.events_get_time_flanking_trial_helper(trial)
+                    st = st[(st>=t1) & (st<=t2)]
+                    dur = t2-t1
+                    # print(st)
+                    # print(dur)
+                    fr_key = "fr_within_trial"
+                    # assert False
+                else:
+                    fr_key = "fr"
+                nspikes = len(st) 
+                dat[fr_key] = nspikes/dur
+            return dat[fr_key]
 
     def sitestats_fr(self, sitenum):
         """ gets fr across all trials. Only works if you have already extracted fr 
         into DatAll (and its dataframe)
-        """
-        
+        """ 
+        assert self._LOAD_VERSION == "FULL_LOADING", "This required self.DatAll, which is not gotten in MINIMAL LOADING"
         assert self.SPIKES_VERSION=="tdt", "not codeede for anything else."
         list_fr = []
         
-
-        # if first_extraction:
-        #     # then dont use dataframe, this both extracts and returns.
-        #     # This both easfasdfxtracts and returns
-        #     for trial in self.get_trials_list(True):
-        #         fr = self.sitestats_fr_single(sitenum, trial)
-        #         list_fr.append(fr)
-        # else:
-        # Use Dataframe, is much faster than iterating over trials
-
         trials = self.get_trials_list()
 
         # Confirm that has already been extracted and saved
@@ -4239,6 +4629,9 @@ class Session(object):
             return ERROR
 
         # 1) check if you have fr in dataframe
+        if not hasattr(self, "DatAllDf"):
+            self.datall_cleanup_add_things(only_generate_dataframe=True)
+
         dfthis = self.DatAllDf[(self.DatAllDf["site"]==sitenum) & (self.DatAllDf["trial0"].isin(trials))]
         ERROR = _check_for_fr(dfthis)
 
@@ -4269,18 +4662,20 @@ class Session(object):
 
     def sitestats_fr_get_and_save(self, save=True):
         """ Gets fr for all sites and saves in self.DatAll, and saves
-        to disk. This is more for computation than for returning anything useufl. 
+        to disk (if save==True). This is more for computation than for returning anything useufl. 
         Run this once.
-        Takes a while, like minutes
+        NOTE: Takes a while, like minutes, because has to load the cached spikes data for each (chan, trial)
+        I checked that this is optimized, assumimng that it has to go thru process of loading spikes for
+        each chan.
         """
+        list_trial = self.get_trials_list(True)
         for site in self.sitegetterKS_map_region_to_sites_MULTREG(clean=False):
-            
-            if site%50==0:
+            if site%10==0:
                 print(site)
             
-            for trial in self.get_trials_list(True):
+            for trial in list_trial:
                 self.sitestats_fr_single(site, trial)
-                # list_fr.append(fr)
+
             # self.sitestats_fr(site) # run this to iterate over all trials, and save to datall
         if save:
             self._savelocal_datall()
@@ -5179,13 +5574,16 @@ class Session(object):
     def datasetbeh_extract_dataframe(self, list_trials):
         """
         Returns D.Dat, with idnices exactly matching list_trials,
-        in order, etc.
+        in order, etc, and with indices resetted.
         """
 
-        assert False, 'in progress'
-        trialcodes = [sn.dataset_beh_trial_to_trialcode(t) for t in list_trials]
+        # assert False, 'in progress'
+        # trialcodes = [sn.dataset_beh_trial_to_trialcode(t) for t in list_trials]
 
-
+        D = self.Datasetbeh
+        inds = [self.datasetbeh_trial_to_datidx(t) for t in list_trials]
+        dfthis = D.Dat.iloc[inds].reset_index(drop=True)
+        return dfthis
 
     ###################### GET TEMPORAL EVENTS
     def eventsanaly_helper_pre_postdur_for_analysis(self, do_prune_by_inter_event_times=False,
@@ -5812,12 +6210,13 @@ class Session(object):
                     cross_dir = 'down'
                     t_pre = -0.01
                     # t_post = 0.16 # missed. too short.
-                    t_post = 0.33 # is ok to be kind of long, nothing following can contaminate.
+                    # t_post = 0.33 # is ok to be kind of long, nothing following can contaminate.
+                    t_post = 0.45 # is ok to be kind of long, nothing following can contaminate.
                     out = self.behcode_get_stream_crossings_in_window(trial, behcode, whichstream=stream, 
                                                               cross_dir_to_take=cross_dir, t_pre=t_pre,
                                                               t_post=t_post,
                                                               ploton=plot_beh_code_stream, assert_single_crossing_per_behcode_instance=True, 
-                                                              assert_single_crossing_this_trial = True,
+                                                              assert_single_crossing_this_trial = True, assert_expected_direction_first_crossing="down",
                                                               take_first_behcode_instance=True)
                     times = _extract_times(out)
 
@@ -6422,6 +6821,22 @@ class Session(object):
                 assert len(times)==1
                 
         return times
+
+    def events_get_time_flanking_trial_helper(self, trial):
+        """
+        Get times for onset and offset of meat of trial (fixcue --> post/reward)
+        """
+
+        t1 = self.events_get_time_helper("fixcue", trial, assert_one=True)[0]
+        t2 = self.events_get_time_helper("post", trial, assert_one=True)[0]
+        tmp = self.events_get_time_helper("reward_all", trial, assert_one=False)
+        if len(tmp)>0:
+            t3 = max(tmp)
+        else:
+            t3 = 0.
+        t_start = t1
+        t_end = max([t2, t3]) # Ends either at start of post, or when get reward
+        return t_start, t_end
 
     def events_get_feature_helper(self, event, trial):
         """ [GOOD] Return the name of a feature, plus a list of feature values, in trial for this event.
@@ -7136,6 +7551,16 @@ class Session(object):
 
 
     ###################### SMOOTHED FR
+    def smoothedfr_extract_timewindow_during_trial(self, sitenum, trial):
+        # Get for a single trial and site, the smoothed fr between two events that flank the main part of the
+        # trial when subject is doing things.
+
+        # Get the times for the events that flank the action part of trial.
+        t_start, t_end = self.events_get_time_flanking_trial_helper(trial)
+        pa, _, _, _ = self.smoothedfr_extract_timewindow_bytimes([trial], [t_start], [sitenum], pre_dur=0., post_dur=t_end-t_start)
+
+        return pa
+
     def smoothedfr_extract_timewindow_bytimes(self, trials, times, 
         sites, pre_dur=-0.1, post_dur=0.1,
         fail_if_times_outside_existing=True,
@@ -9721,6 +10146,7 @@ class Session(object):
         t_post = 0.4 # time from beh code to search
         t_pre = 0
 
+        trials_list = self.get_trials_list(True)
         for behcode, stream in zip(list_behcode, list_whichstream):
             # behcode = 91
             # stream = 'pd1'
@@ -9735,7 +10161,7 @@ class Session(object):
             else:
                 assert False
                 
-            for trial in self.get_trials_list(True):
+            for trial in trials_list:
                 out = self.behcode_get_stream_crossings_in_window(trial, behcode, 
                         whichstream=stream, cross_dir_to_take=crosdir, t_pre=t_pre, 
                         t_post=t_post)
@@ -9834,6 +10260,8 @@ class Session(object):
         """
         Plot raw neural data (filtered) and overlying rasters on that.
         Useful for debugging, seeing results of spike clustering.
+        PARAMS:
+        - twind_plot, window relative to trial onset, to plot.
         :return:
         """
         import elephant as el
@@ -9989,8 +10417,6 @@ class Session(object):
         - dataset_input, which datsaet to query. useful to pass in a pruned
         datsaet if you want to check whether this trial exists (i.e., returns None)
         """
-        tc = self.datasetbeh_trial_to_trialcode(trial)
-        # print("get_trials_list - datasetbeh_trial_to_datidx", trial, tc)
 
         if dataset_input is None:
             dfcheck = self.Datasetbeh
@@ -9998,11 +10424,13 @@ class Session(object):
             dfcheck = dataset_input
         assert dfcheck is not None
 
+        # key = tuple(dfcheck["trialcode"].tolist())
+
+        tc = self.datasetbeh_trial_to_trialcode(trial)
+        # print("get_trials_list - datasetbeh_trial_to_datidx", trial, tc)
+
         dfthis = dfcheck.Dat[dfcheck.Dat["trialcode"]==tc]
 
-        # if len(dfthis)==0:
-        #     print(trial, tc)
-        #     assert False, "didnt find this in datasetbeh"
         if len(dfthis)>1:
             print(trial, tc, dfthis)
             assert False, "bug, cant find > 1 row"

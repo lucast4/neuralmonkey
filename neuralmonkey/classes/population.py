@@ -2069,7 +2069,6 @@ class PopAnal():
                 plot_pca_explained_var_path = None
                 plot_loadings_path = None
 
-            print(twind_pca, tbin_dur, tbin_slide)
             Xredu, PAredu, _, _, _ = PA.dataextract_state_space_decode_flex(twind_pca, tbin_dur, tbin_slide, reshape_method=reshape_method,
                                                         pca_reduce=pca_reduce, plot_pca_explained_var_path=plot_pca_explained_var_path, 
                                                         plot_loadings_path=plot_loadings_path, npcs_keep_force=NPCS_KEEP,
