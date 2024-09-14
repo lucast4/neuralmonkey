@@ -4429,306 +4429,126 @@ def analy_psychoprim_dfscores_condition(dfscores, morphset_this_dfscores, DSmorp
 
     return dfscores
 
-def analy_psychoprim_prepare_beh_dataset(animal, date, savedir="/tmp"):
+def analy_psychoprim_prepare_beh_dataset(animal, date, savedir="/tmp", D=None, plot_drawings=True):
     """
     Extract beh related to psychometric prims, behavior.
     """
-    from pythonlib.dataset.dataset_analy.psychometric_singleprims import psychogood_preprocess_wrapper, psychogood_plot_drawings_morphsets, psychogood_decide_if_tasks_are_ambiguous, params_remap_angle_to_idx_within_morphset
+    from pythonlib.dataset.dataset_analy.psychometric_singleprims import psychogood_preprocess_wrapper, psychogood_plot_drawings_morphsets, params_remap_angle_to_idx_within_morphset
 
-    from neuralmonkey.scripts.analy_pig_decode_moment_syntaxTI import prepare_beh_dataset
-    MS, D, _, _, _ = prepare_beh_dataset(animal, date, do_syntax_rule_stuff=False)        
+    date = int(date)
 
-    # Clean up first --> only trials with one beh stroke
-    # - one stroke, so that it can be assigned to base 1 or 2 accurately.
-    D.preprocessGood(params=["beh_strokes_one", "remove_online_abort"])
+    if D is None:
+        from neuralmonkey.scripts.analy_pig_decode_moment_syntaxTI import prepare_beh_dataset
+        _, D, _, _, _ = prepare_beh_dataset(animal, date, do_syntax_rule_stuff=False)        
 
-    ### Extract all psycho prims stuff
-    # How to map back to neural data?
-    # -- trialcode
+    from pythonlib.dataset.dataset_analy.psychometric_singleprims import psychogood_preprocess_wrapper_GOOD
+    return psychogood_preprocess_wrapper_GOOD(D, NEURAL_VERSION=True, NEURAL_SAVEDIR=savedir, NEURAL_PLOT_DRAWINGS=plot_drawings)
+    
+    # # Clean up first --> only trials with one beh stroke
+    # # - one stroke, so that it can be assigned to base 1 or 2 accurately.
+    # D.preprocessGood(params=["beh_strokes_one", "remove_online_abort"])
 
-    # Code: given a (morphset, idx), get all sets of trialcodes
-    # def find_morphset_morphidx(DSmorphsets, morphset, idx_in_morphset, return_as_trialcodes=True):
-    #     """ Return indices in DSmorphsets that match morphset and idx_in_morphset
-    #     """
-    #     from pythonlib.tools.pandastools import _check_index_reseted
-    #     # _check_index_reseted(DSmorphsets.Dat)
-    #     inds = DSmorphsets.Dat[
-    #         (DSmorphsets.Dat["morph_set_idx"] == morphset) & 
-    #         (DSmorphsets.Dat["morph_idxcode_within_set"] == idx_in_morphset)].index.tolist()
+    
+    # ### Extract all psycho prims stuff
+    # # How to map back to neural data?
+    # # -- trialcode
+
+    # # Code: given a (morphset, idx), get all sets of trialcodes
+    # # def find_morphset_morphidx(DSmorphsets, morphset, idx_in_morphset, return_as_trialcodes=True):
+    # #     """ Return indices in DSmorphsets that match morphset and idx_in_morphset
+    # #     """
+    # #     from pythonlib.tools.pandastools import _check_index_reseted
+    # #     # _check_index_reseted(DSmorphsets.Dat)
+    # #     inds = DSmorphsets.Dat[
+    # #         (DSmorphsets.Dat["morph_set_idx"] == morphset) & 
+    # #         (DSmorphsets.Dat["morph_idxcode_within_set"] == idx_in_morphset)].index.tolist()
         
-    #     if return_as_trialcodes:
-    #         return DSmorphsets.Dat.iloc[inds]["trialcode"].tolist()
-    #     else:
-    #         return inds
+    # #     if return_as_trialcodes:
+    # #         return DSmorphsets.Dat.iloc[inds]["trialcode"].tolist()
+    # #     else:
+    # #         return inds
 
-    if (animal, date) in [("Diego", 240523), ("Diego", 240730),
-                          ("Pancho", 240524)]:
-        # Structured morphs -- e.g., modify angle of one arm gradaully
-        DFRES, DSmorphsets, PARAMS, los_allowed_to_miss = psychogood_preprocess_wrapper(D, PLOT_DRAWINGS=False, 
-                                                                                    PLOT_EACH_TRIAL=False, PLOT_SCORES=False,
-                                                                                    clean_ver="singleprim_psycho_noabort")
+    # if (animal, date) in [("Diego", 240523), ("Diego", 240730),
+    #                       ("Pancho", 240524)]:
+    #     # Structured morphs -- e.g., modify angle of one arm gradaully
+    #     DFRES, DSmorphsets, PARAMS, los_allowed_to_miss = psychogood_preprocess_wrapper(D, PLOT_DRAWINGS=False, 
+    #                                                                                 PLOT_EACH_TRIAL=False, PLOT_SCORES=False,
+    #                                                                                 clean_ver="singleprim_psycho_noabort")
 
-    elif (animal, date) in [("Diego", 240802), ("Pancho", 240802)]:
-        # Structured morphs -- new method, using hand inputed tsc inds
-        from pythonlib.dataset.dataset_analy.psychometric_singleprims import params_extract_psycho_groupings_manual_using_tsc_inds, psychogood_preprocess_wrapper_using_tsc_inds
-        DFRES, DSmorphsets = psychogood_preprocess_wrapper_using_tsc_inds(D, 
-                                        *params_extract_psycho_groupings_manual_using_tsc_inds(animal, date), 
-                                        print_summary=True, PLOT_SCORES=False, PLOT_DRAWINGS = False)
+    # elif (animal, date) in [("Diego", 240802), ("Pancho", 240802)]:
+    #     # Structured morphs -- new method, using hand inputed tsc inds
+    #     from pythonlib.dataset.dataset_analy.psychometric_singleprims import params_extract_psycho_groupings_manual_using_tsc_inds, psychogood_preprocess_wrapper_using_tsc_inds
+    #     DFRES, DSmorphsets = psychogood_preprocess_wrapper_using_tsc_inds(D, 
+    #                                     *params_extract_psycho_groupings_manual_using_tsc_inds(animal, date), 
+    #                                     print_summary=True, PLOT_SCORES=False, PLOT_DRAWINGS = False)
 
-    elif (animal, date) in [("Diego", 240522), ("Pancho", 240523)]:
-        # Continuous morphs -- i.e., take onset and offset of two base prims to form one single middle prim.
-        # Option: continuous morph between two base sets (e.g. take onset of one, and offset of other)
-        from pythonlib.dataset.dataset_analy.psychometric_singleprims import preprocess_cont_morph
-        _, DSmorphsets, _, _, _, _ = preprocess_cont_morph(D, clean_ver="singleprim_psycho_noabort")        
-        # Recode to follow convention.
-        map_old_to_new = {
-            0:0, # base1
-            1:99, # base2
-            -1:1, # morph
-        }
-        DSmorphsets.Dat["morph_idxcode_within_set"] = [map_old_to_new[morph_idxcode_within_set] for morph_idxcode_within_set in DSmorphsets.Dat["morph_idxcode_within_set"]]
-    elif (animal, date) in [
-        ("Diego", 240515), ("Diego", 240517), ("Diego", 240521), ("Diego", 240731), ("Diego", 240801),  
-        ("Pancho", 240516), ("Pancho", 240521), ("Pancho", 240801),
-        ]:
-        # Angle morphs
-        from pythonlib.dataset.dataset_analy.psychometric_singleprims import preprocess, plot_overview, preprocess_angle_to_morphsets, psychogood_decide_if_tasks_are_ambiguous, psychogood_prepare_for_neural_analy
-        _, DSlenient, _ = preprocess(D, clean_ver="singleprim_psycho_noabort")
+    # elif (animal, date) in [("Diego", 240522), ("Pancho", 240523)]:
+    #     # Continuous morphs -- i.e., take onset and offset of two base prims to form one single middle prim.
+    #     # Option: continuous morph between two base sets (e.g. take onset of one, and offset of other)
+    #     from pythonlib.dataset.dataset_analy.psychometric_singleprims import preprocess_cont_morph
+    #     _, DSmorphsets, _, _, _, _ = preprocess_cont_morph(D, clean_ver="singleprim_psycho_noabort")        
+    #     # Recode to follow convention.
+    #     map_old_to_new = {
+    #         0:0, # base1
+    #         1:99, # base2
+    #         -1:1, # morph
+    #     }
+    #     DSmorphsets.Dat["morph_idxcode_within_set"] = [map_old_to_new[morph_idxcode_within_set] for morph_idxcode_within_set in DSmorphsets.Dat["morph_idxcode_within_set"]]
+    # elif (animal, date) in [
+    #     ("Diego", 240515), ("Diego", 240517), ("Diego", 240521), ("Diego", 240731), ("Diego", 240801),  
+    #     ("Pancho", 240516), ("Pancho", 240521), ("Pancho", 240801),
+    #     ]:
+    #     # Angle morphs
+    #     from pythonlib.dataset.dataset_analy.psychometric_singleprims import preprocess, plot_overview, preprocess_angle_to_morphsets, psychogood_prepare_for_neural_analy
+    #     _, DSlenient, _ = preprocess(D, clean_ver="singleprim_psycho_noabort")
 
-        if False:
-            savedir = "/tmp/pshychjo"
-            os.makedirs(savedir, exist_ok=True)
-            plot_overview(DS, D, savedir)
+    #     if False:
+    #         savedir = "/tmp/pshychjo"
+    #         os.makedirs(savedir, exist_ok=True)
+    #         plot_overview(DS, D, savedir)
 
-        map_angleidx_to_finalidx, split_by_morphset = params_remap_angle_to_idx_within_morphset(animal, date)
-        DSmorphsets = preprocess_angle_to_morphsets(DSlenient, map_angleidx_to_finalidx, split_by_morphset)
-    else:
-        print(animal, date)
-        assert False
+    #     map_angleidx_to_finalidx, split_by_morphset = params_remap_angle_to_idx_within_morphset(animal, date)
+    #     DSmorphsets = preprocess_angle_to_morphsets(DSlenient, map_angleidx_to_finalidx, split_by_morphset)
+    # else:
+    #     print(animal, date)
+    #     assert False
 
-    if DSmorphsets is None:
-        print(animal, date)
-        assert False
+    # if DSmorphsets is None:
+    #     print(animal, date)
+    #     assert False
 
-    # Plot the morphsets
-    savedir_this = f"{savedir}/{animal}-{date}"
-    os.makedirs(savedir_this, exist_ok=True)
+    # # Plot the morphsets
+    # savedir_this = f"{savedir}/{animal}-{date}"
+    # os.makedirs(savedir_this, exist_ok=True)
 
-    psychogood_plot_drawings_morphsets(DSmorphsets, savedir=savedir_this)
+    # if plot_drawings:
+    #     psychogood_plot_drawings_morphsets(DSmorphsets, savedir=savedir_this)
 
-    from pythonlib.dataset.dataset_analy.psychometric_singleprims import psychogood_prepare_for_neural_analy
-    DSmorphsets, map_tc_to_morph_info, map_morphset_to_basemorphinfo, map_tcmorphset_to_idxmorph, map_tcmorphset_to_info, \
-        map_morphsetidx_to_assignedbase_or_ambig, map_tc_to_morph_status = psychogood_prepare_for_neural_analy(D, DSmorphsets)
+    # from pythonlib.dataset.dataset_analy.psychometric_singleprims import psychogood_prepare_for_neural_analy
+    # DSmorphsets, map_tc_to_morph_info, map_morphset_to_basemorphinfo, map_tcmorphset_to_idxmorph, map_tcmorphset_to_info, \
+    #     map_morphsetidx_to_assignedbase_or_ambig, map_tc_to_morph_status = psychogood_prepare_for_neural_analy(D, DSmorphsets)
 
-    # Save things
-    from pythonlib.tools.expttools import writeDictToTxtFlattened
-    path = f"{savedir}/map_tc_to_morph_info.txt"
-    writeDictToTxtFlattened(map_tc_to_morph_info, path, sorted_by_keys=True)
+    # # Save things
+    # from pythonlib.tools.expttools import writeDictToTxtFlattened
+    # path = f"{savedir}/map_tc_to_morph_info.txt"
+    # writeDictToTxtFlattened(map_tc_to_morph_info, path, sorted_by_keys=True)
 
-    path = f"{savedir}/map_morphset_to_basemorphinfo.txt"
-    writeDictToTxtFlattened(map_morphset_to_basemorphinfo, path, sorted_by_keys=True)
+    # path = f"{savedir}/map_morphset_to_basemorphinfo.txt"
+    # writeDictToTxtFlattened(map_morphset_to_basemorphinfo, path, sorted_by_keys=True)
 
-    path = f"{savedir}/map_tcmorphset_to_idxmorph.txt"
-    writeDictToTxtFlattened(map_tcmorphset_to_idxmorph, path, sorted_by_keys=True)
+    # path = f"{savedir}/map_tcmorphset_to_idxmorph.txt"
+    # writeDictToTxtFlattened(map_tcmorphset_to_idxmorph, path, sorted_by_keys=True)
 
-    path = f"{savedir}/map_tcmorphset_to_info.txt"
-    writeDictToTxtFlattened(map_tcmorphset_to_info, path, sorted_by_keys=True)
+    # path = f"{savedir}/map_tcmorphset_to_info.txt"
+    # writeDictToTxtFlattened(map_tcmorphset_to_info, path, sorted_by_keys=True)
 
-    path = f"{savedir}/map_morphsetidx_to_assignedbase_or_ambig.txt"
-    writeDictToTxtFlattened(map_morphsetidx_to_assignedbase_or_ambig, path, sorted_by_keys=True)
+    # path = f"{savedir}/map_morphsetidx_to_assignedbase_or_ambig.txt"
+    # writeDictToTxtFlattened(map_morphsetidx_to_assignedbase_or_ambig, path, sorted_by_keys=True)
 
-    path = f"{savedir}/map_tc_to_morph_status.txt"
-    writeDictToTxtFlattened(map_tc_to_morph_status, path, sorted_by_keys=True)
+    # path = f"{savedir}/map_tc_to_morph_status.txt"
+    # writeDictToTxtFlattened(map_tc_to_morph_status, path, sorted_by_keys=True)
 
-    # from pythonlib.tools.pandastools import _check_index_reseted
-    # _check_index_reseted(DSmorphsets.Dat)
-
-    # # PLOT_SAVEDIR = "/tmp"
-    # PLOT_SAVEDIR = None
-    # assignments = psychogood_decide_if_tasks_are_ambiguous(DSmorphsets, PLOT_SAVEDIR)
-
-    # from pythonlib.tools.pandastools import grouping_print_n_samples
-
-
-    # # for morphset in sorted(DSmorphsets.Dat["morph_set_idx"].unique().tolist()):
-    # #     df = DSmorphsets.Dat[DSmorphsets.Dat["morph_set_idx"] == morphset]
-
-    # #     from pythonlib.tools.pandastools import grouping_plot_n_samples_conjunction_heatmap
-    # #     grouping_plot_n_samples_conjunction_heatmap(df, "los_info", "morph_idxcode_within_set", ["morph_set_idx"])
-
-    # ##### Condition DSmorphsets
-    # # Each base shape is defined by (morphset, idx_within)  -- i.e.e the "shape" variable is wrong - its the task component.
-    # from pythonlib.tools.pandastools import append_col_with_grp_index
-    # DSmorphsets.Dat = append_col_with_grp_index(DSmorphsets.Dat, ["morph_set_idx", "morph_idxcode_within_set"], "morph_id_both", use_strings=False)
-    # DSmorphsets.Dat = append_col_with_grp_index(DSmorphsets.Dat, ["morph_set_idx", "morph_idxcode_within_set"], "morph_id_both_str", use_strings=True)
-    # ##### Generate various mappings (beh features)
-    # # Generate maps of this kind -- MAP: tc --> stuff [GOOD]
-
-    # import numpy as np
-
-    # # Map from trialcode to whether is base or morph
-    # map_tc_to_morph_info = {}
-    # for tc in D.Dat["trialcode"]:
-    #     if tc not in DSmorphsets.Dat["trialcode"].tolist():
-    #         map_tc_to_morph_info[tc] = "no_exist"
-    #         print("This tc in D.Dat but not in DSmorphsets...", tc)
-    #     else:
-    #         tmp = DSmorphsets.Dat[DSmorphsets.Dat["trialcode"] == tc]
-
-    #         morph_is_morphed_list = tmp["morph_is_morphed"].unique().tolist()
-    #         assert len(morph_is_morphed_list)==1
-
-    #         if morph_is_morphed_list[0]:
-    #             # Is morph -- Then this is not base prim.
-    #             map_tc_to_morph_info[tc] = "morphed"
-    #         else:
-    #             # THis is base prim. But could be participant in multiple morhph sets, so 
-    #             # Just give it the first id
-    #             mid = tmp["morph_id_both_str"].unique().tolist()
-    #             map_tc_to_morph_info[tc] = mid[0]
-
-    # # Generate maps of this kind -- morphset --> stuff
-
-    # # For base prims, map from (morphset) --> (base1, base2) where base1 and base2 are the codes used in decoder.\
-
-    # # {0: ('0|0', '0|99'),
-    # #  1: ('0|0', '0|99'),
-    # #  2: ('2|0', '2|99'),
-    # #  3: ('2|0', '3|99'),
-    # #  4: ('4|0', '0|99'),
-    # #  5: ('0|99', '5|99'),
-    # #  6: ('6|0', '4|0')}
-
-    # list_morphset = DSmorphsets.Dat["morph_set_idx"].unique()
-    # map_morphset_to_basemorphinfo = {}
-    # for morphset in list_morphset:
-
-    #     trialcodes = find_morphset_morphidx(DSmorphsets, morphset, 0)
-    #     mis = [map_tc_to_morph_info[tc] for tc in trialcodes]
-    #     assert len(set(mis))==1
-    #     base1_mi = mis[0]
-        
-    #     trialcodes = find_morphset_morphidx(DSmorphsets, morphset, 99)
-    #     mis = [map_tc_to_morph_info[tc] for tc in trialcodes]
-    #     assert len(set(mis))==1
-    #     base2_mi = mis[0]
-        
-    #     map_morphset_to_basemorphinfo[morphset] = (base1_mi, base2_mi)
-    # # Generate maps of this kind -- MAP: from (tc, morphset) --> stuff
-
-    # map_tcmorphset_to_idxmorph = {} # (tc, morphset) --> idx_in_morphset | "not_in_set"
-    # map_tcmorphset_to_info = {} # (tc, morphset) --> (amibig, base1, base2)
-
-    # for i, row in DSmorphsets.Dat.iterrows():
-    #     tc = row["trialcode"]
-    #     morphset = row["morph_set_idx"]
-    #     morph_idxcode_within_set = row["morph_idxcode_within_set"]
-
-    #     # (1) 
-    #     assert (tc, morphset) not in map_tcmorphset_to_idxmorph,  "probably multiple strokes on this trial..."
-    #     map_tcmorphset_to_idxmorph[(tc, morphset)] = morph_idxcode_within_set
-
-    #     # (2)
-    #     if (tc, morphset) in map_tcmorphset_to_info:
-    #         print(tc, morphset, row["morph_idxcode_within_set"], row["stroke_index"])
-    #         assert False, "probably multiple strokes on this trial..."
-    #     else:
-    #         if False:
-    #             # Get its base prims
-    #             _inds = find_morphset_morphidx(DSmorphsets, morphset, 0, False)
-    #             _tmp = DSmorphsets.Dat.iloc[_inds]["morph_id_both_str"].unique()
-    #             assert len(_tmp)==1
-    #             base1_mi = _tmp[0]
-
-    #             _inds = find_morphset_morphidx(DSmorphsets, morphset, 99, False)
-    #             _tmp = DSmorphsets.Dat.iloc[_inds]["morph_id_both_str"].unique()
-    #             assert len(_tmp)==1
-    #             base2_mi = _tmp[0]
-    #         else:
-    #             base1_mi = map_morphset_to_basemorphinfo[morphset][0]
-    #             base2_mi = map_morphset_to_basemorphinfo[morphset][1]
-
-    #         map_tcmorphset_to_info[(tc, morphset)] = (row["morph_assigned_to_which_base"], base1_mi, base2_mi)
-            
-    # # Fill in the missing ones
-    # list_morphset = DSmorphsets.Dat["morph_set_idx"].unique().tolist()
-    # list_tc = D.Dat["trialcode"].tolist()
-    # for morphset in list_morphset:
-    #     for tc in list_tc:
-    #         if (tc, morphset) not in map_tcmorphset_to_idxmorph:
-    #             map_tcmorphset_to_idxmorph[(tc, morphset)] = "not_in_set"
-    # # Generate maps of this kind -- (morphset, idx within) --> stuff
-
-    # map_morphsetidx_to_assignedbase_or_ambig = {}
-    # # map_morphsetidx_to_assignedbase = {}
-    # for i, row in DSmorphsets.Dat.iterrows():
-    #     morphset = row["morph_set_idx"]
-    #     morph_idxcode_within_set = row["morph_idxcode_within_set"]  
-
-    #     key = (morphset, morph_idxcode_within_set)
-
-    #     # Convert to avalue that is same across trials.
-    #     if row["morph_assigned_to_which_base"] in ["ambig_base2", "ambig_base1"]:
-    #         value = "is_ambig"
-    #     else:
-    #         value = row["morph_assigned_to_which_base"]
-
-    #     if key in map_morphsetidx_to_assignedbase_or_ambig:
-    #         assert map_morphsetidx_to_assignedbase_or_ambig[key] == value
-    #     else:
-    #         map_morphsetidx_to_assignedbase_or_ambig[key] = value
-
-    #     # if key in map_morphsetidx_to_assignedbase:
-    #     #     assert map_morphsetidx_to_assignedbase[key] == row["morph_assigned_to_which_base"]
-    #     # else:
-    #     #     map_morphsetidx_to_assignedbase[key] = row["morph_assigned_to_which_base"]
-
-    # map_morphsetidx_to_assignedbase_or_ambig = {k:map_morphsetidx_to_assignedbase_or_ambig[k] for k in sorted(map_morphsetidx_to_assignedbase_or_ambig.keys())}
-    # # map_morphsetidx_to_assignedbase = {k:map_morphsetidx_to_assignedbase[k] for k in sorted(map_morphsetidx_to_assignedbase.keys())}
-
-
-    # # list_morphset = sorted(DSmorphsets.Dat["morph_set_idx"].unique().tolist())    
-    # # map_morphsetidx_to_assignedbase = {}
-    # # for morphset in list_morphset:
-    # #     has_switched = False
-    # #     list_idx = sorted(DSmorphsets.Dat[DSmorphsets.Dat["morph_set_idx"] == morphset]["morph_idxcode_within_set"].unique().tolist())    
-    # #     for idx in list_idx:
-    # #         k = (morphset, idx)
-
-    # #         if map_morphsetidx_to_isambig[k]:
-    # #             has_switched = True
-    # #             assigned_base = "is_ambig"
-    # #         else:
-    # #             if has_switched or idx==99:
-    # #                 assigned_base = "base2"
-    # #             else:
-    # #                 assigned_base = "base1"
-            
-    # #         map_morphsetidx_to_assignedbase[k] = assigned_base
-
-    # #         print(idx, map_morphsetidx_to_isambig[k], assigned_base)
-        
-    # # Map from trialcode to morph information
-    # # NOTE - this doesnt work, since a given TC can be in multiple morph sets
-    # map_tc_to_morph_status = {}
-    # ct_missing = 0
-    # ct_present = 0
-    # for tc in D.Dat["trialcode"]:
-    #     if tc not in DSmorphsets.Dat["trialcode"].tolist():
-    #         print("This tc in D.Dat but not in DSmorphsets...", tc)
-    #         ct_missing += 1
-    #     else:
-    #         tmp = DSmorphsets.Dat[DSmorphsets.Dat["trialcode"] == tc]["morph_is_morphed"].unique().tolist()
-    #         assert len(tmp)==1
-    #         ct_present += 1
-
-    #         # map_tc_to_morph_info[tc] = (tmp["morph_set_idx"].values[0], tmp["morph_idxcode_within_set"].values[0], tmp["morph_assigned_to_which_base"].values[0], tmp["morph_is_morphed"].values[0])
-
-    # print("Missing / got:", ct_missing, ct_present)
-    # from pythonlib.tools.pandastools import grouping_print_n_samples
-    # grouping_print_n_samples(DSmorphsets.Dat, ["shape", "morph_idxcode_within_set", "morph_is_morphed"])
-
-    return DSmorphsets, map_tc_to_morph_info, map_morphset_to_basemorphinfo, map_tcmorphset_to_idxmorph, map_tcmorphset_to_info, map_morphsetidx_to_assignedbase_or_ambig, map_tc_to_morph_status
+    # return DSmorphsets, map_tc_to_morph_info, map_morphset_to_basemorphinfo, map_tcmorphset_to_idxmorph, map_tcmorphset_to_info, map_morphsetidx_to_assignedbase_or_ambig, map_tc_to_morph_status
 
 def _analy_psychoprim_score_postsamp_plot_scores(dfscores, savedir, do_agg_over_trials=True):
     """

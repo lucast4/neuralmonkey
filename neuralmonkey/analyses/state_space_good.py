@@ -2198,20 +2198,21 @@ def trajgood_plot_colorby_splotby_timeseries(df, var_color_by, var_subplots,
                 times = row["times"]
                 color_for_trajectory = map_lev_to_color[row[var_color_by]]
 
-                if plot_trials:
-                    if X.shape[1]>plot_trials_n:
-                        import random
-                        _inds = random.sample(range(X.shape[1]), plot_trials_n)
-                        Xthis = X[:, _inds, :]
-                    else:
-                        Xthis = X
-                    for _trial in range(Xthis.shape[1]):
-                        ax.plot(times, Xthis[dim, _trial, :], "-", color=color_for_trajectory, alpha=alpha)
-                
-                if plot_mean:
-                    plot_smoothed_fr(X[dim, :, :], times, ax, color=color_for_trajectory)
-                    # Xmean = np.mean(X[dim, :, :], axis=0)
-                    # ax.plot(times, Xmean, "-", color=color_for_trajectory, linewidth=4, alpha=0.7)
+                if X.shape[0]>dim:
+                    if plot_trials:
+                        if X.shape[1]>plot_trials_n:
+                            import random
+                            _inds = random.sample(range(X.shape[1]), plot_trials_n)
+                            Xthis = X[:, _inds, :]
+                        else:
+                            Xthis = X
+                        for _trial in range(Xthis.shape[1]):
+                            ax.plot(times, Xthis[dim, _trial, :], "-", color=color_for_trajectory, alpha=alpha)
+                    
+                    if plot_mean:
+                        plot_smoothed_fr(X[dim, :, :], times, ax, color=color_for_trajectory)
+                        # Xmean = np.mean(X[dim, :, :], axis=0)
+                        # ax.plot(times, Xmean, "-", color=color_for_trajectory, linewidth=4, alpha=0.7)
 
     # OPTION 2 - grid of subplots (var vs. othervar)
     elif SUBPLOT_OPTION=="split_levs":
@@ -2237,23 +2238,23 @@ def trajgood_plot_colorby_splotby_timeseries(df, var_color_by, var_subplots,
                 elif len(dfthis)>1:
                     print(dfthis)
                     assert False
-                else:
+                else:                    
                     X = dfthis["z"].values[0] # (dims, trials, times)
                     times = dfthis["times"].values[0]
                     color_for_trajectory = map_lev_to_color[leveff]
-
-                    if plot_trials:
-                        if X.shape[1]>plot_trials_n:
-                            import random
-                            _inds = random.sample(range(X.shape[1]), plot_trials_n)
-                            Xthis = X[:, _inds, :]
-                        else:
-                            Xthis = X
-                        for _trial in range(Xthis.shape[1]):
-                            ax.plot(times, Xthis[dim, _trial, :], "-", alpha=alpha)
-                    
-                    if plot_mean:
-                        plot_smoothed_fr(X[dim, :, :], times, ax, color=color_for_trajectory)
+                    if X.shape[0]>dim:
+                        if plot_trials:
+                            if X.shape[1]>plot_trials_n:
+                                import random
+                                _inds = random.sample(range(X.shape[1]), plot_trials_n)
+                                Xthis = X[:, _inds, :]
+                            else:
+                                Xthis = X
+                            for _trial in range(Xthis.shape[1]):
+                                ax.plot(times, Xthis[dim, _trial, :], "-", alpha=alpha)
+                        
+                        if plot_mean:
+                            plot_smoothed_fr(X[dim, :, :], times, ax, color=color_for_trajectory)
     else:
         print(SUBPLOT_OPTION)
         assert False
@@ -2340,7 +2341,11 @@ def dimredgood_pca_project(components, X, plot_pca_explained_var_path=None,
         # assert False
 
     # Sanity checks
-    assert X.shape[1] == components.shape[1]
+    if not X.shape[1] == components.shape[1]:
+        print(X.shape)
+        print(components.shape)
+        print(do_additional_reshape_from_ChTrTi)
+        print("Is this because you are doing 'scalar', and trying to use different windwos for pca space identificaiton vs. projecting? Then this must fail, since scalar doesnt slide over time... Solve by setting time windows the same.")
     # print("HERE", np.mean(X, axis=0))
     if False: # Need this False in order to project data that hasnt had each time bin subtracted...
         assert np.all(np.mean(X, axis=0)<0.1)
@@ -2512,6 +2517,8 @@ def dimredgood_pca(X, n_components=None,
         ax.set_ylabel("pcs")
         ax.set_xlabel("features (chans x twind)")
         savefig(fig, plot_loadings_path)
+        # print(plot_loadings_feature_labels)
+        # assert False
 
     return Xpcakeep, Xpca, pca
 
@@ -3569,6 +3576,8 @@ def euclidian_distance_compute_trajectories_timedistmat(PA, var, var_others,
     Helper to get dsitance matrix between trajectories, one for each time bin. 
     This only uses a SINGLE var-var_others, since doing just one takes a long time, and the
     downstream plotting functions all assume there's just one var...
+
+    WRapper, in that it does a bunch of things, like preprpocessing too, e.g., dim reduction.
     """
     DFRES = euclidian_distance_compute_trajectories(PA, [var], [var_others], twind, tbin_dur,
                                tbin_slice, savedir, PLOT_TRAJS, False,
@@ -3995,6 +4004,7 @@ def euclidian_distance_compute_trajectories_single(PA, var_effect, vars_others, 
 
     if vars_others is None:
         vars_others = []
+
     if compute_same_diff_scores:
         assert len(vars_others)>0
 
