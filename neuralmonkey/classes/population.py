@@ -1417,8 +1417,97 @@ class PopAnal():
         assert len(PA.Trials)==len(self.Trials)
 
         return PA
+
+    def split_balanced_stratified_kfold_subsample_level_of_var(self, label_grp_vars, var_exclude, levels_exclude_from_splitting,
+                                        n_splits="auto", do_balancing_of_train_inds=True, plot_train_test_counts=False, plot_indices=False,
+                                        shuffle=False):
+        """
+        Split into n_splits train-test samples, ensuring that trains are balanced across lewvels
+        of <label_grp_vars>. 
+
+        Additiaonlly, do this only for specific levels of var
+        e.g., var_exclude=="var", and levels_exclude==[A, B], then does train-test split for each level that is not A, B,..
+        and for each fold, includes all of the indices for A an B> This is useufl if you want to do train-test for everything that
+        is not A, B. Returns indices into the oriinal Dflab (self)
+
+        NOTE: to run this without excluding anything, set levels_exclude_from_splitting=[]
+        PARAMS:
+        - do_balancing_of_train_inds, bool.
+        - label_grp_vars = ["idx_morph_temp", "seqc_0_loc"]
+        """
+        # Train-test split
+        from pythonlib.tools.statstools import balanced_stratified_kfold
+        from pythonlib.tools.pandastools import append_col_with_grp_index, _check_index_reseted
+
+        dflab = self.Xlabels["trials"]
+        _check_index_reseted(dflab)
+        dflab = append_col_with_grp_index(dflab, label_grp_vars, "tmp")
+
+        dflab_inner = dflab[~dflab[var_exclude].isin(levels_exclude_from_splitting)] # get the non-base inds
+        dflab_base = dflab[dflab[var_exclude].isin(levels_exclude_from_splitting)] # get the non-base inds
+        inds_in_dflab_inner = dflab_inner[var_exclude].index
+        inds_in_dflab_base = dflab_base[var_exclude].index
+
+        y = dflab_inner["tmp"].values.astype(str)
+
+        folds = balanced_stratified_kfold(None, y,  n_splits=n_splits, 
+                                          do_balancing_of_train_inds=do_balancing_of_train_inds,
+                                          shuffle=shuffle)
+        
+        # map the indices here back to indices in original dflab
+        folds_dflab = []
+        for train_inds, test_inds in folds:
+            train_inds_dflab = inds_in_dflab_inner[train_inds]
+            test_inds_dflab = inds_in_dflab_inner[test_inds]
+
+            # also append the base inds, always, for both training and testing.
+            train_inds_dflab = np.concatenate([train_inds_dflab, inds_in_dflab_base])
+            test_inds_dflab = np.concatenate([test_inds_dflab, inds_in_dflab_base])
+
+            folds_dflab.append([train_inds_dflab, test_inds_dflab])
+
+        # Plot coutns (sanity check)
+        if plot_train_test_counts:
+            from pythonlib.tools.pandastools import grouping_plot_n_samples_conjunction_heatmap
+            for train_inds, test_inds in folds_dflab:
+                # train_inds, test_inds = folds_dflab[0]
+                paredu_train = self.slice_by_dim_indices_wrapper("trials", train_inds)
+                paredu_test = self.slice_by_dim_indices_wrapper("trials", test_inds)
+
+                grouping_plot_n_samples_conjunction_heatmap(paredu_train.Xlabels["trials"], "idx_morph_temp", "seqc_0_loc");
+                grouping_plot_n_samples_conjunction_heatmap(paredu_test.Xlabels["trials"], "idx_morph_temp", "seqc_0_loc");
+
+        # Plot indices
+        if plot_indices:
+            fig, ax = plt.subplots(figsize=(15,5))
+            for i, (trains, tests) in enumerate(folds_dflab):
+                ax.plot(trains, i*np.ones(len(trains)), ".k")
+                ax.plot(tests, i*np.ones(len(tests)), "xr")
+
+        return folds_dflab
     
-    def split_stratified_by_label(self, label_grp_vars, PRINT=False):
+
+    def split_balanced_stratified_kfold(self, label_grp_vars, n_splits="auto", do_balancing_of_train_inds=True):
+        """
+        Split into n_splits train-test samples, ensuring that trains are balanced across lewvels
+        of <label_grp_vars>. 
+        PARAMS:
+        - do_balancing_of_train_inds, bool.
+        - label_grp_vars = ["idx_morph_temp", "seqc_0_loc"]
+        """
+        assert False, "this is identical to split_balanced_stratified_kfold_subsample_level_of_var, with levels_exclude_from_splitting=[]. Merge them"
+        # Train-test split
+        from pythonlib.tools.statstools import balanced_stratified_kfold
+        from pythonlib.tools.pandastools import append_col_with_grp_index
+
+        dflab = self.Xlabels["trials"]
+        dflab = append_col_with_grp_index(dflab, label_grp_vars, "tmp")
+
+        y = dflab["tmp"].values.astype(str)
+        folds = balanced_stratified_kfold(None, y,  n_splits=n_splits, do_balancing_of_train_inds=do_balancing_of_train_inds)
+        return folds
+    
+    def split_sample_stratified_by_label(self, label_grp_vars, PRINT=False):
         """
         REturn two evenly slit PA, using up all the trials in self, and mainting the same proportion of classes of
         conj-var label_grp_vars (i.e,, stratified).
@@ -1434,6 +1523,11 @@ class PopAnal():
         # labels = dflab["tmp"].tolist()
 
         # Get split indices for the two groups.
+        from pythonlib.tools.listtools import tabulate_list
+        outdict = tabulate_list(labels)
+        print("Labels, split:")
+        for k, v in outdict.items():
+            print(k, " -- ", v)
         split_inds = stratified_resample_split_kfold(labels, 1)
 
         # Generate new pa
@@ -1559,6 +1653,232 @@ class PopAnal():
         
         return LIST_CLDIST, LIST_TIME
 
+    def dataextract_as_distance_index_between_two_base_classes(self, var_effect = "idx_morph_temp", effect_lev_base1=0, 
+                                                               effect_lev_base2=99, list_grps_get=None, version="pts_time", PLOT=False):
+        """
+        GOOD - to project all data onto 1d scalar mapping between two levels, <effect_lev_base1>, <effect_lev_base2>, of a variable <var_effect>.
+        And many options to do so using singel trials (always against the groups of the base levels) or gorups, and time, vs. mean over time.
+
+        NOTE: This uses raw euclidian distance to compute the metrics. 
+
+        NOTE: Was previously _compute_df_using_dist_index_traj in psychometric...
+
+        Map individual trials onto dist_index, which is based on eucl distance to base1 and base2.
+        This does two special things:
+        1. Works with trajectories - does each time bin one by one.
+        2. Processes individual datapts (each vs. groups), instead of (groups vs. groups)
+
+        NOTE:
+        - DFPROJ_INDEX_AGG, with pts_or_groups=="pts" is (almoost) identical to DFPROJ_INDEX, with pts_or_groups=="grps", becuase the 
+        former aggs over trials. Therefore, in general, using pts_or_groups=="pts" is better, but is slower.
+
+        EXAMPLE: Run this code to compute all the version, and to visualize that the following are equivalent:
+        - pts --> grps, if you just agg over trials, using the outputed data
+        - time --> scal, if you just agg over time, using the outputed data.
+
+        var_effect = "idx_morph_temp"
+        effect_lev_base1 = 0
+        effect_lev_base2 = 99
+        list_grps_get = [(0,), (99,)] # This is important, or else will fail if there are any (idx|assign) with only one datapt.
+
+
+        version = "pts_time"
+        DFPROJ_INDEX, DFDIST, DFPROJ_INDEX_AGG, DFDIST_AGG = _compute_df_using_dist_index_traj(PAredu, var_effect, 
+                                                                                            effect_lev_base1, effect_lev_base2, 
+                                                                                            version = version)
+        DFPROJ_INDEX_SCAL = aggregGeneral(DFPROJ_INDEX, ["idx_row_datapt", "labels_1_datapt", "idx_morph_temp"], ["dist_index"])
+        sns.relplot(data=DFPROJ_INDEX, x="time_bin", y="dist_index", kind="line", hue="idx_morph_temp")
+        sns.catplot(data=DFPROJ_INDEX, x="idx_morph_temp", y="dist_index", kind="point")
+
+        version = "grps_time"
+        DFPROJ_INDEX, DFDIST, DFPROJ_INDEX_AGG, DFDIST_AGG = _compute_df_using_dist_index_traj(PAredu, var_effect, 
+                                                                                            effect_lev_base1, effect_lev_base2, 
+                                                                                            version = version)
+        DFPROJ_INDEX_SCAL = aggregGeneral(DFPROJ_INDEX, ["idx_morph_temp"], ["dist_index"])
+        sns.relplot(data=DFPROJ_INDEX, x="time_bin", y="dist_index", kind="line", hue="idx_morph_temp")
+        sns.catplot(data=DFPROJ_INDEX, x="idx_morph_temp", y="dist_index", kind="point")
+
+
+        version = "pts_scal"
+        DFPROJ_INDEX, DFDIST, DFPROJ_INDEX_AGG, DFDIST_AGG = _compute_df_using_dist_index_traj(PAredu, var_effect, 
+                                                                                            effect_lev_base1, effect_lev_base2, 
+                                                                                            version = version)
+        sns.catplot(data=DFPROJ_INDEX, x="idx_morph_temp", y="dist_index", kind="point")
+
+        version = "grps_scal"
+        DFPROJ_INDEX, DFDIST, DFPROJ_INDEX_AGG, DFDIST_AGG = _compute_df_using_dist_index_traj(PAredu, var_effect, 
+                                                                                            effect_lev_base1, effect_lev_base2, 
+                                                                                            version = version)
+        sns.catplot(data=DFPROJ_INDEX, x="idx_morph_temp", y="dist_index", kind="point")
+
+        """
+        from neuralmonkey.scripts.analy_decode_moment_psychometric import dfdist_to_dfproj_index
+        from neuralmonkey.scripts.analy_decode_moment_psychometric import dfdist_to_dfproj_index_datapts
+        # At each time, score distance between pairs of groupigs 
+        from pythonlib.tools.pandastools import aggregGeneral 
+
+        if version=="pts_time":
+            # Use indiv datapts (distnace between pts vs. groups), and separately for each time bin
+            pts_or_groups="pts"
+            return_as_single_mean_over_time=False
+        elif version == "pts_scal":
+            # Use indiv datapts, but use mean eucl distance across tiem bins. 
+            # NOTE: this mean is taken of the eucl dist across time ibns, which themselves are computed independetmyl.
+            # so this is nothing special. Is not that good - might as well run using pts_time, and then average the result over tmime.
+            pts_or_groups="pts"
+            return_as_single_mean_over_time=True
+        elif version == "grps_time":
+            # Distance bewteen (group vs. group), separately fro each time bin.
+            pts_or_groups="grps"
+            return_as_single_mean_over_time=False
+        elif version == "grps_scal":
+            # See above.
+            pts_or_groups="grps"
+            return_as_single_mean_over_time=True
+        else:
+            print(version)
+            assert False, "typo for version?"
+
+        ### Get distance between all trials at each time bin
+        version_distance = "euclidian"
+        if return_as_single_mean_over_time:
+            # Each trial pair --> scalar
+            cldist = self.dataextract_as_distance_matrix_clusters_flex([var_effect], version_distance=version_distance,
+                                                                                    accurately_estimate_diagonal=False, 
+                                                                                    return_as_single_mean_over_time=return_as_single_mean_over_time)
+
+            if pts_or_groups=="pts":
+                # Score each datapt
+                # For each datapt, get its distance to each of the groupings.
+                # --> nrows = (ndatapts x n groups).
+                # list_grps_get = [
+                #     ("0|base1",),  
+                #     ("99|base2",)
+                #     ] # This is important, or else will fail if there are any (idx|assign) with only one datapt.
+                DFDIST = cldist.rsa_distmat_score_all_pairs_of_label_groups_datapts(get_only_one_direction=False, list_grps_get=list_grps_get)
+                DFPROJ_INDEX = dfdist_to_dfproj_index_datapts(DFDIST, var_effect=var_effect, 
+                                                        effect_lev_base1=effect_lev_base1, effect_lev_base2=effect_lev_base2)
+                # dfproj_index
+                # order = sorted(dfproj_index["idxmorph_assigned_1"].unique())
+                # sns.catplot(data=dfproj_index, x="idxmorph_assigned_1", y="dist_index", aspect=2, order=order)
+            elif pts_or_groups=="grps":
+                # Score pairs of (group, group)
+                # Obsolete, because this is just above, followed by agging
+                DFDIST = cldist.rsa_distmat_score_all_pairs_of_label_groups(get_only_one_direction=False)
+
+                # convert distnaces to distance index
+                DFPROJ_INDEX = dfdist_to_dfproj_index(DFDIST, var_effect=var_effect, 
+                                                        effect_lev_base1=effect_lev_base1, effect_lev_base2=effect_lev_base2)
+            else:
+                assert False
+
+            # Take mean over trials
+            if pts_or_groups=="pts":
+                DFPROJ_INDEX_AGG = aggregGeneral(DFPROJ_INDEX, ["labels_1_datapt", var_effect], ["dist_index"])
+                DFDIST_AGG = aggregGeneral(DFDIST, ["labels_1_datapt", "labels_2_grp", var_effect, f"{var_effect}_1", f"{var_effect}_2"], ["dist_mean", "DIST_50", "DIST_98", "dist_norm", "dist_yue_diff"])
+            elif pts_or_groups == "grps":
+                DFPROJ_INDEX_AGG = None
+                DFDIST_AGG = None
+            else:
+                assert False
+
+        else:
+            # Each trial pair --> vector
+            list_cldist, list_time = self.dataextract_as_distance_matrix_clusters_flex([var_effect], version_distance=version_distance,
+                                                                                    accurately_estimate_diagonal=False, 
+                                                                                    return_as_single_mean_over_time=return_as_single_mean_over_time)
+        
+
+            ### For each time bin, for each trial, get its dist index relative to base1 and base2.
+            list_dfproj_index = []
+            list_dfdist = []
+            for i, (cldist, time) in enumerate(zip(list_cldist, list_time)):
+                if pts_or_groups=="pts":
+                    # Score each datapt
+                    # For each datapt, get its distance to each of the groupings.
+                    # --> nrows = (ndatapts x n groups).
+                    # list_grps_get = [
+                    #     ("0|base1",),  
+                    #     ("99|base2",)
+                    #     ] # This is important, or else will fail if there are any (idx|assign) with only one datapt.
+                    dfdist = cldist.rsa_distmat_score_all_pairs_of_label_groups_datapts(get_only_one_direction=False, list_grps_get=list_grps_get)
+                    dfproj_index = dfdist_to_dfproj_index_datapts(dfdist, var_effect=var_effect, 
+                                                            effect_lev_base1=effect_lev_base1, effect_lev_base2=effect_lev_base2)
+                    # dfproj_index
+                    # order = sorted(dfproj_index["idxmorph_assigned_1"].unique())
+                    # sns.catplot(data=dfproj_index, x="idxmorph_assigned_1", y="dist_index", aspect=2, order=order)
+                elif pts_or_groups=="grps":
+                    # Score pairs of (group, group)
+                    # Obsolete, because this is just above, followed by agging
+                    dfdist = cldist.rsa_distmat_score_all_pairs_of_label_groups(get_only_one_direction=False)
+
+                    # convert distnaces to distance index
+                    dfproj_index = dfdist_to_dfproj_index(dfdist, var_effect=var_effect, 
+                                                            effect_lev_base1=effect_lev_base1, effect_lev_base2=effect_lev_base2)
+                else:
+                    assert False
+
+
+                dfproj_index["time_bin"] = time
+                dfdist["time_bin"] = time
+
+                dfproj_index["time_bin_idx"] = i
+                dfdist["time_bin_idx"] = i
+
+                list_dfproj_index.append(dfproj_index)
+                list_dfdist.append(dfdist)
+
+            ### Clean up the results
+            DFPROJ_INDEX = pd.concat(list_dfproj_index).reset_index(drop=True)
+            DFDIST = pd.concat(list_dfdist).reset_index(drop=True)
+            # DFDIST[var_effect] = DFDIST[f"{var_effect}_1"]
+
+            
+            # Take mean over trials
+            if pts_or_groups=="pts":
+                DFPROJ_INDEX_AGG = aggregGeneral(DFPROJ_INDEX, ["labels_1_datapt", var_effect, "time_bin_idx"], ["dist_index"], nonnumercols=["time_bin"])
+                DFDIST_AGG = aggregGeneral(DFDIST, ["labels_1_datapt", "labels_2_grp", var_effect, f"{var_effect}_1", f"{var_effect}_2", "time_bin_idx"], ["dist_mean", "DIST_50", "DIST_98", "dist_norm", "dist_yue_diff", "time_bin"])
+            elif pts_or_groups == "grps":
+                DFPROJ_INDEX_AGG = None
+                DFDIST_AGG = None
+            else:
+                assert False
+
+        # Also get dist index normalized to 0 and 1 (min and max)
+        DFPROJ_INDEX["dist_index_norm"] = (DFPROJ_INDEX["dist_index"] - DFPROJ_INDEX["dist_index"].min())/(DFPROJ_INDEX["dist_index"].max() - DFPROJ_INDEX["dist_index"].min())
+        if DFPROJ_INDEX_AGG is not None:
+            DFPROJ_INDEX_AGG["dist_index_norm"] = (DFPROJ_INDEX_AGG["dist_index"] - DFPROJ_INDEX_AGG["dist_index"].min())/(DFPROJ_INDEX_AGG["dist_index"].max() - DFPROJ_INDEX_AGG["dist_index"].min())
+
+        ######## GET DIFFERENCE ACROSS ADJACENT IDNICES
+        if var_effect == "idx_morph_temp":
+            from neuralmonkey.scripts.analy_decode_moment_psychometric import _rank_idxs_append, convert_dist_to_distdiff
+            _rank_idxs_append(DFPROJ_INDEX)
+            DFPROJ_INDEX_DIFFS = convert_dist_to_distdiff(DFPROJ_INDEX, "dist_index", "idx_morph_temp_rank")
+
+            # Also get diff score normalized 
+        else:
+            DFPROJ_INDEX_DIFFS = None
+
+        #### PLOT
+        if PLOT:
+            import seaborn as sns
+            if version in ["pts_time", "grps_time"]:
+                # DFPROJ_INDEX_SCAL = aggregGeneral(DFPROJ_INDEX, ["idx_row_datapt", "labels_1_datapt", "idx_morph_temp"], ["dist_index"])
+                fig = sns.relplot(data=DFPROJ_INDEX, x="time_bin", y="dist_index", kind="line", hue="idx_morph_temp")
+                fig = sns.catplot(data=DFPROJ_INDEX, x="idx_morph_temp", y="dist_index", kind="point")
+                if DFPROJ_INDEX_DIFFS is not None:
+                    sns.catplot(data=DFPROJ_INDEX_DIFFS, x="idx_along_morph", y="dist", kind="point")
+            elif version in ["pts_scal", "grps_scal"]:
+                fig = sns.catplot(data=DFPROJ_INDEX, x="idx_morph_temp", y="dist_index", kind="point")
+                if DFPROJ_INDEX_DIFFS is not None:
+                    sns.catplot(data=DFPROJ_INDEX_DIFFS, x="idx_along_morph", y="dist", kind="point")
+            else:
+                assert False
+
+        return DFPROJ_INDEX, DFDIST, DFPROJ_INDEX_AGG, DFDIST_AGG, DFPROJ_INDEX_DIFFS
+
+
+
     def dataextract_as_distance_matrix_clusters_flex(self, var_group,
                                                      version_distance="euclidian",
                                                      accurately_estimate_diagonal=False,
@@ -1616,6 +1936,7 @@ class PopAnal():
             labels_rows = [tuple(x) for x in labels_rows] # list of tuples
             params = {"label_vars":label_vars}
 
+            trialcodes = dflab["trialcode"].tolist()
             if False:
                 # Compute distance matrix directly
                 # 0=idnetical, more positive more distance.
@@ -1630,7 +1951,7 @@ class PopAnal():
 
             else:
                 # Compute using Cl intermediate
-                Cl = Clusters(Xthis, labels_rows, ver="rsa", params=params)
+                Cl = Clusters(Xthis, labels_rows, ver="rsa", params=params, trialcodes=trialcodes)
                             
                 # convert to distance matrix
                 if version_distance == "euclidian":
@@ -1662,7 +1983,7 @@ class PopAnal():
                 "Clraw":None,
             }
             list_lab = LIST_CLDIST[0].Labels
-            Cldist = Clusters(Xinpput_mean, list_lab, list_lab, ver="dist", params=params)
+            Cldist = Clusters(Xinpput_mean, list_lab, list_lab, ver="dist", params=params, trialcodes = LIST_CLDIST[0].Trialcodes)
             return Cldist
         else:
             return LIST_CLDIST, LIST_TIME
@@ -1832,6 +2153,9 @@ class PopAnal():
         # Do PCA for each time window (normalize within that window)
         plot_pca_explained_var_path = f"{savedir_plots}/expvar.pdf"
         plot_loadings_path = f"{savedir_plots}/loadings.pdf"
+
+        assert pa.X.shape[0] == PAraw.X.shape[0]
+        assert pa.X.shape[2] == PAraw.X.shape[2], "or else projection will fail later"
         _, PApca, _, pca, X_before_dimred = pa.dataextract_state_space_decode_flex(pca_twind, pca_tbindur, pca_tbin_slice,
                                                           reshape_method=reshape_method, pca_reduce=True,
                                                           plot_pca_explained_var_path=plot_pca_explained_var_path,
@@ -1841,8 +2165,12 @@ class PopAnal():
         del pca["explained_variance_ratio_"]
         pca["X_before_dimred"] = X_before_dimred
         pca["nclasses_of_var_pca"] = nclasses_of_var_pca
+        # print("----")
+        # print(pa.X.shape)
         # print(PApca.X.shape)
         # print(pca["X_before_dimred"].shape)
+        # print(pca["components"].shape)
+        # assert False
         # assert False
 
         if SANITY:
@@ -2050,6 +2378,10 @@ class PopAnal():
             reshape_method = "chans_x_trials_x_times"
         elif scalar_or_traj in ["scal", "scalar"]:
             reshape_method = "trials_x_chanstimes"
+            if dpca_proj_twind is not None:
+                # Force it to be the same
+                dpca_proj_twind = None
+                # assert twind_pca == dpca_proj_twind, "scalar assumes a fixed time window, or else n features in pc will not match when try to project new data."
         else:
             print(scalar_or_traj)
             assert False
@@ -2771,6 +3103,77 @@ class PopAnal():
         df[name] = values
 
 
+    ################ BEHAVIOR
+    def behavior_extract_strokes_to_dflab(self):
+        """
+        Extracts strokes_beh and strokes_task to dflab
+        """
+        dflab = self.Xlabels["trials"]
+
+        # Collect all the strokes
+        strokes_task = []
+        strokes_beh = []
+        for i, row in dflab.iterrows():
+            
+            tokens = row["Tkbeh_stkbeh"].Tokens
+            assert len(tokens)==1, "hacky, currneyl only workse for single prim tasks"
+            strok_beh = tokens[0]["Prim"].Stroke()
+
+            tokens = row["Tkbeh_stktask"].Tokens
+            assert len(tokens)==1, "hacky, currneyl only workse for single prim tasks"
+            strok_task = tokens[0]["Prim"].Stroke()
+
+            strokes_task.append(strok_task)
+            strokes_beh.append(strok_beh)
+        dflab["strok_beh"] = strokes_beh
+        dflab["strok_task"] = strokes_task
+
+    def behavior_replace_neural_with_strokes(self, version="beh", n_time_bins=50,
+                                             centerize_strokes=True, plot_examples=False,
+                                             remove_time_axis=True):
+        """
+        Replace self.X with strokes, such that shape is now (2, ntrials, ntimes), where
+        the 2 are x and y.
+        PARAMS:
+        - n_time_bins, for interpolation
+        RETURNS:
+        - PAstroke, copy of self, with X replaced, shape (2 or 3, ntrials, n_time_bins), where
+        2 or 3 depends on if remove_time_axis.
+        """
+        from pythonlib.tools.stroketools import strokesInterpolate2, strokes_centerize
+        from pythonlib.drawmodel.strokePlots import plotDatStrokesWrapper
+
+        # Extract beh and task strokes
+        self.behavior_extract_strokes_to_dflab()
+
+        # interpolate so that all strokes are same length
+        dflab = self.Xlabels["trials"]
+        if version == "beh":
+            strokes = dflab["strok_beh"].tolist()
+        else:
+            strokes = dflab["strok_task"].tolist()
+        strokes = strokesInterpolate2(strokes, ["npts", n_time_bins], base="time", plot_outcome=False)
+
+        # center each stroke.
+        if centerize_strokes:
+            strokes = strokes_centerize(strokes)
+
+        if plot_examples:
+            fig, ax = plt.subplots()
+            plotDatStrokesWrapper(strokes[:4], ax)
+        
+        X = np.stack(strokes, axis=0) # (ntrials, ntimes, ndims)
+        X = np.transpose(X, (2, 0, 1)) # (ndims, ntrials, ntimes)
+
+        if remove_time_axis:
+            # remove the time axis
+            X = X[:2, :, :]
+
+        # replace PAredu
+        PAstroke = self.copy_replacing_X(X)
+
+        return PAstroke
+
     ################ INDICES
     def index_find_this_chan(self, chan):
         """ Returns the index (into self.X[index, :, :]) for this
@@ -3190,7 +3593,7 @@ class PopAnal():
 
     def plot_state_space_good_wrapper(self, savedir, LIST_VAR, LIST_VARS_OTHERS=None, LIST_FILTDICT=None, LIST_PRUNE_MIN_N_LEVS=None,
                                       time_bin_size = 0.05, PLOT_CLEAN_VERSION = False, 
-                                      nmin_trials_per_lev=None):
+                                      nmin_trials_per_lev=None, list_dim_timecourse=None, list_dims=None):
         """
         Wrapper to make ALL state space plots, including (i) trajectiroeis (ii) scalars, and (iii) traj vs. time plots.
         PARAMS:
@@ -3220,16 +3623,24 @@ class PopAnal():
         assert len(LIST_FILTDICT) == len(LIST_VAR)
         assert len(LIST_PRUNE_MIN_N_LEVS) == len(LIST_VAR)
 
-        if len(LIST_VAR)<15:
-            if self.X.shape[0]==3:
-                list_dims = [(0,1), (1,2)]
-            elif self.X.shape[0]>3:
-                list_dims = [(0,1), (2,3)]
+        if list_dims is None:
+            if len(LIST_VAR)<15:
+                if self.X.shape[0]==3:
+                    list_dims = [(0,1), (1,2)]
+                elif self.X.shape[0]>3:
+                    list_dims = [(0,1), (2,3)]
+                else:
+                    list_dims = [(0,1)]
             else:
+                # Too slow, just do 1st 2 d
                 list_dims = [(0,1)]
-        else:
-            # Too slow, just do 1st 2 d
-            list_dims = [(0,1)]
+
+        list_dims = [dims for dims in list_dims if max(dims)<self.X.shape[0]]
+
+        if list_dim_timecourse is None:
+            list_dim_timecourse = [0, 1]
+
+        list_dim_timecourse = [dim for dim in list_dim_timecourse if dim<self.X.shape[0]]
 
         ### Plot each set of var, var_others
         vars_already_state_space_plotted = []
@@ -3338,7 +3749,7 @@ class PopAnal():
 
                         df = trajgood_construct_df_from_raw(PA_traj.X, PA_traj.Times, PA_traj.Xlabels["trials"], _vars)
                         
-                        for dim in [0,1]:
+                        for dim in list_dim_timecourse:
                         
                             # - (i) combined, plotting means.
                             fig, _ = trajgood_plot_colorby_splotby_timeseries(df, var, var_others, dim=dim,
