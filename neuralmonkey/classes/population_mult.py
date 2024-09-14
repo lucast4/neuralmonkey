@@ -21,6 +21,8 @@ def load_handsaved_wrapper(animal=None, date=None, version=None, combine_areas=T
     """ Load a pre-saved DfallPA -- not systematic, just hand saved versions.
     """ 
 
+    assert question is not None, "to not run into error of loading old pa"
+
     if animal is not None:
         # Load using params input
         norm = None
@@ -127,6 +129,8 @@ def load_handsaved_wrapper(animal=None, date=None, version=None, combine_areas=T
     if not os.path.exists(path) and return_none_if_no_exist:
         return None
     else:
+        # print(path)
+        # assert False
         DFallpa = pd.read_pickle(path)
         return DFallpa
 
@@ -148,9 +152,9 @@ def dfallpa_preprocess_sitesdirty_single(PA, animal, date, plot_fr_after_replace
     from pythonlib.tools.plottools import rotate_x_labels
 
     # First, check that prepropcess data actually exist
-    LOADDIR = "/lemur2/lucas/neural_preprocess/sitesdirtygood_preprocess"
+    LOADDIR = f"/lemur2/lucas/neural_preprocess/sitesdirtygood_preprocess/{animal}-{date}-combsess"
     if not os.path.exists(LOADDIR):
-        return
+        return None, None
 
     ### Load information about clean sites.
     if False:
@@ -164,25 +168,31 @@ def dfallpa_preprocess_sitesdirty_single(PA, animal, date, plot_fr_after_replace
         TRIALCODES = params["trialcodes"]
     else:
         # New, combining across sesions.
-        path = f"{LOADDIR}/{animal}-{date}-combsess/dfres.pkl"
+        path = f"{LOADDIR}/dfres.pkl"
         dfres = pd.read_pickle(path)
 
-        path = f"{LOADDIR}/{animal}-{date}-combsess/params_text.yaml"
+        path = f"{LOADDIR}/params_text.yaml"
         params = load_yaml_config(path)
 
-        path = f"{LOADDIR}/{animal}-{date}-combsess/sessions.pkl"
+        path = f"{LOADDIR}/sessions.pkl"
         with open(path, "rb") as f:
             SESSIONS = pickle.load(f)
 
-        path = f"{LOADDIR}/{animal}-{date}-combsess/trialcodes.pkl"
+        path = f"{LOADDIR}/trialcodes.pkl"
         with open(path, "rb") as f:
             TRIALCODES = pickle.load(f)
 
     PA = PA.copy()
 
     ### Sanity checks (clean site info matches PA)
-    tmp = dfres["chan"].tolist() # chans in PA exist in dfres
-    assert all([ch in tmp for ch in PA.Chans])
+    
+    tmp = dfres["chan"].tolist() 
+    if not all([ch in tmp for ch in PA.Chans]): # check that all chans in PA exist in dfres
+        print("Chans in sitesdirty analysis: ", tmp)
+        print("Chans in the current PA: ", PA.Chans)
+        for ch in PA.Chans:
+            print(ch, ch in tmp)
+        assert False, "probably DFallpa is old. need to reextract"
 
     ### (1) Remove bad chans
     chans_bad_all = dfres[~dfres["good_chan"]]["chan"].tolist()
@@ -1471,12 +1481,16 @@ def dfpa_group_and_split(DFallpa, vars_to_concat=None, vars_to_split=None,
     return DFallpa
 
 
-def dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, fr_mean_subtract_method = "across_time_bins"):
+def dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, fr_mean_subtract_method = "across_time_bins",
+        do_sitesdirty_extraction=True):
     """
     Apply seuqence of preprocessing steps to cases where multkiple events' PA were combined in DFallpa.
     I used this for decode moment stuff (around Jul 2024).
     Modifies DFallpa
     # fr_mean_subtract_method = "each_time_bin"
+    PARAMS:
+    - do_sitesdirty_extraction, bool, if True, then does (slow, like 10 min) extracation of sitesdirty preprocess metrics.
+    Only does this if it can't find it already done and saved.
     """
 
     assert fr_mean_subtract_method in ["across_time_bins", "each_time_bin"]
@@ -1485,23 +1499,35 @@ def dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, fr_mean_subtrac
     dfpa_match_chans_across_pa_each_bregion(DFallpa)
     
     # (2) Remove bad chans based on sitedirty preprocessing (e.g., drift)
-    savedir = "/tmp"
-    list_pa = []
-    for i, row in DFallpa.iterrows():
-        PA = row["pa"]
-        # plot_fr_after_replace_trials_dir = f"{savedir}/{row['bregion']}-{row['event']}"
-        # os.makedirs(plot_fr_after_replace_trials_dir, exist_ok=True)
-        plot_fr_after_replace_trials_dir = None
-        PA, map_chan_to_trialcodes_replaced = dfallpa_preprocess_sitesdirty_single(PA, animal, date, plot_fr_after_replace_trials_dir)
-        list_pa.append(PA)
-    print("PA.X.shape, before and after dfallpa_preprocess_sitesdirty_single")
-    for pa1, pa2 in zip(DFallpa["pa"].tolist(), list_pa):
-        print(pa1.X.shape, " --> ", pa2.X.shape)
-        # print(pa1.X.shape[0], " --> ", pa2.X.shape[0])
-    # Replace PA
-    DFallpa["pa"] = list_pa         
+    # First, check that preprocess data exist
+    tmp, _ = dfallpa_preprocess_sitesdirty_single(DFallpa["pa"].values[0], animal, date)
+    if tmp is None and do_sitesdirty_extraction:
+        # Then do extraction of sitesdirty preprocess metrics. This can take time (like 10 min).
+        from neuralmonkey.classes.session import load_mult_session_helper
+        MS = load_mult_session_helper(date, animal)
+        MS.sitesdirtygood_preprocess_wrapper(PLOT_EACH_TRIAL=True)
+    
+    # Try again
+    tmp, _ = dfallpa_preprocess_sitesdirty_single(DFallpa["pa"].values[0], animal, date)
+    if tmp is not None:
+        # Then it exists -- run it.
+        # savedir = "/tmp"
+        list_pa = []
+        for i, row in DFallpa.iterrows():
+            PA = row["pa"]
+            # plot_fr_after_replace_trials_dir = f"{savedir}/{row['bregion']}-{row['event']}"
+            # os.makedirs(plot_fr_after_replace_trials_dir, exist_ok=True)
+            plot_fr_after_replace_trials_dir = None
+            PA, map_chan_to_trialcodes_replaced = dfallpa_preprocess_sitesdirty_single(PA, animal, date, plot_fr_after_replace_trials_dir)
+            list_pa.append(PA)
+        print("PA.X.shape, before and after dfallpa_preprocess_sitesdirty_single")
+        for pa1, pa2 in zip(DFallpa["pa"].tolist(), list_pa):
+            print(pa1.X.shape, " --> ", pa2.X.shape)
+            # print(pa1.X.shape[0], " --> ", pa2.X.shape[0])
+        # Replace PA
+        DFallpa["pa"] = list_pa         
 
-    # (2) Clean bad chans (method 1)
+    # (2) Clean bad chans - based on fr modulation.
     dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT=False)
 
     # (3) Sqrt transform
