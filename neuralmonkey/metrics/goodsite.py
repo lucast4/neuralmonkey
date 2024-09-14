@@ -93,39 +93,39 @@ def score_firingrate_drift(frvals, times_frac, trials, ntrials_per_bin = 50, nsi
         frstd_spread_index_across_bins = (frstd_max_across_bins - frstd_min_across_bins)/frstd_mean_across_bins        
 
     ### Plots
-    # for each chan and event, find outlier trials
-    fig, axes = plt.subplots(5,1, figsize=(10,16))
-
-    ax = axes.flatten()[0]
-    ax.hist(frvals, 50, color="k");
-    ax.set_xlabel("firing rate histogram")
-
-    ax = axes.flatten()[1]
-    ax.hist(frvals_sq, 50, log=True, color="g");
-    ax.set_xlabel("firing rate histogram (sqrt)")
-
-    ax = axes.flatten()[2]
-    if False: # To make it quicekr. Dont need this
-        # print(trials_this)
-        # print(frvals)
-        _plot(trials, frvals, ax)
-        ax.set_ylabel("fr (hz)")
-    ax.set_title(f"slope_over_mean={slope_over_mean:.2f}")
-
-    ax = axes.flatten()[3]
-    if False: # To make it quicekr. Dont need this
-        _plot(trials, frvals_sq, ax)
-        ax.set_ylabel("fr (hz**0.5)")
-    ax.set_title(f"frstd_spread_index_across_bins={frstd_spread_index_across_bins:.2f}")
-
-    # Plot against time.
-    ax = axes.flatten()[4]
-    _plot(times_frac, frvals_sq, ax)
-    ax.set_ylabel("fr (hz**0.5)")
-    ax.set_title(f"fr_spread_index_across_bins={fr_spread_index_across_bins:.2f}")
-
-    ### SAVE
     if savedir is not None:
+        # for each chan and event, find outlier trials
+        fig, axes = plt.subplots(5,1, figsize=(10,16))
+
+        ax = axes.flatten()[0]
+        ax.hist(frvals, 50, color="k");
+        ax.set_xlabel("firing rate histogram")
+
+        ax = axes.flatten()[1]
+        ax.hist(frvals_sq, 50, log=True, color="g");
+        ax.set_xlabel("firing rate histogram (sqrt)")
+
+        ax = axes.flatten()[2]
+        if False: # To make it quicekr. Dont need this
+            # print(trials_this)
+            # print(frvals)
+            _plot(trials, frvals, ax)
+            ax.set_ylabel("fr (hz)")
+        ax.set_title(f"slope_over_mean={slope_over_mean:.2f}")
+
+        ax = axes.flatten()[3]
+        if False: # To make it quicekr. Dont need this
+            _plot(trials, frvals_sq, ax)
+            ax.set_ylabel("fr (hz**0.5)")
+        ax.set_title(f"frstd_spread_index_across_bins={frstd_spread_index_across_bins:.2f}")
+
+        # Plot against time.
+        ax = axes.flatten()[4]
+        _plot(times_frac, frvals_sq, ax)
+        ax.set_ylabel("fr (hz**0.5)")
+        ax.set_title(f"fr_spread_index_across_bins={fr_spread_index_across_bins:.2f}")
+
+        # Save
         from pythonlib.tools.pandastools import savefig
         savefig(fig, f"{savedir}/{savename}.pdf")
 

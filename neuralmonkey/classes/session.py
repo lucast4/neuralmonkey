@@ -6143,11 +6143,18 @@ class Session(object):
                                                   assert_expected_direction_first_crossing = "down",
                                                   refrac_period_between_events=0.05)              
                     except AssertionError as err:
+                        # USUALLY: rulecue/fixcue(samething) --> fixtouch.
+                        # SOMETIMES: fixtouch --> rulecue/fixcue [i.e., he touches in anticipation]. THis is prolbem beucase
+                        # fixtouch also triggers pd2. 
+                        # SOLUTION: shorten t_pre until fixtouch influence is gone. This is fine, since response to rulecue occurs
+                        # after rulecue.
+
+                        # OLDER NOTES:
                         # sometimes rulecue is shown too quickly relative to fixation cue, e.g.,, becuase subject
                         # presses quickly in anticiation. Then the predur might have a contamination. solve this by
                         # shortening predur
 
-                        LIST_TPRE = list(np.linspace(0.045, -0.15, 50))
+                        LIST_TPRE = list(np.linspace(0.045, -0.17, 50))
                         SM_WIN = 0.005 # if fix cue and rule2 are too close, then smoothing makes them hard to separate...
                         for t_pre in LIST_TPRE:
                             try:

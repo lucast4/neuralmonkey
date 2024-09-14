@@ -213,19 +213,20 @@ class MultSessions(object):
                                                    ntrials_per_bin = 50, nsigma=3.5):
         """
         Methods to score the across-day drift in FR. 
+        NOTE:
+        To skip plotting each trial, set savedir = None
         """
         from neuralmonkey.metrics.goodsite import score_firingrate_drift
 
         ### Extract data
         frvals, trials, times_frac, trialcodes, sessions = self.sitestats_fr_extract_good(chan, keep_within_events_flanking_trial=True)
-        metrics, inds_bad = score_firingrate_drift(frvals, times_frac, 
-                                                                               trials, ntrials_per_bin, 
-                                                                               nsigma, savedir=savedir, savename=self.sitegetter_summarytext(chan))
+        metrics, inds_bad = score_firingrate_drift(frvals, times_frac, trials, ntrials_per_bin, nsigma, 
+                                                   savedir=savedir, savename=self.sitegetter_summarytext(chan))
 
         return frvals, trials, times_frac, metrics, inds_bad, trialcodes, sessions
 
 
-    def sitesdirtygood_preprocess_wrapper(self, SAVEDIR=None, nsigma=3.5, how_combine="intersect"):
+    def sitesdirtygood_preprocess_wrapper(self, SAVEDIR=None, nsigma=3.5, how_combine="intersect", PLOT_EACH_TRIAL=True):
         """
         Wrapper for all things for good pruning of chans and trails within chans, based on firing rates
         stats -- outliers.
@@ -268,8 +269,11 @@ class MultSessions(object):
             os.makedirs(SAVEDIR, exist_ok=True)
 
         ### COLLECT ALL DATA        
-        savedir = f"{SAVEDIR}/fr_over_trials"
-        os.makedirs(savedir, exist_ok=True)
+        if PLOT_EACH_TRIAL:
+            savedir = f"{SAVEDIR}/fr_over_trials"
+            os.makedirs(savedir, exist_ok=True)
+        else:
+            savedir = None
 
         sites = self.sitegetter_all(how_combine=how_combine)
         res = []
@@ -331,7 +335,6 @@ class MultSessions(object):
         dfres["good_chan"] = keeps
 
         #### SAVE DATA
-        
         pd.to_pickle(dfres, f"{SAVEDIR}/dfres.pkl")
         dfres.to_csv(f"{SAVEDIR}/dfres.csv")
 

@@ -7382,7 +7382,7 @@ class Snippets(object):
                                           "FEAT_num_strokes_task", "FEAT_num_strokes_beh",
                                           "character", "probe", "supervision_stage_concise", "superv_COLOR_METHOD",
                                          "INSTRUCTION_COLOR", "epoch_orig", "epoch", "taskgroup", "epochset",
-                                          "origin", "donepos"]
+                                          "origin", "donepos"] 
 
         # These are in both stroek and substroke (the latter is loaded from a saved pickled DS, so it only has older stuff)
         list_features_extraction_stroke_substroke = ["stroke_index", "stroke_index_fromlast", "stroke_index_fromlast_tskstks",
