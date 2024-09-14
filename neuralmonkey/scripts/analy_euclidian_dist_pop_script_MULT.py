@@ -75,8 +75,7 @@ def load_preprocess_concat_mult_sessions(animal, save_suffix, new_varied_hyperpa
             question = "RULE_ANBMCK_STROKE"
             fr_normalization_method = "across_time_bins"
         elif save_suffix=="sh_vs_seqsup":
-            assert False, "have not run all yet"
-            dates = [230921, 230920, 231019]
+            dates = [230920, 230921, 230923, 231019, 240828, 240829]
             question = "RULESW_ANY_SEQSUP_STROKE"
             fr_normalization_method = "across_time_bins"
         elif save_suffix=="sh_vs_dir":
@@ -100,30 +99,45 @@ def load_preprocess_concat_mult_sessions(animal, save_suffix, new_varied_hyperpa
     list_dfres_pivot_pair = []
     list_dfres_pivot_yue = []
     dates_exist = []
-    for d in dates:
-        if new_varied_hyperparams==False:
-            # Old method, using pca-->umap, before adding variation in hyperparams
-            SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/EUCLIDIAN_DIST/{animal}-{d}/{question}-fr_normalization_method={fr_normalization_method}-NPCS_KEEP=10/twind_analy={twind_analy}-tbin_dur=0.1"
-        else:
-            # - new version, look for this. if doesnt exist, then use old versoin
-            if isinstance(NPCS_KEEP, (list, tuple)):
-                # Then iterate over thema nd take the first one that matches
-                _found = False
-                for _NPCS_KEEP in NPCS_KEEP:
-                    SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/EUCLIDIAN_DIST/{animal}-{d}/scalar-wl={which_level}-ev={event}-spks={spks}-combarea={combarea}/{question}-norm={fr_normalization_method}-dr={dim_red_method}-NPC={_NPCS_KEEP}-nc={extra_dimred_method_n_components}-un={umap_n_neighbors}-suff={savedir_suffix}/twinda={twind_analy}-tbin=0.1"
-                    if os.path.exists(f"{SAVEDIR}/DFRES.pkl"):
-                        print("FOund, using this NPCS_KEEP:", _NPCS_KEEP)
-                        _found = True
-                        break
-                if not _found and HACK:
-                    # THen jkust use PCA, not DPCA
-                    SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/EUCLIDIAN_DIST/{animal}-{d}/scalar-wl={which_level}-ev={event}-spks={spks}-combarea={combarea}/{question}-norm={fr_normalization_method}-dr=pca-NPC=10-nc={extra_dimred_method_n_components}-un={umap_n_neighbors}-suff={None}/twinda={twind_analy}-tbin=0.1"
 
+    HACK_PANCHO_240825 = True # Just to get shape vs. seq, to decide on tasks to make for today.
+
+    traj_or_scalar = "traj_to_scalar"
+    # traj_or_scalar = "scalar"
+
+    for d in dates:
+        
+        if HACK_PANCHO_240825 and int(d)<240827:
+            SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/EUCLIDIAN_DIST/{animal}-{d}/traj_to_scalar-wl=stroke-ev=00_stroke-spks=kilosort_if_exists-combarea=False/{question}-norm={fr_normalization_method}-dr=superv_dpca-NPC=6-nc=None-un=None-suff=syntax_role/twinda={twind_analy}-tbin=0.1"
+            if not os.path.exists(f"{SAVEDIR}/DFRES.pkl"):
+                SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/EUCLIDIAN_DIST/{animal}-{d}/{question}-fr_normalization_method={fr_normalization_method}-NPCS_KEEP=10/twind_analy={twind_analy}-tbin_dur=0.1"
+                if not os.path.exists(f"{SAVEDIR}/DFRES.pkl"):
+                    print(animal, d)
+                    assert False
+        else:
+            if new_varied_hyperparams==False:
+                # Old method, using pca-->umap, before adding variation in hyperparams
+                SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/EUCLIDIAN_DIST/{animal}-{d}/{question}-fr_normalization_method={fr_normalization_method}-NPCS_KEEP=10/twind_analy={twind_analy}-tbin_dur=0.1"
             else:
-                SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/EUCLIDIAN_DIST/{animal}-{d}/scalar-wl={which_level}-ev={event}-spks={spks}-combarea={combarea}/{question}-norm={fr_normalization_method}-dr={dim_red_method}-NPC={NPCS_KEEP}-nc={extra_dimred_method_n_components}-un={umap_n_neighbors}-suff={savedir_suffix}/twinda={twind_analy}-tbin=0.1"
-                if not os.path.exists(f"{SAVEDIR}/DFRES.pkl"):        
-                    # Old version
-                    SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/EUCLIDIAN_DIST/{animal}-{d}/{question}-norm={fr_normalization_method}-dr={dim_red_method}-NPC={NPCS_KEEP}-nc={extra_dimred_method_n_components}-un={umap_n_neighbors}-suff={savedir_suffix}/twinda={twind_analy}-tbin=0.1"
+                # - new version, look for this. if doesnt exist, then use old versoin
+
+                if isinstance(NPCS_KEEP, (list, tuple)):
+                    # Then iterate over thema nd take the first one that matches
+                    _found = False
+                    for _NPCS_KEEP in NPCS_KEEP:
+                        SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/EUCLIDIAN_DIST/{animal}-{d}/{traj_or_scalar}-wl={which_level}-ev={event}-spks={spks}-combarea={combarea}/{question}-norm={fr_normalization_method}-dr={dim_red_method}-NPC={_NPCS_KEEP}-nc={extra_dimred_method_n_components}-un={umap_n_neighbors}-suff={savedir_suffix}/twinda={twind_analy}-tbin=0.1"
+                        if os.path.exists(f"{SAVEDIR}/DFRES.pkl"):
+                            print("FOund, using this NPCS_KEEP:", _NPCS_KEEP)
+                            _found = True
+                            break
+                    if not _found and HACK:
+                        # THen jkust use PCA, not DPCA
+                        SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/EUCLIDIAN_DIST/{animal}-{d}/{traj_or_scalar}-wl={which_level}-ev={event}-spks={spks}-combarea={combarea}/{question}-norm={fr_normalization_method}-dr=pca-NPC=10-nc={extra_dimred_method_n_components}-un={umap_n_neighbors}-suff={None}/twinda={twind_analy}-tbin=0.1"
+                else:
+                    SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/EUCLIDIAN_DIST/{animal}-{d}/{traj_or_scalar}-wl={which_level}-ev={event}-spks={spks}-combarea={combarea}/{question}-norm={fr_normalization_method}-dr={dim_red_method}-NPC={NPCS_KEEP}-nc={extra_dimred_method_n_components}-un={umap_n_neighbors}-suff={savedir_suffix}/twinda={twind_analy}-tbin=0.1"
+                    if not os.path.exists(f"{SAVEDIR}/DFRES.pkl"):        
+                        # Old version
+                        SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/EUCLIDIAN_DIST/{animal}-{d}/{question}-norm={fr_normalization_method}-dr={dim_red_method}-NPC={NPCS_KEEP}-nc={extra_dimred_method_n_components}-un={umap_n_neighbors}-suff={savedir_suffix}/twinda={twind_analy}-tbin=0.1"
 
         if not os.path.exists(f"{SAVEDIR}/DFRES.pkl"):
             if skip_dates_dont_exist:
