@@ -145,7 +145,7 @@ def extract_dfallpa_helper(animal, date, question, combine_into_larger_areas,
     if do_save:
         t1 = list_time_windows[0][0]
         t2 = list_time_windows[0][1]
-        path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-{animal}-{date}-{which_level}-{SPIKES_VERSION}-norm={fr_normalization_method}-combine={combine_into_larger_areas}-t1={t1}-t2={t2}.pkl"
+        path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-{animal}-{date}-{which_level}-{SPIKES_VERSION}-norm={fr_normalization_method}-combine={combine_into_larger_areas}-t1={t1}-t2={t2}-quest={question}.pkl"
 
         pd.to_pickle(DFallpa, path)
         print("*** Saved to:", path)        
@@ -198,3 +198,7 @@ if __name__=="__main__":
 
         pd.to_pickle(DFallpa, path)
         print("*** Saved to:", path)
+
+    # Also extract sitedirty preprocessing (e..g, fr drift metrics)
+    from neuralmonkey.classes.population_mult import dfpa_concatbregion_preprocess_wrapper
+    dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date)
