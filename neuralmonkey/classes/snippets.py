@@ -226,7 +226,9 @@ def load_and_concat_mult_snippets(MS, which_level, events_keep, SITES_COMBINE_ME
     RETURNS:
     - SPall, concatted SP
     - SAVEDIR_ALL, a newly genreated path
-    """
+    """ 
+
+    assert DEBUG==False, "Not yet coded..."
 
     if REGENERATE_SNIPPETS:
         from neuralmonkey.scripts.analy_snippets_extract import extract_snippets_all_sessions
