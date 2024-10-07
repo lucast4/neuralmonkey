@@ -1,7 +1,7 @@
 
 clear all; close all; 
 ANIMAL = 'Pancho';
-DATE = 240619;
+DATE = 220814;
 % SKIP_RAW_PLOTS_EACH_CLUST = true;
 SKIP_LOADING_DATSTRUCT=true;
 
@@ -12,7 +12,6 @@ SKIP_LOADING_DATSTRUCT=true;
 % This is the human manual curation step.
 kspostprocess_manual_curate_merge(ANIMAL, DATE, SKIP_LOADING_DATSTRUCT);
 
-%%
 % After curating, run this to finalize saved data
 kspostprocess_finalize_after_manual(ANIMAL, DATE)
 

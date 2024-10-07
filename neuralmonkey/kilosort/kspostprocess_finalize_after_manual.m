@@ -24,7 +24,7 @@ switch MACHINE
         %         LOADDIR_BASE = '/lemur2/kilosort_data'; % location of kilosorted data
         %         SAVEDIR_LOCAL = '/lemur2/kilosort_temp'; % fast ssd
     case 'ltbonobo'
-        SAVEDIR_FINAL_SERVER = '/home/kgg/mnt/Freiwald/kgupta/neural_data/postprocess';
+        SAVEDIR_FINAL_SERVER = '/home/danhan/freiwaldDrive/kgupta/neural_data/postprocess';
     otherwise
         disp(['MACHINE: ' MACHINE])
         disp([MACHINE(1)])
