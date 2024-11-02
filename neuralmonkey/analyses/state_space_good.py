@@ -2659,6 +2659,7 @@ def euclidian_distance_compute_scalar(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT
     vars_already_state_space_plotted = []
     var_varothers_already_plotted = []
     heatmaps_already_plotted = []
+
     for i_var, (var, var_others, context, filtdict, prune_min_n_levs) in enumerate(zip(LIST_VAR, LIST_VARS_OTHERS, LIST_CONTEXT, LIST_FILTDICT, LIST_PRUNE_MIN_N_LEVS)):
         print("RUNNING: ", i_var,  var, " -- ", var_others)
         # Copy pa for this
@@ -2675,7 +2676,6 @@ def euclidian_distance_compute_scalar(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT
             for _var, _levs in filtdict.items():
                 print("len pa bnefore filt this values (var, levs): ", _var, _levs)
                 pa = pa.slice_by_labels("trials", _var, _levs, verbose=True)
-                # pa_orig_dim = pa_orig_dim.slice_by_labels("trials", _var, _levs)
 
         ############### PRUNE DATA, TO GET ENOUGH FOR THIS VARIABLE
         # # Prep by keeping only if enough data
@@ -3624,6 +3624,8 @@ def euclidian_distance_compute_trajectories(PA, LIST_VAR, LIST_VARS_OTHERS, twin
     from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars
     from pythonlib.cluster.clustclass import Clusters
 
+    assert PA.X.shape[1]>0, "empty trials..."
+
     PA = PA.copy()
     assert NPCS_KEEP is not None, "coded onoy for this so far -0 forceing an npcs"
 
@@ -3642,14 +3644,33 @@ def euclidian_distance_compute_trajectories(PA, LIST_VAR, LIST_VARS_OTHERS, twin
             dpca_proj_twind = superv_dpca_params["dpca_proj_twind"]
         else:
             dpca_proj_twind = twind
-
-    Xredu, PAredu = PA.dataextract_dimred_wrapper("traj", dim_red_method, savedir, 
+        if "dpca_pca_twind" in superv_dpca_params:
+            # HACKY, for nice trajs
+            # This is for construting p
+            twind = superv_dpca_params["dpca_pca_twind"]
+        
+    # if dpca_filtdict=={"task_kind":["prims_on_grid"], "stroke_index":[0]}:
+    #     print("=====")
+    #     print(PA.X.shape)
+    #     print("input task kinds: ", PA.Xlabels["trials"]["task_kind"].unique())
+        
+    _, PAredu = PA.dataextract_dimred_wrapper("traj", dim_red_method, savedir, 
                                    twind, tbin_dur=tbin_dur, tbin_slide=tbin_slice, 
                                    NPCS_KEEP = NPCS_KEEP,
                                    dpca_var = dpca_var, dpca_vars_group = dpca_vars_group, dpca_filtdict=dpca_filtdict, dpca_proj_twind = dpca_proj_twind, 
                                    raw_subtract_mean_each_timepoint=False,
                                    umap_n_components=None, umap_n_neighbors=None)
+    # if dpca_filtdict=={"task_kind":["prims_on_grid"], "stroke_index":[0]}:
+    #     print("=====")
+    #     print(PAredu.X.shape)
+    #     assert False
     
+    if PAredu is None:
+        # Then filtiering cleared all trials...
+        print("----")
+        print("Input shape: ", PA.X.shape)
+        print("Lost all trials, using this fildtict:", dpca_filtdict)
+        return None
 
     # ######################## (1) CONSTRUCT A SINGLE SUBSPACE (that all subsequence plots and analyses will be performed on)
     # # Get specific params, based on how want to do dim reduction
@@ -3782,6 +3803,7 @@ def euclidian_distance_compute_trajectories(PA, LIST_VAR, LIST_VARS_OTHERS, twin
         else:
             prune_min_n_trials = N_MIN_TRIALS
 
+        
         if (var, tuple(var_others)) not in heatmaps_already_plotted:
             plot_counts_heatmap_savepath = f"{savedir}/{i_var}_counts_heatmap-var={var_for_name}-ovar={'|'.join(var_others)}.pdf"
             heatmaps_already_plotted.append((var, tuple(var_others)))
