@@ -136,3 +136,54 @@ def score_firingrate_drift(frvals, times_frac, trials, ntrials_per_bin = 50, nsi
     }
 
     return metrics, inds_bad
+
+def load_firingrate_drift(animal, date):
+    """ Load pre-saved results for the drifts of each cluster, pre-computed.
+    RETURNS:
+    - dfres, params, SESSIONS, TRIALCODES
+    -- or --
+    - "NODATA", "NODATA", "NODATA", "NODATA"
+    """
+
+    import pandas as pd
+    import pickle
+    from pythonlib.tools.expttools import load_yaml_config
+    # from pythonlib.tools.pandastools import savefig
+    # from pythonlib.tools.plottools import rotate_x_labels
+
+    # First, check that prepropcess data actually exist
+    LOADDIR = f"/lemur2/lucas/neural_preprocess/sitesdirtygood_preprocess/{animal}-{date}-combsess"
+    # if not os.path.exists(LOADDIR):
+    #     return "NODATA", "NODATA"
+
+    ### Load information about clean sites.
+    try:
+        if False:
+            # Old, separate fore ach session
+            path = f"/lemur2/lucas/neural_preprocess/sitesdirtygood_preprocess/{animal}-{date}-0/dfres.pkl"
+            dfres = pd.read_pickle(path)
+
+            path = f"/lemur2/lucas/neural_preprocess/sitesdirtygood_preprocess/{animal}-{date}-0/params.yaml"
+            params = load_yaml_config(path)
+
+            TRIALCODES = params["trialcodes"]
+        else:
+            # New, combining across sesions.
+            path = f"{LOADDIR}/dfres.pkl"
+            dfres = pd.read_pickle(path)
+
+            path = f"{LOADDIR}/params_text.yaml"
+            params = load_yaml_config(path)
+
+            path = f"{LOADDIR}/sessions.pkl"
+            with open(path, "rb") as f:
+                SESSIONS = pickle.load(f)
+
+            path = f"{LOADDIR}/trialcodes.pkl"
+            with open(path, "rb") as f:
+                TRIALCODES = pickle.load(f)
+    except FileNotFoundError:
+        return "NODATA", "NODATA", "NODATA", "NODATA"
+    
+    return dfres, params, SESSIONS, TRIALCODES
+

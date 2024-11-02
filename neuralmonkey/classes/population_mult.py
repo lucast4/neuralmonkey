@@ -17,11 +17,13 @@ import  matplotlib.pyplot as plt
 # (animal, date, question) --> DFallPA
 
 def load_handsaved_wrapper(animal=None, date=None, version=None, combine_areas=True, 
-                           return_none_if_no_exist=False, use_time = True, question=None):
+                           return_none_if_no_exist=False, use_time = True, question=None,
+                           ignore_question=False):
     """ Load a pre-saved DfallPA -- not systematic, just hand saved versions.
     """ 
 
-    assert question is not None, "to not run into error of loading old pa"
+    if not ignore_question:
+        assert question is not None, "to not run into error of loading old pa"
 
     if animal is not None:
         # Load using params input
@@ -129,10 +131,37 @@ def load_handsaved_wrapper(animal=None, date=None, version=None, combine_areas=T
     if not os.path.exists(path) and return_none_if_no_exist:
         return None
     else:
-        # print(path)
-        # assert False
+        print("Loading DFallpa from: ", path)
         DFallpa = pd.read_pickle(path)
         return DFallpa
+
+def _dfallpa_preprocess_sitesdirty_single_remove_chans(PA, dfres, good_chan_key = "good_chan"):
+    """
+    Helper to remove channels from PA, bsaed on rows in dfres, based on their value for
+    <good_chan_key>. e.g., dfres holds metrics scoring how good the chans are, and then a binary column
+    called <good_chan_key>.
+    RETURNS:
+    - copy of PA, pruned chans, or None (if all chans removed.)
+    """
+
+    ### (1) Remove bad chans
+    chans_bad_all = dfres[~dfres[good_chan_key]]["chan"].tolist()
+    chans_bad_this_pa = [ch for ch in PA.Chans if ch in chans_bad_all]
+    chans_good_this_pa = [ch for ch in PA.Chans if ch not in chans_bad_all]
+
+    if len(chans_bad_this_pa)>0:
+        if len(chans_good_this_pa)>0:
+            print("Removing these bad chans:", chans_bad_this_pa)
+            print("Chans exist in PA:", PA.Chans)
+            PA = PA.slice_by_dim_values_wrapper("chans", chans_good_this_pa)
+        else:
+            # Then you wish to remove all chans. Throw out this PA.
+            return None
+            # print(chans_bad_this_pa)
+            # print(chans_good_this_pa)
+            # assert False
+
+    return PA
 
 def dfallpa_preprocess_sitesdirty_single(PA, animal, date, plot_fr_after_replace_trials_dir=None):
     """
@@ -142,66 +171,53 @@ def dfallpa_preprocess_sitesdirty_single(PA, animal, date, plot_fr_after_replace
     REmoves channels that are unstable FR over day.
     For each chan, removes trials that are FR outliers, by replacing the trial with the mean over all other trials.
 
-    RETURNS:
+    RETURNS, either:
+    (1) if data exists
     - PA, a copy of PA, which has been cleaned.
+    - map_chan_to_trialcodes_replaced
+    (2) if no data exists
+    "NODATA", "NODATA"
+    (3) if data exist, and leads to prunes all data in PA.
+    - None, None
     """
-    import pandas as pd
-    import pickle
-    from pythonlib.tools.expttools import load_yaml_config
-    from pythonlib.tools.pandastools import savefig
-    from pythonlib.tools.plottools import rotate_x_labels
 
-    # First, check that prepropcess data actually exist
-    LOADDIR = f"/lemur2/lucas/neural_preprocess/sitesdirtygood_preprocess/{animal}-{date}-combsess"
-    if not os.path.exists(LOADDIR):
-        return None, None
+    from neuralmonkey.metrics.goodsite import load_firingrate_drift
+    dfres, params, SESSIONS, TRIALCODES = load_firingrate_drift(animal, date)
 
-    ### Load information about clean sites.
-    if False:
-        # Old, separate fore ach session
-        path = f"/lemur2/lucas/neural_preprocess/sitesdirtygood_preprocess/{animal}-{date}-0/dfres.pkl"
-        dfres = pd.read_pickle(path)
-
-        path = f"/lemur2/lucas/neural_preprocess/sitesdirtygood_preprocess/{animal}-{date}-0/params.yaml"
-        params = load_yaml_config(path)
-
-        TRIALCODES = params["trialcodes"]
-    else:
-        # New, combining across sesions.
-        path = f"{LOADDIR}/dfres.pkl"
-        dfres = pd.read_pickle(path)
-
-        path = f"{LOADDIR}/params_text.yaml"
-        params = load_yaml_config(path)
-
-        path = f"{LOADDIR}/sessions.pkl"
-        with open(path, "rb") as f:
-            SESSIONS = pickle.load(f)
-
-        path = f"{LOADDIR}/trialcodes.pkl"
-        with open(path, "rb") as f:
-            TRIALCODES = pickle.load(f)
-
-    PA = PA.copy()
-
-    ### Sanity checks (clean site info matches PA)
+    if isinstance(dfres, str) and dfres == "NODATA":
+        return "NODATA", "NODATA"
     
+    ### Sanity checks (clean site info matches PA)
     tmp = dfres["chan"].tolist() 
     if not all([ch in tmp for ch in PA.Chans]): # check that all chans in PA exist in dfres
         print("Chans in sitesdirty analysis: ", tmp)
         print("Chans in the current PA: ", PA.Chans)
         for ch in PA.Chans:
             print(ch, ch in tmp)
-        assert False, "probably DFallpa is old. need to reextract"
+        # Rreturn NODATA, so that outer function can decide whether to reextract
+        print("probably DFallpa is old. need to reextract")
+        return "NODATA", "NODATA"
+        # assert False, "probably DFallpa is old. need to reextract"
 
     ### (1) Remove bad chans
-    chans_bad_all = dfres[~dfres["good_chan"]]["chan"].tolist()
-    chans_bad_this_pa = [ch for ch in PA.Chans if ch in chans_bad_all]
-    chans_good_this_pa = [ch for ch in PA.Chans if ch not in chans_bad_all]
+    # chans_bad_all = dfres[~dfres["good_chan"]]["chan"].tolist()
+    # chans_bad_this_pa = [ch for ch in PA.Chans if ch in chans_bad_all]
+    # chans_good_this_pa = [ch for ch in PA.Chans if ch not in chans_bad_all]
 
-    if len(chans_bad_this_pa)>0:
-        print("Removing these bad chans:", chans_bad_this_pa)
-        PA = PA.slice_by_dim_values_wrapper("chans", chans_good_this_pa)
+    # if len(chans_bad_this_pa)>0:
+    #     if len(chans_good_this_pa)>0:
+    #         print("Removing these bad chans:", chans_bad_this_pa)
+    #         print("Chans exist in PA:", PA.Chans)
+    #         PA = PA.slice_by_dim_values_wrapper("chans", chans_good_this_pa)
+    #     else:
+    #         # Then you wish to remove all chans. Throw out this PA.
+    #         return None, None
+    #         # print(chans_bad_this_pa)
+    #         # print(chans_good_this_pa)
+    #         # assert False
+    PA = _dfallpa_preprocess_sitesdirty_single_remove_chans(PA, dfres)
+    if PA is None:
+        return None, None
 
     # Plot exampel chans
     # PA.plotwrapper_smoothed_fr_split_by_label_and_subplots(37, "seqc_0_shape", "seqc_0_loc")
@@ -256,6 +272,72 @@ def dfallpa_preprocess_sitesdirty_single(PA, animal, date, plot_fr_after_replace
                     savefig(fig, f"{plot_fr_after_replace_trials_dir}/fr_after_replace_trial-chan={chan}.pdf")
                     plt.close("all")    
     return PA, map_chan_to_trialcodes_replaced
+
+def dfallpa_preprocess_sitesdirty_single_just_drift(PA, animal, date, slope_thresh = 0.12, PLOT=False, savedir=None):
+    """
+    Quick, just to additionally apply another threshold on top of whatever is done
+    in dfallpa_preprocess_sitesdirty_single (i.e, hard codede rsults)
+    PARAMS:
+    - slope_thresh = 0.12, 0.12 is strict, chosen for Pancho char dates... to avoid SP and
+    CHAR being really differnet.
+    RETURNS:
+    - a copy of PA, channels pruned
+    """
+
+    from neuralmonkey.metrics.goodsite import load_firingrate_drift
+    dfres, _, _, _ = load_firingrate_drift(animal, date)
+
+    if PLOT:
+        dfres["slope_over_mean"].hist(bins=100)
+    
+    try:
+        dfres["good_chan_slope"] = ~((dfres["slope_over_mean"]>slope_thresh) | (dfres["slope_over_mean"]<-slope_thresh))
+        pa = _dfallpa_preprocess_sitesdirty_single_remove_chans(PA, dfres, good_chan_key="good_chan_slope")
+    except Exception as err:
+        print(dfres["slope_over_mean"].value_counts())
+        print(dfres["slope_over_mean"].tolist())
+        print("slope_thresh:", slope_thresh)
+        raise err
+
+    if savedir is not None:
+        from pythonlib.tools.expttools import writeDictToTxtFlattened
+        writeDictToTxtFlattened({"chans_orig":PA.Chans, "chans_new":pa.Chans}, f"{savedir}/drift_pruned_chans.txt")
+    return pa
+
+    # from neuralmonkey.classes.population_mult import _dfallpa_preprocess_sitesdirty_single_remove_chans
+    # list_pa = []
+    # for PA in DFallpa["pa"].values:
+    #     pa = _dfallpa_preprocess_sitesdirty_single_remove_chans(PA, dfres, good_chan_key="good_chan_slope")
+    #     print("START: ", len(PA.Chans))
+    #     print("END: ", len(pa.Chans))
+    #     list_pa.append(PA)
+    
+    # DFallpa["pa"] = list_pa
+
+
+def dfallpa_preprocess_sort_by_trialcode(DFallpa):
+    """
+    For each pa, sort its trials so that trialcode is incresaeing. 
+    Replace Dfallpa["pa"] with copies of PA that have sorted trials.
+    """
+    # First, sort all trials chronologically
+    import pandas as pd
+    from pythonlib.tools.stringtools import trialcode_to_scalar
+
+    list_pa = []
+    for pa in DFallpa["pa"].values:
+
+        dflab = pa.Xlabels["trials"]
+
+        # First, get trialcodes into sortable scalrs
+        trialcode_scalars = [trialcode_to_scalar(tc) for tc in dflab["trialcode"]]
+        dflab["trialcode_scal"] = trialcode_scalars
+
+        sort_indices = dflab["trialcode_scal"].argsort()
+
+        list_pa.append(pa.slice_by_dim_indices_wrapper("trials", sort_indices, reset_trial_indices=True))
+
+    DFallpa["pa"] = list_pa
 
 def dfallpa_preprocess_fr_normalization(DFallpa, fr_normalization_method, savedir=None):
     """
@@ -1491,6 +1573,9 @@ def dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, fr_mean_subtrac
     PARAMS:
     - do_sitesdirty_extraction, bool, if True, then does (slow, like 10 min) extracation of sitesdirty preprocess metrics.
     Only does this if it can't find it already done and saved.
+    RETURNS:
+    - DFallpa, with "pa" column being copies that have been processed. 
+    Note that DFallpa output CAN be diff length from input, if sitedirty processessing throws out all chans for a PA, it is removed.
     """
 
     assert fr_mean_subtract_method in ["across_time_bins", "each_time_bin"]
@@ -1501,15 +1586,21 @@ def dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, fr_mean_subtrac
     # (2) Remove bad chans based on sitedirty preprocessing (e.g., drift)
     # First, check that preprocess data exist
     tmp, _ = dfallpa_preprocess_sitesdirty_single(DFallpa["pa"].values[0], animal, date)
-    if tmp is None and do_sitesdirty_extraction:
+    if tmp == "NODATA" and do_sitesdirty_extraction:
         # Then do extraction of sitesdirty preprocess metrics. This can take time (like 10 min).
         from neuralmonkey.classes.session import load_mult_session_helper
         MS = load_mult_session_helper(date, animal)
         MS.sitesdirtygood_preprocess_wrapper(PLOT_EACH_TRIAL=True)
-    
+        DO_SITESDIRTY = True
+    elif tmp == "NODATA":
+        # Then doestn exist, and you dont want to do extaction here.  SKip it.
+        DO_SITESDIRTY = False
+    else:
+        # Data exists. Use it.
+        DO_SITESDIRTY = True
+       
     # Try again
-    tmp, _ = dfallpa_preprocess_sitesdirty_single(DFallpa["pa"].values[0], animal, date)
-    if tmp is not None:
+    if DO_SITESDIRTY:
         # Then it exists -- run it.
         # savedir = "/tmp"
         list_pa = []
@@ -1521,12 +1612,25 @@ def dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, fr_mean_subtrac
             PA, map_chan_to_trialcodes_replaced = dfallpa_preprocess_sitesdirty_single(PA, animal, date, plot_fr_after_replace_trials_dir)
             list_pa.append(PA)
         print("PA.X.shape, before and after dfallpa_preprocess_sitesdirty_single")
-        for pa1, pa2 in zip(DFallpa["pa"].tolist(), list_pa):
-            print(pa1.X.shape, " --> ", pa2.X.shape)
-            # print(pa1.X.shape[0], " --> ", pa2.X.shape[0])
+        for i in range(len(DFallpa)):
+            x = tuple(DFallpa.loc[i, ["bregion", "event", "twind"]].tolist())
+            pa1 = DFallpa.iloc[i]["pa"]
+            pa2 = list_pa[i]
+            if pa2 is None:
+                print(x, pa1.X.shape, " --> ", None)
+            else:
+            # for pa1, pa2 in zip(DFallpa["pa"].tolist(), list_pa):
+                print(x, pa1.X.shape, " --> ", pa2.X.shape)
+                # print(pa1.X.shape[0], " --> ", pa2.X.shape[0])
         # Replace PA
         DFallpa["pa"] = list_pa         
-
+    
+    # Remove rows that have "none" for pa
+    # and do in place
+    inds_drop = DFallpa[DFallpa["pa"].isna()].index
+    DFallpa.drop(inds_drop, inplace=True)
+    DFallpa.reset_index(drop=True,inplace=True)
+    
     # (2) Clean bad chans - based on fr modulation.
     dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT=False)
 
@@ -1541,7 +1645,6 @@ def dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, fr_mean_subtrac
     dfpa_concat_normalize_fr_split_multbregion_flex(DFallpa, fr_mean_subtract_method, PLOT)
     # pa = DFallpa["pa"].values[10]
     # pa.plotNeurHeat(0)
-    
 
 def dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT = False):
     """
