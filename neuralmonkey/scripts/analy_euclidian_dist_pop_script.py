@@ -1542,10 +1542,10 @@ if __name__=="__main__":
     date = int(sys.argv[2])
     question = sys.argv[3]
     which_level = sys.argv[4]
-    if len(sys.argv)>5:
-        combine_into_larger_areas = int(sys.argv[5])==1
-    else:
-        combine_into_larger_areas = False
+    # if len(sys.argv)>5:
+    combine_into_larger_areas = int(sys.argv[5])==1
+    # else:
+        # combine_into_larger_areas = False
     assert len(sys.argv)<7, "you made mistake with args"
 
     # LIST_TWIND = _get_list_twind_by_animal(animal)
@@ -1792,12 +1792,39 @@ if __name__=="__main__":
         elif question in ["CHAR_BASE_stroke"]:
 
             # Char  
+            if False: # OK, but removed to run things quicker
+                
+                # Char  
+                savedir_suffix = f"shape_char_strokesothers"
+                dim_red_method = "superv_dpca"
+                superv_dpca_params={
+                    "superv_dpca_var":"shape_semantic",
+                    "superv_dpca_vars_group":["task_kind"],
+                    "superv_dpca_filtdict":{"task_kind":["character"], "stroke_index":[1,2,3,4,5,6,7,8]}
+                }
+
+                LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+                LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+            assert False, "use shape_semantic_grp instead of shape_semantic"
             savedir_suffix = f"shape_prims_single"
             dim_red_method = "superv_dpca"
             superv_dpca_params={
                 "superv_dpca_var":"shape_semantic",
                 "superv_dpca_vars_group":["task_kind"],
                 "superv_dpca_filtdict":{"task_kind":["prims_single"]}
+            }
+
+            LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
+            LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
+
+            # PIG (0)  
+            savedir_suffix = f"shape_PIG_stroke0"
+            dim_red_method = "superv_dpca"
+            superv_dpca_params={
+                "superv_dpca_var":"shape_semantic",
+                "superv_dpca_vars_group":["task_kind"],
+                "superv_dpca_filtdict":{"task_kind":["prims_on_grid"], "stroke_index":[0]}
             }
 
             LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
@@ -1815,20 +1842,14 @@ if __name__=="__main__":
             LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
             LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
 
-            # Char  
-            savedir_suffix = f"shape_char_strokesothers"
-            dim_red_method = "superv_dpca"
-            superv_dpca_params={
-                "superv_dpca_var":"shape_semantic",
-                "superv_dpca_vars_group":["task_kind"],
-                "superv_dpca_filtdict":{"task_kind":["character"], "stroke_index":[1,2,3,4,5,6,7,8]}
-            }
-
-            LIST_SAVEDIR_SUFFIX.append(savedir_suffix)
-            LIST_SUPERV_DPCA_PARAMS.append(superv_dpca_params)
 
             # TEst generlaization across tgask_kind
             LIST_VAR = [
+                "shape_semantic",
+                "shape_semantic",
+                "shape_semantic",
+                "shape_semantic",
+
                 "shape_semantic",
                 "shape_semantic",
                 "shape_semantic",
@@ -1839,12 +1860,22 @@ if __name__=="__main__":
                 ["task_kind", "stroke_index"],
                 ["task_kind", "stroke_index"],
                 ["task_kind", "loc_on_clust"],
+
+                ["task_kind"],
+                ["task_kind"],
+                ["task_kind", "stroke_index"],
+                ["task_kind", "stroke_index"],
             ]
             LIST_CONTEXT = [
                 {"same":[], "diff":["task_kind"]},
                 {"same":["stroke_index"], "diff":["task_kind"]},
                 {"same":["stroke_index"], "diff":["task_kind"]},
                 {"same":["loc_on_clust"], "diff":["task_kind"]},
+
+                {"same":[], "diff":["task_kind"]},
+                {"same":[], "diff":["task_kind"]},
+                {"same":["stroke_index"], "diff":["task_kind"]},
+                {"same":["stroke_index"], "diff":["task_kind"]},
             ]
             LIST_PRUNE_MIN_N_LEVS = [2 for _ in range(len(LIST_VAR))]
             LIST_FILTDICT = [
@@ -1852,10 +1883,15 @@ if __name__=="__main__":
                 {"task_kind":["prims_single", "character"], "stroke_index":[0]},
                 {"task_kind":["prims_single", "character"]}, # Just for visualization of char on other stroke indices
                 {"task_kind":["prims_single", "character"]},
+
+                {"task_kind":["prims_on_grid", "character"]},
+                {"task_kind":["prims_on_grid", "character"], "stroke_index":[1,2,3,4,5,6,7]}, 
+                {"task_kind":["prims_on_grid", "character"], "stroke_index":[0]},
+                {"task_kind":["prims_on_grid", "character"]}, 
                 ]
             nmin_trials_per_lev = 3 # chracters, not many trials for each shape.
 
-            assert False, "OLDER stuff, moved here, merge with above"
+            # TODO: "OLDER stuff, moved here, merge with above"
             # savedir_suffix = f"shape"
             # # (1) var rank, condition on everything else.
             # superv_dpca_params = {
@@ -2577,15 +2613,28 @@ if __name__=="__main__":
         # Just a DUMMY VARiable
         DFALLPA = pd.DataFrame([])
 
-    #################### PREPROCESSING
-    from neuralmonkey.classes.population_mult import dfpa_concatbregion_preprocess_clean_bad_channels, dfpa_concatbregion_preprocess_wrapper
-    dfpa_concatbregion_preprocess_wrapper(DFALLPA, animal, date)
 
     # Iterate over all dim reduction methods
     # for NPCS_KEEP in LIST_NPCS_KEEP:
     for EVENT_KEEP in events_keep:
         for dim_red_method, NPCS_KEEP, extra_dimred_method_n_components, umap_n_neighbors, PLOT_STATE_SPACE, savedir_suffix, superv_dpca_params in LIST_DIMRED_METHODS:
             for fr_normalization_method in LIST_FR_NORMALIZATION:
+                
+                if HACK_TRAJS_JUST_FOR_PLOTTING_NICE and EVENT_KEEP == "03_samp":
+                    # hacky, make the PCA construction window start AFTER iamge onset.
+                    assert "dpca_proj_twind" not in superv_dpca_params, "nto sure what to do -- avoiding overwriting."
+                    superv_dpca_params = {k:v for k, v in superv_dpca_params.items()} # make copy
+                    superv_dpca_params["dpca_pca_twind"] = [0.1, 0.5]
+                    superv_dpca_params["dpca_proj_twind"] = [-0.3, 0.5]
+                
+                ############ PREPROCESSING
+                from neuralmonkey.classes.population_mult import dfpa_concatbregion_preprocess_clean_bad_channels, dfpa_concatbregion_preprocess_wrapper
+                # Make a copy of all PA before normalization
+                DFallpa = DFALLPA.copy()
+                list_pa = [pa.copy() for pa in DFallpa["pa"]]
+                DFallpa["pa"] = list_pa
+
+                dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date)
 
                 ###########
                 if HACK_TRAJS_JUST_FOR_PLOTTING_NICE:
@@ -2604,23 +2653,51 @@ if __name__=="__main__":
                 print("SAVING AT:", SAVEDIR_ANALYSIS)
 
                 if LOAD_AND_PLOT_RESULTS_ONLY==False:
-                    # Make a copy of all PA before normalization
-                    DFallpa = DFALLPA.copy()
-                    list_pa = [pa.copy() for pa in DFallpa["pa"]]
-                    DFallpa["pa"] = list_pa
+                    # # Make a copy of all PA before normalization
+                    # DFallpa = DFALLPA.copy()
+                    # list_pa = [pa.copy() for pa in DFallpa["pa"]]
+                    # DFallpa["pa"] = list_pa
 
                     ########### HACK - Testing generalization of shapes to char, then keep only the shapes presenta cross SP and char
                     if question in ["CHAR_BASE_stroke"]:
+                        from pythonlib.tools.pandastools import grouping_plot_n_samples_conjunction_heatmap
+
                         # [Optional, for char] Keep only shapes that exist in every context
                         from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper
                         dflab = DFallpa["pa"].values[0].Xlabels["trials"]
-                        dflabthis = dflab[dflab["task_kind"].isin(["character", "prims_single"])].reset_index(drop=True)
+
+                        ### (0) Plot original tabulation of shape vs task_klind
+                        fig = grouping_plot_n_samples_conjunction_heatmap(dflab, "shape_semantic", "task_kind")
+                        path = f"{SAVEDIR_ANALYSIS}/CHAR_HACK_COUNTS-orig.pdf"
+                        fig.savefig(path)
+
+
+                        ##### (1) Try to keep only shapes present in both primsinsgle and CHAR
+                        task_kinds_keep = ["character", "prims_single"]
+                        dflabthis = dflab[dflab["task_kind"].isin(task_kinds_keep)].reset_index(drop=True)
                         _, dict_dfthis = extract_with_levels_of_conjunction_vars_helper(dflabthis, "task_kind", ["shape_semantic"], 
                                                                                         n_min_per_lev=nmin_trials_per_lev,
-                                                                    plot_counts_heatmap_savepath=f"{SAVEDIR_ANALYSIS}/CHAR_HACK_COUNTS.png")
+                                                                    plot_counts_heatmap_savepath=f"{SAVEDIR_ANALYSIS}/CHAR_HACK_COUNTS-{'|'.join(task_kinds_keep)}.png")
                         shapes_keep = dict_dfthis.keys()
                         shapes_keep = [x[0] for x in list(dict_dfthis.keys())]
 
+                        #### (2) If this is empty, then try getting shapes matched across PIG and CHAR
+                        if len(shapes_keep)==0:
+                            task_kinds_keep = ["character", "prims_on_grid"]
+                            dflabthis = dflab[dflab["task_kind"].isin(task_kinds_keep)].reset_index(drop=True)
+                            _, dict_dfthis = extract_with_levels_of_conjunction_vars_helper(dflabthis, "task_kind", ["shape_semantic"], 
+                                                                                            n_min_per_lev=nmin_trials_per_lev,
+                                                                        plot_counts_heatmap_savepath=f"{SAVEDIR_ANALYSIS}/CHAR_HACK_COUNTS-{'|'.join(task_kinds_keep)}.png")
+                            shapes_keep = dict_dfthis.keys()
+                            shapes_keep = [x[0] for x in list(dict_dfthis.keys())]
+                        
+                        #### (3) If still empty, then you dont have any shapes matched between SP/PIG vs. CHAR. Cannot run this analysis.
+                        if len(shapes_keep)==0:
+                            fig = grouping_plot_n_samples_conjunction_heatmap(dflab, "shape_semantic", "task_kind")
+                            fig.savefig("/tmp/CONJUNCTIONS.pdf")
+                            assert False, "No shape exists across task_kinds... see /tmp/CONJUNCTIONS.pdf"
+
+                        ##### (4) Apply filter to data
                         for filtdict in LIST_FILTDICT:
                             filtdict["shape_semantic"] = shapes_keep
 
@@ -2628,11 +2705,18 @@ if __name__=="__main__":
                         # This is done BEFORE dim reduction, to maximally separate them
                         list_pa_new = []
                         for pa in DFallpa["pa"].values:
-                            list_pa_new.append(
-                                pa.slice_by_labels_filtdict({
-                                "task_kind":["character", "prims_single"],
+                            pa_new = pa.slice_by_labels_filtdict({
+                                "task_kind":task_kinds_keep,
                                 "shape_semantic":shapes_keep,
-                                }))
+                                })
+                            assert len(pa_new.Xlabels["trials"]["task_kind"].unique())>1, "you need at least one of SP/PIG along with char... problem with filtering?"
+                            list_pa_new.append(pa_new)
+                            if pa_new.X.shape[1]==0:
+                                assert False, "Shold not be possible. see above."
+                                # from pythonlib.tools.pandastools import grouping_plot_n_samples_conjunction_heatmap
+                                # fig = grouping_plot_n_samples_conjunction_heatmap(dflab, "shape_semantic", "task_kind")
+                                # fig.savefig("/tmp/CONJUNCTIONS.pdf")
+                                # assert False, "No shape exists across task_kinds... see /tmp/CONJUNCTIONS.pdf"
                         DFallpa["pa"] = list_pa_new
 
                     ############################ SAVE PARAMS
@@ -2655,48 +2739,49 @@ if __name__=="__main__":
                         f"{SAVEDIR_ANALYSIS}/params.txt")
 
                     #################### Normalize PA firing rates if needed
-                    path_to_save_example_fr_normalization = f"{SAVEDIR_ANALYSIS}/example_fr_normalization.png"
-                    if fr_normalization_method is not None:
-                        if fr_normalization_method=="each_time_bin":
-                            # Then demean in each time bin indepednently
-                            subtract_mean_at_each_timepoint = True
-                            subtract_mean_across_time_and_trial = False
-                        elif fr_normalization_method=="across_time_bins":
-                            # ALl time bins subtract the same scalar --> maintains temporal moudlation.
-                            subtract_mean_at_each_timepoint = False
-                            subtract_mean_across_time_and_trial = True
-                        else:
-                            print(fr_normalization_method)
-                            assert False
+                    # IGNORE - it is done above now.
+                    # path_to_save_example_fr_normalization = f"{SAVEDIR_ANALYSIS}/example_fr_normalization.png"
+                    # if fr_normalization_method is not None:
+                    #     if fr_normalization_method=="each_time_bin":
+                    #         # Then demean in each time bin indepednently
+                    #         subtract_mean_at_each_timepoint = True
+                    #         subtract_mean_across_time_and_trial = False
+                    #     elif fr_normalization_method=="across_time_bins":
+                    #         # ALl time bins subtract the same scalar --> maintains temporal moudlation.
+                    #         subtract_mean_at_each_timepoint = False
+                    #         subtract_mean_across_time_and_trial = True
+                    #     else:
+                    #         print(fr_normalization_method)
+                    #         assert False
 
-                        from neuralmonkey.analyses.state_space_good import popanal_preprocess_scalar_normalization
-                        list_panorm = []
+                    #     from neuralmonkey.analyses.state_space_good import popanal_preprocess_scalar_normalization
+                    #     list_panorm = []
 
-                        for i, pa in enumerate(DFallpa["pa"].tolist()):
-                            if path_to_save_example_fr_normalization is not None and i==0:
-                                plot_example_chan_number = pa.Chans[0]
-                                if which_level=="trial":
-                                    plot_example_split_var_string = "seqc_0_shape"
-                                elif which_level=="stroke":
-                                    plot_example_split_var_string = "shape"
-                                else:
-                                    plot_example_split_var_string = q_params["effect_vars"][0]
-                            else:
-                                plot_example_chan_number = None
-                            PAnorm, PAscal, PAscalagg, fig, axes, groupdict = popanal_preprocess_scalar_normalization(pa, None,
-                                                                                                            DO_AGG_TRIALS=False,
-                                                                                                            plot_example_chan_number=plot_example_chan_number,
-                                                                                                                plot_example_split_var_string = plot_example_split_var_string,
-                                                                                                            subtract_mean_at_each_timepoint=subtract_mean_at_each_timepoint,
-                                                                                                            subtract_mean_across_time_and_trial=subtract_mean_across_time_and_trial)
-                            if path_to_save_example_fr_normalization is not None and i==0:
-                                savefig(fig, path_to_save_example_fr_normalization)
-                            list_panorm.append(PAnorm)
-                        DFallpa["pa"] = list_panorm
+                    #     for i, pa in enumerate(DFallpa["pa"].tolist()):
+                    #         if path_to_save_example_fr_normalization is not None and i==0:
+                    #             plot_example_chan_number = pa.Chans[0]
+                    #             if which_level=="trial":
+                    #                 plot_example_split_var_string = "seqc_0_shape"
+                    #             elif which_level=="stroke":
+                    #                 plot_example_split_var_string = "shape"
+                    #             else:
+                    #                 plot_example_split_var_string = q_params["effect_vars"][0]
+                    #         else:
+                    #             plot_example_chan_number = None
+                    #         PAnorm, PAscal, PAscalagg, fig, axes, groupdict = popanal_preprocess_scalar_normalization(pa, None,
+                    #                                                                                         DO_AGG_TRIALS=False,
+                    #                                                                                         plot_example_chan_number=plot_example_chan_number,
+                    #                                                                                             plot_example_split_var_string = plot_example_split_var_string,
+                    #                                                                                         subtract_mean_at_each_timepoint=subtract_mean_at_each_timepoint,
+                    #                                                                                         subtract_mean_across_time_and_trial=subtract_mean_across_time_and_trial)
+                    #         if path_to_save_example_fr_normalization is not None and i==0:
+                    #             savefig(fig, path_to_save_example_fr_normalization)
+                    #         list_panorm.append(PAnorm)
+                    #     DFallpa["pa"] = list_panorm
 
                 ########################################
                 LIST_TWIND, LIST_TBIN_DUR, LIST_TBIN_SLIDE = _get_list_twind_by_animal(animal, EVENT_KEEP, 
-                                                                                       TRAJECTORIES_METHOD, HACK_TRAJS_JUST_FOR_PLOTTING_NICE=HACK_TRAJS_JUST_FOR_PLOTTING_NICE)
+                                                                                    TRAJECTORIES_METHOD, HACK_TRAJS_JUST_FOR_PLOTTING_NICE=HACK_TRAJS_JUST_FOR_PLOTTING_NICE)
                 for twind_analy in LIST_TWIND:
                     for tbin_dur, tbin_slice in zip(LIST_TBIN_DUR, LIST_TBIN_SLIDE):
 
@@ -2787,10 +2872,10 @@ if __name__=="__main__":
                                         pass
 
                                 elif TRAJECTORIES_METHOD == "traj_to_scalar":
-                                    PLOT_TRAJS = False
+                                    # PLOT_TRAJS = False
                                     PLOT_HEATMAPS = False
                                     dfres = euclidian_distance_compute_trajectories(PA, LIST_VAR, LIST_VARS_OTHERS, twind_analy, tbin_dur,
-                                                            tbin_slice, savedir, PLOT_TRAJS=PLOT_TRAJS, PLOT_HEATMAPS=PLOT_HEATMAPS,
+                                                            tbin_slice, savedir, PLOT_TRAJS=PLOT_STATE_SPACE, PLOT_HEATMAPS=PLOT_HEATMAPS,
                                                             nmin_trials_per_lev=nmin_trials_per_lev,
                                                             LIST_CONTEXT=LIST_CONTEXT, LIST_FILTDICT=LIST_FILTDICT,
                                                             LIST_PRUNE_MIN_N_LEVS=LIST_PRUNE_MIN_N_LEVS,
