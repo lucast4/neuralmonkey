@@ -66,7 +66,7 @@ if __name__=="__main__":
         DFallpa = pd.concat([DFallpa1, DFallpa2]).reset_index(drop=True)
 
         #################### PREPROCESSING
-        dfpa_concatbregion_preprocess_wrapper(DFallpa)
+        dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date)
 
         from neuralmonkey.scripts.analy_pig_decode_moment_syntaxTI import dfallpa_preprocess_condition
         shape_var_suff = "shape"

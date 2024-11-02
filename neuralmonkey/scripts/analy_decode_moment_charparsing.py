@@ -50,7 +50,7 @@ if __name__=="__main__":
 
         #################### PREPROCESSING
         from neuralmonkey.classes.population_mult import dfpa_concatbregion_preprocess_clean_bad_channels, dfpa_concatbregion_preprocess_wrapper
-        dfpa_concatbregion_preprocess_wrapper(DFallpa)
+        dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date)
 
         # dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT=False)
 
