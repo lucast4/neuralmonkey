@@ -9713,7 +9713,7 @@ class Session(object):
         
     def plot_epocs(self, ax, trial, list_epocs=("camframe", "camtrialon", "camtrialoff", 
         "rewon", "rewoff", "behcode"), overlay_trial_events=True, 
-        overlay_trial_events_notpd=False):
+        overlay_trial_events_notpd=False, label_cam_frames=False):
         """ Plot discrete events onto axes, for this trial
         """
         
@@ -9723,6 +9723,12 @@ class Session(object):
             times, vals = self.extract_data_tank_epocs(pl, trial0=trial)
             if times is not None:
                 ax.plot(times, np.ones(times.shape)+i, 'x', label=pl)
+                if pl == "camframe" and label_cam_frames:
+                    time_diffs = list(np.diff(np.array(times)))
+                    jump_ind = time_diffs.index(max(time_diffs))+1
+                    for x in range(jump_ind,len(times)):
+                        offset = -10 if (x & 1) else -15
+                        ax.annotate(f'{x-jump_ind}', (times[x],1), textcoords="offset points", xytext=(0,offset), ha='center')
                 if pl=="behcode":
                     for t, b in zip(times, vals):
                         ax.text(t, 1+i+np.random.rand(), int(b))
@@ -9812,7 +9818,6 @@ class Session(object):
         else:
             fig_draw = None
             axes_draw = None
-                
 
         return fig, axes, fig_draw, axes_draw
 
@@ -9820,7 +9825,8 @@ class Session(object):
     def plotwrapper_raster_oneetrial_multsites(self, trialtdt, 
             list_sites=None, site_to_highlight=None,
             WIDTH=20, HEIGHT = 10, overlay_trial_events=True,
-            overlay_trial_events_notpd=False):
+            overlay_trial_events_notpd=False,
+            only_cam_stuff=False):
         """ Plot a single raster for this trial, across these sites
         PARAMS:
         - site_to_highlight, bool, if True, colors it diff
@@ -9828,6 +9834,18 @@ class Session(object):
         
         # fig, axes = plt.subplots(2,2, figsize=(WIDTH, HEIGHT), sharex=False, 
         #                          gridspec_kw={'height_ratios': [1,8], 'width_ratios':[8,1]})
+        #Juts do plots relevant for cam stuff
+        if only_cam_stuff:
+            fig1, axes = plt.subplots(2, 1, figsize=(15, 14), sharex=True)
+            ax = axes.flatten()[0]
+            self.plot_epocs(ax, trialtdt, overlay_trial_events=overlay_trial_events,
+            overlay_trial_events_notpd=overlay_trial_events_notpd,label_cam_frames=True)
+            ax = axes.flatten()[1]
+            ax.set_title("beh strokes")
+            self.plot_trial_timecourse_summary(ax, trialtdt, overlay_trial_events=overlay_trial_events)
+            return fig1, None
+        
+        
         fig1, axes = plt.subplots(10, 1, figsize=(15, 28), sharex=True, 
             gridspec_kw={'height_ratios': [1, 1, 1, 1,1,1,1,12,1, 1]})
 
@@ -9836,7 +9854,8 @@ class Session(object):
         self.plot_epocs(ax, trialtdt, overlay_trial_events=overlay_trial_events,
             overlay_trial_events_notpd=overlay_trial_events_notpd)
         # XLIM = ax.get_xlim()
-
+            
+        # ax.set_xlim(XLIM)
         # Streams
         ax = axes.flatten()[1]
         for stream in ["pd1", "pd2"]:
@@ -9887,6 +9906,7 @@ class Session(object):
         ax = axes.flatten()[7]
         self.plot_raster_sites(ax, trialtdt, list_sites, overlay_trial_events=overlay_trial_events)
         # ax.set_xlim(XLIM)
+
 
         # Another plot for the beh and image
         fig2, axes = plt.subplots(1,2, sharex=True, sharey=True, figsize=(8,4))

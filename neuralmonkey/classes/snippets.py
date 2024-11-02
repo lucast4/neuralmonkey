@@ -379,7 +379,7 @@ def load_and_concat_mult_snippets(MS, which_level, events_keep, SITES_COMBINE_ME
 
 class Snippets(object):
     """
-    Neural snippets, extraction of PopAnal objects in relation to different events, and 
+    Neural snippets, extraction of PopAnal (hehe) objects in relation to different events, and 
     methods for reslicing, agging, plotting, etc.
     Written when doing primsinvar feature representations, but can apply generally 
     to most analyses.
@@ -615,9 +615,11 @@ class Snippets(object):
             # trials = SN.get_trials_list(True, True, only_if_in_dataset=True, 
             #     dataset_input=dataset_pruned_for_trial_analysis,
             #     events_that_must_include = list_events)
-            assert trials_prune_just_those_including_events==True, "this on by defualt. if turn off, then change line below in SN.get_trials_list"
+            # assert trials_prune_just_those_including_events==True, "this on by defualt. if turn off, then change line below in SN.get_trials_list"
             events_that_must_include = ["fix_touch", "on_strokeidx_0"]
-            trials = SN.get_trials_list(True, True, only_if_in_dataset=True,
+            trials = SN.get_trials_list(True, 
+                True,
+                only_if_in_dataset=True,
                 dataset_input=dataset_pruned_for_trial_analysis,
                 events_that_must_include = events_that_must_include)
             print("\n == extracting these trials: ", trials)

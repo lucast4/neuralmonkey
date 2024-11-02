@@ -7,9 +7,9 @@ assert(SKIP_LOADING_DATSTRUCT==true, 'too much coded now assuming this...');
 
 %% MODIFY PARAMS
 
-PATH_TO_SPIKES_CODE = '/gorilla1/code/spikes';
-PATH_TO_NPY_CODE = '/gorilla1/code/npy-matlab';
-PATH_TO_KILOSORT_CODE = '/gorilla1/code/kilosort-2.5';
+PATH_TO_SPIKES_CODE = '/home/danhan/code/spikes';
+PATH_TO_NPY_CODE = '/home/danhan/code/npy-matlab';
+PATH_TO_KILOSORT_CODE = '/home/danhan/code/kilosort-2.5';
 
 % LOADDIR_BASE = '/lemur2/kilosort_data'; % location of kilosorted data
 % SAVEDIR_LOCAL = '/lemur2/kilosort_temp'; % fast ssd
@@ -29,7 +29,7 @@ switch MACHINE
         %         LOADDIR_BASE = '/lemur2/kilosort_data'; % location of kilosorted data
         %         SAVEDIR_LOCAL = '/lemur2/kilosort_temp'; % fast ssd
     case 'ltbonobo'
-        SAVEDIR_FINAL_SERVER = '/home/kgg/mnt/Freiwald/kgupta/neural_data/postprocess';
+        SAVEDIR_FINAL_SERVER = '/home/danhan/freiwaldDrive/kgupta/neural_data/postprocess';
     otherwise
         disp(['MACHINE: ' MACHINE])
         disp([MACHINE(1)])
