@@ -12,7 +12,6 @@ import matplotlib.pyplot as plt
 #     heatmap_mat(Xarr, ax, annotate_heatmap=False, labels_col=times_str, diverge=True, robust=True, zlims=zlims)
 
 
-        
 
 def heatmapwrapper_stratified_each_neuron_alltrials(PA, y_group_var=None):
     """ 
