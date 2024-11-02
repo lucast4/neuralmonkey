@@ -89,7 +89,7 @@ class PopAnal():
         # print("HERERE", times, len(times))
 
         if chans is None:
-            self.Chans = range(self.X.shape[0])
+            self.Chans = list(range(self.X.shape[0]))
         else:
             self.Chans = copy.copy(chans)
 
@@ -120,7 +120,6 @@ class PopAnal():
         assert len(self.Chans)==self.X.shape[0]
         assert len(self.Trials)==self.X.shape[1]
         assert len(self.Times)==self.X.shape[2]
-
 
     def preprocess(self):
         """ preprocess X, mainly so units dimension is axis 0 
@@ -669,6 +668,10 @@ class PopAnal():
         dim, dim_str = self.help_get_dimensions(dim)
 
         if dim_str=="times":
+            if len(inds)==1:
+                # Assume you want to just get a single bin
+                inds = [inds[0], inds[0]]
+                
             assert len(inds)==2
             t1 = self.Times[inds[0]]
             t2 = self.Times[inds[1]]
@@ -850,6 +853,11 @@ class PopAnal():
         --- PopAnal object (if return_as_popanal)
         """
 
+        if len(chans)==0:
+            # Then return empty
+            print(chans)
+            assert False
+
         # convert from channel labels to row indices
         if chan_inputed_row_index:
             inds = chans
@@ -862,7 +870,6 @@ class PopAnal():
             # Then not enough chans
             print(version)
             print(self.X.shape)
-            print(X.shape)
             print(inds)
             print(self.Chans)
             print(chans)
@@ -1301,6 +1308,24 @@ class PopAnal():
     #     # inds = dfthis[dfthis[dim_variable]==dim_value].index.tolist()
     #     # pa = self.slice_by_dim_indices_wrapper(dim_str, inds)
     #     # return pa
+
+    def sort_trials_by_trialcode(self):
+        """
+        return copy of self, with trials sorted by incresaeing trial (using trialcode)
+        """
+        from pythonlib.tools.stringtools import trialcode_to_scalar
+
+        dflab = self.Xlabels["trials"]
+
+        # First, get trialcodes into sortable scalrs
+        trialcode_scalars = [trialcode_to_scalar(tc) for tc in dflab["trialcode"]]
+        dflab["trialcode_scal"] = trialcode_scalars
+
+        sort_indices = dflab["trialcode_scal"].argsort()
+
+        pa = self.slice_by_dim_indices_wrapper("trials", sort_indices, reset_trial_indices=True)
+        
+        return pa
 
     def norm_rel_base_window(self, twind_base, method="zscore"):
         """
@@ -1879,6 +1904,47 @@ class PopAnal():
 
 
 
+    def dataextractwrap_distance_between_groups(self, vars_group, version):
+        """
+        Wrapper for all methods to get euclidian distnace between trial groups,
+        defined by input variables.
+        """
+
+        if version=="traj_to_scal":
+            # Compute for each time bin, then average over all time.
+            Cldist = self.dataextract_as_distance_matrix_clusters_flex(vars_group, 
+                                                                        return_as_single_mean_over_time=True)
+            DFDIST = Cldist.rsa_distmat_score_all_pairs_of_label_groups(get_only_one_direction=False)
+
+        elif version=="traj":
+            # Compute for each time bin, keeping them seprate, thus returning time series.
+            # Get pairwise dist between each shape at each timepoint
+            list_cldist, list_time = self.dataextract_as_distance_matrix_clusters_flex(vars_group,
+                                                                version_distance="euclidian",
+                                                                agg_before_distance=False, 
+                                                                return_as_single_mean_over_time=False)
+            ### For each time bin, for each trial, get its dist index relative to base1 and base2.
+            # list_dfproj_index = []
+            list_dfdist = []
+            for i, (cldist, time) in enumerate(zip(list_cldist, list_time)):
+                print(time)
+                
+                # Score pairs of (group, group)
+                dfdist = cldist.rsa_distmat_score_all_pairs_of_label_groups(get_only_one_direction=True)
+                dfdist["time_bin"] = time
+                dfdist["time_bin_idx"] = i
+
+                list_dfdist.append(dfdist)
+
+            ### Clean up the results
+            DFDIST = pd.concat(list_dfdist).reset_index(drop=True)
+
+        else:
+            print(version)
+            assert False
+
+        return DFDIST
+
     def dataextract_as_distance_matrix_clusters_flex(self, var_group,
                                                      version_distance="euclidian",
                                                      accurately_estimate_diagonal=False,
@@ -2087,6 +2153,7 @@ class PopAnal():
 
         ############### ALL NORMALIZING ON RAW DATA, BEFORE take avg and do pca, so that can pass in raw and project to pc space.
         PAraw = self.copy()
+        assert PAraw.X.shape[1]>0, "intpou has no trials"
 
         if raw_subtract_mean_each_timepoint:
             PAraw = PAraw.norm_subtract_trial_mean_each_timepoint()
@@ -2106,11 +2173,6 @@ class PopAnal():
             plot_counts_heatmap_savepath = None
         pa, dfout, dict_dfthis = pa.slice_extract_with_levels_of_conjunction_vars(var_pca, vars_grouping, n_min_per_lev_lev_others,
                                                               prune_min_n_levs, plot_counts_heatmap_savepath=plot_counts_heatmap_savepath)
-        # print(var_pca)
-        # print(vars_grouping)
-        # print(pa.Xlabels["trials"]["gridloc"])
-        # print(n_min_per_lev_lev_others)
-        # assert False
         if pa is None:
             print("No variation found for this var_pca (reutrning None): ", var_pca)
             return (None for _ in range(5))
@@ -2317,7 +2379,7 @@ class PopAnal():
         - NPCS_KEEP, int
         - dpca_var, str
         - dpca_vars_group, list of str
-        - dpca_proj_twind = None, 
+        - dpca_proj_twind = None, window for the final data.
         - raw_subtract_mean_each_timepoint=False
         RETURNS:
         - Xredu, 
@@ -2412,7 +2474,8 @@ class PopAnal():
             # Then does targeted dim reduction, first averaging over trials to get means for variable.
 
             assert dpca_var is not None
-
+            # n_min_per_lev_lev_others = 4
+            n_min_per_lev_lev_others = 3
             Xredu, PAredu, _, _, pca = PA.dataextract_pca_demixed_subspace(dpca_var, dpca_vars_group,
                                                             twind_pca, tbin_dur, # -- PCA params start
                                                             dpca_filtdict,
@@ -2420,11 +2483,11 @@ class PopAnal():
                                                             savedir_plots=savedir,
                                                             raw_subtract_mean_each_timepoint=raw_subtract_mean_each_timepoint,
                                                             pca_subtract_mean_each_level_grouping=True,
-                                                            n_min_per_lev_lev_others=4, prune_min_n_levs = 2,
+                                                            n_min_per_lev_lev_others=n_min_per_lev_lev_others, prune_min_n_levs = 2,
                                                             n_pcs_subspace_max = NPCS_KEEP, 
                                                             reshape_method=reshape_method,
                                                             proj_twind=dpca_proj_twind)
-                
+            
         else:
             print(dim_red_method)
             assert False
@@ -3113,18 +3176,36 @@ class PopAnal():
         # Collect all the strokes
         strokes_task = []
         strokes_beh = []
-        for i, row in dflab.iterrows():
-            
-            tokens = row["Tkbeh_stkbeh"].Tokens
-            assert len(tokens)==1, "hacky, currneyl only workse for single prim tasks"
-            strok_beh = tokens[0]["Prim"].Stroke()
+        if "Tkbeh_stkbeh" in dflab.columns:
+            # Then this is "trial" version
+            for i, row in dflab.iterrows():
+                
+                tokens = row["Tkbeh_stkbeh"].Tokens
+                assert len(tokens)==1, "hacky, currneyl only workse for single prim tasks"
+                strok_beh = tokens[0]["Prim"].Stroke()
 
-            tokens = row["Tkbeh_stktask"].Tokens
-            assert len(tokens)==1, "hacky, currneyl only workse for single prim tasks"
-            strok_task = tokens[0]["Prim"].Stroke()
+                tokens = row["Tkbeh_stktask"].Tokens
+                assert len(tokens)==1, "hacky, currneyl only workse for single prim tasks"
+                strok_task = tokens[0]["Prim"].Stroke()
 
-            strokes_task.append(strok_task)
-            strokes_beh.append(strok_beh)
+                strokes_task.append(strok_task)
+                strokes_beh.append(strok_beh)
+        elif "Stroke" in dflab.columns:
+            # Then this is "stroke" version
+            for i, row in dflab.iterrows():
+                
+                strok_beh = row["Stroke"]()
+                
+                tokens = row["TokTask"].Tokens
+                assert len(tokens)==1, "hacky, currneyl only workse for single prim tasks"
+                strok_task = tokens[0]["Prim"].Stroke()
+
+                strokes_task.append(strok_task)
+                strokes_beh.append(strok_beh)
+        else:
+            print(sorted(dflab.columns))
+            assert False, "where are strokes saved?"
+
         dflab["strok_beh"] = strokes_beh
         dflab["strok_task"] = strokes_task
 
