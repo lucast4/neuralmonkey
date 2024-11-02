@@ -27,7 +27,7 @@ def behavior_load_pairwise_strokes_distmat(animal, DATE, PA, distance_ver = "dtw
     """ Load pre-computed distnace matrix for this dataset, return distmat matching exactly the
     rows in PA.Xlabels["trials"], and ensuring that it is distnace (not sim) matrix
     """
-    DIR = f"/gorilla1/analyses/recordings/main/EXPORTED_BEH_DATA/DS/{animal}/{DATE}/distance_matrix_all_strokes_pairwise/{distance_ver}"
+    DIR = f"/gorilla1/analyses/recordings/main/EXPORTED_BEH_DATA/DS/char_strokes_clusters/{animal}/{DATE}/distance_matrix_all_strokes_pairwise/{distance_ver}"
 
     ## LOAd
     # DATA
