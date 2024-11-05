@@ -3167,7 +3167,7 @@ class PopAnal():
 
 
     ################ BEHAVIOR
-    def behavior_extract_strokes_to_dflab(self):
+    def behavior_extract_strokes_to_dflab(self, trial_take_first_stroke=False):
         """
         Extracts strokes_beh and strokes_task to dflab
         """
@@ -3181,11 +3181,13 @@ class PopAnal():
             for i, row in dflab.iterrows():
                 
                 tokens = row["Tkbeh_stkbeh"].Tokens
-                assert len(tokens)==1, "hacky, currneyl only workse for single prim tasks"
+                if not trial_take_first_stroke:
+                    assert len(tokens)==1, "hacky, currneyl only workse for single prim tasks"
                 strok_beh = tokens[0]["Prim"].Stroke()
 
                 tokens = row["Tkbeh_stktask"].Tokens
-                assert len(tokens)==1, "hacky, currneyl only workse for single prim tasks"
+                if not trial_take_first_stroke:
+                    assert len(tokens)==1, "hacky, currneyl only workse for single prim tasks"
                 strok_task = tokens[0]["Prim"].Stroke()
 
                 strokes_task.append(strok_task)
@@ -3254,6 +3256,106 @@ class PopAnal():
         PAstroke = self.copy_replacing_X(X)
 
         return PAstroke
+    
+    def behavior_extract_events_timing(self, MS, events=None, normalize_to_this_event=None):
+        """
+        Extract times of events for each trial, using the original MS (sessions).
+        Optimized for "stroke"-level data.
+        PARAMS:
+        - normalize_to_this_event, str, if not None, then each event time subtracts this time.
+        RETURNS:
+        - dftimes, each row matches correspnding row of self.Xlabels["trials"], and columns hold events
+        - events, list of str.
+        """
+
+        dflab = self.Xlabels["trials"]
+
+        if events is None:
+            # currently optimized for strokes data
+            events = ["go", "first_raise", "on_strokeidx_0", "off_strokeidx_0"]
+
+        list_inds = list(range(len(dflab)))
+                         
+        res = []
+        for ind in list_inds:
+            tc = dflab.iloc[ind]["trialcode"]
+
+            sn, trial_sn, _ = MS.index_convert_trial_trialcode_flex(tc)
+
+            # Get times of events for this trials
+            event_times = {}
+            for ev in events:
+                event_times[ev] = sn.events_get_time_helper(ev, trial_sn, assert_one=True)[0]
+
+            res.append(event_times)
+            res[-1]["trialcode"] = tc
+            res[-1]["ind_dflab"] = ind
+
+
+            # try:
+            if dflab.iloc[ind]["event"] == "00_stroke" and dflab.iloc[ind]["stroke_index"] == 0 and "on_strokeidx_0" in events:
+                # Then do sanity check that times match...
+                assert np.abs(dflab.iloc[ind]["event_time"] - event_times["on_strokeidx_0"]) < 0.05, "touchscreen lag? this is arleayd accounted for with 0.05"
+            # except Exception as err:
+            #     print(event_times["on_strokeidx_0"])
+            #     print(dflab.iloc[ind]["event_time"])
+            #     print(dflab.iloc[ind])
+            #     raise err
+
+        dftimes = pd.DataFrame(res)
+
+        # Normalie buy subtracting stroke onset time
+        if normalize_to_this_event is not None:
+            tmp = dftimes[normalize_to_this_event].copy()
+            for ev in events:
+                dftimes[ev] = dftimes[ev] - tmp
+        
+        return dftimes, events
+
+    def behavior_extract_events_timing_plot_distributions(self, MS, shape_var, events=None, 
+                                                          normalize_to_this_event=None, xlims=None):
+        """
+        [pretty specific] plot timing of events surrounding stroke onset.
+        Tailored for strokes-data.
+        """
+        from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good
+        from pythonlib.tools.plottools import color_make_map_discrete_labels
+        from pythonlib.tools.plottools import legend_add_manual
+
+        # Extract timing of events
+        dftimes, events = self.behavior_extract_events_timing(MS, events=events, 
+                                                              normalize_to_this_event=normalize_to_this_event)
+        
+        # Prep plot
+        dflab = self.Xlabels["trials"]
+        map_event_to_color, _, _= color_make_map_discrete_labels(events)
+        grpdict = grouping_append_and_return_inner_items_good(dflab, [shape_var])
+        SIZE = 2
+        ncols = 6
+        n = len(grpdict)+1
+        nrows = int(np.ceil(n/ncols))
+        fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*SIZE*2, nrows*SIZE), sharex=True, sharey=True)
+
+        for ax, (grp, inds) in zip(axes.flatten(), grpdict.items()):
+
+            dfthis = dftimes.iloc[inds]
+            for ev in events:
+                col = map_event_to_color[ev]
+                times = dfthis[ev].values
+                ax.plot(times, np.ones(len(times))+0.1*(np.random.rand(len(times))-0.5), ".", 
+                        label=ev, alpha=0.35, color=col)
+            ax.set_ylim([0.5, 1.5])
+
+            ax.set_xlabel("time (sec)")
+            ax.set_title(grp)
+
+            if xlims is not None:
+                ax.set_xlim(xlims)
+
+        ax = axes.flatten()[-1]
+        legend_add_manual(ax, map_event_to_color.keys(), map_event_to_color.values())
+
+        return fig
 
     ################ INDICES
     def index_find_this_chan(self, chan):
