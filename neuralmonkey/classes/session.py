@@ -5970,6 +5970,20 @@ class Session(object):
         else:
             return out, reason
 
+    def hack_adjust_touch_times_touchscreen_lag(self, times):
+        """
+        ########### HACKY: the touchscreen has a slight lag of ~1.5-2 videocam frames (50hz).
+        # This means that if stroke onset is here T, then it actualyl was T-delta.
+        PARAMS:
+        - times, list of scalar times.
+        RETURNS:
+        - times_shifted
+        NOTE: added 11/4/24
+        """
+        delta = 1.5 * 0.02 # n frames x 20ms per frame
+        times = [t-delta for t in times]
+        return times
+
     def events_get_time_using_photodiode(self, trial, 
         list_events = ("stim_onset", "go", "first_raise", "on_stroke_1"),
         do_reextract_even_if_saved=False, plot_beh_code_stream = False,
@@ -6013,19 +6027,6 @@ class Session(object):
 
             times = self.behcode_extract_times_semantic(event, trial)
             times = [t+padding for t in times]
-            return times
-
-        def hack_adjust_touch_times_touchscreen_lag(times):
-            """
-            ########### HACKY: the touchscreen has a slight lag of ~1.5-2 videocam frames (50hz).
-            # This means that if stroke onset is here T, then it actualyl was T-delta.
-            PARAMS:
-            - times, list of scalar times.
-            RETURNS:
-            - times_shifted
-            """
-            delta = 1.5 * 0.02 # n frames x 20ms per frame
-            times = [t-delta for t in times]
             return times
  
         def compute_times_from_scratch(event):
@@ -6136,7 +6137,7 @@ class Session(object):
                         times = times[:1]
 
                         # Touchscreen lag adjust.
-                        times =hack_adjust_touch_times_touchscreen_lag(times)
+                        times = self.hack_adjust_touch_times_touchscreen_lag(times)
                         
                         # sometimes fixtch will be before presntation of fixcue (e.g., if subject touchees in anticiation).
                         # Make fixtch same (slightly later) than fixcue, or else this might lead to errors later.
@@ -6253,7 +6254,7 @@ class Session(object):
                     times = _extract_times(out)
 
                     # Touchscreen lag adjust.
-                    times =hack_adjust_touch_times_touchscreen_lag(times)
+                    times =self.hack_adjust_touch_times_touchscreen_lag(times)
 
                 elif event=="first_raise":
                     # Offset of the stroke that is overalpping in time with the go cue.
@@ -6292,7 +6293,7 @@ class Session(object):
                         times = times[0:1]
 
                     # Touchscreen lag adjust.
-                    times =hack_adjust_touch_times_touchscreen_lag(times)
+                    times =self.hack_adjust_touch_times_touchscreen_lag(times)
 
                 elif event in ["samp_sequence_onset", "seqon"]:
                     # for sequence traiing, when samp1 is shown (e..g a stroke turning on)
@@ -6310,16 +6311,6 @@ class Session(object):
 
                 elif event=="on_stroke_1":
                     return compute_times_from_scratch("on_strokeidx_0")
-                    # assert False, "use "
-                    # # onset of first stroke (touch)
-                    # ons, _ = self.strokes_extract_ons_offs(trial)
-                    # if len(ons)==0:
-                    #     times = []
-                    # else:
-                    #     times = [ons[0]]
-
-                    # Touchscreen lag adjust.
-                    times =hack_adjust_touch_times_touchscreen_lag(times)
 
                 elif "on_strokeidx_" in event:
                     # e.g., on_strokeidx_2 means onset of 3rd stroke
@@ -6337,7 +6328,7 @@ class Session(object):
                         times = [ons[idx]]
                     
                     # Touchscreen lag adjust.
-                    times =hack_adjust_touch_times_touchscreen_lag(times)
+                    times =self.hack_adjust_touch_times_touchscreen_lag(times)
 
                 elif "off_strokeidx_" in event:
                     # e.g., on_strokeidx_2 means onset of 3rd stroke
@@ -6355,7 +6346,7 @@ class Session(object):
                         times = [offs[idx]]
 
                     # Touchscreen lag adjust.
-                    times =hack_adjust_touch_times_touchscreen_lag(times)
+                    times =self.hack_adjust_touch_times_touchscreen_lag(times)
 
                 elif event=="off_stroke_last":
                     # offset of the last stroke (touch)
@@ -6366,7 +6357,7 @@ class Session(object):
                         times = [offs[-1]]
 
                     # Touchscreen lag adjust.
-                    times =hack_adjust_touch_times_touchscreen_lag(times)
+                    times =self.hack_adjust_touch_times_touchscreen_lag(times)
 
                 elif event in ["done_button", "doneb"]:
                     # Onset of touch of done button, based on touchgin within square
@@ -6469,7 +6460,7 @@ class Session(object):
                     times = times[0:1] # take the first time, sometimes can go in and out of squiare
                     
                     # Touchscreen lag adjust.
-                    times =hack_adjust_touch_times_touchscreen_lag(times)
+                    times = self.hack_adjust_touch_times_touchscreen_lag(times)
 
                 elif event in ["post_screen_onset", "post"]:
                     # onset of the post-screen, which is offset of the "pause" after you report done
@@ -10741,6 +10732,7 @@ class Session(object):
                 assert False
 
             if use_time_within_DS:
+                assert False, "never use this, it has touchscreen lag.. see below"
                 if align_to=="onset":
                     event_time = DS.Dat.iloc[ind]["time_onset"]
                 elif align_to=="offset":
@@ -10752,13 +10744,15 @@ class Session(object):
                 # Sanity check
                 try:
                     if align_to=="onset":
-                        assert event_time==DS.Dat.iloc[ind]["time_onset"], "bug somewjhere"
+                        assert [event_time]==self.hack_adjust_touch_times_touchscreen_lag([DS.Dat.iloc[ind]["time_onset"]]), "bug somewjhere"
                     elif align_to=="offset":
-                        assert event_time==DS.Dat.iloc[ind]["time_offset"]
+                        assert [event_time]==self.hack_adjust_touch_times_touchscreen_lag([DS.Dat.iloc[ind]["time_offset"]]), "bug somewjhere"
                 except Exception as err:
                     print(event_time)
+                    print(DS.Dat.iloc[ind]["time_onset"])
+                    print(DS.Dat.iloc[ind]["time_offset"])
                     print(DS.Dat.iloc[ind])
-                    assert False
+                    raise err
 
             trials.append(trial_neural)
             strokeids.append(si)
