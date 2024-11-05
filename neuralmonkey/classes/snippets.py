@@ -7243,11 +7243,16 @@ class Snippets(object):
 
                     times1 = np.array(dftmp["event_time"])
                     times2 = np.array(onsets_ds)
+                    if False: 
+                        # Stopped doing this, because touchscreen lag lead me to adjust timing in hacky way in session. so this will fail.
 
-                    from pythonlib.tools.nptools import isnear
-                    if not isnear(times1, times2):
-                        print(np.argwhere((times2 - times1)>0.01))
-                        assert False, "times in SP and DS do not match! explanations: (i) you loaded old SP. do not do that. (ii) weirndess due to substrokes?"
+                        from pythonlib.tools.nptools import isnear
+                        if not isnear(times1, times2):
+                            print(np.argwhere((times2 - times1)>0.01))
+                            assert False, "times in SP and DS do not match! explanations: (i) you loaded old SP. do not do that. (ii) weirndess due to substrokes?"
+                    else:
+                        # THis is more lenient, catches egregious errors, but wont fail due to touchscreen lag
+                        assert np.all(np.abs(times1 - times2) < 0.1)
 
                     self.DS = DS
                     return self.DS
@@ -7505,6 +7510,14 @@ class Snippets(object):
         list_features_extraction = vars_extract_append + list_features_extraction
         list_features_extraction = list(set(list_features_extraction))
 
+        ### HACKY - sometimes need to extract data from DS_for_pruning_D. For some rason I dont use that, but instead reload DS. I dont want 
+        # to undo that, so here is hacky just fro these features.
+        # This is for char strokes, each stroke has a clust score and shape label.
+        if params["datasetstrokes_extract_to_prune_stroke_and_get_features"] =="clean_chars_clusters_without_reloading" and not self.Params["which_level"]=="trial":
+            # i.e., CHAR_BASE_stroke qustion, analy_ver="charstrokes"
+            print("HACKy -- extracting clust_sim_max for strokes")
+            self.datasetbeh_append_column_helper(["clust_sim_max", "clust_sim_max_colname"], None, DS=DS_for_pruning_D, stop_if_fail=True)
+
         print("Attempting to extract these features into Snippets:")
         print(list_features_extraction)
 
@@ -7512,6 +7525,15 @@ class Snippets(object):
         print("cleanpreprocessifreloaded")
         if DS_for_feature_extraction is not None:
             DS_for_feature_extraction.clean_preprocess_if_reloaded()
+
+        if False:
+            # HACKY - testing whether DS_for_pruning_D matches DS_for_feature_extraction.
+            # Turns out DS_for_pruning_D can have less data (rows) than DS_for_feature_extraction
+            list_tc = DS_for_feature_extraction.Dat["trialcode"].tolist()
+            list_si = DS_for_feature_extraction.Dat["stroke_index"].tolist()
+            list_tc = self.DfScalar["trialcode"].tolist()
+            list_si = self.DfScalar["stroke_index"].tolist()
+            _df = DS_for_pruning_D.dataset_slice_by_trialcode_strokeindex(list_tc, list_si)
 
         # Perform extraction
         print("assert datasetbehappcolhelp")
