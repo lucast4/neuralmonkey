@@ -7502,6 +7502,343 @@ class Session(object):
 
         return ListPA
 
+    def _popanal_generate_timewarped_rel_events_extract_raw(self,  events=None, sites=None, trials=None,
+                                                            predur_rel_first_event = -1, postdur_rel_last_event = 1):
+        """
+        Do this separateyl for each session before concatenating.
+        """
+        from elephant.kernels import GaussianKernel        
+        from elephant.statistics import time_histogram, instantaneous_rate,mean_firing_rate
+        from quantities import s
+        from neo.core import SpikeTrain
+
+        ### Prep params
+        if events is None:
+            if self.beh_this_day_uses_done_button():
+                events = ['fixcue', 'fixtch', 'samp', 'go_cue', 'first_raise', 'on_strokeidx_0', 'off_strokeidx_0', 'doneb', 'reward_first_post']
+            else:
+                events = ['fixcue', 'fixtch', 'samp', 'go_cue', 'first_raise', 'on_strokeidx_0', 'off_strokeidx_0', 'reward_first_post']
+
+        # Get trials that hold a set of events
+        if trials is None:
+            trials = self.get_trials_list(True, events_that_must_include_in_order = events)
+        else:
+            tmp = self._get_trials_list_if_include_these_events_in_order(trials, events)
+            assert tmp==trials, "some trials are mssing events"
+        if sites is None:
+            sites = self.sitegetterKS_all_sites()
+
+        ### Get event time distributions across trials
+        dfeventsn, _ = self.eventsdataframe_extract_timings(events, trials)
+        times_array = np.array(dfeventsn["time_events_flat_first_unsorted"].tolist()) # convert to array (ntrials, nevents)
+        # Check that is good array
+        assert times_array.shape == (len(trials), len(events))
+        assert np.all(np.isnan(times_array)==False)
+
+        # Append pre and post times to first and last times of array
+        # -- makes rest of analysis easier.
+        times_array = np.concatenate([(times_array[:,0] + predur_rel_first_event)[:, None], times_array, (times_array[:, -1] + postdur_rel_last_event)[:, None]], axis=1)
+
+        ### Get spiketimes
+        res = []
+        for site in sites:
+            for ind_trial in range(len(trials)):
+                print("Getting spiketimes, site:", site)
+                event_time = times_array[ind_trial][0]
+                post_dur = times_array[ind_trial][-1] - event_time
+                pre_dur = 0
+                trial_neural = trials[ind_trial]
+
+                spike_times = self._snippets_extract_single_snip_spiketimes(site, trial_neural,
+                    event_time, pre_dur, post_dur, subtract_event_time=False)
+                res.append({
+                    "site":site,
+                    "ind_trial":ind_trial,
+                    "trial":trial_neural,
+                    "spike_times_raw":spike_times,
+                })
+        dfspikes = pd.DataFrame(res)
+
+        # ### Get pa for each trial
+        # print("Getting pa for each trial")
+        # list_pa = []
+        # for ind_trial in range(len(trials)):
+        #     event_time = times_array[ind_trial][0]
+        #     post_dur = times_array[ind_trial][-1] - event_time
+        #     pre_dur = 0
+        #     trial_neural = trials[ind_trial]
+        #     pa = self.popanal_generate_save_trial(ind_trial, sites=sites, t_on=t_on, t_off = t_off)
+        #     list_pa.append(pa)
+
+        ### Get beh data
+        dflab = self.datasetbeh_extract_dataframe(trials)
+
+        return events, sites, times_array, dfspikes, dflab
+
+
+    # def popanal_generate_timewarped_rel_events(self, events=None, sites=None, trials=None, PLOT=False,
+    #                                            predur_rel_first_event = -1, postdur_rel_last_event = 1):
+    #     """
+    #     Wrapper to generate PA that has fr time-warped to fit the "median" trial, based on linear
+    #     interpolation between events. Each trial must have all events. 
+    #     PARAMS:
+    #     - events, list of str. if give 4 events, then will actuayl ahve 6, including 2 flankers, whose timing
+    #     is given by predur_rel_first_event, and postdur_rel_last_event.
+    #     RETURNS:
+    #     - PA, with times in actual raw times. Event-info is in PA.Params
+    #     """
+    #     from elephant.kernels import GaussianKernel        
+    #     from elephant.statistics import time_histogram, instantaneous_rate,mean_firing_rate
+    #     from quantities import s
+    #     from neo.core import SpikeTrain
+
+    #     ### Prep params
+    #     if events is None:
+    #         events = ['samp', 'go_cue', 'first_raise', 'on_strokeidx_0']
+    #     # Get trials that hold a set of events
+    #     if trials is None:
+    #         trials = self.get_trials_list(events_that_must_include = events)
+    #     else:
+    #         tmp = self._get_trials_list_if_include_these_events(trials, events)
+    #         assert tmp==trials, "some trials are mssing events"
+    #     if sites is None:
+    #         sites = self.sitegetterKS_all_sites()
+
+    #     ### Get event time distributions across trials
+    #     dfeventsn, _ = self.eventsdataframe_extract_timings(events, trials)
+    #     times_array = np.array(dfeventsn["time_events_flat_first_unsorted"].tolist()) # convert to array (ntrials, nevents)
+    #     # Check that is good array
+    #     assert times_array.shape == (len(trials), len(events))
+    #     assert np.all(np.isnan(times_array)==False)
+
+    #     # Append pre and post times to first and last times of array
+    #     # -- makes rest of analysis easier.
+    #     times_array = np.concatenate([(times_array[:,0] + predur_rel_first_event)[:, None], times_array, (times_array[:, -1] + postdur_rel_last_event)[:, None]], axis=1)
+
+    #     ### Get median times
+    #     times_median = np.median(times_array, axis=0)
+        
+    #     def convert_spiketime_to_timecanonical(st, ind_trial, DEBUG=False):
+    #         """
+    #         Given a time and a trial, convert it to common coordinate system, 0...1...2, where these are the evenst, 
+    #         and fraction is fraction with nthe window
+    #         """
+    #         times = times_array[ind_trial]
+    #         event_ind_this_time_occurs_after = np.max(np.argwhere((st-times)>0))
+    #         time_delta = st - times[event_ind_this_time_occurs_after]
+    #         time_interval = times[event_ind_this_time_occurs_after+1] - times[event_ind_this_time_occurs_after]
+    #         time_delta_frac = time_delta/time_interval
+    #         time_canonical = event_ind_this_time_occurs_after + time_delta_frac
+
+    #         if DEBUG:
+    #             print(st, times, event_ind_this_time_occurs_after, time_delta_frac)
+            
+    #         assert time_delta_frac>=0
+    #         assert time_delta_frac<=1
+    #         return time_canonical
+        
+    #     ### Get spiketimes
+    #     res = []
+    #     for site in sites:
+    #         for ind_trial in range(len(trials)):
+    #             print("Getting spiketimes, site:", site)
+    #             event_time = times_array[ind_trial][0]
+    #             post_dur = times_array[ind_trial][-1] - event_time
+    #             pre_dur = 0
+    #             trial_neural = trials[ind_trial]
+
+    #             spike_times = self._snippets_extract_single_snip_spiketimes(site, trial_neural,
+    #                 event_time, pre_dur, post_dur, subtract_event_time=False)
+    #             res.append({
+    #                 "site":site,
+    #                 "ind_trial":ind_trial,
+    #                 "trial":trial_neural,
+    #                 "spike_times_raw":spike_times,
+    #             })
+    #     dfspikes = pd.DataFrame(res)
+        
+    #     def _get_spike_times(site, trial, spikes_version="spike_times_warped"):
+    #         """ get spike times for this (site, trial)"""
+    #         tmp = dfspikes[(dfspikes["site"] == site) & (dfspikes["trial"] == trial)]
+    #         assert len(tmp)==1
+    #         return tmp[spikes_version].values[0]
+
+    #     ### METHODS -- Convert from canonical time to projected onto median trial event times
+    #     times_median_canonical = np.arange(len(times_median)) # (0, 1, 2, ...)
+    #     map_segment_to_segmentdur = {} # each segment (0,1 ,2..) to dur in sec
+    #     for i, dur in enumerate(np.diff(times_median)):
+    #         map_segment_to_segmentdur[i] = dur
+
+    #     def project_spiketimescanonical_to_median(spike_times_canonical):
+    #         """
+    #         e.g., convert 0.1 (first segment, 0.1 frac within) to the actual raw time relative to the
+    #         median trial.
+    #         """
+    #         spike_times_warped = np.zeros(spike_times_canonical.shape)-999
+
+    #         for segment_idx in times_median_canonical[:-1]:
+
+    #             # get all inds in this segment
+    #             mask = ((spike_times_canonical-segment_idx)>=0) & ((spike_times_canonical-segment_idx)<1)
+
+    #             # get their fraction within the segment, and add that to the median time onset
+    #             fracs = (spike_times_canonical[mask] - segment_idx) # frac  
+    #             segment_dur = map_segment_to_segmentdur[segment_idx]
+    #             segment_onset = times_median[segment_idx]
+
+    #             assert np.all(spike_times_warped[mask] == -999), "already filled..."
+
+    #             spike_times_warped[mask] = segment_onset + fracs*segment_dur
+    #         assert np.all(spike_times_warped>-999), "missed items"
+    #         return spike_times_warped
+
+    #     ### Now time-warp each spike time to canonical coordiantes then to warped.
+    #     list_spike_times_canonical = []
+    #     list_spike_times_warped = []
+    #     for i, row in dfspikes.iterrows():
+    #         ind_trial = row["ind_trial"]
+    #         site = row["site"]
+    #         spike_times_raw = row["spike_times_raw"]
+
+    #         print("Times --> canonical, site:", site)
+    #         spike_times_canonical = np.array([convert_spiketime_to_timecanonical(st, ind_trial) for st in spike_times_raw])
+
+    #         # Project to median (final warp)
+    #         print("Canonical --> warped, site:", site)
+    #         spike_times_warped = project_spiketimescanonical_to_median(spike_times_canonical)
+
+    #         list_spike_times_canonical.append(spike_times_canonical)
+    #         list_spike_times_warped.append(spike_times_warped)
+    #     dfspikes["spike_times_canonical"] = list_spike_times_canonical
+    #     dfspikes["spike_times_warped"] = list_spike_times_warped
+
+    #     # PLOT EXAMPLE
+    #     if PLOT:
+    #         site = sites[0]
+    #         trials_plot = trials[:20]
+
+    #         fig, axes = plt.subplots(1, 4, figsize=(40, 8))
+
+    #         ax = axes.flatten()[0]
+    #         ax.set_title("original times")
+    #         for ind_trial in range(len(trials_plot)):
+    #             times = times_array[ind_trial, :]
+    #             ax.plot(times, np.ones(len(times))*ind_trial, "ok")
+
+    #             # overlay spikes
+    #             spike_times = _get_spike_times(site, trials[ind_trial], "spike_times_raw")
+    #             ax.plot(spike_times, np.ones(len(spike_times))*ind_trial, "xr")
+
+    #         ax = axes.flatten()[1]
+    #         ax.set_title("original times, subtract first time")
+    #         for ind_trial in range(len(trials_plot)):
+    #             times = times_array[ind_trial, :]
+    #             times = times_array[ind_trial, :]
+    #             time_start = times[0]
+    #             times = times - time_start
+    #             ax.plot(times, np.ones(len(times))*ind_trial, "ok")
+
+    #             # overlay spikes
+    #             spike_times = _get_spike_times(site, trials[ind_trial], "spike_times_raw")
+    #             spike_times = spike_times - time_start
+    #             ax.plot(spike_times, np.ones(len(spike_times))*ind_trial, "xr")
+
+    #         ax = axes.flatten()[2]
+    #         ax.set_title("canonical times")
+    #         for ind_trial in range(len(trials_plot)):
+    #             times = times_array[ind_trial, :]
+
+    #             # times = times_array[ind_trial, :]
+    #             times = times_median_canonical
+    #             ax.plot(times, np.ones(len(times))*ind_trial, "ok")
+
+    #             # overlay spikes
+    #             spike_times = _get_spike_times(site, trials[ind_trial], "spike_times_canonical")
+    #             ax.plot(spike_times, np.ones(len(spike_times))*ind_trial, "xr")
+
+    #         ax = axes.flatten()[3]
+    #         ax.set_title("warped times (final)")
+    #         for ind_trial in range(len(trials_plot)):
+    #             times = times_array[ind_trial, :]
+
+    #             # times = times_array[ind_trial, :]
+    #             times = times_median
+    #             ax.plot(times, np.ones(len(times))*ind_trial, "ok")
+
+    #             # overlay spikes
+    #             spike_times = _get_spike_times(site, trials[ind_trial], "spike_times_warped")
+    #             ax.plot(spike_times, np.ones(len(spike_times))*ind_trial, "xr")
+
+    #     ### Generate PA -- using warped aligned times, generate a single PA
+    #     t_on = times_median[0]
+    #     t_off = times_median[-1]
+    #     list_pa = []
+    #     for trial in trials:
+            
+    #         print("Generating PA, trial: ", trial)
+            
+    #         # Collect spike trains over all sites
+    #         list_spiketrain = []
+    #         for site in sites:
+    #             # dat = self.datall_TDT_KS_slice_single_bysite(site, trial)
+    #             st = _get_spike_times(site, trial, spikes_version="spike_times_warped")
+    #             list_spiketrain.append(self.elephant_spiketrain_from_values(st, t_on, t_off))
+                
+    #         # Convert spike train to smoothed FR
+    #         frate = instantaneous_rate(list_spiketrain, sampling_period=SMFR_TIMEBIN*s, 
+    #             kernel=GaussianKernel(self.SMFR_SIGMA*s))
+
+    #         # Convert to popanal
+    #         times = np.array(frate.times)
+    #         pa = self._popanal_generate_from_raw(frate.T.magnitude, times, sites, df_label_trials=None)
+    #         list_pa.append(pa)
+
+    #     from neuralmonkey.classes.population import concatenate_popanals
+    #     PA = concatenate_popanals(list_pa, "trials", 
+    #                             values_for_concatted_dim = trials,
+    #                             # assert_otherdims_have_same_values=True, 
+    #                             # assert_otherdims_restrict_to_these=("chans", "times"),
+    #                             assert_otherdims_have_same_values=False,   # no need, it must be by design
+    #                             assert_otherdims_restrict_to_these=("chans", "times"),
+    #                             all_pa_inherit_times_of_pa_at_this_index=0)
+
+    #     # Get beh data
+    #     PA.Xlabels["trials"] = self.datasetbeh_extract_dataframe(trials)
+
+    #     # Store params related to the events
+    #     PA.Params["version"] = "time_warped_to_events"
+    #     PA.Params["event_times_array"] = times_array
+    #     PA.Params["event_times_median"] = times_median
+    #     PA.Params["event_times_median_canonical"] = times_median_canonical
+    #     PA.Params["events_inner"] = events
+    #     PA.Params["events_all"] = ["ONSET"] + events + ["OFFSET"]
+    #     PA.Params["ONSET_predur_rel_first_event"] = predur_rel_first_event
+    #     PA.Params["OFFSET_postdur_rel_lst_event"] = postdur_rel_last_event
+
+    #     # Store bregions
+    #     # -- NOTE: This works.. list_pa, bregions = PA.split_by_label("chans", "bregion_combined")
+    #     res =[]
+    #     for site in PA.Chans:
+    #         res.append(
+    #             {"bregion_combined": self.sitegetterKS_map_site_to_region(site, region_combined=True),
+    #             "bregion":self.sitegetterKS_map_site_to_region(site, region_combined=False),
+    #             "chan":site
+    #         })
+
+    #     # save
+    #     PA.Xlabels["chans"] = pd.DataFrame(res)        
+
+    #     return PA
+
+
+    def elephant_spiketrain_from_values(self, spike_times, time_on, time_off):
+        """ Convert array of times to a SpikeTrain instance
+        """
+        from quantities import s
+        from neo.core import SpikeTrain
+        spiketrain = SpikeTrain(spike_times*s, t_stop=time_off, t_start=time_on)
+        return spiketrain
+
     def elephant_spiketrain_to_smoothedfr(self, spike_times, 
         time_on, time_off, 
         gaussian_sigma = None, # changed to 0.025 on 4/3/23. ,
@@ -7523,7 +7860,8 @@ class Session(object):
         if gaussian_sigma is None:
             gaussian_sigma = self.SMFR_SIGMA
 
-        spiketrain = SpikeTrain(spike_times*s, t_stop=time_off, t_start=time_on)
+        spiketrain = self.elephant_spiketrain_from_values(spike_times, time_on, time_off)
+        # spiketrain = SpikeTrain(spike_times*s, t_stop=time_off, t_start=time_on)
 
         frate = instantaneous_rate(spiketrain, sampling_period=sampling_period*s, 
             kernel=GaussianKernel(gaussian_sigma*s))
@@ -7583,8 +7921,9 @@ class Session(object):
                 kernel=GaussianKernel(gaussian_sigma*s))
 
             # Convert to popanal
-            PA = PopAnal(frate.T.magnitude, frate.times, chans = list_sites,
-                spike_trains = [list_spiketrain], print_shape_confirmation=print_shape_confirmation)
+            PA = self._popanal_generate_from_raw(frate.T.magnitude, frate.times, list_sites, df_label_trials=None)
+            # PA = PopAnal(frate.T.magnitude, frate.times, chans = list_sites,
+            #     spike_trains = [list_spiketrain], print_shape_confirmation=print_shape_confirmation)
             # PA.Params["frate_sampling_period"] = sampling_period
             self.PopAnalDict[trial] = PA
 
