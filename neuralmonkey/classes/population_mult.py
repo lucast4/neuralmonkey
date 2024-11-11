@@ -189,14 +189,24 @@ def dfallpa_preprocess_sitesdirty_single(PA, animal, date, plot_fr_after_replace
     
     ### Sanity checks (clean site info matches PA)
     tmp = dfres["chan"].tolist() 
-    if not all([ch in tmp for ch in PA.Chans]): # check that all chans in PA exist in dfres
-        print("Chans in sitesdirty analysis: ", tmp)
-        print("Chans in the current PA: ", PA.Chans)
-        for ch in PA.Chans:
-            print(ch, ch in tmp)
-        # Rreturn NODATA, so that outer function can decide whether to reextract
-        print("probably DFallpa is old. need to reextract")
+    
+    chans_included = [ch for ch in PA.Chans if ch in tmp]
+    chans_excluded = [ch for ch in PA.Chans if ch not in tmp]
+    if len(chans_excluded)>0:
+        print("Problem, you have not prprocessed dirty channels matching this neural data")
+        print("chans found:", chans_included)
+        print("chans missing:", chans_excluded)
+        print("POssibly DFallpa is old. need to reextract")
         return "NODATA", "NODATA"
+
+    # if not all([ch in tmp for ch in PA.Chans]): # check that all chans in PA exist in dfres
+    #     print("Chans in sitesdirty analysis: ", tmp)
+    #     print("Chans in the current PA: ", PA.Chans)
+    #     for ch in PA.Chans:
+    #         print(ch, ch in tmp)
+    #     # Rreturn NODATA, so that outer function can decide whether to reextract
+    #     print("probably DFallpa is old. need to reextract")
+    #     return "NODATA", "NODATA"
         # assert False, "probably DFallpa is old. need to reextract"
 
     ### (1) Remove bad chans
@@ -301,7 +311,8 @@ def dfallpa_preprocess_sitesdirty_single_just_drift(PA, animal, date, slope_thre
 
     if savedir is not None:
         from pythonlib.tools.expttools import writeDictToTxtFlattened
-        writeDictToTxtFlattened({"chans_orig":PA.Chans, "chans_new":pa.Chans}, f"{savedir}/drift_pruned_chans.txt")
+        chans_pruned = [ch for ch in PA.Chans if ch not in pa.Chans]
+        writeDictToTxtFlattened({"chans_orig":PA.Chans, "chans_new":pa.Chans, "chans_pruned":chans_pruned}, f"{savedir}/drift_pruned_chans.txt")
     return pa
 
     # from neuralmonkey.classes.population_mult import _dfallpa_preprocess_sitesdirty_single_remove_chans
@@ -444,6 +455,11 @@ def snippets_extract_popanals_split_bregion_twind(SP, list_time_windows, vars_ex
     DictEvBrTw_to_PA = {}
     print("These events:", events_keep)
     for event in events_keep:
+        if event not in SP.DfScalar["event"].unique():
+            print(event)
+            print(events_keep)
+            print(SP.DfScalar["event"].unique())
+            assert False, "why?"
         if event in SP.DfScalar["event"].tolist():
             print(event)
             # assert len(SP.Params["list_events_uniqnames"])==1, "assuming is strokes, just a single event... otherwise iterate"
@@ -1117,10 +1133,12 @@ def dfallpa_extraction_load_wrapper_from_MS(MS, question, list_time_windows, whi
         SP.Params["list_events_uniqnames"] = sorted(SP.DfScalar["event"].unique().tolist())
 
     ## Extract all popanals
+    events_keep_this = None # Use None beeucase this just gets all events. otherwise might fail if event name
+    # doesnt have prefixes.
     DFallpa = snippets_extract_popanals_split_bregion_twind(SP, list_time_windows,
                                                     list_features_extraction,
                                                     combine_into_larger_areas=combine_into_larger_areas,
-                                                    events_keep=events_keep,
+                                                    events_keep=events_keep_this,
                                                     exclude_bad_areas=exclude_bad_areas)
 
     # Bin times if needed
@@ -1563,8 +1581,34 @@ def dfpa_group_and_split(DFallpa, vars_to_concat=None, vars_to_split=None,
     return DFallpa
 
 
+def dfallpa_preprocess_sitesdirty_check_if_preprocessed(DFallpa, animal, date):
+    """
+    REturn bool for whether all chans in DFallpa have an
+    already-preprocessed sitedirty data that is saved.
+    """
+    from neuralmonkey.metrics.goodsite import load_firingrate_drift
+
+    # (1) Try to load data
+    dfres, _, _, _ = load_firingrate_drift(animal, date)
+    if isinstance(dfres, str) and dfres == "NODATA":
+        return False
+    
+    # (2) Check that all chans exist
+    chans_saved = dfres["chan"].tolist() 
+    for pa in DFallpa["pa"].tolist():
+        chans_included = [ch for ch in pa.Chans if ch in chans_saved]
+        chans_excluded = [ch for ch in pa.Chans if ch not in chans_saved]
+        if len(chans_excluded)>0:
+            print("Problem, you have not prprocessed dirty channels matching this neural data")
+            print("chans found:", chans_included)
+            print("chans missing:", chans_excluded)
+            return False
+        
+    return True
+
 def dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, fr_mean_subtract_method = "across_time_bins",
-        do_sitesdirty_extraction=True):
+        do_sitesdirty_extraction=True, 
+        plot_clean_lowfr_chans = False):
     """
     Apply seuqence of preprocessing steps to cases where multkiple events' PA were combined in DFallpa.
     I used this for decode moment stuff (around Jul 2024).
@@ -1573,6 +1617,7 @@ def dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, fr_mean_subtrac
     PARAMS:
     - do_sitesdirty_extraction, bool, if True, then does (slow, like 10 min) extracation of sitesdirty preprocess metrics.
     Only does this if it can't find it already done and saved.
+    NOTE: by default will ALWAYS prune chans by sitedirty, if the data exists.
     RETURNS:
     - DFallpa, with "pa" column being copies that have been processed. 
     Note that DFallpa output CAN be diff length from input, if sitedirty processessing throws out all chans for a PA, it is removed.
@@ -1580,36 +1625,77 @@ def dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, fr_mean_subtrac
 
     assert fr_mean_subtract_method in ["across_time_bins", "each_time_bin"]
 
-    # (1) Prune to chans that are common across pa for each bregion (intersection of chans)|
+    ############### (1) Prune to chans that are common across pa for each bregion (intersection of chans)|
+    print(" == (1) Matching chans across events")
     dfpa_match_chans_across_pa_each_bregion(DFallpa)
     
-    # (2) Remove bad chans based on sitedirty preprocessing (e.g., drift)
+    ############### (2) Remove bad chans based on sitedirty preprocessing (e.g., drift)
+    print(" == (2) Remove bad chans based on drift")
     # First, check that preprocess data exist
-    tmp, _ = dfallpa_preprocess_sitesdirty_single(DFallpa["pa"].values[0], animal, date)
-    if tmp == "NODATA" and do_sitesdirty_extraction:
-        # Then do extraction of sitesdirty preprocess metrics. This can take time (like 10 min).
+    DRIFT_DATA_EXISTS = dfallpa_preprocess_sitesdirty_check_if_preprocessed(DFallpa, animal, date)
+    # DRIFT_DATA_EXISTS = True
+    # from neuralmonkey.metrics.goodsite import load_firingrate_drift
+    # dfres, _, _, _ = load_firingrate_drift(animal, date)
+
+    # if isinstance(dfres, str) and dfres == "NODATA":
+    #     DRIFT_DATA_EXISTS = False
+    
+    # ### Sanity checks (clean site info matches PA)
+    # tmp = dfres["chan"].tolist() 
+    # for pa in DFallpa["pa"].tolist():
+    #     chans_included = [ch for ch in pa.Chans if ch in tmp]
+    #     chans_excluded = [ch for ch in pa.Chans if ch not in tmp]
+    #     if len(chans_excluded)>0:
+    #         print("Problem, you have not prprocessed dirty channels matching this neural data")
+    #         print("chans found:", chans_included)
+    #         print("chans missing:", chans_excluded)
+    #         DRIFT_DATA_EXISTS = False
+    
+    if DRIFT_DATA_EXISTS==True:
+        # Then good to go
+        DO_SITESDIRTY = True
+    elif DRIFT_DATA_EXISTS==False and do_sitesdirty_extraction==True:
+        # Then extract the drift data.
         from neuralmonkey.classes.session import load_mult_session_helper
         MS = load_mult_session_helper(date, animal)
         MS.sitesdirtygood_preprocess_wrapper(PLOT_EACH_TRIAL=True)
         DO_SITESDIRTY = True
-    elif tmp == "NODATA":
-        # Then doestn exist, and you dont want to do extaction here.  SKip it.
+    elif DRIFT_DATA_EXISTS==False and do_sitesdirty_extraction==False:
         DO_SITESDIRTY = False
     else:
-        # Data exists. Use it.
-        DO_SITESDIRTY = True
+        assert False, "not posbile"
+
+    # for pa in DFallpa
+    # tmp, _ = dfallpa_preprocess_sitesdirty_single(DFallpa["pa"].values[0], animal, date)
+    # if tmp == "NODATA" and do_sitesdirty_extraction:
+    #     # Then do extraction of sitesdirty preprocess metrics. This can take time (like 10 min).
+    #     from neuralmonkey.classes.session import load_mult_session_helper
+    #     MS = load_mult_session_helper(date, animal)
+    #     MS.sitesdirtygood_preprocess_wrapper(PLOT_EACH_TRIAL=True)
+    #     DO_SITESDIRTY = True
+    # elif tmp == "NODATA" and do_sitesdirty_extraction==False:
+    #     # Then doestn exist, and you dont want to do extaction here.  SKip it.
+    #     DO_SITESDIRTY = False
+    # else:
+    #     # Data exists. Use it.
+    #     DO_SITESDIRTY = True
        
     # Try again
     if DO_SITESDIRTY:
+        print("============== REMOVING DIRTY SITES:")
         # Then it exists -- run it.
         # savedir = "/tmp"
         list_pa = []
         for i, row in DFallpa.iterrows():
             PA = row["pa"]
+            bregion = row["bregion"]
+            event = row["event"]
             # plot_fr_after_replace_trials_dir = f"{savedir}/{row['bregion']}-{row['event']}"
             # os.makedirs(plot_fr_after_replace_trials_dir, exist_ok=True)
             plot_fr_after_replace_trials_dir = None
+            print("... bregion ", bregion, "... event ", event)
             PA, map_chan_to_trialcodes_replaced = dfallpa_preprocess_sitesdirty_single(PA, animal, date, plot_fr_after_replace_trials_dir)
+            assert not PA=="NODATA", "weird -- this shouldnt be possible -- should have triggered a re-extraction above..."
             list_pa.append(PA)
         print("PA.X.shape, before and after dfallpa_preprocess_sitesdirty_single")
         for i in range(len(DFallpa)):
@@ -1617,7 +1703,8 @@ def dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, fr_mean_subtrac
             pa1 = DFallpa.iloc[i]["pa"]
             pa2 = list_pa[i]
             if pa2 is None:
-                print(x, pa1.X.shape, " --> ", None)
+                # Then all data has been removed
+                print(x, pa1.X.shape, " --> ", None, "(i.e., all neurons pruned)")
             else:
             # for pa1, pa2 in zip(DFallpa["pa"].tolist(), list_pa):
                 print(x, pa1.X.shape, " --> ", pa2.X.shape)
@@ -1631,20 +1718,20 @@ def dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, fr_mean_subtrac
     DFallpa.drop(inds_drop, inplace=True)
     DFallpa.reset_index(drop=True,inplace=True)
     
-    # (2) Clean bad chans - based on fr modulation.
-    dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT=False)
+    # (3) Remove bad chans that are noisy, low FR, low signal, etc [based on fr modulation]
+    # Removes chans that have no modulation, noisy, etc.
+    print(" == (3) Remove bad chans, low FR, low signal")
+    dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT=plot_clean_lowfr_chans)
 
-    # (3) Sqrt transform
+    # (4) Sqrt transform
+    print(" == (4) Sqrt transform")
     for pa in DFallpa["pa"]:
         pa.X = pa.X**0.5
 
-    # (4) Normalize FR    
+    # (5) Normalize FR    
+    print(" == (5) Normalize FR")
     PLOT=False
-    # pa = DFallpa["pa"].values[10]
-    # pa.plotNeurHeat(0)
     dfpa_concat_normalize_fr_split_multbregion_flex(DFallpa, fr_mean_subtract_method, PLOT)
-    # pa = DFallpa["pa"].values[10]
-    # pa.plotNeurHeat(0)
 
 def dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT = False):
     """
@@ -1662,6 +1749,9 @@ def dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT = False):
     elif DFallpa["event"].unique().tolist() == ["fixon_preparation"]:
         # THis is the only event
         events_keep = ["fixon_preparation"]
+    elif DFallpa["which_level"].unique().tolist() == ["warped"]:
+        # Warped, i.e., this is trialpop versino.
+        events_keep = ["none"]
     else:
         # Just use the events that ahve the same trialcodes and chans.
         # You must have already pruned chans to be same!
@@ -1687,11 +1777,17 @@ def dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT = False):
     # THRESH_FR_STD_MEAN = 0.1
 
     # No smoothing (empriical, not the closest look)
+    # 11/6/24 - close look, this is pretty conservative.
+    # - TDT --> removes (rarely) some that have decent spike, but mostly removes small spikes.
+    # - KS --> have not checked closely.
+    # THRESH_FR_RATIO_CLEAN = 0.45
     THRESH_FR_RATIO_CLEAN = 0.65
-    THRESH_FR_RATIO_NOISY = 5.5
-    THRESH_FR_STD_MEAN = 0.2
-    THRESH_FR_MOD_VS_MEAN = 0.2
-    THRESH_FR_TRIALSTD_MEAN = 0.2
+    THRESH_FR_RATIO_NOISY = 5.3
+    THRESH_FR_STD_MEAN = 0.19
+    THRESH_FR_MOD_VS_MEAN = 0.19
+    THRESH_FR_TRIALSTD_MEAN = 0.17
+    THRESH_R2_TIME = 0.014
+
     # THRESH_FR_RATIO_CLEAN = 0.8
     # THRESH_FR_RATIO_NOISY = 65
     # THRESH_FR_STD_MEAN = 0.35
@@ -1752,6 +1848,18 @@ def dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT = False):
 
         # std of trial-mean fr
         fr_std_trialmean = np.std(np.mean(X, axis=2), axis=1) # (nchans, )
+
+        print(X.shape)
+        from neuralmonkey.metrics.scalar import _calc_modulation_by_frsm_event_aligned_time
+        list_r2 = []
+        for i in range(X.shape[0]):
+            r2 = _calc_modulation_by_frsm_event_aligned_time(X[i, :, :])
+            list_r2.append(r2)
+
+            # r2_trial = _calc_modulation_by_frsm_event_aligned_time(X[i, :, :])
+            # list_r2.append(r2)
+
+        fr_r2_time = np.array(list_r2)
 
         ### Plots
         if PLOT:
@@ -1821,6 +1929,7 @@ def dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT = False):
                 ax.set_title("[goal: high y] color=mean of trial-std fr")
                 ax.set_xlim(xmin=0)
                 ax.set_ylim(ymin=0)
+                ax.axhline(THRESH_FR_STD_MEAN)
 
                 ax = axes.flatten()[5]
                 s = ax.scatter(fr_std_over_fr_mean, fr_std_ratio, c=fr_mean_all, cmap="gray")
@@ -1832,6 +1941,7 @@ def dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT = False):
                 ax.set_title("[goal: high both x and y] color=mean of fr")
                 ax.set_xlim(xmin=0)
                 ax.set_ylim(ymin=0)
+                ax.axvline(THRESH_FR_STD_MEAN)
 
                 # ----------------------
                 ax = axes.flatten()[6]
@@ -1845,7 +1955,9 @@ def dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT = False):
                 ax.set_xlim(xmin=0)
                 ax.set_ylim(ymin=0)
 
-                savefig(fig, f"{savedir}/stats-{bregion}-fr_std_version={fr_std_version}.pdf")
+                path = f"{savedir}/stats-{bregion}-fr_std_version={fr_std_version}.pdf"
+                print("Saving figure: ", path)
+                savefig(fig, path)
                 plt.close("all")
 
         ### Final diagnostic scores
@@ -1862,15 +1974,18 @@ def dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT = False):
         from pythonlib.tools.listtools import stringify_list
         from pythonlib.tools.expttools import writeStringsToFile
 
-        for scores, name in zip(
-            [fr_std_ratio_clean, fr_std_ratio_noisy, fr_std_over_fr_mean, fr_mod_vs_mean, fr_trialstd_vs_mean],
-            ["fr_std_ratio_clean", "fr_std_ratio_noisy", "fr_std_over_fr_mean", "fr_mod_vs_mean", "fr_trialstd_vs_mean"]):
+        for scores, name, thresh in zip(
+            [fr_std_ratio_clean, fr_std_ratio_noisy, fr_std_over_fr_mean, fr_mod_vs_mean, fr_trialstd_vs_mean, fr_r2_time],
+            ["fr_std_ratio_clean", "fr_std_ratio_noisy", "fr_std_over_fr_mean", "fr_mod_vs_mean", "fr_trialstd_vs_mean", "r2_time"],
+            [THRESH_FR_RATIO_CLEAN, THRESH_FR_RATIO_NOISY, THRESH_FR_STD_MEAN, THRESH_FR_MOD_VS_MEAN, THRESH_FR_TRIALSTD_MEAN, THRESH_R2_TIME],
+            ):
 
             tmp = [(score, chan) for score, chan in zip(scores, chans)]
             score_chan_sorted = sorted(tmp, key=lambda x: x[0])
             score_chan_sorted_str = [stringify_list(x, return_as_str=True, separator="  --  ") for x in score_chan_sorted]
             
             fname = f"{savedir}/{bregion}-{name}.txt"
+            score_chan_sorted_str.append(f"thresh = {thresh} [keep if higher]")
             writeStringsToFile(fname, score_chan_sorted_str)
 
         # Plot each chan
@@ -1878,27 +1993,38 @@ def dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT = False):
             from pythonlib.tools.plottools import share_axes
             sdir = f"{savedir}/{bregion}"
             os.makedirs(sdir, exist_ok=True)
+
             for chan in pa.Chans:
                 fig, axes = plt.subplots(2, 2, figsize=(10,10))
                 for pa, event, ax in zip(list_pa, list_event, axes.flatten()):
-                    pa.plotwrapper_smoothed_fr_split_by_label("trials", "seqc_0_shape", chan=chan, ax=ax)
+                    for var_try in ["seqc_0_shape", "shape", "shape_semantic"]:
+                        if var_try in pa.Xlabels["trials"].columns:
+                            _var = var_try
+                            break
+                    pa.plotwrapper_smoothed_fr_split_by_label("trials", _var, chan=chan, ax=ax)
                     # ax.set_ylim(ymin=0)
                     ax.axhline(0)
                     ax.set_title(event)
                 share_axes(axes, "y")
-                savefig(fig, f"{sdir}/chan={chan}.pdf")
+                path = f"{sdir}/chan={chan}.pdf"
+                savefig(fig, path)
                 plt.close("all")
         
         ### Decide which chans to keep
         a = fr_std_ratio_clean > THRESH_FR_RATIO_CLEAN
         b = fr_std_ratio_noisy > THRESH_FR_RATIO_NOISY
-        c = fr_std_over_fr_mean > THRESH_FR_STD_MEAN
+        c = fr_std_over_fr_mean > THRESH_FR_STD_MEAN #
         d = fr_mod_vs_mean > THRESH_FR_MOD_VS_MEAN
         e = fr_trialstd_vs_mean > THRESH_FR_TRIALSTD_MEAN
+        f = fr_r2_time > THRESH_R2_TIME
 
-        inds = a | b | c | d | e
+        inds = a | b | c | d | e | f
         chans_keep = [chans[i] for i in np.argwhere(inds)[:,-1]]
+        chans_exclude = [c for c in chans if c not in chans_keep]
         print("Keep, for ", bregion, " ...", sum(inds), "/", len(inds))
+        print(" ... keeping: ", chans_keep)
+        print(" ... excluding: ", chans_exclude)
+
         MAP_REGION_TO_CHANS_KEEP[bregion] = chans_keep
 
     # print("----------")
