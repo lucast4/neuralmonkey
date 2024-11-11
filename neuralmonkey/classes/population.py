@@ -1028,38 +1028,109 @@ class PopAnal():
 
         if DUR >= (1.001 * max_period):
 
-            time_windows = self._agg_by_time_windows_binned_get_windows(DUR, SLIDE)
+            if False:
+                # 1. Original -- SLOW!!
+                time_windows = self._agg_by_time_windows_binned_get_windows(DUR, SLIDE)
 
-            # if SLIDE is None:
-            #     SLIDE = DUR
+                # if SLIDE is None:
+                #     SLIDE = DUR
 
-            # # MAke new times iwndows
-            # PRE = self.Times[0]
-            # POST = self.Times[-1]
-            # if False:
-            #     # Failed soemtimes, if dur > amount of data. then time_wind would be []
-            #     # n = (POST-PRE)/DUR
-            #     times1 = np.arange(PRE, POST-DUR, SLIDE)
-            #     times2 = times1+DUR
-            #     time_windows = np.stack([times1, times2], axis=1)
-            # else:
-            #     times1 = np.arange(PRE, POST-DUR/2, SLIDE) # each window, at least half of it inlcudes data
-            #     times2 = times1 + DUR
-            #     time_windows = np.stack([times1, times2], axis=1)
-            #     assert np.isclose(time_windows[0,0], PRE)
-            #     # assert time_windows[-1,1]>=post
-            #     assert time_windows[-1,0]<POST
-            
+                # # MAke new times iwndows
+                # PRE = self.Times[0]
+                # POST = self.Times[-1]
+                # if False:
+                #     # Failed soemtimes, if dur > amount of data. then time_wind would be []
+                #     # n = (POST-PRE)/DUR
+                #     times1 = np.arange(PRE, POST-DUR, SLIDE)
+                #     times2 = times1+DUR
+                #     time_windows = np.stack([times1, times2], axis=1)
+                # else:
+                #     times1 = np.arange(PRE, POST-DUR/2, SLIDE) # each window, at least half of it inlcudes data
+                #     times2 = times1 + DUR
+                #     time_windows = np.stack([times1, times2], axis=1)
+                #     assert np.isclose(time_windows[0,0], PRE)
+                #     # assert time_windows[-1,1]>=post
+                #     assert time_windows[-1,0]<POST
+                
 
-            # print("===========")
-            # print(DUR, SLIDE)
-            # print(time_windows)
-            # print(self.Times)
-            # assert False
+                # print("===========")
+                # print(DUR, SLIDE)
+                # print(time_windows)
+                # print(self.Times)
+                # assert False
 
-            X, times = self.agg_by_time_windows(time_windows)
+                X_binned, times_binned = self.agg_by_time_windows(time_windows)
+            elif False:
+                # 2. New, ChatGPT, works, but might fail in some cases with weird bins
+                # THis should be faster, esp for large data
+                # Tested and checked that it works.
+                # Assuming X is your neural data with shape (neurons, trials, times)
+                # and T is the time vector with units of seconds
 
-            PA = PopAnal(X, times=times, chans=self.Chans,
+                T = self.Times
+                X = self.X
+
+                # Calculate the sampling interval
+                dt = T[1] - T[0]  # Assuming uniform sampling
+
+                # Calculate the number of points per bin and step
+                bin_size_points = int(DUR / dt)
+                step_size_points = int(SLIDE / dt)
+
+                # Initialize lists to store the binned data and time stamps
+                X_binned = []
+                T_binned = []
+
+                total_time_points = X.shape[2]
+
+                # Sliding window loop
+                for start in range(0, total_time_points - bin_size_points + 1, step_size_points):
+                    end = start + bin_size_points  # End index for the current bin
+                    
+                    # Extract data for the current bin
+                    X_window = X[:, :, start:end]  # Shape: (neurons, trials, bin_size_points)
+                    
+                    # Compute the mean across the time dimension (axis=2)
+                    X_mean = X_window.mean(axis=2)  # Shape: (neurons, trials)
+                    
+                    # Append the mean data to the list
+                    X_binned.append(X_mean)
+                    
+                    # Compute and append the center time of the bin
+                    bin_center_time = T[start] + (DUR / 2)
+                    T_binned.append(bin_center_time)
+
+                # Convert lists to arrays
+                X_binned = np.stack(X_binned, axis=2)  # Shape: (neurons, trials, number of bins)
+                times_binned = np.array(T_binned)          # Shape: (number of bins,)
+            else:
+                # 3. The best method, is fast. Gets identical windows to method 1, but muhc fastrs.
+                time_windows = self._agg_by_time_windows_binned_get_windows(DUR, SLIDE)
+
+                T = np.array(self.Times)
+                X = self.X
+
+                X_binned = []
+                T_binned = []
+                for i in range(time_windows.shape[0]):
+                    twind = time_windows[i, :] # (t1, t2)
+                    # print(twind)
+
+                    x = self.X[:, :, (T>=twind[0]) & (T<=twind[1])]
+                    X_mean = np.mean(x, axis=2) # (chans, trials)
+
+                    # Append the mean data to the list
+                    X_binned.append(X_mean)
+                    
+                    # Compute and append the center time of the bin
+                    bin_center_time = twind[0] + DUR/2
+                    T_binned.append(bin_center_time)
+
+                # Convert lists to arrays
+                X_binned = np.stack(X_binned, axis=2)  # Shape: (neurons, trials, number of bins)
+                times_binned = np.array(T_binned)          # Shape: (number of bins,)
+
+            PA = PopAnal(X_binned, times=times_binned, chans=self.Chans,
                         trials = self.Trials)
             PA.Xlabels["trials"] = self.Xlabels["trials"].copy()
         else:
