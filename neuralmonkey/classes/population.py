@@ -614,7 +614,7 @@ class PopAnal():
         Asserts that self.Trials or Chans doesnt contain any Nones
         -- if dim=="times", then values are the min and max of the window
         """
-        if dim in ["chans", "trials"]:
+        if dim in ["site", "sites", "chans", "trials"]:
             # 1) Map the values to indices
             # dim, dim_str = self.help_get_dimensions(dim)
             indices = self.index_find_these_values(dim, values)
@@ -628,7 +628,8 @@ class PopAnal():
             # indices = self.index_find_these_values(dim, values)
             assert len(indices)==2
         else:
-            assert False
+            print(dim)
+            assert False, "not correct dim"
 
         # 2) Call indices version
         return self.slice_by_dim_indices_wrapper(dim, indices)
@@ -855,7 +856,6 @@ class PopAnal():
 
         if len(chans)==0:
             # Then return empty
-            print(chans)
             assert False
 
         # convert from channel labels to row indices
@@ -1398,7 +1398,51 @@ class PopAnal():
         
         return pa
 
-    def norm_rel_base_window(self, twind_base, method="zscore"):
+    def sort_chans_by_fr_in_window(self, twind):
+        """
+        REturn PA (copy) that has channels sorted in order of incresaing firing rates,
+        within time window twind (2-tuple).
+        """
+        
+        pathis = self.slice_by_dim_values_wrapper("times", twind).agg_wrapper("times").agg_wrapper("trials")
+        sortinds_chan = np.argsort(pathis.X[:, 0,0]).tolist()
+        PA = self.slice_by_dim_indices_wrapper("chans", sortinds_chan)
+
+        return PA, sortinds_chan
+
+    def sort_chans_by_modulation_over_time(self, PLOT=False):
+        """
+        Return PA copy that has chans sorted based on moudlation of fr over time.
+        Modulation over time is r2, anova, vs time, which is a good metric for how 
+        strongly this chan is modulated as a SNR metric.
+        """
+        from neuralmonkey.metrics.scalar import _calc_modulation_by_frsm_event_aligned_time
+        
+        # For each chan, compute modulation
+        res = []
+        for i, chan in enumerate(self.Chans):
+            frmat = self.X[i, :, :]
+            r2 = _calc_modulation_by_frsm_event_aligned_time(frmat)
+            res.append({
+                "r2":r2,
+                "chan":chan,
+                "indchan":i
+            })
+        df = pd.DataFrame(res)
+
+        if PLOT:
+            import seaborn as sns
+            from pythonlib.tools.snstools import rotateLabel
+            fig = sns.catplot(data=df, x="chan", y="r2", aspect=2.5, kind="bar")
+            rotateLabel(fig)
+        
+        # Sort
+        sortinds_chan = df.sort_values("r2", ascending=False)["indchan"].tolist()
+        PA = self.slice_by_dim_indices_wrapper("chans", sortinds_chan)
+
+        return PA, sortinds_chan
+
+    def norm_rel_base_window(self, twind_base, method="zscore", return_stats=False):
         """
         Normalize actrivity by subtractigin mean acitivty taken from a baseline
         time window (and then averaged over time). 
@@ -1409,14 +1453,45 @@ class PopAnal():
         x = pa_base.dataextract_reshape("chans_x_trialstimes")
         xmean = np.mean(x, axis=1)[:, None, None]
         xstd = np.std(x, axis=1)[:, None, None]
+
+        # print(self.X.shape)
+        # print(pa_base.X.shape)
+        # print(xmean.shape)
+        # print(xstd.shape)
+        # if method=="zscore":
+        #     # pa_norm.X = (pa_norm.X - xmean)/xstd
+        # elif method=="subtract":
+        # else:
+        #     assert False
+
+        pa_norm = self.norm_rel_base_apply(xmean, xstd, method)
+
+        if return_stats:
+            return pa_norm, xmean, xstd
+        else:
+            return pa_norm
+
+    def norm_rel_base_apply(self, xmean, xstd, method="zscore"):
+        """
+        Apply this prcomputed mean and std
+        PARAMS:
+        - xmean, (nchans, 1, 1) or (nchans,)
+        """
+
+        assert (xmean.shape == (self.X.shape[0], 1, 1)) or (xmean.shape == (self.X.shape[0],))
+        assert xstd.shape == (self.X.shape[0], 1, 1) or (xstd.shape == (self.X.shape[0],))
         
         pa_norm = self.copy()
         if method=="zscore":
             pa_norm.X = (pa_norm.X - xmean)/xstd
+        elif method=="subtract":
+            pa_norm.X = pa_norm.X - xmean
         else:
+            print(method)
             assert False
 
         return pa_norm
+
 
     def norm_subtract_mean_each_chan(self):
         """
@@ -1603,7 +1678,7 @@ class PopAnal():
         folds = balanced_stratified_kfold(None, y,  n_splits=n_splits, do_balancing_of_train_inds=do_balancing_of_train_inds)
         return folds
     
-    def split_sample_stratified_by_label(self, label_grp_vars, PRINT=False):
+    def split_sample_stratified_by_label(self, label_grp_vars, test_size=0.5, PRINT=False):
         """
         REturn two evenly slit PA, using up all the trials in self, and mainting the same proportion of classes of
         conj-var label_grp_vars (i.e,, stratified).
@@ -1613,7 +1688,7 @@ class PopAnal():
         from pythonlib.tools.statstools import stratified_resample_split_kfold
 
         # COnvert to conjunctive label as strings.
-        assert "tmp" not in self.Xlabels["trials"].columns
+        # assert "tmp" not in self.Xlabels["trials"].columns
         self.Xlabels["trials"] = append_col_with_grp_index(self.Xlabels["trials"], label_grp_vars, "tmp")
         labels = self.Xlabels["trials"]["tmp"].tolist()
         # labels = dflab["tmp"].tolist()
@@ -1621,10 +1696,11 @@ class PopAnal():
         # Get split indices for the two groups.
         from pythonlib.tools.listtools import tabulate_list
         outdict = tabulate_list(labels)
-        print("Labels, split:")
-        for k, v in outdict.items():
-            print(k, " -- ", v)
-        split_inds = stratified_resample_split_kfold(labels, 1)
+        if PRINT:
+            print("Labels, split:")
+            for k, v in outdict.items():
+                print(k, " -- ", v)
+        split_inds = stratified_resample_split_kfold(labels, 1, test_size=test_size)
 
         # Generate new pa
         train_index, test_index = split_inds[0]
@@ -1642,6 +1718,24 @@ class PopAnal():
         pa2.Xlabels["trials"] = pa2.Xlabels["trials"].drop("tmp", axis=1)
 
         return pa1, pa2
+
+    def split_train_test_random(self, frac_test):
+        """
+        Quick, random split trials into train, test, taking random subset of trials.
+        """
+        import random
+        ntrials = len(self.Trials)
+        ntrials_sub = int(np.ceil(frac_test*ntrials))
+        inds_all = list(range(len(self.Trials)))
+        inds_test = sorted(random.sample(inds_all, ntrials_sub))
+        inds_train = [i for i in inds_all if i not in inds_test]
+
+        # print(len(inds_all), len(inds_train), len(inds_test))
+        
+        pa_train = self.slice_by_dim_indices_wrapper("trials", inds_train, reset_trial_indices=True)
+        pa_test = self.slice_by_dim_indices_wrapper("trials", inds_test, reset_trial_indices=True)
+
+        return pa_train, pa_test
 
     def split_by_label(self, dim_str, dim_variable_grp):
         """ Splits self into multiple smaller PA, each with a single level for
@@ -1684,6 +1778,58 @@ class PopAnal():
         return ListPA, list_levels
 
     #######################
+    def _dataextract_timewarp_piecewise_linear_trial(self, indtrial, anchor_times_this_trial, times_template, 
+                                              anchor_times_template, smooth_boundaries_sigma=0.015, 
+                                              PLOT=False, no_negative_fr_allowed=True):
+        """
+        For this trial, time-warp the neural data based on mathcing anchor pts to a template, and linearly warping between the
+        anchor points.
+        RETURNS:
+        - a single PA holding this trial.
+        """
+        from neuralmonkey.utils.frmat import timewarp_piecewise_linear_interpolate
+
+        X_trial = self.X[:, indtrial, :]
+        times_trial = self.Times
+        X_warped, fig1, fig2 = timewarp_piecewise_linear_interpolate(X_trial, times_trial, anchor_times_this_trial, times_template, 
+                                          anchor_times_template, smooth_boundaries_sigma, PLOT)       
+
+        if no_negative_fr_allowed:
+            #  Make sure X is all positive. This is possible negative sometimes due to numerical imprecision and filtering?
+            X_warped[X_warped<0] = 0.
+
+        return X_warped, fig1, fig2
+
+    def dataextract_timewarp_piecewise_linear(self, anchor_times_this_trial, times_template, 
+                                              anchor_times_template, smooth_boundaries_sigma=0.015,
+                                              PLOT=False):
+        """
+        Apply this timewarp to all trials, returning a copy of self which has all trials warped
+        RETURNS:
+        - PA, copy, shape (nchans, ntrials, len(times_template))
+        """
+
+        list_x = []
+        fig1, fig2 = None, None
+        for indtrial in range(self.X.shape[1]):
+            if indtrial==0 and PLOT:
+                X_warped, fig1, fig2 = self._dataextract_timewarp_piecewise_linear_trial(indtrial, anchor_times_this_trial, times_template, 
+                                                                anchor_times_template, smooth_boundaries_sigma, PLOT=True)
+            else:
+                X_warped, _, _ = self._dataextract_timewarp_piecewise_linear_trial(indtrial, anchor_times_this_trial, times_template, 
+                                                                anchor_times_template, smooth_boundaries_sigma, PLOT=False)
+            list_x.append(X_warped)
+        
+        X = np.stack(list_x, axis=0)
+        X = np.transpose(X, (1,0,2))
+        
+
+        PA = self.copy()
+        PA.X = X
+        PA.Times = times_template
+
+        return PA, fig1, fig2
+
     def dataextract_reshape(self, reshape_method="chans_x_trialstimes"):
         """
         Holds methods for reshaping data.
@@ -3612,7 +3758,7 @@ class PopAnal():
         X = self.extract_activity_copy(trial, version)
         return plotNeurTimecourse(X, **kwargs)
 
-    def plotwrapper_smoothed_fr(self, values_this_axis=None, axis_for_inds="site", ax=None, 
+    def plotwrapper_smoothed_fr(self, values_this_axis=None, axis_for_inds="chans", ax=None, 
                      plot_indiv=True, plot_summary=False, error_ver="sem",
                      pcol_indiv = "k", pcol_summary="r", summary_method="mean",
                      event_bounds=(None, None, None), alpha=0.6, 
