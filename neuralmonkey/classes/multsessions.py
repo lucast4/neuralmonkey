@@ -451,7 +451,179 @@ class MultSessions(object):
         sn = self.SessionsList[0]
         return sn._popanal_generate_from_raw(frate_mat, times, chans, df_label_trials, list_df_label_cols_get)
 
-    def popanal_generate_timewarped_rel_events(self, events=None, sites=None,
+    def popanal_timewarp_rel_events_INTERPRATES(self, events=None, sites=None,
+                                               predur_rel_first_event = -1, postdur_rel_last_event = 1,
+                                               remove_trials_outlier_time_intervals=True, PLOT=False):
+        """
+        Wrapper to generate PA that has fr time-warped to fit the "median" trial, based on linear
+        interpolation of firing rates between events. Each trial must have all events. 
+        
+        PARAMS:
+        - events, list of str. if give 4 events, then will actuayl ahve 6, including 2 flankers, whose timing
+        is given by predur_rel_first_event, and postdur_rel_last_event.
+        RETURNS:
+        - PA, with times in actual raw times. Event-info is in PA.Params
+        """
+ 
+        ### For each session extract
+        res =[]
+        # ind_trial_0 = 0
+        # events = None
+        if sites is None:
+            sites = self.sitegetter_all(how_combine="intersect")
+        trials = None
+        for sn in self.SessionsList:
+            # Extract relevant data for each session
+            _events, _sites, times_array, _, dflab, list_pa = sn._popanal_generate_timewarped_rel_events_extract_raw(
+                events, sites, trials, predur_rel_first_event, postdur_rel_last_event, get_dfspikes=False)
+
+            # Check that globally these params match
+            if events is None:
+                events = _events
+            else:
+                assert events == _events
+        
+            if sites is None:
+                sites = _sites
+            else:
+                assert sites == _sites
+
+            res.append({
+                # "events":events,
+                # "trials":trials,
+                # "sites":sites,
+                "times_array":times_array,
+                "list_pa":list_pa,
+                "dflab":dflab,
+            })
+
+            # Shift the ind_trials so that they reflect the global order of trials in times_array.
+            # ind_trials_global = list(range(ind_trial_0, ind_trial_0 + times_array.shape[0]))
+            # dfspikes["ind_trial"] = [ind_trials_global[i] for i in dfspikes["ind_trial"]]
+            # ind_trial_0 += times_array.shape[0]
+
+        ### Collect across all sessions
+        times_array = np.concatenate([x["times_array"] for x in res], axis=0) # (ntrials, nevents)
+        # dfspikes = pd.concat([x["dfspikes"] for x in res], axis=0).reset_index(drop=True) # (ntrials, nevents)
+        LIST_PA = []
+        for r in res:
+            LIST_PA.extend(r["list_pa"])
+        dflab = pd.concat([x["dflab"] for x in res], axis=0).reset_index(drop=True) # (ntrials, nevents)
+
+        ### Remove outlier trials, any trial with at least one interval that is diff from others trials.
+        if remove_trials_outlier_time_intervals:
+            from pythonlib.tools.pandastools import remove_outlier_values
+            times_array_diff = np.diff(times_array[:, 1:-1], axis=1) # exclude the flankers.
+            df = pd.DataFrame(times_array_diff)
+            inds_good = remove_outlier_values(df)
+            # - prune
+            times_array = times_array[inds_good,:]
+            LIST_PA = [LIST_PA[i] for i in inds_good]
+            dflab = dflab.iloc[inds_good].reset_index(drop=True)
+
+        # Warp each pa to the median trial
+        if True:
+            # Get median correctly -- first get median of each segment, and then cumsum those.
+            diffs_median = np.median(np.diff(times_array, axis=1), axis=0)
+            times_median = np.cumsum(diffs_median)
+            anchor_times_template_all = np.insert(times_median, 0, 0.)
+        else:
+            # is OK, but is less correct
+            anchor_times_template_all = np.median(times_array, axis=0)
+        anchor_times_template = anchor_times_template_all[1:-1] # get inner times.
+        period = 0.0025
+        times_template = np.arange(anchor_times_template_all[0], anchor_times_template_all[-1], period)
+
+        assert len(LIST_PA)==times_array.shape[0]
+        list_pa_warp = []
+        fig1 = None
+        fig2 = None
+        for i, pa in enumerate(LIST_PA):
+            # Get inner anchor times
+            anchor_times_this_trial = times_array[i, 1:-1]
+            if PLOT and i==0:
+                plotthis = True
+            else:
+                plotthis = False
+            assert len(pa.Trials)==1, "must be..."
+            pa_warp, _fig1, _fig2 = pa.dataextract_timewarp_piecewise_linear(anchor_times_this_trial, times_template, 
+                                                        anchor_times_template, PLOT=plotthis)
+            if plotthis:
+                fig1 = _fig1
+                fig2 = _fig2
+            list_pa_warp.append(pa_warp)
+        
+        # Concatnaet
+        from neuralmonkey.classes.population import concatenate_popanals
+        PA = concatenate_popanals(list_pa_warp, "trials", 
+                                assert_otherdims_have_same_values=True, 
+                                assert_otherdims_restrict_to_these=("chans", "times"),
+                                all_pa_inherit_times_of_pa_at_this_index=0)
+
+        # Get beh data
+        assert len(dflab)==PA.X.shape[1]
+        PA.Xlabels["trials"] = dflab
+
+        # Store bregions
+        # -- NOTE: This works.. list_pa, bregions = PA.split_by_label("chans", "bregion_combined")
+        res =[]
+        for site in PA.Chans:
+            res.append(
+                {"bregion_combined": self.sitegetterKS_map_site_to_region(site, region_combined=True),
+                "bregion":self.sitegetterKS_map_site_to_region(site, region_combined=False),
+                "chan":site
+            })
+
+
+        # Plot event timings
+        if PLOT:
+            from pythonlib.tools.plottools import set_y_tick_labels
+            fig3, ax = plt.subplots()
+            times_array_diff = np.diff(times_array[1:-1], axis=1)
+            times_median_diff = np.diff(anchor_times_template_all)
+            events_all = ["ONSET"] + events + ["OFFSET"]
+            events_pairs = [f"{e1}-{e2}" for e1, e2 in zip(events_all[:-1], events_all[1:])]
+
+            # print(anchor_times_template_all)
+            # print(times_array_diff.shape)
+            # print(len(events_pairs))
+            # print(events_pairs)
+            for i in range(times_array_diff.shape[1]):
+                nrows = times_array_diff.shape[0]
+                ax.plot(times_array_diff[:, i], np.ones(nrows)*i, "x", alpha=0.25, label=events_pairs[i])
+                ax.plot(times_median_diff[i], i, "o", alpha=0.7)
+                # ax.set_yticklabels(range(len(events_pairs)), labels=events_pairs)
+
+            set_y_tick_labels(ax, events_pairs)
+            ax.set_xlim(left=0.)
+            ax.set_xlabel("segment duration (sec)")
+            ax.set_xlabel("circle = median")
+
+            # ax.legend()
+        else:
+            fig3 = None
+
+        # Finally, bin over time, to make data smaller
+        if True:
+            dur = 0.01
+            slide = 0.005
+            PA = PA.agg_by_time_windows_binned(dur, slide)
+
+        # Store params related to the events
+        PA.Params["version"] = "time_warped_to_events_INTERPRATES"
+        PA.Params["event_times_array"] = times_array
+        PA.Params["event_times_median"] = anchor_times_template_all
+        PA.Params["events_inner"] = events
+        PA.Params["events_all"] = ["ONSET"] + events + ["OFFSET"]
+        PA.Params["ONSET_predur_rel_first_event"] = predur_rel_first_event
+        PA.Params["OFFSET_postdur_rel_lst_event"] = postdur_rel_last_event
+
+        # save
+        PA.Xlabels["chans"] = pd.DataFrame(res)        
+
+        return PA, fig1, fig2, fig3
+
+    def popanal_timewarp_rel_events_SHIFTSPIKES(self, events=None, sites=None,
                                                predur_rel_first_event = -1, postdur_rel_last_event = 1,
                                                PLOT=False):
         """
@@ -463,7 +635,9 @@ class MultSessions(object):
         is given by predur_rel_first_event, and postdur_rel_last_event.
         RETURNS:
         - PA, with times in actual raw times. Event-info is in PA.Params
-        """
+        """ 
+
+        assert False, "use INTERPRATES instead. THis works (but need to update a bit, some of the return signatures are wrong), but fr can blow up"
 
         ### For each session extract
         res =[]
@@ -475,7 +649,7 @@ class MultSessions(object):
             # Extract relevant data for each session
             trials = None
             _events, _sites, times_array, dfspikes, dflab = sn._popanal_generate_timewarped_rel_events_extract_raw(
-                events, sites, trials, predur_rel_first_event, postdur_rel_last_event)
+                events, sites, trials, predur_rel_first_event, postdur_rel_last_event, min_interval_dur=0.1)
 
             # Check that globally these params match
             if events is None:
@@ -531,6 +705,7 @@ class MultSessions(object):
         
         ### Prep params
         # Get median times
+        assert False, "Run (1) remove_trials_outlier_time_intervals and (2) Get median correctly"
         times_median = np.median(times_array, axis=0)
         list_ind_trial = list(range(times_array.shape[0]))
         print(list_ind_trial)
@@ -765,7 +940,11 @@ class MultSessions(object):
                 sites_intersect = [s for s in sites_intersect if s in sites_this]
             return sites_intersect
         elif how_combine=="union":
-            assert False, "code it"
+            sites = []
+            for sitesthis in list_list_sites:
+                sites.extend(sitesthis)
+            sites = list(set(sites))
+            return sites
         else:
             print(how_combine)
             assert False

@@ -7309,7 +7309,8 @@ class Session(object):
             st = None
         else:
             # Convert to spike train
-            st = SpikeTrain(dat["spike_times"]*s, t_stop=dat["time_off"], t_start=dat["time_on"])
+            st = self.elephant_spiketrain_from_values(dat["spike_times"], dat["time_on"], dat["time_off"])
+            # st = SpikeTrain(dat["spike_times"]*s, t_stop=dat["time_off"], t_start=dat["time_on"])
 
         if cache:
             dat = self.datall_TDT_KS_slice_single_bysite(site, trial)
@@ -7378,6 +7379,7 @@ class Session(object):
     def _popanal_generate_from_raw(self, frate_mat, times, chans, df_label_trials=None,
         list_df_label_cols_get=None):
         """ Low level code to generate PopAnal from inputed raw fr data
+        THE ONLY place where PA are generated in Session or Snippets.
         PARAMS:
         - frate_mat, shape (chans, trials, times)
         - times, shape (times,)
@@ -7582,27 +7584,34 @@ class Session(object):
         return ListPA
 
     def _popanal_generate_timewarped_rel_events_extract_raw(self,  events=None, sites=None, trials=None,
-                                                            predur_rel_first_event = -1, postdur_rel_last_event = 1):
+                                                            predur_rel_first_event = -1, postdur_rel_last_event = 1,
+                                                            min_interval_dur=0.1, get_dfspikes=True):
         """
         Do this separateyl for each session before concatenating.
+        PARAMS:
+        - min_interval_dur, min dur between events. throws out trials that fail this.
         """
         from elephant.kernels import GaussianKernel        
         from elephant.statistics import time_histogram, instantaneous_rate,mean_firing_rate
         from quantities import s
-        from neo.core import SpikeTrain
+        from neo.core import SpikeTrain 
 
         ### Prep params
         if events is None:
+            # NOTE: exclude fixcue, beucase there is sometimes very short gap between fixcue and fixtch, and also high variability. This
+            # leads to weird things.
             if self.beh_this_day_uses_done_button():
-                events = ['fixcue', 'fixtch', 'samp', 'go_cue', 'first_raise', 'on_strokeidx_0', 'off_strokeidx_0', 'doneb', 'reward_first_post']
+                events = ['fixtch', 'samp', 'go_cue', 'first_raise', 'on_strokeidx_0', 'off_strokeidx_0', 'doneb', 'reward_first_post']
+                # events = ['fixcue', 'fixtch', 'samp', 'go_cue', 'first_raise', 'on_strokeidx_0', 'off_strokeidx_0', 'doneb', 'reward_first_post']
             else:
-                events = ['fixcue', 'fixtch', 'samp', 'go_cue', 'first_raise', 'on_strokeidx_0', 'off_strokeidx_0', 'reward_first_post']
+                events = ['fixtch', 'samp', 'go_cue', 'first_raise', 'on_strokeidx_0', 'off_strokeidx_0', 'reward_first_post']
+                # events = ['fixcue', 'fixtch', 'samp', 'go_cue', 'first_raise', 'on_strokeidx_0', 'off_strokeidx_0', 'reward_first_post']
 
         # Get trials that hold a set of events
         if trials is None:
-            trials = self.get_trials_list(True, events_that_must_include_in_order = events)
+            trials = self.get_trials_list(True, events_that_must_include_in_order = events, min_interval_dur=min_interval_dur)
         else:
-            tmp = self._get_trials_list_if_include_these_events_in_order(trials, events)
+            tmp = self._get_trials_list_if_include_these_events_in_order(trials, events, min_interval_dur=min_interval_dur)
             assert tmp==trials, "some trials are mssing events"
         if sites is None:
             sites = self.sitegetterKS_all_sites()
@@ -7619,40 +7628,54 @@ class Session(object):
         times_array = np.concatenate([(times_array[:,0] + predur_rel_first_event)[:, None], times_array, (times_array[:, -1] + postdur_rel_last_event)[:, None]], axis=1)
 
         ### Get spiketimes
-        res = []
-        for site in sites:
-            for ind_trial in range(len(trials)):
-                print("Getting spiketimes, site:", site)
-                event_time = times_array[ind_trial][0]
-                post_dur = times_array[ind_trial][-1] - event_time
-                pre_dur = 0
-                trial_neural = trials[ind_trial]
+        if get_dfspikes:
+            res = []
+            for site in sites:
+                for ind_trial in range(len(trials)):
+                    print("Getting spiketimes, site:", site)
+                    event_time = times_array[ind_trial][0]
+                    post_dur = times_array[ind_trial][-1] - event_time
+                    pre_dur = 0
+                    trial_neural = trials[ind_trial]
 
-                spike_times = self._snippets_extract_single_snip_spiketimes(site, trial_neural,
-                    event_time, pre_dur, post_dur, subtract_event_time=False)
-                res.append({
-                    "site":site,
-                    "ind_trial":ind_trial,
-                    "trial":trial_neural,
-                    "spike_times_raw":spike_times,
-                })
-        dfspikes = pd.DataFrame(res)
+                    spike_times = self._snippets_extract_single_snip_spiketimes(site, trial_neural,
+                        event_time, pre_dur, post_dur, subtract_event_time=False)
+                    res.append({
+                        "site":site,
+                        "ind_trial":ind_trial,
+                        "trial":trial_neural,
+                        "spike_times_raw":spike_times,
+                    })
+            dfspikes = pd.DataFrame(res)
+        else:
+            dfspikes = None
 
-        # ### Get pa for each trial
-        # print("Getting pa for each trial")
-        # list_pa = []
-        # for ind_trial in range(len(trials)):
-        #     event_time = times_array[ind_trial][0]
-        #     post_dur = times_array[ind_trial][-1] - event_time
-        #     pre_dur = 0
-        #     trial_neural = trials[ind_trial]
-        #     pa = self.popanal_generate_save_trial(ind_trial, sites=sites, t_on=t_on, t_off = t_off)
-        #     list_pa.append(pa)
+        ### Get pa for each trial
+        print("Getting pa for each trial")
+        list_pa = []
+        for ind_trial in range(len(trials)):
+            t_on = times_array[ind_trial][0]
+            t_off = times_array[ind_trial][-1]
+            trial_neural = trials[ind_trial]
+            sampling_period = 0.001 # to make interpolation more accurate
+            pa = self.popanal_generate_save_trial(trial_neural, sampling_period=sampling_period)
+            pa.Times = np.array(pa.Times)
+            pa = pa.slice_by_dim_values_wrapper("chans", sites)
+            pa = pa.slice_by_dim_values_wrapper("times", (t_on, t_off))
+            # if not pa.Chans == sites:
+            #     print(pa.Chans)
+            #     print(sites)
+            #     assert False
+            if False: # doing this above now
+                pa = pa.slice_by_dim_values_wrapper("times", [t_on, t_off])
+            list_pa.append(pa)
 
         ### Get beh data
         dflab = self.datasetbeh_extract_dataframe(trials)
 
-        return events, sites, times_array, dfspikes, dflab
+        # Sanity check:
+        # assert times_array.shape[0]==len()
+        return events, sites, times_array, dfspikes, dflab, list_pa
 
 
     # def popanal_generate_timewarped_rel_events(self, events=None, sites=None, trials=None, PLOT=False,
@@ -7990,6 +8013,17 @@ class Session(object):
                     # print("Generating spike train! (site, trial): ", site, trial)
                     self._spiketrain_as_elephant(site, trial, cache=True)
                 st = dat["spiketrain"]
+
+                # CANNOT do mods here, becuase is cached version
+                # if twind is not None:
+                #     start_time = twind[0] * s
+                #     end_time = twind[-1] * s
+                #     # print(st)
+                #     st = st.time_slice(start_time, end_time)
+                #     # st = st[(st>=twind[0]) & (st<=twind[1])]
+                #     # print(st)
+                #     # assert False
+
                 if st is None:
                     print("Trial, site:", trial, site)
                     assert False, "first generate spike trains.."
@@ -8404,9 +8438,9 @@ class Session(object):
 
     def get_trials_list(self, only_if_ml2_fixation_success=False,
         only_if_has_valid_ml2_trial=True, only_if_in_dataset=False,
-        events_that_must_include=None,
+        events_that_must_include=None, events_that_must_include_in_order=None,
         dataset_input = None, nrand=None, nsub_uniform=None,
-                        must_use_cached_trials=False):
+                        must_use_cached_trials=False, min_interval_dur=0.):
         """
         Get list of ints, trials,
         PARAMS:
@@ -8426,6 +8460,8 @@ class Session(object):
         """
         if events_that_must_include is None:
             events_that_must_include = []
+        if events_that_must_include_in_order is None:
+            events_that_must_include_in_order = []
 
         if not hasattr(self, "_FORCE_GET_TRIALS_ONLY_IN_DATASET"):
             self._FORCE_GET_TRIALS_ONLY_IN_DATASET = False
@@ -8483,6 +8519,10 @@ class Session(object):
                 neural_trials_missing_beh = [858, 859, 860, 861, 862, 863, 864, 865, 866, 867]
                 trials = [t for t in trials if t not in neural_trials_missing_beh]
 
+            if (int(self.Date))==231206 and self.RecSession==0 and self.Animal=="Diego":
+                neural_trials_missing_beh = [551, 552, 553, 554, 555]
+                trials = [t for t in trials if t not in neural_trials_missing_beh]
+
             if only_if_in_dataset:
                 # SHould do this first, since if this trial is not in dataset then it will fail only_if_ml2_fixation_success
                 trials = [t for t in trials if self.datasetbeh_trial_to_datidx(t) is not None]
@@ -8530,6 +8570,8 @@ class Session(object):
 
         if len(events_that_must_include)>0:
             trials = self._get_trials_list_if_include_these_events(trials, events_that_must_include)
+        if len(events_that_must_include_in_order)>0:
+            trials = self._get_trials_list_if_include_these_events_in_order(trials, events_that_must_include_in_order, min_interval_dur=min_interval_dur)
 
         if nrand is not None:
             # take randmo subset, ordered.
@@ -8560,7 +8602,38 @@ class Session(object):
             if self.events_does_trial_include_all_events(t, events_that_must_include):
                 trials_keep.append(t)
         return trials_keep  
+    
+    def _get_trials_list_if_include_these_events_in_order(self, trials, events_that_must_include, min_interval_dur=0.):
+        """ only inclues trials that have one and only one of each event, and they are present in chron order
+        matching the order in <events_that_must_include>
+        RETURNS:
+        - trials, those that pass this test.
+        """
+        dfeventsn, _ = self.eventsdataframe_extract_timings(events_that_must_include, trials)
 
+        # eventinds_in_chron_order
+        inds_get = list(range(len(events_that_must_include)))
+        inds_bool_keep = [inds==inds_get for inds in dfeventsn["eventinds_in_chron_order"]]
+        # display(dfeventsn)
+        # print(inds_bool_keep)
+        # print(sum(inds_bool_keep), len(inds_bool_keep))
+        # assert False
+
+        if min_interval_dur >0:
+            list_too_short = []
+            for times in dfeventsn["times_ordered_flat"]:
+                has_short_interval = np.any(np.diff(times)<min_interval_dur)
+                list_too_short.append(has_short_interval)
+                # if has_short_interval:
+                #     # print(times)
+                #     print(np.diff(times))
+
+            inds_bool_keep = [a and not b for a,b in zip(inds_bool_keep, list_too_short)]
+        
+        # Do pruning
+        trials_keep = dfeventsn[inds_bool_keep]["trial"].tolist()
+
+        return trials_keep
 
     ####################### PLOTS (generic)
     def plot_spike_waveform_site(self, site):
@@ -11043,7 +11116,7 @@ class Session(object):
                     for s in sites:
 
                         # get spiketimes
-                        spike_times = self._snippets_extract_single_snip(s, trial_neural,
+                        spike_times = self._snippets_extract_single_snip_spiketimes(s, trial_neural,
                             event_time, pre_dur, post_dur)
 
                         # save it
@@ -11194,7 +11267,7 @@ class Session(object):
             for s in sites:
 
                 # get spiketimes
-                spike_times = self._snippets_extract_single_snip(s, trial_neural, 
+                spike_times = self._snippets_extract_single_snip_spiketimes(s, trial_neural, 
                     event_time, pre_dur, post_dur)
 
                 # save it
@@ -11359,7 +11432,7 @@ class Session(object):
                 for i_s, s in enumerate(sites):
 
                     # get spiketimes
-                    spike_times = self._snippets_extract_single_snip(s, t,
+                    spike_times = self._snippets_extract_single_snip_spiketimes(s, t,
                         event_time, pre_dur, post_dur)
 
                     # get smoothed fr
@@ -11389,25 +11462,32 @@ class Session(object):
 
         return df, list_events_uniqnames
 
-    def _snippets_extract_single_snip(self, site, trial, event_time,
-            pre_dur, post_dur):
-        """ Extract a single snippet's spike times. aligned to event_time.
+    def _snippets_extract_single_snip_spiketimes(self, site, trial, event_time,
+            pre_dur, post_dur, subtract_event_time=True):
+        """ Extract a single snippet's spike times. aligned to event_time (i.e,
+        subtracts that time, setting it to 0).
+        PARAMS:
+        - pre_dur, input a negative number, in sec, relative to 0.
+        - post_dur, postiive number, in sec, rleative to 0
         """
         dat = self.datall_TDT_KS_slice_single_bysite(site, trial)
         spike_times = dat["spike_times"]
-        time_on = dat["time_on"]
-        time_off = dat["time_off"]
+        # time_on = dat["time_on"]
+        # time_off = dat["time_off"]
         # spike_times = dat["spiketrain"]
         
         # recenter s times to event
         spike_times = spike_times - event_time
-        time_on = time_on - event_time
-        time_off = time_off - event_time
+        # time_on = time_on - event_time
+        # time_off = time_off - event_time
 
         # get windowed spike times
         if True:
             # use popanal
             spike_times = spike_times[(spike_times >= pre_dur) & (spike_times <= post_dur)]
+            if not subtract_event_time:
+                # Then un-subtract event_time
+                spike_times = spike_times + event_time
         else:
             # get smoothed fr
             # print(s, "ii")

@@ -215,3 +215,182 @@ def dfthis_to_frmat(dfthis, times=None, fr_ver="fr_sm", time_bin_size=None,
         assert output_dim==2
 
     return frmat, times
+
+
+def timewarp_piecewise_linear_interpolate(X_trial, times_trial, anchor_times_this_trial, times_template, 
+                                          anchor_times_template, smooth_boundaries_sigma=None,
+                                          PLOT=False):
+    """
+    Piecewise linear time-warping of firing rates to a common time base using given anchor points.
+    E.g, the anchor points are behavioral events, and you want to align this trial to a common (median) 
+    set of events.
+
+    All data in X_trial will be retained, just shifted in time. 
+
+    The endpoints of times_trial and times_template are always anchored to each other
+
+    IMPORTANT - the times in times_trial and times_template are invariant up to a shift. This is becuase they are
+    forced to align by their endpoints. 
+
+    Parameters:
+    X_trial : np.ndarray
+        Neural firing rates of shape (n_neurons, n_times) for a single trial (usually single trial)
+    times_trial : np.ndarray
+        Time points for the trial of shape (n_times,).
+    anchor_times_this_trial : np.ndarray
+        Anchor points in times_trial that correspond to events inside times_trials, shape (n_anchor_pts,). Should NOT 
+        include the endpoints of times_trial
+    times_template : np.ndarray
+        Target time points for the template of shape (n_times_template,).
+    anchor_times_template : np.ndarray
+        Anchor points in times_template that correspond to events, shape (n_anchor_pts,).
+    smooth_boundaries_sigma: None or scalar (in seconds, sigma for gaussian window) to smooth along time axis, the final output.
+    Returns:
+    X_warped : np.ndarray
+        Warped neural firing rates of shape (n_neurons, n_times_template).
+
+    CODE TO TEST:
+        from neuralmonkey.utils.frmat import timewarp_piecewise_linear_interpolate
+
+        # Example inputs
+        X_trial = np.random.rand(10, 100)  # 10 neurons, 100 time points in trial
+        X_trial =np.stack([np.linspace(0, 10, 100) for _ in range(5)], axis=1).T
+        times_trial = np.linspace(0, 1, 100)  # Original trial time points
+
+
+        anchor_times_this_trial = [0.5]  # Anchors in trial time
+        times_template = np.linspace(0, 1, 120)  # Template with 120 time points
+        anchor_times_template = [0.1]  # Anchors in template time
+
+        delta = 0
+        times_template = times_template+delta
+        anchor_times_template = [t+delta for t in anchor_times_template]
+
+        # Perform time-warping
+        X_warped = timewarp_piecewise_linear_interpolate(
+            X_trial, times_trial, anchor_times_this_trial, times_template, anchor_times_template,
+            smooth_boundaries_sigma=smooth_sigma, PLOT=True
+        )
+
+    """
+    import numpy as np
+    from scipy.interpolate import interp1d
+    import matplotlib.pyplot as plt
+
+    # Plotting code
+    def plot_timewarp_results(X_trial, X_warped, times_trial, times_template):
+        """
+        Plots the original and time-warped firing rates for comparison.
+        
+        Parameters:
+        X_trial : np.ndarray
+            Original neural firing rates (n_neurons, n_times).
+        X_warped : np.ndarray
+            Warped neural firing rates (n_neurons, n_times_template).
+        times_trial : np.ndarray
+            Time points for the trial (n_times,).
+        times_template : np.ndarray
+            Time points for the template (n_times_template,).
+        """
+        fig, axes = plt.subplots(1,2, figsize=(12, 6))
+        
+        # Plot original trial data
+        ax = axes.flatten()[0]
+        img = ax.imshow(X_trial, aspect='auto', extent=[times_trial[0], times_trial[-1], 0, X_trial.shape[0]])
+        plt.colorbar(img, label='Firing Rate')
+        ax.set_xlabel('Original Trial Time')
+        ax.set_ylabel('Neuron')
+        ax.set_title('Original Trial Firing Rates')
+        for t in anchor_times_this_trial:
+             ax.axvline(t, color="r")
+             
+        # Plot time-warped data
+        ax = axes.flatten()[1]
+        img = ax.imshow(X_warped, aspect='auto', extent=[times_template[0], times_template[-1], 0, X_warped.shape[0]])
+        plt.colorbar(img, label='Firing Rate')
+        ax.set_xlabel('Template Time')
+        ax.set_ylabel('Neuron')
+        ax.set_title('Time-Warped Firing Rates to Template')
+        for t in anchor_times_template:
+             ax.axvline(t, color="r")
+
+        plt.tight_layout()
+        return fig
+
+
+    # Ensure the number of anchors match
+    if len(anchor_times_this_trial) != len(anchor_times_template):
+        raise ValueError("Anchor points in trial and template must have the same length.")
+    
+    # anchor times should only be inner. 
+    assert anchor_times_this_trial[0]>times_trial[0] and anchor_times_this_trial[-1]<times_trial[-1]
+    assert anchor_times_template[0]>times_template[0] and anchor_times_template[-1]<times_template[-1]
+
+    # append the endpoints as anchors always
+    anchor_times_this_trial = np.append(np.insert(anchor_times_this_trial, 0, times_trial[0]), times_trial[-1])
+    anchor_times_template = np.append(np.insert(anchor_times_template, 0, times_template[0]), times_template[-1])
+
+    # Anchor times must be monotically increasing
+    assert np.all(np.diff(anchor_times_this_trial)>0)
+    assert np.all(np.diff(anchor_times_template)>0)
+
+    # Initialize an array to store the warped firing rates
+    n_neurons = X_trial.shape[0]
+    X_warped = np.zeros((n_neurons, len(times_template))) - np.inf
+    
+    # Loop through each segment defined by the anchor points
+    for i in range(len(anchor_times_this_trial) - 1):
+        # Get start and end points for each segment in trial and template
+        start_trial, end_trial = anchor_times_this_trial[i], anchor_times_this_trial[i + 1]
+        start_template, end_template = anchor_times_template[i], anchor_times_template[i + 1]
+        
+        # Mask the times in the current segment for the trial
+        mask_trial = (times_trial >= start_trial) & (times_trial <= end_trial)
+        if ~np.any(mask_trial):
+            print(anchor_times_this_trial)
+            assert False, "anchor times are too close"
+        time_segment_trial = times_trial[mask_trial]
+        firing_segment = X_trial[:, mask_trial]
+        
+        # Mask for the template time segment
+        mask_template = (times_template >= start_template) & (times_template <= end_template)
+        time_segment_template = times_template[mask_template]
+        if ~np.any(mask_template):
+            print(times_template)
+            assert False, "anchor times are too close"
+        
+        # Normalize time segments to [0, 1]
+        normalized_trial = (time_segment_trial - start_trial) / (end_trial - start_trial)
+        normalized_template = (time_segment_template - start_template) / (end_template - start_template)
+        
+        # Interpolate firing rates to match the normalized template time segment
+        interp_func = interp1d(normalized_trial, firing_segment, axis=1, fill_value="extrapolate")
+        warped_segment = interp_func(normalized_template)
+
+        # Insert the remaining warped segment into the final output array
+        X_warped[:, mask_template] = warped_segment
+
+        # # Insert the warped segment into the final output array
+        # X_warped[:, mask_template] = warped_segment
+
+    assert ~np.any(np.isinf(X_warped)), "failed to fill some values..."
+
+    # Apply Gaussian smoothing across the time axis to smooth out segment boundaries
+    if smooth_boundaries_sigma is not None:
+        from scipy.ndimage import gaussian_filter1d
+        period = np.mean(np.diff(times_template))
+        smooth_sigma_bins = np.ceil(smooth_boundaries_sigma/period)
+        X_warped = gaussian_filter1d(X_warped, sigma=smooth_sigma_bins, axis=1)
+
+    if PLOT:
+        # Plot the results
+        fig1, ax = plt.subplots()
+        ax.plot(times_trial, X_trial[0,:], label="orig")
+        ax.plot(times_template, X_warped[0,:], label="warped")
+        ax.legend()
+        fig2 = plot_timewarp_results(X_trial, X_warped, times_trial, times_template)    
+    else:
+        fig1, fig2 = None, None
+
+    return X_warped, fig1, fig2
+
