@@ -2430,8 +2430,12 @@ class Session(object):
         keys_convert_to_int = ["RSn", "batch", "chan", "chan_global", "label_final_int"]
 
         # index by a global cluster id
-        clustid_glob = 0 + CLUST_STARTING_INDEX
+        clustid_glob = 0 + CLUST_STARTING_INDEX - 1
         for ind in range(len(DATSTRUCT["times_sec_all"])):
+            
+            # IMPORTANT to start here, so that across sessions the mapping frmo clustid_glob to index in DATSRUCT is maintained.
+            # (the continue can fuck things up)
+            clustid_glob+=1
             
             if len(DATSTRUCT["times_sec_all"][ind])==0:
                 # Then this clust had no times within this session. Skip it.
@@ -2499,7 +2503,7 @@ class Session(object):
                 assert self.convert_rschan_to_site(rs, chan_within_rs) == site
             
             # increment clustic
-            clustid_glob+=1
+            # clustid_glob+=1
 
     def spiketimes_ks_extract_alltrials(self, cluster_labels_keep=("su", "mua")):
         """
