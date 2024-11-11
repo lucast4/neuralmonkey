@@ -21,7 +21,7 @@ do
   touch ${logfile}
   echo ${logfile}
   python analy_euclidian_chars_sp.py ${animal} ${date1} ${combine} ${trial_ver} 2>&1 | tee ${logfile} &
-  sleep 30s
+  sleep 1m
 done
 # sleep 180m
 #  sleep 60m
@@ -31,8 +31,11 @@ done
 animal=Diego
 # datelist=(230724 230726 230730 230816 230817 230913 230914 230915 231116 231118) # ALL
 # datelist=(231211) # ONE
-# datelist=(231130 231205 231211 231122 231128 231129 231201 231213 231204) # MORE
-datelist=(231205 231122 231128 231129 231201) # FINAL (has sp across mult bloques)
+# datelist=(231130 231211 231213 231204) # [C] original, has only one SP bloque
+# datelist=(231205 231122 231128 231129 231201) # [A] FINAL (has sp across mult bloques)
+# datelist=(231120 231121 231206 231218 231220) # [B] ADDED (leaving out 231207, lacking preprocess) [only one SP bloque]
+datelist=(231205 231122 231128 231129 231201 231120 231121 231206 231218 231220) # [A and B]
+
 combine=1
 trial_ver=0
 for date1 in "${datelist[@]}"
@@ -41,6 +44,6 @@ do
   touch ${logfile}
   echo ${logfile}
   python analy_euclidian_chars_sp.py ${animal} ${date1} ${combine} ${trial_ver} 2>&1 | tee ${logfile} &
-  sleep 30s
+  sleep 1m
 done
 

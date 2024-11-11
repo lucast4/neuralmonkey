@@ -359,7 +359,11 @@ def preprocess_clean_stable_single_prims_frate(PA, twind=None, savedir=None):
     if len(grpdict)<2:
         print("Not enough task_kind bloques --- returning copy of input PA")
         return PA
-
+    elif len(grpdict)>20:
+        # Then this is not bloques, but is trial structure. 
+        print("No need to remove any neruons, nbeucase they are interleaved")
+        return PA
+        
     # Based on how many groups exist, decide on threshold, with higher (conservative) trheshold for more comparisons.
     n = len(grpdict)
 
@@ -417,9 +421,7 @@ def preprocess_clean_stable_single_prims_frate(PA, twind=None, savedir=None):
     chans_bad = dfres[(dfres["d_prime_y"] > dthresh) | (dfres["p_val_log"] < pthresh)]["chan"].unique().tolist()
     chans_good = [c for c in PA.Chans if c not in chans_bad]
 
-
     if savedir is not None:
-
         fig = sns.relplot(data=dfres, x="d_prime_y", y="p_val_log", hue="chan")
         savefig(fig, f"{savedir}/scatter.pdf")
         
@@ -434,12 +436,12 @@ def preprocess_clean_stable_single_prims_frate(PA, twind=None, savedir=None):
         fig.axes.flatten()[0].set_title(f"chans_bad={chans_bad}")
         savefig(fig, f"{savedir}/bar-p_val.pdf")
 
-
-    PA = PA.slice_by_dim_values_wrapper("chans", chans_good)
+    if len(chans_good)>0:
+        PA = PA.slice_by_dim_values_wrapper("chans", chans_good)
+        return PA
+    else:
+        return None
     
-    return PA
-
-
 def params_shapes_remove(animal, date, shape_var):
     """ 
     Hard coded cases with clear differences between SP and CHAR that are not 
@@ -654,6 +656,8 @@ def preprocess_pa(animal, date, PA, savedir, prune_version, shape_var = "shape_s
     if remove_singleprims_unstable:
         from neuralmonkey.scripts.analy_euclidian_chars_sp import preprocess_clean_stable_single_prims_frate
         PA = preprocess_clean_stable_single_prims_frate(PA, savedir=savedir)    
+        if PA is None:
+            return None
         
     ############ PROJECTION
     if subspace_projection is not None:
@@ -951,19 +955,21 @@ def euclidian_time_resolved_wrapper(animal, date, DFallpa, SAVEDIR_ANALYSIS):
                 
             # for subspace_projection in [None, "pca", subspace_projection_extra]:
             for subspace_projection in [None, "pca", "task_shape_si"]: # NOTE: shape_prims_single not great, you lose some part of preSMA context-dependence...
-                # for remove_drift in [False, True]:
-                for remove_drift in [False]:
-                    # for raw_subtract_mean_each_timepoint in [False, True]:
-                    for raw_subtract_mean_each_timepoint in [False]:
-                        for remove_singleprims_unstable in [False, True]:
-                            SAVEDIR = f"{SAVEDIR_ANALYSIS}/{which_level}-{bregion}-{event}-prune={prune_version}-ss={subspace_projection}-nodrift={remove_drift}-SpUnstable={remove_singleprims_unstable}-subtrmean={raw_subtract_mean_each_timepoint}"
-                            os.makedirs(SAVEDIR, exist_ok=True)
-                            print("SAVING AT ... ", SAVEDIR)
-                            euclidian_time_resolved(animal, date, PA, which_level, prune_version, remove_drift, SAVEDIR, twind_analy,
-                                                        tbin_dur, tbin_slide, 
-                                                        subspace_projection, NPCS_KEEP, 
-                                                        n_min_trials_per_shape = n_min_trials_per_shape, raw_subtract_mean_each_timepoint=raw_subtract_mean_each_timepoint,
-                                                        remove_singleprims_unstable=remove_singleprims_unstable)
+                for raw_subtract_mean_each_timepoint in [False]:
+                    # for remove_drift in [False, True]:
+                    for remove_drift, remove_singleprims_unstable in [(False, False), (True, True)]:
+                    # for remove_drift in [False]:
+                    #     # for raw_subtract_mean_each_timepoint in [False, True]:
+                    #     for remove_singleprims_unstable in [False, True]:
+                        SAVEDIR = f"{SAVEDIR_ANALYSIS}/{which_level}-{bregion}-{event}-prune={prune_version}-ss={subspace_projection}-nodrift={remove_drift}-SpUnstable={remove_singleprims_unstable}-subtrmean={raw_subtract_mean_each_timepoint}"
+                        os.makedirs(SAVEDIR, exist_ok=True)
+                        print("SAVING AT ... ", SAVEDIR)
+                        euclidian_time_resolved(animal, date, PA, which_level, prune_version, remove_drift, SAVEDIR, twind_analy,
+                                                    tbin_dur, tbin_slide, 
+                                                    subspace_projection, NPCS_KEEP, 
+                                                    n_min_trials_per_shape = n_min_trials_per_shape, 
+                                                    raw_subtract_mean_each_timepoint=raw_subtract_mean_each_timepoint,
+                                                    remove_singleprims_unstable=remove_singleprims_unstable)
 
 def euclidian_time_resolved_wrapper_trial(animal, date, DFallpa, SAVEDIR_ANALYSIS):
 
@@ -989,17 +995,18 @@ def euclidian_time_resolved_wrapper_trial(animal, date, DFallpa, SAVEDIR_ANALYSI
         if event in events_keep:
             for prune_version in ["sp_char"]:
                 for subspace_projection in [None, "pca", "task_shape"]: # NOTE: shape_prims_single not great, you lose some part of preSMA context-dependence...
-                    for remove_drift in [False]:
-                        for raw_subtract_mean_each_timepoint in [False]:
-                            for remove_singleprims_unstable in [False, True]:
-                                SAVEDIR = f"{SAVEDIR_ANALYSIS}/{which_level}-{bregion}-{event}-prune={prune_version}-ss={subspace_projection}-nodrift={remove_drift}-SpUnstable={remove_singleprims_unstable}-subtrmean={raw_subtract_mean_each_timepoint}"
-                                os.makedirs(SAVEDIR, exist_ok=True)
-                                print("SAVING AT ... ", SAVEDIR)
-                                euclidian_time_resolved(animal, date, PA, which_level, prune_version, remove_drift, SAVEDIR, twind_analy,
-                                                            tbin_dur, tbin_slide, 
-                                                            subspace_projection, NPCS_KEEP, 
-                                                            n_min_trials_per_shape = n_min_trials_per_shape, raw_subtract_mean_each_timepoint=raw_subtract_mean_each_timepoint,
-                                                            remove_singleprims_unstable=remove_singleprims_unstable)
+                    for raw_subtract_mean_each_timepoint in [False]:
+                        for remove_drift, remove_singleprims_unstable in [(False, False), (True, True)]:
+                        # for remove_drift in [False]:
+                        #     for remove_singleprims_unstable in [False, True]:
+                            SAVEDIR = f"{SAVEDIR_ANALYSIS}/{which_level}-{bregion}-{event}-prune={prune_version}-ss={subspace_projection}-nodrift={remove_drift}-SpUnstable={remove_singleprims_unstable}-subtrmean={raw_subtract_mean_each_timepoint}"
+                            os.makedirs(SAVEDIR, exist_ok=True)
+                            print("SAVING AT ... ", SAVEDIR)
+                            euclidian_time_resolved(animal, date, PA, which_level, prune_version, remove_drift, SAVEDIR, twind_analy,
+                                                        tbin_dur, tbin_slide, 
+                                                        subspace_projection, NPCS_KEEP, 
+                                                        n_min_trials_per_shape = n_min_trials_per_shape, raw_subtract_mean_each_timepoint=raw_subtract_mean_each_timepoint,
+                                                        remove_singleprims_unstable=remove_singleprims_unstable)
 
 
 # def euclidian_time_resolved_strokes(animal, date, DFallpa, bregion, prune_version, remove_drift, SAVEDIR, twind_analy,
@@ -1094,7 +1101,7 @@ def euclidian_time_resolved(animal, date, PA, which_level,
 
     # which_level = "trial"
     # event = "03_samp"
-
+    remove_trials_with_bad_strokes = True
     # Run
     # PA = extract_single_pa(DFallpa, bregion, which_level=which_level, event=event)
     savedir = f"{SAVEDIR}/preprocess"
@@ -1117,7 +1124,8 @@ def euclidian_time_resolved(animal, date, PA, which_level,
                             subspace_projection=subspace_projection, 
                                 twind_analy=twind_analy, tbin_dur=tbin_dur, tbin_slide=tbin_slide, NPCS_KEEP=NPCS_KEEP,
                                 raw_subtract_mean_each_timepoint=raw_subtract_mean_each_timepoint,
-                                remove_singleprims_unstable=remove_singleprims_unstable)
+                                remove_singleprims_unstable=remove_singleprims_unstable,
+                                remove_trials_with_bad_strokes=remove_trials_with_bad_strokes)
 
 
     if PA is None:
@@ -1183,6 +1191,7 @@ def run(animal, date,  DFallpa, SAVEDIR, subspace_projection, prune_version, NPC
     # twind_analy = (0.05, 0.25)
     tbin_dur = 0.1
     tbin_slide = 0.02
+    remove_drift = True
     remove_singleprims_unstable = True
     remove_trials_with_bad_strokes = True
 
@@ -1204,7 +1213,9 @@ def run(animal, date,  DFallpa, SAVEDIR, subspace_projection, prune_version, NPC
                            subspace_projection=subspace_projection, 
                            twind_analy=twind_analy, tbin_dur=tbin_dur, tbin_slide=tbin_slide, NPCS_KEEP=NPCS_KEEP,
                            raw_subtract_mean_each_timepoint=raw_subtract_mean_each_timepoint, 
-                           remove_singleprims_unstable = remove_singleprims_unstable, remove_trials_with_bad_strokes = remove_trials_with_bad_strokes)
+                           remove_chans_fr_drift=remove_drift,
+                           remove_singleprims_unstable = remove_singleprims_unstable, 
+                           remove_trials_with_bad_strokes = remove_trials_with_bad_strokes)
 
         if PAredu is None:
             continue
@@ -1216,7 +1227,7 @@ def run(animal, date,  DFallpa, SAVEDIR, subspace_projection, prune_version, NPC
             # otherwise is redundant.
             list_dims = [(0,1), (2,3), (4,5)]
             PAredu.plot_state_space_good_wrapper(savedir, LIST_VAR, LIST_VARS_OTHERS, LIST_FILTDICT, LIST_PRUNE_MIN_N_LEVS, 
-                                                 list_dims=list_dims)
+                                                 list_dims=list_dims, nmin_trials_per_lev=n_min_trials_per_shape)
 
         # # (3) Euclidian distances
         Cldist = PAredu.dataextract_as_distance_matrix_clusters_flex(["task_kind", "shape_semantic_grp"], 
@@ -1282,33 +1293,34 @@ def run(animal, date,  DFallpa, SAVEDIR, subspace_projection, prune_version, NPC
             return PA
 
     ############## SAVE
-    plt.close("all")
-    savedir = f"{SAVEDIR}/summary"
-    os.makedirs(savedir, exist_ok=True)
+    if len(list_res)>0:
+        plt.close("all")
+        savedir = f"{SAVEDIR}/summary"
+        os.makedirs(savedir, exist_ok=True)
 
-    DFRES = pd.concat(list_res).reset_index(drop=True)
-    DFRES_CLEAN = pd.concat(list_res_clean).reset_index(drop=True)
+        DFRES = pd.concat(list_res).reset_index(drop=True)
+        DFRES_CLEAN = pd.concat(list_res_clean).reset_index(drop=True)
 
-    # Save results
-    pd.to_pickle(DFRES, f"{savedir}/DFRES.pkl")
-    pd.to_pickle(DFRES_CLEAN, f"{savedir}/DFRES_CLEAN.pkl")
+        # Save results
+        pd.to_pickle(DFRES, f"{savedir}/DFRES.pkl")
+        pd.to_pickle(DFRES_CLEAN, f"{savedir}/DFRES_CLEAN.pkl")
 
-    # Summary plots
-    fig = sns.catplot(data=DFRES, x = "bregion", hue="shape_task_same", y="dist_yue_diff", kind="bar", aspect=2)
-    savefig(fig, f"{savedir}/catplot-1.pdf")
+        # Summary plots
+        fig = sns.catplot(data=DFRES, x = "bregion", hue="shape_task_same", y="dist_yue_diff", kind="bar", aspect=2)
+        savefig(fig, f"{savedir}/catplot-1.pdf")
 
-    fig = sns.catplot(data=DFRES_CLEAN, x = "bregion", hue="shape_task_same", y="dist_yue_diff", kind="bar", aspect=2)
-    savefig(fig, f"{savedir}/catplot-clean-1.pdf")
+        fig = sns.catplot(data=DFRES_CLEAN, x = "bregion", hue="shape_task_same", y="dist_yue_diff", kind="bar", aspect=2)
+        savefig(fig, f"{savedir}/catplot-clean-1.pdf")
 
-    # Also plot scatter
-    from pythonlib.tools.pandastools import plot_45scatter_means_flexible_grouping
-    _, fig = plot_45scatter_means_flexible_grouping(DFRES, "shape_task_same", "1|0", "0|1", None, "dist_yue_diff", "bregion", True, SIZE=4);
-    savefig(fig, f"{savedir}/scatter-1.pdf")
+        # Also plot scatter
+        from pythonlib.tools.pandastools import plot_45scatter_means_flexible_grouping
+        _, fig = plot_45scatter_means_flexible_grouping(DFRES, "shape_task_same", "1|0", "0|1", None, "dist_yue_diff", "bregion", True, SIZE=4);
+        savefig(fig, f"{savedir}/scatter-1.pdf")
 
-    _, fig = plot_45scatter_means_flexible_grouping(DFRES_CLEAN, "shape_task_same", "1|0", "0|1", None, "dist_yue_diff", "bregion", True, SIZE=4);
-    savefig(fig, f"{savedir}/scatter-clean-1.pdf")
+        _, fig = plot_45scatter_means_flexible_grouping(DFRES_CLEAN, "shape_task_same", "1|0", "0|1", None, "dist_yue_diff", "bregion", True, SIZE=4);
+        savefig(fig, f"{savedir}/scatter-clean-1.pdf")
 
-    plt.close("all")
+        plt.close("all")
 
 def plot_heatmap_firing_rates_all_wrapper(DFallpa, SAVEDIR_ANALYSIS, animal, date):
     """
@@ -1331,7 +1343,8 @@ def plot_heatmap_firing_rates_all_wrapper(DFallpa, SAVEDIR_ANALYSIS, animal, dat
         event = row["event"]
         PA = row["pa"]
 
-        for prune_version in ["sp_char_0", "pig_char_1plus"]:
+        # for prune_version in ["sp_char_0", "pig_char_1plus"]:
+        for prune_version in ["sp_char_0", "pig_char_0", "pig_char_1plus", "sp_char"]:
 
             # Plot drwaings just once
             if prune_version not in drawings_done:
@@ -1353,60 +1366,60 @@ def plot_heatmap_firing_rates_all_wrapper(DFallpa, SAVEDIR_ANALYSIS, animal, dat
             for subspace_projection in [None, "pca", "task_shape_si"]: # NOTE: shape_prims_single not great, you lose some part of preSMA context-dependence...
                 if subspace_projection is not None:
                     # plot only cleaned up data.
-                    list_unstable_badstrokes = [(True, True)]
+                    list_unstable_badstrokes = [(True, True, True)]
                 else:
                     # Then also plot raw, without clearning
-                    list_unstable_badstrokes = [(False, False), (True, True)]
+                    list_unstable_badstrokes = [(False, False, False), (True, True, True)]
                     
-                for remove_drift in [False]:
-                    for remove_singleprims_unstable, remove_trials_with_bad_strokes in list_unstable_badstrokes:
-                        SAVEDIR = f"{SAVEDIR_ANALYSIS}/{which_level}-{bregion}-{event}-prune={prune_version}-ss={subspace_projection}-nodrift={remove_drift}-subtrmean={raw_subtract_mean_each_timepoint}-SpUnstable={remove_singleprims_unstable}-RmBadStrks={remove_trials_with_bad_strokes}"
-                        os.makedirs(SAVEDIR, exist_ok=True)
+                # for remove_drift in [False]:
+                for remove_drift, remove_singleprims_unstable, remove_trials_with_bad_strokes in list_unstable_badstrokes:
+                    SAVEDIR = f"{SAVEDIR_ANALYSIS}/{which_level}-{bregion}-{event}-prune={prune_version}-ss={subspace_projection}-nodrift={remove_drift}-subtrmean={raw_subtract_mean_each_timepoint}-SpUnstable={remove_singleprims_unstable}-RmBadStrks={remove_trials_with_bad_strokes}"
+                    os.makedirs(SAVEDIR, exist_ok=True)
 
-                        print("SAVING AT ... ", SAVEDIR)
+                    print("SAVING AT ... ", SAVEDIR)
 
-                        # Preprocess
-                        savedir = f"{SAVEDIR}/preprocess"
-                        os.makedirs(savedir, exist_ok=True)
-                        shape_var = "shape_semantic_grp"
-                        pa = preprocess_pa(animal, date, PA, savedir, prune_version, 
-                                            n_min_trials_per_shape=n_min_trials_per_shape, shape_var=shape_var, plot_drawings=False,
-                                            remove_chans_fr_drift=remove_drift, subspace_projection=subspace_projection, 
-                                                twind_analy=twind_analy, tbin_dur=tbin_dur, tbin_slide=tbin_slide, NPCS_KEEP=NPCS_KEEP,
-                                                raw_subtract_mean_each_timepoint=False, remove_singleprims_unstable=remove_singleprims_unstable,
-                                                remove_trials_with_bad_strokes=remove_trials_with_bad_strokes)
+                    # Preprocess
+                    savedir = f"{SAVEDIR}/preprocess"
+                    os.makedirs(savedir, exist_ok=True)
+                    shape_var = "shape_semantic_grp"
+                    pa = preprocess_pa(animal, date, PA, savedir, prune_version, 
+                                        n_min_trials_per_shape=n_min_trials_per_shape, shape_var=shape_var, plot_drawings=False,
+                                        remove_chans_fr_drift=remove_drift, subspace_projection=subspace_projection, 
+                                            twind_analy=twind_analy, tbin_dur=tbin_dur, tbin_slide=tbin_slide, NPCS_KEEP=NPCS_KEEP,
+                                            raw_subtract_mean_each_timepoint=False, remove_singleprims_unstable=remove_singleprims_unstable,
+                                            remove_trials_with_bad_strokes=remove_trials_with_bad_strokes)
 
-                        # # For raw data, pick out 10 most modulated neurons
-                        # if False:
-                        #     from neuralmonkey.metrics.scalar import _calc_modulation_by_frsm_event_aligned_time
-                        #     res = []
-                        #     for i, chan in enumerate(PA.Chans):
-                        #         frmat = PA.X[i, :, :]
-                        #         r2 = _calc_modulation_by_frsm_event_aligned_time(frmat)
-                        #         res.append({
-                        #             "r2":r2,
-                        #             "chan":chan,
-                        #             "indchan":i
-                        #         })
-                        #     animal, date
-                        #     df = pd.DataFrame(res)
-                        #     import seaborn as sns
-                        #     fig = sns.catplot(data=df, x="chan", y="r2", aspect=2.5, kind="bar")
-                        #     from pythonlib.tools.snstools import rotateLabel
-                        #     rotateLabel(fig)
-                        #     nchans = 10
-                        #     list_indchan = df.sort_values("r2", ascending=False)["indchan"].tolist()[:nchans]
-                        #     PA = PA.slice_by_dim_indices_wrapper("chans", list_indchan)
+                    # # For raw data, pick out 10 most modulated neurons
+                    # if False:
+                    #     from neuralmonkey.metrics.scalar import _calc_modulation_by_frsm_event_aligned_time
+                    #     res = []
+                    #     for i, chan in enumerate(PA.Chans):
+                    #         frmat = PA.X[i, :, :]
+                    #         r2 = _calc_modulation_by_frsm_event_aligned_time(frmat)
+                    #         res.append({
+                    #             "r2":r2,
+                    #             "chan":chan,
+                    #             "indchan":i
+                    #         })
+                    #     animal, date
+                    #     df = pd.DataFrame(res)
+                    #     import seaborn as sns
+                    #     fig = sns.catplot(data=df, x="chan", y="r2", aspect=2.5, kind="bar")
+                    #     from pythonlib.tools.snstools import rotateLabel
+                    #     rotateLabel(fig)
+                    #     nchans = 10
+                    #     list_indchan = df.sort_values("r2", ascending=False)["indchan"].tolist()[:nchans]
+                    #     PA = PA.slice_by_dim_indices_wrapper("chans", list_indchan)
 
-                        for subtr_time_mean in [False, True]:
-                            if subtr_time_mean:
-                                pathis = pa.norm_subtract_trial_mean_each_timepoint()
-                            else:
-                                pathis = pa.copy()
-                            savedirthis = f"{SAVEDIR}/subtr_time_mean={subtr_time_mean}"
-                            os.makedirs(savedirthis, exist_ok=True)
+                    for subtr_time_mean in [False, True]:
+                        if subtr_time_mean:
+                            pathis = pa.norm_subtract_trial_mean_each_timepoint()
+                        else:
+                            pathis = pa.copy()
+                        savedirthis = f"{SAVEDIR}/subtr_time_mean={subtr_time_mean}"
+                        os.makedirs(savedirthis, exist_ok=True)
 
-                            plot_heatmap_firing_rates_all(pathis, savedirthis)  
+                        plot_heatmap_firing_rates_all(pathis, savedirthis)  
 
 def plot_heatmap_firing_rates_all(PA, savedir):
     """
@@ -1548,8 +1561,8 @@ if __name__=="__main__":
         question = "CHAR_BASE_stroke"
         # PLOTS_DO = [1, 2]
         # PLOTS_DO = [2, 1]
-        PLOTS_DO = [1, 4]
-        PLOTS_DO = [0]
+        PLOTS_DO = [2, 1, 0, 4] # GOOD
+        # PLOTS_DO = [0] # STATE SPACE
         # PLOTS_DO = [4] # Just beh drwaings
         version = "stroke"
     
@@ -1591,7 +1604,7 @@ if __name__=="__main__":
 
             ######### PARAMS
             n_min_trials_per_shape = N_MIN_TRIALS_PER_SHAPE
-            LIST_NPCS_KEEP = [4,6,2]
+            # LIST_NPCS_KEEP = [4,6,2]
             LIST_NPCS_KEEP = [6]
             PLOT_EACH_REGION = True
 

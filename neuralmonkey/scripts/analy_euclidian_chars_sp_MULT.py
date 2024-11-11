@@ -140,7 +140,8 @@ def plot_scalar_all(DFDIST, SAVEDIR):
 
 
     map_event_to_twind = {
-        "00_stroke":[-0.3, 0.1],
+        # "00_stroke":[-0.3, 0.1],
+        "00_stroke":[-0.2, 0.1],
         "03_samp":[0.2, 1.0],
         "05_first_raise":[-0.5,  0],
     }
@@ -212,33 +213,84 @@ def plot_scalar_all(DFDIST, SAVEDIR):
 #     ("Pancho", 220630, False),
 # ]
 
-# # Diego (all)
+# # Pancho, trial
+# LIST_ANIMAL_DATE_COMB = [
+#     ("Pancho", 220618, True),
+#     ("Pancho", 220626, True),
+#     ("Pancho", 220628, True),
+#     ("Pancho", 220630, True),
+#     ("Pancho", 230119, True),
+#     ("Pancho", 230120, True),
+#     ("Pancho", 230126, True),
+#     ("Pancho", 230127, True),
+# ]
+# which_level = "trial"
+# savedir_method_old = False
+# savesuff = "trial"
+
+# Pancho, combined areas
+LIST_ANIMAL_DATE_COMB = [
+    ("Pancho", 220618, True),
+    ("Pancho", 220626, True),
+    ("Pancho", 220628, True),
+    ("Pancho", 220630, True),
+    ("Pancho", 230119, True),
+    ("Pancho", 230120, True),
+    ("Pancho", 230126, True),
+    ("Pancho", 230127, True),
+]
+which_level = "stroke"
+savedir_method_old = False
+savesuff = "stroke"
+
+# # [0] Diego (all, first run)
 # LIST_ANIMAL_DATE_COMB = [
 #     # ("Diego", 231130, True),
-#     ("Diego", 231205, True),
 #     ("Diego", 231211, True),
 #     ("Diego", 231122, True),
 #     ("Diego", 231128, True),
 #     ("Diego", 231129, True),
 #     ("Diego", 231201, True),
+#     ("Diego", 231205, True),
 #     ("Diego", 231213, True),
 #     ("Diego", 231204, True),
 # ]
 # which_level = "stroke"
 # savedir_method_old = True
+# savesuff = "stroke_good_no_sp_drift"
 
-# Diego, just dates where have SP multiple bloques
+# # [1] Diego, just dates where have SP multiple bloques (subset of first run)
+# LIST_ANIMAL_DATE_COMB = [
+#     # ("Diego", 231130, True),
+#     ("Diego", 231122, True),
+#     ("Diego", 231128, True),
+#     ("Diego", 231129, True),
+#     ("Diego", 231201, True),
+#     ("Diego", 231205, True),
+# ]
+# which_level = "stroke"
+# savedir_method_old = False
+# savesuff = "stroke_good_no_sp_drift"
+
+# [2] Diego, [1] plus more dates without SP across multiple bloques.
+# NOTE still a few more exist
 LIST_ANIMAL_DATE_COMB = [
     # ("Diego", 231130, True),
-    ("Diego", 231122, True),
-    ("Diego", 231128, True),
+    ("Diego", 231122, True), # Old [1]
+    ("Diego", 231128, True), 
     ("Diego", 231129, True),
     ("Diego", 231201, True),
     ("Diego", 231205, True),
+    ("Diego", 231120, True), # Added
+    ("Diego", 231121, True),
+    ("Diego", 231206, True),
+    ("Diego", 231218, True),
+    ("Diego", 231220, True),
 ]
 which_level = "stroke"
 savedir_method_old = False
-savesuff = "stroke_good_no_sp_drift"
+savesuff = "stroke_all"
+
 
 # # Diego (trial, all)
 # LIST_ANIMAL_DATE_COMB = [
@@ -255,35 +307,6 @@ savesuff = "stroke_good_no_sp_drift"
 # savedir_method_old = False
 # savesuff = "trial"
 
-# # Pancho, trial
-# LIST_ANIMAL_DATE_COMB = [
-#     ("Pancho", 220618, True),
-#     ("Pancho", 220626, True),
-#     ("Pancho", 220628, True),
-#     ("Pancho", 220630, True),
-#     ("Pancho", 230119, True),
-#     ("Pancho", 230120, True),
-#     ("Pancho", 230126, True),
-#     ("Pancho", 230127, True),
-# ]
-# which_level = "trial"
-# savedir_method_old = False
-# savesuff = "trial"
-
-# # Pancho, combined areas
-# LIST_ANIMAL_DATE_COMB = [
-#     ("Pancho", 220618, True),
-#     ("Pancho", 220626, True),
-#     ("Pancho", 220628, True),
-#     ("Pancho", 220630, True),
-#     ("Pancho", 230119, True),
-#     ("Pancho", 230120, True),
-#     ("Pancho", 230126, True),
-#     ("Pancho", 230127, True),
-# ]
-# which_level = "stroke"
-# savedir_method_old = False
-# savesuff = "stroke"
 
 if __name__=="__main__":
 
