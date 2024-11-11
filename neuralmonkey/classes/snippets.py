@@ -8436,6 +8436,13 @@ def extraction_helper(SN, which_level="trial", list_features_modulation_append=N
         if len(list_pre_dur)>1:
             list_pre_dur = [list_pre_dur[i] for i in inds_keep]
             list_post_dur = [list_post_dur[i] for i in inds_keep]
+        
+        for ev in EVENTS_KEEP:
+            if ev not in list_events:
+                print(ev)
+                print(list_events)
+                print(EVENTS_KEEP)
+                assert False, "PROBLEM - the original pool of events doesnt have an event you wnt"
 
     print("Kept these events: ", list_events)
 

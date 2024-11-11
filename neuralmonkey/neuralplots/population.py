@@ -71,7 +71,8 @@ def heatmapwrapper_stratified_each_neuron_alltrials(PA, y_group_var=None):
 
     return fig
 
-def heatmap_stratified_trials_grouped_by_neuron(PA, inds, ax, n_rand_trials=10, zlims=None):
+def heatmap_stratified_trials_grouped_by_neuron(PA, inds, ax, n_rand_trials=10, zlims=None,
+                                                add_hline_separator=True):
     """
     Plot these trials, but showing each neuron in same plot.
     - y, trials, grouped by neuron (and mult trials withim that nerun). Think of this as a subplot fixed on a single
@@ -103,9 +104,9 @@ def heatmap_stratified_trials_grouped_by_neuron(PA, inds, ax, n_rand_trials=10, 
     ntimes = X.shape[2]
     nrows = ntrials * nchans
     Xarr = np.reshape(X, (nchans*ntrials, ntimes))
-    neurons_row_starts = np.arange(0, nrows, ntrials).tolist()
+    neurons_row_starts = np.arange(0, nrows, ntrials).tolist() # the top boundary of eacgh group
 
-    _heatmap_stratified_y_axis(Xarr, times, ax, neurons_row_starts, chans, zlims=zlims)
+    _heatmap_stratified_y_axis(Xarr, times, ax, neurons_row_starts, chans, zlims=zlims, add_hline_separator=add_hline_separator)
 
 def heatmap_stratified_neuron_grouped_by_var(PA, ind_neur, ax, n_rand_trials, zlims, y_group_var, y_group_var_levels=None):
     """
@@ -152,7 +153,7 @@ def heatmap_stratified_neuron_grouped_by_var(PA, ind_neur, ax, n_rand_trials, zl
 
 def _heatmap_stratified_y_axis(Xarr, times, ax, 
                                list_y_group_onsets=None, list_group_labels=None, 
-                               zlims=None):
+                               zlims=None, add_hline_separator=True):
     """
     PARAMS:
     - Xarr, (nrows, ntimes), where rows represent stratified features (e..g, neuron--trial), but this function doesnt  need to know.
@@ -166,15 +167,22 @@ def _heatmap_stratified_y_axis(Xarr, times, ax,
         heatmap_mat(Xarr, ax, annotate_heatmap=False, labels_col=times_str, diverge=True, robust=True, zlims=zlims)
     else:
         # Better, x values are real
+        # print(Xarr.shape)
         heatmap_mat(Xarr, ax, annotate_heatmap=False, labels_col=times, diverge=True, robust=True, zlims=zlims, 
                 continuous_axes=True)
-    ax.set_xlabel("times")
+    # ax.set_xlabel("times")
+    # ax.axhline(1)
+    # ax.axhline(28)
+    # assert False
 
     # Put lines demarcating each neuron's data onset
-
-    if list_y_group_onsets is not None:
-        for i, row in enumerate(list_y_group_onsets):
-            ax.axhline(row, color="k", linestyle="--", alpha=0.5, linewidth=1)
+    # print(list_y_group_onsets)
+    # print(Xarr.shape)
+    if add_hline_separator:
+        if list_y_group_onsets is not None:
+            for i, row in enumerate(list_y_group_onsets):
+                # ax.axhline(row, color="k", linestyle="--", alpha=0.5, linewidth=1)
+                ax.axhline(row, color="k", linestyle="-", alpha=0.5, linewidth=0.5)
     
     # First, remove the current ticks
     # ax.tick_params(axis='y', label1On=False)
@@ -185,11 +193,23 @@ def _heatmap_stratified_y_axis(Xarr, times, ax,
         assert len(list_y_group_onsets)==len(list_group_labels), "they need to match..."
         from pythonlib.tools.plottools import add_secondary_axis_label_nested
         onsets = np.array(list_y_group_onsets)
-        onset_diffs = np.diff(onsets)
-        onsets_mid = np.r_[onset_diffs, Xarr.shape[0]-onsets[-1]]/2 + onsets
+        onset_diffs = np.diff(onsets)/2
+        tmp = (Xarr.shape[0]-onsets[-1])/2
+        # print(tmp)
+        onsets_mid = np.r_[onset_diffs, tmp] + onsets
+        # onsets_mid = onset_diffs/2 + onsets
+        # print(onsets)
+        # print(list_group_labels)
+        # print(len(list_group_labels))
+        # print(onsets_mid)
         add_secondary_axis_label_nested(ax, onsets_mid, list_group_labels, "y")
+        # ax.axhline(28)
+        # ax.set_ylim([30, 0])
+        # assert False
+        # assert False
     
-    ax.axvline(0, color="k", alpha=0.3)
+    if True:
+        ax.axvline(0, color="g", alpha=0.3, linestyle="--")
 
 def subsample_rand(X, n_rand):
     """ get random sample (dim 0), or return all if n_rand larget than X.

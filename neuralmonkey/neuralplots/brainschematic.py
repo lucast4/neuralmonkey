@@ -226,7 +226,6 @@ def plot_df_from_wideform(dfthis_agg_2d, savedir=None, col1_name="bregion", # ju
         for event, i in map_event_to_colindex.items():
             print(i, ' -- ' , event)
 
-
     # PLOT
     ncols = len(list_events)
     nrows = int(np.ceil(len(list_events)/ncols))
@@ -275,7 +274,8 @@ def plot_df_from_wideform(dfthis_agg_2d, savedir=None, col1_name="bregion", # ju
     return fig, axes
 
 def plot_df_from_longform(df, valname, subplot_var, savedir = None, savesuffix="",
-                          DEBUG=False, diverge=False, norm_method=None):
+                          DEBUG=False, diverge=False, norm_method=None,
+                            subplot_var_values = None):
     """
     GOOD - plot given df with values in column (valname) and multiple subplots
     (subplot_var). Must be longform. Here does aggregation by taking the mean,
@@ -308,7 +308,8 @@ def plot_df_from_longform(df, valname, subplot_var, savedir = None, savesuffix="
                                                  val_name=valname, 
                                                  norm_method=norm_method,
                                                  annotate_heatmap=annotate_heatmap,
-                                                zlims = ZLIMS, diverge=diverge
+                                                zlims = ZLIMS, diverge=diverge,
+                                                list_cat_2=subplot_var_values
                                                 )
 
     fig, axes = plot_df_from_wideform(dfthis_agg_2d, savedir, REGION, # just for saving
