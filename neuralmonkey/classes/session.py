@@ -159,6 +159,12 @@ def load_mult_session_helper(DATE, animal, dataset_beh_expt=None, expt = "*",
 
     # Combine into all sessions
     MS = MultSessions(SNlist)
+
+    # Sanity check that the sites match (had issues with KS)
+    sites = MS.sitegetter_all(how_combine="intersect")
+    for s in sites:
+        MS.sitegetter_summarytext(s)
+
     return MS
 
 
@@ -3698,9 +3704,15 @@ class Session(object):
             from ..utils.monkeylogic import _load_sessions_corrupted
             sessdict = _load_sessions_corrupted()
             value = (int(self.Date), self.RecSession)
-            if value in sessdict[self.Animal]:
+            
+            if self.Animal in sessdict.keys() and value in sessdict[self.Animal]:
                 # then ok, expect to fail
                 print("_beh_validate_trial_number failed, but OK becuase is expected!!")
+                print("**&*&**")
+                print("trials in neural data:", trials_all)
+                print("trials_exist_in_ml2:", trials_exist_in_ml2)
+                print("neural trials that miss beh data:", [t for t in trials_all if t not in trials_exist_in_ml2])
+                print("beh trials that miss neural data:", [t for t in trials_exist_in_ml2 if t not in trials_all])
             else:
                 print("**&*&**")
                 print("trials in neural data:", trials_all)
@@ -5771,13 +5783,13 @@ class Session(object):
             else:
                 out[i] = times[0]
         return out
+    
     def events_does_trial_include_all_events(self, trial, list_events):
         """
         REturns True if this trial includes each event at least one time
         """
         events_array = self.events_get_times_as_array(trial, list_events)
         return ~np.any(np.isnan(events_array))
-
 
 
     def events_get_time_sorted(self, trial, 
@@ -6129,7 +6141,8 @@ class Session(object):
                             # Try with larger window
                             assert len(self._behcode_extract_times(behcode, trial, shorthand=True))<2, "then doent want to expand window"
 
-                            out = self.behcode_get_stream_crossings_in_window(trial, behcode, t_pre=0.5, t_post = 1, whichstream="touch_in_fixsquare_binary", 
+                            # out = self.behcode_get_stream_crossings_in_window(trial, behcode, t_pre=0.5, t_post = 1, whichstream="touch_in_fixsquare_binary", 
+                            out = self.behcode_get_stream_crossings_in_window(trial, behcode, t_pre=0.6, t_post = 1, whichstream="touch_in_fixsquare_binary", 
                                                                       ploton=plot_beh_code_stream, cross_dir_to_take="up", assert_single_crossing_per_behcode_instance=True,
                                                                         assert_single_crossing_this_trial = True,
                                                                          assert_expected_direction_first_crossing = "up",
@@ -6184,21 +6197,24 @@ class Session(object):
                         # presses quickly in anticiation. Then the predur might have a contamination. solve this by
                         # shortening predur
 
-                        LIST_TPRE = list(np.linspace(0.045, -0.17, 50))
+                        from itertools import product
+                        LIST_TPRE = list(np.linspace(0.045, -0.17, 40))
+                        LIST_TPOST = list(np.linspace(0.2, 0.4, 20)) # Sometimes PD drops too far ahead
                         SM_WIN = 0.005 # if fix cue and rule2 are too close, then smoothing makes them hard to separate...
-                        for t_pre in LIST_TPRE:
+                        for t_pre, t_post in product(LIST_TPRE, LIST_TPOST):
                             try:
-                                out = self.behcode_get_stream_crossings_in_window(trial, 132, t_pre=t_pre, t_post = 0.22, whichstream="pd2", 
-                                                      ploton=plot_beh_code_stream, cross_dir_to_take="down", 
-                                                      assert_single_crossing_per_behcode_instance=True,
+                                # out = self.behcode_get_stream_crossings_in_window(trial, 132, t_pre=t_pre, t_post = 0.22, whichstream="pd2", 
+                                out = self.behcode_get_stream_crossings_in_window(trial, 132, t_pre=t_pre, t_post = t_post, whichstream="pd2", 
+                                                    ploton=plot_beh_code_stream, cross_dir_to_take="down", 
+                                                    assert_single_crossing_per_behcode_instance=True,
                                                         assert_single_crossing_this_trial = False,
-                                                          assert_expected_direction_first_crossing = "down",
-                                                          refrac_period_between_events=0.05,
-                                                          smooth_win = SM_WIN)        
+                                                        assert_expected_direction_first_crossing = "down",
+                                                        refrac_period_between_events=0.05,
+                                                        smooth_win = SM_WIN)        
                                 # Got here, this means success!
                                 break  
                             except AssertionError as err:
-                                if t_pre == LIST_TPRE[-1]:
+                                if t_pre == LIST_TPRE[-1] and t_post == LIST_TPOST[-1]:
                                     # Then you exhaustred all t_pre. fail
                                     raise err
                                 else:
@@ -6228,16 +6244,27 @@ class Session(object):
                         times_behcode = self.behcode_extract_times_semantic(behcode, trial) 
 
                     except AssertionError as err:
-                        # on certain days, this pd was bad. therefore extract the photodiode time + padding.
-                        print("*******************")
-                        VER = 2
-                        times = self.behcode_extract_times_semantic(behcode, trial)
-                        times_behcode = times
 
-                        print(VER, ' == ' , times, ' -- ' , times_behcode)
-                        assert False, "decide on delay to add to times, based on looking thru many trials."
+                        try:
+                            # Sometimes there is long delay from behcode to PD. 
+                            t_post = 0.5                    
+                            out = self.behcode_get_stream_crossings_in_window(trial, behcode, whichstream=stream, 
+                                                                    cross_dir_to_take=cross_dir, t_pre=t_pre,
+                                                                    t_post=t_post,
+                                                                    ploton=plot_beh_code_stream, assert_single_crossing_per_behcode_instance=True, 
+                                                                    assert_single_crossing_this_trial = assert_single_crossing_this_trial) 
+                            times = _extract_times(out)
+                            times_behcode = self.behcode_extract_times_semantic(behcode, trial) 
 
+                        except AssertionError as err:
+                            # on certain days, this pd was bad. therefore extract the photodiode time + padding.
+                            print("*******************")
+                            VER = 2
+                            times = self.behcode_extract_times_semantic(behcode, trial)
+                            times_behcode = times
 
+                            print(VER, ' == ' , times, ' -- ' , times_behcode)
+                            assert False, "decide on delay to add to times, based on looking thru many trials."
 
                 elif event in ["go", "go_cue"]:
                     # Use photodiode
@@ -6544,9 +6571,11 @@ class Session(object):
                     # use None for assert_expected_direction_first_crossing, because sometimes the preceding
                     # reward can be very close in time, if manually rewarded.
                     times = _extract_times(out)
+                
                 elif event=="reward_ons_manual":
                     # do same as reward_ons, with eventcode = 14;
                     assert False, "code it"
+
                 elif event=="reward_all":
                     # Ingore beh codes. just use entire trial and get crossings.
                     out = self.behcode_get_stream_crossings_in_window(trial, None, t_pre=0.01, t_post = 0.04, whichstream="reward", 
@@ -6556,13 +6585,59 @@ class Session(object):
                                                                 assert_expected_direction_first_crossing = "up", 
                                                                 allow_no_crossing_per_behcode_instance_if=None)                
                     times = _extract_times(out)
+                
+                elif event=="reward_first_post":
+                    # Get the first reward that is triggered after done (actually, detected using end of last stroke) -- i.e,., this is evaluation of trial. This excludes
+                    # rewards that at other times, which are hand triggered. Might (rarely) include rew post done, which is what I 
+                    # would want anyway.
+                    # NOTE: this is a bit slow!
+                    
+                    # time_done = self.events_get_time_helper("post", trial, True)[0] # PROLBEM, this can sometimes occur after last rew
+                    # time_done = self.events_get_time_helper("doneb", trial, True)[0]
+                    # if len(time_done)==0:
+
+                    # if self.beh_this_day_uses_done_button(): # Actulaly dont do this, since some days have blocks not using done button.
+                    #     time_post = self.events_get_time_helper("doneb", trial, False)
+                    # else:
+                    # OPTION 1 - go back 0.5, to acocunt for times that tpost is after rew. rare, and usualyl very low, like 0.01
+                    time_post = self.events_get_time_helper("post", trial, False)
+                    time_post = [t - 0.5 for t in time_post]
+
+                    if len(time_post)>0:
+                        times_rew = self.events_get_time_helper("reward_all", trial, False)
+                        times = [t for t in times_rew if t>time_post]
+                    else:
+                        # Trial didnt
+                        times = []
+
+                    # Alternative, deals with issue that post sometimes occurs after rew. But above, putting -0.5, shold solve this probe
+                    # times_stroke_off = self.events_get_time_helper("off_stroke_last", trial, False) # list of times
+                    # time_doneb = self.events_get_time_helper("doneb", trial, False)
+                    # if len(times_stroke_off)>=1:
+                    #     times_stroke_off = times_stroke_off[0]
+                    #     times_rew = self.events_get_time_helper("reward_all", trial, False)
+                    #     times = [t for t in times_rew if (t>times_stroke_off)]
+
+                    #     if len(time_doneb)>0:
+                    #         times = [t for t in times if t>min(time_doneb)]
+
+                    #     times = [t for t in times if t>time_post-1]
+
+                    #     if len(times)>1:
+                    #         times = [min(times)]
+
+                    # else:
+                    #     # no stroke onthis trial.. so there cant be an evaluative reward
+                    #     times = []
+
+                    if len(times)>1:
+                        times = [min(times)]
                 else:
                     print(event, "This event doesnt exist!!")
                     raise NotEnoughDataException
                     
                 assert times is not None
             return times
-
 
         ###############################
         dict_events = {}
@@ -9383,6 +9458,21 @@ class Session(object):
 
         return times, touchingfix.astype(int)
 
+    def beh_this_day_uses_done_button(self):
+        """
+        REturn bool if any trial on this dayuses done button (based on checking params)
+        """
+        for trial in self.get_trials_list():    
+            fd, t = self.beh_get_fd_trial(trial)
+            if mkl.getTrialsDoneButtonMethod(fd, t)=="skip":
+                # Then no done button, keep chekcing
+                continue
+            else:
+                # Found a trial with done button
+                return True
+        # No trial uses done button
+        return False
+
     def beh_extract_touch_in_done_button(self, trial, window_delta_pixels = 40.,
         ploton=False):
         """ Return binary wherther finger is in done button, based solely on 
@@ -9447,7 +9537,7 @@ class Session(object):
             if trial in self._CachedTouchData.keys():
                 return self._CachedTouchData[trial]
             else:
-                print("WARNING - the touch times might have gaps, esp during hold at fixation for Diego...")
+                print("WARNING 1 - the touch times might have gaps, esp during hold at fixation for Diego...")
                 # Should change base code in drawmonkey, updating how extract touch data (concat touches that are close).
                 fd, trialml = self.beh_get_fd_trial(trial)
                 xyt = mkl.getTrialsTouchData(fd, trialml)
@@ -9455,7 +9545,7 @@ class Session(object):
                 return xyt
                 # return xyt[:,2], xyt[:,0], xyt[:,1]
         else:
-            print("WARNING - the touch times might have gaps, esp during hold at fixation for Diego...")
+            print("WARNING 2    - the touch times might have gaps, esp during hold at fixation for Diego...")
             # Should change base code in drawmonkey, updating how extract touch data (concat touches that are close).
             fd, trialml = self.beh_get_fd_trial(trial)
             xyt = mkl.getTrialsTouchData(fd, trialml)
