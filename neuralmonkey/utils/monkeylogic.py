@@ -182,7 +182,27 @@ def session_map_from_rec_to_ml2(animal, date, rec_session):
         assert list(sessdict.keys()) == [date]
         if session_map is not None:
             # Then you want to take multiple specific beh sessions (hand-entered session).
-            sessdict[date] = [sess_expt for sess_expt in sessdict[date] if sess_expt[0] in session_map]
+            if True:            
+                # New, can deal with cases when mult rec sess refer to same beh session, e.g., returns 
+                # sessdict = {'231207': [(1, 'chardiego2g'), (2, 'chardiego2g'), (2, 'chardiego2g')]}
+                # if session_map = [1,2,2]
+                def get_sess_tuple(behsess, date):
+                    """ Retunr the single sess tuple that is (behsess, <string name>) or raise error if doesnt
+                    exist in sessdict[date]
+                    """
+                    for sess_tuple in sessdict[date]:
+                        if sess_tuple[0]==behsess:
+                            return sess_tuple
+                    print(sessdict)
+                    print(date)
+                    print(behsess)
+                    assert False, "did not find this behsess"
+
+                sessdict[date] = [get_sess_tuple(behsess, date) for behsess in session_map]
+            else:
+                # Old, each beh session max 1 time. 
+                sessdict[date] = [sess_expt for sess_expt in sessdict[date] if sess_expt[0] in session_map]
+                
             if rec_session+1 > len(session_map):
                 # Then
                 return None, None, None, None

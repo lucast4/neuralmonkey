@@ -144,12 +144,17 @@ def check_log_preprocess_completion_status(animal, DEST_DIR= f"{PATH_NEURALMONKE
             DIR_PREPROCESS_CACHED = f"{DIR_PREPROCESS}/cached"
 
             # check if preprocess done.
-            SN = load_session_helper(date, None, i, animal, None,  
-                ACTUALLY_BAREBONES_LOADING = True) # Very quick loading
-            SN.Paths = {
-                "cached_dir":DIR_PREPROCESS_CACHED
-            }
-            done = SN._savelocalcached_check_done(datslice_quick_check=True)
+            try:
+                SN = load_session_helper(date, None, i, animal, None,  
+                    ACTUALLY_BAREBONES_LOADING = True) # Very quick loading
+                SN.Paths = {
+                    "cached_dir":DIR_PREPROCESS_CACHED
+                }
+                done = SN._savelocalcached_check_done(datslice_quick_check=True)
+            except AssertionError as err:
+                print(" ----- ", dirsess)
+                print(err)
+                continue
             
             # Save output
             if False:

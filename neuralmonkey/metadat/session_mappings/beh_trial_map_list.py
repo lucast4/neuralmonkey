@@ -1,5 +1,18 @@
 """ Use this for cases where a rec_session overlaps multiple beh sessions
+
+NOTES:
+- mult rec sessions, one beh session. 
+---> To do, write a variant of session_map_from_rec_to_ml2_ntrials_mapping(), which
+deals with Mult rec, one beh. Currently it is difciult as need to know how many rec
+trials exist. To do so, solutionw ould be to load each rec session, count its n trials, 
+use that to dcide one hwne next trial starts, run local preprocessing, and then move up
+one session. 
+OR have a way to extract tdt bank beh codes, trail onsets and offsets) to determine n trials.
+Currently even bare_bones loeading doesnt work. that doesnt have the paths needed to load tank.
+Approach might be to modify the barebones loading.
 """
+
+
 
 def load_beh_trial_map_list(animal, DATE, rec_session):
     """ One rec session -- Multiple beh sessions. Here hard

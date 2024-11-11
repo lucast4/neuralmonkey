@@ -1,8 +1,18 @@
 # tracking sessions that correpted in ml2, therefore missing beh trials.
 # e..g, (230320, 0) means that sess 0 (neural) will not have all its trials mapped to a beh.
 
+
+# Also hand-enter the missing trials into get_trials_list(). 
+# You can find the missing trials as it is printed here:
+  # Check what is printed by this line to see how many trials were thrown out:
+  # _beh_validate_trial_number failed, but OK becuase is expected
+
+
 Pancho: 
   - !!python/tuple [230320, 0]
   - !!python/tuple [230808, 0]
+
+Diego: 
+  - !!python/tuple [231206, 0]
 
     

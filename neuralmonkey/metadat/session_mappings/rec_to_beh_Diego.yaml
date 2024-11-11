@@ -2,5 +2,10 @@
 # e.g, if [2,3], mean rec session 0 maps to beh session 2 (1-indexed)
 # and rec ession 1 to beh sess 3.
 
+# Mult rec sessin, single beh session:
+# 231207: [1,2,2]
+
+
 230615: [2,3] 
 231004: [1] 
+231207: [1,2,2]
