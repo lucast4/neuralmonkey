@@ -43,7 +43,7 @@ def decode_apply_model_to_test_data(mod, x_test, labels_test,
         print(classes_in_ypred_but_not_in_ytrue)
         print(set(labels_predicted))
         print(set(labels_test))
-        assert False, "should first prune trainig data so that it onlyincludes classes present in testing data"
+        assert False, "should first     prune trainig data so that it onlyincludes classes present in testing data"
     score = balanced_accuracy_score(labels_test, labels_predicted, adjusted=False)
     score_adjusted = balanced_accuracy_score(labels_test, labels_predicted, adjusted=True)
 
@@ -71,7 +71,7 @@ def decode_resample_balance_dataset(X_train, labels_train, method="upsample",
     if len(set(labels_train))==1:
         print("SKipping, ony one class lewvel found... [decode_train_model]")
         return None, None
-
+    
     if False:
         print("---------")
         print("ntot:", len(labels))
@@ -258,7 +258,7 @@ def decode_train_model(X_train, labels_train, plot_resampled_data_path_nosuff=No
 
     # Do upsampling here, since it is hleped by having more data
     # Balance the train data
-    X_train, labels_train = decode_upsample_dataset(X_train, labels_train, "/tmp/test")
+    X_train, labels_train = decode_upsample_dataset(X_train, labels_train, plot_resampled_data_path_nosuff=plot_resampled_data_path_nosuff)
     # list_dims_plot = [(0,1), (2,3), (4,5), (6,7)]
     # list_dims_plot = [dims for dims in list_dims_plot if X_train.shape[1]>max(dims)]
 
@@ -291,6 +291,7 @@ def decode_train_model(X_train, labels_train, plot_resampled_data_path_nosuff=No
                             do_center=do_center, do_std=do_std, do_train_test_split=False)
     except Exception as err:
         # Plot the data then raise error
+        list_dims_plot = [(0,1)]
         fig, axes = trajgood_plot_colorby_splotbydims_scalar(X_train, labels_train, list_dims_plot)
         if plot_resampled_data_path_nosuff is None:
             plot_resampled_data_path_nosuff = "/tmp/test"
@@ -707,6 +708,7 @@ def decodewrap_categorical_timeresolved_cross_condition(pa, var_decode,
                                                                  ignore_values_called_ignore=True,
                                                                  plot_counts_heatmap_savepath=plot_counts_heatmap_savepath,
                                                                  balance_no_missed_conjunctions=balance_no_missed_conjunctions)
+        plt.close("all")
 
         if len(dfout)==0:
             print("all data pruned!!")
@@ -737,6 +739,8 @@ def decodewrap_categorical_timeresolved_cross_condition(pa, var_decode,
     X = pa.X # (nchans, ntrials, ntimes)
     times = pa.Times
     dflab = pa.Xlabels["trials"]
+
+    # assert False
 
     # Decode, for each time bin.
     list_tbin = range(X.shape[2])
@@ -1153,7 +1157,7 @@ def decodewrapouterloop_categorical_timeresolved_cross_condition(DFallpa, list_v
                             print("Filter completely removed all trials... SKIPPING")
                 if len(pa.Xlabels["trials"])==0:
                     continue
-
+                
                 # 1. Extract the specific pa for this (br, tw)
                 res = decodewrap_categorical_timeresolved_cross_condition(pa, var_decode,
                                                             vars_conj_condition,
