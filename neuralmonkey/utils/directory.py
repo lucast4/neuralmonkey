@@ -1,6 +1,7 @@
 """ Working with pathsa nd directories
 """
 import os.path
+import sys
 
 from pythonlib.globals import PATH_NEURALMONKEY, PATH_DATA_NEURAL_RAW, PATH_DATA_NEURAL_PREPROCESSED, PATH_KS_RAW, PATH_SAVE_CLUSTERFIX
 from pythonlib.tools.expttools import writeStringsToFile, makeTimeStamp
@@ -369,53 +370,69 @@ def rec_session_durations_extract_kilosort(animal, date):
     # (3) Duration of lenght of each RS4 recordings, saved in raw logs
     # i.e., raw(RS4) [THIS, in logs] --> concated..
     durations_each_sess_rs4_keyed_by_rs = {}
+    rs_missed = []
     for rs in [2, 3]:
-        durations = [] # list, length sessions/
-        for sessnum, sessrec in enumerate(sessions_rec):
-            # - Collect duration for this session
-            logfile = f"RSn{rs}_log"
-            path = f"{PATH_DATA_NEURAL_RAW}/{animal}/{date}/{sessrec['pathfinal']}/{logfile}.txt"
-            with open(path) as f:
-                lines = f.readlines()
+        try:
+            # Collect durations across all sessions.
+            durations = [] # list, length sessions/
+            for sessnum, sessrec in enumerate(sessions_rec):
+                # - Collect duration for this session
+                logfile = f"RSn{rs}_log"
+                path = f"{PATH_DATA_NEURAL_RAW}/{animal}/{date}/{sessrec['pathfinal']}/{logfile}.txt"
+                with open(path) as f:
+                    lines = f.readlines()
 
-            if len(lines)>2:
-                # Then is something like this. Keep first and last.
-                # ['recording started at sample: 2\n', 'gap detected. last saved sample: 51833413, new saved sample: 51833425\n', 'recording stopped at sample: 332994022\n']
-                lines = [lines[0], lines[-1]]
+                if len(lines)>2:
+                    # Then is something like this. Keep first and last.
+                    # ['recording started at sample: 2\n', 'gap detected. last saved sample: 51833413, new saved sample: 51833425\n', 'recording stopped at sample: 332994022\n']
+                    lines = [lines[0], lines[-1]]
 
-            try:
-                assert lines[0][:27] == 'recording started at sample'
-                assert lines[1][:20] == 'recording stopped at'
-            except AssertionError as err:
-                print("==========")
-                print(lines)
-                print(len(lines))
-                for l in lines:
-                    print(l)
-                print(rs, sessnum, sessrec, path)
-                assert False, "investigate..."
+                try:
+                    assert lines[0][:27] == 'recording started at sample'
+                    assert lines[1][:20] == 'recording stopped at'
+                except AssertionError as err:
+                    print("==========")
+                    print(lines)
+                    print(len(lines))
+                    for l in lines:
+                        print(l)
+                    print(rs, sessnum, sessrec, path)
+                    assert False, "investigate..."
 
-            ind1 = lines[0].find(": ")
-            ind2 = lines[0].find("\n")
-            samp_on = int(lines[0][ind1+2:ind2])
-            assert samp_on < 25, "why is RS4 signal offset from onset of trial. This probably means misalignment vs. Data tank..."
+                ind1 = lines[0].find(": ")
+                ind2 = lines[0].find("\n")
+                samp_on = int(lines[0][ind1+2:ind2])
+                assert samp_on < 25, "why is RS4 signal offset from onset of trial. This probably means misalignment vs. Data tank..."
 
-            ind1 = lines[1].find(": ")
-            ind2 = lines[1].find("\n")
-            samp_off = int(lines[1][ind1+2:ind2])
-            nsamp = samp_off - samp_on + 1
-            # if dur is None:
-            #     dur = nsamp/FS
-            # else:
-            #     assert dur - nsamp/FS < 0.005
+                ind1 = lines[1].find(": ")
+                ind2 = lines[1].find("\n")
+                samp_off = int(lines[1][ind1+2:ind2])
+                nsamp = samp_off - samp_on + 1
+                # if dur is None:
+                #     dur = nsamp/FS
+                # else:
+                #     assert dur - nsamp/FS < 0.005
 
-            durations.append(nsamp/FS)
+                durations.append(nsamp/FS)
+        except FileNotFoundError as err:
+            rs_missed.append(rs)
+            durations = None
 
         durations_each_sess_rs4_keyed_by_rs[rs] = durations
         # # Store across all (sess, rs)
         # durations_each_sess_rs4_keyed_by_sessnum_rs_dict[(sessnum, rsnum)] = nsamp/FS
 
         # durations_each_sess_rs4.append(dur)
+    if rs_missed == [2]:
+        # Then use 3 to replace 2:
+        durations_each_sess_rs4_keyed_by_rs[2] = durations_each_sess_rs4_keyed_by_rs[3]
+    elif rs_missed == [3]:
+        durations_each_sess_rs4_keyed_by_rs[3] = durations_each_sess_rs4_keyed_by_rs[2]
+    elif rs_missed == [2,3]:
+        assert False, "did not find RSn logs (e.g, FileNotFoundError: [Errno 2] No such file or directory: '/home/lucas/mnt/Freiwald/ltian/recordings/Diego/240523/Diego-240523-155459/RSn3_log.txt')"
+    else:
+        # Good
+        assert rs_missed == []
 
     # (4) Total duration, by summing up RS4 raw across sessions (from log files).
     # sessnums = sorted(set([x[0] for x in out["durations_each_sess_rs4_keyed_by_sessnum_rs_dict"].keys()]))
@@ -466,7 +483,6 @@ def rec_session_durations_extract_kilosort(animal, date):
     # print("... durations_each_sess_rs4_keyed_by_rs", durations_each_sess_rs4_keyed_by_rs)
     # print("... _durations_each_sess_using_tank", _durations_each_sess_using_tank)
     # print("... duration_total_by_summing_rs4_dict", duration_total_by_summing_rs4_dict)
-
 
     return out
 
