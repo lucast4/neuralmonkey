@@ -167,7 +167,7 @@ def heatmap_bregions_events(DFallpa, base_event, base_twind, sort_event, sort_tw
     - mean_over_trials = True
     """
     from neuralmonkey.classes.population_mult import extract_single_pa
-    from neuralmonkey.neuralplots.population import heatmapwrapper_stratified_each_neuron_alltrials, heatmap_stratified_trials_grouped_by_neuron
+    from neuralmonkey.neuralplots.population import heatmap_stratified_each_neuron_alltrials, heatmap_stratified_trials_grouped_by_neuron
     
     # PARAMS
     list_bregion = DFallpa["bregion"].unique().tolist()

@@ -118,7 +118,8 @@ def statespace_plot_single(frmat, ax, color_for_trajectory="k",
                            time_bin_size=None,
                            markersize=3, marker="P",
                            text_plot_pt1=None,
-                           alpha=0.2, plot_dots_on_traj=True):
+                           alpha=0.2, plot_dots_on_traj=True,
+                           use_grid=False):
     """ [GOOD] Plot a single trial (or mean over trials) trajectory in state space (2d)
     plots data in frmat in the space defined by PApca, which holds pca space
     computed from the data in PApca
@@ -180,7 +181,8 @@ def statespace_plot_single(frmat, ax, color_for_trajectory="k",
                    text_plot_pt1=text_plot_pt1, marker_along_traj=marker_along_traj)
 
     # grid on, for easy comparisons
-    ax.grid()
+    if use_grid:
+        ax.grid()
 
 def plotStateSpace(X, dims_neural=(0,1), plotndim=2, ax=None,
     color_for_trajectory="k", is_traj=True, text_plot_pt1=None, alpha=0.5,

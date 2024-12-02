@@ -1374,7 +1374,7 @@ def _trajgood_plot_colorby_scalar_BASE_GOOD(xs, ys, labels_color, ax,
                                             connect_means_with_line=False, connect_means_with_line_levels=None,
                                             connect_means_with_line_color=None,
                                             plot_3D=False, zs=None,
-                                            mean_markersize=10, mean_alpha=0.9, plot_scatter=True,):
+                                            mean_markersize=10, mean_alpha=0.9, plot_scatter=True):
     """
     [LOW-LEVEL base plot for scatterplot]
     Like trajgood_plot_colorby_splotby_scalar, but passing in the raw data directly, instead
@@ -1393,8 +1393,12 @@ def _trajgood_plot_colorby_scalar_BASE_GOOD(xs, ys, labels_color, ax,
         ys = ys[:, None]
     assert xs.shape[1]==1
     assert ys.shape[1]==1
+    if zs is not None and len(zs.shape)==1:
+        zs = zs[:, None]
+
 
     if plot_3D:
+        # print(xs.shape, ys.shape, zs)
         X = np.concatenate((xs, ys, zs), axis=1)
         dimsplot = (0,1,2)
     else:
@@ -2019,7 +2023,7 @@ def trajgood_plot_colorby_splotby(df, var_color_by, var_subplots, dims=(0,1),
                                    overlay_trials_on_mean=False, 
                                    n_trials_overlay_on_mean=5,
                                    xlim_force=None, ylim_force=None, SIZE=3.5,
-                                   ncols=3):
+                                   ncols=4):
     """ [GOOD], to plot trajectories colored by one variable, and split across subplots by another
     variable.
     PARAMS:
@@ -2087,7 +2091,6 @@ def trajgood_plot_colorby_splotby(df, var_color_by, var_subplots, dims=(0,1),
                                        time_bin_size = time_bin_size,
                                        markersize=markersize, marker=marker,
                                        text_plot_pt1=text_plot_pt1, alpha=alpha, plot_dots_on_traj=plot_dots_on_traj)
-                
                 if overlay_trials_on_mean:
                     # Optionally overlay some single trials, so show variability
                     n = X.shape[1]
@@ -2126,6 +2129,7 @@ def trajgood_plot_colorby_splotby(df, var_color_by, var_subplots, dims=(0,1),
             ax.set_xlim(xlim_force)
         if ylim_force is not None:
             ax.set_ylim(ylim_force)
+        plt.grid(False)
 
     # Add legend to the last axis
     legend_add_manual(ax, map_lev_to_color.keys(), map_lev_to_color.values(), 0.2, "best")
@@ -2136,7 +2140,12 @@ def trajgood_plot_colorby_splotby_timeseries(df, var_color_by, var_subplots,
                                              dim=0, plot_trials=True, plot_trials_n=10,
                                              plot_mean=True, 
                                              alpha=0.5, SUBPLOT_OPTION="combine_levs"):
-    """ [GOOD], to plot trajectories colored by one variable, and split across subplots by another
+    """ 
+    NOTE: OBSOLETE -- SHOULD replace with:
+    pa.plotwrappergrid_smoothed_fr_splot_neuron (if SUBPLOT_OPTION="combine_levs")
+    pa.plotwrappergrid_smoothed_fr_splot_var (if SUBPLOT_OPTION="split_levs")
+
+    [GOOD], to plot trajectories colored by one variable, and split across subplots by another
     variable, where x axis is always time.
 
     PARAMS:
@@ -2346,10 +2355,11 @@ def dimredgood_pca_project(components, X, plot_pca_explained_var_path=None,
         print(components.shape)
         print(do_additional_reshape_from_ChTrTi)
         print("Is this because you are doing 'scalar', and trying to use different windwos for pca space identificaiton vs. projecting? Then this must fail, since scalar doesnt slide over time... Solve by setting time windows the same.")
+    
     # print("HERE", np.mean(X, axis=0))
     if False: # Need this False in order to project data that hasnt had each time bin subtracted...
         assert np.all(np.mean(X, axis=0)<0.1)
-    # assert isnear(np.mean(X, axis=0), np.zeros(X.shape)) # Check that X is zeroed, or else the variance calcualtion may be weird.
+    # assert isnear(np.mean(X, axis=0), np.zeros(X.shape)) # Check that X is zeroed, or else the variance calcualtion may be weird, and the result can be weird.
 
     # Compute projection
     Xredu = np.dot(X, components.T)
