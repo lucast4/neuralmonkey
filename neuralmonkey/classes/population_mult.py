@@ -145,7 +145,7 @@ def _dfallpa_preprocess_sitesdirty_single_remove_chans(PA, dfres, good_chan_key 
     """
 
     ### (1) Remove bad chans
-    chans_bad_all = dfres[~dfres[good_chan_key]]["chan"].tolist()
+    chans_bad_all = dfres[~dfres[good_chan_key]]["chan"].unique().tolist()
     chans_bad_this_pa = [ch for ch in PA.Chans if ch in chans_bad_all]
     chans_good_this_pa = [ch for ch in PA.Chans if ch not in chans_bad_all]
 
@@ -583,6 +583,86 @@ def snippets_extract_popanals_split_bregion_twind(SP, list_time_windows, vars_ex
         print("Saved to: ", path)
 
     return DFallpa
+
+def compute_firing_rate_percentiles_each_chan(DFallpa, prctilevals=None):
+    """
+    For each chan, flatten it across all trials and times, and compute the perentiles of FR.
+    Useful for pruning chans with low FR.
+    PARAMS:
+    - prctilevals, list of ints [0,100]
+    RETURNS:
+    - dfres, holds fr values for each percentile.
+    """
+    import numpy as np
+    
+    res = []
+    if prctilevals is None:
+        prctilevals = [1, 10, 20, 50, 80, 90, 99]
+
+    for i, row in DFallpa.iterrows():
+        bregion = row["bregion"]
+        event = row["event"]
+        pa = row["pa"]
+
+        for i_chan, chan in enumerate(pa.Chans):
+            frate_prctiles = np.percentile(pa.X[i_chan, :, :].flatten(), prctilevals)
+
+            for p, r in zip(prctilevals, frate_prctiles):
+                res.append({
+                    "bregion":bregion,
+                    "event":event,
+                    "chan":chan,
+                    "percentile":p,
+                    "rate":r
+                })
+    dfres = pd.DataFrame(res)
+    return dfres
+
+def prune_chans_with_low_firing_rate(DFallpa, PLOT=False):
+    """
+    Remove chans that have low FR, based on their <percentile_check>-tile fr, and if that
+    is lower than <MIN_RATE>, then remove it. Ie. remove chans that are low FR even at their best.
+    RETURNS:
+    - Replaces DFallpa["pa"]. NOTE: any case where all chans remove, replaces pa with None.
+    """
+
+    # These values seemed reasonable for Diego, 230615 (KS)
+    MIN_RATE = 1
+    percentile_check = 80
+
+    dfres = compute_firing_rate_percentiles_each_chan(DFallpa)
+    dfres["below_thresh"] = dfres["rate"]<MIN_RATE
+    
+    if PLOT:
+        import seaborn as sns
+        from pythonlib.tools.snstools import rotateLabel
+        # sns.catplot(data=dfres, x="chan", y="rate", hue="percentile", col="bregion", row="event", sharex=False)
+        fig = sns.catplot(data=dfres, x="chan", y="rate", hue="below_thresh", col="bregion", row="percentile", sharex=False, kind="point", aspect=1.5)
+        rotateLabel(fig, 90)
+        for ax in fig.axes.flatten():
+            ax.axhline(0, color="k", alpha=0.5)
+            ax.axhline(MIN_RATE, color="r", alpha=0.5)
+    
+    # Remove cases that are below threshod.
+    chans_bad = dfres[(dfres["percentile"] == percentile_check) & (dfres["below_thresh"] == True)]["chan"].unique().tolist()
+    chans_good = [ch for ch in dfres["chan"].unique().tolist() if ch not in chans_bad]
+
+    list_pa =[]
+    for PA in DFallpa["pa"].values:
+        chans_remove = [ch for ch in PA.Chans if ch in chans_bad]
+        chans_keep = [ch for ch in PA.Chans if ch in chans_good]
+        print("----")
+        print("**Removing these bad chans:", chans_remove)
+        print("  Keeping these good chans:", chans_keep)
+        if len(chans_keep)>0:
+            pa = PA.slice_by_dim_values_wrapper("chans", chans_keep)
+        else:
+            pa = None
+        list_pa.append(pa)
+        # list_pa.append(_dfallpa_preprocess_sitesdirty_single_remove_chans(PA, dfres))
+    DFallpa["pa"] = list_pa
+
+    return chans_good, chans_bad
 
 def dfpa_update_pa_x_shape(DFallpa):
     """ simply update column pa_x_shape"""
@@ -1608,7 +1688,7 @@ def dfallpa_preprocess_sitesdirty_check_if_preprocessed(DFallpa, animal, date):
 
 def dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, fr_mean_subtract_method = "across_time_bins",
         do_sitesdirty_extraction=True, 
-        plot_clean_lowfr_chans = False):
+        plot_clean_lowfr_chans = False, plot_low_fr_better_method=False):
     """
     Apply seuqence of preprocessing steps to cases where multkiple events' PA were combined in DFallpa.
     I used this for decode moment stuff (around Jul 2024).
@@ -1623,7 +1703,17 @@ def dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, fr_mean_subtrac
     Note that DFallpa output CAN be diff length from input, if sitedirty processessing throws out all chans for a PA, it is removed.
     """
 
-    assert fr_mean_subtract_method in ["across_time_bins", "each_time_bin"]
+    assert fr_mean_subtract_method in [None, "across_time_bins", "each_time_bin"]
+
+    def _remove_rows_with_pa_none(DFallpa):
+        """
+        # Remove rows that have "none" for pa
+        # and do in place
+        """
+        inds_drop = DFallpa[DFallpa["pa"].isna()].index
+        DFallpa.drop(inds_drop, inplace=True)
+        DFallpa.reset_index(drop=True,inplace=True)
+
 
     ############### (1) Prune to chans that are common across pa for each bregion (intersection of chans)|
     print(" == (1) Matching chans across events")
@@ -1711,27 +1801,40 @@ def dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, fr_mean_subtrac
                 # print(pa1.X.shape[0], " --> ", pa2.X.shape[0])
         # Replace PA
         DFallpa["pa"] = list_pa         
-    
-    # Remove rows that have "none" for pa
-    # and do in place
-    inds_drop = DFallpa[DFallpa["pa"].isna()].index
-    DFallpa.drop(inds_drop, inplace=True)
-    DFallpa.reset_index(drop=True,inplace=True)
-    
-    # (3) Remove bad chans that are noisy, low FR, low signal, etc [based on fr modulation]
-    # Removes chans that have no modulation, noisy, etc.
-    print(" == (3) Remove bad chans, low FR, low signal")
-    dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT=plot_clean_lowfr_chans)
 
-    # (4) Sqrt transform
-    print(" == (4) Sqrt transform")
+    _remove_rows_with_pa_none(DFallpa)
+    # # Remove rows that have "none" for pa
+    # # and do in place
+    # inds_drop = DFallpa[DFallpa["pa"].isna()].index
+    # DFallpa.drop(inds_drop, inplace=True)
+    # DFallpa.reset_index(drop=True,inplace=True)
+
+    # (3) Remove low FR chans
+    print(" == (3) Remove low FR chans")
+    from neuralmonkey.classes.population_mult import prune_chans_with_low_firing_rate
+    _, _ = prune_chans_with_low_firing_rate(DFallpa, plot_low_fr_better_method)
+    _remove_rows_with_pa_none(DFallpa)
+
+    # (4) Remove bad chans that are noisy, low FR, low signal, etc [based on fr modulation]
+    # Removes chans that have no modulation, noisy, etc.
+    print(" == (4) Remove bad chans, low FR, low signal")
+    dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT=plot_clean_lowfr_chans)
+    _remove_rows_with_pa_none(DFallpa)
+
+    # (5) Sqrt transform
+    print(" == (5) Sqrt transform")
     for pa in DFallpa["pa"]:
         pa.X = pa.X**0.5
 
-    # (5) Normalize FR    
-    print(" == (5) Normalize FR")
-    PLOT=False
-    dfpa_concat_normalize_fr_split_multbregion_flex(DFallpa, fr_mean_subtract_method, PLOT)
+    # (6) Normalize FR    
+    if fr_mean_subtract_method is not None:
+        print(" == (6) Normalize FR")
+        PLOT=False
+        dfpa_concat_normalize_fr_split_multbregion_flex(DFallpa, fr_mean_subtract_method, PLOT)
+
+    # (7) Sort trials by trialcode
+    print(" == (7) Sort trials by trialcode")
+    dfallpa_preprocess_sort_by_trialcode(DFallpa)
 
 def dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT = False):
     """
