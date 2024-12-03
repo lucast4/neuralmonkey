@@ -38,6 +38,9 @@ def extract_dfallpa_helper(animal, date, question, combine_into_larger_areas,
     print("animal, date, question, combine_into_larger_areas")
     print(animal, date, question, combine_into_larger_areas)
 
+    print("... getting these events:")
+    print(events_keep)
+
     if question=="PIG_BASE_saccade_fix_on":
         list_time_windows = [(-0.4, 0.4)] # to slice data including just within this time window (realtive to events)
     else:
@@ -118,6 +121,15 @@ def extract_dfallpa_helper(animal, date, question, combine_into_larger_areas,
             else:
                 assert False
 
+    if animal=="Diego":
+        exclude_bad_areas = True
+    elif animal=="Pancho" and combine_into_larger_areas==False:
+        exclude_bad_areas = False
+    elif animal=="Pancho" and combine_into_larger_areas==True:
+        exclude_bad_areas = True
+    else:
+        assert False
+
     ########################################## RUN
 
     if combine_trial_and_stroke:
@@ -159,13 +171,23 @@ if __name__=="__main__":
     date = int(sys.argv[2])
     question = sys.argv[3]
     combine_into_larger_areas = bool(int(sys.argv[4])) # 0, 1
-    
+
+    if len(sys.argv)>=6:
+        get_all_events = int(sys.argv[5])==1
+    else:
+        get_all_events = False
+
     # - To get fixations.
     # question = "PIG_BASE_saccade_fix_on" # holds variety of prepropoessing steps to clean data, specificalyl for PIG data.
     # which_level = "saccade_fix_on"
 
     FORCE_REEXTRACT = True
     which_level = "trial"
+
+    if get_all_events:
+        events_keep = ["03_samp", "go_cue", "05_first_raise", "06_on_strokeidx_0"]
+    else:
+        events_keep = None
 
     if FORCE_REEXTRACT:
         DFallpa = None
@@ -174,7 +196,8 @@ if __name__=="__main__":
         DFallpa = load_handsaved_wrapper(animal=animal, date=date, version=which_level, combine_areas=combine_into_larger_areas,
                                         return_none_if_no_exist=True)
     if DFallpa is None:
-        DFallpa = extract_dfallpa_helper(animal, date, question, combine_into_larger_areas, do_save=True)
+        DFallpa = extract_dfallpa_helper(animal, date, question, combine_into_larger_areas, events_keep=events_keep,
+                                         do_save=True)
 
     # Save it
     # path = "/gorilla4/Dropbox/SCIENCE/FREIWALD_LAB/DATA/DFallpa.pkl"
