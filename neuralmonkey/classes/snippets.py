@@ -8413,36 +8413,39 @@ def extraction_helper(SN, which_level="trial", list_features_modulation_append=N
         list_features_get_conjunction = list_features_get_conjunction + list_features_modulation_append
 
     #### Subsample events
-    if EVENTS_KEEP is not None:
-        # Firest, remove numbers, e.g,, ['03_samp', 'go_cue'] --> ['samp', 'go_cue']
-        tmp = []
-        for ev in EVENTS_KEEP:
-            try:
-                int(ev[:2])
-                a = True
-            except ValueError as err:
-                a = False
-            except Exception as err:
-                raise err
-            if a==True and ev[2]=="_":
-                # Then is like "03_samp"
-                tmp.append(ev[3:])
-            else:
-                tmp.append(ev)
-        EVENTS_KEEP = tmp
-        # Second, keep only desired events.
-        inds_keep = [i for i, ev in enumerate(list_events) if ev in EVENTS_KEEP]
-        list_events = [list_events[i] for i in inds_keep]
-        if len(list_pre_dur)>1:
-            list_pre_dur = [list_pre_dur[i] for i in inds_keep]
-            list_post_dur = [list_post_dur[i] for i in inds_keep]
-        
-        for ev in EVENTS_KEEP:
-            if ev not in list_events:
-                print(ev)
-                print(list_events)
-                print(EVENTS_KEEP)
-                assert False, "PROBLEM - the original pool of events doesnt have an event you wnt"
+    if len(list_events)>0:
+        assert not which_level=="stroke"
+        # Then list_events holds the possible events. Select from those events the ones that match what you wnat.
+        if EVENTS_KEEP is not None:
+            # Firest, remove numbers, e.g,, ['03_samp', 'go_cue'] --> ['samp', 'go_cue']
+            tmp = []
+            for ev in EVENTS_KEEP:
+                try:
+                    int(ev[:2])
+                    a = True
+                except ValueError as err:
+                    a = False
+                except Exception as err:
+                    raise err
+                if a==True and ev[2]=="_":
+                    # Then is like "03_samp"
+                    tmp.append(ev[3:])
+                else:
+                    tmp.append(ev)
+            EVENTS_KEEP = tmp
+            # Second, keep only desired events.
+            inds_keep = [i for i, ev in enumerate(list_events) if ev in EVENTS_KEEP]
+            list_events = [list_events[i] for i in inds_keep]
+            if len(list_pre_dur)>1:
+                list_pre_dur = [list_pre_dur[i] for i in inds_keep]
+                list_post_dur = [list_post_dur[i] for i in inds_keep]
+            
+            for ev in EVENTS_KEEP:
+                if ev not in list_events:
+                    print(ev)
+                    print(list_events)
+                    print(EVENTS_KEEP)
+                    assert False, "PROBLEM - the original pool of events doesnt have an event you wnt"
 
     print("Kept these events: ", list_events)
 

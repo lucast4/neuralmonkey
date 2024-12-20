@@ -1,6 +1,6 @@
 Different scenarios.
 
-Rec and beh sessions shifted (but same N and 1 to 1):
+Rec and beh sessions shifted (at level of session, not trial) (but same N and 1 to 1):
 - input into rec_to_beh_Diego.yaml
 
 Mult beh session, one rec session (no spillover)
@@ -22,4 +22,6 @@ Corrupted, lost beh trials
 - Then hacky input the missed trials in get_trials_list(). Search for 231206. (see corrupted...yaml for how to determine what the trials are.)
 
 Corrupted, lost neural trials
+- (e.g., Pancho 220614, I think the first neural trial should be thrown out)
+- is currently very hackily entered in get_trials_list()
 - ??
