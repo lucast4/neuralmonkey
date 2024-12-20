@@ -304,7 +304,8 @@ class MultSessions(object):
                 # "trials":trials,
                 # "times_frac":times_frac,
                 "inds_bad":inds_bad,
-                "bregion":self.sitegetterKS_map_site_to_region(chan)
+                "bregion":self.sitegetterKS_map_site_to_region(chan),
+                "bregion_combined":self.sitegetterKS_map_site_to_region(chan, region_combined=True)
             })
             for name, val in metrics.items():
                 res[-1][name] = val

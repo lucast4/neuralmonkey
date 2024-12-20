@@ -479,6 +479,7 @@ class Session(object):
                     spikes_version = "kilosort"
                 else:
                     spikes_version = "tdt"
+                print("USING THIS SPIKES VERSION: ", spikes_version)
 
         # spikes versino (initialize as tdt always)
         self.SPIKES_VERSION = "tdt"
@@ -2862,19 +2863,24 @@ class Session(object):
             # PATH_SPIKES = f"{self.PathRaw}/spikes_tdt_quick"
             fn = f"{PATH_SPIKES}/RSn{rs}-{chan}-snips_subset"
             try:
+                print("Loading file: ", fn)
                 mat_dict = sio.loadmat(fn)
+                if "snips" not in mat_dict.keys():
+                    print(mat_dict)
+                    print("Redo extraction of spikes?..")
+                    raise err
                 waveforms = mat_dict["snips"]
             except zlib.error as err:
                 print("[scipy error] failed load_spike_waveforms_ for (rs, chan): ", rs, chan)
                 self.print_summarize_expt_params()
                 # waveforms = None
-                raise
+                raise err
             except Exception as err:
                 print(err)
                 print("[load_spike_waveforms] Failed for this rs, chan: ",  rs, chan)
                 print(fn)
                 self.print_summarize_expt_params()
-                raise
+                raise err
                 # assert False
 
             self.DatSpikeWaveforms[site] = waveforms
@@ -3939,6 +3945,10 @@ class Session(object):
 
                     print("to: ")
                     print(self.BehTrialMapList)
+                    # for x in self.BehTrialMapList:
+                    #     if x[0]==0:
+                    #         print(self.BehTrialMapList)
+                    #         assert False, "This means it iwll look for ml trial 0, which doesnt eixst. This means you do not have beh for the first neural data. Solution: skip the first n neural trials. see what I did fro Pancho 220614"
 
                     # Force an update
                     print("Old BehTrialMapListGood: ")
@@ -3969,14 +3979,28 @@ class Session(object):
         from neuralmonkey.utils.conversions import get_map_trial_and_set
 
         # RECURSIVE. Stop
-        # ntrials = len(self.get_trials_list(only_if_ml2_fixation_success=False, only_if_has_valid_ml2_trial=True))
-        ntrials = len(self.get_trials_list(only_if_ml2_fixation_success=False, only_if_has_valid_ml2_trial=False))
-        # ntrials = len(self.TrialsOnset) 
+        if False:
+            # ntrials = len(self.get_trials_list(only_if_ml2_fixation_success=False, only_if_has_valid_ml2_trial=True))
+            ntrials = len(self.get_trials_list(only_if_ml2_fixation_success=False, only_if_has_valid_ml2_trial=False))
+
+            # print(self.get_trials_list(only_if_ml2_fixation_success=False, only_if_has_valid_ml2_trial=False))
+            # assert False
+
+            # ntrials = len(self.TrialsOnset) 
+        else:
+            # This is better. If tdt trials start at 1 (instead of 0) then the length will be short. This leads to bug.
+            # Instead, you want the max tdt trial. Is generalyl equivalent.
+            _trials = self.get_trials_list(only_if_ml2_fixation_success=False, only_if_has_valid_ml2_trial=False)
+            max_trial_index_beh = max(_trials)+1
+            ntrials = max_trial_index_beh
+            
         self.BehTrialMapListGood = get_map_trial_and_set(self.BehTrialMapList, ntrials)
 
         print("... Generated these...")
         print("self.BehTrialMapList", self.BehTrialMapList)
         print("self.BehTrialMapListGood", self.BehTrialMapListGood)
+        print("ntrials:", ntrials)
+        # assert False
 
     def _beh_get_fdnum_trial(self, trialtdt):
         """ Get the filedata indices and trial indices (beh) for
@@ -3989,13 +4013,20 @@ class Session(object):
             self._beh_get_fdnum_trial_generate_mapper()
 
         # assert trialtdt < ntrials, "This tdt trial doesnt exist, too large..."
-        [fd_setnum, fd_trialnum] = self.BehTrialMapListGood[trialtdt]
+        try:
+            [fd_setnum, fd_trialnum] = self.BehTrialMapListGood[trialtdt]
+        except KeyError as err:
+            for k, v in self.BehTrialMapListGood.items():
+                print(k, " -- ", v)
+            raise err
         return fd_setnum, fd_trialnum
         
     def beh_get_fd_trial(self, trialtdt):
         """ Return the fd and trial linked to this tdt trial
         """
         fd_setnum, fd_trialnum = self._beh_get_fdnum_trial(trialtdt)
+        if fd_trialnum == 0:
+            assert False, "need to skip the first neural trial (it lacks beh data). See what I did for pancho 220614"
         # print("-----------------")
         # print("self.BehFdList", self.BehFdList)
         # print("fd_setnum", fd_setnum)
@@ -8521,6 +8552,16 @@ class Session(object):
 
             if (int(self.Date))==231206 and self.RecSession==0 and self.Animal=="Diego":
                 neural_trials_missing_beh = [551, 552, 553, 554, 555]
+                trials = [t for t in trials if t not in neural_trials_missing_beh]
+
+            if (int(self.Date))==220614 and self.RecSession==0 and self.Animal=="Pancho":
+                # Skip the first neural trial
+                neural_trials_missing_beh = [0]
+                trials = [t for t in trials if t not in neural_trials_missing_beh]
+
+            if (int(self.Date))==220621 and self.RecSession==0 and self.Animal=="Pancho":
+                # Skip the first neural trial
+                neural_trials_missing_beh = [0]
                 trials = [t for t in trials if t not in neural_trials_missing_beh]
 
             if only_if_in_dataset:
