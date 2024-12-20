@@ -1613,6 +1613,71 @@ class PopAnal():
         assert len(PA.Trials)==len(self.Trials)
 
         return PA
+    
+    def split_stratified_constrained_grp_var(self, nsplits, label_grp_vars, fraction_constrained_set=0.5, n_constrained=2, 
+                                             list_labels_need_n=None, min_frac_datapts_unconstrained=None, 
+                                             min_n_datapts_unconstrained=1, plot_train_test_counts=False, plot_indices=False,
+                                             plot_all_folds=False):
+        """
+        [Good] Split data (trials) in stratitied manner by label, with helping to make sure not have not enough trials in output
+        (constraints).
+        
+        PARAMS:
+        - nsplits, each time does newly with shuffle (with replacment).
+        - fraction_constrained_set = 0.75 # Take most for the euclidian distance (less for dpca)
+        - n_constrained = 2 # Need at least 2 for pairwise comparisons
+        - min_frac_datapts_unconstrained = None
+        - min_n_datapts_unconstrained, n trials for unconstrinaed. e.g., if using this for dpca, then could be 
+        len(dflab[dpca_var].unique()) # 
+        - list_labels_need_n, e..g, [('arcdeep-4-4-0', (-1, 1), 'rig3_3x3_big')]
+        """
+        from pythonlib.tools.statstools import split_stratified_constrained, split_stratified_constrained_multiple
+        from pythonlib.tools.pandastools import _check_index_reseted, grouping_plot_n_samples_conjunction_heatmap_helper
+
+        ### Extract labels
+        dflab = self.Xlabels["trials"]
+        _check_index_reseted(dflab)
+        y = [tuple(x) for x in dflab.loc[:, label_grp_vars].values.tolist()]
+
+        ### Run
+        # unconstrained_indices, constrained_indices, _, _ = split_stratified_constrained(y, fraction_constrained_set, 
+        #                                                         n_constrained, list_labels_need_n=list_labels_need_n, 
+        #                                                         min_frac_datapts_unconstrained=min_frac_datapts_unconstrained,  
+        #                                                         min_n_datapts_unconstrained=min_n_datapts_unconstrained, PRINT=False, PLOT=plot_indices)
+        try:
+            folds = split_stratified_constrained_multiple(y, nsplits, fraction_constrained_set, 
+                                                                    n_constrained, list_labels_need_n=list_labels_need_n, 
+                                                                    min_frac_datapts_unconstrained=min_frac_datapts_unconstrained,  
+                                                                    min_n_datapts_unconstrained=min_n_datapts_unconstrained, 
+                                                                    PRINT=False, PLOT=plot_indices)
+        except Exception as err:
+            fig = grouping_plot_n_samples_conjunction_heatmap_helper(self.Xlabels["trials"], label_grp_vars)
+            savefig(fig, "/tmp/counts_tmp.pdf")
+            print("check: ", "/tmp/counts_tmp.pdf")
+            raise err
+
+        ### Check things
+        # Plot coutns (sanity check)
+        if plot_train_test_counts:
+            # Just plot the first fold
+
+            unconstrained_indices, constrained_indices = folds[0]
+            paredu_train = self.slice_by_dim_indices_wrapper("trials", unconstrained_indices)
+            paredu_test = self.slice_by_dim_indices_wrapper("trials", constrained_indices)
+            grouping_plot_n_samples_conjunction_heatmap_helper(dflab, label_grp_vars)
+            fig_unc = grouping_plot_n_samples_conjunction_heatmap_helper(paredu_train.Xlabels["trials"], label_grp_vars)
+            fig_con = grouping_plot_n_samples_conjunction_heatmap_helper(paredu_test.Xlabels["trials"], label_grp_vars)
+
+            if plot_all_folds:
+                for unconstrained_indices, constrained_indices in folds:
+                    paredu_train = self.slice_by_dim_indices_wrapper("trials", unconstrained_indices)
+                    paredu_test = self.slice_by_dim_indices_wrapper("trials", constrained_indices)
+                    grouping_plot_n_samples_conjunction_heatmap_helper(paredu_train.Xlabels["trials"], label_grp_vars)
+                    grouping_plot_n_samples_conjunction_heatmap_helper(paredu_test.Xlabels["trials"], label_grp_vars)
+        else:
+            fig_unc, fig_con = None, None
+
+        return folds, fig_unc, fig_con
 
     def split_balanced_stratified_kfold_subsample_level_of_var(self, label_grp_vars, var_exclude=None, levels_exclude_from_splitting=None,
                                         n_splits="auto", do_balancing_of_train_inds=True, plot_train_test_counts=False, plot_indices=False,
@@ -1634,6 +1699,8 @@ class PopAnal():
         - do_balancing_of_train_inds, bool.
         - label_grp_vars = ["idx_morph_temp", "seqc_0_loc"]
         """
+        assert False, "note that this forces lower nsplits if any level has ndata less than nsplits. Instead, use split_stratified_constrained_grp_var (altbough that samples with replacement)"
+
         # Train-test split
         from pythonlib.tools.statstools import balanced_stratified_kfold
         from pythonlib.tools.pandastools import append_col_with_grp_index, _check_index_reseted
