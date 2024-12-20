@@ -81,7 +81,7 @@ def timevarying_compute_fast_to_scalar(PA, label_vars=("seqc_0_shape", "seqc_0_l
     "controlling" for this variable. E.g., hold size constant (var_context_same="gridsize"), while testing for
     effect of shape and location.
     - prune_levs_min_n_trials, then throws out any levels of grouping vars, label_vars + [var_context_same], which lack at least 2
-    trials. Need at laest 2, otherwise error in distcomputation.
+    trials. Need at laest 2, otherwise error in dist computation.
     """
     from pythonlib.tools.distfunctools import distmat_construct_wrapper
     from pythonlib.cluster.clustclass import Clusters
@@ -151,7 +151,7 @@ def timevarying_compute_fast_to_scalar(PA, label_vars=("seqc_0_shape", "seqc_0_l
 
             np.min(dmat - distmat)
 
-    
+
     if var_context_same is not None:
         label_vars_orig = [l for l in label_vars]
         label_vars = tuple([l for l in label_vars] + [var_context_same])
