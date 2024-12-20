@@ -271,6 +271,7 @@ def rec_session_durations_extract_kilosort(animal, date):
     First 2 are good.
     """
     from neuralmonkey.utils.directory import find_rec_session_paths, find_ks_cluster_paths
+    from pythonlib.tools.exceptions import NotEnoughDataException
     from pythonlib.globals import PATH_DATA_NEURAL_PREPROCESSED, PATH_DATA_NEURAL_RAW
     import pickle
     import scipy.io as sio
@@ -282,11 +283,16 @@ def rec_session_durations_extract_kilosort(animal, date):
 
     # sanity check that the sessions are aligned between rec and ks
     if not len(sessions_ks)==len(sessions_rec):
-        from pythonlib.tools.exceptions import NotEnoughDataException
-        print(sessions_ks)
-        print(sessions_rec)
+        print(len(sessions_ks), len(sessions_rec))
+        print("sessions_ks:")
+        for x in sessions_ks:
+            print(x)
+        print("sessions_rec:")
+        for x in sessions_rec:
+            print(x)
         print("you probably excluded some neural sessions for final analysis (moved to recordings_IGNORE). No solution yet for this problem.")
-        raise NotEnoughDataException
+        assert False, "breaking, becuase you probably want to fix this problem (just re-do all of kilosort, prob ran kilosrt before you removed bad neural sessions, this is rare)."
+        # raise NotEnoughDataException
 
     # - - chekck that the names match for neural and ks.
     for sessks, sessrec in zip(sessions_ks, sessions_rec):

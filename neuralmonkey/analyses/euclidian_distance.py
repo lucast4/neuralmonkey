@@ -65,7 +65,8 @@ def timevarying_convert_to_scalar(DFDIST, twind_scalar):
 
 
 def timevarying_compute_fast_to_scalar(PA, label_vars=("seqc_0_shape", "seqc_0_loc"),
-                                       rsa_heatmap_savedir=None):
+                                       rsa_heatmap_savedir=None, var_context_same=None,
+                                       plot_conjunctions_savedir=None, prune_levs_min_n_trials=2):
     """
     [Fast code] -- do all steps to extract dfdist, starting from PA.
     POTENTIAL PROBLOEM (is ok, emeprically): it doesnt get time-varying, it goes straight from (ndims, ntimes) --> scalar,
@@ -74,6 +75,13 @@ def timevarying_compute_fast_to_scalar(PA, label_vars=("seqc_0_shape", "seqc_0_l
     if needed --> This also means that the final dist_yue_diff uses the scalars after agging
     across time, instead of computing in each bin, then averaging them. May have slight difference,
     but not too much.
+    
+    PARAMS:
+    - var_context_same, if True, then only takes pairs of datapts that have the same level for this group. This is like
+    "controlling" for this variable. E.g., hold size constant (var_context_same="gridsize"), while testing for
+    effect of shape and location.
+    - prune_levs_min_n_trials, then throws out any levels of grouping vars, label_vars + [var_context_same], which lack at least 2
+    trials. Need at laest 2, otherwise error in distcomputation.
     """
     from pythonlib.tools.distfunctools import distmat_construct_wrapper
     from pythonlib.cluster.clustclass import Clusters
@@ -143,6 +151,26 @@ def timevarying_compute_fast_to_scalar(PA, label_vars=("seqc_0_shape", "seqc_0_l
 
             np.min(dmat - distmat)
 
+    
+    if var_context_same is not None:
+        label_vars_orig = [l for l in label_vars]
+        label_vars = tuple([l for l in label_vars] + [var_context_same])
+
+    ### Prune levels
+    from pythonlib.tools.pandastools import extract_with_levels_of_var_good, grouping_plot_n_samples_conjunction_heatmap_helper
+    dflab = PA.Xlabels["trials"]
+    _, _indskeep = extract_with_levels_of_var_good(dflab, label_vars, prune_levs_min_n_trials)
+    # - Save counts before prune
+    if plot_conjunctions_savedir is not None and len(_indskeep)<len(dflab):
+        fig = grouping_plot_n_samples_conjunction_heatmap_helper(dflab, label_vars)
+        savefig(fig, f"{plot_conjunctions_savedir}/timevarying_compute_fast_to_scalar-counts_heatmap-before_prune.pdf")
+    # - Do slice
+    PA = PA.slice_by_dim_indices_wrapper("trials", _indskeep, reset_trial_indices=True) 
+    # - Save counts after prune
+    if plot_conjunctions_savedir is not None:
+        fig = grouping_plot_n_samples_conjunction_heatmap_helper(PA.Xlabels["trials"], label_vars)
+        savefig(fig, f"{plot_conjunctions_savedir}/timevarying_compute_fast_to_scalar-counts_heatmap-final.pdf")
+    plt.close("all")
 
     # Collect each trial.
     ntrials = PA.X.shape[1]
@@ -196,6 +224,35 @@ def timevarying_compute_fast_to_scalar(PA, label_vars=("seqc_0_shape", "seqc_0_l
     #             var1 = label_vars[0]
     #             var2 = label_vars[1]
     #             dfdist = append_col_with_grp_index(dfdist, [f"{var1}_same", f"{var2}_same"], f"same-{var1}|{var2}")
+
+    #### If this has context input, then additional steps
+    if var_context_same is not None:
+        if False:
+            from pythonlib.tools.pandastools import grouping_plot_n_samples_conjunction_heatmap
+            grouping_plot_n_samples_conjunction_heatmap(dfdist, "seqc_0_shape_12", "seqc_0_loc_12", ["gridsize_12"])
+
+        from pythonlib.tools.pandastools import append_col_with_grp_index
+
+        # This is usualyl the case, so just do it.
+        if len(label_vars_orig)>1:
+            var_effect = label_vars_orig[0]
+            var_other = label_vars_orig[1]
+            var_same_same = f"same-{var_effect}|{var_other}"
+            dfdist = append_col_with_grp_index(dfdist, [f"{var_effect}_same", f"{var_other}_same"], var_same_same)
+
+        # Keep only pairs that have the same context
+        dfdist = dfdist[dfdist[f"{var_context_same}_same"]==True].reset_index(drop=True)
+
+        # Agg across levels of context
+        # -- 
+        from pythonlib.tools.pandastools import aggregGeneral
+        group = [f"{v}_12" for v in label_vars_orig] # each unique kind of pair
+        dfdist = aggregGeneral(dfdist, group, ["dist_mean", "DIST_50", "DIST_98", "dist_norm", "dist_yue_diff"], nonnumercols="all")
+
+        # Reassign labels using just (var_eff, var_other)
+        for i in [1,2]:
+            grp = [f"{v}_{i}" for v in label_vars_orig]
+            dfdist = append_col_with_grp_index(dfdist, grp, f"labels_{i}", False)
 
     return dfdist, Cldist
 
