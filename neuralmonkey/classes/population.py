@@ -1621,7 +1621,7 @@ class PopAnal():
         """
         [Good] Split data (trials) in stratitied manner by label, with helping to make sure not have not enough trials in output
         (constraints).
-        
+
         PARAMS:
         - nsplits, each time does newly with shuffle (with replacment).
         - fraction_constrained_set = 0.75 # Take most for the euclidian distance (less for dpca)
@@ -1724,6 +1724,9 @@ class PopAnal():
         folds = balanced_stratified_kfold(None, y,  n_splits=n_splits, 
                                           do_balancing_of_train_inds=do_balancing_of_train_inds,
                                           shuffle=shuffle)
+        print(n_splits)
+        print(len(folds))
+        assert False
         
         # map the indices here back to indices in original dflab
         folds_dflab = []
@@ -1996,7 +1999,9 @@ class PopAnal():
         return LIST_CLDIST, LIST_TIME
 
     def dataextract_as_distance_index_between_two_base_classes(self, var_effect = "idx_morph_temp", effect_lev_base1=0, 
-                                                               effect_lev_base2=99, list_grps_get=None, version="pts_time", PLOT=False):
+                                                               effect_lev_base2=99, list_grps_get=None, version="pts_time", 
+                                                               PLOT=False, var_context_diff=None,
+                                                               plot_conjunctions_savedir=None):
         """
         GOOD - to project all data onto 1d scalar mapping between two levels, <effect_lev_base1>, <effect_lev_base2>, of a variable <var_effect>.
         And many options to do so using singel trials (always against the groups of the base levels) or gorups, and time, vs. mean over time.
@@ -2014,6 +2019,9 @@ class PopAnal():
         - DFPROJ_INDEX_AGG, with pts_or_groups=="pts" is (almoost) identical to DFPROJ_INDEX, with pts_or_groups=="grps", becuase the 
         former aggs over trials. Therefore, in general, using pts_or_groups=="pts" is better, but is slower.
 
+        PARAMS:
+        - var_context_diff, if not None, then only takes pairs of data that have different level for this var.
+        
         EXAMPLE: Run this code to compute all the version, and to visualize that the following are equivalent:
         - pts --> grps, if you just agg over trials, using the outputed data
         - time --> scal, if you just agg over time, using the outputed data.
@@ -2058,6 +2066,7 @@ class PopAnal():
         from neuralmonkey.scripts.analy_decode_moment_psychometric import dfdist_to_dfproj_index_datapts
         # At each time, score distance between pairs of groupigs 
         from pythonlib.tools.pandastools import aggregGeneral 
+        from pythonlib.tools.pandastools import extract_with_levels_of_var_good, grouping_plot_n_samples_conjunction_heatmap_helper
 
         if version=="pts_time":
             # Use indiv datapts (distnace between pts vs. groups), and separately for each time bin
@@ -2081,13 +2090,25 @@ class PopAnal():
             print(version)
             assert False, "typo for version?"
 
+        if plot_conjunctions_savedir is not None:
+            if var_context_diff is not None:
+                fig = grouping_plot_n_samples_conjunction_heatmap_helper(self.Xlabels["trials"], [var_effect, var_context_diff])
+            else:
+                fig = grouping_plot_n_samples_conjunction_heatmap_helper(self.Xlabels["trials"], [var_effect])
+            savefig(fig, f"{plot_conjunctions_savedir}/dataextract_as_distance_index_between_two_base_classes-final.pdf")
+        plt.close("all")
+
         ### Get distance between all trials at each time bin
         version_distance = "euclidian"
         if return_as_single_mean_over_time:
             # Each trial pair --> scalar
+
+            if var_context_diff is not None:
+                assert False, "code it. see below, where return_as_single_mean_over_time=False"
+
             cldist = self.dataextract_as_distance_matrix_clusters_flex([var_effect], version_distance=version_distance,
-                                                                                    accurately_estimate_diagonal=False, 
-                                                                                    return_as_single_mean_over_time=return_as_single_mean_over_time)
+                                                                    accurately_estimate_diagonal=False, 
+                                                                    return_as_single_mean_over_time=return_as_single_mean_over_time)
             if pts_or_groups=="pts":
                 # Score each datapt
                 # For each datapt, get its distance to each of the groupings.
@@ -2125,10 +2146,21 @@ class PopAnal():
 
         else:
             # Each trial pair --> vector
-            list_cldist, list_time = self.dataextract_as_distance_matrix_clusters_flex([var_effect], version_distance=version_distance,
+    
+            if var_context_diff is not None:
+                _vars_grp = [var_effect, var_context_diff]
+            else:
+                _vars_grp = [var_effect]
+            list_cldist, list_time = self.dataextract_as_distance_matrix_clusters_flex(_vars_grp, version_distance=version_distance,
                                                                                     accurately_estimate_diagonal=False, 
                                                                                     return_as_single_mean_over_time=return_as_single_mean_over_time)
-        
+            if var_context_diff is not None and list_grps_get is not None:
+                # For each grp in list_grps_get, append each level of var_context_diff.
+                # eg. if starting list_grps_get = [("0|base1",), ("99|base2",)], and var_context_diff="seqc_0_loc",
+                # then modifies to list_grps_get = [('0|base1', (0, 0)), ('99|base2', (0, 0)), ('0|base1', (1, 1)), ('99|base2', (1, 1))]
+                dflab = self.Xlabels["trials"]
+                _levels = dflab[var_context_diff].unique().tolist()
+                list_grps_get = [tuple(list(grp) + [_lev]) for _lev in _levels for grp in list_grps_get]
 
             ### For each time bin, for each trial, get its dist index relative to base1 and base2.
             list_dfproj_index = []
@@ -2142,7 +2174,20 @@ class PopAnal():
                     #     ("0|base1",),  
                     #     ("99|base2",)
                     #     ] # This is important, or else will fail if there are any (idx|assign) with only one datapt.
-                    dfdist = cldist.rsa_distmat_score_all_pairs_of_label_groups_datapts(list_grps_get=list_grps_get)
+                    if var_context_diff is not None:
+                        # Then you only care about pairs that have different levels of var_context_diff...
+                        ignore_self_distance = True
+                    else:
+                        ignore_self_distance = False
+                    dfdist = cldist.rsa_distmat_score_all_pairs_of_label_groups_datapts(list_grps_get=list_grps_get,
+                                                                                        ignore_self_distance=ignore_self_distance)
+
+                    # display(dfdist)
+                    # assert False, "confirm that levels are 2-tuples"
+
+                    if var_context_diff is not None:
+                        # Only keep cases where the datapt has different level of <var_context_diff> compared to the grp.
+                        dfdist = dfdist[dfdist[f"{var_context_diff}_same"]==False].reset_index(drop=True)
                     dfproj_index = dfdist_to_dfproj_index_datapts(dfdist, var_effect=var_effect, 
                                                             effect_lev_base1=effect_lev_base1, effect_lev_base2=effect_lev_base2)
                     # dfproj_index
@@ -2151,6 +2196,10 @@ class PopAnal():
                 elif pts_or_groups=="grps":
                     # Score pairs of (group, group)
                     # Obsolete, because this is just above, followed by agging
+
+                    if var_context_diff is not None:
+                        assert False, "code it. see above in pts_or_groups==pts. Beteter, just make this code"
+
                     dfdist = cldist.rsa_distmat_score_all_pairs_of_label_groups(get_only_one_direction=False)
 
                     # convert distnaces to distance index
@@ -2173,11 +2222,19 @@ class PopAnal():
             DFDIST = pd.concat(list_dfdist).reset_index(drop=True)
             # DFDIST[var_effect] = DFDIST[f"{var_effect}_1"]
 
-            
+            # display(DFPROJ_INDEX)
+            # display(DFDIST)
+            # assert False
             # Take mean over trials
             if pts_or_groups=="pts":
                 DFPROJ_INDEX_AGG = aggregGeneral(DFPROJ_INDEX, ["labels_1_datapt", var_effect, "time_bin_idx"], ["dist_index"], nonnumercols=["time_bin"])
-                DFDIST_AGG = aggregGeneral(DFDIST, ["labels_1_datapt", "labels_2_grp", var_effect, f"{var_effect}_1", f"{var_effect}_2", "time_bin_idx"], ["dist_mean", "DIST_50", "DIST_98", "dist_norm", "dist_yue_diff", "time_bin"])
+                if "dist_yue_diff" in DFDIST.columns:
+                    values = ["dist_mean", "DIST_50", "DIST_98", "dist_norm", "dist_yue_diff", "time_bin"]
+                else:
+                    values = ["dist_mean", "DIST_50", "DIST_98", "dist_norm", "time_bin"]
+                DFDIST_AGG = aggregGeneral(DFDIST, 
+                                           ["labels_1_datapt", "labels_2_grp", var_effect, f"{var_effect}_1", 
+                                                    f"{var_effect}_2", "time_bin_idx"], values)
             elif pts_or_groups == "grps":
                 DFPROJ_INDEX_AGG = None
                 DFDIST_AGG = None
@@ -2720,7 +2777,7 @@ class PopAnal():
                                    raw_subtract_mean_each_timepoint=False,
                                    umap_n_components=2, umap_n_neighbors=40,
                                    inds_pa_fit=None, inds_pa_final=None,
-                                   n_min_per_lev_lev_others = 3):
+                                   n_min_per_lev_lev_others = 2):
         """
         THE Wrapper for all often-used methods for dim reduction
 
