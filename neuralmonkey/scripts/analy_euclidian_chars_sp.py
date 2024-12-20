@@ -45,6 +45,133 @@ LIST_PRUNE_VERSION = ["sp_char_0"] # Just to do wquicly.
 
 
 
+
+def load_euclidian_time_resolved_fast_shuffled(animal, date, bregion, morphset, inds_in_morphset_keep, do_prune_ambig,
+                                               var_context_diff, event, twind_final, scalar_or_traj, dim_red_method, NPCS_KEEP):
+    
+    from neuralmonkey.classes.session import _REGIONS_IN_ORDER_COMBINED
+    from pythonlib.tools.pandastools import aggregGeneral, extract_with_levels_of_conjunction_vars
+
+
+    def _prune_ambig_at_least_n_trials_per_base(DF, df_version, n_min_per_lev = 3):
+        """
+        Input DF must be trial level (before agging)
+        Returns copy
+        """
+        
+        if df_version=="DFDIST":
+            vars_datapt = ["idx_morph_temp", "idxmorph_assigned_2", "time_bin_idx"] # DFDIST
+        elif df_version=="DFPROJ_INDEX":
+            vars_datapt = ["idx_morph_temp", "time_bin_idx"] # DFPROJ_INDEX
+        else:
+            print(df_version)
+            assert False
+
+        # (1) Split into ambig vs. (unambig + learned)
+        DF["assigned_label"].value_counts()
+        dfthis = DF[DF["assigned_label"] == "ambig"].reset_index(drop=True)
+
+        # (2) Only keep (idx_morph_temp) that has at least n trials for both base1 and base2
+        from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper
+        df_ambig, _ = extract_with_levels_of_conjunction_vars_helper(dfthis, "assigned_base_simple", 
+                                                                    vars_datapt, 
+                                                                    n_min_per_lev, None, 2, levels_var=["base1", "base2"], 
+                                                                    remove_extra_columns=True)
+        if len(df_ambig)==0:
+            df_ambig, _ = extract_with_levels_of_conjunction_vars_helper(dfthis, "assigned_base_simple", 
+                                                                        vars_datapt, 
+                                                                        n_min_per_lev-1, None, 2, levels_var=["base1", "base2"],
+                                                                        remove_extra_columns=True)
+
+            assert len(df_ambig)>0, "you removed all ambig cases. reduce n until you keep all morphsets"
+
+        # (3) Concat with the remaining
+        df_others = DF[DF["assigned_label"] != "ambig"].reset_index(drop=True)
+        df_combined = pd.concat([df_ambig, df_others]).reset_index(drop=True)
+
+        if False:
+            # To see grouping counts that shows what the above is doing:
+            dfthis = DF[DF["time_bin_idx"]==0].reset_index(drop=True)
+            grouping_plot_n_samples_conjunction_heatmap(dfthis, "idx_morph_temp", "assigned_base_simple", ["idxmorph_assigned_2"]);
+            # grouping_plot_n_samples_conjunction_heatmap(dfthis, "idxmorph_assigned_1", "idxmorph_assigned_2", ["seqc_0_loc_1"]);
+
+        return df_combined
+
+    ### Default params
+    # event = "03_samp"
+
+    exclude_flank = True
+    # dim_red_method = "dpca"
+    # proj_twind = (0.1, 1.0)
+    # combine = True
+    # raw_subtract_mean_each_timepoint = False
+    # scalar_or_traj = "traj"
+    # NPCS_KEEP = 8
+    # twind_final = (-0.3, 1.2)
+
+    ### LOAD
+    SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/decode_moment/PSYCHO_SP/{animal}-{date}-logistic-combine=True/analy_switching_GOOD_euclidian_index/ev={event}-scal={scalar_or_traj}-dimred={dim_red_method}-twind={twind_final}-npcs={NPCS_KEEP}/bregion={bregion}/morphset={morphset}"
+    # SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/decode_moment/PSYCHO_SP/{animal}-{date}-logistic-combine=True/switching_euclidian_score_and_plot_traj/ev={event}-subtr={raw_subtract_mean_each_timepoint}-scal={scalar_or_traj}-dimred=dpca-twind=(-0.1, 1.2)-npcs={NPCS_KEEP}/bregion={bregion}/morphset={morphset}"
+    # SAVEDIR = f"{SAVEDIR_BASE_LOAD}/{animal}-{date}-logistic-combine={combine}/euclidian_score_and_plot/ev={EVENT}-subtr={raw_subtract_mean_each_timepoint}-scal={scalar_or_traj}-dimred={dim_red_method}-twind={proj_twind}-npcs={NPCS_KEEP}-flank={exclude_flank}"
+    print("Loading from: ", SAVEDIR)
+
+    # Load data
+    DFDIST = pd.read_pickle(f"{SAVEDIR}/DFDIST.pkl")
+    DFPROJ_INDEX = pd.read_pickle(f"{SAVEDIR}/DFPROJ_INDEX.pkl")
+
+    # Newer code uses location as a context diff var.
+    if var_context_diff is None:
+        # so downstream code works.
+        DFPROJ_INDEX["seqc_0_loc"] = "ignore"
+    elif var_context_diff=="seqc_0_loc":
+        DFPROJ_INDEX["seqc_0_loc"] = [lab[1] for lab in DFPROJ_INDEX["labels_1_datapt"]]
+    else:
+        print(var_context_diff)
+        assert False
+
+    if do_prune_ambig:
+        DFPROJ_INDEX = _prune_ambig_at_least_n_trials_per_base(DFPROJ_INDEX, "DFPROJ_INDEX")
+        DFDIST = _prune_ambig_at_least_n_trials_per_base(DFDIST, "DFDIST")
+
+    # Agg across trials
+    DFPROJ_INDEX_AGG = aggregGeneral(DFPROJ_INDEX, ["idxmorph_assigned", "time_bin_idx", "seqc_0_loc"], ["dist_index", "dist_index_norm", "time_bin"], nonnumercols=["assigned_base_simple", "assigned_base", "assigned_label", "idx_morph_temp"])
+    DFDIST_AGG = aggregGeneral(DFDIST, ["idxmorph_assigned_1", "idxmorph_assigned_2", "time_bin_idx"], ["dist_mean", "DIST_50", "DIST_98", "dist_norm", "dist_yue_diff", "time_bin"], nonnumercols=["assigned_base_simple", "assigned_base", "assigned_label", "idx_morph_temp"])
+
+    try:
+        # all inds that should be ambig --> make sure they are called that.
+        # prolbem is that some cases I did not call ambig if there were only a few cases of base1/base2.  But Ishould not 
+        # do this.
+        # if False: # skip this check, since sometimes auto detection doesnt call it ambig (too few trials, or is too noisy)
+        assert all(DFDIST[DFDIST["idx_morph_temp"].isin(inds_in_morphset_keep)]["assigned_label"] == "ambig"), "why this was not called ambig? Prob it only had a couple trials... Fix the original code that called ambig vs. not-ambig."
+
+        # all other inds --> make sure not called ambig.
+        assert not any(DFDIST[~DFDIST["idx_morph_temp"].isin(inds_in_morphset_keep)]["assigned_label"]=="ambig"), "in this case, definitely go with my hand label"
+    except AssertionError as err:
+        from pythonlib.tools.pandastools import grouping_print_n_samples
+        print("--------------")
+        print(animal, date, morphset)
+        print("Indices I manually said to keep: ", inds_in_morphset_keep)
+        print("Indices automatilcaly labeled as ambig: ", grouping_print_n_samples(DFDIST, ["idx_morph_temp", "assigned_label"]))
+        # print(err)
+        raise err
+    
+    if not all([x in DFPROJ_INDEX_AGG["assigned_base"].unique().tolist() for x in ['base1', 'ambig_base1', 'ambig_base2', 'base2']]):
+        # if not sorted(DFPROJ_INDEX_AGG["assigned_label"].unique()) == ['ambig', 'base', 'not_ambig']:
+        print("Skipping", animal, date, morphset, " since doesnt have all 3 trial labels. Just has: ", sorted(DFPROJ_INDEX_AGG["assigned_label"].unique()))     
+        return None
+
+    for df in [DFDIST, DFDIST_AGG, DFPROJ_INDEX, DFPROJ_INDEX_AGG]:
+        df["animal"] = animal
+        df["date"] = date
+        df["bregion"] = bregion
+        df["morphset"] = morphset
+
+        # Important, numerical precision...
+        df["time_bin"] = df["time_bin"].apply(lambda x:np.round(x, 3))
+        # df.sort_values("time_bin").reset_index(drop=True)
+
+    return DFDIST, DFDIST_AGG, DFPROJ_INDEX, DFPROJ_INDEX_AGG
+
 def behstrokes_map_clustshape_to_thresh(animal):
     """
     clust sim max thresholds, for each shape, hand entered.
@@ -681,29 +808,33 @@ def preprocess_pa(animal, date, PA, savedir, prune_version, shape_var = "shape_s
         
     ############ PROJECTION
     if not skip_dim_reduction:
-        if subspace_projection is not None:
-            dim_red_method, superv_dpca_params = params_subspace_projection(subspace_projection)
+        from neuralmonkey.scripts.analy_shape_invariance_all_plots_SP import _preprocess_pa_dim_reduction
+        _preprocess_pa_dim_reduction(PA, subspace_projection, subspace_projection_fitting_twind,
+                                 twind_analy, tbin_dur, tbin_slide, savedir)
+        
+        # if subspace_projection is not None:
+        #     dim_red_method, superv_dpca_params = params_subspace_projection(subspace_projection)
 
-            # (1) First, dim reduction
-            superv_dpca_var = superv_dpca_params['superv_dpca_var']
-            superv_dpca_vars_group = superv_dpca_params['superv_dpca_vars_group']
-            superv_dpca_filtdict = superv_dpca_params['superv_dpca_filtdict']
+        #     # (1) First, dim reduction
+        #     superv_dpca_var = superv_dpca_params['superv_dpca_var']
+        #     superv_dpca_vars_group = superv_dpca_params['superv_dpca_vars_group']
+        #     superv_dpca_filtdict = superv_dpca_params['superv_dpca_filtdict']
 
-            _, PA = PA.dataextract_dimred_wrapper("traj", dim_red_method, savedir, 
-                                            subspace_projection_fitting_twind, tbin_dur=tbin_dur, tbin_slide=tbin_slide, 
-                                            # twind_analy, tbin_dur=tbin_dur, tbin_slide=tbin_slide, 
-                                            NPCS_KEEP = NPCS_KEEP,
-                                            dpca_var = superv_dpca_var, dpca_vars_group = superv_dpca_vars_group, dpca_filtdict=superv_dpca_filtdict, 
-                                            dpca_proj_twind = twind_analy, 
-                                            raw_subtract_mean_each_timepoint=raw_subtract_mean_each_timepoint,
-                                            umap_n_components=None, umap_n_neighbors=None)
-        else:
-            if tbin_dur is not None:
-                PA = PA.agg_by_time_windows_binned(tbin_dur, tbin_slide)
-            if twind_analy is not None:
-                PA = PA.slice_by_dim_values_wrapper("times", twind_analy)
-            if raw_subtract_mean_each_timepoint:
-                PA = PA.norm_subtract_trial_mean_each_timepoint()
+        #     _, PA = PA.dataextract_dimred_wrapper("traj", dim_red_method, savedir, 
+        #                                     subspace_projection_fitting_twind, tbin_dur=tbin_dur, tbin_slide=tbin_slide, 
+        #                                     # twind_analy, tbin_dur=tbin_dur, tbin_slide=tbin_slide, 
+        #                                     NPCS_KEEP = NPCS_KEEP,
+        #                                     dpca_var = superv_dpca_var, dpca_vars_group = superv_dpca_vars_group, dpca_filtdict=superv_dpca_filtdict, 
+        #                                     dpca_proj_twind = twind_analy, 
+        #                                     raw_subtract_mean_each_timepoint=raw_subtract_mean_each_timepoint,
+        #                                     umap_n_components=None, umap_n_neighbors=None)
+        # else:
+        #     if tbin_dur is not None:
+        #         PA = PA.agg_by_time_windows_binned(tbin_dur, tbin_slide)
+        #     if twind_analy is not None:
+        #         PA = PA.slice_by_dim_values_wrapper("times", twind_analy)
+        #     if raw_subtract_mean_each_timepoint:
+        #         PA = PA.norm_subtract_trial_mean_each_timepoint()
 
     return PA
 
@@ -1089,7 +1220,7 @@ def euclidian_time_resolved_fast_shuffled(DFallpa, animal, date, SAVEDIR_ANALYSI
     LIST_SUBSPACE_PROJECTION = ["task_shape_si", "shape_prims_single"]
     LIST_PRUNE_VERSION = ["sp_char_0", "pig_char_0", "pig_char_1plus", "sp_char"] # GOOD
 
-    N_SPLITS = 2
+    N_SPLITS = 6
 
     twind_analy = TWIND_ANALY
     tbin_dur = 0.2
@@ -1097,7 +1228,7 @@ def euclidian_time_resolved_fast_shuffled(DFallpa, animal, date, SAVEDIR_ANALYSI
 
     map_event_to_listtwind_scal = {
         # "00_stroke":[(-0.5, -0.05), (0.05, 0.5), (-0.3, 0.1)],
-        "00_stroke":[(-0.5, -0.05), (-0.3, 0.1), (-0.3, 0.2), (-0.4, 0.3), (-0.2, 0.3), (0.05, 0.5)],
+        "00_stroke":[(-0.5, -0.05), (-0.5, 0), (-0.5, 0.1), (-0.3, 0.1), (-0.3, 0.2), (-0.4, 0.3), (-0.2, 0.3), (0.05, 0.5)],
         }
 
     list_dfdist =[]
@@ -1148,16 +1279,17 @@ def euclidian_time_resolved_fast_shuffled(DFallpa, animal, date, SAVEDIR_ANALYSI
                                                     remove_trials_with_bad_strokes=remove_trials_with_bad_strokes, 
                                                     subspace_projection_fitting_twind=subspace_projection_fitting_twind)
                             
-                            list_twind_scalar = map_event_to_listtwind_scal[event]
-                            for twind_scal in list_twind_scalar:
-                                savedir = f"{SAVEDIR}/rsa_heatmap/twindscal={twind_scal}"
-                                os.makedirs(savedir, exist_ok=True)
+                            if PAthis is not None:
+                                list_twind_scalar = map_event_to_listtwind_scal[event]
+                                for twind_scal in list_twind_scalar:
+                                    savedir = f"{SAVEDIR}/rsa_heatmap/twindscal={twind_scal}"
+                                    os.makedirs(savedir, exist_ok=True)
 
-                                # Prune to scalar window
-                                pa = PAthis.slice_by_dim_values_wrapper("times", twind_scal)
+                                    # Prune to scalar window
+                                    pa = PAthis.slice_by_dim_values_wrapper("times", twind_scal)
 
-                                # Make rsa heatmaps.
-                                timevarying_compute_fast_to_scalar(pa, vars_group, rsa_heatmap_savedir=savedir)
+                                    # Make rsa heatmaps.
+                                    timevarying_compute_fast_to_scalar(pa, vars_group, rsa_heatmap_savedir=savedir)
 
                         # Preprocess
                         savedir = f"{SAVEDIR}/preprocess"
@@ -1173,11 +1305,30 @@ def euclidian_time_resolved_fast_shuffled(DFallpa, animal, date, SAVEDIR_ANALYSI
                                                 subspace_projection_fitting_twind=subspace_projection_fitting_twind,
                                                 skip_dim_reduction=skip_dim_reduction)
 
+                        if PAthis is None:
+                            continue
 
                         ########### DO TRAIN-TEST SPLITS
-                        folds_dflab = PAthis.split_balanced_stratified_kfold_subsample_level_of_var(vars_group, None, None, 
-                                                                                                    n_splits=N_SPLITS, 
-                                                                                                    do_balancing_of_train_inds=False)
+                        if False:
+                            folds_dflab = PAthis.split_balanced_stratified_kfold_subsample_level_of_var(vars_group, None, None, 
+                                                                                                        n_splits=N_SPLITS, 
+                                                                                                        do_balancing_of_train_inds=False)
+                        else:
+                            # Better, more careful, ensuring enough data for euclidian distance.
+                            fraction_constrained_set=0.7
+                            n_constrained=3 # Ideally have more than 1 pair
+                            list_labels_need_n=None
+                            min_frac_datapts_unconstrained=None
+                            min_n_datapts_unconstrained=len(PAthis.Xlabels["trials"][var_effect].unique())
+                            plot_train_test_counts=True
+                            plot_indices=False
+                            folds_dflab, fig_unc, fig_con = PAthis.split_stratified_constrained_grp_var(N_SPLITS, vars_group, 
+                                                                            fraction_constrained_set, n_constrained, 
+                                                                            list_labels_need_n, min_frac_datapts_unconstrained,  
+                                                                            min_n_datapts_unconstrained, plot_train_test_counts, plot_indices)
+                            savefig(fig_con, f"{savedir}/after_split_constrained_fold_0.pdf")
+                            savefig(fig_unc, f"{savedir}/after_split_unconstrained_fold_0.pdf")
+                            plt.close("all")
 
                         for _i_dimredu, (train_inds, test_inds) in enumerate(folds_dflab):
                             # train_inds, more inds than than test_inds
@@ -2014,7 +2165,7 @@ if __name__=="__main__":
             SAVEDIR_ANALYSIS = f"/lemur2/lucas/analyses/recordings/main/euclidian_char_sp/EUCL_QUICK_SHUFFLE/{animal}-{date}-combine={combine}-wl={version}"
             os.makedirs(SAVEDIR_ANALYSIS, exist_ok=True)
             print(SAVEDIR_ANALYSIS)
-            DO_RSA_HEATMAPS = False
+            DO_RSA_HEATMAPS = True
             euclidian_time_resolved_fast_shuffled(DFallpa, animal, date, SAVEDIR_ANALYSIS, DO_RSA_HEATMAPS=DO_RSA_HEATMAPS)
         else:
             print(plotdo)
