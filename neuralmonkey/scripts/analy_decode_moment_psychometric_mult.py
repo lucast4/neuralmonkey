@@ -32,7 +32,6 @@ from pythonlib.tools.pandastools import plot_subplots_heatmap
 from neuralmonkey.classes.session import _REGIONS_IN_ORDER_COMBINED
 from neuralmonkey.analyses.state_space_good import euclidian_distance_compute_trajectories_single
 
-
 def plot_with_preprocess(DFPROJ, DFPROJ_INDEX, DFDIFFS, DFDIFFSPROJ, DFDIFFSINDEX, DFDIFFS_CATEG, savedir, 
                          list_thresh_separation=None):
     from pythonlib.tools.pandastools import append_col_with_grp_index
