@@ -126,8 +126,10 @@ def extract_dfallpa_helper(animal, date, question, combine_into_larger_areas,
     elif animal=="Pancho" and combine_into_larger_areas==False:
         exclude_bad_areas = False
     elif animal=="Pancho" and combine_into_larger_areas==True:
-        exclude_bad_areas = True
+        # exclude_bad_areas = True
+        exclude_bad_areas = False # Decided to always include PMvl. Can filter after based on fr stats.
     else:
+        print(animal)
         assert False
 
     ########################################## RUN

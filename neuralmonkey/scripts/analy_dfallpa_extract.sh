@@ -49,7 +49,8 @@ elif [[ $animal == Pancho ]]; then
   # question=CHAR_BASE_stroke
 
   # # --- SP/Chars, Getting "combined", just the good ones.
-  # datelist=(220618 220626 220628 220630 230119 230120 230126 230127) # Combining sets 1 and 2, to those that passed clean criteria (see spreadsheet)
+  # # datelist=(220618 220626 220628 220630 230119 230120 230126 230127) # Combining sets 1 and 2, to those that passed clean criteria (see spreadsheet)
+  # datelist=(220614 220616 220621 220622 220624 220627 230112 230117 230118) # Additional ones
   # combine=1
   # question=CHAR_BASE_stroke
 
@@ -59,12 +60,13 @@ elif [[ $animal == Pancho ]]; then
   # combine=1 
   # get_all_events=1
 
-  ### SINGLE PRIMS (SP)
+  ## SINGLE PRIMS (SP)
   # datelist=(220606 220608 220715 220716 220724 220918 240508 240530) # MANY (location and size). Picked good ones.
   # datelist=(220606 220716 220724 220918 240508 240530) # MANY (location and size). Picked good ones. [DONE]
   # datelist=(240515) # 
-  datelist=(221218) # 
   # datelist=(220606 220717 240510 240530) # This completes extraction for all size dates.
+  # datelist=(221218) # 
+  datelist=(220715 220716 220717 220724 240530) # Rerunning the final dates, to get PMvl
   question=SP_BASE_trial
   combine=1
 
@@ -73,6 +75,24 @@ elif [[ $animal == Pancho ]]; then
   # question=SP_psycho_trial
   # combine=1
 
+elif [[ $animal == Pancho_sp_chars ]]; then
+  # HACK, just to get a few dates with PMv_l, 
+
+  # --- SP/Chars, Getting "combined", just the good ones.
+  datelist=(220614 220616 220621 220622 220624 220627 220618 220628 220630) # Additional ones
+  combine=1
+  question=CHAR_BASE_stroke
+  animal=Pancho
+
+elif [[ $animal == Pancho_switching ]]; then
+  # HACK, just to get a few dates with PMv_l,   
+
+  ## SP Psycho (switching)
+  # datelist=(240516 240521 240524) # ALL
+  datelist=(240516) # missed
+  question=SP_psycho_trial
+  combine=1
+  animal=Pancho
 
 elif [[ $animal == Pancho_not_combined ]]; then
   # HACK, just to get a few dates with PMv_l, 
