@@ -153,7 +153,7 @@ def mult_load_euclidian_time_resolved(LIST_ANIMAL_DATE_COMB_VAROTHER):
 def _preprocess_pa_dim_reduction(PA, subspace_projection, subspace_projection_fitting_twind,
                                  twind_analy, tbin_dur, tbin_slide, savedir, raw_subtract_mean_each_timepoint=False,
                                  inds_pa_fit=None, inds_pa_final=None,
-                                 n_min_per_lev_lev_others=1):
+                                 n_min_per_lev_lev_others=1, scalar_or_traj="traj"):
     """
     Helper to do dim reductions.
     """
@@ -167,7 +167,7 @@ def _preprocess_pa_dim_reduction(PA, subspace_projection, subspace_projection_fi
         superv_dpca_filtdict = superv_dpca_params['superv_dpca_filtdict']
         
         print("***:", dim_red_method, " fit twind: ", subspace_projection_fitting_twind, ", data twind: ", twind_analy)
-        _, PA = PA.dataextract_dimred_wrapper("traj", dim_red_method, savedir, 
+        _, PA = PA.dataextract_dimred_wrapper(scalar_or_traj, dim_red_method, savedir, 
                                         subspace_projection_fitting_twind, tbin_dur=tbin_dur, tbin_slide=tbin_slide, 
                                         NPCS_KEEP = NPCS_KEEP,
                                         dpca_var = superv_dpca_var, dpca_vars_group = superv_dpca_vars_group, dpca_filtdict=superv_dpca_filtdict, 
@@ -667,6 +667,24 @@ def euclidian_time_resolved_fast_shuffled_mult_reload(animal, date, var_other, a
         wl = "stroke"
         SAVEDIR_ORIG = "/lemur2/lucas/analyses/recordings/main/euclidian_char_sp/EUCL_QUICK_SHUFFLE"
         SAVEDIR = f"{SAVEDIR_ORIG}/{animal}-{date}-combine={combine}-wl={wl}"
+    elif analysis_kind == "char_sp_05_first_raise":
+        var_effect = "shape_semantic_grp"
+        var_other = "task_kind"
+        wl = "trial"
+        SAVEDIR_ORIG = "/lemur2/lucas/analyses/recordings/main/euclidian_char_sp/EUCL_QUICK_SHUFFLE"
+        SAVEDIR = f"{SAVEDIR_ORIG}/{animal}-{date}-combine={combine}-wl={wl}-05_first_raise"
+    elif analysis_kind == "char_sp_04_go_cue":
+        var_effect = "shape_semantic_grp"
+        var_other = "task_kind"
+        wl = "trial"
+        SAVEDIR_ORIG = "/lemur2/lucas/analyses/recordings/main/euclidian_char_sp/EUCL_QUICK_SHUFFLE"
+        SAVEDIR = f"{SAVEDIR_ORIG}/{animal}-{date}-combine={combine}-wl={wl}-04_go_cue"
+    elif analysis_kind == "char_sp_00_stroke":
+        var_effect = "shape_semantic_grp"
+        var_other = "task_kind"
+        wl = "stroke"
+        SAVEDIR_ORIG = "/lemur2/lucas/analyses/recordings/main/euclidian_char_sp/EUCL_QUICK_SHUFFLE"
+        SAVEDIR = f"{SAVEDIR_ORIG}/{animal}-{date}-combine={combine}-wl={wl}-00_stroke"
     else:
         assert False
 
@@ -1363,7 +1381,7 @@ def _euclidian_time_resolved_fast_shuffled_mult_scatter_plots_params(analysis_ki
             list_date = [220606, 220608, 220716, 220717, 220918, 240510, 240530]
         else:
             assert False
-    elif analysis_kind == "char_sp":
+    elif analysis_kind in ["char_sp", "char_sp_04_go_cue", "char_sp_05_first_raise", "char_sp_00_stroke"]:
         if animal == "Diego":
             # list_date = [231205, 231122, 231128, 231129, 231201, 231120, 231121, 231206, 231218, 231220] # A date fails.
             list_date = [231205, 231122, 231128, 231129, 231201, 231120, 231206, 231218, 231220]
@@ -1435,6 +1453,13 @@ def euclidian_time_resolved_fast_shuffled_mult_scatter_plots(analysis_kind="shap
         LIST_ANIMAL_VAROTHER = [
             # ("Pancho", "task_kind"),
             ("Diego", "task_kind"),
+            ]
+    elif analysis_kind in ["char_sp_05_first_raise", "char_sp_04_go_cue", "char_sp_00_stroke"]:
+        SAVEDIR_MULT = f"/lemur2/lucas/analyses/recordings/main/euclidian_char_sp/EUCL_QUICK_SHUFFLE/MULT/{analysis_kind}"
+        var_effect = "shape_semantic_grp"
+        LIST_ANIMAL_VAROTHER = [
+            ("Diego", "task_kind"),
+            ("Pancho", "task_kind"),
             ]
     else:
         print(analysis_kind)
@@ -2879,9 +2904,11 @@ if __name__=="__main__":
     # Euclidian shuffle
     # PLOTS_DO = [4, 5]
     # PLOTS_DO = [0]
+    
+    # --- Good:
     # PLOTS_DO = [0, 5, 4, 2, 3] # Good
     PLOTS_DO = [4]
-    PLOTS_DO = [2, 3] # Good
+    # PLOTS_DO = [2, 3] # Good
 
     # if (animal, date) in 
     # var_other = afasfsdaf
