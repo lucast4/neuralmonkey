@@ -66,7 +66,8 @@ def timevarying_convert_to_scalar(DFDIST, twind_scalar):
 
 def timevarying_compute_fast_to_scalar(PA, label_vars=("seqc_0_shape", "seqc_0_loc"),
                                        rsa_heatmap_savedir=None, var_context_same=None,
-                                       plot_conjunctions_savedir=None, prune_levs_min_n_trials=2):
+                                       plot_conjunctions_savedir=None, prune_levs_min_n_trials=2,
+                                       get_group_distances=True):
     """
     [Fast code] -- do all steps to extract dfdist, starting from PA.
     POTENTIAL PROBLOEM (is ok, emeprically): it doesnt get time-varying, it goes straight from (ndims, ntimes) --> scalar,
@@ -215,44 +216,47 @@ def timevarying_compute_fast_to_scalar(PA, label_vars=("seqc_0_shape", "seqc_0_l
             _, fig = CldistAgg.rsa_distmat_construct_theoretical(varthis, PLOT=True, sort_order=list_sort_order[0]) # use the same sort order for each var so can compare them
             savefig(fig, f"{rsa_heatmap_savedir}/rsa_heatmap-var={varthis}-sort_order={list_sort_order[0]}-THEOR.pdf")
             plt.close("all")
-    
-    # convert to cldist.
-    dfdist = Cldist.rsa_distmat_score_all_pairs_of_label_groups(get_only_one_direction=True)
-    # for i in range(len(label_vars)):
-    #     for j in range(len(label_vars)):
-    #         if j>i:
-    #             var1 = label_vars[0]
-    #             var2 = label_vars[1]
-    #             dfdist = append_col_with_grp_index(dfdist, [f"{var1}_same", f"{var2}_same"], f"same-{var1}|{var2}")
 
-    #### If this has context input, then additional steps
-    if var_context_same is not None:
-        if False:
-            from pythonlib.tools.pandastools import grouping_plot_n_samples_conjunction_heatmap
-            grouping_plot_n_samples_conjunction_heatmap(dfdist, "seqc_0_shape_12", "seqc_0_loc_12", ["gridsize_12"])
+    if get_group_distances:
+        # convert to cldist.
+        dfdist = Cldist.rsa_distmat_score_all_pairs_of_label_groups(get_only_one_direction=True)
+        # for i in range(len(label_vars)):
+        #     for j in range(len(label_vars)):
+        #         if j>i:
+        #             var1 = label_vars[0]
+        #             var2 = label_vars[1]
+        #             dfdist = append_col_with_grp_index(dfdist, [f"{var1}_same", f"{var2}_same"], f"same-{var1}|{var2}")
 
-        from pythonlib.tools.pandastools import append_col_with_grp_index
+        #### If this has context input, then additional steps
+        if var_context_same is not None:
+            if False:
+                from pythonlib.tools.pandastools import grouping_plot_n_samples_conjunction_heatmap
+                grouping_plot_n_samples_conjunction_heatmap(dfdist, "seqc_0_shape_12", "seqc_0_loc_12", ["gridsize_12"])
 
-        # This is usualyl the case, so just do it.
-        if len(label_vars_orig)>1:
-            var_effect = label_vars_orig[0]
-            var_other = label_vars_orig[1]
-            var_same_same = f"same-{var_effect}|{var_other}"
-            dfdist = append_col_with_grp_index(dfdist, [f"{var_effect}_same", f"{var_other}_same"], var_same_same)
+            from pythonlib.tools.pandastools import append_col_with_grp_index
 
-        # Keep only pairs that have the same context
-        dfdist = dfdist[dfdist[f"{var_context_same}_same"]==True].reset_index(drop=True)
+            # This is usualyl the case, so just do it.
+            if len(label_vars_orig)>1:
+                var_effect = label_vars_orig[0]
+                var_other = label_vars_orig[1]
+                var_same_same = f"same-{var_effect}|{var_other}"
+                dfdist = append_col_with_grp_index(dfdist, [f"{var_effect}_same", f"{var_other}_same"], var_same_same)
 
-        # Agg across levels of context
-        # -- 
-        from pythonlib.tools.pandastools import aggregGeneral
-        group = [f"{v}_12" for v in label_vars_orig] # each unique kind of pair
-        dfdist = aggregGeneral(dfdist, group, ["dist_mean", "DIST_50", "DIST_98", "dist_norm", "dist_yue_diff"], nonnumercols="all")
+            # Keep only pairs that have the same context
+            dfdist = dfdist[dfdist[f"{var_context_same}_same"]==True].reset_index(drop=True)
 
-        # Reassign labels using just (var_eff, var_other)
-        for i in [1,2]:
-            grp = [f"{v}_{i}" for v in label_vars_orig]
-            dfdist = append_col_with_grp_index(dfdist, grp, f"labels_{i}", False)
+            # Agg across levels of context
+            # -- 
+            from pythonlib.tools.pandastools import aggregGeneral
+            group = [f"{v}_12" for v in label_vars_orig] # each unique kind of pair
+            dfdist = aggregGeneral(dfdist, group, ["dist_mean", "DIST_50", "DIST_98", "dist_norm", "dist_yue_diff"], nonnumercols="all")
+
+            # Reassign labels using just (var_eff, var_other)
+            for i in [1,2]:
+                grp = [f"{v}_{i}" for v in label_vars_orig]
+                dfdist = append_col_with_grp_index(dfdist, grp, f"labels_{i}", False)
+    else:
+        dfdist = None
 
     return dfdist, Cldist
 
