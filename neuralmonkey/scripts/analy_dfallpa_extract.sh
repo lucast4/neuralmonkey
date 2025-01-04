@@ -18,6 +18,17 @@ if [[ $animal == Diego ]]; then
   # question=CHAR_BASE_stroke
   # combine=1
 
+  ## SP vs. Char,
+  # datelist=(231130 231205 231211 231122 231128 231129 231201 231213 231204) # Chars
+  # datelist=(231120 231121 231206 231207 231218 231219 231220) # Chars, those left over (added to previous, this gets all)
+  # datelist=(231120 231206 231207 231218 231220) # Chars, those left over (added to previous, this gets all)
+  # datelist=(231120 231122 231128 231129 231201 231204 231205 231206 231218 231220) # The final set
+  datelist=(231120 231129 231220) # Missed
+  question=CHAR_BASE_stroke
+  # question=CHAR_BASE_trial
+  combine=1
+  # get_all_events=1
+
   # ### Events modulation figures. Extract trial version, and include all events (e.g., go cue)
   # datelist=(230630) # Chars, those left over (added to previous, this gets all)
   # question=PIG_BASE_trial
@@ -29,11 +40,11 @@ if [[ $animal == Diego ]]; then
   # question=SP_BASE_trial
   # combine=1
 
-  ### SP Psycho (switching)
-  # datelist=(240517 240521 240523 240730) # ALL
-  datelist=(240523) # failed one
-  question=SP_psycho_trial
-  combine=1
+  # ### SP Psycho (switching)
+  # # datelist=(240517 240521 240523 240730) # ALL
+  # datelist=(240523) # failed one
+  # question=SP_psycho_trial
+  # combine=1
 
 elif [[ $animal == Pancho ]]; then
   # # datelist=(220831 220901 220902 230810 230826 230824 231114 231116 230923 230921 230920 231019 231020) 
@@ -79,10 +90,21 @@ elif [[ $animal == Pancho_sp_chars ]]; then
   # HACK, just to get a few dates with PMv_l, 
 
   # --- SP/Chars, Getting "combined", just the good ones.
-  datelist=(220614 220616 220621 220622 220624 220627 220618 220628 220630) # Additional ones
+
+  # Stroke
+  # datelist=(220614 220616 220618 220621 220622 220624 220626 220627 220628 220630) # Additional ones
+  # combine=1
+  # question=CHAR_BASE_stroke
+  # animal=Pancho
+
+  # Trial
+  # datelist=(220614 220616 220618 220621 220622 220624 220626 220627 220628 220630) # Additional ones
+  datelist=(220616 220621 220622 220624 220626 220627) # Additional ones
   combine=1
   question=CHAR_BASE_stroke
   animal=Pancho
+  # question=CHAR_BASE_trial
+  # get_all_events=0
 
 elif [[ $animal == Pancho_switching ]]; then
   # HACK, just to get a few dates with PMv_l,   
