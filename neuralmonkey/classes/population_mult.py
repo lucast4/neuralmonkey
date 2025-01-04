@@ -1682,6 +1682,7 @@ def dfallpa_preprocess_sitesdirty_check_if_preprocessed(DFallpa, animal, date):
             print("Problem, you have not prprocessed dirty channels matching this neural data")
             print("chans found:", chans_included)
             print("chans missing:", chans_excluded)
+            print("chans exist in saved pool:", chans_saved)
             return False
         
     return True
