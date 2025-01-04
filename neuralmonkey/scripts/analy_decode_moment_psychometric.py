@@ -2166,7 +2166,8 @@ def analy_switching_GOOD_euclidian_index(DFallpa, SAVEDIR_BASE, map_tcmorphset_t
 
     # (1) Split into two
     from neuralmonkey.scripts.analy_shape_invariance_all_plots_SP import _preprocess_pa_dim_reduction
-    NPCS_KEEP = 8
+    assert False, "previously (when Pancho PMVl was not included) I used NPCS_KEEP=8. Then I used NPCS_KEEP=6 for the example plot Pancho morphset 8. Decide which to use. Prob use 6. I checked and they are pretty much identical"
+    NPCS_KEEP = 6
     scalar_or_traj = "traj"
     tbin_dur = 0.2
     tbin_slide = 0.02

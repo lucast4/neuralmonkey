@@ -21,7 +21,7 @@
 animal=Pancho
 
 # datelist=(240516 240521 240524) # Just switching
-datelist=(240516) # Redo (KS extracted)
+datelist=(240524) # Redo (KS extracted)
 which_plots=switching_dist
 
 for date1 in "${datelist[@]}"
