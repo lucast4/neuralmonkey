@@ -7365,7 +7365,7 @@ class Snippets(object):
 
         ############### RETURN, IF MINIMAL (kgg, fixations).
         if ANALY_VER == "MINIMAL":
-            return D, []
+            return self.Datasetbeh, []
 
         ################ SUBSTROKES
         if params["substrokes_features_do_extraction"]:
@@ -7401,6 +7401,7 @@ class Snippets(object):
                                     "CTXT_loc_prev", "CTXT_shape_prev",
                                     "gap_from_prev_angle_binned", "gap_to_next_angle_binned",
                                     "gap_from_prev_angle", "gap_to_next_angle",
+                                    "gap_from_prev_dist", "gap_to_next_dist",
                                     "Stroke"]
 
         list_features_extraction_stroke = [
@@ -7426,14 +7427,14 @@ class Snippets(object):
                                           "taskconfig_shp_SHSEM", "taskconfig_shploc_SHSEM"]
 
         for i in range(20):
-            if f"seqc_{i}_shape" not in D.Dat.columns:
+            if f"seqc_{i}_shape" not in self.Datasetbeh.Dat.columns:
                 n_strok_max = i
                 break
         
-        if n_strok_max < max(D.Dat["FEAT_num_strokes_beh"]):
+        if n_strok_max < max(self.Datasetbeh.Dat["FEAT_num_strokes_beh"]):
             print(n_strok_max)
-            print(max(D.Dat["FEAT_num_strokes_beh"]))
-            print(sorted(D.Dat.columns.tolist()))
+            print(max(self.Datasetbeh.Dat["FEAT_num_strokes_beh"]))
+            print(sorted(self.Datasetbeh.Dat.columns.tolist()))
             assert False, "Fix this bug"
             
         for i in range(n_strok_max):
@@ -7477,7 +7478,8 @@ class Snippets(object):
         # NOTE: this is older stuff!! currently in Dataset the shapes are already updated in tokens.. so dont need
         # to do this.
         # Extract labels related to char stroke shapes
-        if params["charclust_dataset_extract_shapes"] and self.Params["which_level"]=="trial":
+        if "charclust_shape_seq" in self.Datasetbeh.Dat.columns:
+        # if params["charclust_dataset_extract_shapes"] and self.Params["which_level"]=="trial": # This doesnt work, since charclust_dataset_extract_shapes is now always False
             # Then this means it was extracted (trial-level)
             list_features_extraction = list_features_extraction + ["charclust_shape_seq", "charclust_shape_seq_scores"]
 
@@ -7503,7 +7505,7 @@ class Snippets(object):
             # Add bin indicating wheterh chunk gap is short or long duration
             tmp = ["chunkgap_(0, 1)_durbin", "chunkgap_(1, 2)_durbin"]
             for t in tmp:
-                if t in D.Dat.columns:
+                if t in self.Datasetbeh.Dat.columns:
                     list_features_extraction.append(t)
 
         # For the rest, try to get automatically.
@@ -7518,6 +7520,7 @@ class Snippets(object):
             print("HACKy -- extracting clust_sim_max for strokes")
             self.datasetbeh_append_column_helper(["clust_sim_max", "clust_sim_max_colname"], None, DS=DS_for_pruning_D, stop_if_fail=True)
 
+        list_features_extraction = sorted(list_features_extraction)
         print("Attempting to extract these features into Snippets:")
         print(list_features_extraction)
 
@@ -7661,7 +7664,7 @@ class Snippets(object):
         # # add columns from 240307_sequence_rasters.ipynb
         # self._addSaccadeFixationColumns()
 
-        return D, list_features_extraction
+        return self.Datasetbeh, list_features_extraction
 
     # adds additional columns for SP.DfScalar here (including code to loop, and append_column vars)
     # NOTE: assumes multiple session SP, e.g. from
