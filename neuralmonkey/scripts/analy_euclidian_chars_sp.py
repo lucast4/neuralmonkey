@@ -271,7 +271,10 @@ def behstrokes_extract_char_clust_sim(PA, animal, date, savedir, PLOT=False):
     from pythonlib.tools.nptools import isnear
     assert np.all(dflab["character"] == _df["character"])
     assert np.all(dflab["gridloc"] == _df["gridloc"])
-    assert np.all(dflab["stroke_index_fromlast"] == _df["stroke_index_fromlast"])
+    if not np.all(dflab["stroke_index_fromlast"] == _df["stroke_index_fromlast"]):
+        print(dflab["stroke_index_fromlast"].unique())
+        print(_df["stroke_index_fromlast"].unique())
+        assert False
     s1 = np.stack([x[0] for x in dflab["strok_beh"]])
     s2 = np.stack([x[0] for x in _df["strok"]])
     assert isnear(s1, s2)
@@ -290,11 +293,16 @@ def behstrokes_extract_char_clust_sim(PA, animal, date, savedir, PLOT=False):
 
     ### Plot, show each shape, sorted by clust_sim_max
     # ds.plot_multiple_sorted_by_feature([0,1,2], "clust_sim_max", overlay_beh_or_task=None)
-    ds.Dat = append_col_with_grp_index(ds.Dat, ["clust_sim_max_colname", "task_kind"], "clustname|tk")
-    ds.Dat = append_col_with_grp_index(ds.Dat, ["shape_semantic_grp", "task_kind"], "shapesemgrp|tk")
+    # if "clust_sim_max_colname" in ds.Dat.columns:
+    cols_shape = ["clust_sim_max_colname", "shape_semantic_grp"]
+    cols_shape_tk = ["clustname|tk", "shapesemgrp|tk"]
+    for col_in, col_out in zip(cols_shape, cols_shape_tk):
+        ds.Dat = append_col_with_grp_index(ds.Dat, [col_in, "task_kind"], col_out)
+        # ds.Dat = append_col_with_grp_index(ds.Dat, ["shape_semantic_grp", "task_kind"], "shapesemgrp|tk")
+
     if PLOT:
         # ds.plotshape_multshapes_trials_grid_sort_by_feature(col_grp="clust_sim_max_colname", sort_rows_by_this_feature="clust_sim_max", nrows=10, recenter_strokes=True)
-        for col_grp in ["clustname|tk", "shapesemgrp|tk"]:
+        for col_grp in cols_shape_tk:
             for i in range(1):  
                 fig = ds.plotshape_multshapes_trials_grid_sort_by_feature(col_grp=col_grp, sort_rows_by_this_feature="clust_sim_max", nrows=10, recenter_strokes=True)
                 savefig(fig, f"{savedir}/cols={col_grp}-rows=clust_sim_max-iter={i}.png")
@@ -605,7 +613,7 @@ def preprocess_pa(animal, date, PA, savedir, prune_version, shape_var = "shape_s
                   subspace_projection=None, twind_analy=None, tbin_dur=None, tbin_slide=None, NPCS_KEEP=None, 
                   raw_subtract_mean_each_timepoint=False, remove_singleprims_unstable=False,
                   remove_trials_with_bad_strokes=True, subspace_projection_fitting_twind=None,
-                  skip_dim_reduction=False):
+                  skip_dim_reduction=False, scalar_or_traj="traj"):
     """
     Does not modofiy PA, returns copy
     """ 
@@ -634,6 +642,12 @@ def preprocess_pa(animal, date, PA, savedir, prune_version, shape_var = "shape_s
     dflab = append_col_with_grp_index(dflab, ["task_kind", "shape_semantic_grp", "stroke_index"], "task_shape_si")
     PA.Xlabels["trials"] = dflab
 
+    #### Append any new columns
+    from pythonlib.tools.pandastools import append_col_with_grp_index
+    dflab = PA.Xlabels["trials"]
+    dflab = append_col_with_grp_index(dflab, ["task_kind", "shape_semantic_grp"], "task_shape")
+    PA.Xlabels["trials"] = dflab
+
     ########################################
     # (1) Keep just SP and (Char 0)
     if prune_version is None:
@@ -645,6 +659,9 @@ def preprocess_pa(animal, date, PA, savedir, prune_version, shape_var = "shape_s
             fd = {"task_kind":task_kinds, "stroke_index":[0]}
         elif prune_version == "sp_char":
             task_kinds = ["prims_single", "character"]
+            fd = {"task_kind":task_kinds}
+        elif prune_version == "sp_pig_char":
+            task_kinds = ["prims_single", "prims_on_grid", "character"]
             fd = {"task_kind":task_kinds}
         elif prune_version == "sp_pig":
             task_kinds = ["prims_single", "prims_on_grid"]
@@ -681,7 +698,7 @@ def preprocess_pa(animal, date, PA, savedir, prune_version, shape_var = "shape_s
     ########################
     # Hacky - remove cases where the strokes are too different between SP and CHAR
     # Get strokes for each row
-    PA.behavior_extract_strokes_to_dflab()
+    PA.behavior_extract_strokes_to_dflab(trial_take_first_stroke=True)
 
     if plot_drawings:
         #### Make plots of strokes
@@ -809,8 +826,8 @@ def preprocess_pa(animal, date, PA, savedir, prune_version, shape_var = "shape_s
     ############ PROJECTION
     if not skip_dim_reduction:
         from neuralmonkey.scripts.analy_shape_invariance_all_plots_SP import _preprocess_pa_dim_reduction
-        _preprocess_pa_dim_reduction(PA, subspace_projection, subspace_projection_fitting_twind,
-                                 twind_analy, tbin_dur, tbin_slide, savedir)
+        PA = _preprocess_pa_dim_reduction(PA, subspace_projection, subspace_projection_fitting_twind,
+                                 twind_analy, tbin_dur, tbin_slide, savedir, scalar_or_traj=scalar_or_traj)
         
         # if subspace_projection is not None:
         #     dim_red_method, superv_dpca_params = params_subspace_projection(subspace_projection)
@@ -839,6 +856,47 @@ def preprocess_pa(animal, date, PA, savedir, prune_version, shape_var = "shape_s
     return PA
 
 
+def preprocess_dfallpa_trial_to_stroke_fake(DFallpa, event_keep):
+    """
+    Modify a trial-version DFallpa so that it can be inputted into analyses, becusae they all
+    expected stroke-version. Does this by keeping a single event, and renaming variables. This is fully
+    accurate in the output, just fakes some names in the dataframe.
+
+    Usually run this before running anything else (any preprocessing)
+    
+    RETURNS:
+    - DFallpa, a copy, with just those pa that are event==event_keep, and with each PA's dflab modified (faked column names)
+    """
+    HACK = False
+
+    # (1) Keep only a single event
+    # event_keep = "05_first_raise"
+    DFallpa = DFallpa[DFallpa["event"] == event_keep].reset_index(drop=True)
+
+    DFallpa["event"] = "00_stroke"
+    for pa in DFallpa["pa"]:
+
+        # Add fake columns
+        # These are all accurate
+        dflab = pa.Xlabels["trials"]
+        dflab["stroke_index"] = 0 
+        dflab["shape_semantic_grp"] = dflab["seqc_0_shapesemgrp"]
+        dflab["gridloc"] = dflab["seqc_0_loc"]
+
+        if HACK:
+            # Just for testing...
+            dflab["clust_sim_max_colname"] = dflab["seqc_0_shape"]
+            dflab["clust_sim_max"] = 0.7
+
+        # Get index from end for each trial.
+        indices_from_last = []
+        for i, row in dflab.iterrows():
+            nstrokes = row["FEAT_num_strokes_beh"]
+            indices_from_last.append(-nstrokes)
+        dflab["stroke_index_fromlast"] = indices_from_last
+    
+    return DFallpa
+
 def preprocess_pa_trials(animal, date, PA, savedir, prune_version, shape_var = "seqc_0_shapesemgrp", 
                          n_min_trials_per_shape=N_MIN_TRIALS_PER_SHAPE,
                   plot_counts_heatmap_savepath=None, plot_drawings=True, remove_chans_fr_drift=False,
@@ -848,6 +906,7 @@ def preprocess_pa_trials(animal, date, PA, savedir, prune_version, shape_var = "
     Does not modofiy PA, returns copy
     """ 
 
+    assert False, "by now preprocess_pa() is so far ahead... probably should add flag to preprocess_pa() so that it does trials stuff"
     if subspace_projection is not None:
         assert twind_analy is not None
         assert tbin_dur is not None
@@ -1019,7 +1078,7 @@ def preprocess_pa_trials(animal, date, PA, savedir, prune_version, shape_var = "
 
 
 def params_subspace_projection(subspace_projection):
-    if subspace_projection in ["pca", "pca_proj"]:
+    if subspace_projection in ["pca", "pca_proj", "umap"]:
         dim_red_method = subspace_projection
         superv_dpca_params={
             "superv_dpca_var":None,
@@ -1231,6 +1290,24 @@ def euclidian_time_resolved_fast_shuffled(DFallpa, animal, date, SAVEDIR_ANALYSI
         "00_stroke":[(-0.5, -0.05), (-0.5, 0), (-0.5, 0.1), (-0.3, 0.1), (-0.3, 0.2), (-0.4, 0.3), (-0.2, 0.3), (0.05, 0.5)],
         }
 
+    #### Final params
+    SUBSPACE_PROJ_FIT_TWIND = {
+        "00_stroke":[(-0.8, 0.3), (-0.8, 0), (-1, 0.3), (-0.5, 0.5)],
+    }
+
+    LIST_SUBSPACE_PROJECTION = ["task_shape_si", "task_shape"]
+    LIST_PRUNE_VERSION = ["sp_char_0", "pig_char_0"] # GOOD
+
+    N_SPLITS = 10 # 6 is too low, I know beucase run-by-run variation for sp_char_0 is high when using 6.
+
+    twind_analy = (-1, 0.6)
+    tbin_dur = 0.2
+    tbin_slide = 0.02
+
+    map_event_to_listtwind_scal = {
+        "00_stroke":[(-0.5, -0.05), (-0.6, -0.1), (-0.6, 0.05)],
+        }
+
     list_dfdist =[]
     for _, row in DFallpa.iterrows():
         bregion = row["bregion"]
@@ -1373,81 +1450,6 @@ def euclidian_time_resolved_fast_shuffled(DFallpa, animal, date, SAVEDIR_ANALYSI
     import pickle
     with open(f"{SAVEDIR_ANALYSIS}/list_dfdist.pkl", "wb") as f:
         pickle.dump(list_dfdist, f)
-
-# def euclidian_time_resolved_strokes(animal, date, DFallpa, bregion, prune_version, remove_drift, SAVEDIR, twind_analy,
-#                             tbin_dur, tbin_slide, 
-#                             subspace_projection, NPCS_KEEP, 
-#                             n_min_trials_per_shape = N_MIN_TRIALS_PER_SHAPE, raw_subtract_mean_each_timepoint=False,
-#                             hack_prune_to_these_chans = None,
-#                             remove_singleprims_unstable=False):
-#     """
-#     Eucldian distance [effect of shape vs. task(context)] as function of time, relative to stroke onset.
-#     """
-#     from neuralmonkey.classes.population_mult import extract_single_pa
-#     from neuralmonkey.scripts.analy_euclidian_chars_sp import preprocess_pa
-#     import seaborn as sns
-#     from pythonlib.tools.pandastools import append_col_with_grp_index
-    
-#     # Run
-#     PA = extract_single_pa(DFallpa, bregion, which_level="stroke", event="00_stroke")
-
-#     savedir = f"{SAVEDIR}/preprocess"
-#     os.makedirs(savedir, exist_ok=True)
-#     plot_drawings = False
-#     PA = preprocess_pa(animal, date, PA, savedir, prune_version, 
-#                         n_min_trials_per_shape=n_min_trials_per_shape, plot_drawings=plot_drawings,
-#                         remove_chans_fr_drift=remove_drift,
-#                         subspace_projection=subspace_projection, 
-#                             twind_analy=twind_analy, tbin_dur=tbin_dur, tbin_slide=tbin_slide, NPCS_KEEP=NPCS_KEEP,
-#                             raw_subtract_mean_each_timepoint=raw_subtract_mean_each_timepoint,
-#                             remove_singleprims_unstable=remove_singleprims_unstable)
-
-#     if PA is None:
-#         return
-
-
-#     if hack_prune_to_these_chans is not None:
-#         # Optionally, keep specific chans
-#         # chans_keep = [1053, 1054]
-#         # chans_keep = [1044, 1049,  1053, 1054, 1057, 1059, 1062]
-#         assert isinstance(hack_prune_to_these_chans, list)
-#         PA = PA.slice_by_dim_values_wrapper("chans", hack_prune_to_these_chans)
-
-#     ### Quick analyses of euclidian distances
-#     vars_group = ["task_kind", "shape_semantic_grp"]
-#     version = "traj"
-#     DFDIST = PA.dataextractwrap_distance_between_groups(vars_group, version)
-
-#     # DFDIST = append_col_with_grp_index(DFDIST, ["shape_semantic_grp_1", "shape_semantic_grp_2"], "shape_semantic_grp_same")
-#     # DFDIST = append_col_with_grp_index(DFDIST, ["task_kind_1", "task_kind_2"], "task_kind_same")
-#     DFDIST["task_kind_same"] = DFDIST["task_kind_1"] == DFDIST["task_kind_2"]
-#     DFDIST["shape_semantic_grp_same"] = DFDIST["shape_semantic_grp_1"] == DFDIST["shape_semantic_grp_2"]
-#     DFDIST = append_col_with_grp_index(DFDIST, ["task_kind_1", "task_kind_2"], "task_kind_12")
-#     DFDIST = append_col_with_grp_index(DFDIST, ["task_kind_same", "shape_semantic_grp_same"], "same-task|shape")
-#     DFDIST = append_col_with_grp_index(DFDIST, ["shape_semantic_grp_same", "task_kind_12"], "same_shape|task_kind_12")
-#     DFDIST = append_col_with_grp_index(DFDIST, ["task_kind_same", "shape_semantic_grp_same"], "same-task|shape")
-#     DFDIST = append_col_with_grp_index(DFDIST, ["shape_semantic_grp_1", "shape_semantic_grp_2"], "shape_semantic_grp_12")
-
-#     pd.to_pickle(DFDIST, f"{SAVEDIR}/DFDIST.pkl")
-    
-#     for y in ["dist_mean", "dist_norm", "dist_yue_diff"]:
-#         # sns.relplot(data=DFDIST, x="time_bin", y=y, hue="same_shape|task_kind_12", kind="line", errorbar=("ci", 68))
-#         fig = sns.relplot(data=DFDIST, x="time_bin", y=y, hue="same-task|shape", kind="line", errorbar=("ci", 68))
-#         savefig(fig, f"{SAVEDIR}/relplot-{y}-1.pdf")
-
-#         fig = sns.relplot(data=DFDIST, x="time_bin", y=y, hue="same_shape|task_kind_12", kind="line", errorbar=("ci", 68))
-#         savefig(fig, f"{SAVEDIR}/relplot-{y}-2.pdf")
-
-#         fig = sns.relplot(data=DFDIST, x="time_bin", y=y, hue="task_kind_12", kind="line", col="same-task|shape", errorbar=("ci", 68))
-#         savefig(fig, f"{SAVEDIR}/relplot-{y}-3.pdf")
-
-#         if False: # slow, and I don't use
-#             fig = sns.relplot(data=DFDIST, x="time_bin", y=y, hue="shape_semantic_grp_12", kind="line", col="same-task|shape", 
-#                         errorbar=("ci", 68), legend=False, alpha=0.5)
-#             savefig(fig, f"{SAVEDIR}/relplot-{y}-4.pdf")
-
-#         plt.close("all")
-
 
 def euclidian_time_resolved(animal, date, PA, which_level, 
                                    prune_version, remove_drift, SAVEDIR, twind_analy,
@@ -1715,6 +1717,14 @@ def plot_heatmap_firing_rates_all_wrapper(DFallpa, SAVEDIR_ANALYSIS, animal, dat
     var_effect="shape_semantic_grp"
     var_conj = "task_kind"
     
+    # Good...
+    SUBSPACE_PROJ_FIT_TWIND = {
+        "00_stroke":[(-0.8, 0.3)],
+    }
+    LIST_PRUNE_VERSION = ["sp_char_0", "pig_char_0"] # GOOD
+    twind_analy = (-1, 0.6)
+    list_twind_scal = [None, (-0.6, 0.2)]
+
     drawings_done = []
     for _, row in DFallpa.iterrows():
         bregion = row["bregion"]
@@ -1745,7 +1755,8 @@ def plot_heatmap_firing_rates_all_wrapper(DFallpa, SAVEDIR_ANALYSIS, animal, dat
                     pass
 
             # for subspace_projection in [None, "pca", subspace_projection_extra]:
-            for subspace_projection in [None, "pca_proj", "task_shape_si"]: # NOTE: shape_prims_single not great, you lose some part of preSMA context-dependence...
+            for subspace_projection in [None, "pca_proj", "task_shape_si", "task_shape"]: # NOTE: shape_prims_single not great, you lose some part of preSMA context-dependence...
+            # for subspace_projection in ["task_shape"]: # NOTE: shape_prims_single not great, you lose some part of preSMA context-dependence...
                 if (DEBUG_subspace_projection is not None) and (DEBUG_subspace_projection!=subspace_projection):
                     continue
                 if subspace_projection is not None:
@@ -1782,99 +1793,71 @@ def plot_heatmap_firing_rates_all_wrapper(DFallpa, SAVEDIR_ANALYSIS, animal, dat
                                                 remove_trials_with_bad_strokes=remove_trials_with_bad_strokes, 
                                                 subspace_projection_fitting_twind=subspace_projection_fitting_twind)
 
-                        # # For raw data, pick out 10 most modulated neurons
-                        # if False:
-                        #     from neuralmonkey.metrics.scalar import _calc_modulation_by_frsm_event_aligned_time
-                        #     res = []
-                        #     for i, chan in enumerate(PA.Chans):
-                        #         frmat = PA.X[i, :, :]
-                        #         r2 = _calc_modulation_by_frsm_event_aligned_time(frmat)
-                        #         res.append({
-                        #             "r2":r2,
-                        #             "chan":chan,
-                        #             "indchan":i
-                        #         })
-                        #     animal, date
-                        #     df = pd.DataFrame(res)
-                        #     import seaborn as sns
-                        #     fig = sns.catplot(data=df, x="chan", y="r2", aspect=2.5, kind="bar")
-                        #     from pythonlib.tools.snstools import rotateLabel
-                        #     rotateLabel(fig)
-                        #     nchans = 10
-                        #     list_indchan = df.sort_values("r2", ascending=False)["indchan"].tolist()[:nchans]
-                        #     PA = PA.slice_by_dim_indices_wrapper("chans", list_indchan)
-
-                        # for subtr_version in [None, "time", "baseline"]:
-
-                        #     diverge = False
-                        #     if subtr_version is None:
-                        #         pathis = pa.copy()
-                        #     elif subtr_version == "time":
-                        #         pathis = pa.norm_subtract_trial_mean_each_timepoint()
-                        #         diverge = True
-                        #     elif subtr_version == "baseline":
-                        #         twind_base = [-0.5, -0.05]
-                        #         pathis = pa.norm_rel_base_window(twind_base, "subtract")
-                        #         diverge = True
-                        #     else:
-                        #         assert False
-
                         for subtr_time_mean, zscore, subtr_baseline in [
-                            (False, False, False), (False, True, True), (True, False, False), (True, True, False), (False, False, True)
+                            (False, False, False), (False, True, False), (False, True, True), (True, False, False), (True, True, False), (False, False, True)
                             ]:
 
-                            pathis = pa.copy()
-                            diverge = False
+                            # Optionally prune to specific time window before plotting state space.
+                            for twindscal in list_twind_scal:
 
-                            if zscore:
-                                pathis = pathis.norm_rel_all_timepoints()
+                                # pathis = pa.copy()
+                                diverge = False
+
+                                ### Preprocess, pa --> pathis
+                                if twindscal is not None:
+                                    pathis = pa.slice_by_dim_values_wrapper("times", twindscal)
+                                else:
+                                    pathis = pa.copy()
+
                                 zlims = None
-                                # zlims = [-2, 2]
-                                diverge = True
-                            else:
-                                zlims = None
+                                if zscore:
+                                    pathis = pathis.norm_rel_all_timepoints()
+                                    diverge = True
+                                    # zlims = [-2, 2]
+    
+                                if subtr_time_mean:
+                                    pathis = pathis.norm_subtract_trial_mean_each_timepoint()
+                                    diverge = True
 
-                            if subtr_time_mean:
-                                pathis = pathis.norm_subtract_trial_mean_each_timepoint()
-                                diverge = True
+                                if subtr_baseline:
+                                    twind_base = [-0.6, -0.05]
+                                    pathis = pathis.norm_rel_base_window(twind_base, "subtract")
+                                    diverge = True
 
-                            if subtr_baseline:
-                                twind_base = [-0.6, -0.05]
-                                pathis = pathis.norm_rel_base_window(twind_base, "subtract")
-                                diverge = True
+                                ### Plot pathis.
+                                for mean_over_trials in [False, True]:
+                                    # savedirthis = f"{SAVEDIR}/HEATMAP-subtr_version={subtr_version}-mean={mean_over_trials}"
+                                    savedirthis = f"{SAVEDIR}/HEATMAP-zscore={zscore}-subtr_time_mean={subtr_time_mean}-subtrbase={subtr_baseline}-mean={mean_over_trials}-twindscal={twindscal}"
+                                    os.makedirs(savedirthis, exist_ok=True)
 
-                            for mean_over_trials in [False, True]:
-                                # savedirthis = f"{SAVEDIR}/HEATMAP-subtr_version={subtr_version}-mean={mean_over_trials}"
-                                savedirthis = f"{SAVEDIR}/HEATMAP-zscore={zscore}-subtr_time_mean={subtr_time_mean}-subtrbase={subtr_baseline}-mean={mean_over_trials}"
-                                
-                                os.makedirs(savedirthis, exist_ok=True)
+                                    from neuralmonkey.neuralplots.population import heatmapwrapper_many_useful_plots
+                                    heatmapwrapper_many_useful_plots(pathis, savedirthis, var_effect=var_effect, 
+                                                                    var_conj=var_conj, 
+                                                                    var_is_blocks=var_is_blocks, mean_over_trials=mean_over_trials,
+                                                                    flip_rowcol=True, plot_fancy=True, n_rand_trials=5,
+                                                                    diverge=diverge)
 
-                                from neuralmonkey.neuralplots.population import heatmapwrapper_many_useful_plots
-                                heatmapwrapper_many_useful_plots(pathis, savedirthis, var_effect=var_effect, 
-                                                                var_conj=var_conj, 
-                                                                var_is_blocks=var_is_blocks, mean_over_trials=mean_over_trials,
-                                                                flip_rowcol=True, plot_fancy=True, n_rand_trials=5,
-                                                                diverge=diverge)
+                                ###################################### Running euclidian
+                                if subspace_projection is not None: # State space plots do not make sense for raw data...
+                                    # savedirthis = f"{SAVEDIR}/SS-subtr_version={subtr_version}"
+                                    nmin_trials_per_lev = 5
+                                    # Plot state space
+                                    LIST_VAR = [
+                                        var_effect,
+                                    ]
+                                    LIST_VARS_OTHERS = [
+                                        (var_conj,),
+                                    ]
+                                    PLOT_CLEAN_VERSION = True
+                                    list_dim_timecourse = list(range(NPCS_KEEP))
+                                    list_dims = [(0,1), (1,2), (2,3), (3,4)]
 
-                            ###################################### Running euclidian
-                            if subspace_projection is not None:
-                                # savedirthis = f"{SAVEDIR}/SS-subtr_version={subtr_version}"
-                                savedirthis = f"{SAVEDIR}/SS-zscore={zscore}-subtr_time_mean={subtr_time_mean}-subtrbase={subtr_baseline}-mean={mean_over_trials}"
-                                os.makedirs(savedirthis, exist_ok=True)
-                                nmin_trials_per_lev = 5
-                                # Plot state space
-                                LIST_VAR = [
-                                    var_effect,
-                                ]
-                                LIST_VARS_OTHERS = [
-                                    (var_conj,),
-                                ]
-                                PLOT_CLEAN_VERSION = True
-                                list_dim_timecourse = list(range(NPCS_KEEP))
-                                list_dims = [(0,1), (1,2), (2,3), (3,4)]
-                                pathis.plot_state_space_good_wrapper(savedirthis, LIST_VAR, LIST_VARS_OTHERS, PLOT_CLEAN_VERSION=PLOT_CLEAN_VERSION,
-                                                                list_dim_timecourse=list_dim_timecourse, list_dims=list_dims,
-                                                                nmin_trials_per_lev=nmin_trials_per_lev)                
+                                    savedirthis = f"{SAVEDIR}/SS-zscore={zscore}-subtr_time_mean={subtr_time_mean}-subtrbase={subtr_baseline}-twindscal={twindscal}"
+                                    os.makedirs(savedirthis, exist_ok=True)
+
+                                    pathis.plot_state_space_good_wrapper(savedirthis, LIST_VAR, LIST_VARS_OTHERS, PLOT_CLEAN_VERSION=PLOT_CLEAN_VERSION,
+                                                                    list_dim_timecourse=list_dim_timecourse, list_dims=list_dims,
+                                                                    nmin_trials_per_lev=nmin_trials_per_lev)                
 
 # def plot_heatmap_firing_rates_all(PA, savedir):
 #     """
@@ -2008,10 +1991,21 @@ if __name__=="__main__":
     trial_ver = int(sys.argv[4])==1
 
     if trial_ver:
-        # Trial level (samp, raise)
-        question = "CHAR_BASE_trial"
-        PLOTS_DO = [3]
-        version = "trial"
+        if False: 
+            # Older, which was almost like rewriting everything but for trials.
+            # Trial level (samp, raise)
+            question = "CHAR_BASE_trial"
+            PLOTS_DO = [3]
+            version = "trial"
+            assert False, "this is old, prob wont work"
+        else:
+            # New, which is converting to fake "strokes" dataset, and then running the stroke code.
+            question = "CHAR_BASE_trial"
+            PLOTS_DO = [5]
+            PLOTS_DO = [1, 5, 2, 4] # The extra stuff
+            version = "trial"
+            event_keep_trial = "05_first_raise"
+            # event_keep_trial = "04_go_cue"
     else:
         # Stroke level
         question = "CHAR_BASE_stroke"
@@ -2023,8 +2017,11 @@ if __name__=="__main__":
         version = "stroke"
 
         # FINAL, good code:
-        PLOTS_DO = [1, 5, 2, 4] # GOOD
         PLOTS_DO = [5] #
+        PLOTS_DO = [1, 2, 4] # GOOD
+        PLOTS_DO = [1] # GOOD
+
+        # PLOTS_DO = [6] #
         # PLOTS_DO = [2] #
 
     # if animal=="Diego":
@@ -2043,13 +2040,16 @@ if __name__=="__main__":
     # Make a copy of all PA before normalization
     dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date)
 
-    from neuralmonkey.classes.population_mult import dfallpa_preprocess_sort_by_trialcode
-    dfallpa_preprocess_sort_by_trialcode(DFallpa)
+    # from neuralmonkey.classes.population_mult import dfallpa_preprocess_sort_by_trialcode
+    # dfallpa_preprocess_sort_by_trialcode(DFallpa)
+
+    if version=="trial":
+        DFallpa = preprocess_dfallpa_trial_to_stroke_fake(DFallpa, event_keep=event_keep_trial)
 
     # Determine if rows are bad or good beh storkes (dont prune yet)
-    if version == "stroke":
-        # if trial, then fails...
-        behstrokes_preprocess_assign_col_bad_strokes(DFallpa, animal, date)
+    # if version == "stroke":
+    # if trial, then fails...
+    behstrokes_preprocess_assign_col_bad_strokes(DFallpa, animal, date)
 
     ################ PARAMS
     for plotdo in PLOTS_DO:
@@ -2163,6 +2163,11 @@ if __name__=="__main__":
             "### [MULT DAYS] for: euclidian_time_resolved_fast_shuffled"
             """
             SAVEDIR_ANALYSIS = f"/lemur2/lucas/analyses/recordings/main/euclidian_char_sp/EUCL_QUICK_SHUFFLE/{animal}-{date}-combine={combine}-wl={version}"
+            if trial_ver:
+                SAVEDIR_ANALYSIS = f"/lemur2/lucas/analyses/recordings/main/euclidian_char_sp/EUCL_QUICK_SHUFFLE/{animal}-{date}-combine={combine}-wl={version}-{event_keep_trial}"
+            else:
+                SAVEDIR_ANALYSIS = f"/lemur2/lucas/analyses/recordings/main/euclidian_char_sp/EUCL_QUICK_SHUFFLE/{animal}-{date}-combine={combine}-wl={version}-00_stroke"
+
             os.makedirs(SAVEDIR_ANALYSIS, exist_ok=True)
             print(SAVEDIR_ANALYSIS)
             DO_RSA_HEATMAPS = True
