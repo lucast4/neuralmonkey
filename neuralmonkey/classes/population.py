@@ -493,7 +493,7 @@ class PopAnal():
         self.Xdataframe = applyFunctionToAllRows(self.Xdataframe, F, newcolname="neur_z")
 
     def zscoreFrNotDataframe(self):
-        """ z-score across trials and time bins, separately for each chan
+        """ z-score across trials and time bins, separately for each chan.
         RETURNS:
         - modifies self.Xz
         - return self.Xz
@@ -2801,6 +2801,11 @@ class PopAnal():
 
         PA = self
 
+        if umap_n_components is None:
+            umap_n_components=2
+        if umap_n_neighbors is None:
+            umap_n_neighbors=40
+
         # Extra dim reductions?
         METHOD = "basic"
         if dim_red_method is None:
@@ -3259,6 +3264,11 @@ class PopAnal():
             # Extra dimreduction step?
             if extra_dimred_method in ["umap", "mds"]:
                 from neuralmonkey.analyses.state_space_good import dimredgood_nonlinear_embed_data
+                # print(X.shape)
+                # print(extra_dimred_method)
+                # print(extra_dimred_method_n_components)
+                # print(umap_n_neighbors)
+                # assert False
                 X, _ = dimredgood_nonlinear_embed_data(X, METHOD=extra_dimred_method, n_components=extra_dimred_method_n_components,
                                                            umap_n_neighbors=umap_n_neighbors) # 
             else:
@@ -3684,7 +3694,8 @@ class PopAnal():
 
     def behavior_replace_neural_with_strokes(self, version="beh", n_time_bins=50,
                                              centerize_strokes=True, plot_examples=False,
-                                             remove_time_axis=True):
+                                             remove_time_axis=True,
+                                             align_strokes_to_onset=False):
         """
         Replace self.X with strokes, such that shape is now (2, ntrials, ntimes), where
         the 2 are x and y.
@@ -3711,6 +3722,10 @@ class PopAnal():
         # center each stroke.
         if centerize_strokes:
             strokes = strokes_centerize(strokes)
+
+        if align_strokes_to_onset:
+            from pythonlib.tools.stroketools import strokes_alignonset
+            strokes = strokes_alignonset(strokes)
 
         if plot_examples:
             fig, ax = plt.subplots()
@@ -3875,6 +3890,7 @@ class PopAnal():
         inds = self.index_find_these_values("times", twind)
         assert len(inds)==2
         if twind[0] > max(self.Times) or twind[1] < min(self.Times):
+            print("-----")
             print(twind)
             print(self.Times)
             print(inds)
@@ -4226,9 +4242,13 @@ class PopAnal():
         """
 
         # Prune to just the chans that exist
-
+        chans_orig = [ch for ch in chans]
         chans = [ch for ch in chans if ch in self.Chans]
 
+        if len(chans)==0:
+            print("chans you want to plot:", chans_orig)
+            print("self.Chans:", self.Chans)
+            assert False, "did not input any existing chans"
 
         list_pa, levels = self.split_by_label("trials", vars_others)
         ncols = len(levels)
@@ -4338,7 +4358,8 @@ class PopAnal():
 
     def plot_state_space_good_wrapper(self, savedir, LIST_VAR, LIST_VARS_OTHERS=None, LIST_FILTDICT=None, LIST_PRUNE_MIN_N_LEVS=None,
                                       time_bin_size = 0.05, PLOT_CLEAN_VERSION = False, 
-                                      nmin_trials_per_lev=None, list_dim_timecourse=None, list_dims=None):
+                                      nmin_trials_per_lev=None, list_dim_timecourse=None, list_dims=None,
+                                      also_plot_heatmaps=False):
         """
         Wrapper to make ALL state space plots, including (i) trajectiroeis (ii) scalars, and (iii) traj vs. time plots.
         PARAMS:
@@ -4348,6 +4369,7 @@ class PopAnal():
         - LIST_PRUNE_MIN_N_LEVS, list of int.
         - PLOT_CLEAN_VERSION, bool, if true, then amkes the plot prety.
         - nmin_trials_per_lev, prunes levels with fewer trials thant his.
+        - time_bin_size, this is the final separation in time between the pts that are plotted (i.e., is "slide")
         """
 
         from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_WRAPPER
@@ -4575,7 +4597,7 @@ class PopAnal():
                 var_varothers_already_plotted.append((var, tuple(var_others)))
 
             ########### HEATMAPS of activity
-            if PA_traj is not None:
+            if PA_traj is not None and also_plot_heatmaps:
                 savedir_this = f"{savedir}/heatmaps-var={var}-varother={var_others}"
                 os.makedirs(savedir_this, exist_ok=True)
                 from neuralmonkey.neuralplots.population import heatmapwrapper_many_useful_plots
