@@ -134,11 +134,11 @@ def _popanal_preprocess_normalize_softzscore_raw(x):
     assert len(normvec.shape)==1
     # normvec = np.reshape(normvec, [normvec.shape[0]]) # (chans, 1, 1) # std for each chan, across (times, trials).
     normvec = np.reshape(normvec, [normvec.shape[0], 1]) # (chans,) # std for each chan, across (times, trials).
-    normmin = np.percentile(normvec, [2.5]) # get the min (std fr across time/conditions) across channels, add this on to still have
+    # normmin = np.percentile(normvec, [2.5]) # get the min (std fr across time/conditions) across channels, add this on to still have
 
     # min fr, to make this a "soft" normalization
-    frmean_each_chan = np.mean(x, axis=1) # (chans, 1, 1) # std for each chan, across (times, trials).
-    frmin = np.min(frmean_each_chan) # (chans, 1, 1)) # min (mean fr across time/condition) across chans
+    frmean_each_chan = np.mean(x, axis=1) # (chans, 1, 1) # mean for each chan, across (times, trials).
+    frmin = np.min(frmean_each_chan) # scalar
     # frmin = np.min(np.mean(np.mean(PA.X, axis=1, keepdims=True), axis=2, keepdims=True)) # (chans, 1, 1)) # min (mean fr across time/condition) across chans
 
     # to further help making this "soft"

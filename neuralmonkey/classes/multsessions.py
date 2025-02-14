@@ -978,7 +978,6 @@ class MultSessions(object):
         
         return st
 
-
     def print_summary_sessions(self):
         """ Helper to print summary of n trial and sites for each sn
         """
