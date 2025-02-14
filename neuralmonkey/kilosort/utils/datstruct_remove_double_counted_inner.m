@@ -1,9 +1,10 @@
 function [double_count_rate, double_count_rate_relbase, rate_far_rel_base, ...
 	frac_spikes_double_counted] = datstruct_remove_double_counted_inner(st, ...
 		THRESH_CLOSE)
-
 	%% Find double-counted waveforms
 	% if refrac violations are really high within short time...
+    % For a set of spikes, return statistics re: double counting.
+    
 	if ~exist('THRESH_CLOSE', 'var'); THRESH_CLOSE = 0.00025; end
 		
     threshold = 0.0005; % second, to call it a violatioin.

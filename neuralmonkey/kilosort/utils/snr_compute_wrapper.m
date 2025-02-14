@@ -1,6 +1,7 @@
 function [snr_final, snr_new, peak_to_trough, waveforms_running_std, snr_old, peak_to_trough_old, waveforms_running_std_old, ...
         waveforms_aligned] = ...
         snr_compute_wrapper(waveforms, indpeak, npre, npost)
+    %% Wrapper to compute SNR, given multiple waveforms (trials) for a unit.
     % Autoamti ally doees stuff to waveforms to condition it for computing snr. Just
     % pass in the raw waveforms.
 
