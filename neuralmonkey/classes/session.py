@@ -47,6 +47,12 @@ MAP_COMBINED_REGION_TO_REGION = {
     "preSMA":["preSMA_p", "preSMA_a"]}
 MAP_COMBINED_REGION_TO_REGION = {k:tuple(v) for k, v in MAP_COMBINED_REGION_TO_REGION.items()}
 
+MAP_REGION_TO_COMBINED_REGION = {}
+for regcomb, regions in MAP_COMBINED_REGION_TO_REGION.items():
+    for reg in regions:
+        MAP_REGION_TO_COMBINED_REGION[reg] = regcomb
+MAP_REGION_TO_COMBINED_REGION
+
 # SMFR_SIGMA = 0.025
 # SMFR_SIGMA = 0.040 # 4/29/23
 _SMFR_SIGMA = 0.025 # 4/20/24, # since you can always smoother further later on.
@@ -4368,7 +4374,7 @@ class Session(object):
         #             Mapper[s] = bregion
         # return Mapper[site]
 
-    def sitegetterKS_thissite_info(self, site, clean=False):
+    def sitegetterKS_thissite_info(self, site, clean=False, ks_get_extra_info=False):
         """ returns info for this site in a dict
         INCLUDES even dirty sites
         """
@@ -4388,18 +4394,31 @@ class Session(object):
             rs, chan = self.convert_site_to_rschan(site)
             site_tdt = site
             clust = None
+
+            info = {
+                "site_tdt":site_tdt,
+                "clust":clust,
+                "region":regionthis,
+                "rs":rs,
+                "chan":chan}
         elif self.SPIKES_VERSION=="kilosort":
             clust = site
             site_tdt, rs, chan = self.ks_convert_clust_to_site_rschan(clust)
+            
+            info = {
+                "site_tdt":site_tdt,
+                "clust":clust,
+                "region":regionthis,
+                "rs":rs,
+                "chan":chan}
+
+            if ks_get_extra_info:
+                tmp = self.datall_TDT_KS_slice_single_bysite(site, self.get_trials_list()[0])
+                info["label_final"] = tmp["label_final"]
         else:
             assert False
 
-        return {
-            "site_tdt":site_tdt,
-            "clust":clust,
-            "region":regionthis,
-            "rs":rs,
-            "chan":chan}
+        return info
 
     def _sitegetter_sort_sites_by(self, sites, by, take_top_n=None):
         """ Sort sites by some method and optionally return top n
