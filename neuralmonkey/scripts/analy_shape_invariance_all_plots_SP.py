@@ -680,6 +680,7 @@ def euclidian_time_resolved_fast_shuffled_mult_reload(animal, date, var_other, a
         SAVEDIR_ORIG = "/lemur2/lucas/analyses/recordings/main/euclidian_char_sp/EUCL_QUICK_SHUFFLE"
         SAVEDIR = f"{SAVEDIR_ORIG}/{animal}-{date}-combine={combine}-wl={wl}-04_go_cue"
     elif analysis_kind == "char_sp_00_stroke":
+        # GOOD - THis is the one I used...
         var_effect = "shape_semantic_grp"
         var_other = "task_kind"
         wl = "stroke"
@@ -1426,8 +1427,15 @@ def euclidian_time_resolved_fast_shuffled_mult_scatter_plots(analysis_kind="shap
         SAVEDIR_MULT = "/lemur2/lucas/analyses/recordings/main/shape_invariance/EUCLIDIAN_SHUFF/MULT"
         var_effect = "seqc_0_shape"
         LIST_ANIMAL_VAROTHER = [
-            # ("Pancho", "seqc_0_loc"),
+            ("Pancho", "seqc_0_loc"),
             ("Diego", "seqc_0_loc"),
+            ]
+    if analysis_kind=="shape_invar_clean_size":
+        SAVEDIR_MULT = "/lemur2/lucas/analyses/recordings/main/shape_invariance/EUCLIDIAN_SHUFF/MULT"
+        var_effect = "seqc_0_shape"
+        LIST_ANIMAL_VAROTHER = [
+            ("Pancho", "gridsize"),
+            ("Diego", "gridsize"),
             ]
     elif analysis_kind=="shape_invar":
         SAVEDIR_MULT = "/lemur2/lucas/analyses/recordings/main/shape_invariance/EUCLIDIAN_SHUFF/MULT"
@@ -1470,54 +1478,6 @@ def euclidian_time_resolved_fast_shuffled_mult_scatter_plots(analysis_kind="shap
 
     for animal, var_other in LIST_ANIMAL_VAROTHER:
         list_date = _euclidian_time_resolved_fast_shuffled_mult_scatter_plots_params(analysis_kind, animal, var_other)
-        # if analysis_kind in ["shape_invar_clean_loc", "shape_invar_clean_size"]:
-        #     # Then these were either only (shape, loc) or (shape, size), not (shape, loc, size)
-        #     if animal == "Diego" and var_other == "seqc_0_loc":
-        #         list_date = [230614, 230615, 240508]
-        #     elif animal == "Diego" and var_other == "gridsize":
-        #         list_date = [230618, 230619]
-        #     elif animal == "Pancho" and var_other == "seqc_0_loc":
-        #         list_date = [220715, 220724]                
-        #     elif animal == "Pancho" and var_other == "gridsize":
-        #         list_date = [220716, 220717]
-        #     else:
-        #         assert False
-        # elif analysis_kind in ["shape_invar", "shape_invar_context"]:
-        #     if animal == "Diego" and var_other == "seqc_0_loc":
-        #         # list_date = [230614, 230615]
-        #         list_date = [230614, 230615, 240508, 240509, 240510, 240513, 240530]
-        #     elif animal == "Diego" and var_other == "gridsize":
-        #         # list_date = [230618, 230619]
-        #         list_date = [230618, 230619, 240510, 240530]
-        #     elif animal == "Pancho" and var_other == "seqc_0_loc":
-        #         # list_date = [220608, 220715, 220717]
-        #         # list_date = [220606, 220608, 220609, 220610, 220715, 220717, 220724, 220918, 221218, 240508, 240509, 240510, 240515, 240530]                
-        #         # list_date = [220715, 220717, 220724, 220918, 240508, 240509, 240510, 240530]                
-        #         list_date = [220606, 220608, 220715, 220717, 220724, 220918, 221218, 240508, 240509, 240510, 240515, 240530]                
-        #     elif animal == "Pancho" and var_other == "gridsize":
-        #         # list_date = [220716, 220717]
-        #         list_date = [220606, 220608, 220716, 220717, 220918, 240510, 240530]
-        #     else:
-        #         assert False
-        # elif analysis_kind == "char_sp":
-        #     if animal == "Diego":
-        #         # list_date = [231205, 231122, 231128, 231129, 231201, 231120, 231121, 231206, 231218, 231220] # A date fails.
-        #         list_date = [231205, 231122, 231128, 231129, 231201, 231120, 231206, 231218, 231220]
-        #         # list_date = [231220]
-        #     elif animal == "Pancho":
-        #         if False:
-        #             # All dates
-        #             list_date_1 = [220618, 220626, 220628, 220630, 230119, 230120, 230126, 230127]
-        #             list_date_2 = [220614, 220616, 220621, 220622, 220624, 220627, 230112, 230117, 230118]
-        #             list_date = list_date_1 + list_date_2
-        #         else:
-        #             # 2022 dates, good PMv signal
-        #             list_date = [220614, 220616, 220621, 220622, 220624, 220627, 220618, 220626, 220628, 220630]
-        #     else:
-        #         assert False
-        # else:
-        #     print(analysis_kind)
-        #     assert False
 
         SAVEDIR = f"{SAVEDIR_MULT}/analy={analysis_kind}-{animal}-varother={var_other}-{min(list_date)}-{max(list_date)}"
         os.makedirs(SAVEDIR, exist_ok=True)
@@ -1896,6 +1856,9 @@ def euclidianshuff_stats_linear_plot_wrapper(DFDISTS, SAVEDIR_PLOTS, var_other, 
 
     ###############################################################
     ### Compare areas
+    # Note, here each datapt is conjunction of variables + (animal, date), where variables could be, for instance, (shape, loc).
+    # This means that could have repeated conditions across days, leading to more datapts.
+    
     savedir = f"{SAVEDIR_PLOTS}/linear_model_region_vs_region"
     import os
     os.makedirs(savedir, exist_ok=True)
@@ -2355,25 +2318,34 @@ def statespace_traj_plot(DFallpa, animal, date, SAVEDIR_ANALYSIS, var_other):
                 
                 ####### Plot state space
                 for subtr_time_mean in [False, True]:
-                    if subtr_time_mean:
-                        pathis = pa.norm_subtract_trial_mean_each_timepoint()
-                    else:
-                        pathis = pa.copy()
-                    
-                    savedir = f"{SAVEDIR}/subtrmean={subtr_time_mean}"
-                    os.makedirs(savedir, exist_ok=True)
+                    for do_another_smooth in [False, True]:
+                        
+                        if subtr_time_mean:
+                            pathis = pa.norm_subtract_trial_mean_each_timepoint()
+                        else:
+                            pathis = pa.copy()
+                        
+                        if do_another_smooth:    
+                            # HACKY -- just trying this out to confirm that smoothing worked above (and was not just for binnig for PCA)
+                            # Do another round of smoothing (shouldnt realyl matter, but just sanity check)
+                            pathis = pathis.agg_by_time_windows_binned(tbin_dur, tbin_slide)
 
-                    LIST_VAR = [
-                        var_effect,
-                    ]
-                    LIST_VARS_OTHERS = [
-                        (var_other,),
-                    ]
-                    PLOT_CLEAN_VERSION = True
-                    list_dim_timecourse = list(range(NPCS_KEEP))
-                    list_dims = [(0,1), (1,2), (2,3), (3,4)]
-                    pathis.plot_state_space_good_wrapper(SAVEDIR, LIST_VAR, LIST_VARS_OTHERS, PLOT_CLEAN_VERSION=PLOT_CLEAN_VERSION,
-                                                    list_dim_timecourse=list_dim_timecourse, list_dims=list_dims)                
+                        savedir = f"{SAVEDIR}/subtrmean={subtr_time_mean}-do_another_smooth={do_another_smooth}"
+                        os.makedirs(savedir, exist_ok=True)
+
+                        LIST_VAR = [
+                            var_effect,
+                        ]
+                        LIST_VARS_OTHERS = [
+                            (var_other,),
+                        ]
+                        PLOT_CLEAN_VERSION = True
+                        list_dim_timecourse = list(range(NPCS_KEEP))
+                        list_dims = [(0,1), (1,3), (1,2), (2,3), (3,4)]
+                        time_bin_size = None # or else will have choppy trajectories
+                        pathis.plot_state_space_good_wrapper(savedir, LIST_VAR, LIST_VARS_OTHERS, PLOT_CLEAN_VERSION=PLOT_CLEAN_VERSION,
+                                                        list_dim_timecourse=list_dim_timecourse, list_dims=list_dims,
+                                                        time_bin_size=time_bin_size)                
 
 def decodercross_plot(DFallpa, SAVEDIR_ANALYSIS):
     """
@@ -2906,8 +2878,9 @@ if __name__=="__main__":
     # PLOTS_DO = [0]
     
     # --- Good:
-    # PLOTS_DO = [0, 5, 4, 2, 3] # Good
-    PLOTS_DO = [4]
+    PLOTS_DO = [0, 5, 4, 2, 3] # Good
+    PLOTS_DO = [5] # Good
+    # PLOTS_DO = [4]
     # PLOTS_DO = [2, 3] # Good
 
     # if (animal, date) in 
@@ -2965,6 +2938,10 @@ if __name__=="__main__":
             # --> #3 is the good one I worked with (under the main header:
             # # [#4] Euclidian, doing stats (and faster way to compute)
             # [#4.4] --> just to plot across all days (ignoring shuffles)
+
+            # FINAL methods for MULT:
+            # (1) Summary plots     -->     [#4.4]
+            # (2) Stats             -->     Stats method # 4 -- linear model, at level of trials
             if False:
                 if var_other == "seqc_0_loc":
                     var_context_same = "gridsize"
