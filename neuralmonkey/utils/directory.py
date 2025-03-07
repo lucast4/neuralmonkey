@@ -121,6 +121,7 @@ def check_log_preprocess_completion_status(animal, DEST_DIR= f"{PATH_NEURALMONKE
     from neuralmonkey.classes.session import load_session_helper
 
     DEST_FILE = f"{DEST_DIR}/{animal}.txt"
+    DEST_FILE_DONE_DATES = f"{DEST_DIR}/{animal}_done_dates.txt"
 
     # go thru raw data to collect dates and sessions
     DIR_RAW = f"{PATH_DATA_NEURAL_RAW}/{animal}"
@@ -128,6 +129,8 @@ def check_log_preprocess_completion_status(animal, DEST_DIR= f"{PATH_NEURALMONKE
 
     res = []
     res_strings = []
+    # dates_done = []
+    dates_done_string = "" # " # a single flat string"
     for dirthis in list_dir_date:
 
         # List of sessiosn for this date
@@ -138,6 +141,7 @@ def check_log_preprocess_completion_status(animal, DEST_DIR= f"{PATH_NEURALMONKE
         
         # count and check sessions
         date_string = f"{date}" # Initialize
+        all_done = True
         for i, dirsess in enumerate(list_dir_sessions):
             
             sess_id = fileparts(dirsess)[-2] # e.g, Pancho-220715-154205
@@ -170,12 +174,17 @@ def check_log_preprocess_completion_status(animal, DEST_DIR= f"{PATH_NEURALMONKE
                 date_string+=f"  {i}_done"
             else:
                 date_string+=f"  ({sess_id})"
+                all_done = False
             
         res_strings.append({
             "date":date,
             "string":date_string
         })
-
+        
+        # Store the dates that are done
+        if all_done:
+            # dates_done.append(date)
+            dates_done_string = f"{dates_done_string} {date}"
                 
     # write to file, after sorting by date
     res_strings = sorted(res_strings, key=lambda x: x["date"])
@@ -184,6 +193,8 @@ def check_log_preprocess_completion_status(animal, DEST_DIR= f"{PATH_NEURALMONKE
     list_strings = [f"Checked on {ts}"] + ["date | sess-preprocess_done", "------------------------"] + list_strings
     writeStringsToFile(DEST_FILE, list_strings)
 
+    # also save a text file with all done dates
+    writeStringsToFile(DEST_FILE_DONE_DATES, [dates_done_string])
     print(f"Logged at {DEST_FILE}")
 
 

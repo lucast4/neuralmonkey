@@ -19,6 +19,7 @@ from pythonlib.globals import PATH_NEURALMONKEY, PATH_DATA_NEURAL_RAW, PATH_DATA
 # PATH_NEURALMONKEY = "/data1/code/python/neuralmonkey/neuralmonkey"
 import pandas as pd
 import seaborn as sns
+from pythonlib.tools.plottools import savefig
 
 LOCAL_LOADING_MODE = False
 LOCAL_PATH_PREPROCESSED_DATA = f"{PATH_DATA_NEURAL_PREPROCESSED}/recordings"
@@ -126,6 +127,8 @@ MAP_EVENT_TO_PREFIX = {
 }
 
 DATASETBEH_CACHED_USE_BEHTOUCH = True
+
+HACK_TOUCHSCREEN_LAG = True
 
 def load_mult_session_helper(DATE, animal, dataset_beh_expt=None, expt = "*", 
     MINIMAL_LOADING=True,
@@ -2840,7 +2843,7 @@ class Session(object):
         Might be obsolete.
         """
         rs, chan = self.convert_site_to_rschan(site)
-        assert False, "make this auto detect whtehr get tdt or ks. if get ks, then have to extract from raw. See Paolo Emilio stuff."
+        assert self.SPIKES_VERSION=="tdt", "make this auto detect whtehr get tdt or ks. if get ks, then have to extract from raw. See Paolo Emilio stuff."
         self.load_spike_waveforms_(rs, chan)
 
     def load_spike_waveforms_(self, rs, chan, ver="spikes_tdt_quick"):
@@ -4450,11 +4453,11 @@ class Session(object):
 
         return sites_sorted
 
-    def sitegetterKS_all_sites(self):
+    def sitegetterKS_all_sites(self, clean=True):
         """
         Return list of all sites
         """
-        return self.sitegetterKS_map_region_to_sites_MULTREG()
+        return self.sitegetterKS_map_region_to_sites_MULTREG(clean=clean)
 
     def sitegetterKS_map_region_to_sites_MULTREG(self, list_regions=None, clean=True,
                                                  force_tdt_sites=False):
@@ -6046,6 +6049,7 @@ class Session(object):
         - times_shifted
         NOTE: added 11/4/24
         """
+        assert HACK_TOUCHSCREEN_LAG==True, "fix this, you are not allowed to run it."
         delta = 1.5 * 0.02 # n frames x 20ms per frame
         times = [t-delta for t in times]
         return times
@@ -10511,7 +10515,6 @@ class Session(object):
         self.plot_raster_sites(ax, trialtdt, list_sites, overlay_trial_events=overlay_trial_events)
         # ax.set_xlim(XLIM)
 
-
         # Another plot for the beh and image
         fig2, axes = plt.subplots(1,2, sharex=True, sharey=True, figsize=(8,4))
 
@@ -12008,6 +12011,178 @@ class Session(object):
         # import os
         # return os.path.exists(SAVEDIR)
 
+    ##################### SANITY CHECKS
+    def sanity_waveforms_all_arrays_extract(self):
+        """
+        Extract data across arrays (bregion, site_within_region). The data will be
+        peak_minus_trough of average waveform, althgou code culd be modiifed to 
+        get different metrics.
+
+        The output can be used for computation of changes in arrays across days.
+        """
+
+        ### Get mappers between global site and (region, site_within_region)
+        map_region_site = self.sitegetterKS_generate_mapper_region_to_sites_BASE(clean=False)
+
+        # Get global site that is index of first site in this region
+        map_region_first_site = {} 
+        for region, sites_global in map_region_site.items():
+            if len(sites_global)>0:
+                map_region_first_site[region] = min(sites_global)
+                print(region, sites_global)
+                # print(region, min(sites_global))
+
+        # Finally, map from global to (region, site_within)
+        map_site_to_region_sitewithin = {}
+        for region, sites_global in map_region_site.items():
+            
+            if len(sites_global)>0:
+
+                site_first = map_region_first_site[region]
+
+                for s in sites_global:
+                    map_site_to_region_sitewithin[s] = (region, s-site_first)
+
+        ### Collect data for each site
+        res = []
+        sites = self.sitegetterKS_all_sites(clean=False) # get all sites, except missing arrays
+        for s in sites:
+            if s in self.DatSpikeWaveforms:
+                waveforms = self.DatSpikeWaveforms[s]
+            else:
+                self.load_spike_waveforms(s)
+                waveforms = self.DatSpikeWaveforms[s]
+
+            # Compute stats
+            wf_mean = np.mean(waveforms, axis=0)
+            peak_minus_trough = np.max(wf_mean) - np.min(wf_mean)
+
+            # Store
+            region = self.sitegetterKS_map_site_to_region(s)
+            _region, site_within = map_site_to_region_sitewithin[s]
+            assert region==_region
+
+            res.append({
+                "region":region,
+                "site_within":site_within,
+                "site_global":s,
+                "peak_minus_trough":peak_minus_trough,
+                "wf_mean":wf_mean,
+            })        
+
+        dfres = pd.DataFrame(res)
+        return dfres        
+    
+
+
+    def _sanity_waveforms_concat_waveforms(self, dfres):
+        """
+        Get data (bregions, sites x time bins), which is a more fine-grained represntation of entire array, to help in comparing
+        across days. 
+        PARAMS:
+        - dfres, output of sanity_waveforms_all_arrays_extract
+        RETURNS:
+        - dataframe, index is nregions, and columns are ntimes after concatting across all 32 sites for this array (960 usually)
+        """
+
+        list_sites_within = range(32)
+        list_regions = dfres["region"].unique().tolist()
+
+        out = []
+        for br in list_regions:
+            
+            # Collect and concat all sites
+            wf_all = []
+            for s in list_sites_within:
+                dfthis = dfres[(dfres["region"] == br) & (dfres["site_within"] == s)]
+                assert len(dfthis)==1
+
+                wf_mean = dfthis["wf_mean"].item()
+                wf_all.append(wf_mean)
+
+            # concat into a single vector
+            wf_all_concat = np.concatenate(wf_all, axis=0)
+            out.append(wf_all_concat)
+        mat_region_wfall = np.stack(out, axis=0) # (bregions, concatted times)    
+
+        df = pd.DataFrame(mat_region_wfall, index=list_regions)
+
+        return df
+    
+    def _sanity_waveforms_verify_finally(self, dat1, dat2, savedir, suffix=None):
+        """
+        Final quantification to verify array alignement across days.
+        PARAMS:
+        - dat1, dataframe data for day1, (nregions, ndimensions) where ndimensions could be nsites (each with a scalar statstic), or
+        sites x time bins (if concatenate waveforms)
+        - dat2, dataframe data for day2, similar structure.
+        - regions, list of regions, assumed that these are the rows for both dat1, and dat2
+        RETURNS:
+        - passed, bool, True iff all bregions passed
+        """
+        from pythonlib.tools.pandastools import plot_subplots_heatmap
+        from pythonlib.tools.snstools import heatmap
+
+        # Check regions (rows) and confirm match across dataframes
+        assert np.all(dat1.index==dat2.index)
+        regions = dat1.index.tolist()
+
+        # Get correlation between each pair of arrays (pairs are across datasets)
+        res_cross = []
+        for br1 in dat1.index:
+            vals1 = dat1.loc[br1, :]
+
+            for br2 in dat2.index:
+                vals2 = dat2.loc[br2, :]
+
+                corr = np.corrcoef(vals1, vals2)[0,1]
+
+                res_cross.append({
+                    "region1":br1,
+                    "region2":br2,
+                    "corr":corr
+                })
+        dfcross = pd.DataFrame(res_cross)
+
+        ### Plots
+        # Plot heatmaps for each dataset
+        fig, axes = plt.subplots(2, 1, figsize=(12, 10))
+        ax = axes.flatten()[0]
+        heatmap(dat1, ax, False, diverge=True, labels_row=regions)#     
+        ax = axes.flatten()[1]
+        heatmap(dat2, ax, False, diverge=True, labels_row=regions)#     
+        savefig(fig, f"{savedir}/heatmaps_each_both_datasets-suffix={suffix}.pdf")
+        
+        # Plot heatmap of cross-corrleation
+        # dfcross2d = plot_subplots_heatmap(dfcross, "region1", "region2", "corr", None, return_dfs=True)[2]["dummy"]
+        fig, axes, tmp = plot_subplots_heatmap(dfcross, "region1", "region2", "corr", None, return_dfs=True)
+        dfcross2d = tmp["dummy"]
+        savefig(fig, f"{savedir}/correlation_across_sessions-suffix={suffix}.pdf")
+
+        # Check that diagonals are much higher than offs
+        passed = True
+        failed_regions = []
+        for i, (br, row) in enumerate(dfcross2d.iterrows()):
+            corr_same_array = row[i]
+            corrs_other_arrays = np.r_[row[:i], row[i+1:]]
+
+            if not corr_same_array > max(corrs_other_arrays):
+                print(i, br, row)
+                # assert False, "why array on day 1 mathces a different arrya on day 2?"
+                passed = False
+                failed_regions.append((i, br, row))
+        if passed:
+            print("Good!! passed sanity check. Each array on day 1, tested on day 2, matches best to itself.")        
+        else:
+            print("Failed! These were the failed regions:")
+            for x in failed_regions:
+                print(x)
+
+        fig, ax = plt.subplots()
+        savefig(fig, f"{savedir}/passed={passed}-suffix={suffix}")
+        
+        return passed
+    
 #####################################################################
 assert _REGIONS_IN_ORDER == ("M1_m", "M1_l", "PMv_l", "PMv_m",
                 "PMd_p", "PMd_a", "dlPFC_p", "dlPFC_a", 
