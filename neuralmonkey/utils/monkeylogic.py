@@ -46,7 +46,7 @@ def _load_sessions_corrupted():
     return load_yaml_config(path)
 
 def _load_session_mapper(animal, date = None):
-    """ Load a dict (metadat) mapping from session (neural) to beh,
+    """ Load a dict (metadat) with hand-coded special cases, of mapping from session (neural) to beh,
     across all data for this date.
     PARAMS:
     - date, if None, returns the dict. if date is int (YYMMDD), returns its
@@ -163,7 +163,7 @@ def session_map_from_rec_to_ml2(animal, date, rec_session):
     # beh_session = rec_session+1    
 
     # Which beh session maps to this neural session?
-    session_map = _load_session_mapper(animal, int(date)) # e..g [3,4,5] for beh sessions
+    session_map = _load_session_mapper(animal, int(date)) # e..g  [3,4,5] for beh sessions [HAND CODED SPECIAL CASES]
     sessdict = getSessionsList(animal, datelist=[date]) 
     
     # confirm that each sess num (beh) only occurs once

@@ -129,7 +129,7 @@ def check_log_preprocess_completion_status(animal, DEST_DIR= f"{PATH_NEURALMONKE
 
     res = []
     res_strings = []
-    # dates_done = []
+    dates_done = []
     dates_done_string = "" # " # a single flat string"
     for dirthis in list_dir_date:
 
@@ -142,6 +142,7 @@ def check_log_preprocess_completion_status(animal, DEST_DIR= f"{PATH_NEURALMONKE
         # count and check sessions
         date_string = f"{date}" # Initialize
         all_done = True
+        at_least_one_done = False
         for i, dirsess in enumerate(list_dir_sessions):
             
             sess_id = fileparts(dirsess)[-2] # e.g, Pancho-220715-154205
@@ -172,20 +173,28 @@ def check_log_preprocess_completion_status(animal, DEST_DIR= f"{PATH_NEURALMONKE
             # Append to string
             if done:
                 date_string+=f"  {i}_done"
+                at_least_one_done=True
             else:
                 date_string+=f"  ({sess_id})"
                 all_done = False
-            
+
+                
         res_strings.append({
             "date":date,
             "string":date_string
         })
         
         # Store the dates that are done
-        if all_done:
-            # dates_done.append(date)
-            dates_done_string = f"{dates_done_string} {date}"
+        if all_done and at_least_one_done:
+            dates_done.append(date)
+            # dates_done_string = f"{dates_done_string} {date}"
                 
+        # if int(date)==220626:
+        #     print(all_done, at_least_one_done)
+        #     print(dates_done_string)
+        #     assert False
+
+
     # write to file, after sorting by date
     res_strings = sorted(res_strings, key=lambda x: x["date"])
     list_strings = [x["string"] for x in res_strings]
@@ -194,6 +203,11 @@ def check_log_preprocess_completion_status(animal, DEST_DIR= f"{PATH_NEURALMONKE
     writeStringsToFile(DEST_FILE, list_strings)
 
     # also save a text file with all done dates
+    dates_done = sorted(dates_done)
+    dates_done_string = ""
+    for date in dates_done:
+        dates_done_string = f"{dates_done_string} {date}"
+
     writeStringsToFile(DEST_FILE_DONE_DATES, [dates_done_string])
     print(f"Logged at {DEST_FILE}")
 
