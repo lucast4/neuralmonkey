@@ -4429,7 +4429,8 @@ def analy_psychoprim_dfscores_condition(dfscores, morphset_this_dfscores, DSmorp
 
     return dfscores
 
-def analy_psychoprim_prepare_beh_dataset(animal, date, savedir="/tmp", D=None, plot_drawings=True):
+def analy_psychoprim_prepare_beh_dataset(animal, date, cetegory_expt_version, 
+                                         savedir="/tmp", D=None, plot_drawings=True):
     """
     Extract beh related to psychometric prims, behavior.
     """
@@ -4442,7 +4443,8 @@ def analy_psychoprim_prepare_beh_dataset(animal, date, savedir="/tmp", D=None, p
         _, D, _, _, _ = prepare_beh_dataset(animal, date, do_syntax_rule_stuff=False)        
 
     from pythonlib.dataset.dataset_analy.psychometric_singleprims import psychogood_preprocess_wrapper_GOOD
-    return psychogood_preprocess_wrapper_GOOD(D, NEURAL_VERSION=True, NEURAL_SAVEDIR=savedir, NEURAL_PLOT_DRAWINGS=plot_drawings)
+    return psychogood_preprocess_wrapper_GOOD(D, NEURAL_VERSION=True, NEURAL_SAVEDIR=savedir, NEURAL_PLOT_DRAWINGS=plot_drawings,
+                                              cetegory_expt_version=cetegory_expt_version)
     
 def _analy_psychoprim_score_postsamp_plot_scores(dfscores, savedir, do_agg_over_trials=True):
     """

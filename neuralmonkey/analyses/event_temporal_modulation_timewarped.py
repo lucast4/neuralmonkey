@@ -279,6 +279,7 @@ def heatmap_bregions_events(DFallpa, base_event, base_twind, sort_event, sort_tw
             panorm = panorm.slice_by_dim_indices_wrapper("chans", sortinds_chan)
 
             # For each chan, plots its mean
+            chans_trials_times = panorm.X.shape
             if mean_over_trials:
                 panorm = panorm.agg_wrapper("trials")
             
@@ -288,7 +289,7 @@ def heatmap_bregions_events(DFallpa, base_event, base_twind, sort_event, sort_tw
             heatmap_stratified_trials_grouped_by_neuron(panorm, inds, ax, n_rand_trials=n_rand, 
                                                         zlims=zlims, add_hline_separator=add_hline_separator)
 
-            ax.set_title(f"{bregion} - {event}")
+            ax.set_title(f"{bregion} - {event} - chans_trials_times={chans_trials_times}")
             
             # Collect all fr
             list_x.append(panorm.X)
