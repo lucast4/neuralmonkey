@@ -1426,6 +1426,22 @@ class Session(object):
         else:
             paths = findPath(self.RecPathBase, path_hierarchy)
 
+        # Sanity check that the number of rec sessions on server (raw neural) matches the number of preprocessed data
+        # If not, then this is a bug -- you probabyl pruned a sessions on server and left it in place in the preprocessed data
+        if self._LOAD_VERSION == "MINIMAL_LOADING": 
+            # THen this means preprocessing across all sessions hsould be finalized at this point.
+            _paths1 = findPath(LOCAL_PATH_PREPROCESSED_DATA, path_hierarchy)
+            _paths2 = findPath(self.RecPathBase, path_hierarchy)
+            if len(_paths1) != len(_paths2):
+                print(_paths1)
+                print(_paths2)
+                assert False, "Fix this -- align the paths. PRobably need to delete a preprocess date?"
+            for p1, p2 in zip(_paths1, _paths2):
+                if deconstruct_filename(p1)["filename_final_noext"]!=deconstruct_filename(p2)["filename_final_noext"]:
+                    print(_paths1)
+                    print(_paths2)
+                    assert False, "Fix this -- align the paths. PRobably need to delete a preprocess date?"
+
         # REmove paths that say "IGNORE"
         paths = [p for p in paths if "IGNORE" not in p]
         # assert len(paths)==1, 'not yhet coded for combining sessions'
@@ -4319,6 +4335,19 @@ class Session(object):
     #     """
     #     return self.sitegetter_all(list_region, clean=clean)
 
+    def sitegetter_map_site_to_array_physical_location(self):
+        """
+        Map electrode to a location on the physical array.
+        Also holds exceptions, such as mistakes in plugging.
+        """
+
+        if self.Animal=="Pancho" and int(self.Date)==220621:
+            assert False, "preSMAa was flipped"
+        if self.Animal=="Pancho" and int(self.Date)==220714:
+            assert False, "FPa was flipped"
+        
+        assert False, "code it"
+
     def sitegetterKS_map_region_to_sites(self, region, clean=True,
             force_tdt_sites=False,
                                          exclude_bad_areas=False):
@@ -5434,6 +5463,8 @@ class Session(object):
                 # self.datasetbeh_load(version="daily", FORCE_AFTER_MINIMAL=FORCE_AFTER_MINIMAL) # daily
                 self.datasetbeh_load(version="daily") # daily
                 print("**Loaded dataset! daily")
+            except DataMisalignError as err:
+                raise err
             except Exception as err:
                 # Try loading using "null" rule, which is common
                 print("This err, when try to load datset:",  err)
@@ -5441,6 +5472,8 @@ class Session(object):
                 self.datasetbeh_load(dataset_beh_expt=dataset_beh_expt, 
                     version="main")
                 print("**Loaded dataset! using rule: null")
+        except DataMisalignError as err:
+            raise err
         except Exception as err:
             print("probably need to pass in correct rule to load dataset.")
             raise err
@@ -5487,6 +5520,7 @@ class Session(object):
             if self.DatasetbehExptname is None:
                 # you must enter it
                 expt = dataset_beh_expt
+                assert dataset_beh_expt is not None, "huh?"
             else:
                 # load saved
                 expt = self.DatasetbehExptname
@@ -5508,15 +5542,40 @@ class Session(object):
             self.Datasetbeh.Dat = self.Datasetbeh.Dat[self.Datasetbeh.Dat["trialcode"].isin(trialcodes_neural_exist)].reset_index(drop=True)
             print("Ending length: ", len(self.Datasetbeh.Dat))
 
+            # Count how many neural trials are missing dataset beh trials
+            misses = 0
+            gottens = 0
+            for t in self.get_trials_list(True):
+                if self.datasetbeh_trial_to_datidx(t) is None:
+                    misses += 1
+                else: 
+                    gottens += 1
+            if misses>2 or misses/gottens>0.03:
+                print("misses: ", misses)
+                print("gottens: ", gottens)
+                # assert False, "why so many neural trials are missing from dataset? "
+                print("This is often beucase there are two beh sessions and one neural session, and so this thinks there is neural trial like sess 1 trial 500, when it should be sess 2, trial 200, this is beucase beh_trial_map_list is wrong. So now this leads to auto computing of beh_trial_map_list")
+                raise DataMisalignError
+
+            # If got this far, then is fine to just take trials that exist in datasetbeh, as doing so will not throw out much
+            # data. If this is False, then some dates will fail, because idx1 or idx2 will be None
+            only_if_in_dataset = True
+
             # (2) Sanity check --> within trial 1 and trial last, all the dataset trials should have a matching
             # neural trial (or at least all). This important beucase later only gets nerual trials that exist in dataset.
             # I dont want to inadvertangly throw out many neural trails due to bug...
-            t1 = self.get_trials_list(True)[0]
-            t2 = self.get_trials_list(True)[-1]
+            t1 = self.get_trials_list(True, only_if_in_dataset=only_if_in_dataset)[0]
+            t2 = self.get_trials_list(True, only_if_in_dataset=only_if_in_dataset)[-1]
             idx1 = self.datasetbeh_trial_to_datidx(t1)
             idx2 = self.datasetbeh_trial_to_datidx(t2)
+            if idx1 is None or idx2 is None:
+                print(t1, t2)
+                print(idx1)
+                print(idx2)
+                assert False, "this means that one of these two trials doesnt exist in datasetbeh. But this should not be possible if only_if_in_dataset=True"
             failures = 0
             total = 0
+
             for idx in range(idx1, idx2+1):
                 try:
                     # Check that neural data exist.
@@ -11033,6 +11092,7 @@ class Session(object):
             print("trials in mapper: ", self._MapperTrialcode2TrialToTrial.values())
             print("Looking for this trial", trial)
             raise err
+        
         return list(self._MapperTrialcode2TrialToTrial.keys())[idx]
 
         # trialcode = self.datasetbeh_trial_to_trialcode_from_raw(trial)
@@ -11046,7 +11106,7 @@ class Session(object):
 
     def datasetbeh_trial_to_datidx(self, trial, dataset_input=None):
         """ returns the index in self.Datasetbeh correspodning to
-        this trial. If doesnt exist, then returns None.
+        this trial. If doesnt exist, then returns None. 
         This is accurate even if self.Datasetbeh is changed.
         - dataset_input, which datsaet to query. useful to pass in a pruned
         datsaet if you want to check whether this trial exists (i.e., returns None)
@@ -12109,7 +12169,8 @@ class Session(object):
 
         return df
     
-    def _sanity_waveforms_verify_finally(self, dat1, dat2, savedir, suffix=None):
+    def _sanity_waveforms_verify_finally(self, dat1, dat2, savedir, suffix,
+                                         corr_method, heatmap_zlims):
         """
         Final quantification to verify array alignement across days.
         PARAMS:
@@ -12135,8 +12196,15 @@ class Session(object):
             for br2 in dat2.index:
                 vals2 = dat2.loc[br2, :]
 
-                corr = np.corrcoef(vals1, vals2)[0,1]
-
+                if corr_method == "pearson":
+                    corr = np.corrcoef(vals1, vals2)[0,1]
+                elif corr_method == "spearman":
+                    from scipy import stats
+                    res = stats.spearmanr(vals1, vals2)
+                    corr = res.statistic
+                else:
+                    assert False
+                    
                 res_cross.append({
                     "region1":br1,
                     "region2":br2,
@@ -12148,19 +12216,19 @@ class Session(object):
         # Plot heatmaps for each dataset
         fig, axes = plt.subplots(2, 1, figsize=(12, 10))
         ax = axes.flatten()[0]
-        heatmap(dat1, ax, False, diverge=True, labels_row=regions)#     
+        heatmap(dat1, ax, False, diverge=False, labels_row=regions, zlims=heatmap_zlims)#     
         ax = axes.flatten()[1]
-        heatmap(dat2, ax, False, diverge=True, labels_row=regions)#     
+        heatmap(dat2, ax, False, diverge=False, labels_row=regions, zlims=heatmap_zlims)#     
         savefig(fig, f"{savedir}/heatmaps_each_both_datasets-suffix={suffix}.pdf")
         
         # Plot heatmap of cross-corrleation
         # dfcross2d = plot_subplots_heatmap(dfcross, "region1", "region2", "corr", None, return_dfs=True)[2]["dummy"]
-        fig, axes, tmp = plot_subplots_heatmap(dfcross, "region1", "region2", "corr", None, return_dfs=True)
+        fig, axes, tmp = plot_subplots_heatmap(dfcross, "region1", "region2", "corr", None, return_dfs=True, ZLIMS=[-1, 1], diverge=True)
         dfcross2d = tmp["dummy"]
         savefig(fig, f"{savedir}/correlation_across_sessions-suffix={suffix}.pdf")
 
         # Check that diagonals are much higher than offs
-        passed = True
+        passed_cross = True
         failed_regions = []
         for i, (br, row) in enumerate(dfcross2d.iterrows()):
             corr_same_array = row[i]
@@ -12169,9 +12237,9 @@ class Session(object):
             if not corr_same_array > max(corrs_other_arrays):
                 print(i, br, row)
                 # assert False, "why array on day 1 mathces a different arrya on day 2?"
-                passed = False
+                passed_cross = False
                 failed_regions.append((i, br, row))
-        if passed:
+        if passed_cross:
             print("Good!! passed sanity check. Each array on day 1, tested on day 2, matches best to itself.")        
         else:
             print("Failed! These were the failed regions:")
@@ -12179,9 +12247,61 @@ class Session(object):
                 print(x)
 
         fig, ax = plt.subplots()
-        savefig(fig, f"{savedir}/passed={passed}-suffix={suffix}")
+        savefig(fig, f"{savedir}/passed_cross={passed_cross}-suffix={suffix}")
+
+        ##################################################
+        ### Also, check whether array was flipped. i..e, if corr across days improves after flipping one array, then that means is
+        # was flipped.
+        dat2_flipped = pd.DataFrame(np.fliplr(dat2), index=dat2.index)
+
+        # Get correlation between each pair of arrays (pairs are across datasets)
+        res_cross = []
+        for br1 in dat1.index:
+            vals1 = dat1.loc[br1, :]
+
+            for br2 in dat2_flipped.index:
+                vals2 = dat2_flipped.loc[br2, :]
+
+                if corr_method == "pearson":
+                    corr = np.corrcoef(vals1, vals2)[0,1]
+                elif corr_method == "spearman":
+                    from scipy import stats
+                    res = stats.spearmanr(vals1, vals2)
+                    corr = res.statistic
+                else:
+                    assert False
+
+                res_cross.append({
+                    "region1":br1,
+                    "region2":br2,
+                    "corr":corr
+                })
+        dfcross_rev = pd.DataFrame(res_cross)
+
+        # Plot heatmaps for each dataset
+        fig, axes = plt.subplots(2, 1, figsize=(12, 10))
+        ax = axes.flatten()[0]
+        heatmap(dat1, ax, False, diverge=False, labels_row=regions, zlims=heatmap_zlims) #     
+        ax = axes.flatten()[1]
+        heatmap(dat2_flipped, ax, False, diverge=False, labels_row=regions, zlims=heatmap_zlims) #     
+        savefig(fig, f"{savedir}/heatmaps_each_both_datasets-FLIPPED-suffix={suffix}.pdf")
         
-        return passed
+        # Plot heatmap of cross-corrleation
+        fig, axes, tmp = plot_subplots_heatmap(dfcross_rev, "region1", "region2", "corr", None, return_dfs=True, ZLIMS=[-1, 1], diverge=True)
+        savefig(fig, f"{savedir}/correlation_across_sessions-FLIPPED-suffix={suffix}.pdf")
+
+        # Get the diagonals
+        dfcorr = dfcross[dfcross["region1"] == dfcross["region2"]]
+        dfcorr_rev = dfcross_rev[dfcross_rev["region1"] == dfcross_rev["region2"]]
+        assert np.all(dfcorr["region1"] == dfcorr_rev["region1"])
+        assert np.all(dfcorr["region2"] == dfcorr_rev["region2"])
+
+        passed_flip = all(dfcorr["corr"] > dfcorr_rev["corr"])
+
+        fig, ax = plt.subplots()
+        savefig(fig, f"{savedir}/passed_flip={passed_flip}-suffix={suffix}")
+
+        return passed_cross, passed_flip, dfcross
     
 #####################################################################
 assert _REGIONS_IN_ORDER == ("M1_m", "M1_l", "PMv_l", "PMv_m",
