@@ -199,6 +199,8 @@ def analy_51_mult_postprocess(list_dfproj_index, list_dfproj_index_agg, do_clean
     DFPROJ_INDEX_AGG_DIFF_LOCS = append_col_with_grp_index(DFPROJ_INDEX_AGG_DIFF_LOCS, ["animal", "date", "morphset"], "an_da_ms")
 
     # Agg one more time, to average over locations.
+    # Now, each (animal, date, ms, [P, U A] gets a single datapt (timecourse))
+    # i.e., label = (base, ambig, not_ambig)
     DFPROJ_INDEX_AGG_DIFF = aggregGeneral(DFPROJ_INDEX_AGG_DIFF_LOCS, ["an_da_ms", "bregion", "time_bin_idx", "label"], ["dist_index_diff", "time_bin"], 
                                     nonnumercols=["animal", "date", "morphset"])
     
@@ -2691,11 +2693,16 @@ def analy_switching_GOOD_euclidian_index(DFallpa, SAVEDIR_BASE, map_tcmorphset_t
     # (1) Split into two
     from neuralmonkey.scripts.analy_shape_invariance_all_plots_SP import _preprocess_pa_dim_reduction
     # assert False, "previously (when Pancho PMVl was not included) I used NPCS_KEEP=8. Then I used NPCS_KEEP=6 for the example plot Pancho morphset 8. Decide which to use. Prob use 6. I checked and they are pretty much identical"
+    # Original params
     NPCS_KEEP = 6
     scalar_or_traj = "traj"
     tbin_dur = 0.2
     tbin_slide = 0.02
     raw_subtract_mean_each_timepoint = False
+    
+    # Updated to match the other anlayses, in sanity check for MS
+    NPCS_KEEP = 8
+    tbin_dur = 0.15
 
     fit_twind = (0.05, 0.9)
     final_twind = (-0.3, 1.2)
@@ -3049,8 +3056,10 @@ if __name__=="__main__":
         PLOTS_DO = [5.1, 5.2]
     elif which_plots == "switching_dist":
         PLOTS_DO = [5.1]
+        cetegory_expt_version = "switching"
     elif which_plots == "switching_ss":
         PLOTS_DO = [5.2]
+        cetegory_expt_version = "switching"
     else:
         assert False
 
@@ -3076,7 +3085,8 @@ if __name__=="__main__":
         savedir = f"{SAVEDIR}/morphsets_drawings"
         os.makedirs(savedir, exist_ok=True)
         DSmorphsets, map_tc_to_morph_info, map_morphset_to_basemorphinfo, map_tcmorphset_to_idxmorph, map_tcmorphset_to_info, \
-            map_morphsetidx_to_assignedbase_or_ambig, map_tc_to_morph_status = analy_psychoprim_prepare_beh_dataset(animal, date, savedir)
+            map_morphsetidx_to_assignedbase_or_ambig, map_tc_to_morph_status = analy_psychoprim_prepare_beh_dataset(animal, date, 
+                                                                                                            cetegory_expt_version, savedir)
         
         # Hacky, remove trialcodes that are by eye messy
         from pythonlib.dataset.dataset_analy.psychometric_singleprims import params_good_morphsets_switching_ignore_trialcodes

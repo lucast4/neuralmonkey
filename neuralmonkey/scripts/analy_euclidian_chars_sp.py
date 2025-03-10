@@ -1301,7 +1301,8 @@ def euclidian_time_resolved_fast_shuffled(DFallpa, animal, date, SAVEDIR_ANALYSI
     N_SPLITS = 10 # 6 is too low, I know beucase run-by-run variation for sp_char_0 is high when using 6.
 
     twind_analy = (-1, 0.6)
-    tbin_dur = 0.2
+    tbin_dur = 0.2 # The original tbin_dur
+    tbin_dur = 0.15 # Matching params in other analyses
     tbin_slide = 0.02
 
     map_event_to_listtwind_scal = {
@@ -1756,6 +1757,7 @@ def plot_heatmap_firing_rates_all_wrapper(DFallpa, SAVEDIR_ANALYSIS, animal, dat
 
             # for subspace_projection in [None, "pca", subspace_projection_extra]:
             for subspace_projection in [None, "pca_proj", "task_shape_si", "task_shape"]: # NOTE: shape_prims_single not great, you lose some part of preSMA context-dependence...
+            # for subspace_projection in [None, "task_shape"]: # NOTE: shape_prims_single not great, you lose some part of preSMA context-dependence...
             # for subspace_projection in ["task_shape"]: # NOTE: shape_prims_single not great, you lose some part of preSMA context-dependence...
                 if (DEBUG_subspace_projection is not None) and (DEBUG_subspace_projection!=subspace_projection):
                     continue
@@ -2017,9 +2019,11 @@ if __name__=="__main__":
         version = "stroke"
 
         # FINAL, good code:
-        PLOTS_DO = [5] #
         PLOTS_DO = [1, 2, 4] # GOOD
         PLOTS_DO = [1] # GOOD
+
+        PLOTS_DO = [5, 1, 2, 4] # GOOD
+        PLOTS_DO = [5] #
 
         # PLOTS_DO = [6] #
         # PLOTS_DO = [2] #

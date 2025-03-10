@@ -29,7 +29,7 @@ do
   sleep 30s
 done
 # sleep 180m
-#  sleep 60m
+sleep 30m
 
 ###################
 animal=Diego

@@ -1430,7 +1430,7 @@ def euclidian_time_resolved_fast_shuffled_mult_scatter_plots(analysis_kind="shap
             ("Pancho", "seqc_0_loc"),
             ("Diego", "seqc_0_loc"),
             ]
-    if analysis_kind=="shape_invar_clean_size":
+    elif analysis_kind=="shape_invar_clean_size":
         SAVEDIR_MULT = "/lemur2/lucas/analyses/recordings/main/shape_invariance/EUCLIDIAN_SHUFF/MULT"
         var_effect = "seqc_0_shape"
         LIST_ANIMAL_VAROTHER = [
@@ -1732,7 +1732,7 @@ def euclidianshuff_stats_linear_plot_wrapper(DFDISTS, SAVEDIR_PLOTS, var_other, 
     print(savedir)
 
     ## FINAL AGGS
-    # (1) each datapt is a unique label (multiple datapts per 0|1)
+    # (1) each datapt is a unique label (i.e., shape-location) (multiple datapts per 0|1)
     tmp = DFDISTS.copy()
     tmp["labels_2"] = DFDISTS["labels_1"]
     tmp["labels_1"] = DFDISTS["labels_2"]
@@ -1750,14 +1750,19 @@ def euclidianshuff_stats_linear_plot_wrapper(DFDISTS, SAVEDIR_PLOTS, var_other, 
     # # Agg over all conditions (e.g. label pairs)
     # DFDISTS_LABEL_AGG = aggregGeneral(DFDISTS_DATPT_LABEL1, ["bregion", "which_level", "event", "subspace|twind", var_same_same],
     #                             ["dist_mean", "dist_norm", "dist_yue_diff", "DIST_50", "DIST_98"], nonnumercols="all")
-    # if False:
-    #     # check output
-    #     grouping_plot_n_samples_conjunction_heatmap(DFDISTS_LABEL_AGG, "bregion", "same-seqc_0_shape|seqc_0_loc")
+
+
+
+    # grouping_plot_n_samples_conjunction_heatmap(DFDISTS_DATPT_LABEL1, "bregion", "same-seqc_0_shape|seqc_0_loc")
     grp_vars = ["event", "subspace|twind"]
     grpdict = grouping_append_and_return_inner_items_good(DFDISTS_DATPT_LABEL1, grp_vars)
     for grp, inds in grpdict.items():
         print(grp)
         dfdists_labels = DFDISTS_DATPT_LABEL1.iloc[inds].reset_index(drop=True)
+
+        from pythonlib.tools.pandastools import grouping_print_n_samples
+        savepath = f"{savedir}/scatter_each_label1-grp={grp}-counts.txt"
+        grouping_print_n_samples(dfdists_labels, [var_same_same, "bregion", "labels_1"], savepath=savepath)
 
         if False:
             # Should have <n bregions> per cell.
@@ -1857,16 +1862,54 @@ def euclidianshuff_stats_linear_plot_wrapper(DFDISTS, SAVEDIR_PLOTS, var_other, 
     ###############################################################
     ### Compare areas
     # Note, here each datapt is conjunction of variables + (animal, date), where variables could be, for instance, (shape, loc).
+    # i.e., (prim1, loc2) x (animal, date) is a single datapt. 
+    # And then the plots/analyses are each pair of these. 
     # This means that could have repeated conditions across days, leading to more datapts.
+
     
     savedir = f"{SAVEDIR_PLOTS}/linear_model_region_vs_region"
     import os
     os.makedirs(savedir, exist_ok=True)
     print(savedir)
 
+    ### First, save heatmap showing the datapts counts
+    from pythonlib.tools.pandastools import grouping_print_n_samples, grouping_plot_n_samples_conjunction_heatmap
+
+    grp_vars = ["subspace|twind", "event", "bregion"]
+    grpdict = grouping_append_and_return_inner_items_good(DFDISTS, grp_vars)
+    for grp, inds in grpdict_dat.items():
+        print(grp)
+        dfthis = DFDISTS.iloc[inds].reset_index(drop=True)
+        
+        savepath = f"{savedir}/COUNTS_USED_IN_STATS-grp={grp}-counts.txt"
+        grouping_print_n_samples(dfthis, [var_same_same, "bregion", "labels_1", "labels_2", "date"], savepath=savepath)
+
+        fig = grouping_plot_n_samples_conjunction_heatmap(dfthis, "labels_1", "labels_2", [var_same_same, "date"])
+        savefig(fig, f"{savedir}/COUNTS_USED_IN_STATS-grp={grp}-counts.pdf")
+
+        # only run this once, as it takes a while, and once is enough
+        break
+
     ### Compute stats
     from neuralmonkey.scripts.analy_shape_invariance_all_plots_SP import _euclidianshuff_stats_linear_2br_compute
     DFSTATS_2BR = _euclidianshuff_stats_linear_2br_compute(DFDISTS, var_same_same)
+
+    # Save text file of the sample sizes
+    from pythonlib.tools.pandastools import grouping_print_n_samples
+
+    savepath = f"{savedir}/samplesize-confirmed_this_used_in_stats.txt"
+    grouping_print_n_samples(DFDISTS, ["bregion", "event", "subspace|twind", var_same_same], savepath=savepath)
+
+    savepath = f"{savedir}/samplesize-confirmed_this_used_in_stats-split_by_date.txt"
+    grouping_print_n_samples(DFDISTS, ["bregion", "event", "subspace|twind", var_same_same, "date"], savepath=savepath)
+
+    # NOTE: shapeloc12 actually means shape-(task_kind)12
+    savepath = f"{savedir}/samplesize-each_datapt.txt"
+    grouping_print_n_samples(DFDISTS, ["bregion", "event", "subspace|twind", "labels_1", "labels_2", "shapeloc12", "date"])
+
+    # NOTE: shapeloc12 actually means shape-(task_kind)12 -- to show that.
+    savepath = f"{savedir}/samplesize-if_char_expt_then_remind_that_loc_is_taskkind.txt"
+    grouping_print_n_samples(DFDISTS, ["loc1", "labels_1", "date"])
 
     ### Plot
     z = np.max(np.abs(np.percentile(DFSTATS_2BR["coeff_val"], [0.5, 99.5])))
@@ -2092,6 +2135,13 @@ def _euclidianshuff_stats_linear_2br_compute(DFDISTS, var_same_same):
                             (dfthis[var_same_same]==contrast_lev) & (dfthis["bregion"].isin([bregion1, bregion2]))
                             ].reset_index(drop=True)
 
+                        if False:
+                            # to do sanity check of what datapts actually go in.
+                            from pythonlib.tools.pandastools import grouping_print_n_samples
+                            savepath = f"/tmp/testthis-grp={grp}-contrast_lev={contrast_lev}-{bregion1}-{bregion2}.txt"
+                            grouping_print_n_samples(dflm, ["bregion", "event", "subspace|twind", "same-seqc_0_shape|seqc_0_loc"], 
+                                                    savepath=savepath)
+
                         formula = f"{yvar} ~ C(bregion, Treatment('{bregion1}')) + C(shapeloc12)"
                         md = smf.ols(formula, dflm)
                         mdf = md.fit()
@@ -2194,6 +2244,7 @@ def _euclidianshuff_stats_linear_2br_scatter(DFDISTS, DFSTATS_2BR, var_same_same
     _, fig = map_coord_to_color_2dgradient(0, 0, 0, n_bregions-1, 0, n_bregions-1, plot_legend=True)
     savefig(fig, f"{savedir}/scatter-LEGEND.pdf")
 
+    counts_plotted = False
     for pval_thresh in [0.05, 0.005, 0.0005] + list_alpha_bonf:
         DFSTATS_2BR_NSIGS = _euclidianshuff_stats_linear_2br_compute_nsigs(DFSTATS_2BR, var_same_same, pval_thresh)
 
@@ -2242,6 +2293,21 @@ def _euclidianshuff_stats_linear_2br_scatter(DFDISTS, DFSTATS_2BR, var_same_same
                 col = map_coord_to_color_2dgradient(n_loc, n_shape, 0, n_bregions-1, 0, n_bregions-1)
                 map_bregion_to_color[bregion] = col
 
+            ### Plot sample size
+            if not counts_plotted:
+                from pythonlib.tools.pandastools import grouping_print_n_samples
+
+                savepath = f"{savedir}/COUNTS_USED_IN_SCATTER_MEANS={grp}-counts-1.txt"
+                grouping_print_n_samples(dfthis, [var_same_same, "bregion", "labels_1", "labels_2", "date"], savepath=savepath)
+
+                savepath = f"{savedir}/COUNTS_USED_IN_SCATTER_MEANS={grp}-counts-2.txt"
+                grouping_print_n_samples(dfthis, [var_same_same, "bregion", "shape1", "loc1", "shape2", "loc2"], savepath=savepath)
+
+                fig = grouping_plot_n_samples_conjunction_heatmap(dfthis, "labels_1", "labels_2", [var_same_same, "date"])
+                savefig(fig, f"{savedir}/COUNTS_USED_IN_SCATTER_MEANS-grp={grp}.pdf")
+
+                counts_plotted = True
+                
             ### Plot it
             _, fig = plot_45scatter_means_flexible_grouping(dfthis, var_same_same, "1|0", "0|1", "event", 
                                                 var_value, "bregion", True, shareaxes=True,
@@ -2250,6 +2316,7 @@ def _euclidianshuff_stats_linear_2br_scatter(DFDISTS, DFSTATS_2BR, var_same_same
             
             savefig(fig, f"{savedir}/scatter-{grp}-alpha={pval_thresh}.pdf")
             writeDictToTxt(map_bregion_pval_status, f"{savedir}/n_cases_win-{grp}-alpha={pval_thresh}-{var_same_same}.txt")
+
             plt.close("all")
 
 
