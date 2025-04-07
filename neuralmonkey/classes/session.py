@@ -242,7 +242,7 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
         print("------------------------------")
         print("Loading this neural session:", rec_session)
         print("Loading these beh expts:", beh_expt_list)
-        print("Loading these beh sessions:",beh_sess_list)
+        print("Loading these beh sessions:", beh_sess_list)
         print("Using this beh_trial_map_list:", beh_trial_map_list)
 
     if beh_trial_map_list == [(1, 0)]:
@@ -1426,21 +1426,26 @@ class Session(object):
         else:
             paths = findPath(self.RecPathBase, path_hierarchy)
 
-        # Sanity check that the number of rec sessions on server (raw neural) matches the number of preprocessed data
-        # If not, then this is a bug -- you probabyl pruned a sessions on server and left it in place in the preprocessed data
-        if self._LOAD_VERSION == "MINIMAL_LOADING": 
-            # THen this means preprocessing across all sessions hsould be finalized at this point.
-            _paths1 = findPath(LOCAL_PATH_PREPROCESSED_DATA, path_hierarchy)
-            _paths2 = findPath(self.RecPathBase, path_hierarchy)
-            if len(_paths1) != len(_paths2):
-                print(_paths1)
-                print(_paths2)
-                assert False, "Fix this -- align the paths. PRobably need to delete a preprocess date?"
-            for p1, p2 in zip(_paths1, _paths2):
-                if deconstruct_filename(p1)["filename_final_noext"]!=deconstruct_filename(p2)["filename_final_noext"]:
+        if False: # Actually, no need, becuase evne if there are more preprcessing folders, the code below only picks out those
+            # that match the raw rec data folders. So is fine.
+
+            # Sanity check that the number of rec sessions on server (raw neural) matches the number of preprocessed data
+            # If not, then this is a bug -- you probabyl pruned a sessions on server and left it in place in the preprocessed data
+            if self._LOAD_VERSION == "MINIMAL_LOADING": 
+                # THen this means preprocessing across all sessions hsould be finalized at this point.
+                _paths1 = findPath(LOCAL_PATH_PREPROCESSED_DATA, path_hierarchy)
+                _paths2 = findPath(self.RecPathBase, path_hierarchy)
+
+                # If paths are not the 
+                if len(_paths1) != len(_paths2):
                     print(_paths1)
                     print(_paths2)
                     assert False, "Fix this -- align the paths. PRobably need to delete a preprocess date?"
+                for p1, p2 in zip(_paths1, _paths2):
+                    if deconstruct_filename(p1)["filename_final_noext"]!=deconstruct_filename(p2)["filename_final_noext"]:
+                        print(_paths1)
+                        print(_paths2)
+                        assert False, "Fix this -- align the paths. PRobably need to delete a preprocess date?"
 
         # REmove paths that say "IGNORE"
         paths = [p for p in paths if "IGNORE" not in p]
@@ -1462,8 +1467,6 @@ class Session(object):
             assert False, "why mismatch?"
 
         paththis = paths[self.RecSession]
-        # print(paths, self.RecSession)
-        # assert False
 
         fnparts = deconstruct_filename(paththis)
         print(fnparts)
@@ -2201,6 +2204,32 @@ class Session(object):
                 path = f"{self.Paths['cached_dir']}/trials_list.pkl"
                 with open(path, "rb") as f:
                     self._CachedTrialsList = pickle.load(f)
+
+                    # If trials need to be skipped, then this wont work. so dont do it.
+                    _, do_skip_trials = self._get_trials_list_skipped_trials()
+                    if not do_skip_trials:
+                        # Sanity check, that the trials in cached trials list are not incocnsitent with reloaded data.
+                        # Should relaly just reconstruct each time from raw, since sometimes (rarely) there mistakes due
+                        # to older data missing some trials (saw one case whwere those passing fixation success were empty)
+                        self.load_behavior()
+                        
+                        trials = list(range(len(self.TrialsOffset)))
+                        trials_missing = [t for t in trials if t not in self._CachedTrialsList[(False, True)]]
+                        if len(trials_missing)>5 and len(trials_missing)/len(self._CachedTrialsList[(False, True)]) > 0.04:
+                        # if not self._CachedTrialsList[(False, True)] == trials:
+                            print("trials cached: ", self._CachedTrialsList[(False, True)])
+                            print("trials reloaded: ", trials)
+                            print("trials in reloaded that not exist in cahced: ", trials_missing)
+                            assert False, "figure out why there is mismatch between cached trials and now-reloaded from raw (prob just rerun local caching)"
+
+                        trials_pass_fixation = [t for t in trials if self.beh_fixation_success(t)]
+                        trials_missing = [t for t in trials_pass_fixation if t not in self._CachedTrialsList[(True, True)]]
+                        if len(trials_missing)>5 and len(trials_missing)/len(self._CachedTrialsList[(True, True)]) > 0.04:
+                            # Is ok to miss a few, this can be explained by trials with no beh strokes matched to task.
+                            print("trials cached: ", self._CachedTrialsList[(True, True)])
+                            print("trials reloaded: ", trials_pass_fixation)
+                            print("trials in reloaded that not exist in cahced: ", trials_missing)
+                            assert False, "figure out why there is mismatch between cached trials and now-reloaded from raw (prob just rerun local caching)"
 
             # FOrce must_use_cached_trials, beecuase datslice are only saved for those cached trials.
             trials = self.get_trials_list(SAVELOCALCACHED_TRIALS_FIXATION_SUCCESS, must_use_cached_trials=True)
@@ -5550,11 +5579,22 @@ class Session(object):
                     misses += 1
                 else: 
                     gottens += 1
-            if misses>2 or misses/gottens>0.03:
+            if (gottens==0) or (misses>3):
                 print("misses: ", misses)
                 print("gottens: ", gottens)
                 # assert False, "why so many neural trials are missing from dataset? "
                 print("This is often beucase there are two beh sessions and one neural session, and so this thinks there is neural trial like sess 1 trial 500, when it should be sess 2, trial 200, this is beucase beh_trial_map_list is wrong. So now this leads to auto computing of beh_trial_map_list")
+                print("Trialcodes in beh dataset (before pruning):", len(trialcodes), trialcodes)
+                trialcodes_neural_all = [self.datasetbeh_trial_to_trialcode(t) for t in self.get_trials_list()]
+                print("Trialcodes in neural data (all):", len(trialcodes_neural_all), trialcodes_neural_all)
+                trialcodes_neural_pass_fix = [self.datasetbeh_trial_to_trialcode(t) for t in self.get_trials_list(True)]
+                print("Trialcodes in neural data (good, passing fixation):", len(trialcodes_neural_pass_fix), trialcodes_neural_pass_fix)
+                trialcodes_missing = [tc for tc in trialcodes_neural_pass_fix if tc not in trialcodes]
+                print("Trialcodes expected to exist, but which did not find in beh dataset: ", len(trialcodes_missing), trialcodes_missing)
+                print("--> Why are neural trialcodes missing from beh data?")
+                print("--> Sometimes, it is because many of the neural trials are actually not passing fixation. In that case, is fine to remove them")
+                print("--> Check that the trialcodes missing are legit misses in beh dataset (often: single stroke that was aborted)")
+
                 raise DataMisalignError
 
             # If got this far, then is fine to just take trials that exist in datasetbeh, as doing so will not throw out much
@@ -8549,11 +8589,87 @@ class Session(object):
             suc = getTrialsFixationSuccess(fd, trialml2)
             return suc
 
+    def _get_trials_list_skipped_trials(self):
+        """
+        Decide if this session has any hard coded trials to skip --- most of the time this is due to 
+        losing power in amplifier, or other recording mishaps.
+        RETURNS:
+        - neural_trials_missing_beh, list of ints, neural trials that should be skipped (else None, if no skipping)
+        - do_skip_trials, bool, if True, then this date has trials that are skipped.
+        """
+
+        neural_trials_missing_beh = None
+        do_skip_trials = True
+
+        # Not sure if this works. It was commented out and then I turned it back on.
+        if (int(self.Date))==220609 and self.RecSession==0 and self.Animal=="Pancho":
+            neural_trials_missing_beh = [858, 859, 860, 861, 862, 863, 864, 865, 866, 867]
+            trials = [t for t in trials if t not in neural_trials_missing_beh]
+
+        elif (int(self.Date))==231206 and self.RecSession==0 and self.Animal=="Diego":
+            neural_trials_missing_beh = [551, 552, 553, 554, 555]
+            trials = [t for t in trials if t not in neural_trials_missing_beh]
+
+        elif (int(self.Date))==250319 and self.RecSession==1 and self.Animal=="Diego":
+            # Lkast good trial was beh sess 2, beh trial 531 (this only applies for chans 1-256)
+
+            if self.Datasetbeh is not None: # Otherwise runs into recursion error. This is totally fine here
+                tc_start = (250319, 2, 532)
+                tc_end = (250319, 9, 999)
+                if True:
+                    # Doesnt work all the time, ie.. whend ataset not yet extracted
+                    _, trialcodes_bad = self.Datasetbeh.trialcode_extract_rows_within_range(tc_start, tc_end, input_tuple_directly=True)
+                else:
+                    from pythonlib.tools.stringtools import trialcode_extract_rows_within_range
+                    list_trialcode = [self._datasetbeh_trial_to_trialcode_from_raw(t) for t in trials]
+                    _, trialcodes_bad = trialcode_extract_rows_within_range(list_trialcode, tc_start, tc_end, input_tuple_directly=True)
+
+                # Convert from trialcodes to neural trial.
+                neural_trials_missing_beh = self.datasetbeh_trialcode_to_trial_batch(trialcodes_bad)
+
+                trials = [t for t in trials if t not in neural_trials_missing_beh]
+                # print("trialcodes_bad (orig): ", trialcodes_bad)
+                # print("trials bad:", neural_trials_missing_beh)
+                # print("trials kept: ", trials)
+                # # print("trials bad:", [self._datasetbeh_trial_to_trialcode_from_raw(t) for t in neural_trials_missing_beh])
+                # # print("trials kept: ", [self._datasetbeh_trial_to_trialcode_from_raw(t) for t in trials])
+                # assert False
+
+        elif (int(self.Date))==220614 and self.RecSession==0 and self.Animal=="Pancho":
+            # Skip the first neural trial
+            neural_trials_missing_beh = [0]
+            trials = [t for t in trials if t not in neural_trials_missing_beh]
+
+        elif (int(self.Date))==220621 and self.RecSession==0 and self.Animal=="Pancho":
+            # Skip the first neural trial
+            neural_trials_missing_beh = [0]
+            trials = [t for t in trials if t not in neural_trials_missing_beh]
+
+        elif (int(self.Date))==220827 and self.Animal=="Pancho":
+            assert False, "fill this in! See recording log for what trials lost."
+
+        elif (int(self.Date))==230606 and self.Animal=="Pancho":
+            assert False, "fill this in! See recording log for what trials lost."
+
+        elif (int(self.Date))==250324 and self.Animal=="Pancho":
+            # Batt died at very end of 793. 794 is good.
+            assert False, "fill this in! See recording log for what trials lost."
+
+        elif (int(self.Date))==250325 and self.Animal=="Pancho":
+            # Batt died (throw out trials 761 to 790, inclusive), and then plugged in.
+            assert False, "fill this in! See recording log for what trials lost."
+
+        else:
+            do_skip_trials = False
+        
+        return neural_trials_missing_beh, do_skip_trials
+    
     def get_trials_list(self, only_if_ml2_fixation_success=False,
         only_if_has_valid_ml2_trial=True, only_if_in_dataset=False,
         events_that_must_include=None, events_that_must_include_in_order=None,
         dataset_input = None, nrand=None, nsub_uniform=None,
-                        must_use_cached_trials=False, min_interval_dur=0.):
+                        must_use_cached_trials=False, min_interval_dur=0.,
+                        skip_cached_trials_even_if_exist=False):
         """
         Get list of ints, trials,
         PARAMS:
@@ -8601,7 +8717,6 @@ class Session(object):
         #     # SInce I use dataset to determine if this trial was initiated (has stroke), can only include trials that have data.
         #     only_if_in_dataset = True
 
-
         # if only_if_in_dataset:
         #     # Then no need to check the foloowing, they wil be true
         #     only_if_ml2_fixation_success = False
@@ -8611,12 +8726,7 @@ class Session(object):
         # this cached
         # key = (only_if_in_dataset, only_if_ml2_fixation_success, only_if_has_valid_ml2_trial)
         key = (only_if_ml2_fixation_success, only_if_has_valid_ml2_trial)
-
-        # print(key)
-        # print(self._CachedTrialsList.keys())
-        # print("JHEERE", key in self._CachedTrialsList.keys())
-        # assert False
-        if key in self._CachedTrialsList.keys():
+        if key in self._CachedTrialsList.keys() and not skip_cached_trials_even_if_exist:
             trials = self._CachedTrialsList[key]
 
             if only_if_in_dataset:
@@ -8627,24 +8737,66 @@ class Session(object):
             trials = list(range(len(self.TrialsOffset)))
 
             ############# VERY HACKY,
-            # Not sure if this works. It was commented out and then I turned it back on.
-            if (int(self.Date))==220609 and self.RecSession==0 and self.Animal=="Pancho":
-                neural_trials_missing_beh = [858, 859, 860, 861, 862, 863, 864, 865, 866, 867]
-                trials = [t for t in trials if t not in neural_trials_missing_beh]
+            neural_trials_missing_beh, do_skip_trials = self._get_trials_list_skipped_trials()
+            trials = [t for t in trials if t not in neural_trials_missing_beh]
 
-            if (int(self.Date))==231206 and self.RecSession==0 and self.Animal=="Diego":
-                neural_trials_missing_beh = [551, 552, 553, 554, 555]
-                trials = [t for t in trials if t not in neural_trials_missing_beh]
+            # # Not sure if this works. It was commented out and then I turned it back on.
+            # if (int(self.Date))==220609 and self.RecSession==0 and self.Animal=="Pancho":
+            #     neural_trials_missing_beh = [858, 859, 860, 861, 862, 863, 864, 865, 866, 867]
+            #     trials = [t for t in trials if t not in neural_trials_missing_beh]
 
-            if (int(self.Date))==220614 and self.RecSession==0 and self.Animal=="Pancho":
-                # Skip the first neural trial
-                neural_trials_missing_beh = [0]
-                trials = [t for t in trials if t not in neural_trials_missing_beh]
+            # if (int(self.Date))==231206 and self.RecSession==0 and self.Animal=="Diego":
+            #     neural_trials_missing_beh = [551, 552, 553, 554, 555]
+            #     trials = [t for t in trials if t not in neural_trials_missing_beh]
 
-            if (int(self.Date))==220621 and self.RecSession==0 and self.Animal=="Pancho":
-                # Skip the first neural trial
-                neural_trials_missing_beh = [0]
-                trials = [t for t in trials if t not in neural_trials_missing_beh]
+            # if (int(self.Date))==250319 and self.RecSession==1 and self.Animal=="Diego":
+            #     # Lkast good trial was beh sess 2, beh trial 531 (this only applies for chans 1-256)
+
+            #     if self.Datasetbeh is not None: # Otherwise runs into recursion error. This is totally fine here
+            #         tc_start = (250319, 2, 532)
+            #         tc_end = (250319, 9, 999)
+            #         if True:
+            #             # Doesnt work all the time, ie.. whend ataset not yet extracted
+            #             _, trialcodes_bad = self.Datasetbeh.trialcode_extract_rows_within_range(tc_start, tc_end, input_tuple_directly=True)
+            #         else:
+            #             from pythonlib.tools.stringtools import trialcode_extract_rows_within_range
+            #             list_trialcode = [self._datasetbeh_trial_to_trialcode_from_raw(t) for t in trials]
+            #             _, trialcodes_bad = trialcode_extract_rows_within_range(list_trialcode, tc_start, tc_end, input_tuple_directly=True)
+
+            #         # Convert from trialcodes to neural trial.
+            #         neural_trials_missing_beh = self.datasetbeh_trialcode_to_trial_batch(trialcodes_bad)
+
+            #         trials = [t for t in trials if t not in neural_trials_missing_beh]
+            #         # print("trialcodes_bad (orig): ", trialcodes_bad)
+            #         # print("trials bad:", neural_trials_missing_beh)
+            #         # print("trials kept: ", trials)
+            #         # # print("trials bad:", [self._datasetbeh_trial_to_trialcode_from_raw(t) for t in neural_trials_missing_beh])
+            #         # # print("trials kept: ", [self._datasetbeh_trial_to_trialcode_from_raw(t) for t in trials])
+            #         # assert False
+
+            # if (int(self.Date))==220614 and self.RecSession==0 and self.Animal=="Pancho":
+            #     # Skip the first neural trial
+            #     neural_trials_missing_beh = [0]
+            #     trials = [t for t in trials if t not in neural_trials_missing_beh]
+
+            # if (int(self.Date))==220621 and self.RecSession==0 and self.Animal=="Pancho":
+            #     # Skip the first neural trial
+            #     neural_trials_missing_beh = [0]
+            #     trials = [t for t in trials if t not in neural_trials_missing_beh]
+
+            # if (int(self.Date))==220827 and self.Animal=="Pancho":
+            #     assert False, "fill this in! See recording log for what trials lost."
+
+            # if (int(self.Date))==230606 and self.Animal=="Pancho":
+            #     assert False, "fill this in! See recording log for what trials lost."
+
+            # if (int(self.Date))==250324 and self.Animal=="Pancho":
+            #     # Batt died at very end of 793. 794 is good.
+            #     assert False, "fill this in! See recording log for what trials lost."
+
+            # if (int(self.Date))==250325 and self.Animal=="Pancho":
+            #     # Batt died (throw out trials 761 to 790, inclusive), and then plugged in.
+            #     assert False, "fill this in! See recording log for what trials lost."
 
             if only_if_in_dataset:
                 # SHould do this first, since if this trial is not in dataset then it will fail only_if_ml2_fixation_success
@@ -8678,7 +8830,8 @@ class Session(object):
                 trials = trials_keep
 
             # Store it.
-            self._CachedTrialsList[key] = trials
+            if not skip_cached_trials_even_if_exist:
+                self._CachedTrialsList[key] = trials
 
         # if only_if_in_dataset:
         #     trials = [t for t in trials if self.datasetbeh_trial_to_datidx(t) is not None]
