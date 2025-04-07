@@ -180,7 +180,7 @@ def params_seqsup_extract_and_process(DFDIST, animal, date, shape_or_loc_rule="s
     dfdistthis = dfdist[(dfdist["_vars_others_1"].isin(vars_others_keep)) & (dfdist["_vars_others_same"] == True) & (dfdist["same-stroke_index|_vars_others"] == "0|1" )].reset_index(drop=True)
 
     if remove_first_stroke:
-        dfdistthis = dfdistthis[(dfdistthis["stroke_index_1"]>1) & (dfdistthis["stroke_index_2"]>1)].reset_index(drop=True)
+        dfdistthis = dfdistthis[(dfdistthis["stroke_index_1"]>0) & (dfdistthis["stroke_index_2"]>0)].reset_index(drop=True)
 
     if len(dfdistthis) == 0:
         _error_print()
@@ -206,6 +206,70 @@ def params_seqsup_extract_and_process(DFDIST, animal, date, shape_or_loc_rule="s
 
     return dfdistthis, var_effect, vars_others_keep
 
+def params_seqsup_extract_and_process_new(DFDIST, date, contrast_version="shape_within_chunk"):
+    """
+    For new(good) seqsup mult analysis, extract a single day and do relevant presprocessing.
+    PARAMS:
+    - DFDIST, dfdist across all days.
+    - date, int, to pick out and process this specific date.
+        # date = 250320 
+    - contrast_version, See within, the rule you want to analyze.
+    """
+
+    if contrast_version=="shape_within_chunk":
+        # Control for chunk, test effect of index within chunk
+        contrast_idx = 0
+    elif contrast_version=="shape_index":
+        # Not controlling for chunk/shape, tests effect of stroke index
+        contrast_idx = 1
+    else:
+        assert False
+
+    ### Pull out a single day, and just this contrast
+    dfdist = DFDIST[(DFDIST["date"] == date) & (DFDIST["contrast_idx"] == contrast_idx)].reset_index(drop=True)
+
+    ### Pull out variables
+    tmp = dfdist["vars_others"].unique()
+    if not len(tmp)==1:
+        print(tmp)
+        assert False
+    vars_others = tmp[0]
+
+    tmp = dfdist["var_effect"].unique()
+    if not len(tmp)==1:
+        print(tmp)
+        assert False
+    var_effect = tmp[0]
+
+    ### Extract individual variables into new columns
+    assert all(dfdist["_vars_others_1"] == dfdist["_vars_others_2"]), "can consolidate into one column"
+
+    for i, var in enumerate(vars_others):
+        assert f"{var}" not in dfdist
+        assert f"{var}_1" not in dfdist
+        assert f"{var}_2" not in dfdist
+        dfdist[f"{var}"] = [x[i] for x in dfdist["_vars_others_1"]]
+        # dfdist[f"{var}"] = [x[i] for x in dfdist["_vars_others_2"]]
+
+    ### Only keep "diff effect"
+    dfdist = dfdist[dfdist[f"{var_effect}_same"] == False].reset_index(drop=True)
+
+    ### Determine a conjunctive variable that is a datapt for plotting in scatterplot
+    from pythonlib.tools.pandastools import append_col_with_grp_index
+    
+    if "chunk_rank" in vars_others and "shape" in vars_others:
+        vars_datapt = ["chunk_rank", "shape"]
+        dfdist = append_col_with_grp_index(dfdist, vars_datapt, "chrnk_shp")
+        
+        vars_datapt = ["chunk_rank", "shape", "superv_is_seq_sup"]
+        dfdist = append_col_with_grp_index(dfdist, vars_datapt, "chrnk_shp_superv")
+
+        var_datapt = "chrnk_shp"
+    else:
+        # var_datapt = "epochset_shape"
+        var_datapt = None
+    
+    return dfdist, vars_others, var_effect, var_datapt
 
 def params_get_contrasts_of_interest(return_list_flat=True):
     """
@@ -251,7 +315,8 @@ def params_get_contrasts_of_interest(return_list_flat=True):
 def preprocess_pa(PA, var_effect, vars_others, prune_min_n_trials, prune_min_n_levs, filtdict,
                   savedir, 
                 subspace_projection, subspace_projection_fitting_twind,
-                twind_analy, tbin_dur, tbin_slide, scalar_or_traj="traj"):
+                twind_analy, tbin_dur, tbin_slide, scalar_or_traj="traj",
+                use_strings_for_vars_others=True, is_seqsup_version=False):
 
     from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper, grouping_plot_n_samples_conjunction_heatmap
     from pythonlib.tools.pandastools import append_col_with_grp_index, grouping_print_n_samples
@@ -264,12 +329,13 @@ def preprocess_pa(PA, var_effect, vars_others, prune_min_n_trials, prune_min_n_l
     #### Append any new columns
     dflab = append_col_with_grp_index(dflab, ["epoch", "syntax_role"], "epch_sytxrol")
     dflab = append_col_with_grp_index(dflab, ["epoch", "syntax_role", "shape", "gridloc"], "sytx_all")
+    dflab = append_col_with_grp_index(dflab, ["epoch_rand", "shape", "syntax_role", "superv_is_seq_sup"], "stxsuperv")
 
     # Consolidate vars_others into a single variable
     # save text file holding the params
     from pythonlib.tools.expttools import writeDictToTxtFlattened
     writeDictToTxtFlattened({"var_effect":var_effect, "vars_others":vars_others}, f"{savedir}/vars.txt")
-    dflab = append_col_with_grp_index(dflab, vars_others, "_vars_others")
+    dflab = append_col_with_grp_index(dflab, vars_others, "_vars_others", use_strings=use_strings_for_vars_others)
 
     ### (0) Plot original tabulation of shape vs task_klind
     if savedir is not None:
@@ -316,17 +382,97 @@ def preprocess_pa(PA, var_effect, vars_others, prune_min_n_trials, prune_min_n_l
     PA = _preprocess_pa_dim_reduction(PA, subspace_projection, subspace_projection_fitting_twind,
                                 twind_analy, tbin_dur, tbin_slide, savedir, scalar_or_traj=scalar_or_traj)
     
+    if is_seqsup_version:
+        # Then is "good" seqsup version (newer code)
+        # e.g, Shape vs. seqsup
+
+        # Prune to just cases that are same epochset -- these are the onlye ones I will analyze anyway. Makes
+        # This go  much quicker.
+        dflab = PA.Xlabels["trials"]
+        
+        if "epochset_shape" in vars_others:
+            assert "epochset_dir" not in vars_others
+            inds = dflab[dflab["epochset_shape"]!=("LEFTOVER",)].index.tolist()
+        elif "epochset_dir" in vars_others:    
+            inds = dflab[dflab["epochset_dir"]!=("LEFTOVER",)].index.tolist()
+        else:
+            print(vars_others)
+            assert False, "for clean analyses here, I expect this..."
+        PA = PA.slice_by_dim_indices_wrapper("trials", inds)
+
     plt.close("all")
     
     return PA
 
-def euclidian_time_resolved_fast_shuffled(DFallpa, animal, SAVEDIR_ANALYSIS, question):
+def params_getter_euclidian_vars_grammar(question, version_seqsup_good, HACK=False):
     """
+    Wrapper to get LIST_VAR and other variables, 
+    allowing for getting good seqsup analysis (if version_seqsup_good==True), 
+    where focus just on the variables needed.
+    """
+    from neuralmonkey.metadat.analy.anova_params import params_getter_euclidian_vars
 
+    ### Load params
+    if version_seqsup_good:
+        # Good testing of effect of seqsup on syntax coding.
+
+        # Compute eucl distance within each shape
+        LIST_VAR = [
+            "chunk_within_rank_semantic_v2", 
+            "stroke_index",
+            "chunk_within_rank_semantic_v2", 
+            "stroke_index",
+            "syntax_role", # ------------- Using syntax_role instead of stroke_index
+            "syntax_role",
+            ]
+        LIST_VARS_OTHERS = [
+            ["epochset_shape", "epoch_rand", "chunk_rank", "shape", "superv_is_seq_sup"], 
+            ["epochset_shape", "epoch_rand", "superv_is_seq_sup"],
+            ["epochset_dir", "epoch_rand", "chunk_rank", "shape", "superv_is_seq_sup"],
+            ["epochset_dir", "epoch_rand", "superv_is_seq_sup"],
+            ["epochset_shape", "epoch_rand", "superv_is_seq_sup"], # ------------- Using syntax_role instead of stroke_index
+            ["epochset_dir", "epoch_rand", "superv_is_seq_sup"],
+            ]
+        LIST_CONTEXT = [
+            {"same":["epochset_shape", "epoch_rand", "chunk_rank", "shape", "superv_is_seq_sup"], "diff":None},
+            {"same":["epochset_shape", "epoch_rand", "superv_is_seq_sup"], "diff":None},
+            {"same":["epochset_dir", "epoch_rand", "chunk_rank", "shape", "superv_is_seq_sup"], "diff":None},
+            {"same":["epochset_dir", "epoch_rand", "superv_is_seq_sup"], "diff":None},
+            {"same":["epochset_shape", "epoch_rand", "superv_is_seq_sup"], "diff":None}, # ------------- Using syntax_role instead of stroke_index
+            {"same":["epochset_dir", "epoch_rand", "superv_is_seq_sup"], "diff":None},
+            ]
+        
+        if HACK:
+            # very hacky, just keep specific vars that are already extracted
+            LIST_VAR = LIST_VAR[:2]
+            LIST_VARS_OTHERS = LIST_VARS_OTHERS[:2]
+            LIST_CONTEXT = LIST_CONTEXT[:2]
+
+        LIST_PRUNE_MIN_N_LEVS = [2 for _ in range(len(LIST_VAR))]
+        # filtdict = {"stroke_index": list(range(1, 10, 1))}
+        # filtdict = {"epochset_shape":[("llCV3",)]}
+        LIST_FILTDICT = [None for _ in range(len(LIST_VAR))]
+        use_strings_for_vars_others = False
+        list_subspace_projection = ["stxsuperv"]
+        is_seqsup_version = True
+    else:
+        # Older version
+        from neuralmonkey.metadat.analy.anova_params import params_getter_euclidian_vars
+        LIST_VAR, LIST_VARS_OTHERS, LIST_CONTEXT, LIST_PRUNE_MIN_N_LEVS, LIST_FILTDICT = params_getter_euclidian_vars(question, 
+                                                                                                                    context_version="new")
+        use_strings_for_vars_others = True
+        list_subspace_projection = ["sytx_all", "epch_sytxrol", "syntax_role"]
+        is_seqsup_version = False
+
+    return LIST_VAR, LIST_VARS_OTHERS, LIST_CONTEXT, LIST_PRUNE_MIN_N_LEVS, LIST_FILTDICT, use_strings_for_vars_others, list_subspace_projection, is_seqsup_version
+
+def euclidian_time_resolved_fast_shuffled(DFallpa, animal, SAVEDIR_ANALYSIS, question,
+                                          version_seqsup_good=False):
+    """
+    All code for computing and saving euclidean distnaces.
     """
     from neuralmonkey.analyses.euclidian_distance import timevarying_compute_fast_to_scalar
 
-    list_subspace_projection = ["sytx_all", "epch_sytxrol", "syntax_role"]
 
     twind_analy = (-1, 0.6)
     tbin_dur = 0.15 # Matching params in other analyses
@@ -342,12 +488,42 @@ def euclidian_time_resolved_fast_shuffled(DFallpa, animal, SAVEDIR_ANALYSIS, que
 
     # twind_scal = (-0.5, -0.05) # char_sp
     # list_twind_scal = [(-0.1, 0.3)] # syntax, previously
-    list_twind_scal = [twind_ideal, (-0.3, -0.1)]
+    if False:
+        list_twind_scal = [twind_ideal, (-0.3, -0.1)]
+    else:
+        list_twind_scal = [twind_ideal]
 
-    ### Load params
-    from neuralmonkey.metadat.analy.anova_params import params_getter_euclidian_vars
-    LIST_VAR, LIST_VARS_OTHERS, LIST_CONTEXT, LIST_PRUNE_MIN_N_LEVS, LIST_FILTDICT = params_getter_euclidian_vars(question, 
-                                                                                                                  context_version="new")
+    # ### Load params
+    LIST_VAR, LIST_VARS_OTHERS, LIST_CONTEXT, LIST_PRUNE_MIN_N_LEVS, LIST_FILTDICT, \
+        use_strings_for_vars_others, list_subspace_projection, is_seqsup_version = \
+            params_getter_euclidian_vars_grammar(question, version_seqsup_good)
+
+    # if version_seqsup_good:
+    #     # Compute eucl distance within each shape
+    #     LIST_VAR = [
+    #         "chunk_within_rank_semantic_v2", 
+    #         "stroke_index"]
+    #     LIST_VARS_OTHERS = [
+    #         ["epochset_shape", "epoch_rand", "chunk_rank", "shape", "superv_is_seq_sup"],
+    #         ["epochset_shape", "epoch_rand", "superv_is_seq_sup"]]
+    #     LIST_CONTEXT = [
+    #         {"same":["epochset_shape", "epoch_rand", "chunk_rank", "shape", "superv_is_seq_sup"], "diff":None},
+    #         {"same":["epochset_shape", "epoch_rand", "superv_is_seq_sup"], "diff":None}]
+    #     LIST_PRUNE_MIN_N_LEVS = [2, 2]
+    #     # filtdict = {"stroke_index": list(range(1, 10, 1))}
+    #     # filtdict = {"epochset_shape":[("llCV3",)]}
+    #     LIST_FILTDICT = [None, None]
+    #     use_strings_for_vars_others = False
+    #     list_subspace_projection = ["stxsuperv"]
+    #     is_seqsup_version = True
+    # else:
+    #     from neuralmonkey.metadat.analy.anova_params import params_getter_euclidian_vars
+    #     LIST_VAR, LIST_VARS_OTHERS, LIST_CONTEXT, LIST_PRUNE_MIN_N_LEVS, LIST_FILTDICT = params_getter_euclidian_vars(question, 
+    #                                                                                                                 context_version="new",
+    #                                                                                                                 version_seqsup_good=version_seqsup_good)
+    #     use_strings_for_vars_others = True
+    #     list_subspace_projection = ["sytx_all", "epch_sytxrol", "syntax_role"]
+    #     is_seqsup_version = False
 
     ### Automaticlaly getting the contrast of interest
     if question == "RULE_ANBMCK_STROKE":
@@ -429,13 +605,15 @@ def euclidian_time_resolved_fast_shuffled(DFallpa, animal, SAVEDIR_ANALYSIS, que
                     PAthisRedu = preprocess_pa(PA, var_effect, vars_others, prune_min_n_trials, prune_min_n_levs, filtdict,
                                 savedir, 
                                 subspace_projection, subspace_projection_fitting_twind,
-                                twind_analy, tbin_dur, tbin_slide)
+                                twind_analy, tbin_dur, tbin_slide, use_strings_for_vars_others=use_strings_for_vars_others,
+                                is_seqsup_version=is_seqsup_version)
                     if PAthisRedu is None:
                         # Try again, using lower min n trials.
                         PAthisRedu = preprocess_pa(PA, var_effect, vars_others, prune_min_n_trials-1, prune_min_n_levs, filtdict,
                                     savedir, 
                                     subspace_projection, subspace_projection_fitting_twind,
-                                    twind_analy, tbin_dur, tbin_slide)
+                                    twind_analy, tbin_dur, tbin_slide, use_strings_for_vars_others=use_strings_for_vars_others,
+                                    is_seqsup_version=is_seqsup_version)
                         if PAthisRedu is None:
                             # Skip this contrast.
                             fig, _ = plt.subplots()
@@ -664,7 +842,7 @@ def mult_plot_all(DFDIST_AGG, map_savesuffix_to_contrast_idx_pairs, SAVEDIR_MULT
 
             # assert False
 
-def mult_plot_grammar_vs_seqsup(DFDIST, SAVEDIR, animal, date, shape_or_loc_rule="shape"):
+def mult_plot_grammar_vs_seqsup(DFDIST, SAVEDIR, animal, shape_or_loc_rule="shape"):
     """
     Comparing effect of sequence (here, using stroke index as proxy) with seqsup False vs. True.
     """
@@ -738,6 +916,118 @@ def mult_plot_grammar_vs_seqsup(DFDIST, SAVEDIR, animal, date, shape_or_loc_rule
 
             plt.close("all")
 
+def mult_plot_grammar_vs_seqsup_new(DFDIST, SAVEDIR, contrast_version="shape_index"):
+    """
+    [See calling function]
+    Comparing effect of sequence (here, using stroke index as proxy) with seqsup False vs. True.
+    PARAMS:
+    - contrast_version, string, which analysis to do
+    --- "shape_index"
+    --- "shape_within_chunk"
+    """
+    from pythonlib.tools.pandastools import plot_45scatter_means_flexible_grouping
+    from neuralmonkey.scripts.analy_syntax_good_eucl_state import params_seqsup_extract_and_process
+    from pythonlib.tools.pandastools import plot_subplots_heatmap, plot_45scatter_means_flexible_grouping, append_col_with_grp_index
+    import seaborn as sns
+    from pythonlib.tools.snstools import rotateLabel
+    from pythonlib.tools.plottools import savefig
+    from neuralmonkey.scripts.analy_syntax_good_eucl_state import params_seqsup_extract_and_process_new
+
+    ### Go thru all dates, process each, and collect into a new concated DFDIST
+    list_date = DFDIST["date"].unique()
+    tmp = []
+    var_effect = None
+    vars_others = None
+    var_datapt = None
+    for date in list_date:
+        dfdist, _vars_others, _var_effect, _var_datapt = params_seqsup_extract_and_process_new(DFDIST, date, contrast_version=contrast_version)
+        if dfdist is not None:
+            tmp.append(dfdist)
+
+            if var_effect is None:
+                var_effect = _var_effect
+            else:
+                assert var_effect == _var_effect
+
+            if vars_others is None:
+                vars_others = _vars_others
+            else:
+                assert vars_others == _vars_others
+
+            if var_datapt is None:
+                var_datapt = _var_datapt
+            else:
+                assert var_datapt == _var_datapt        
+    DFDIST_THIS = pd.concat(tmp).reset_index(drop=True)
+
+    ### Plots
+    y = "dist_yue_diff"
+    savedir = f"{SAVEDIR}/grammar_vs_seqsupgood-rule={contrast_version}"
+    os.makedirs(savedir, exist_ok=True)
+
+    # (2) Plot 45 scatter
+    _, fig = plot_45scatter_means_flexible_grouping(DFDIST_THIS, "superv_is_seq_sup", False, True, 
+                                        None, y, "bregion", True, SIZE=4, shareaxes=True);
+    savefig(fig, f"{savedir}/scatter45_combined.pdf")
+
+    _, fig = plot_45scatter_means_flexible_grouping(DFDIST_THIS, "superv_is_seq_sup", False, True, 
+                                        "date", y, "bregion", True, SIZE=4, shareaxes=True);
+    savefig(fig, f"{savedir}/scatter45_splot=date.pdf")
+
+    _, fig = plot_45scatter_means_flexible_grouping(DFDIST_THIS, "superv_is_seq_sup", False, True, 
+                                        "bregion", y, "date", True, SIZE=4, shareaxes=True);
+    savefig(fig, f"{savedir}/scatter45_splot=bregion.pdf")
+
+    if var_datapt is not None:
+        _, fig = plot_45scatter_means_flexible_grouping(DFDIST_THIS, "superv_is_seq_sup", False, True, 
+                                            var_datapt, y, "bregion", True, SIZE=4, shareaxes=True);
+        savefig(fig, f"{savedir}/scatter45_splot=datapt.pdf")
+
+    plt.close("all")
+
+    # (3) Plot catplot bars
+    if var_datapt is not None:
+        fig = sns.catplot(data=DFDIST_THIS, x="bregion", y=y, hue="superv_is_seq_sup", row=var_datapt, col="date", aspect=1, kind="bar")
+        rotateLabel(fig)
+        savefig(fig, f"{savedir}/catplot_1.pdf")
+
+        plt.close("all")
+
+    fig = sns.catplot(data=DFDIST_THIS, x="bregion", y=y, hue="superv_is_seq_sup", col="date", col_wrap=4, aspect=1, kind="bar")
+    rotateLabel(fig)
+    savefig(fig, f"{savedir}/catplot_2.pdf")
+
+    plt.close("all")
+
+    # (1) plot heatmap summary for each date
+    for date in list_date:
+        dfdistthis = DFDIST_THIS[DFDIST_THIS["date"] == date].reset_index(drop=True)
+        if len(dfdistthis)>0:
+            dfdistthis = append_col_with_grp_index(dfdistthis, ["bregion", "superv_is_seq_sup"], "br_sprv")
+                
+            # Plot, one plot for each var_datapt
+            if var_datapt is not None:
+                list_var_datapt = dfdistthis[var_datapt].unique().tolist()            
+                for val_datapt in list_var_datapt:
+                    _dfdistthis = dfdistthis[dfdistthis[var_datapt] == val_datapt].reset_index(drop=True)
+                    fig, axes = plot_subplots_heatmap(_dfdistthis, f"{var_effect}_1", f"{var_effect}_2", y, 
+                                                    "br_sprv", False, True, annotate_heatmap=True)
+                    savefig(fig, f"{savedir}/heatmaps_each_day-{date}-{var_datapt}={val_datapt}.pdf")
+
+            # Plot, agging across var_datapt
+            fig, axes = plot_subplots_heatmap(dfdistthis, f"{var_effect}_1", f"{var_effect}_2", y, 
+                                            "br_sprv", False, True, annotate_heatmap=True)
+            savefig(fig, f"{savedir}/heatmaps_each_day-{date}.pdf")
+
+            plt.close("all")
+
+    from pythonlib.tools.pandastools import grouping_print_n_samples
+    savepath = f"{savedir}/grouping-superv_is_seq_sup-vareffect12.txt"
+    grouping_print_n_samples(DFDIST_THIS, ["date", "superv_is_seq_sup", f"{var_effect}_12"], savepath=savepath)
+
+    if var_datapt is not None:
+        savepath = f"{savedir}/grouping-superv_is_seq_sup-{var_datapt}-vareffect12.txt"
+        grouping_print_n_samples(DFDIST_THIS, ["date", var_datapt, "superv_is_seq_sup", f"{var_effect}_12"], savepath=savepath)
 
 if __name__=="__main__":
 
@@ -763,7 +1053,8 @@ if __name__=="__main__":
     version = "stroke"
     combine = False
 
-    PLOTS_DO = [4] # Good
+    # PLOTS_DO = [4] # Good
+    PLOTS_DO = [4.1] # Good
 
     # Load a single DFallPA
     DFallpa = load_handsaved_wrapper(animal, date, version=version, combine_areas=combine, 
@@ -803,7 +1094,8 @@ if __name__=="__main__":
         #     euclidian_time_resolved(DFallpa, animal, date, var_other, savedir)
 
         if plotdo==4:
-            # Euclidian Shuff. This is better than plotdo==3, because:
+            # Euclidian Shuff. Replicating what previuosly did in the generic euclidan distance code.
+            # This is better than plotdo==3, because:
 
             # savedir = f"{SAVEDIR}/EUCLIDIAN_SHUFF/{animal}-{date}-combine={combine}-var_other={var_other}"
             SAVEDIR_ANALYSIS = f"{SAVEDIR}/EUCLIDIAN_SHUFF/{animal}-{date}-comb={combine}-q={question}"
@@ -812,6 +1104,14 @@ if __name__=="__main__":
             # DO_RSA_HEATMAPS = True
             # DO_SHUFFLE = False
             euclidian_time_resolved_fast_shuffled(DFallpa, animal, SAVEDIR_ANALYSIS, question)
+
+        elif plotdo==4.1:
+            # Euclidian shuff, for shape vs. seqsup. New code that is better and much faster, as prunes to focus on the
+            # important contrasts in dataset.
+
+            SAVEDIR_ANALYSIS = f"{SAVEDIR}/EUCLIDIAN_SHUFF/{animal}-{date}-comb={combine}-q={question}-seqsupgood"            
+            os.makedirs(SAVEDIR_ANALYSIS, exist_ok=True)
+            euclidian_time_resolved_fast_shuffled(DFallpa, animal, SAVEDIR_ANALYSIS, question, version_seqsup_good=True)
 
         # elif plotdo==5:
         #     # (2) Traj state space.

@@ -1153,28 +1153,35 @@ def params_subspace_projection(subspace_projection):
             "superv_dpca_vars_group":None,
             "superv_dpca_filtdict":None,
         }
-    elif subspace_projection == "epch_sytxrol":
+    elif subspace_projection in ["epch_sytxrol", "syntax_role", "sytx_all", "stxsuperv"]:
         dim_red_method = "superv_dpca"
         superv_dpca_params = {
             "superv_dpca_var":"epch_sytxrol",
             "superv_dpca_vars_group":None,
             "superv_dpca_filtdict":None
         }
-    elif subspace_projection == "syntax_role":
-        dim_red_method = "superv_dpca"
-        superv_dpca_params = {
-            "superv_dpca_var":"syntax_role",
-            "superv_dpca_vars_group":None,
-            "superv_dpca_filtdict":None
-        }
-    elif subspace_projection == "sytx_all":
-        # The generic one, getting all conditions.
-        dim_red_method = "superv_dpca"
-        superv_dpca_params = {
-            "superv_dpca_var":"sytx_all",
-            "superv_dpca_vars_group":None,
-            "superv_dpca_filtdict":None
-        }
+    # elif subspace_projection == "epch_sytxrol":
+    #     dim_red_method = "superv_dpca"
+    #     superv_dpca_params = {
+    #         "superv_dpca_var":"epch_sytxrol",
+    #         "superv_dpca_vars_group":None,
+    #         "superv_dpca_filtdict":None
+    #     }
+    # elif subspace_projection == "syntax_role":
+    #     dim_red_method = "superv_dpca"
+    #     superv_dpca_params = {
+    #         "superv_dpca_var":"syntax_role",
+    #         "superv_dpca_vars_group":None,
+    #         "superv_dpca_filtdict":None
+    #     }
+    # elif subspace_projection == "sytx_all":
+    #     # The generic one, getting all conditions.
+    #     dim_red_method = "superv_dpca"
+    #     superv_dpca_params = {
+    #         "superv_dpca_var":"sytx_all",
+    #         "superv_dpca_vars_group":None,
+    #         "superv_dpca_filtdict":None
+    #     }
     else:
         print(subspace_projection)
         assert False
