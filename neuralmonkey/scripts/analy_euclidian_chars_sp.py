@@ -1153,6 +1153,28 @@ def params_subspace_projection(subspace_projection):
             "superv_dpca_vars_group":None,
             "superv_dpca_filtdict":None,
         }
+    elif subspace_projection == "epch_sytxrol":
+        dim_red_method = "superv_dpca"
+        superv_dpca_params = {
+            "superv_dpca_var":"epch_sytxrol",
+            "superv_dpca_vars_group":None,
+            "superv_dpca_filtdict":None
+        }
+    elif subspace_projection == "syntax_role":
+        dim_red_method = "superv_dpca"
+        superv_dpca_params = {
+            "superv_dpca_var":"syntax_role",
+            "superv_dpca_vars_group":None,
+            "superv_dpca_filtdict":None
+        }
+    elif subspace_projection == "sytx_all":
+        # The generic one, getting all conditions.
+        dim_red_method = "superv_dpca"
+        superv_dpca_params = {
+            "superv_dpca_var":"sytx_all",
+            "superv_dpca_vars_group":None,
+            "superv_dpca_filtdict":None
+        }
     else:
         print(subspace_projection)
         assert False
@@ -1972,6 +1994,544 @@ def plot_heatmap_firing_rates_all_wrapper(DFallpa, SAVEDIR_ANALYSIS, animal, dat
     # plt.close("all")
 
 
+def motor_encoding_score(PA, frac_bounds_stroke=None, PLOT=False,
+                         savedir = None, dfdist_stroke=None):
+    """
+    PARAMS:
+    - dfdist_stroke, input already computed, for each pair of datapts in PA. NOTE: will do 
+    sanity check that index_datapt pairs do match between dfdist_stroke and neural data...
+    """
+    from neuralmonkey.analyses.euclidian_distance import timevarying_compute_fast_to_scalar
+
+    # (1) Get neural distance, pairwise between all trials.
+    vars_group = ["task_kind", "index_datapt_str", "shape_semantic_grp"]
+    get_group_distances = False
+    _, Cldist = timevarying_compute_fast_to_scalar(PA, vars_group, get_group_distances=get_group_distances,
+                                                prune_levs_min_n_trials=1)
+    
+    # (2) Get motor distance, pairwise between all trials
+    # PA.behavior_extract_strokes_to_dflab()
+    if dfdist_stroke is None:
+        # Compute it here. Takes a while
+        CldistStroke, dfdist_stroke = _motor_encoding_score_beh_dist(PA, vars_group, frac_bounds_stroke)
+    else:
+        # Use the input. Make a dummy output for this variable which is not used.
+        CldistStroke = None
+    # if False:
+    #     # Old method, distance bteween pts (positions)
+    #     n_time_bins = 50
+    #     PAstroke = PA.behavior_replace_neural_with_strokes(centerize_strokes=False, n_time_bins=n_time_bins, 
+    #                                                     align_strokes_to_onset=True, plot_examples=True)
+
+    #     # Take just the first segment of stroke.. (hacky)
+    #     if frac_bounds_stroke is not None:
+    #         ind1 = int(frac_bounds_stroke[0] * n_time_bins)
+    #         ind2 = int(frac_bounds_stroke[1] * n_time_bins)
+    #         PAstroke = PAstroke.slice_by_dim_values_wrapper("times", [ind1, ind2])
+    #     get_group_distances = False
+    #     _, CldistStroke = timevarying_compute_fast_to_scalar(PAstroke, vars_group, get_group_distances=get_group_distances,
+    #                                                 prune_levs_min_n_trials=1)
+    
+    #     dfdist_stroke = CldistStroke.rsa_dataextract_with_labels_as_flattened_df(keep_only_one_direction_for_each_pair=False, plot_heat=False, exclude_diagonal=True)
+        
+    # else:
+    #     # This gets trajectory distance, the standard that I use, but faster beucase it doesnt do DTW.
+    #     # i.e, eucl distance between velocities.
+    #     # Get strokes
+    #     # dflab = PA.Xlabels["trials"]
+    #     # strokes = dflab["strok_beh"].tolist()
+
+    #     # # Do slice
+    #     # from pythonlib.tools.stroketools import slice_strok_by_frac_bounds
+    #     # strokes = [slice_strok_by_frac_bounds(strok, frac_bounds_stroke[0], frac_bounds_stroke[1]) for strok in strokes]
+
+    #     # # Get pairwise distnace between all strokes.
+    #     # from pythonlib.dataset.dataset_strokes import DatStrokes
+    #     # ds = DatStrokes()
+    #     # labels = [tuple(x) for x in dflab.loc[:, vars_group].values.tolist()]
+
+    #     # list_distance_ver = ["euclid_vels_2d"]
+    #     # CldistStroke = ds.distgood_compute_beh_beh_strok_distances(strokes, strokes, list_distance_ver, labels_rows_dat=labels,
+    #     #                                                 labels_cols_feats=labels, label_var=vars_group, clustclass_rsa_mode=True)
+    #     # CldistStroke._Xinput = 1-CldistStroke._Xinput # So that ranges from [0, 1] where 0 is best.
+    #     # dfdist_stroke = CldistStroke.rsa_dataextract_with_labels_as_flattened_df(keep_only_one_direction_for_each_pair=False, plot_heat=False, exclude_diagonal=True)
+
+    ### Convert to distances
+    dfdist_neural = Cldist.rsa_dataextract_with_labels_as_flattened_df(keep_only_one_direction_for_each_pair=False, plot_heat=False, exclude_diagonal=True)
+    for df in [dfdist_neural, dfdist_stroke]:
+        for var in vars_group+["idx"]:
+            df[f"{var}_1"] = df[f"{var}_row"]
+            df[f"{var}_2"] = df[f"{var}_col"]
+    dfdist_neural = Cldist.rsa_distmat_population_columns_label_relations(dfdist_neural, vars_group)
+    dfdist_stroke = Cldist.rsa_distmat_population_columns_label_relations(dfdist_stroke, vars_group)
+    
+    # Check that neural and beh trial pairs match
+    try:
+        assert all(dfdist_stroke["index_datapt_str_12"] == dfdist_neural["index_datapt_str_12"]), "bug, they sould be identeical"
+    except Exception as err:
+        print(dfdist_stroke["index_datapt_str_12"].values[:10])
+        print(type(dfdist_stroke["index_datapt_str_12"].values[0]))
+        print(dfdist_neural["index_datapt_str_12"].values[:10])
+        print(type(dfdist_neural["index_datapt_str_12"].values[0]))
+        raise err
+    
+    # Merge neural and beh metrics
+    dfdist_neural["dist_beh"] = dfdist_stroke["dist"]
+
+    # Plots
+    if PLOT:
+        import seaborn as sns
+        
+        # Plot
+        if False: # I dont really check these
+            for df, suff in [
+                (dfdist_stroke, "stroke"), 
+                (dfdist_neural, "neural")
+                ]:
+                fig = sns.catplot(data = df, x="shape_semantic_grp_same", y="dist", col="task_kind_12", alpha=0.2, jitter=True)
+                savefig(fig, f"{savedir}/{suff}-catplot-1.pdf")
+
+                fig = sns.catplot(data = df, x="shape_semantic_grp_same", y="dist", hue="task_kind_12", kind="violin")
+                savefig(fig, f"{savedir}/{suff}-catplot-2.pdf")
+
+        fig = sns.relplot(data=dfdist_neural, x="dist_beh", y="dist", hue="shape_semantic_grp_same", 
+                    col="shape_semantic_grp_1", alpha=0.1, row="task_kind_12", height=5)
+        savefig(fig, f"{savedir}/BOTH-relplot-1.pdf")
+        
+        fig = sns.relplot(data=dfdist_neural, x="dist_beh", y="dist", hue="shape_semantic_grp_2", 
+                    col="shape_semantic_grp_1", alpha=0.1, row="task_kind_12", height=5)
+        savefig(fig, f"{savedir}/BOTH-relplot-2.pdf")
+
+        plt.close("all")
+    
+    return Cldist, CldistStroke, dfdist_neural, dfdist_stroke
+
+def _motor_encoding_score_beh_dist(PA, vars_group, frac_bounds_stroke):
+    """
+    Low-level, compute scores between all trials' pairs of strokes in PA.
+    """
+    if False:
+        # Old method, distance bteween pts (positions)
+        n_time_bins = 50
+        PAstroke = PA.behavior_replace_neural_with_strokes(centerize_strokes=False, n_time_bins=n_time_bins, 
+                                                        align_strokes_to_onset=True, plot_examples=True)
+
+        # Take just the first segment of stroke.. (hacky)
+        if frac_bounds_stroke is not None:
+            ind1 = int(frac_bounds_stroke[0] * n_time_bins)
+            ind2 = int(frac_bounds_stroke[1] * n_time_bins)
+            PAstroke = PAstroke.slice_by_dim_values_wrapper("times", [ind1, ind2])
+        get_group_distances = False
+        _, CldistStroke = timevarying_compute_fast_to_scalar(PAstroke, vars_group, get_group_distances=get_group_distances,
+                                                    prune_levs_min_n_trials=1)
+    
+        dfdist_stroke = CldistStroke.rsa_dataextract_with_labels_as_flattened_df(keep_only_one_direction_for_each_pair=False, plot_heat=False, exclude_diagonal=True)
+        
+    else:
+        # This gets trajectory distance, the standard that I use, but faster beucase it doesnt do DTW.
+        # i.e, eucl distance between velocities.
+        # Get strokes
+        PA.behavior_extract_strokes_to_dflab()
+        dflab = PA.Xlabels["trials"]
+        strokes = dflab["strok_beh"].tolist()
+
+        # Do slice
+        from pythonlib.tools.stroketools import slice_strok_by_frac_bounds
+        strokes = [slice_strok_by_frac_bounds(strok, frac_bounds_stroke[0], frac_bounds_stroke[1]) for strok in strokes]
+
+        # Get pairwise distnace between all strokes.
+        from pythonlib.dataset.dataset_strokes import DatStrokes
+        ds = DatStrokes()
+        labels = [tuple(x) for x in dflab.loc[:, vars_group].values.tolist()]
+
+        list_distance_ver = ["euclid_vels_2d"]
+        CldistStroke = ds.distgood_compute_beh_beh_strok_distances(strokes, strokes, list_distance_ver, labels_rows_dat=labels,
+                                                        labels_cols_feats=labels, label_var=vars_group, clustclass_rsa_mode=True)
+        CldistStroke._Xinput = 1-CldistStroke._Xinput # So that ranges from [0, 1] where 0 is best.
+        dfdist_stroke = CldistStroke.rsa_dataextract_with_labels_as_flattened_df(keep_only_one_direction_for_each_pair=False, plot_heat=False, exclude_diagonal=True)
+
+    return CldistStroke, dfdist_stroke
+
+
+def motor_encoding_score_stats_overlap_diff(dfdist_neural, dist_is_between_0_1, PLOT=False):
+    """
+    Find overlaping range of dist_beh, and within those ranges, get difference in neural.
+    Does this by making small bins, and checking each for having both samea nd diff data.
+
+    """
+    from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good
+
+    grpdict = grouping_append_and_return_inner_items_good(dfdist_neural, ["task_kind_12", "shape_semantic_grp_1"])
+
+    if PLOT:
+        ncols = 6
+        nrows = int(np.ceil(len(grpdict)/ncols))
+        fig, axes = plt.subplots(nrows, ncols, figsize=(5*ncols, 4*nrows), sharex=True, sharey=True)
+    else:
+        fig = None
+        axes = np.zeros((nrows, ncols))
+
+    # Collect
+    res = []
+    for (grp, inds), ax in zip(grpdict.items(), axes.flatten()):
+        
+        dfdist_neural_this = dfdist_neural.iloc[inds].reset_index(drop=True)
+
+        dfsame = dfdist_neural_this[dfdist_neural_this["shape_semantic_grp_same"]==True]
+        dfdiff = dfdist_neural_this[dfdist_neural_this["shape_semantic_grp_same"]==False]
+
+        distbeh_same = dfsame["dist_beh"].values
+        distbeh_diff = dfdiff["dist_beh"].values
+        distbeh_all = dfdist_neural_this["dist_beh"].values
+
+        distneural_same = dfsame["dist"].values
+        distneural_diff = dfdiff["dist"].values
+
+        # Get upper and lower bounds as control.
+        # - upper, distance between mean of diff and same
+        d_upper = np.mean(distneural_diff) - np.mean(distneural_same)
+        
+        # - lower, this is 0
+
+        # if there are enough datapts in this bin, then score it
+        npts_min = 3
+        # if len(dists_same)<20:
+        #     npts_min = 3
+
+        nbins = 20
+        nbins = min([len(distbeh_same), nbins]) # becuase this is always less n than diff
+        nbins = max([10, nbins]) 
+
+        if dist_is_between_0_1:
+            dist_min = 0
+            dist_max = 1
+        else:
+            dist_min = np.min(distbeh_all)
+            dist_max = np.max(distbeh_all)
+
+        bin_edges = np.linspace(dist_min, dist_max, nbins+1)
+
+        # Go thru each bin
+        list_d = []
+        list_npts = []
+        list_bins_kept = []
+        for i in range(len(bin_edges)-1):
+            d1 = bin_edges[i]
+            d2 = bin_edges[i+1]
+
+            distneural_same_this = distneural_same[(distbeh_same>d1) & (distbeh_same<=d2)]
+            distneural_diff_this = distneural_diff[(distbeh_diff>d1) & (distbeh_diff<=d2)]
+
+            if False:   
+                print(i, [d1, d2], len(dists_same_this), len(dists_diff_this))
+
+            if (len(distneural_same_this)>=npts_min) & (len(distneural_diff_this)>=npts_min):
+                d = np.mean(distneural_diff_this) - np.mean(distneural_same_this)
+                list_d.append(d)
+
+                n1 = len(distneural_same_this)
+                n2 = len(distneural_diff_this)
+                list_npts.append(min([n1, n2]))
+                list_bins_kept.append(i)
+
+        # Take weighted average over bins, weighted by n
+        weights = np.array(list_npts)**0.5
+        weights = weights/np.sum(weights) # to probs
+
+        ds = np.array(list_d)
+        d_weighted = weights@ds
+
+        ### SAVE
+        res.append({
+            "task_kind_12":grp[0],
+            "shape_semantic_grp_1":grp[1],
+            "d_weighted":d_weighted,
+            "list_d":tuple(list_d),
+            "list_npts":tuple(list_npts),
+            "list_bins_kept":tuple(list_bins_kept),
+            "d_upper":d_upper
+        })
+
+        if PLOT:
+            y = 1
+            for i, npts, d in zip(list_bins_kept, list_npts, list_d):
+                d1 = bin_edges[i]
+                d2 = bin_edges[i+1]
+                ax.axvline(d1, color="k", alpha=0.2)
+                ax.axvline(d2, color="k", alpha=0.2)
+                ax.plot([d1, d2], [y, y], "-ok", alpha=0.2)
+                ax.text(d1, y, f"n={npts}-d={d:.2f}", fontsize=6)
+
+                # ax.plot()
+                
+            sns.scatterplot(data=dfdist_neural_this, x="dist_beh", y="dist", hue="shape_semantic_grp_same", marker=".", alpha=0.25, ax=ax)
+            # ax.plot(dists_same, "ob", alpha=0.2)
+            # ax.plot(dists_diff, "xr", alpha=0.2)
+            ax.set_title(f"{grp}--d={d_weighted:.2f}(up={d_upper:.2f})")
+        # assert False
+    
+    dfres = pd.DataFrame(res)
+
+    return dfres, fig
+
+def motor_encoding_score_wrapper(DFallpa, animal, date, SAVEDIR):
+    """
+    Pipeline to get pairwise neural and beh distances between trials, and see that for PMv is not linear with distance.
+    """
+
+    # Required, for using index_datapt_str
+    for pa in DFallpa["pa"].values:
+        dflab = pa.Xlabels["trials"]
+        dflab["index_datapt_str"] = ["|".join([str(xx) for xx in x]) for x in dflab["index_datapt"]]
+
+    # twind_analy = (-0.5, 0.)
+    list_twind_analy = [(-0.5, -0.05), (0, 0.5)]
+    list_frac = [(0, 1.), (0, 0.5)]
+    list_bregion = DFallpa["bregion"].unique().tolist()
+    beh_max_prctile = 95 # to stay within linearish range.
+    vars_group = ["task_kind", "index_datapt_str", "shape_semantic_grp"]
+
+    ### 
+    prune_version = "sp_char_0"
+    n_min_trials_per_shape = 4
+    shape_var = "shape_semantic_grp"
+    plot_drawings = False
+    subspace_projection_fitting_twind = (-0.5, 0.5)
+    tbin_dur = 0.2
+    tbin_slide = 0.02
+
+    # Do umap on timecourse
+    NPCS_KEEP = 8
+    subspace_projection = "task_shape_si"
+    raw_subtract_mean_each_timepoint = False
+
+    LIST_DFRES = []
+    LIST_DFRES_OVERLAP =[]
+    for frac_bounds_stroke in list_frac:
+        
+        ### First, get beh distance between strokes. This takes a min or two so do it out here.
+        pa = extract_single_pa(DFallpa, bregion=list_bregion[0], which_level="stroke", event="00_stroke")
+
+        pa = preprocess_pa(animal, date, pa, "/tmp", prune_version, 
+                    n_min_trials_per_shape=n_min_trials_per_shape, shape_var=shape_var, 
+                    remove_chans_fr_drift=False,
+                    subspace_projection=subspace_projection, 
+                        twind_analy=(-0.5, 0.5), tbin_dur=tbin_dur, tbin_slide=tbin_slide, NPCS_KEEP=NPCS_KEEP,
+                        raw_subtract_mean_each_timepoint=raw_subtract_mean_each_timepoint,
+                        subspace_projection_fitting_twind=subspace_projection_fitting_twind,
+                        remove_singleprims_unstable=True)
+
+        _, DFDIST_STROKE = _motor_encoding_score_beh_dist(pa, vars_group, frac_bounds_stroke)
+
+        for bregion in list_bregion:
+            for twind_analy in list_twind_analy:
+                
+                savedir = f"{SAVEDIR}/{bregion}-twind={twind_analy}-fracstroke={frac_bounds_stroke}"
+                os.makedirs(savedir, exist_ok=True)
+                
+                PA = extract_single_pa(DFallpa, bregion, which_level="stroke", event="00_stroke")
+                print(PA.X.shape)
+
+                prune_version = "sp_char_0"
+                n_min_trials_per_shape = 4
+                shape_var = "shape_semantic_grp"
+                plot_drawings = False
+                subspace_projection_fitting_twind = (-0.5, 0.5)
+                tbin_dur = 0.2
+                tbin_slide = 0.02
+
+                # Do umap on timecourse
+                NPCS_KEEP = 8
+                subspace_projection = "task_shape_si"
+                raw_subtract_mean_each_timepoint = False
+                subspace_projection_fitting_twind = twind_analy
+
+                if True:
+                    PAthisRedu = preprocess_pa(animal, date, PA, savedir, prune_version, 
+                                        n_min_trials_per_shape=n_min_trials_per_shape, shape_var=shape_var, plot_drawings=plot_drawings,
+                                        remove_chans_fr_drift=False,
+                                        subspace_projection=subspace_projection, 
+                                            twind_analy=twind_analy, tbin_dur=tbin_dur, tbin_slide=tbin_slide, NPCS_KEEP=NPCS_KEEP,
+                                            raw_subtract_mean_each_timepoint=raw_subtract_mean_each_timepoint,
+                                            subspace_projection_fitting_twind=subspace_projection_fitting_twind,
+                                            remove_singleprims_unstable=True)
+
+
+                elif False: # Do more dim reduction
+                    # (1) umap
+                    if False:
+                        # Do umap on timecourse
+                        NPCS_KEEP = 8
+                        subspace_projection = "umap"
+                        raw_subtract_mean_each_timepoint = False
+                        subspace_projection_fitting_twind = twind_analy
+
+                        PAthisRedu = preprocess_pa(animal, date, PA, savedir, prune_version, 
+                                            n_min_trials_per_shape=n_min_trials_per_shape, shape_var=shape_var, plot_drawings=plot_drawings,
+                                            remove_chans_fr_drift=False,
+                                            subspace_projection=subspace_projection, 
+                                                twind_analy=twind_analy, tbin_dur=tbin_dur, tbin_slide=tbin_slide, NPCS_KEEP=NPCS_KEEP,
+                                                raw_subtract_mean_each_timepoint=raw_subtract_mean_each_timepoint,
+                                                subspace_projection_fitting_twind=subspace_projection_fitting_twind,
+                                                remove_singleprims_unstable=True)
+
+                    else:
+                        # dont do dim redu. Then do on scalar
+                        NPCS_KEEP = 8
+                        subspace_projection = None
+                        raw_subtract_mean_each_timepoint = False
+                        subspace_projection_fitting_twind = twind_analy
+
+                        PAthisRedu = preprocess_pa(animal, date, PA, savedir, prune_version, 
+                                            n_min_trials_per_shape=n_min_trials_per_shape, shape_var=shape_var, plot_drawings=plot_drawings,
+                                            remove_chans_fr_drift=False,
+                                            subspace_projection=subspace_projection, 
+                                                twind_analy=twind_analy, tbin_dur=tbin_dur, tbin_slide=tbin_slide, NPCS_KEEP=NPCS_KEEP,
+                                                raw_subtract_mean_each_timepoint=raw_subtract_mean_each_timepoint,
+                                                subspace_projection_fitting_twind=subspace_projection_fitting_twind,
+                                                remove_singleprims_unstable=True)
+
+                        dim_red_method = "umap"
+                        twind_pca = (-0.4, 0.1)
+                        tbin_dur  = 0.15
+                        tbin_slide = 0.1
+                        scalar_or_traj = "scal"
+                        Xredu, PAthisRedu = PAthisRedu.dataextract_dimred_wrapper(scalar_or_traj, dim_red_method, savedir, 
+                                                        twind_pca, tbin_dur=tbin_dur, tbin_slide=tbin_slide, 
+                                                        umap_n_components=2, umap_n_neighbors=40,
+                                                        n_min_per_lev_lev_others = 2)    
+
+                # Sanity check -- plot state space quickly.
+                if True:
+                    savedir_this = f"{savedir}/state_space"
+                    os.makedirs(savedir_this, exist_ok=True)
+
+                    # do another dim reduction for scalar
+                    dim_red_method = "pca"
+                    scalar_or_traj = "scal"
+                    _, _paredu = PAthisRedu.dataextract_dimred_wrapper(scalar_or_traj, dim_red_method, savedir_this, 
+                                                    twind_analy, tbin_dur=tbin_dur, tbin_slide=tbin_slide, 
+                                                    umap_n_components=2, umap_n_neighbors=40,
+                                                    n_min_per_lev_lev_others = 2)    
+
+                    list_dims=[(0,1), (1,2), (2,3), (3,4)]
+                    _paredu.plot_state_space_good_wrapper(savedir_this, ["shape_semantic_grp"], [["task_kind"]], list_dims=list_dims)
+
+
+                ### Get distances
+                # (1) First, get
+
+                from neuralmonkey.scripts.analy_euclidian_chars_sp import motor_encoding_score
+                _, _, dfdist_neural, _ = motor_encoding_score(PAthisRedu, frac_bounds_stroke, True, savedir=savedir,
+                                                              dfdist_stroke=DFDIST_STROKE)
+
+
+                # (2) Find overlapping regions
+                savedirthis = f"{savedir}/FINDING_OVERLAP_BEH_DIST"
+                os.makedirs(savedirthis, exist_ok=True)
+
+                dfres, fig = motor_encoding_score_stats_overlap_diff(dfdist_neural, dist_is_between_0_1=True, PLOT=True)
+                savefig(fig, f"{savedirthis}/summary.pdf")
+
+                dfres["bregion"] = bregion
+                dfres["frac_bounds_stroke"] = [frac_bounds_stroke for _ in range(len(dfres))]
+                dfres["twind_analy"] = [twind_analy for _ in range(len(dfres))]
+                LIST_DFRES_OVERLAP.append(dfres)
+
+                # (3) Build a linear model that predict neural distance based on either shape difference and/or beh distance
+                # (and interaction)
+                from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good
+                import statsmodels.formula.api as smf
+                grpdict = grouping_append_and_return_inner_items_good(dfdist_neural, ["task_kind_12", "shape_semantic_grp_1"])
+
+                res = []
+                for grp, inds in grpdict.items():
+
+                    data = dfdist_neural.iloc[inds].reset_index(drop=True)
+                    # data = dfdist_neural[(dfdist_neural["task_kind_12"] == "character|character") & (dfdist_neural["shape_semantic_grp_1"]=="ARC-LL")].reset_index(drop=True)
+
+                    # remove outlier beh distances
+                    dist_max = np.percentile(data["dist_beh"].values, [beh_max_prctile])[0]
+                    # print(len(data))
+                    data = data[data["dist_beh"]<dist_max]
+                    # print(len(data))
+
+                    if False:
+                        # zscore beh
+                        data["dist_beh_z"] = (data["dist_beh"] - data["dist_beh"].mean())/data["dist_beh"].std()
+                        data["dist_z"] = (data["dist"] - data["dist"].mean())/data["dist"].std()
+                    else:
+                        # better (?) put in similar unit to shape (i.e., distance between same and diff shape)
+                        vardist = "dist_beh"
+                        d1 = data[data["shape_semantic_grp_same"]==True][vardist].mean()
+                        d2 = data[data["shape_semantic_grp_same"]==False][vardist].mean()
+                        data[f"{vardist}_norm"] = (data[vardist] - d1)/(d2-d1)
+
+                    # formula = f"dist ~ C(shape_semantic_grp_12) + dist_beh_z"
+                    # formula = f"dist_z ~ C(shape_semantic_grp_2) + dist_beh_z"
+                    formula = f"dist ~ C(shape_semantic_grp_same, Treatment(True)) + dist_beh_norm"
+                    md = smf.ols(formula, data)
+                    mdf = md.fit()
+                    # mdf.summary()
+
+                    # Extract fitted coefficients
+                    coefficients = mdf.params
+                    dfcoeff = coefficients.reset_index()
+                    dfpvals = mdf.pvalues.reset_index()
+
+                    coeffname_shape = "C(shape_semantic_grp_same, Treatment(True))[T.False]"
+                    coeffname_beh = "dist_beh_norm"
+
+                    assert dfcoeff.iloc[1]["index"] == coeffname_shape
+                    assert dfcoeff.iloc[2]["index"] == coeffname_beh
+                    assert dfpvals.iloc[1]["index"] == coeffname_shape
+                    assert dfpvals.iloc[2]["index"] == coeffname_beh
+
+                    res.append({
+                        "coeffname":"shape",
+                        "coeff":dfcoeff.iloc[1][0],
+                        "bregion":bregion,
+                        "frac_bounds_stroke":frac_bounds_stroke,
+                        "twind_analy":twind_analy,
+                        # "results":mdf,
+                        "task_kind_12":grp[0],
+                        "shape_semantic_grp_1":grp[1],
+                        "bregion":bregion,
+                    })
+                    res.append({
+                        "coeffname":"beh",
+                        "coeff":dfcoeff.iloc[2][0],
+                        "bregion":bregion,
+                        "frac_bounds_stroke":frac_bounds_stroke,
+                        "twind_analy":twind_analy,
+                        # "results":mdf,
+                        "task_kind_12":grp[0],
+                        "shape_semantic_grp_1":grp[1],
+                        "bregion":bregion,
+                    })
+
+                # Quick plots
+                dfres = pd.DataFrame(res)
+                from pythonlib.tools.snstools import rotateLabel
+                fig = sns.catplot(data=dfres, x="shape_semantic_grp_1", y="coeff", hue="coeffname", col="task_kind_12", kind="bar", aspect=1)
+                rotateLabel(fig)
+                savefig(fig, f"{savedir}/REGR-coeffs.pdf")
+                
+                from pythonlib.tools.pandastools import plot_45scatter_means_flexible_grouping
+                dfres, fig = plot_45scatter_means_flexible_grouping(dfres, "coeffname", "beh", "shape", "task_kind_12", "coeff", "shape_semantic_grp_1", shareaxes=True, 
+                                                    plot_error_bars=False, plot_text=False);
+                savefig(fig, f"{savedir}/REGR-scatter.pdf")
+
+                plt.close("all")
+
+                LIST_DFRES.append(dfres)
+
+    DFRES = pd.concat(LIST_DFRES).reset_index(drop=True)
+    pd.to_pickle(DFRES, f"{SAVEDIR}/DFRES.pkl")
+
+    DFRES_OVERLAP = pd.concat(LIST_DFRES_OVERLAP).reset_index(drop=True)
+    pd.to_pickle(DFRES_OVERLAP, f"{SAVEDIR}/DFRES_OVERLAP.pkl")
+
 if __name__=="__main__":
 
     from neuralmonkey.scripts.analy_dfallpa_extract import extract_dfallpa_helper
@@ -2174,8 +2734,20 @@ if __name__=="__main__":
 
             os.makedirs(SAVEDIR_ANALYSIS, exist_ok=True)
             print(SAVEDIR_ANALYSIS)
-            DO_RSA_HEATMAPS = True
+            DO_RSA_HEATMAPS = False
             euclidian_time_resolved_fast_shuffled(DFallpa, animal, date, SAVEDIR_ANALYSIS, DO_RSA_HEATMAPS=DO_RSA_HEATMAPS)
+        
+        elif plotdo==6:
+            """
+            GOOD - Motor vs. shape encoding
+            """
+
+            SAVEDIR_ANALYSIS = f"/lemur2/lucas/analyses/recordings/main/euclidian_char_sp/MOTOR_VS_SHAPE/{animal}-{date}-combine={combine}-wl={version}"
+            os.makedirs(SAVEDIR_ANALYSIS, exist_ok=True)
+            print(SAVEDIR_ANALYSIS)
+            
+            motor_encoding_score_wrapper(DFallpa, animal, date, SAVEDIR_ANALYSIS)
+        
         else:
             print(plotdo)
             assert False   
