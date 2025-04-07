@@ -1,5 +1,7 @@
 #!/bin/bash -e
 
+combine=0
+
 # # ###################
 #  animal=Diego
 #  question=RULE_ANBMCK_STROKE
@@ -52,7 +54,7 @@ do
   logfile="../logs/analy_euclidian_dist_pop-${animal}_${date1}_${question}.txt"
   touch ${logfile}
   echo ${logfile}
-  python analy_euclidian_dist_pop_script.py ${animal} ${date1} ${question} ${which_level} 2>&1 | tee ${logfile} &
+  python analy_euclidian_dist_pop_script.py ${animal} ${date1} ${question} ${which_level} ${combine} 2>&1 | tee ${logfile} &
   sleep 1m
 done
 # sleep 60m

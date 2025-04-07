@@ -20,34 +20,32 @@ from neuralmonkey.analyses.decode_good import preprocess_extract_X_and_labels
 from pythonlib.tools.pandastools import append_col_with_grp_index
 
 
-
-def load_preprocess_concat_mult_sessions(animal, save_suffix, new_varied_hyperparams=True,
-                                         dim_red_method=None, NPCS_KEEP=None, extra_dimred_method_n_components=None,
-                                         umap_n_neighbors=None, savedir_suffix=None,
-                                         skip_dates_dont_exist=False,
-                                         new_mult_savedir_suffix = None, 
-                                         HACK=False):
-    """ Loads, preprocesses (each individualy) and concats
+def load_preprocess_get_dates(animal, save_suffix, new_varied_hyperparams=True):
     """
-    # Get params
-    which_level = "stroke"
-    event = "00_stroke"
-    spks = "kilosort_if_exists"
-    combarea = False
+    Load dates that are relevant for a given question (in grammar analyses)
+    """
 
     if animal=="Diego":
+        ### Time window
         if new_varied_hyperparams:
             twind_analy = (-0.1, 0.2)
         else:
             twind_analy = (-0.1, 0.1)
 
-        if save_suffix=="AnBmCk_general":
-            dates = [230724, 230726, 230730, 230817, 230913, 231116, 231118]
-            dates = [230724, 230726, 230817, 230913, 231116, 231118] # skipping 230730 most of the time.
+        ### Dates
+        if save_suffix=="two_shape_sets":
+            # AnBkCk, two shape sets.
+            dates = [240822, 240827, 250319, 250321]
+            question = "RULE_ANBMCK_STROKE"
+            fr_normalization_method = "across_time_bins"
+        elif save_suffix=="AnBmCk_general":
+            # dates = [230724, 230726, 230730, 230817, 230913, 231116, 231118]
+            # dates = [230724, 230726, 230817, 230913, 231116, 231118] # skipping 230730 most of the time.
+            dates = [230723, 230724, 230726, 230727, 230728, 230730, 230815, 230816, 230817, 230913, 230914, 230915, 231116, 231118, 240822, 240827, 250319, 250321] # ALL (3/18/25)
             question = "RULE_ANBMCK_STROKE"
             fr_normalization_method = "across_time_bins"
         elif save_suffix=="sh_vs_seqsup":
-            dates = [230922, 230920, 230924, 230925]
+            dates = [230920, 230921, 230922, 230924, 230925, 250320] # ALL (3/18/25)
             question = "RULESW_ANY_SEQSUP_STROKE"
             fr_normalization_method = "across_time_bins"
         elif save_suffix=="sh_vs_dir":
@@ -63,19 +61,24 @@ def load_preprocess_concat_mult_sessions(animal, save_suffix, new_varied_hyperpa
             print(animal, save_suffix)
             assert False, "add this."
     elif animal=="Pancho":
+        ### Time window
         twind_analy = (0.05, 0.25)
 
+        ### Dates
         if save_suffix=="two_shape_sets":
             # AnBkCk, two shape sets.
-            dates = [220906, 220907, 220908, 220909]
+            # dates = [220906, 220907, 220908, 220909]
+            dates = [220902, 220906, 220907, 220908, 220909, 240830, 250321, 250322] # ALL (3/18/25)
             question = "RULE_ANBMCK_STROKE"
             fr_normalization_method = "across_time_bins"
         elif save_suffix=="AnBmCk_general":
-            dates = [220906, 220907, 220908, 220909, 230811, 230829]
+            # dates = [220906, 220907, 220908, 220909, 230811, 230829]
+            dates = [220831, 220901, 230810, 230811, 230824, 230826, 230829, 231114, 231116, 220902, 220906, 220907, 220908, 220909, 240830, 250321, 250322] # ALL (4/6/25)
             question = "RULE_ANBMCK_STROKE"
             fr_normalization_method = "across_time_bins"
         elif save_suffix=="sh_vs_seqsup":
-            dates = [230920, 230921, 230923, 231019, 240828, 240829]
+            # dates = [230920, 230921, 230923, 231019, 231020, 240828, 240829]
+            dates = [230920, 230921, 230923, 231019, 240828, 240829, 250324, 250325] # # ALL (3/18/25) -- 231020 failed for extraction.
             question = "RULESW_ANY_SEQSUP_STROKE"
             fr_normalization_method = "across_time_bins"
         elif save_suffix=="sh_vs_dir":
@@ -92,6 +95,25 @@ def load_preprocess_concat_mult_sessions(animal, save_suffix, new_varied_hyperpa
     else:
         print(animal, save_suffix)
         assert False, "add this."
+
+    return dates, question, twind_analy, fr_normalization_method
+
+def load_preprocess_concat_mult_sessions(animal, save_suffix, new_varied_hyperparams=True,
+                                         dim_red_method=None, NPCS_KEEP=None, extra_dimred_method_n_components=None,
+                                         umap_n_neighbors=None, savedir_suffix=None,
+                                         skip_dates_dont_exist=False,
+                                         new_mult_savedir_suffix = None, 
+                                         HACK=False):
+    """ 
+    Loads, preprocesses (each individualy) and concats all sessions
+    """
+    # Get params
+    which_level = "stroke"
+    event = "00_stroke"
+    spks = "kilosort_if_exists"
+    combarea = False
+
+    dates, question, twind_analy, fr_normalization_method = load_preprocess_get_dates(animal, save_suffix, new_varied_hyperparams=new_varied_hyperparams)
 
     # Load data across dates
     list_dfres = []
@@ -145,7 +167,7 @@ def load_preprocess_concat_mult_sessions(animal, save_suffix, new_varied_hyperpa
                 continue
             else:
                 print("******** MISSING, doesnt exist:", d, SAVEDIR)
-                assert False
+                assert False    
 
         print("Loading... ", SAVEDIR)
         path = f"{SAVEDIR}/DFRES.pkl"

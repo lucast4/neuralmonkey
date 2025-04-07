@@ -1282,12 +1282,17 @@ class PopAnal():
         from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars
         pa = self.copy()
         dflab = pa.Xlabels["trials"]
+        # from pythonlib.tools.pandastools import _check_index_reseted
+        # _check_index_reseted(dflab)
         dfout, dict_dfthis = extract_with_levels_of_conjunction_vars(dflab, var, vars_others,
                                                                  n_min_across_all_levs_var=prune_min_n_trials,
                                                                  lenient_allow_data_if_has_n_levels=prune_min_n_levs,
                                                                  prune_levels_with_low_n=True,
                                                                  ignore_values_called_ignore=True,
                                                                  plot_counts_heatmap_savepath=plot_counts_heatmap_savepath)
+        # print(len(dflab), len(dfout))
+        # print(dflab.index)
+        # print(dfout.index)
 
         if len(dfout)>0:
             # Only keep the indices in dfout

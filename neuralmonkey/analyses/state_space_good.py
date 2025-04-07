@@ -3609,7 +3609,8 @@ def euclidian_distance_compute_trajectories(PA, LIST_VAR, LIST_VARS_OTHERS, twin
                                RETURN_EACH_TIMES_CLDIST=False,
                                PLOT_CLEAN_VERSION = False,
                                COMPUTE_EUCLIDIAN=True, 
-                               get_reverse_also = False
+                               get_reverse_also = False,
+                               PLOT_MASKS=False
                                ):
     """
     Wrapper to compute all distances between levels of variables, with flecxible abilties for
@@ -3864,7 +3865,7 @@ def euclidian_distance_compute_trajectories(PA, LIST_VAR, LIST_VARS_OTHERS, twin
                                                                     context_input=context, PLOT_HEATMAPS=PLOT_HEATMAPS, 
                                                                     savedir_heatmaps=savedir_heatmaps,
                                                                     dir_to_print_lab_each_mask=dir_to_print_lab_each_mask,
-                                                                    get_reverse_also = get_reverse_also)
+                                                                    get_reverse_also = get_reverse_also, PLOT_MASKS=PLOT_MASKS)
                 for r in res:
                     r["shuffled"] = False
                     r["shuffled_iter"] = -1
@@ -4105,6 +4106,8 @@ def euclidian_distance_compute_trajectories_single(PA, var_effect, vars_others, 
             ### Compute scores (same vs. diff)
             if compute_same_diff_scores:
                 # dir_to_print_lab_each_mask = # good to always save the final data pairs.
+                print("var_effect --- vars_others --- context_input")
+                print(var_effect, " --- ", vars_others, " --- ", context_input)
                 res, DIST_NULL_50, DIST_NULL_95, DIST_NULL_98 = Cldist.rsa_distmat_score_same_diff_by_context(var_effect, vars_others, 
                                                                                             context_input, dat_level, 
                                                                                             PLOT_MASKS,

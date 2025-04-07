@@ -1166,26 +1166,30 @@ def dataset_apply_params(D, DS, ANALY_VER, animal, DATE, save_substroke_preproce
             if D.animals(force_single=True)[0]=="Pancho" and int(D.dates(True)[0])>=220902 and int(D.dates(True)[0])<=220909:
                 # AnBm, with two shape ses switching by trail in same day.
                 # Replace epoch and syntax_concrete so shapaes are diff epoch, but same synta concrete.
-                list_epoch = []
-                list_syntax_concrete = []
-                for i, row in D.Dat.iterrows():
-                    tmp = [x>0 for x in row["syntax_concrete"][:4]]
-                    epoch_orig = row["epoch_orig"]
-                    if tmp == [True, False, True, False]:
-                        list_epoch.append(f"{epoch_orig}|A")
-                        list_syntax_concrete.append((row["syntax_concrete"][0], row["syntax_concrete"][2]))
-                    elif tmp == [False, True, False, True]:
-                        list_epoch.append(f"{epoch_orig}|B")
-                        list_syntax_concrete.append((row["syntax_concrete"][1], row["syntax_concrete"][3]))
-                    else:
-                        print(tmp)
-                        print(row["syntax_concrete"])
-                        print(row["epoch_orig"])
-                        assert False
-                # D.Dat["epoch_orig"] = list_epoch # NO!! this leads to rulestring problems (old note: must update epoch_orig (and not epoch) or else grammarparses_syntax_role_append_to_tokens)
-                D.Dat["epoch"] = list_epoch # must update epoch_orig (and not epoch) or else grammarparses_syntax_role_append_to_tokens
-                # will incorrectly count within all data.
-                D.Dat["syntax_concrete"] = list_syntax_concrete
+                assert len(D.Dat.iloc[0]["syntax_concrete"])<=3, "should probably runt he code below. See this note:"
+                # If sc is like (2,3,0), then  epochs arelady split into two epochs, with same representation of sc.
+                # If sc is like (2,3,0,0) vs. (0, 0, 2,3), then need to run the code her:
+                if False:
+                    list_epoch = []
+                    list_syntax_concrete = []
+                    for i, row in D.Dat.iterrows():
+                        tmp = [x>0 for x in row["syntax_concrete"][:4]]
+                        epoch_orig = row["epoch_orig"]
+                        if tmp == [True, False, True, False]:
+                            list_epoch.append(f"{epoch_orig}|A")
+                            list_syntax_concrete.append((row["syntax_concrete"][0], row["syntax_concrete"][2]))
+                        elif tmp == [False, True, False, True]:
+                            list_epoch.append(f"{epoch_orig}|B")
+                            list_syntax_concrete.append((row["syntax_concrete"][1], row["syntax_concrete"][3]))
+                        else:
+                            print(tmp)
+                            print(row["syntax_concrete"])
+                            print(row["epoch_orig"])
+                            assert False
+                    # D.Dat["epoch_orig"] = list_epoch # NO!! this leads to rulestring problems (old note: must update epoch_orig (and not epoch) or else grammarparses_syntax_role_append_to_tokens)
+                    D.Dat["epoch"] = list_epoch # must update epoch_orig (and not epoch) or else grammarparses_syntax_role_append_to_tokens
+                    # will incorrectly count within all data.
+                    D.Dat["syntax_concrete"] = list_syntax_concrete
 
             # Further bin trials based on variation in gap duration --> longer gaps means difference in preSMA state space?
             sdir = f"{savedir_preprocess}/grammarparses_chunk_transitions_gaps_extract_batch"
@@ -2198,7 +2202,7 @@ def params_getter_umap_vars(question):
 
     return list_var_color_var_subplot
 
-def params_getter_euclidian_vars(question):
+def params_getter_euclidian_vars(question, context_version="new"):
     """
     GOOD - these are the most carefully constructed, in terms of high control, and testing specific hypothes
     Helper to get variables for euclidian distnace when this involves specific hand-pikced variables to test speciifc
@@ -3427,7 +3431,82 @@ def params_getter_euclidian_vars(question):
         print(len(LIST_PRUNE_MIN_N_LEVS))
         print(LIST_FILTDICT)
         print(len(LIST_FILTDICT))
-        assert False
+        assert False    
+
+    ### WHether is old or new version of context
+    # old -- using the time-varying eucl. context is confusing combination of vars_others and contet
+    # new -- using the faster method. vars_others and context remain separate (i.e, context always applies)
+    if context_version=="old":
+        pass
+    elif context_version == "new":
+        # Update context, so that it is compatible with new approahc, where vars_others and context independent.
+        # To see what is wrong with old approach, see docs in Cl.rsa_mask_context_helper() -- basicalyl, it is 
+        # confusing beucase vars_others, and context interact.
+
+        for i, (var, vars_others, context) in enumerate(zip(LIST_VAR, LIST_VARS_OTHERS, LIST_CONTEXT)):
+            if context is not None:
+                assert sorted(vars_others) == sorted(context["same"] + context["diff"])
+                print(i, " == ", var, " -- ", vars_others, " -- ", context)
+
+                # - context["diff"] is only used for "diff" pairs, and so it is redundant with vars_others.
+
+                # - check that it is in vars_others
+                if len(context["diff"])>0:
+                    assert all([c in vars_others for c in context["diff"]])
+                
+                # - Remove it
+                context["diff"] = []
+
+                if "diff_context_ver" in context:
+                    # if context["diff_context_ver"] == "diff_specific_lenient":
+                    #     diff_context_ver = "diff_at_least_one"
+                    # elif context["diff_context_ver"] == "diff_specific":
+                    #     diff_context_ver = "diff_complete"
+                    #     assert False, "need to tell the code somehow that should diff vars_others shold be complete"
+                    # else:
+                    #     # Default mode.
+                    #     diff_context_ver = "diff_at_least_one"
+                    if context["diff_context_ver"] == "diff_specific":
+                        diff_context_ver = "diff_complete"
+                        assert False, "need to tell the code somehow that should diff vars_others shold be complete"
+
+                # Check for cases where no "diff var_other" is possible (mistakenly)
+                print()
+                if sorted(context["same"]) == sorted(vars_others):
+                    print(i, " == ", var, " -- ", vars_others, " -- ", context)
+                    assert False
+        print("context and vars_others are identical...")
+        print("LIST_VAR, LIST_VARS_OTHERS, LIST_CONTEXT are ready to use!")
+
+    # Standardize the output format.
+    def _context_cleanup(context):
+        """
+        Returns (potentialyl) copy
+        """
+
+        if context is None:
+            return context
+        else:    
+            assert isinstance(context, dict)
+
+            # Must have same and diff
+            if "same" not in context:
+                context["same"] = None
+            if "diff" not in context:
+                context["diff"] = None
+            
+            # empy --> None
+            if (context["same"] is not None) and (len(context["same"]))==0:
+                context["same"] = None
+            if (context["diff"] is not None) and (len(context["diff"]))==0:
+                context["diff"] = None
+
+            # If both same and diff are None, then make the whole thing None
+            if context["same"] is None and context["diff"] is None:
+                context = None
+            
+            return context
+    LIST_CONTEXT = [_context_cleanup(context) for context in LIST_CONTEXT]
 
     return LIST_VAR, LIST_VARS_OTHERS, LIST_CONTEXT, LIST_PRUNE_MIN_N_LEVS, LIST_FILTDICT
 

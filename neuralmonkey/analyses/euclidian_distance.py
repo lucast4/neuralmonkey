@@ -67,7 +67,7 @@ def timevarying_convert_to_scalar(DFDIST, twind_scalar):
 def timevarying_compute_fast_to_scalar(PA, label_vars=("seqc_0_shape", "seqc_0_loc"),
                                        rsa_heatmap_savedir=None, var_context_same=None,
                                        plot_conjunctions_savedir=None, prune_levs_min_n_trials=2,
-                                       get_group_distances=True):
+                                       get_group_distances=True, context_dict=None):
     """
     [Fast code] -- do all steps to extract dfdist, starting from PA.
     POTENTIAL PROBLOEM (is ok, emeprically): it doesnt get time-varying, it goes straight from (ndims, ntimes) --> scalar,
@@ -78,15 +78,19 @@ def timevarying_compute_fast_to_scalar(PA, label_vars=("seqc_0_shape", "seqc_0_l
     but not too much.
     
     PARAMS:
-    - var_context_same, if True, then only takes pairs of datapts that have the same level for this group. This is like
+    - var_context_same, if is not None, then only takes pairs of datapts that have the same level for this group. This is like
     "controlling" for this variable. E.g., hold size constant (var_context_same="gridsize"), while testing for
     effect of shape and location.
     - prune_levs_min_n_trials, then throws out any levels of grouping vars, label_vars + [var_context_same], which lack at least 2
     trials. Need at laest 2, otherwise error in dist computation.
+    - context_dict, dict with {"same":[], "diff":[]}, where each holds list of strings (variables).
     """
     from pythonlib.tools.distfunctools import distmat_construct_wrapper
     from pythonlib.cluster.clustclass import Clusters
 
+    # Deprecated, beucase:
+    # "Confirmed that if you set context_dict[same]=[var_context_same], this will work the same (better)"
+    assert var_context_same is None, "deprecated. Instead, use context_dict[same]=..., as this is hacky and not general."
 
     # (ndims, ntrials, ntimes)
     # --> (ndims, ntimes) X ntrials.
@@ -153,23 +157,34 @@ def timevarying_compute_fast_to_scalar(PA, label_vars=("seqc_0_shape", "seqc_0_l
             np.min(dmat - distmat)
 
 
+    # Context dict preprocessing
     if var_context_same is not None:
         label_vars_orig = [l for l in label_vars]
-        label_vars = tuple([l for l in label_vars] + [var_context_same])
+        label_vars_for_cldist = tuple([l for l in label_vars] + [var_context_same])
+
+    label_vars_for_cldist = [l for l in label_vars]
+    if context_dict is not None:
+        if context_dict["same"] is not None:
+            label_vars_for_cldist = tuple([l for l in label_vars_for_cldist] + context_dict["same"])
+        if context_dict["diff"] is not None:
+            label_vars_for_cldist = tuple([l for l in label_vars_for_cldist] + context_dict["diff"])
 
     ### Prune levels
     from pythonlib.tools.pandastools import extract_with_levels_of_var_good, grouping_plot_n_samples_conjunction_heatmap_helper
     dflab = PA.Xlabels["trials"]
-    _, _indskeep = extract_with_levels_of_var_good(dflab, label_vars, prune_levs_min_n_trials)
+    _, _indskeep = extract_with_levels_of_var_good(dflab, label_vars_for_cldist, prune_levs_min_n_trials)
+
     # - Save counts before prune
     if plot_conjunctions_savedir is not None and len(_indskeep)<len(dflab):
-        fig = grouping_plot_n_samples_conjunction_heatmap_helper(dflab, label_vars)
+        fig = grouping_plot_n_samples_conjunction_heatmap_helper(dflab, label_vars_for_cldist)
         savefig(fig, f"{plot_conjunctions_savedir}/timevarying_compute_fast_to_scalar-counts_heatmap-before_prune.pdf")
+
     # - Do slice
     PA = PA.slice_by_dim_indices_wrapper("trials", _indskeep, reset_trial_indices=True) 
+
     # - Save counts after prune
     if plot_conjunctions_savedir is not None:
-        fig = grouping_plot_n_samples_conjunction_heatmap_helper(PA.Xlabels["trials"], label_vars)
+        fig = grouping_plot_n_samples_conjunction_heatmap_helper(PA.Xlabels["trials"], label_vars_for_cldist)
         savefig(fig, f"{plot_conjunctions_savedir}/timevarying_compute_fast_to_scalar-counts_heatmap-final.pdf")
     plt.close("all")
 
@@ -178,6 +193,8 @@ def timevarying_compute_fast_to_scalar(PA, label_vars=("seqc_0_shape", "seqc_0_l
     list_x = []
     for trial in range(ntrials):
         list_x.append(PA.X[:, trial, :])
+    if len(list_x) == 0:
+        return None, None
 
     # Get distnace matrix.
     def dist_func(x1, x2):
@@ -190,9 +207,9 @@ def timevarying_compute_fast_to_scalar(PA, label_vars=("seqc_0_shape", "seqc_0_l
 
     # Convert to Cl
     dflab = PA.Xlabels["trials"]
-    list_lab = [tuple(x) for x in dflab.loc[:, label_vars].values.tolist()]
+    list_lab = [tuple(x) for x in dflab.loc[:, label_vars_for_cldist].values.tolist()]
     params = {
-        "label_vars":label_vars,
+        "label_vars":label_vars_for_cldist,
         "version_distance":"euclidian",
         "Clraw":None,
     }
@@ -203,7 +220,9 @@ def timevarying_compute_fast_to_scalar(PA, label_vars=("seqc_0_shape", "seqc_0_l
         # if this would do wierd things downstream
         zlims = None
         # zlims = [0, 0.3]
-        _, CldistAgg = Cldist.rsa_distmat_score_all_pairs_of_label_groups(get_only_one_direction=False, return_as_clustclass=True)
+        _, CldistAgg = Cldist.rsa_distmat_score_all_pairs_of_label_groups(label_vars=label_vars, get_only_one_direction=False, 
+                                                                          return_as_clustclass=True,
+                                                                          context_dict=context_dict)
         n = min([len(label_vars), 3])
         from itertools import permutations
         list_sort_order = sorted(permutations(range(n)))
@@ -216,10 +235,17 @@ def timevarying_compute_fast_to_scalar(PA, label_vars=("seqc_0_shape", "seqc_0_l
             _, fig = CldistAgg.rsa_distmat_construct_theoretical(varthis, PLOT=True, sort_order=list_sort_order[0]) # use the same sort order for each var so can compare them
             savefig(fig, f"{rsa_heatmap_savedir}/rsa_heatmap-var={varthis}-sort_order={list_sort_order[0]}-THEOR.pdf")
             plt.close("all")
+        
+        # There might be nan, so save that
+        ma_not_nan = ~np.isnan(CldistAgg.Xinput)
+        CldistAgg.rsa_matindex_print_mask_labels(ma_not_nan, f"{rsa_heatmap_savedir}/rsa_heatmap-not_nan.txt")
+        ma_nan = np.isnan(CldistAgg.Xinput)
+        CldistAgg.rsa_matindex_print_mask_labels(ma_nan, f"{rsa_heatmap_savedir}/rsa_heatmap-is_nan.txt")
 
     if get_group_distances:
         # convert to cldist.
-        dfdist = Cldist.rsa_distmat_score_all_pairs_of_label_groups(get_only_one_direction=True)
+        dfdist = Cldist.rsa_distmat_score_all_pairs_of_label_groups(label_vars=label_vars, get_only_one_direction=True, 
+                                                                    context_dict=context_dict)
         # for i in range(len(label_vars)):
         #     for j in range(len(label_vars)):
         #         if j>i:

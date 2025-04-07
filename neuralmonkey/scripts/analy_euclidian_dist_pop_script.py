@@ -1636,7 +1636,8 @@ if __name__=="__main__":
         LIST_SAVEDIR_SUFFIX = []
         LIST_SUPERV_DPCA_PARAMS = []
         # NPCS_KEEP = 3
-        NPCS_KEEP = 6
+        # NPCS_KEEP = 6
+        NPCS_KEEP = 8
         
         if question in ["SP_shape_loc", "SP_BASE_trial"]:
 
@@ -2592,8 +2593,10 @@ if __name__=="__main__":
 
     if LOAD_AND_PLOT_RESULTS_ONLY == False:
         # First try to load. If fails, then extract
+        # DFALLPA = load_handsaved_wrapper(animal=animal, date=date, version=which_level, combine_areas=combine_into_larger_areas,
+        #                                 return_none_if_no_exist=True, question=question)
         DFALLPA = load_handsaved_wrapper(animal=animal, date=date, version=which_level, combine_areas=combine_into_larger_areas,
-                                        return_none_if_no_exist=True, question=question)
+                                         question=question)
         if DFALLPA is None:
             DFALLPA = extract_dfallpa_helper(animal, date, question, combine_into_larger_areas, events_keep=events_keep, do_save=True)
 
@@ -2634,7 +2637,7 @@ if __name__=="__main__":
                 list_pa = [pa.copy() for pa in DFallpa["pa"]]
                 DFallpa["pa"] = list_pa
 
-                dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date)
+                dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, fr_mean_subtract_method=fr_normalization_method)
 
                 ###########
                 if HACK_TRAJS_JUST_FOR_PLOTTING_NICE:
