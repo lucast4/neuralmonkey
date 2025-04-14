@@ -78,7 +78,8 @@ def load_preprocess_get_dates(animal, save_suffix, new_varied_hyperparams=True):
             fr_normalization_method = "across_time_bins"
         elif save_suffix=="sh_vs_seqsup":
             # dates = [230920, 230921, 230923, 231019, 231020, 240828, 240829]
-            dates = [230920, 230921, 230923, 231019, 240828, 240829, 250324, 250325] # # ALL (3/18/25) -- 231020 failed for extraction.
+            # dates = [230920, 230921, 230923, 231019, 240828, 240829, 250324, 250325] # # ALL (3/18/25) -- 231020 failed for extraction.
+            dates = [230920, 230921, 230923, 231019, 240828, 240829] # 250324, 250325  not yet kilosorted
             question = "RULESW_ANY_SEQSUP_STROKE"
             fr_normalization_method = "across_time_bins"
         elif save_suffix=="sh_vs_dir":

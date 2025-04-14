@@ -7492,11 +7492,29 @@ class Snippets(object):
             list_features_extraction = (list_features_extraction + ["chunk_rank", "chunk_within_rank", "chunk_within_rank_semantic",
                                                                     "chunk_within_rank_semantic_v2", "chunk_within_rank_semantic_v3",
                                                         "chunk_within_rank_fromlast", "chunk_n_in_chunk", "epoch_rand",
-                                                        "chunk_diff_from_prev"] + ["taskcat_by_rule", "behseq_shapes"] +
+                                                        "chunk_diff_from_prev"] + ["taskcat_by_rule", "behseq_shapes", "behseq_locs"] +
                                         ["syntax_concrete", "syntax_role"] + ["epoch_orig_rand_seq", "epoch_is_AnBmCk", "epoch_is_DIR",
                                                                               "superv_is_seq_sup", "INSTRUCTION_COLOR"]
                                         + ["epochset_diff_motor", "epochset_shape", "epochset_dir"]
                                         )
+
+            # Add concrete variations within each taskcat_by_rule
+            LIST_VAR_BEHORDER=["behseq_shapes", "behseq_locs", "behseq_locs_x", "behseq_locs_diff", "behseq_locs_diff_x"]
+            list_features_extraction.extend([f"{var_behorder}_clust" for var_behorder in LIST_VAR_BEHORDER])
+
+            # Add bin indicating wheterh chunk gap is short or long duration
+            tmp = ["chunkgap_(0, 1)_durbin", "chunkgap_(1, 2)_durbin"]
+            for t in tmp:
+                if t in self.Datasetbeh.Dat.columns:
+                    list_features_extraction.append(t)
+
+        if params["datasetstrokes_extract_chunks_variables"] and self.Params["which_level"] == "trial":
+            # Then dataset_strokes lloaded chunk variables, e.g,
+            list_features_extraction = (list_features_extraction + ["epoch_rand", "taskcat_by_rule", "behseq_shapes", "behseq_locs",
+                                                                    "syntax_concrete", "epoch_orig_rand_seq", "epoch_is_AnBmCk",
+                                                                     "epoch_is_DIR", "superv_is_seq_sup", "INSTRUCTION_COLOR", 
+                                                                     "epochset_diff_motor", "epochset_shape", "epochset_dir"]
+                                                                     )
 
             # Add concrete variations within each taskcat_by_rule
             LIST_VAR_BEHORDER=["behseq_shapes", "behseq_locs", "behseq_locs_x", "behseq_locs_diff", "behseq_locs_diff_x"]

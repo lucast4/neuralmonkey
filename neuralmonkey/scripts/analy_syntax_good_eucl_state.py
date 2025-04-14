@@ -317,7 +317,9 @@ def preprocess_pa(PA, var_effect, vars_others, prune_min_n_trials, prune_min_n_l
                 subspace_projection, subspace_projection_fitting_twind,
                 twind_analy, tbin_dur, tbin_slide, scalar_or_traj="traj",
                 use_strings_for_vars_others=True, is_seqsup_version=False):
-
+    """
+    Preprocess, for strokes-level data
+    """
     from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper, grouping_plot_n_samples_conjunction_heatmap
     from pythonlib.tools.pandastools import append_col_with_grp_index, grouping_print_n_samples
     from neuralmonkey.scripts.analy_shape_invariance_all_plots_SP import _preprocess_pa_dim_reduction
@@ -362,7 +364,6 @@ def preprocess_pa(PA, var_effect, vars_others, prune_min_n_trials, prune_min_n_l
     if filtdict is not None:
         for _var, _levs in filtdict.items():
             PA = PA.slice_by_labels("trials", _var, _levs, verbose=True)
-
 
     # Plot final conjunctions
     dflab = PA.Xlabels["trials"]
@@ -1054,7 +1055,8 @@ if __name__=="__main__":
     combine = False
 
     # PLOTS_DO = [4] # Good
-    PLOTS_DO = [4.1] # Good
+    # PLOTS_DO = [4.1] # Good
+    PLOTS_DO = [6.1] # Good
 
     # Load a single DFallPA
     DFallpa = load_handsaved_wrapper(animal, date, version=version, combine_areas=combine, 
@@ -1118,6 +1120,75 @@ if __name__=="__main__":
         #     savedir = f"{SAVEDIR}/TRAJ_SS/{animal}-{date}-combine={combine}-var_other={var_other}"
         #     os.makedirs(savedir, exist_ok=True)
         #     statespace_traj_plot(DFallpa, animal, date, savedir, var_other)
+
+        elif plotdo==6.1:
+            
+            SAVEDIR_ANALYSIS = f"{SAVEDIR}/targeted_dim_redu_angles/{animal}-{date}-comb={combine}-q={question}"            
+            os.makedirs(SAVEDIR_ANALYSIS, exist_ok=True)
+
+            # DFallpa = DFallpa[:2]
+
+            for PA in DFallpa["pa"].values:      
+                from pythonlib.tools.pandastools import append_col_with_grp_index
+                #### Append any new columns
+                dflab = PA.Xlabels["trials"]
+                dflab = append_col_with_grp_index(dflab, ["chunk_rank", "shape"], "chunk_shape")
+                PA.Xlabels["trials"] = dflab
+
+            from pythonlib.tools.vectools import average_vectors_wrapper, get_vector_from_angle
+            from neuralmonkey.scripts.analy_syntax_good_eucl_trial import state_space_targeted_pca_scalar_single
+            from neuralmonkey.scripts.analy_syntax_good_eucl_trial import state_space_targeted_pca_scalar_single, targeted_pca_euclidian_dist_angles
+
+            variables = ['epoch', 'chunk_shape', 'gridloc', 'loc_on_clust', 'CTXT_locoffclust_prev', 'loc_off_clust', 
+                        'CTXT_shape_prev', 'chunk_within_rank']
+            variables_is_cat = [True, True, True, True, True, True, True, False]
+            assert len(variables)==len(variables_is_cat)
+
+            list_subspaces = [
+                ("chunk_shape", "chunk_within_rank"),
+            ]
+
+            LIST_VAR_VAROTHERS_SS = [
+                ("chunk_within_rank", ['epoch', 'chunk_shape', 'loc_on_clust', 'CTXT_locoffclust_prev', 'CTXT_shape_prev', 'loc_off_clust']),
+                ("chunk_within_rank", ['epoch', 'chunk_shape', 'loc_on_clust', 'CTXT_locoffclust_prev', 'CTXT_shape_prev']),
+                ("chunk_within_rank", ['epoch', 'chunk_shape', 'loc_on_clust', 'CTXT_locoffclust_prev', 'CTXT_shape_prev']),
+                ("chunk_within_rank", ['epoch', 'chunk_shape']),
+                ("chunk_within_rank", ['epoch']),
+                ("chunk_shape", ['epoch', 'chunk_within_rank', 'loc_on_clust', 'CTXT_locoffclust_prev', 'CTXT_shape_prev', 'loc_off_clust']),
+                ("chunk_shape", ['epoch', 'chunk_within_rank', 'loc_on_clust', 'CTXT_locoffclust_prev', 'CTXT_shape_prev']),
+                ("chunk_shape", ['epoch', 'chunk_within_rank']),
+                ("chunk_shape", ['epoch']),
+            ]
+
+            LIST_DIMS = [(0,1), (1,2)]
+
+            LIST_VAR_VAROTHERS_REGR = [
+                ("chunk_within_rank", ['epoch', 'chunk_shape', 'loc_on_clust', 'CTXT_locoffclust_prev', 'CTXT_shape_prev', 'loc_off_clust']),
+                ("chunk_shape", ['epoch', 'chunk_within_rank', 'loc_on_clust', 'CTXT_locoffclust_prev', 'CTXT_shape_prev', 'loc_off_clust']),
+            ]
+
+            subspace_tuple = ("chunk_shape", "chunk_within_rank")
+
+            min_levs_per_levother = 2
+            prune_levs_min_n_trials = 4
+
+            from neuralmonkey.scripts.analy_euclidian_dist_pop_script import _get_list_twind_by_animal
+            _list_twind, _, _ = _get_list_twind_by_animal(animal, "00_stroke", "traj_to_scalar")
+            twind_scal = _list_twind[0]
+
+            DFANGLE = targeted_pca_euclidian_dist_angles(DFallpa, SAVEDIR_ANALYSIS, 
+                                                        variables, variables_is_cat, list_subspaces, LIST_VAR_VAROTHERS_SS, # For dim reduction and plotting state space
+                                                        subspace_tuple, LIST_VAR_VAROTHERS_REGR, twind_scal_force=twind_scal)
+
+            ### (2) Make all plots
+            from neuralmonkey.scripts.analy_syntax_good_eucl_trial import targeted_pca_euclidian_dist_angles_plots
+            for var_vector_length in ["dist_yue_diff", "dist_norm"]:
+                for length_method in ["sum", "dot"]:
+                    for min_levs_exist in [3, 2]:
+                        savedir = f"{SAVEDIR_ANALYSIS}/PLOTS/varlength={var_vector_length}-lengthmeth={length_method}-minlevs={min_levs_exist}"
+                        os.makedirs(savedir, exist_ok=True)
+                        targeted_pca_euclidian_dist_angles_plots(DFANGLE, var_vector_length, length_method, min_levs_exist, savedir)
+
         else:
             print(PLOTS_DO)
             assert False

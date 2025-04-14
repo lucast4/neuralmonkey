@@ -2672,6 +2672,7 @@ def statespace_scalar_plot(DFallpa, animal, date, SAVEDIR, var_other):
     by shape
     """
     from neuralmonkey.scripts.analy_euclidian_chars_sp import params_subspace_projection
+    from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_scalar_2dgrid_bregion
 
     # First, preprocess all pa
     list_pa =[]
@@ -2727,7 +2728,7 @@ def statespace_scalar_plot(DFallpa, animal, date, SAVEDIR, var_other):
         from neuralmonkey.analyses.state_space_good import _trajgood_plot_colorby_scalar_BASE_GOOD
         from pythonlib.tools.plottools import share_axes_row_or_col_of_subplots
 
-        var_col = var_other
+        # var_col = var_other
         var_effect = "seqc_0_shape"
 
         # Extract event to plot
@@ -2735,48 +2736,53 @@ def statespace_scalar_plot(DFallpa, animal, date, SAVEDIR, var_other):
             # event = "03_samp"
             dfallpa = DFallpa[DFallpa["event"]==event].reset_index(drop=True)
 
-            nrows = len(dfallpa)
+            trajgood_plot_colorby_splotby_scalar_2dgrid_bregion(dfallpa, var_effect, var_other, savedir, pa_var = "pa_redu")
 
-            dflab = PA.Xlabels["trials"]
-            levels_col = dflab[var_col].unique().tolist()
-            ncols = len(levels_col)
-            SIZE =5
+            # nrows = len(dfallpa)
 
-            for dims in [(0,1), (1,2), (2,3), (3,4)]:
-                fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*SIZE, nrows*SIZE), sharex=True, sharey=True)
-                # fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*SIZE, nrows*SIZE))
-                for i, row in dfallpa.iterrows():
+            # # dflab = PA.Xlabels["trials"]
+            # _pa = dfallpa["pa_redu"].values[0]
+            # dflab = _pa.Xlabels["trials"]
 
-                    bregion = row["bregion"]
-                    event = row["event"]
-                    PAredu = row["pa_redu"]     
+            # levels_col = dflab[var_col].unique().tolist()
+            # ncols = len(levels_col)
+            # SIZE =5
 
-                    for j, lev_col in enumerate(levels_col):
-                        try:
-                            ax = axes[i][j]
-                        except Exception as err:
-                            print(axes)
-                            print(i, j)
-                            raise err
+            # for dims in [(0,1), (1,2), (2,3), (3,4)]:
+            #     fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*SIZE, nrows*SIZE), sharex=True, sharey=True)
+            #     # fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*SIZE, nrows*SIZE))
+            #     for i, row in dfallpa.iterrows():
 
-                        ax.set_title((bregion, lev_col))
+            #         bregion = row["bregion"]
+            #         event = row["event"]
+            #         PAredu = row["pa_redu"]     
 
-                        pa = PAredu.slice_by_labels_filtdict({var_col:[lev_col]})
+            #         for j, lev_col in enumerate(levels_col):
+            #             try:
+            #                 ax = axes[i][j]
+            #             except Exception as err:
+            #                 print(axes)
+            #                 print(i, j)
+            #                 raise err
 
-                        if dims[1]<=pa.X.shape[0]-1:
-                            xs = pa.X[dims[0], :, 0]
-                            ys = pa.X[dims[1], :, 0]
-                            # zs = pa.X[2, :, 0]
-                            dflab = pa.Xlabels["trials"]
-                            labels = dflab[var_effect].tolist()
+            #             ax.set_title((bregion, lev_col))
 
-                            # _trajgood_plot_colorby_scalar_BASE_GOOD(xs, ys, labels, ax, plot_3D=False, zs = zs)
-                            _trajgood_plot_colorby_scalar_BASE_GOOD(xs, ys, labels, ax)
-                if False:
-                    share_axes_row_or_col_of_subplots(axes, "row", "both")   
+            #             pa = PAredu.slice_by_labels_filtdict({var_col:[lev_col]})
+
+            #             if dims[1]<=pa.X.shape[0]-1:
+            #                 xs = pa.X[dims[0], :, 0]
+            #                 ys = pa.X[dims[1], :, 0]
+            #                 # zs = pa.X[2, :, 0]
+            #                 dflab = pa.Xlabels["trials"]
+            #                 labels = dflab[var_effect].tolist()
+
+            #                 # _trajgood_plot_colorby_scalar_BASE_GOOD(xs, ys, labels, ax, plot_3D=False, zs = zs)
+            #                 _trajgood_plot_colorby_scalar_BASE_GOOD(xs, ys, labels, ax)
+            #     if False:
+            #         share_axes_row_or_col_of_subplots(axes, "row", "both")   
                 
-                savefig(fig, f"{savedir}/scatter-event={event}-dims={dims}.pdf")
-                plt.close("all")
+            #     savefig(fig, f"{savedir}/scatter-event={event}-dims={dims}.pdf")
+            #     plt.close("all")
 
 
 def heatmaps_plot_wrapper(DFallpa, animal, date, SAVEDIR_ANALYSIS, var_other="seqc_0_loc"):

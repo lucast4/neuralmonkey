@@ -1078,7 +1078,7 @@ def preprocess_pa_trials(animal, date, PA, savedir, prune_version, shape_var = "
 
 
 def params_subspace_projection(subspace_projection):
-    if subspace_projection in ["pca", "pca_proj", "umap"]:
+    if subspace_projection in ["pca", "pca_proj", "umap", "pca_umap"]:
         dim_red_method = subspace_projection
         superv_dpca_params={
             "superv_dpca_var":None,
@@ -1153,10 +1153,10 @@ def params_subspace_projection(subspace_projection):
             "superv_dpca_vars_group":None,
             "superv_dpca_filtdict":None,
         }
-    elif subspace_projection in ["epch_sytxrol", "syntax_role", "sytx_all", "stxsuperv"]:
+    elif subspace_projection in ["epch_sytxrol", "syntax_role", "sytx_all", "stxsuperv", "epch_sytxcncr", "syntax_slot_0", "syntax_slot_1", "syntax_slot_2"]:
         dim_red_method = "superv_dpca"
         superv_dpca_params = {
-            "superv_dpca_var":"epch_sytxrol",
+            "superv_dpca_var":subspace_projection,
             "superv_dpca_vars_group":None,
             "superv_dpca_filtdict":None
         }
