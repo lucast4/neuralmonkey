@@ -67,7 +67,8 @@ def timevarying_convert_to_scalar(DFDIST, twind_scalar):
 def timevarying_compute_fast_to_scalar(PA, label_vars=("seqc_0_shape", "seqc_0_loc"),
                                        rsa_heatmap_savedir=None, var_context_same=None,
                                        plot_conjunctions_savedir=None, prune_levs_min_n_trials=2,
-                                       get_group_distances=True, context_dict=None):
+                                       get_group_distances=True, context_dict=None,
+                                       get_only_one_direction=True):
     """
     [Fast code] -- do all steps to extract dfdist, starting from PA.
     POTENTIAL PROBLOEM (is ok, emeprically): it doesnt get time-varying, it goes straight from (ndims, ntimes) --> scalar,
@@ -244,7 +245,7 @@ def timevarying_compute_fast_to_scalar(PA, label_vars=("seqc_0_shape", "seqc_0_l
 
     if get_group_distances:
         # convert to cldist.
-        dfdist = Cldist.rsa_distmat_score_all_pairs_of_label_groups(label_vars=label_vars, get_only_one_direction=True, 
+        dfdist = Cldist.rsa_distmat_score_all_pairs_of_label_groups(label_vars=label_vars, get_only_one_direction=get_only_one_direction, 
                                                                     context_dict=context_dict)
         # for i in range(len(label_vars)):
         #     for j in range(len(label_vars)):

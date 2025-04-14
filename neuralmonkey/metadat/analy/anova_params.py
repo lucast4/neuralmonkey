@@ -964,6 +964,7 @@ def dataset_apply_params(D, DS, ANALY_VER, animal, DATE, save_substroke_preproce
         if params["DO_SCORE_SEQUENCE_VER"]=="parses":
             D.grammarparses_successbinary_score_wrapper()
         elif params["DO_SCORE_SEQUENCE_VER"]=="matlab":
+            assert False, "should always use parse version (right?)"
             D.grammarmatlab_successbinary_score()
             assert params["datasetstrokes_extract_chunks_variables"]==False, "if True, you need to use parses method."
         else:

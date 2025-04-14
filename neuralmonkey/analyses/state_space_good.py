@@ -1467,6 +1467,59 @@ def _trajgood_plot_colorby_scalar_BASE_GOOD(xs, ys, labels_color, ax,
             # Plot
             ax.plot(Xmeans[:,0], Xmeans[:,1], "-", color=connect_means_with_line_color)
 
+def trajgood_plot_colorby_splotby_scalar_2dgrid_bregion(dfallpa, var_effect, var_other, savedir, pa_var = "pa_redu"):
+    """
+    Make a 2d grid, where each row is a pa from dfallpa (usually different brain regions), 
+    and each column is a level of var_other, and each dot is a trial, colored by var_effect
+    """
+    from pythonlib.tools.plottools import savefig
+
+    nrows = len(dfallpa)
+
+    _pa = dfallpa["pa_redu"].values[0]
+    dflab = _pa.Xlabels["trials"]
+    levels_col = dflab[var_other].unique().tolist()
+    ncols = len(levels_col)
+    SIZE =5
+
+    for dims in [(0,1), (1,2)]:
+    # for dims in [(0,1), (1,2), (2,3), (3,4)]:
+        fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*SIZE, nrows*SIZE), sharex=True, sharey=True, squeeze=False)
+
+        for i, row in dfallpa.iterrows():
+
+            bregion = row["bregion"]
+            event = row["event"]
+            PAredu = row[pa_var]     
+
+            for j, lev_col in enumerate(levels_col):
+                try:
+                    ax = axes[i][j]
+                except Exception as err:
+                    print(axes)
+                    print(i, j)
+                    raise err
+
+                ax.set_title((bregion, lev_col))
+
+                pa = PAredu.slice_by_labels_filtdict({var_other:[lev_col]})
+
+                if dims[1]<=pa.X.shape[0]-1:
+                    xs = pa.X[dims[0], :, 0]
+                    ys = pa.X[dims[1], :, 0]
+                    # zs = pa.X[2, :, 0]
+                    dflab = pa.Xlabels["trials"]
+                    labels = dflab[var_effect].tolist()
+
+                    # _trajgood_plot_colorby_scalar_BASE_GOOD(xs, ys, labels, ax, plot_3D=False, zs = zs)
+                    _trajgood_plot_colorby_scalar_BASE_GOOD(xs, ys, labels, ax)
+        if False:
+            share_axes_row_or_col_of_subplots(axes, "row", "both")   
+        
+        savefig(fig, f"{savedir}/scatter-event={event}-dims={dims}.pdf")
+        plt.close("all")
+    
+
 def trajgood_plot_colorby_splotby_scalar_WRAPPER(X, dflab, var_color, savedir,
                                                  vars_subplot=None, list_dims=None,
                                                  STROKES_BEH=None, STROKES_TASK=None,
@@ -2312,6 +2365,135 @@ def dimredgood_nonlinear_embed_data(X, METHOD="umap", n_components=2, tsne_perp=
 
     return Xredu, reducer
 
+def dimredgood_subspace_variance_accounted_for(X, subspace_1, subspace_2):
+    """
+    Compute variance accounted for (VAF), i.e., how much variance of activity in subspace 1 still remains
+    when you then projct to susbpace 2 (and vice versa).
+    
+    See Xie, Liping Wang, Science 2022
+    
+    PARAMS:
+    - X, data, usually (nchans, nconditions or ntrials). This is the original data from which the original variance
+    is computed.
+    - subspace_1/2, arrays (nchans, ndims), the two subspaces to compare. Will autmatically make sure
+    their columns are unit length.
+    """
+
+    # First, project data to subspaces
+    data_1, _ = dimredgood_project_data_denoise_simple(X, subspace_1, "denoise", normalization="norm")
+    data_2, _ = dimredgood_project_data_denoise_simple(X, subspace_2, "denoise", normalization="norm")
+
+    # Second, project those projectsions to the other subspace
+    data_1_2, _ = dimredgood_project_data_denoise_simple(data_1, subspace_2, "denoise", normalization="norm")
+    data_2_1, _ = dimredgood_project_data_denoise_simple(data_2, subspace_1, "denoise", normalization="norm")
+
+    
+    # Compute variances
+    def _compute_variance(x):
+        return np.sum((x - np.mean(x, axis=0))**2)
+    
+    variance_total = _compute_variance(X)
+    variance_1 = _compute_variance(data_1)
+    variance_2 = _compute_variance(data_2)
+    variance_1_2 = _compute_variance(data_1_2)
+    variance_2_1 = _compute_variance(data_2_1)
+
+    if False:
+        print(X.shape)
+        print(data_1.shape)
+        print(data_1.shape)
+        print(data_1_2.shape)
+        print(data_2_1.shape)
+        heatmap_mat(X, annotate_heatmap=False, diverge=True);
+        heatmap_mat(data_1, annotate_heatmap=False, diverge=True);
+        heatmap_mat(data_2, annotate_heatmap=False, diverge=True);
+        heatmap_mat(data_1_2, annotate_heatmap=False, diverge=True);
+        heatmap_mat(data_2_1, annotate_heatmap=False, diverge=True);
+        print(variance_total, variance_1, variance_2, variance_1_2, variance_2_1)
+        print(vaf_1_2, vaf_2_1)
+
+    # Compute VAF
+    vaf_1 = variance_1/variance_total
+    vaf_2 = variance_2/variance_total
+
+    vaf_1_2 = variance_1_2/variance_1 
+    vaf_2_1 = variance_2_1/variance_2
+
+    out = {
+        "variance_total":variance_total,
+        "variance_1":variance_1,
+        "variance_2":variance_2,
+        "variance_1_2":variance_1_2,
+        "variance_2_1":variance_2_1,
+        "vaf_1":vaf_1,
+        "vaf_2":vaf_2,
+        "vaf_1_2":vaf_1_2,
+        "vaf_2_1":vaf_2_1
+        }
+    
+    return out
+
+def dimredgood_project_data_denoise_simple(X, basis_vectors, version="projection", normalization=None,
+                                           plot_orthonormalization=False):
+    """
+    Project X to the subspace spanned by the basis vectors, and optionally denoise by projecting back to the original space
+    PARAMS:
+    - X, data, (nchans, nfeatures) or (nchans, ntrials)
+    - basis_vectors, (nchans, ndims_project), where nchans matches self.CHans
+    - version, whethr to project or to denoise (i.e, project the reproject out)
+    - do_orthonormal, bool, if True, then orthonormlaizes the basis using QR decomspotion. The order of columns
+    in basis matters. ie sequentially gets orthognalizes each column by the subspace spanned by the preceding columns.
+    """
+
+    if not basis_vectors.shape[0] == X.shape[0]:
+        print(basis_vectors.shape)
+        print(X.shape)
+        assert False
+
+    if normalization=="orthonormal":
+        # Optionally, orthogonalize the vectors
+        basis_vectors_ortho, r = np.linalg.qr(basis_vectors)
+        if plot_orthonormalization:
+            from pythonlib.tools.snstools import heatmap_mat
+            heatmap_mat(basis_vectors, annotate_heatmap=False, diverge=True)
+            heatmap_mat(basis_vectors_ortho, annotate_heatmap=False, diverge=True)
+            heatmap_mat(r, annotate_heatmap=False, diverge=True)
+            # print(basis_vectors.shape, X.shape)
+        basis_vectors = basis_vectors_ortho
+    elif normalization=="norm":
+        # Each vector length to 1
+        basis_vectors = basis_vectors/np.sum(basis_vectors**2, axis=0)**0.5
+        # print(np.sum(basis_vectors**2, axis=0))
+        # assert False
+    else:
+        assert normalization is None
+
+    # Get data
+    if len(X.shape)>2:
+        assert X.shape[2]==1, "need to be scalar (i.e., not time-series)"
+        X = X.squeeze() # (nchans, ntrials)
+
+    # project data onto basis vectors
+    if version=="projection":
+        Xnew = basis_vectors.T @ X
+        if False:
+            # NOTE: this does exactly the same thing -- I confirmed
+            from neuralmonkey.analyses.state_space_good import dimredgood_pca_project
+            Xredu, stats, Xredu_in_orig_shape = dimredgood_pca_project(basis_vectors.T, X.T, plot_pca_explained_var_path="/tmp/pca.pdf")
+        # print(stats)
+        # assert False
+    elif version=="denoise":
+        D = basis_vectors @ basis_vectors.T # (nchans, nchans)
+        Xnew = D @ X # (nchans, nfeatures)
+        # print(D.shape)
+        # print(X.shape)
+        # print(Xnew.shape)
+        # assert False
+    else:
+        print(version)
+        assert False
+
+    return Xnew, basis_vectors
 
 def dimredgood_pca_project(components, X, plot_pca_explained_var_path=None,
                            do_additional_reshape_from_ChTrTi=False,
@@ -2321,8 +2503,8 @@ def dimredgood_pca_project(components, X, plot_pca_explained_var_path=None,
     Project new data onto a subspace, e.g.,, PCA subspace, and compute variance explained.
     
     PARAMS
-    :param components: pca loadings, (n_components, n_features)
-    :param X: data to project, already demeaned, etc. and already reshaped to (ntrials, nfeats),
+    :param components: pca loadings, (n_components, n_features) [i.e., (ndims, nchans)]
+    :param X: data to project, already demeaned, etc. and already reshaped to (ntrials, nfeats), .. [i.e., (ntrials, nchans)]
     except if do_additional_reshape_from_ChTrTi==True, in which case input is (nchans, ntrials, ntimesS),
     and here will do the approppriate reshaping.
     
