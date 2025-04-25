@@ -10286,7 +10286,7 @@ class Session(object):
 
         if map_shape_to_col is None:
             from pythonlib.tools.plottools import color_make_map_discrete_labels
-            map_shape_to_col = color_make_map_discrete_labels(shapes_exist)
+            map_shape_to_col = color_make_map_discrete_labels(shapes_exist)[0]
             # map_shape_to_col["FAR_FROM_ALL_SHAPES"] = np.array([0.8, 0.8, 0.8, 1.])
 
         # Plot lines between each successive fixation
@@ -10462,7 +10462,8 @@ class Session(object):
             strokes_tdt = smoothStrokes(strokes_tdt, fs_tdt, SM_WIN, sanity_check_endpoint_not_different=False)
             vals_tdt_calibrated_sm = strokes_tdt[0][:,:2]
             times_tdt_sm = strokes_tdt[0][:,2]
-            assert np.all(times_tdt_sm==times_tdt)
+            from pythonlib.tools.nptools import isnear
+            assert isnear(times_tdt_sm, times_tdt)
             return times_tdt, vals_tdt_calibrated, fs_tdt, vals_tdt_calibrated_sm
         elif return_fs_tdt:
             return times_tdt, vals_tdt_calibrated, fs_tdt
