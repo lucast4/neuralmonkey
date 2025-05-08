@@ -4659,7 +4659,7 @@ class Session(object):
         from pythonlib.tools.datetools import standardize_time_helper
 
         if trials is None:
-            trials = self.get_trials_list()
+            trials = self.get_trials_list(True)
 
         list_fr = []
         for t in trials:
@@ -8254,6 +8254,14 @@ class Session(object):
             # Extract snip
             t1 = time_align + pre_dur
             t2 = time_align + post_dur
+
+            # --- This does nothing!! see below.
+            # if realign_to_time:
+            #     # then make time_align the new 0
+            #     subtract_this_from_times = time_align
+            # else:
+            #     subtract_this_from_times = None
+
             pa = pa._slice_by_time_window(t1, t2, return_as_popanal=True,
                 fail_if_times_outside_existing=fail_if_times_outside_existing,
                 subtract_this_from_times=time_align,
@@ -8659,6 +8667,10 @@ class Session(object):
             # Batt died (throw out trials 761 to 790, inclusive), and then plugged in.
             assert False, "fill this in! See recording log for what trials lost."
 
+        elif (int(self.Date))==250417 and self.Animal=="Diego":
+            # He bit the cable. Also, bad peformance after this. Throw out the trials lost.
+            assert False, "fill this in! See recording log for what trials lost."
+            
         else:
             do_skip_trials = False
         
