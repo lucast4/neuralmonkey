@@ -1180,6 +1180,40 @@ class Snippets(object):
         print("self.PAscalar.X.shape : ", self.PAscalar.X.shape)
         return self.DfScalar
 
+    def datamod_append_spikecounts(self, bin_size=0.01, replace_sm_fr=False):
+        """
+        Compute spike counts using spike times, and then append two columns holding results:
+        - spike_counts
+        - spike_counts_t
+        PARAMS:
+        - replace_sm_fr, bool, if True, replace sm fr with spike counts
+        """
+
+        # Convert spike times to binned spike counts
+        sn = self._session_extract_all()[0] # just for methods
+        bin_centers = None
+        pre_dur = self.ParamsGlobals["PRE_DUR_CALC"]
+        post_dur = self.ParamsGlobals["POST_DUR_CALC"]
+        list_counts =[]
+        for _, row in self.DfScalar.iterrows():
+            counts, _, _bin_centers = sn.spiketimes_bin_counts(row["spike_times"], pre_dur, post_dur, 
+                                                                bin_size=bin_size, plot=False)
+            list_counts.append(counts[None, :]) # To match fr shape (1, n_bins)
+            if bin_centers is None:
+                bin_centers = _bin_centers  
+            else:
+                assert np.all(bin_centers == _bin_centers), "Bin centers should be the same for all trials."
+
+        # Replace sm fr with spike counts
+        self.DfScalar["spike_counts"] = list_counts
+        self.DfScalar["spike_counts_t"] = [bin_centers[None, :] for _ in range(len(self.DfScalar))]
+
+        if replace_sm_fr:
+            self.DfScalar["fr_sm"] = self.DfScalar["spike_counts"]
+            self.DfScalar["fr_sm_times"] = self.DfScalar["spike_counts_t"]
+            if "fr_sm_sqrt" in self.DfScalar.columns:
+                del self.DfScalar["fr_sm_sqrt"]
+
     def datamod_append_outliers(self, return_copy=False):
         """ If you removed outliers, add them back.
         (REversible, beucase outlier is a column)
@@ -1579,15 +1613,12 @@ class Snippets(object):
 
         return dfthis
 
-    # def dataextract_as_df_conjunction_vars_multsites(self, ...,
-    #     do_balance=False, balance_var=None, list_balance_vars_others=None):
-
-
     def dataextract_as_df_multsites_wrapper(self, sites, event_aligned,
                                             var=None, list_vars_others=None, do_balance=False,
                                             pre_dur=None, post_dur=None, trial_var = "index_datapt",
                                             PRINT = False,
-                                            exclude_othervar_levels_missing_any_var_level=False):
+                                            exclude_othervar_levels_missing_any_var_level=False,
+                                            replace_fr_sm_with_spike_counts=False, spike_counts_bin_size=0.01):
         """
         GOOD, a single method to extract structured data,
         allowing for multiple sites, structured by split by vars, etc, ensuring
@@ -1610,10 +1641,33 @@ class Snippets(object):
             also input do_balance=True
         """
 
+        if replace_fr_sm_with_spike_counts:
+            self.datamod_append_spikecounts(spike_counts_bin_size, replace_sm_fr=True)
+
         # Always start with geting raw data, since this function allows getting multiple sites, ignoring variables
         # print(event_aligned)
         # print(self.DfScalar["event"])
         dfthis = self.dataextract_as_df_good(event_aligned=event_aligned, list_chan=sites, pre_dur=pre_dur, post_dur=post_dur)
+
+        # if replace_fr_sm_with_spike_counts:
+        #     # Convert spike times to binned spike counts
+        #     sn = self._session_extract_all()[0] # just for methods
+        #     bin_centers = None
+        #     list_counts =[]
+        #     for _, row in dfthis.iterrows():
+        #         counts, _, _bin_centers = sn.spiketimes_bin_counts(row["spike_times"], pre_dur, post_dur, 
+        #                                                            bin_size=spike_counts_bin_size, plot=False)
+        #         list_counts.append(counts[None, :]) # To match fr shape (1, n_bins)
+        #         if bin_centers is None:
+        #             bin_centers = _bin_centers  
+        #         else:
+        #             assert np.all(bin_centers == _bin_centers), "Bin centers should be the same for all trials."
+        #     # Replace sm fr with spike counts
+        #     # dfthis["spike_counts"] = list_counts
+        #     # dfthis["spike_counts_t"] = [bin_centers[None, :] for _ in range(len(dfthis))]
+        #     dfthis["fr_sm"] = list_counts
+        #     dfthis["fr_sm_times"] = [bin_centers[None, :] for _ in range(len(dfthis))]
+        #     del dfthis["fr_sm_sqrt"]
 
         # Get conjunction vars, and balance the data?
         if var:
@@ -5053,7 +5107,8 @@ class Snippets(object):
                                       do_balance=False, balance_var=None, balance_list_vars_others=None,
                                       exclude_othervar_levels_missing_any_var_level=False,
                                       list_features_extraction=None,
-                                      which_fr_sm = "fr_sm", max_frac_trials_lose=None):
+                                      which_fr_sm = "fr_sm", max_frac_trials_lose=None,
+                                      replace_fr_sm_with_spike_counts=False, spike_counts_bin_size=0.01):
         """ [GOOD] Use this for all population-level analyses.
         Extract data that is clean - i.e., (i) balanced to get
         all combo of trials x chans x timepoints in a single PA. (ii) Can also choose to
@@ -5081,7 +5136,8 @@ class Snippets(object):
         # 1) Extract data
         dfthis = self.dataextract_as_df_multsites_wrapper(sites, event,
             balance_var, balance_list_vars_others, do_balance, pre_dur, post_dur,
-            exclude_othervar_levels_missing_any_var_level=exclude_othervar_levels_missing_any_var_level)
+            exclude_othervar_levels_missing_any_var_level=exclude_othervar_levels_missing_any_var_level,
+            replace_fr_sm_with_spike_counts=replace_fr_sm_with_spike_counts, spike_counts_bin_size=spike_counts_bin_size)
 
         if len(dfthis)==0:
             print(sites)

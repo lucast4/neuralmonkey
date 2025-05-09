@@ -8,13 +8,19 @@ if [[ $animal == Diego ]]; then
   # question=RULE_ANBMCK_STROKE
   
   ### AnBmCk and AnBmCk(Two shape sets)
-  # datelist=(230723 230724 230726 230727 230728 230730 230815 230816 230817 230913 230914 230915 231116 231118 240822 240827) # AnBmCk, ALL
+  # datelist=(230723 230724 230726 230727 230728 230730 230815 230816 230817 230913 230914 230915 231116 231118 240822 240827 250319 250321) # AnBmCk, ALL
   # datelist=(230817 230914) # AnBmCk, ALL
   # datelist=(230728 230817) # NEED TO FIX
 
-  # datelist=(250319 250321) # added 4/4/25
-  datelist=(250319) # added 4/4/25
-  question=RULE_ANBMCK_STROKE
+  # # datelist=(250319 250321) # added 4/4/25
+  # datelist=(250319) # added 4/4/25
+  # question=RULE_ANBMCK_STROKE
+  # combine=0
+
+  ### AnBmCk trial (all, for trial not stroke)
+  # datelist=(230728 231118 240822) # 
+  datelist=(230728 231118 240822 230723 230724 230726 230727 230730 230815 230816 230817 230913 230914 230915 231116 240827 250319 250321) # 
+  question=RULE_BASE_trial
   combine=0
 
   ### SP vs. Char,
@@ -66,16 +72,24 @@ elif [[ $animal == Pancho ]]; then
   
   # datelist=(240619 240808 240809) # Syntax TI
 
-  ### AnBmCk and AnBmCk(Two shape sets)
-  # datelist1=(230810 230811 230824 230826 230829 231114 231116 240830) # AnBmCk, ALL
+  ## AnBmCk and AnBmCk(Two shape sets)
+  # datelist1=(230810 230811 230824 230826 230829 231114 231116 240830 220831 220901 220902 220906 220907 220908 220909 250321 250322) # AnBmCk, ALL
   # datelist1=(230811 230824 230826 230829 231114 231116) # AnBmCk, SUBSET
   # datelist1=(220831 220901) # NEED TO FIX BUG
-  # datelist1=(250321 250322) # added 4/4/25
+  datelist1=(250322) # added 4/4/25
   datelist2=() # SUBSET
   datelist=(${datelist1[@]} ${datelist2[@]})
   echo ${datelist[@]}
   combine=0
   question=RULE_ANBMCK_STROKE
+
+  # ### AnBmCk trial (all, for trial not stroke)
+  # # datelist=(230810 230811 230824 230826 230829 231114 231116 240830 220831 220901 250321 250322 220902 220906 220907 220908 220909) # 
+  # # datelist=(230810 230811 230824 230826 230829 231114 231116 240830 220831 220901 250321 250322) # 
+  # # datelist=(220902 220906 220907 220908 220909) # 
+  # datelist=(250322) # 
+  # question=RULE_BASE_trial
+  # combine=0
 
   # --- SP/Chars, all
   # datelist=(230122 230125 230126 230127 230112 230117 230118 230119 230120) # Chars [set 1]
@@ -174,6 +188,6 @@ do
   echo ${logfile}
   # taskset --cpu-list 0,1,2,3,4,5,6 python analy_snippets_extract.py ${animal} ${date1} ${question} ${combine} 2>&1 | tee ${logfile} &
   python analy_dfallpa_extract.py ${animal} ${date1} ${question} ${combine} ${get_all_events} 2>&1 | tee ${logfile} &
-  sleep 10m
+  sleep 1m
 done
 # sleep 1m

@@ -2688,7 +2688,66 @@ class Session(object):
         else:
             dat = self.DatSpikesSessByClust[clust_id]
             assert dat["clust_id"] == clust_id
-            return dat
+            return dat  
+
+    def spiketimes_bin_counts(self, spike_times, t_start, t_end, bin_size, plot=False, 
+                              assert_all_times_within_bounds=True):
+        """
+        Bin spike times into counts per bin.
+
+        Parameters
+        ----------
+        spike_times : array-like
+            Array of spike times (in seconds or ms, as long as consistent with t_start, t_end, bin_size).
+        t_start : float
+            Start time of the window.
+        t_end : float
+            End time of the window.
+        bin_size : float
+            Bin size.
+
+        Returns
+        -------
+        counts : np.ndarray
+            Array of spike counts for each bin.
+        bin_edges : np.ndarray
+            The edges of the bins (length = len(counts) + 1).
+        bin_centers : np.ndarray
+            The centers of the bins (length = len(counts)).
+        """
+        
+        if assert_all_times_within_bounds and len(spike_times)>0:
+            assert np.min(spike_times) >= t_start, "Spike times should be >= t_start"
+            assert np.max(spike_times) <= t_end, "Spike times should be <= t_end"
+
+        bin_edges = np.arange(t_start, t_end+0.001, bin_size)
+        counts, _ = np.histogram(spike_times, bins=bin_edges)
+        bin_centers = bin_edges[:-1] + bin_size / 2 # Center of each bin
+        assert len(bin_centers)==len(counts)
+
+        if not len(spike_times)==np.sum(counts):
+            print(spike_times)
+            print(counts)
+            print(bin_centers)
+            assert False
+
+        if plot:
+            if False:
+                print("Spike counts:", counts)
+                print("Bin edges:", bin_edges)
+
+            # Plot the spike counts histogram:
+            plt.figure(figsize=(10, 5))
+            plt.bar(bin_edges[:-1], counts, width=np.diff(bin_edges), align='edge', edgecolor='black')
+            plt.xlabel('Time (s)')
+            plt.ylabel('Spike counts')
+            plt.title('Binned Spike Counts')
+
+            # Overlay the spikes
+            plt.eventplot(spike_times, orientation='horizontal', color='red')
+
+            plt.show()
+        return counts, bin_edges, bin_centers
 
     ########################################### TDT LOADING
     def load_spike_times(self):

@@ -421,12 +421,17 @@ def plotNeurHeat(X, ax=None, barloc="right", robust=True, zlims = None,
     if times is None:
         times = list(range(X.shape[1]))
     # plot
-    if zlims is not None: 
-        sns.heatmap(X, ax=ax, cbar=False, cbar_kws = dict(use_gridspec=False,location=barloc), 
-               robust=robust, vmin=zlims[0], vmax=zlims[1])
+    from pythonlib.tools.snstools import heatmap_mat
+    if False:
+        # didnt solve problem of x axis not being corect
+        heatmap_mat(X, ax, annotate_heatmap=False, zlims=zlims, continuous_axes=True)
     else:
-        sns.heatmap(X, ax=ax, cbar=False, cbar_kws = dict(use_gridspec=False,location=barloc), 
-               robust=robust)
+        if zlims is not None: 
+            sns.heatmap(X, ax=ax, cbar=False, cbar_kws = dict(use_gridspec=False,location=barloc), 
+                   robust=robust, vmin=zlims[0], vmax=zlims[1])
+        else:
+            sns.heatmap(X, ax=ax, cbar=False, cbar_kws = dict(use_gridspec=False,location=barloc), 
+                robust=robust)
     # ax.set_title(f"{pop}|{minmax[0]:.2f}...{minmax[1]:.2f}")
     ax.set_xlabel(f"robust={robust}|{minmax[0]:.2f}...{minmax[1]:.2f}")
     ax.set_ylabel('neuron #')
@@ -479,7 +484,6 @@ def plotNeurTimecourse(X, times=None, ax=None, n_rand=None, marker="-", color="k
         fig, ax = plt.subplots(figsize=(10,5))
     else:
         fig = None
-    
 
     # X = self.activations[pop][tasknum]
     X_nonan = X[:]
