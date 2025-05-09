@@ -89,26 +89,26 @@ def mult_plot_all_wrapper(just_return_data=False):
         ]
 
     ### Param sets
-    # # (1) Old version (large LIST_VAR)
-    # LIST_SAVE_SUFFIX = ["sh_vs_seqsup"]
-    # # for save_suffix in ["sh_vs_seqsup"]:
-    # # for save_suffix in ["two_shape_sets", "AnBmCk_general"]:
-    # # for save_suffix in ["AnBmCk_general"]:
-    # # for save_suffix in ["sh_vs_seqsup", "two_shape_sets", "AnBmCk_general"]:
-    # LIST_SUBSPACE = ["epch_sytxrol", "syntax_role", "sytx_all"]
-    # version_seqsup_good=False
-    # get_all_twind_scal = True
+    # (1) Old version (large LIST_VAR)
+    LIST_SAVE_SUFFIX = ["two_shape_sets"]
+    # for save_suffix in ["sh_vs_seqsup"]:
+    # for save_suffix in ["two_shape_sets", "AnBmCk_general"]:
+    # for save_suffix in ["AnBmCk_general"]:
+    # for save_suffix in ["sh_vs_seqsup", "two_shape_sets", "AnBmCk_general"]:
+    LIST_SUBSPACE = ["epch_sytxrol", "syntax_role", "sytx_all"]
+    version_seqsup_good=False
+    get_all_twind_scal = True
 
-    # (2) New version (small LIST_VAR, for seqsup)
-    LIST_SAVE_SUFFIX = ["sh_vs_seqsup"]
-    LIST_SUBSPACE = ["stxsuperv"]
-    version_seqsup_good=True
-    get_all_twind_scal = False
+    # # (2) New version (small LIST_VAR, for seqsup)
+    # LIST_SAVE_SUFFIX = ["sh_vs_seqsup"]
+    # LIST_SUBSPACE = ["stxsuperv"]
+    # version_seqsup_good=True
+    # get_all_twind_scal = False
 
     for save_suffix in LIST_SAVE_SUFFIX:
         for subspace_projection in LIST_SUBSPACE:
-            # for animal in ["Diego", "Pancho"]:
-            for animal in ["Pancho", "Diego"]:
+            for animal in ["Diego", "Pancho"]:
+            # for animal in ["Pancho", "Diego"]:
 
                 ### LOAD DFDIST
                 # Params for loading dataset
@@ -190,6 +190,7 @@ def mult_plot_all_wrapper(just_return_data=False):
 
                                     list_dfdist.append(dfdist)
                     DFDIST = pd.concat(list_dfdist).reset_index(drop=True)
+
                     if just_return_data:
                         return DFDIST
 
@@ -233,7 +234,7 @@ def mult_plot_all_wrapper(just_return_data=False):
                         print(SAVEDIR)
 
                         from  neuralmonkey.scripts.analy_syntax_good_eucl_state import mult_plot_all
-
+                        assert len(DFDIST_AGG)>0
                         mult_plot_all(DFDIST_AGG, map_savesuffix_to_contrast_idx_pairs, SAVEDIR, question, skip_contrast_idx_pair_if_fail=True)
 
 if __name__=="__main__":

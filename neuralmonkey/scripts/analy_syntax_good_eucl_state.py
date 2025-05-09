@@ -684,6 +684,218 @@ def euclidian_time_resolved_fast_shuffled(DFallpa, animal, SAVEDIR_ANALYSIS, que
 
 
 
+def euclidian_time_resolved_fast_shuffled_quick_rsa(DFallpa, animal, SAVEDIR_ANALYSIS):
+    """
+    All code for computing and saving euclidean distnaces.
+    """
+    from neuralmonkey.analyses.euclidian_distance import timevarying_compute_fast_to_scalar
+
+
+    twind_analy = (-1, 0.6)
+    tbin_dur = 0.15 # Matching params in other analyses
+    tbin_slide = 0.02
+    prune_min_n_trials = N_MIN_TRIALS
+
+    list_fit_twind = [(-0.8, 0.3)]
+
+    from neuralmonkey.scripts.analy_euclidian_dist_pop_script import _get_list_twind_by_animal
+    _list_twind, _, _ = _get_list_twind_by_animal(animal, "00_stroke", "traj_to_scalar")
+    assert len(_list_twind)==1, "why mutliple?"
+    twind_ideal = _list_twind[0]
+
+    # twind_scal = (-0.5, -0.05) # char_sp
+    # list_twind_scal = [(-0.1, 0.3)] # syntax, previously
+    if False:
+        list_twind_scal = [twind_ideal, (-0.3, -0.1)]
+    else:
+        list_twind_scal = [twind_ideal]
+
+    # ### Load params
+    LIST_VAR = [
+        "chunk_within_rank_semantic_v2", 
+        # "chunk_within_rank", 
+        "chunk_within_rank_fromlast", 
+        "syntax_role", # ------------- Using syntax_role instead of stroke_index
+        "stroke_index",
+        "syntax_role", # ------------- Using syntax_role instead of stroke_index
+        ]
+    LIST_VARS_OTHERS = [
+        ["epoch", "chunk_rank", "shape"], 
+        # ["epoch", "chunk_rank", "shape"], 
+        ["epoch", "chunk_rank", "shape"], 
+        ["epoch", "chunk_rank", "shape"], # ------------- Using syntax_role instead of stroke_index
+        ["epoch", "FEAT_num_strokes_beh"],
+        ["epoch"], # ------------- Using syntax_role instead of stroke_index
+        ]
+    LIST_CONTEXT = [
+        None,
+        # None,
+        None,
+        None,
+        None,
+        None,
+        ]
+    
+    LIST_PRUNE_MIN_N_LEVS = [2 for _ in range(len(LIST_VAR))]
+    # filtdict = {"stroke_index": list(range(1, 10, 1))}
+    # filtdict = {"epochset_shape":[("llCV3",)]}
+    LIST_FILTDICT = [None for _ in range(len(LIST_VAR))]
+    use_strings_for_vars_others = False
+    # list_subspace_projection = ["sytx_all", "epch_sytxrol", "syntax_role"]
+    list_subspace_projection = ["sytx_all"]
+    is_seqsup_version = False
+
+    ### Automaticlaly getting the contrast of interest
+    # The inidices are not documneted. Therefore get all of them.
+    list_contrast_idx = list(range(len(LIST_VAR)))
+    
+    # Map from index to variables and other params.
+    contrasts_dict = {}
+    for idx in sorted(list_contrast_idx):
+        contrasts_dict[idx] = [LIST_VAR[idx], LIST_VARS_OTHERS[idx], LIST_CONTEXT[idx], LIST_PRUNE_MIN_N_LEVS[idx], LIST_FILTDICT[idx]]
+
+    # - for method
+    from pythonlib.cluster.clustclass import Clusters
+    cl = Clusters(None)
+
+    # Save some general params
+    from pythonlib.tools.expttools import writeDictToTxtFlattened
+    writeDictToTxtFlattened({
+        "list_subspace_projection":list_subspace_projection,
+        "twind_analy":twind_analy,
+        "tbin_dur":tbin_dur,
+        "tbin_slide":tbin_slide,
+        "prune_min_n_trials":prune_min_n_trials,
+        "list_fit_twind":list_fit_twind,
+        "list_twind_scal":list_twind_scal,
+        "LIST_VAR":LIST_VAR,
+        "LIST_VARS_OTHERS":LIST_VARS_OTHERS,
+        "LIST_CONTEXT":LIST_CONTEXT,
+        "LIST_PRUNE_MIN_N_LEVS":LIST_PRUNE_MIN_N_LEVS,
+        "LIST_FILTDICT":LIST_FILTDICT,
+        "list_contrast_idx":list_contrast_idx}, path=f"{SAVEDIR_ANALYSIS}/params.txt")
+
+    from pythonlib.tools.expttools import writeDictToTxtFlattened
+    writeDictToTxtFlattened(contrasts_dict, path=f"{SAVEDIR_ANALYSIS}/contrasts_dict.txt", 
+                            header = "contrast_idx: var, vars_others, context, prune_min_n_levs, filtdict")
+    
+    ### RUN
+    list_dfdist = []
+    for _, row in DFallpa.iterrows():
+        bregion = row["bregion"]
+        which_level = row["which_level"]
+        event = row["event"]
+        PA = row["pa"]
+
+        for subspace_projection in list_subspace_projection:
+            for subspace_projection_fitting_twind in list_fit_twind:
+
+                # for contrast, contrast_idx in map_contrast_to_idx.items():
+                for contrast_idx in list_contrast_idx:
+
+                    # Get variables for this contrast  
+                    var_effect = LIST_VAR[contrast_idx]
+                    vars_others = LIST_VARS_OTHERS[contrast_idx]
+                    context_dict = LIST_CONTEXT[contrast_idx]
+                    prune_min_n_levs = LIST_PRUNE_MIN_N_LEVS[contrast_idx]
+                    filtdict = LIST_FILTDICT[contrast_idx]
+                    vars_group = [var_effect, "_vars_others"]
+                
+                    SAVEDIR = f"{SAVEDIR_ANALYSIS}/{which_level}-{bregion}-{event}-ss={subspace_projection}-fit_twind={subspace_projection_fitting_twind}/contrast={contrast_idx}|{var_effect}"
+                    os.makedirs(SAVEDIR, exist_ok=True)
+                    print("SAVING AT ... ", SAVEDIR)
+
+                    # Make sure there is no "diff" in context
+                    if context_dict is not None:
+                        assert (context_dict["diff"] is None) or (len(context_dict["diff"])==0), "need to run the step above, removing diffs, or else will fail to get diff var_others eucliian"
+
+                    print("These params: ", var_effect, vars_others, context_dict, filtdict)
+                    
+                    # Preprocess
+                    savedir = f"{SAVEDIR}/preprocess"
+                    os.makedirs(savedir, exist_ok=True)
+                    
+                    PAthisRedu = preprocess_pa(PA, var_effect, vars_others, prune_min_n_trials, prune_min_n_levs, filtdict,
+                                savedir, 
+                                subspace_projection, subspace_projection_fitting_twind,
+                                twind_analy, tbin_dur, tbin_slide, use_strings_for_vars_others=use_strings_for_vars_others,
+                                is_seqsup_version=is_seqsup_version)
+                    if PAthisRedu is None:
+                        # Try again, using lower min n trials.
+                        PAthisRedu = preprocess_pa(PA, var_effect, vars_others, prune_min_n_trials-1, prune_min_n_levs, filtdict,
+                                    savedir, 
+                                    subspace_projection, subspace_projection_fitting_twind,
+                                    twind_analy, tbin_dur, tbin_slide, use_strings_for_vars_others=use_strings_for_vars_others,
+                                    is_seqsup_version=is_seqsup_version)
+                        if PAthisRedu is None:
+                            # Skip this contrast.
+                            fig, _ = plt.subplots()
+                            fig.savefig(f"{savedir}/lost_all_dat_in_preprocess.pdf")
+                            plt.close("all")
+                            continue 
+
+                    ###################################### Running euclidian
+                    for twind_scal in list_twind_scal:
+
+                        # Prune to scalar window
+                        pathis = PAthisRedu.slice_by_dim_values_wrapper("times", twind_scal)
+
+                        # 
+                        rsa_savedir = f"{SAVEDIR}/rsa-twind_scal={twind_scal}"
+                        os.makedirs(rsa_savedir, exist_ok=True)
+
+                        # Run
+                        dfdist, _ = timevarying_compute_fast_to_scalar(pathis, label_vars=vars_group, rsa_heatmap_savedir=rsa_savedir,
+                                                                        prune_levs_min_n_trials=prune_min_n_trials, 
+                                                                        context_dict=context_dict)
+                        if dfdist is None:
+                            # Skip this contrast.
+                            fig, _ = plt.subplots()
+                            fig.savefig(f"{savedir}/lost_all_dat_in_preprocess.pdf")
+                            plt.close("all")
+                            continue 
+                    
+                        # # Make sure all pairs are gotten (including both ways). This so later can take mean for each row
+                        # dfdist = cl.rsa_distmat_convert_from_triangular_to_full(dfdist, label_vars=vars_group, PLOT=False, repopulate_relations=True)
+
+                        # # Save
+                        # dfdist["var_effect"] = var_effect
+                        # dfdist["vars_others"] = [tuple(vars_others) for _ in range(len(dfdist))]
+                        # dfdist["context_dict"] = [context_dict for _ in range(len(dfdist))]
+                        # dfdist["prune_min_n_levs"] = [prune_min_n_levs for _ in range(len(dfdist))]
+                        # dfdist["filtdict"] = [filtdict for _ in range(len(dfdist))]
+                        
+                        # # dfdist["contrast"] = contrast
+                        # dfdist["contrast_idx"] = contrast_idx
+                        # dfdist["bregion"] = bregion
+                        # # dfdist["prune_version"] = prune_version
+                        # dfdist["which_level"] = which_level
+                        # dfdist["event"] = event
+                        # dfdist["subspace_projection"] = subspace_projection
+                        # dfdist["subspace_projection_fitting_twind"] = [subspace_projection_fitting_twind for _ in range(len(dfdist))]
+                        # # dfdist["dim_redu_fold"] = _i_dimredu
+                        # dfdist["twind_scal"] = [twind_scal for _ in range(len(dfdist))]
+                        
+                        # ### Save this df in this folder
+                        # dfdist.to_pickle(f"{SAVEDIR}/dfdist-twind_scal={twind_scal}.pkl")
+
+                        # # Optioanlly, collect all data
+                        # if False:
+                        #     list_dfdist.append(dfdist)
+                        
+                        # # Older code...
+                        # # PLOT_HEATMAPS = False
+                        # # dfres = euclidian_distance_compute_trajectories(PA, LIST_VAR, LIST_VARS_OTHERS, twind_analy, tbin_dur,
+                        # #                         tbin_slice, savedir, PLOT_TRAJS=PLOT_STATE_SPACE, PLOT_HEATMAPS=PLOT_HEATMAPS,
+                        # #                         nmin_trials_per_lev=nmin_trials_per_lev,
+                        # #                         LIST_CONTEXT=LIST_CONTEXT, LIST_FILTDICT=LIST_FILTDICT,
+                        # #                         LIST_PRUNE_MIN_N_LEVS=LIST_PRUNE_MIN_N_LEVS,
+                        # #                         NPCS_KEEP=NPCS_KEEP,
+                        # #                         dim_red_method = dim_red_method, superv_dpca_params=superv_dpca_params,
+                        # #                         COMPUTE_EUCLIDIAN = COMPUTE_EUCLIDIAN, PLOT_CLEAN_VERSION = PLOT_CLEAN_VERSION)
+
+
+
 def postprocess_dfdist_collected(DFDIST):
     """
     General preprocessing - for general plots.
@@ -1030,6 +1242,124 @@ def mult_plot_grammar_vs_seqsup_new(DFDIST, SAVEDIR, contrast_version="shape_ind
         savepath = f"{savedir}/grouping-superv_is_seq_sup-{var_datapt}-vareffect12.txt"
         grouping_print_n_samples(DFDIST_THIS, ["date", var_datapt, "superv_is_seq_sup", f"{var_effect}_12"], savepath=savepath)
 
+def targeted_pca_state_space_split_over(DFallpa, SAVEDIR_ANALYSIS, 
+                                       variables, variables_is_cat, LIST_VAR_VAROTHERS_SS, # For dim reduction and plotting state space
+                                       twind_scal_force):
+    """
+    Quick, extract axes for each split, and plot state space.
+    Here, is hard codede for the "chunk_shape" and "chunk_within_rank" variables.
+    """
+    from neuralmonkey.analyses.euclidian_distance import timevarying_compute_fast_to_scalar
+    from pythonlib.tools.pandastools import append_col_with_grp_index
+    from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper
+    from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good
+    from pythonlib.tools.vectools import cart_to_polar
+    from pythonlib.tools.vectools import average_angle, get_vector_from_angle, average_vectors_wrapper
+    from pythonlib.tools.pandastools import append_col_with_grp_index, grouping_plot_n_samples_heatmap_var_vs_grpvar
+    from pythonlib.tools.plottools import savefig
+    from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_WRAPPER, trajgood_plot_colorby_splotby_scalar_WRAPPER
+
+    for PA in DFallpa["pa"].values:      
+        from pythonlib.tools.pandastools import append_col_with_grp_index
+        #### Append any new columns
+        dflab = PA.Xlabels["trials"]
+        dflab = append_col_with_grp_index(dflab, ["chunk_rank", "shape"], "chunk_shape")
+        PA.Xlabels["trials"] = dflab
+
+    # min_levs_per_levother = 2
+    # prune_levs_min_n_trials = 4
+    tbin_dur = 0.2
+    tbin_slide = 0.1
+    npcs_keep_force = 50
+    normalization = "orthonormal"
+
+    var_effect_1 = "chunk_shape"
+    var_effect_within_split = "chunk_within_rank"
+    var_other_for_split = "chunk_shape"
+
+    # list_dfangle = []
+    for _, row in DFallpa.iterrows():
+        PA = row["pa"].copy()
+        bregion = row["bregion"]
+        event = row["event"]
+        
+        # if twind_scal_force is None:
+        #     twind_scal = map_event_to_twind[event]
+        # else:
+        twind_scal = twind_scal_force
+
+        SAVEDIR = f"{SAVEDIR_ANALYSIS}/{event}-{bregion}"
+        os.makedirs(SAVEDIR, exist_ok=True)
+
+        ### Collect each axis
+        # PLOT_COEFF_HEATMAP = False
+        # demean = False # Must be false, as we dont want function to modify PA
+        # get_axis_for_categorical_vars = True
+
+        ### Convert to scalat
+        # Expand channels to (chans X time bins)
+        pca_reduce = True
+        _, PAscal, _, _, _= PA.dataextract_state_space_decode_flex(twind_scal, tbin_dur, tbin_slide, "trials_x_chanstimes",
+                                                            pca_reduce=pca_reduce, npcs_keep_force=npcs_keep_force)
+
+        ### Get axes for each split
+        DFCOEFF, columns_each_split = PAscal.regress_neuron_task_variables_all_chans_data_splits(variables, variables_is_cat, 
+                                                                    var_effect_within_split, var_other_for_split)
+
+        # Plot final
+        PAscal.regress_neuron_task_variables_all_chans_plot_coeffs(DFCOEFF, savedir_coeff_heatmap=SAVEDIR)
+
+        ### Using DFCOEFF, project to this subspace
+        list_subspace_tuples = [(var_effect_1, col) for col in columns_each_split]
+        dict_subspace_pa, _, _ = PAscal.dataextract_subspace_targeted_pca_project(DFCOEFF, 
+                                                                                    list_subspace_tuples, normalization)
+
+        ### Plot state space, for each pair of axes (i.e,, each time using one of the chunk ranks).
+        LIST_DIMS = [(0,1), (1,2)]
+        for subspace_tuple in list_subspace_tuples:
+
+            savedir = f"/{SAVEDIR}/subspace={subspace_tuple}"
+            os.makedirs(savedir, exist_ok=True)
+
+            # ### Get VAF between each axis of subspace
+            # # - first, get meaned data.
+            # # data_trials = x.T # (chans, trials)
+            # subspace_axes = dict_subspace_axes_orig[subspace]
+            # assert len(subspace)==subspace_axes.shape[1]
+            # min_n_trials_in_lev = 3
+            # pa_mean = PA.slice_and_agg_wrapper("trials", variables, min_n_trials_in_lev=min_n_trials_in_lev)
+            # data_mean = pa_mean.X.squeeze() # (nchans, nconditions)
+
+            # naxes = subspace_axes.shape[1]
+            # for i in range(naxes):
+            #     for j in range(naxes):
+            #         if j>i:
+            #             basis_vectors_1 = subspace_axes[:,i][:, None]
+            #             basis_vectors_2 = subspace_axes[:,j][:, None]
+            #             out = dimredgood_subspace_variance_accounted_for(data_mean, basis_vectors_1, basis_vectors_2)
+            #             from pythonlib.tools.expttools import writeDictToTxtFlattened
+            #             writeDictToTxtFlattened(out, f"{savedir}/VAF-subspace={subspace}.txt")
+
+            ### PLOT -- plot state space
+            PAredu = dict_subspace_pa[subspace_tuple]
+            Xredu = PAredu.X # (chans, trials, 1)
+            dflab = PAredu.Xlabels["trials"]
+            x = Xredu.squeeze().T # (trials, chans)
+
+            for i, (var_effect, vars_others) in enumerate(LIST_VAR_VAROTHERS_SS):
+                if (var_effect in dflab.columns) and all([_var in dflab.columns for _var in vars_others]):
+
+                    ### Plot scalars
+                    # First, save counts
+                    fig = grouping_plot_n_samples_heatmap_var_vs_grpvar(dflab, var_effect, vars_others)
+                    savefig(fig, f"{savedir}/counts-{i}-var={var_effect}-varother={'|'.join(vars_others)}")
+
+                    # Second, plot scalars
+                    trajgood_plot_colorby_splotby_scalar_WRAPPER(x, dflab, var_effect, savedir,
+                                                                    vars_subplot=vars_others, list_dims=LIST_DIMS,
+                                                                    overlay_mean_orig=True)
+                    plt.close("all")
+
 if __name__=="__main__":
 
     from neuralmonkey.scripts.analy_dfallpa_extract import extract_dfallpa_helper
@@ -1056,7 +1386,9 @@ if __name__=="__main__":
 
     # PLOTS_DO = [4] # Good
     # PLOTS_DO = [4.1] # Good
-    PLOTS_DO = [6.1] # Good
+    # PLOTS_DO = [6.1] # Good
+    # PLOTS_DO = [6.2] # Good
+    PLOTS_DO = [4.2] # Good
 
     # Load a single DFallPA
     DFallpa = load_handsaved_wrapper(animal, date, version=version, combine_areas=combine, 
@@ -1114,6 +1446,13 @@ if __name__=="__main__":
             SAVEDIR_ANALYSIS = f"{SAVEDIR}/EUCLIDIAN_SHUFF/{animal}-{date}-comb={combine}-q={question}-seqsupgood"            
             os.makedirs(SAVEDIR_ANALYSIS, exist_ok=True)
             euclidian_time_resolved_fast_shuffled(DFallpa, animal, SAVEDIR_ANALYSIS, question, version_seqsup_good=True)
+
+        elif plotdo==4.2:
+            # Just doing RSA plots without caring much about context, etc.
+            # Useful for quick inspection of representational geometry
+            SAVEDIR_ANALYSIS = f"{SAVEDIR}/RSA_QUICK/{animal}-{date}-comb={combine}-q={question}"            
+            os.makedirs(SAVEDIR_ANALYSIS, exist_ok=True)
+            euclidian_time_resolved_fast_shuffled_quick_rsa(DFallpa, animal, SAVEDIR_ANALYSIS)
 
         # elif plotdo==5:
         #     # (2) Traj state space.
@@ -1188,6 +1527,45 @@ if __name__=="__main__":
                         savedir = f"{SAVEDIR_ANALYSIS}/PLOTS/varlength={var_vector_length}-lengthmeth={length_method}-minlevs={min_levs_exist}"
                         os.makedirs(savedir, exist_ok=True)
                         targeted_pca_euclidian_dist_angles_plots(DFANGLE, var_vector_length, length_method, min_levs_exist, savedir)
+
+        elif plotdo==6.2:
+            ### [Devo] New method to get different subspaces each using subbset of data
+            # i.e., get separate axes for chunk_within_shape for each shape
+            from pythonlib.tools.vectools import average_vectors_wrapper, get_vector_from_angle
+            from neuralmonkey.scripts.analy_syntax_good_eucl_trial import state_space_targeted_pca_scalar_single
+            from neuralmonkey.scripts.analy_syntax_good_eucl_trial import state_space_targeted_pca_scalar_single, targeted_pca_euclidian_dist_angles
+            from neuralmonkey.scripts.analy_syntax_good_eucl_state import targeted_pca_state_space_split_over
+
+            SAVEDIR_ANALYSIS = f"{SAVEDIR}/targeted_dim_redu_angles_split/{animal}-{date}-comb={combine}-q={question}"            
+            os.makedirs(SAVEDIR_ANALYSIS, exist_ok=True)
+
+            min_levs_per_levother = 2
+            prune_levs_min_n_trials = 4
+
+            from neuralmonkey.scripts.analy_euclidian_dist_pop_script import _get_list_twind_by_animal
+            _list_twind, _, _ = _get_list_twind_by_animal(animal, "00_stroke", "traj_to_scalar")
+            twind_scal = _list_twind[0]
+
+            variables = ['epoch', 'chunk_shape', 'gridloc', 'loc_on_clust', 'CTXT_locoffclust_prev', 'loc_off_clust', 
+                        'CTXT_shape_prev', 'chunk_within_rank']
+            variables_is_cat = [True, True, True, True, True, True, True, False]
+
+            LIST_DIMS = [(0,1), (1,2)]
+            LIST_VAR_VAROTHERS = [
+                ("chunk_within_rank", ['epoch', 'chunk_shape', 'loc_on_clust', 'CTXT_locoffclust_prev', 'CTXT_shape_prev', 'loc_off_clust']),
+                ("chunk_within_rank", ['epoch', 'chunk_shape', 'loc_on_clust', 'CTXT_locoffclust_prev', 'CTXT_shape_prev']),
+                ("chunk_within_rank", ['epoch', 'chunk_shape', 'loc_on_clust', 'CTXT_locoffclust_prev', 'CTXT_shape_prev']),
+                ("chunk_within_rank", ['epoch', 'chunk_shape']),
+                ("chunk_within_rank", ['epoch']),
+                ("chunk_shape", ['epoch', 'chunk_within_rank', 'loc_on_clust', 'CTXT_locoffclust_prev', 'CTXT_shape_prev', 'loc_off_clust']),
+                ("chunk_shape", ['epoch', 'chunk_within_rank', 'loc_on_clust', 'CTXT_locoffclust_prev', 'CTXT_shape_prev']),
+                ("chunk_shape", ['epoch', 'chunk_within_rank']),
+                ("chunk_shape", ['epoch']),
+            ]
+
+            targeted_pca_state_space_split_over(DFallpa, SAVEDIR_ANALYSIS, 
+                                                variables, variables_is_cat, LIST_VAR_VAROTHERS, # For dim reduction and plotting state space
+                                                twind_scal)
 
         else:
             print(PLOTS_DO)
