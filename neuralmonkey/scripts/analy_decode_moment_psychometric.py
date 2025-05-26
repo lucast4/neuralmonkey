@@ -2346,7 +2346,6 @@ def analy_psychoprim_statespace_euclidian_score_and_plot(DFallpa, SAVEDIR_BASE, 
     (Here, does those two steps just for a single day. Still need to collate across days and plot)
 
     """
-    from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_WRAPPER, trajgood_plot_colorby_splotby_scalar_WRAPPER
 
     list_bregion = DFallpa["bregion"].unique().tolist()
     
@@ -2450,7 +2449,6 @@ def analy_switching_statespace_euclidian_score_and_plot(DFallpa, SAVEDIR_BASE, m
     """
     Srapper for all good plots for switchign, whcih use state space and eucldian ditsances. Complemente previous stuff using decode.
     """
-    from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_WRAPPER, trajgood_plot_colorby_splotby_scalar_WRAPPER
 
     list_bregion = DFallpa["bregion"].unique().tolist()
     
@@ -2833,7 +2831,7 @@ def analy_switching_GOOD_euclidian_index(DFallpa, SAVEDIR_BASE, map_tcmorphset_t
 
                 for i_dimredu, (train_inds, test_inds) in enumerate(folds_dflab):
                     print(f"...splits, i_outer={i_outer}, i_inner={i_dimredu}")
-                    # train_inds, more inds than than test_inds
+                    # train_inds, fewer inds than than test_inds
                     inds_pa_fit = [int(i) for i in train_inds] # 
                     inds_pa_final = [int(i) for i in test_inds] # each ind occurs only once
 
@@ -2931,7 +2929,6 @@ def analy_switching_GOOD_state_space(DFallpa, SAVEDIR_BASE, map_tcmorphset_to_id
     plots clean version, and uses larger time window.
     NOTE: here does not do scalar state space plots.
     """
-    from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_WRAPPER, trajgood_plot_colorby_splotby_scalar_WRAPPER
 
     list_bregion = DFallpa["bregion"].unique().tolist()
     TWIND_ANALY = (-0.4, 1.2) # This is just for windowing final data, not for fitting pca.

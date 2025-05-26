@@ -644,25 +644,27 @@ def decode_categorical_pairwise_plots(DFSCORES, SAVEDIR_PLOTS):
         shapes = sorted(dfscores["shape_1"].unique())
         
         fig, axes = plot_subplots_heatmap(dfscores, "shape_1", "shape_2", "score_minus_50", "bregion", diverge=True, 
-                            annotate_heatmap=annotate_heatmap, ZLIMS=[-0.5, 0.5], 
+                            annotate_heatmap=annotate_heatmap, ZLIMS=[-0.5, 0.5], ncols=4, W=7,
                             row_values=shapes, col_values=shapes, diverge_center_dark=True)
-        # plot_subplots_heatmap(dfscores, "shape_1", "shape_2", "score", "bregion", False, True, ZLIMS=[0,1], 
-        #                       row_values=shapes, col_values=shapes)    
-
         # Color background, those cases without data.
         for ax in axes.flatten():
             # ax.set_facecolor('g')
             ax.set_facecolor([0.85, 0.85, 0.85])
             # ax.set_facecolor([0.1, 0.1, 0.1])
             # ax.set_facecolor([0.2, 0.4, 0.2])
-        
         if False:
             # Keep just the upper triangle
             ma_ut = np.triu(np.ones_like(self.Xinput, dtype=bool), k=k)
-
         savefig(fig, f"{SAVEDIR_PLOTS}/heatmap_pairwise_decode-animal={grp}.pdf")
-        plt.close("all")
 
+        fig, axes = plot_subplots_heatmap(dfscores, "shape_1", "shape_2", "score_minus_50", "bregion", diverge=False, 
+                            annotate_heatmap=annotate_heatmap, ZLIMS=[0, 0.5], ncols=4, W=7,
+                            row_values=shapes, col_values=shapes)
+        # Color background, those cases without data.
+        for ax in axes.flatten():
+            ax.set_facecolor([0.6, 0.8, 0.7])
+        savefig(fig, f"{SAVEDIR_PLOTS}/heatmap_pairwise_decode-animal={grp}-2.pdf")
+        plt.close("all")
 
     from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good, plot_subplots_heatmap
     grpdict = grouping_append_and_return_inner_items_good(DFSCORES_FULL, ["animal", "date"])
@@ -670,15 +672,22 @@ def decode_categorical_pairwise_plots(DFSCORES, SAVEDIR_PLOTS):
         dfscores = DFSCORES_FULL.iloc[inds].reset_index(drop=True)
         shapes = sorted(dfscores["shape_1"].unique())
         fig, axes = plot_subplots_heatmap(dfscores, "shape_1", "shape_2", "score_minus_50", "bregion", diverge=True, 
-                            annotate_heatmap=annotate_heatmap, ZLIMS=[-0.5, 0.5], 
+                            annotate_heatmap=annotate_heatmap, ZLIMS=[-0.5, 0.5], ncols=4, W=7,
                             row_values=shapes, col_values=shapes, diverge_center_dark=True)
-
         # Color background, those cases without data.
         for ax in axes.flatten():
             ax.set_facecolor([0.85, 0.85, 0.85])
-
         savefig(fig, f"{SAVEDIR_PLOTS}/heatmap_pairwise_decode-animal_date={grp}.pdf")
+
+        fig, axes = plot_subplots_heatmap(dfscores, "shape_1", "shape_2", "score_minus_50", "bregion", diverge=False, 
+                            annotate_heatmap=annotate_heatmap, ZLIMS=[0, 0.5], ncols=4, W=7,
+                            row_values=shapes, col_values=shapes)
+        # Color background, those cases without data.
+        for ax in axes.flatten():
+            ax.set_facecolor([0.6, 0.8, 0.7])
+        savefig(fig, f"{SAVEDIR_PLOTS}/heatmap_pairwise_decode-animal_date={grp}-2.pdf")
         plt.close("all")
+
     def _compute_mask_shapes_exist(df, shapes_in_order, rowname, colname):
         """
         """

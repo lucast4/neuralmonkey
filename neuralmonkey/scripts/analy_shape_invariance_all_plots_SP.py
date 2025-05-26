@@ -2677,7 +2677,8 @@ def statespace_scalar_plot(DFallpa, animal, date, SAVEDIR, var_other):
     # First, preprocess all pa
     list_pa =[]
     for PA in DFallpa["pa"]:
-        pa = preprocess_pa(PA, animal, date, var_other, "/tmp", True, None, None, None, None, False)
+        pa = preprocess_pa(PA, animal, date, var_other, "/tmp", True, 
+                        None, None, None, None, None, False, skip_dim_reduction=True)    
         plt.close("all")
         list_pa.append(pa)    
     DFallpa["pa"] = list_pa
@@ -2687,103 +2688,78 @@ def statespace_scalar_plot(DFallpa, animal, date, SAVEDIR, var_other):
     tbin_dur = "default"
     tbin_slide = None
 
-    if int(date)>220720:
-        twind = (0.05, 1.0)
-    else:
-        twind = (0.05, 0.6)
+    map_event_to_listtwind = {
+            "03_samp":[(0.05, 0.6)],
+            "05_first_raise":[(-0.1, 0.5)],
+            "06_on_strokeidx_0":[(0, 0.5)],
+        }
+    # only one twind per event
+    for k, v in map_event_to_listtwind.items():
+        assert len(v)==1
 
-    raw_subtract_mean_each_timepoint = False
-
+    if False: # old
+        if int(date)>220720:
+            twind = (0.05, 1.0)
+        else:
+            twind = (0.05, 0.6)
+        
     if var_other == "seqc_0_loc":
-        list_subspace_projection = ["pca", "shape", "shape_loc"]
+        list_subspace_projection = ["umap", "pca", "shape", "shape_loc"]
     elif var_other == "gridsize":
-        list_subspace_projection = ["pca", "shape", "shape_size"]
+        list_subspace_projection = ["umap", "pca", "shape", "shape_size"]
     else:
         assert False
 
     for subspace_projection in list_subspace_projection:
 
-        savedir = f"{SAVEDIR}/ssproj={subspace_projection}"
-        os.makedirs(savedir, exist_ok=True)
+        if subspace_projection == "umap":
+            # Then do multiple
+            n_iters = 3
+        else:
+            n_iters = 1
 
-        dim_red_method, superv_dpca_params = params_subspace_projection(subspace_projection)
+        for i_iter in range(n_iters):
+            savedir = f"{SAVEDIR}/ssproj={subspace_projection}-iter={i_iter}"
+            os.makedirs(savedir, exist_ok=True)
 
-        # (1) First, dim reduction
-        superv_dpca_var = superv_dpca_params['superv_dpca_var']
-        superv_dpca_vars_group = superv_dpca_params['superv_dpca_vars_group']
-        superv_dpca_filtdict = superv_dpca_params['superv_dpca_filtdict']
+            dim_red_method, superv_dpca_params = params_subspace_projection(subspace_projection)
 
-        list_pa = []
-        for i, row in DFallpa.iterrows():
-            PA = row["pa"]
-    
-            _, PAredu = PA.dataextract_dimred_wrapper("scal", dim_red_method, "/tmp", twind, tbin_dur=tbin_dur, tbin_slide = tbin_slide, NPCS_KEEP=10, 
-                                        dpca_var=superv_dpca_var, dpca_vars_group=superv_dpca_vars_group, dpca_filtdict=superv_dpca_filtdict,
-                                        raw_subtract_mean_each_timepoint=raw_subtract_mean_each_timepoint)    
-            list_pa.append(PAredu)
-            plt.close("all")
-        DFallpa["pa_redu"] = list_pa    
+            # (1) First, dim reduction
+            superv_dpca_var = superv_dpca_params['superv_dpca_var']
+            superv_dpca_vars_group = superv_dpca_params['superv_dpca_vars_group']
+            superv_dpca_filtdict = superv_dpca_params['superv_dpca_filtdict']
 
-        ### PLOT
-        from neuralmonkey.analyses.state_space_good import _trajgood_plot_colorby_scalar_BASE_GOOD
-        from pythonlib.tools.plottools import share_axes_row_or_col_of_subplots
+            list_pa = []
+            for _, row in DFallpa.iterrows():
+                PA = row["pa"]
+                event = row["event"]
+                bregion = row["bregion"]
+                twind = map_event_to_listtwind[event][0]
+                savedir_this = f"{savedir}/preprocess-{bregion}-{event}"
+                os.makedirs(savedir_this, exist_ok=True)
+                _, PAredu = PA.dataextract_dimred_wrapper("scal", dim_red_method, savedir_this, twind, tbin_dur=tbin_dur, tbin_slide = tbin_slide, 
+                                            NPCS_KEEP=NPCS_KEEP, 
+                                            dpca_var=superv_dpca_var, dpca_vars_group=superv_dpca_vars_group, dpca_filtdict=superv_dpca_filtdict,
+                                            raw_subtract_mean_each_timepoint=False)    
+                list_pa.append(PAredu)
+                plt.close("all")
+            DFallpa["pa_redu"] = list_pa    
 
-        # var_col = var_other
-        var_effect = "seqc_0_shape"
+            ### PLOT
+            from neuralmonkey.analyses.state_space_good import _trajgood_plot_colorby_scalar_BASE_GOOD
+            from pythonlib.tools.plottools import share_axes_row_or_col_of_subplots
 
-        # Extract event to plot
-        for event in DFallpa["event"].unique().tolist():
-            # event = "03_samp"
-            dfallpa = DFallpa[DFallpa["event"]==event].reset_index(drop=True)
+            # var_col = var_other
+            var_effect = "seqc_0_shape"
 
-            trajgood_plot_colorby_splotby_scalar_2dgrid_bregion(dfallpa, var_effect, var_other, savedir, pa_var = "pa_redu")
+            # Extract event to plot
+            for event in DFallpa["event"].unique().tolist():
+                # event = "03_samp"
+                dfallpa = DFallpa[DFallpa["event"]==event].reset_index(drop=True)
 
-            # nrows = len(dfallpa)
-
-            # # dflab = PA.Xlabels["trials"]
-            # _pa = dfallpa["pa_redu"].values[0]
-            # dflab = _pa.Xlabels["trials"]
-
-            # levels_col = dflab[var_col].unique().tolist()
-            # ncols = len(levels_col)
-            # SIZE =5
-
-            # for dims in [(0,1), (1,2), (2,3), (3,4)]:
-            #     fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*SIZE, nrows*SIZE), sharex=True, sharey=True)
-            #     # fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*SIZE, nrows*SIZE))
-            #     for i, row in dfallpa.iterrows():
-
-            #         bregion = row["bregion"]
-            #         event = row["event"]
-            #         PAredu = row["pa_redu"]     
-
-            #         for j, lev_col in enumerate(levels_col):
-            #             try:
-            #                 ax = axes[i][j]
-            #             except Exception as err:
-            #                 print(axes)
-            #                 print(i, j)
-            #                 raise err
-
-            #             ax.set_title((bregion, lev_col))
-
-            #             pa = PAredu.slice_by_labels_filtdict({var_col:[lev_col]})
-
-            #             if dims[1]<=pa.X.shape[0]-1:
-            #                 xs = pa.X[dims[0], :, 0]
-            #                 ys = pa.X[dims[1], :, 0]
-            #                 # zs = pa.X[2, :, 0]
-            #                 dflab = pa.Xlabels["trials"]
-            #                 labels = dflab[var_effect].tolist()
-
-            #                 # _trajgood_plot_colorby_scalar_BASE_GOOD(xs, ys, labels, ax, plot_3D=False, zs = zs)
-            #                 _trajgood_plot_colorby_scalar_BASE_GOOD(xs, ys, labels, ax)
-            #     if False:
-            #         share_axes_row_or_col_of_subplots(axes, "row", "both")   
-                
-            #     savefig(fig, f"{savedir}/scatter-event={event}-dims={dims}.pdf")
-            #     plt.close("all")
-
+                trajgood_plot_colorby_splotby_scalar_2dgrid_bregion(dfallpa, var_effect, var_other, savedir, 
+                                                                    pa_var = "pa_redu", 
+                                                                    prune_min_n_trials=N_MIN_TRIALS_PER_SHAPE, pretty_plot=True, alpha=0.7)
 
 def heatmaps_plot_wrapper(DFallpa, animal, date, SAVEDIR_ANALYSIS, var_other="seqc_0_loc"):
     """
@@ -3068,6 +3044,223 @@ def timewarped_strokes_wrapper(animal, date, SAVEDIR_ANALYSIS):
     dfdist_summary_plots_wrapper(DFDIST, DFDIST_AGG, var_effect, var_other, SAVEDIR,
                                     PLOT_EACH_PAIR=PLOT_EACH_PAIR)
 
+def decode_scalar_confusion(DFallpa, animal, date, SAVEDIR):
+    """
+    Decode, using scalar (after PCA), and making confusion matrix plots.
+    
+    In revision, I used this to test if each shape is separated from each other
+    shape.
+
+    Also makes UMAP plots.
+
+    NOTE problem: currently pools all locations, instead of testing generalization across locations. It was just 
+    easier to code.
+    """
+    from neuralmonkey.scripts.analy_euclidian_chars_sp import params_subspace_projection
+    from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_scalar_2dgrid_bregion
+    from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_scalar_WRAPPER, dimredgood_nonlinear_embed_data
+    from neuralmonkey.analyses.decode_good import decode_categorical, decode_categorical_plot_confusion_score_quick, decode_categorical_cross_condition
+    from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars
+
+    ### PARAMS
+    # Decode
+    var_decode = "seqc_0_shape"
+    var_other = "seqc_0_loc"
+    NPCS_KEEP = 50 # high, since decoder will find axis in this space.
+    # map_event_to_listtwind = {
+    #         "03_samp":[(0.05, 0.3), (0.3, 0.6), (0.05, 0.6), (0.5, 1.0)],
+    #         "05_first_raise":[(-0.5,  -0.1), (-0.1, 0.5)],
+    #         "06_on_strokeidx_0":[(-0.5, -0.1), (0, 0.5)],
+    #     }
+    map_event_to_listtwind = {
+            "03_samp":[(0.05, 0.6)],
+            "05_first_raise":[(-0.1, 0.5)],
+            "06_on_strokeidx_0":[(0, 0.5)],
+        }
+    vars_conj_decode = ["seqc_0_loc", "gridsize"]
+
+    # PCA
+    subspace_projection = "pca"
+    tbin_dur = "default"
+    tbin_slide = None
+
+    ### First, preprocess all pa
+    list_pa =[]
+    for PA in DFallpa["pa"]:
+        pa = preprocess_pa(PA, animal, date, var_other, "/tmp", True, 
+                        None, None, None, None, None, False, skip_dim_reduction=True)    
+        plt.close("all")
+        list_pa.append(pa)    
+    DFallpa["pa"] = list_pa
+
+    ### For subsampling chans
+    # Only cosnider a subset of regions with most shape-related activity.
+    bregions_consider = ["preSMA", "SMA", "PMv", "PMd", "vlPFC"] 
+    dfallpa_tmp = DFallpa[DFallpa["bregion"].isin(bregions_consider)]
+    NCHANS_MIN = min([len(pa.Chans) for pa in dfallpa_tmp["pa"]])
+    print("min n chans: ", NCHANS_MIN)
+
+    # Save the n chans per area
+    DFallpa["nchans"] = [len(pa.Chans) for pa in DFallpa["pa"]]
+    DFallpa.loc[:, ["event", "bregion", "nchans"]].to_csv(f"{SAVEDIR}/num_chans_per_area.csv")
+
+    ### Collect each PA (doing dim reduction)
+    # (Project onto shape subspace)
+
+    for _, row in DFallpa.iterrows():
+        event = row["event"]
+        bregion = row["bregion"]
+        PA_orig = row["pa"]
+        print(bregion, event)
+
+        ### Subsample num chans randomly
+        from pythonlib.tools.statstools import balanced_subsamples
+        nchans = len(PA_orig.Chans)
+        if nchans<=NCHANS_MIN:
+            do_subsample = False
+            nsplits = None
+        elif nchans > 3 * NCHANS_MIN:
+            do_subsample = True
+            nsplits = 10
+        elif nchans > 2 * NCHANS_MIN:
+            do_subsample = True
+            nsplits = 8
+        elif nchans > 1.5 * NCHANS_MIN:
+            do_subsample = True
+            nsplits = 6
+        else:
+            do_subsample = True
+            nsplits = 4
+        
+        if do_subsample:
+            # make sure take each ind at least once
+            nsplits_at_least = int(np.ceil(nchans / NCHANS_MIN))
+            nsplits = np.max([nsplits_at_least, nsplits])
+
+        print("Do subsample? ", do_subsample, "nsplits: ", nsplits, "nchans:", nchans, "NCHANS_MIN: ", NCHANS_MIN)
+
+        if do_subsample:
+            subsamples, _ = balanced_subsamples(nchans, nsplits, NCHANS_MIN, PRINT=True)
+        else:
+            # Just take all the channels
+            subsamples = [list(range(len(PA_orig.Chans)))]
+
+        for i_sub, inds_chans in enumerate(subsamples):
+            print(f"Currentyl chans subsmaple #{i_sub}: {inds_chans}")
+            PA = PA_orig.slice_by_dim_indices_wrapper("chans", inds_chans)
+
+            list_twind = map_event_to_listtwind[event]
+            for twind_scal in list_twind:
+                savedir = f"{SAVEDIR}/{bregion}-event={event}-twind={twind_scal}-subchaniterv2={i_sub}"
+                os.makedirs(savedir, exist_ok=True)
+
+                # note which chans were used
+                from pythonlib.tools.expttools import writeStringsToFile, writeDictToTxtFlattened
+                chans_subsampled = {
+                    "chan_inds":inds_chans,
+                    "chans_orig_values":PA_orig.Chans,
+                    "chans_sub_values":PA.Chans,
+                    "NCHANS_MIN":NCHANS_MIN,
+                    "nchans_this":len(PA_orig.Chans)
+                }
+                writeDictToTxtFlattened(chans_subsampled, f"{savedir}/chans_subsampled.txt")
+
+                ### Dim reductions
+                dim_red_method, superv_dpca_params = params_subspace_projection(subspace_projection)
+                superv_dpca_var = superv_dpca_params['superv_dpca_var']
+                superv_dpca_vars_group = superv_dpca_params['superv_dpca_vars_group']
+                superv_dpca_filtdict = superv_dpca_params['superv_dpca_filtdict']
+                _, PAredu = PA.dataextract_dimred_wrapper("scal", dim_red_method, savedir, twind_scal, 
+                                            tbin_dur=tbin_dur, tbin_slide = tbin_slide, 
+                                            NPCS_KEEP=NPCS_KEEP, 
+                                            dpca_var=superv_dpca_var, dpca_vars_group=superv_dpca_vars_group, 
+                                            dpca_filtdict=superv_dpca_filtdict,
+                                            raw_subtract_mean_each_timepoint=False)    
+
+                
+                ### Prune data
+                dflab = PAredu.Xlabels["trials"]
+                balance_no_missed_conjunctions = True
+                prune_min_n_trials = N_MIN_TRIALS_PER_SHAPE
+                prune_min_n_levs = 2
+                plot_counts_heatmap_savepath = f"{savedir}/counts.pdf"
+                dfout, _ = extract_with_levels_of_conjunction_vars(dflab, var_decode, vars_conj_decode,
+                                                                        n_min_across_all_levs_var=prune_min_n_trials,
+                                                                        lenient_allow_data_if_has_n_levels=prune_min_n_levs,
+                                                                        prune_levels_with_low_n=True,
+                                                                        ignore_values_called_ignore=True,
+                                                                        plot_counts_heatmap_savepath=plot_counts_heatmap_savepath,
+                                                                        balance_no_missed_conjunctions=balance_no_missed_conjunctions)
+                plt.close("all")
+                # if len(dfout)==0:
+                #     print("all data pruned!!")
+                #     return None
+                # Only keep the indices in dfout
+                PAredu = PAredu.slice_by_dim_indices_wrapper("trials", dfout["_index"].tolist(), True)
+
+                ###
+                X = PAredu.X.squeeze().T # (ntrials, ndims)
+                dflab = PAredu.Xlabels["trials"]
+
+                ### UMAP plot
+                Xredu, _ = dimredgood_nonlinear_embed_data(X, "umap")
+                trajgood_plot_colorby_splotby_scalar_WRAPPER(Xredu, dflab, var_decode, savedir)
+                trajgood_plot_colorby_splotby_scalar_WRAPPER(Xredu, dflab, var_decode, savedir, vars_subplot=vars_conj_decode)
+
+                ### Decoding
+                # for decode_across in [False, True]:
+                for decode_across in [True]: # True is better
+                    # for do_std in [False, True]:
+                    for do_std in [False]: # False is better
+                        if decode_across:
+                            savedir_this = f"{savedir}/decode-across={decode_across}-varsother={vars_conj_decode}-do_std={do_std}"
+                            os.makedirs(savedir_this, exist_ok=True)
+                            dfres, _ = decode_categorical_cross_condition(X, dflab, var_decode, vars_conj_decode,
+                                                                do_center=True, do_std=do_std)
+                            decode_categorical_plot_confusion_score_quick(dfres, savedir_this)
+
+                        else:
+                            savedir_this = f"{savedir}/decode-across={decode_across}-do_std={do_std}"
+                            os.makedirs(savedir_this, exist_ok=True)
+                            RES = decode_categorical(X, dflab[var_decode].tolist(), N_MIN_TRIALS_PER_SHAPE, max_nsplits=None,
+                                                    do_center=True, do_std=do_std, plot_resampled_data_path_nosuff=savedir_this,
+                                                                    return_mean_score_over_splits=False, 
+                                                                    return_predictions_all_trials=True)
+                            dfres = pd.DataFrame(RES)
+                            decode_categorical_plot_confusion_score_quick(RES, savedir_this)
+
+                        # save final data, to sumamrize across regions
+                        import pickle
+                        path = f"{savedir_this}/dfres.pkl"
+                        with open(path, "wb") as f:
+                            pickle.dump(dfres, f)
+                
+                ### DECODING, pairwise -- For each pair of shapes, do decoding
+                do_std = False
+                vars_conj_condition = ["seqc_0_loc", "gridsize"]
+                savedir_this = f"{savedir}/decodepairwise-varsother={vars_conj_decode}-do_std={do_std}"
+                os.makedirs(savedir_this, exist_ok=True)
+
+                from neuralmonkey.analyses.decode_good import decode_categorical_pairwise
+                do_across_condition = True
+                DFRES, DFRES_COUNTS, dfres_scores = decode_categorical_pairwise(X, dflab, var_decode, N_MIN_TRIALS_PER_SHAPE, savedir_this,
+                                        do_across_condition, vars_conj_condition=vars_conj_condition,
+                                        do_std=do_std)
+                
+                # save final data, to sumamrize across regions
+                import pickle
+                path = f"{savedir_this}/DFRES.pkl"
+                with open(path, "wb") as f:
+                    pickle.dump(DFRES, f)
+
+                path = f"{savedir_this}/DFRES_COUNTS.pkl"
+                with open(path, "wb") as f:
+                    pickle.dump(DFRES_COUNTS, f)
+
+                path = f"{savedir_this}/dfres_scores.pkl"
+                with open(path, "wb") as f:
+                    pickle.dump(dfres_scores, f)
+
 
 if __name__=="__main__":
 
@@ -3101,27 +3294,35 @@ if __name__=="__main__":
     
     # --- Good:
     PLOTS_DO = [0, 5, 4, 2, 3] # Good
-    PLOTS_DO = [5] # Good
+    PLOTS_DO = [4] # Good
     # PLOTS_DO = [4]
     # PLOTS_DO = [2, 3] # Good
 
-    # if (animal, date) in 
-    # var_other = afasfsdaf
-    
-    # Load a single DFallPA
-    DFallpa = load_handsaved_wrapper(animal, date, version=version, combine_areas=combine, 
-                                     question=question)
-    # if DFallpa is None:
-    #     # Then extract
-    #     DFallpa = extract_dfallpa_helper(animal, date, question, combine, do_save=True)
+    # # Timewarped during stroke.
+    # PLOTS_DO = [6] # Good
 
-    # Make a copy of all PA before normalization
-    dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date)
+    # # Decode, confusion matrix
+    # PLOTS_DO = [7] # Good
 
-    ################ PARAMS
-    SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/shape_invariance"
-    # os.makedirs(SAVEDIR, exist_ok=True)
-    # print(SAVEDIR)
+    # # Scalar state space plots
+    # PLOTS_DO = [1] # 
+
+    ######################################
+    if any([x!=6 for x in PLOTS_DO]):
+        # Load a single DFallPA
+        DFallpa = load_handsaved_wrapper(animal, date, version=version, combine_areas=combine, 
+                                        question=question)
+        # if DFallpa is None:
+        #     # Then extract
+        #     DFallpa = extract_dfallpa_helper(animal, date, question, combine, do_save=True)
+
+        # Make a copy of all PA before normalization
+        dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date)
+
+        ################ PARAMS
+        SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/shape_invariance"
+        # os.makedirs(SAVEDIR, exist_ok=True)
+        # print(SAVEDIR)
 
     ################################### PLOTS
     for plotdo in PLOTS_DO:
@@ -3221,6 +3422,16 @@ if __name__=="__main__":
 
             timewarped_strokes_wrapper(animal, date, SAVEDIR_ANALYSIS)
         
+        elif plotdo==7:
+            """
+            Decode, testing confusion matrix across shapes. Does all kinds of decoding, but the one I used is pairwise
+            decoding, done separately for each pair of shapes.
+            """
+
+            SAVEDIR_ANALYSIS = f"/lemur2/lucas/analyses/recordings/main/shape_invariance/decode_confusion/{animal}-{date}"
+            os.makedirs(SAVEDIR_ANALYSIS, exist_ok=True)
+            decode_scalar_confusion(DFallpa, animal, date, SAVEDIR_ANALYSIS)
+
         else:
             print(PLOTS_DO)
             assert False

@@ -1370,7 +1370,7 @@ def _trajgood_plot_colorby_scalar_BASE_GOOD(xs, ys, labels_color, ax,
                                             map_lev_to_color=None, color_type="discr",
                                             overlay_mean=False,
                                             plot_text_over_examples=False, text_to_plot=None,
-                                            alpha=0.5, SIZE=5,
+                                            alpha=0.6, SIZE=5,
                                             connect_means_with_line=False, connect_means_with_line_levels=None,
                                             connect_means_with_line_color=None,
                                             plot_3D=False, zs=None,
@@ -1467,7 +1467,9 @@ def _trajgood_plot_colorby_scalar_BASE_GOOD(xs, ys, labels_color, ax,
             # Plot
             ax.plot(Xmeans[:,0], Xmeans[:,1], "-", color=connect_means_with_line_color)
 
-def trajgood_plot_colorby_splotby_scalar_2dgrid_bregion(dfallpa, var_effect, var_other, savedir, pa_var = "pa_redu"):
+def trajgood_plot_colorby_splotby_scalar_2dgrid_bregion(dfallpa, var_effect, var_other, savedir, 
+                                                        pa_var = "pa_redu", prune_min_n_trials=3,
+                                                        pretty_plot=False, alpha=0.6):
     """
     Make a 2d grid, where each row is a pa from dfallpa (usually different brain regions), 
     and each column is a level of var_other, and each dot is a trial, colored by var_effect
@@ -1476,50 +1478,121 @@ def trajgood_plot_colorby_splotby_scalar_2dgrid_bregion(dfallpa, var_effect, var
 
     nrows = len(dfallpa)
 
-    _pa = dfallpa["pa_redu"].values[0]
+    _pa = dfallpa[pa_var].values[0]
     dflab = _pa.Xlabels["trials"]
     levels_col = dflab[var_other].unique().tolist()
     ncols = len(levels_col)
     SIZE =5
 
-    for dims in [(0,1), (1,2)]:
-    # for dims in [(0,1), (1,2), (2,3), (3,4)]:
-        fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*SIZE, nrows*SIZE), sharex=True, sharey=True, squeeze=False)
+    # First, prune n trials
+    from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars
+    list_pa_redu = []
+    for i, row in dfallpa.iterrows():
+        bregion = row["bregion"]
+        event = row["event"]
+        PAredu = row[pa_var]     
 
-        for i, row in dfallpa.iterrows():
-
-            bregion = row["bregion"]
-            event = row["event"]
-            PAredu = row[pa_var]     
-
-            for j, lev_col in enumerate(levels_col):
-                try:
-                    ax = axes[i][j]
-                except Exception as err:
-                    print(axes)
-                    print(i, j)
-                    raise err
-
-                ax.set_title((bregion, lev_col))
-
-                pa = PAredu.slice_by_labels_filtdict({var_other:[lev_col]})
-
-                if dims[1]<=pa.X.shape[0]-1:
-                    xs = pa.X[dims[0], :, 0]
-                    ys = pa.X[dims[1], :, 0]
-                    # zs = pa.X[2, :, 0]
-                    dflab = pa.Xlabels["trials"]
-                    labels = dflab[var_effect].tolist()
-
-                    # _trajgood_plot_colorby_scalar_BASE_GOOD(xs, ys, labels, ax, plot_3D=False, zs = zs)
-                    _trajgood_plot_colorby_scalar_BASE_GOOD(xs, ys, labels, ax)
-        if False:
-            share_axes_row_or_col_of_subplots(axes, "row", "both")   
-        
-        savefig(fig, f"{savedir}/scatter-event={event}-dims={dims}.pdf")
+        # Only keep effect that is present across all var conj
+        dflab = PAredu.Xlabels["trials"]
+        balance_no_missed_conjunctions = True
+        prune_min_n_levs = 2
+        plot_counts_heatmap_savepath = f"{savedir}/counts.pdf"
+        dfout, _ = extract_with_levels_of_conjunction_vars(dflab, var_effect, [var_other],
+                                                                n_min_across_all_levs_var=prune_min_n_trials,
+                                                                lenient_allow_data_if_has_n_levels=prune_min_n_levs,
+                                                                prune_levels_with_low_n=True,
+                                                                ignore_values_called_ignore=True,
+                                                                plot_counts_heatmap_savepath=plot_counts_heatmap_savepath,
+                                                                balance_no_missed_conjunctions=balance_no_missed_conjunctions)
         plt.close("all")
-    
+        list_pa_redu.append(PAredu.slice_by_dim_indices_wrapper("trials", dfout["_index"].tolist(), True))
+    dfallpa[f"{pa_var}_here"] = list_pa_redu
 
+    ### Plot
+    # for dims in [(0,1), (1,2), (2,3), (3,4)]:
+    for dims in [(0,1), (1,2)]:
+        for share_axes in [False, True]:
+            
+            fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*SIZE, nrows*SIZE), 
+                                     sharex=share_axes, sharey=share_axes, squeeze=False)
+
+            for i, row in dfallpa.iterrows():
+
+                bregion = row["bregion"]
+                event = row["event"]
+                PAredu = row[f"{pa_var}_here"]     
+
+                for j, lev_col in enumerate(levels_col):
+                    try:
+                        ax = axes[i][j]
+                    except Exception as err:
+                        print(axes)
+                        print(i, j)
+                        raise err
+                    
+                    ax.set_title((bregion, lev_col))
+
+                    pa = PAredu.slice_by_labels_filtdict({var_other:[lev_col]})
+
+                    # # Only keep effect that is present across all var conj
+                    # from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars
+                    # dflab = pa.Xlabels["trials"]
+                    # balance_no_missed_conjunctions = True
+                    # prune_min_n_levs = 2
+                    # plot_counts_heatmap_savepath = f"{savedir}/counts.pdf"
+                    # dfout, _ = extract_with_levels_of_conjunction_vars(dflab, var_effect, [var_other],
+                    #                                                         n_min_across_all_levs_var=prune_min_n_trials,
+                    #                                                         lenient_allow_data_if_has_n_levels=prune_min_n_levs,
+                    #                                                         prune_levels_with_low_n=True,
+                    #                                                         ignore_values_called_ignore=True,
+                    #                                                         plot_counts_heatmap_savepath=plot_counts_heatmap_savepath,
+                    #                                                         balance_no_missed_conjunctions=balance_no_missed_conjunctions)
+                    # plt.close("all")
+                    # pa = pa.slice_by_dim_indices_wrapper("trials", dfout["_index"].tolist(), True)
+
+                    if dims[1]<=pa.X.shape[0]-1:
+                        xs = pa.X[dims[0], :, 0]
+                        ys = pa.X[dims[1], :, 0]
+                        # zs = pa.X[2, :, 0]
+                        dflab = pa.Xlabels["trials"]
+                        labels = dflab[var_effect].tolist()
+
+                        # _trajgood_plot_colorby_scalar_BASE_GOOD(xs, ys, labels, ax, plot_3D=False, zs = zs)
+                        _trajgood_plot_colorby_scalar_BASE_GOOD(xs, ys, labels, ax, alpha=alpha)
+
+                    # Make it pretty
+                    if pretty_plot:
+
+                        if False: # Beucase if this on, then for some reason share_axes_row_or_col_of_subplots() fails
+                            # INcrease fontsize
+                            for item in ([ax.xaxis.label, ax.yaxis.label] +
+                                        ax.get_xticklabels() + ax.get_yticklabels()):
+                                item.set_fontsize(15)
+                            
+                        # if j>0:
+                        #     from pythonlib.tools.plottools import naked_erase_axes
+                        #     naked_erase_axes(ax)
+                        # else:
+                        #     # INcrease fontsize
+                        #     for item in ([ax.xaxis.label, ax.yaxis.label] +
+                        #                 ax.get_xticklabels() + ax.get_yticklabels()):
+                        #         item.set_fontsize(20)
+                        if i>0 or j>0:
+                            try:
+                                ax.get_legend().remove()
+                            except AttributeError as err:
+                                print("Skipping: ", err)
+                                pass
+                            
+            # Must share axes, within bregino
+            if share_axes==False:
+                from pythonlib.tools.plottools import share_axes_row_or_col_of_subplots
+                share_axes_row_or_col_of_subplots(axes, "row", "both")
+
+            # Save
+            savefig(fig, f"{savedir}/scatter-event={event}-dims={dims}-shareax={share_axes}.pdf")
+            plt.close("all")
+    
 def trajgood_plot_colorby_splotby_scalar_WRAPPER(X, dflab, var_color, savedir,
                                                  vars_subplot=None, list_dims=None,
                                                  STROKES_BEH=None, STROKES_TASK=None,
@@ -2596,7 +2669,7 @@ def dimredgood_pca(X, n_components=None,
                    pca_frac_var_keep=0.85, pca_frac_min_keep=0.01,
                    plot_pca_explained_var_path=None, plot_loadings_path=None,
                    plot_loadings_feature_labels=None,
-                   method="svd", npcs_keep_force=None):
+                   method="svd", npcs_keep_force=None, return_stats=False):
     """
     Holds All things related to applying PCA, and plots.
     :param X: data (ndat, nfeats)
@@ -2712,7 +2785,10 @@ def dimredgood_pca(X, n_components=None,
         # print(plot_loadings_feature_labels)
         # assert False
 
-    return Xpcakeep, Xpca, pca
+    if return_stats:
+        return Xpcakeep, Xpca, pca, explained_variance_ratio_, components_
+    else:
+        return Xpcakeep, Xpca, pca
 
 
 def cleanup_remove_labels_ignore(xs, ys, labels_color, labels_subplot):
