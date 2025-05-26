@@ -233,7 +233,8 @@ def heatmap_stratified_each_neuron_alltrials(PA, y_group_var=None, add_hline_sep
         _heatmap_stratified_y_axis(x, times, ax, zlims=zlims, list_y_group_onsets=inds_start, list_group_labels=groups_general,
                                    add_hline_separator=add_hline_separator)
         ax.set_title(f"{i}-{PA.Chans[i]}", color="r")
-        ax.axvline(0, color="k", alpha=0.3)
+        if False:
+            ax.axvline(0, color="k", alpha=0.3)
 
     return fig
 
@@ -388,7 +389,7 @@ def _heatmap_stratified_y_axis(Xarr, times, ax,
         # assert False
         # assert False
     
-    if True:
+    if False:
         ax.axvline(0, color="g", alpha=0.3, linestyle="--")
 
 def subsample_rand(X, n_rand):

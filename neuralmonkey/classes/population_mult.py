@@ -1714,9 +1714,9 @@ def dfallpa_preprocess_sitesdirty_check_if_preprocessed(DFallpa, animal, date):
         chans_excluded = [ch for ch in pa.Chans if ch not in chans_saved]
         if len(chans_excluded)>0:
             print("Problem, you have not prprocessed dirty channels matching this neural data")
-            print("chans found:", chans_included)
-            print("chans missing:", chans_excluded)
-            print("chans exist in saved pool:", chans_saved)
+            print("pa.Chans that exist in sitesdirty dataset:", chans_included)
+            print("pa.Chans that are missing from sitesdirty dataset:", chans_excluded)
+            print("chans that exist in sitesdirty dataset:", chans_saved)
             return False
         
     return True

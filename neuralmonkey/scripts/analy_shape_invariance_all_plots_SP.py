@@ -2919,6 +2919,155 @@ def heatmaps_plot_wrapper(DFallpa, animal, date, SAVEDIR_ANALYSIS, var_other="se
 
                             plt.close("all")
 
+def timewarped_strokes_wrapper(animal, date, SAVEDIR_ANALYSIS):
+    """
+    Do decoding, during strokes, using time-warped data, so that all strokes are aligned across warps. 
+    This loads previuosly saved trialpop data, which is already warped.
+
+    NOTE: result didnt see much of an effect.
+    """
+    import pickle
+    from neuralmonkey.scripts.analy_shape_invariance_all_plots_SP import preprocess_pa
+    import os
+    from neuralmonkey.classes.population_mult import dfpa_concatbregion_preprocess_wrapper
+
+    var_effect = "seqc_0_shape"
+    var_other = "gridsize"
+    n_min_per_lev = 4
+
+    ### LOAD TRIALPOP
+    path = f"/lemur2/lucas/neural_preprocess/PA_trialpop/{animal}-{date}/PA.pkl"
+    with open(path, "rb") as f:
+        PAwarp = pickle.load(f)
+
+    # Convert to DFallpa
+    dflab_chans = PAwarp.Xlabels["chans"]
+    res = []
+    for br in dflab_chans["bregion_combined"].unique():
+        inds = dflab_chans[dflab_chans["bregion_combined"]==br].index.tolist()
+        print(br, inds)
+        pa = PAwarp.slice_by_dim_indices_wrapper("chans", inds)
+        res.append({
+            "which_level":"trial",
+            "event":"trial_warp",
+            "bregion":br,
+            "twind":"ignore",
+            "pa":pa
+        })
+    DFallpa = pd.DataFrame(res)
+
+    ### Preprocess
+    # So it doesnt fail doesntream stuff
+    DFallpa["event"] = "06_on_strokeidx_0"
+    do_sitesdirty_extraction = False # This has been failing...
+    dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, do_sitesdirty_extraction=do_sitesdirty_extraction)
+
+    ### Extract - what is the time window of strokes?
+    event_times = PAwarp.Params["event_times_median"]
+    event_names = PAwarp.Params["events_all"]
+    assert len(event_times)==len(event_names)
+
+    idx1 = event_names.index("on_strokeidx_0")
+    idx2 = event_names.index("off_strokeidx_0")
+
+    twind_stroke = [event_times[idx1], event_times[idx2]]
+    print("time window, median stroke: ", twind_stroke)
+
+    # subspace_projection = "shape"
+    # subspace_projection = "shape_size"
+
+    # subspace_projection = None
+    # do_heatmap=True
+    # do_state_space=False
+    # do_euclidean=True
+    LIST_PARAMS = [
+        ("shape", True, True, True),
+        ("shape_size", True, True, True),
+        (None, True, False, True),
+    ]
+
+    LIST_DFDIST =[]
+    for subspace_projection, do_heatmap, do_state_space, do_euclidean in LIST_PARAMS:
+        for i, row in DFallpa.iterrows():
+            PA = row["pa"]
+            bregion = row["bregion"]
+            event = row["event"]
+            which_level = row["which_level"]
+
+            SAVEDIR = f"{SAVEDIR_ANALYSIS}/sub={subspace_projection}-bregion={bregion}"
+            os.makedirs(SAVEDIR, exist_ok=True)
+
+            PA.Xlabels["trials"]["index_datapt"] = PA.Xlabels["trials"]["trialcode"]
+
+            remove_drift = True
+            tbin_dur = 0.15
+            tbin_slide = 0.02
+
+            twind_scal = [twind_stroke[0]-0.25, twind_stroke[-1]] 
+            LIST_VAR_SS = [
+                "seqc_0_shape",
+            ]
+            LIST_VARS_OTHERS_SS = [
+                ["gridsize"],
+            ] 
+            list_dims = [(0,1), (1,2), (2,3), (3,4)]
+            ndims_timecourse=4
+
+            subspace_projection_fitting_twind = twind_scal
+            twind_analy = twind_scal
+
+            savedir = f"{SAVEDIR}/preprocess"
+            os.makedirs(savedir, exist_ok=True)
+            PAthis = preprocess_pa(PA, animal, date, var_other, savedir, remove_drift, 
+                                    subspace_projection, subspace_projection_fitting_twind, 
+                                    twind_analy, tbin_dur, tbin_slide, raw_subtract_mean_each_timepoint=False,
+                                    skip_dim_reduction=False)
+
+            ### Score only if var_effect has data across all levels of var_other
+            from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper
+            
+            dflab = PAthis.Xlabels["trials"]
+            levels_var = dflab[var_other].unique().tolist()
+            counts_path = f"{savedir}/counts_after_prune.pdf"
+            dfout, dict_dfthis = extract_with_levels_of_conjunction_vars_helper(dflab, var_other, [var_effect], 
+                                                                                n_min_per_lev, counts_path, lenient_allow_data_if_has_n_levels=len(levels_var),
+                                                                                levels_var=levels_var)
+            inds = dfout["_index"].tolist()
+            PAthis = PAthis.slice_by_dim_indices_wrapper("trials", inds)
+
+            ### RUN PLOTS
+            list_dfdist = PAthis.plot_heatmap_state_euclidean_wrapper(var_effect, var_other, SAVEDIR, 
+                                                        [twind_scal], 
+                                                        LIST_VAR_SS, LIST_VARS_OTHERS_SS, list_dims, ndims_timecourse,
+                                                        do_heatmap=do_heatmap, do_state_space=do_state_space, do_euclidean=do_euclidean)
+
+            for dfdist in list_dfdist:
+                dfdist["animal"] = animal
+                dfdist["date"] = date
+                dfdist["bregion"] = bregion
+                dfdist["which_level"] = which_level
+                dfdist["event"] = event
+                dfdist["subspace_projection"] = subspace_projection
+                dfdist["subspace_projection_fitting_twind"] = [subspace_projection_fitting_twind for _ in range(len(dfdist))]
+
+                LIST_DFDIST.append(dfdist)
+    DFDIST = pd.concat(LIST_DFDIST).reset_index(drop=True)
+    DFDIST.to_pickle(f"{SAVEDIR_ANALYSIS}/DFDIST.pkl")
+
+    ### PLOTS  
+    from neuralmonkey.analyses.euclidian_distance import dfdist_postprocess_wrapper, dfdist_summary_plots_wrapper
+
+    SAVEDIR = f"{SAVEDIR_ANALYSIS}/PLOTS"
+    os.makedirs(SAVEDIR, exist_ok=True)
+
+    # Preprocess
+    DFDIST, DFDIST_AGG = dfdist_postprocess_wrapper(DFDIST, var_effect, var_other, SAVEDIR, prune_min_n_trials=n_min_per_lev)
+
+    # Plot
+    PLOT_EACH_PAIR = False
+    dfdist_summary_plots_wrapper(DFDIST, DFDIST_AGG, var_effect, var_other, SAVEDIR,
+                                    PLOT_EACH_PAIR=PLOT_EACH_PAIR)
+
 
 if __name__=="__main__":
 
@@ -3054,6 +3203,24 @@ if __name__=="__main__":
             savedir = f"{SAVEDIR}/TRAJ_SS/{animal}-{date}-combine={combine}-var_other={var_other}"
             os.makedirs(savedir, exist_ok=True)
             statespace_traj_plot(DFallpa, animal, date, savedir, var_other)
+        
+        elif plotdo==6:
+            """
+            Timewarped euclidean distance, during storkes. The goal was to have a better analysis of 
+            eucl dist during strokes, controlling for motor effects -- would expect PMv to show even stronger effect.
+            """
+            # for animal, date in [
+            #     ("Diego", 230619),
+            #     ("Pancho", 220716),
+            #     ("Pancho", 220717),
+            #     ("Pancho", 240530),
+            #     ("Diego", 230618),
+            #     ]:
+            SAVEDIR_ANALYSIS = f"/lemur2/lucas/analyses/recordings/main/shape_invariance/TIMEWARPED/{animal}-{date}"
+            os.makedirs(SAVEDIR_ANALYSIS, exist_ok=True)
+
+            timewarped_strokes_wrapper(animal, date, SAVEDIR_ANALYSIS)
+        
         else:
             print(PLOTS_DO)
             assert False
