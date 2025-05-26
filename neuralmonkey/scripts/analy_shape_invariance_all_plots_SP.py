@@ -421,7 +421,7 @@ def euclidian_time_resolved_fast_shuffled(DFallpa, animal, date, var_other, SAVE
     map_event_to_listtwind = {
             "03_samp":[(0.05, 0.3), (0.3, 0.6), (0.05, 0.6), (0.5, 1.0)],
             "05_first_raise":[(-0.5,  -0.1), (-0.1, 0.5)],
-            "06_on_strokeidx_0":[(-0.5, -0.1), (0, 0.5)],
+            "06_on_strokeidx_0":[(-0.5, -0.1), (-0.4, -0.05), (0, 0.5)],
         }
 
     list_dfdist =[]
