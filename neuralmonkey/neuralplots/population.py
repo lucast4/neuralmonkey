@@ -233,7 +233,8 @@ def heatmap_stratified_each_neuron_alltrials(PA, y_group_var=None, add_hline_sep
         _heatmap_stratified_y_axis(x, times, ax, zlims=zlims, list_y_group_onsets=inds_start, list_group_labels=groups_general,
                                    add_hline_separator=add_hline_separator)
         ax.set_title(f"{i}-{PA.Chans[i]}", color="r")
-        ax.axvline(0, color="k", alpha=0.3)
+        if False:
+            ax.axvline(0, color="k", alpha=0.3)
 
     return fig
 
@@ -388,7 +389,7 @@ def _heatmap_stratified_y_axis(Xarr, times, ax,
         # assert False
         # assert False
     
-    if True:
+    if False:
         ax.axvline(0, color="g", alpha=0.3, linestyle="--")
 
 def subsample_rand(X, n_rand):
@@ -421,12 +422,17 @@ def plotNeurHeat(X, ax=None, barloc="right", robust=True, zlims = None,
     if times is None:
         times = list(range(X.shape[1]))
     # plot
-    if zlims is not None: 
-        sns.heatmap(X, ax=ax, cbar=False, cbar_kws = dict(use_gridspec=False,location=barloc), 
-               robust=robust, vmin=zlims[0], vmax=zlims[1])
+    from pythonlib.tools.snstools import heatmap_mat
+    if False:
+        # didnt solve problem of x axis not being corect
+        heatmap_mat(X, ax, annotate_heatmap=False, zlims=zlims, continuous_axes=True)
     else:
-        sns.heatmap(X, ax=ax, cbar=False, cbar_kws = dict(use_gridspec=False,location=barloc), 
-               robust=robust)
+        if zlims is not None: 
+            sns.heatmap(X, ax=ax, cbar=False, cbar_kws = dict(use_gridspec=False,location=barloc), 
+                   robust=robust, vmin=zlims[0], vmax=zlims[1])
+        else:
+            sns.heatmap(X, ax=ax, cbar=False, cbar_kws = dict(use_gridspec=False,location=barloc), 
+                robust=robust)
     # ax.set_title(f"{pop}|{minmax[0]:.2f}...{minmax[1]:.2f}")
     ax.set_xlabel(f"robust={robust}|{minmax[0]:.2f}...{minmax[1]:.2f}")
     ax.set_ylabel('neuron #')
@@ -479,7 +485,6 @@ def plotNeurTimecourse(X, times=None, ax=None, n_rand=None, marker="-", color="k
         fig, ax = plt.subplots(figsize=(10,5))
     else:
         fig = None
-    
 
     # X = self.activations[pop][tasknum]
     X_nonan = X[:]

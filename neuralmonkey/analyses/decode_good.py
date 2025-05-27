@@ -39,6 +39,13 @@ def decode_apply_model_to_test_data(mod, x_test, labels_test,
 
     labels_predicted = mod.predict(x_test)
 
+    if False:
+        for l1, l2 in zip(labels_test, labels_predicted):
+            if l1==l2:
+                print("(actual, predicted)", l1, " -- ", l2)
+            else:
+                print("(actual, predicted)", " ** ", l1, " -- ", l2)
+
     classes_in_ypred_but_not_in_ytrue = [x for x in set(labels_predicted) if x not in set(labels_test)]
     if len(classes_in_ypred_but_not_in_ytrue)>0:
         print(classes_in_ypred_but_not_in_ytrue)
@@ -452,8 +459,8 @@ def decode_categorical_cross_condition(X, dflab, var_decode, vars_conj_condition
 
                     if len(X_test)>0:
                         # score it
-                        score, score_adjusted = decode_apply_model_to_test_data(mod, X_test, labels_test)
-
+                        score, score_adjusted, labels_predicted, labels_test, conf_scores = decode_apply_model_to_test_data(mod, 
+                                                                                                            X_test, labels_test, return_predictions_all_trials=True)
                         # Save results
                         RES.append({
                             "var_decode":var_decode,
@@ -464,7 +471,10 @@ def decode_categorical_cross_condition(X, dflab, var_decode, vars_conj_condition
                             "score_adjusted":score_adjusted,
                             "train_labels_counts":train_labels_counts,
                             "test_labels_counts":test_labels_counts,
-                            "n_classes_test":len(test_labels_counts)
+                            "n_classes_test":len(test_labels_counts),
+                            "labels_predicted":labels_predicted,
+                            "labels_test":labels_test,
+                            "conf_scores":conf_scores,
                         })
     dfres = pd.DataFrame(RES)
 
@@ -486,11 +496,263 @@ def decode_categorical_cross_condition(X, dflab, var_decode, vars_conj_condition
     return dfres, dfres_agg
 
 
+def decode_categorical_pairwise(X, dflab, var_decode, n_min_trials, savedir,
+                                do_across_condition, vars_conj_condition=None,
+                                do_std=False, do_plots=True):
+    """
+    For each pair of classes of var_decode, do a separate decoding procedure, and then 
+    collect all reasults. Ie asks about how well can decode each possible pair of conditions.
+    
+    This is useful for a more accurate estmiante of separateion for each pair.
+
+    """ 
+
+    if do_across_condition:
+        assert vars_conj_condition is not None
+
+    ### For each pair of shapes, do decoding
+    list_dfres = []
+    list_res_scores = []
+    shapes = dflab[var_decode].unique().tolist()
+    for i, sh1 in enumerate(shapes):
+        for j, sh2 in enumerate(shapes):
+            if j>i: # it is symmetric, so only do one direction
+
+                shape_pair = [sh1, sh2]
+                # Get subset data
+                inds = dflab[dflab[var_decode].isin(shape_pair)].index.tolist()
+                X_this = X[inds,:]
+                dflab_this = dflab.iloc[inds].reset_index(drop=True)
+
+                # Decode
+                if do_across_condition:
+                    dfres, _ = decode_categorical_cross_condition(X_this, dflab_this, var_decode, vars_conj_condition,
+                                                        do_center=True, do_std=do_std)
+
+                else:
+                    RES = decode_categorical(X_this, dflab_this[var_decode].tolist(), n_min_trials, 
+                                             do_center=True, do_std=do_std, plot_resampled_data_path_nosuff=None,
+                                                            return_mean_score_over_splits=False, 
+                                                            return_predictions_all_trials=True)
+                    dfres = pd.DataFrame(RES)
+                    # decode_categorical_plot_confusion_score_quick(RES, savedir_this)
+
+                ### Collect
+                # Collect raw
+                dfres["shape_pair"] = [tuple(shape_pair) for _ in range(len(dfres))]
+                list_dfres.append(dfres)
+
+                # Also collect a single score for each shape pair
+                score, score_adjusted, _ = decode_categorical_plot_confusion_score_quick(dfres, savedir=None)
+                list_res_scores.append({
+                    "shape_pair":tuple(shape_pair),
+                    "shape_1":shape_pair[0],
+                    "shape_2":shape_pair[1],
+                    "score":score,
+                    "score_adjusted":score_adjusted,
+                })
+    DFRES = pd.concat(list_dfres).reset_index(drop=True)
+    DFSCORES = pd.DataFrame(list_res_scores) # Hold scores (decoding) for each pair
+    DFSCORES["score_minus_50"] = DFSCORES["score"] - 0.5
+
+    ### Some quick plots
+    if do_plots:
+        from pythonlib.tools.pandastools import plot_subplots_heatmap
+
+        fig, axes = plot_subplots_heatmap(DFSCORES, "shape_1", "shape_2", "score_minus_50", None, diverge=True,
+                            row_values=shapes, col_values=shapes, share_zlim=True, ZLIMS=[-0.5, 0.5], annotate_heatmap=True)
+        savefig(fig, f"{savedir}/heatmap-decode-1.pdf")
+
+        fig, axes = plot_subplots_heatmap(DFSCORES, "shape_1", "shape_2", "score", None, diverge=False,
+                            row_values=shapes, col_values=shapes, share_zlim=True, ZLIMS=[0, 1], annotate_heatmap=True)
+        savefig(fig, f"{savedir}/heatmap-decode-2.pdf")
+
+        plt.close("all")   
+
+    ### Also get dataframe of counts/probs, collecting across all labels
+    # ie for each pair, get 4 numbers (Counts) which is its own 2x2 confusion matrix.
+    from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good
+    grpdict = grouping_append_and_return_inner_items_good(DFRES, ["shape_pair"])
+    res = []
+    for grp, inds in grpdict.items():
+        shape_pair = grp[0]
+        dfres = DFRES.iloc[inds]
+
+        ### Cnvert to 2d
+        from pythonlib.tools.pandastools import convert_to_2d_dataframe
+        score, score_adjusted, dfclasses = decode_categorical_plot_confusion_score_quick(dfres, None)
+        dfcounts = convert_to_2d_dataframe(dfclasses, "label_actual", "label_predicted", norm_method="row_div")[0]
+        # normalize, for each label_actual, sums to 1
+        dfprob = dfcounts.div(dfcounts.sum(axis=1), axis=0)
+
+        ### Collect
+        tmp = []
+        for sh1 in shape_pair:
+            for sh2 in shape_pair:
+                tmp.append({
+                    "shape_actual":sh1,
+                    "shape_predicted":sh2,
+                    "count":int(dfcounts.loc[sh1, sh2]),
+                    "prob":dfprob.loc[sh1, sh2],
+                    "shape_pair":shape_pair,
+                })
+        dftmp = pd.DataFrame(tmp)
+
+        res.append(dftmp)
+    DFRES_COUNTS = pd.concat(res).reset_index(drop=True)       
+    DFRES_COUNTS["prob_minus_50"] = DFRES_COUNTS["prob"] - 0.5
+
+    if do_plots:
+        from pythonlib.tools.pandastools import plot_subplots_heatmap
+
+        fig, axes = plot_subplots_heatmap(DFRES_COUNTS, "shape_actual", "shape_predicted", "prob_minus_50", None, diverge=True,
+                            row_values=shapes, col_values=shapes, share_zlim=True, ZLIMS=[-0.5, 0.5], annotate_heatmap=True)
+        savefig(fig, f"{savedir}/heatmap-pairwise-1.pdf")
+
+        fig, axes = plot_subplots_heatmap(DFRES_COUNTS, "shape_actual", "shape_predicted", "prob", None, diverge=False,
+                            row_values=shapes, col_values=shapes, share_zlim=True, ZLIMS=[0, 1], annotate_heatmap=True)
+        savefig(fig, f"{savedir}/heatmap-pairwise-2.pdf")
+        plt.close("all")
+
+    return DFRES, DFRES_COUNTS, DFSCORES
+
+def decode_categorical_pairwise_plots(DFSCORES, SAVEDIR_PLOTS):
+    """
+    HElper, plots for the results of decode_categorical_pairwise().
+    Plots confusion matrix and 1d histogram of scores, ie decoding scores collected across
+    all pairs.
+    """
+
+    ### Plots
+
+    # (1) Pairwise, across all expts.
+
+    # (2) Scatterplot --> show that every shape is separated from every other shape.
+    # Append a copy with shape 1 and 2 flipped (as this is symmetric)
+    dftmp = DFSCORES.copy()
+    dftmp["shape_1"] = DFSCORES["shape_2"]
+    dftmp["shape_2"] = DFSCORES["shape_1"]
+    dftmp["shape_pair"] = [(row["shape_1"], row["shape_2"]) for _, row in dftmp.iterrows()]
+    DFSCORES_FULL = pd.concat([DFSCORES, dftmp]).reset_index(drop=True)
+    from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good, plot_subplots_heatmap
+    from pythonlib.tools.plottools import savefig
+
+    annotate_heatmap = False
+    grpdict = grouping_append_and_return_inner_items_good(DFSCORES_FULL, ["animal"])
+    for grp, inds in grpdict.items():
+        dfscores = DFSCORES_FULL.iloc[inds].reset_index(drop=True)
+        shapes = sorted(dfscores["shape_1"].unique())
+        
+        fig, axes = plot_subplots_heatmap(dfscores, "shape_1", "shape_2", "score_minus_50", "bregion", diverge=True, 
+                            annotate_heatmap=annotate_heatmap, ZLIMS=[-0.5, 0.5], ncols=4, W=7,
+                            row_values=shapes, col_values=shapes, diverge_center_dark=True)
+        # Color background, those cases without data.
+        for ax in axes.flatten():
+            # ax.set_facecolor('g')
+            ax.set_facecolor([0.85, 0.85, 0.85])
+            # ax.set_facecolor([0.1, 0.1, 0.1])
+            # ax.set_facecolor([0.2, 0.4, 0.2])
+        if False:
+            # Keep just the upper triangle
+            ma_ut = np.triu(np.ones_like(self.Xinput, dtype=bool), k=k)
+        savefig(fig, f"{SAVEDIR_PLOTS}/heatmap_pairwise_decode-animal={grp}.pdf")
+
+        fig, axes = plot_subplots_heatmap(dfscores, "shape_1", "shape_2", "score_minus_50", "bregion", diverge=False, 
+                            annotate_heatmap=annotate_heatmap, ZLIMS=[0, 0.5], ncols=4, W=7,
+                            row_values=shapes, col_values=shapes)
+        # Color background, those cases without data.
+        for ax in axes.flatten():
+            ax.set_facecolor([0.6, 0.8, 0.7])
+        savefig(fig, f"{SAVEDIR_PLOTS}/heatmap_pairwise_decode-animal={grp}-2.pdf")
+        plt.close("all")
+
+    from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good, plot_subplots_heatmap
+    grpdict = grouping_append_and_return_inner_items_good(DFSCORES_FULL, ["animal", "date"])
+    for grp, inds in grpdict.items():
+        dfscores = DFSCORES_FULL.iloc[inds].reset_index(drop=True)
+        shapes = sorted(dfscores["shape_1"].unique())
+        fig, axes = plot_subplots_heatmap(dfscores, "shape_1", "shape_2", "score_minus_50", "bregion", diverge=True, 
+                            annotate_heatmap=annotate_heatmap, ZLIMS=[-0.5, 0.5], ncols=4, W=7,
+                            row_values=shapes, col_values=shapes, diverge_center_dark=True)
+        # Color background, those cases without data.
+        for ax in axes.flatten():
+            ax.set_facecolor([0.85, 0.85, 0.85])
+        savefig(fig, f"{SAVEDIR_PLOTS}/heatmap_pairwise_decode-animal_date={grp}.pdf")
+
+        fig, axes = plot_subplots_heatmap(dfscores, "shape_1", "shape_2", "score_minus_50", "bregion", diverge=False, 
+                            annotate_heatmap=annotate_heatmap, ZLIMS=[0, 0.5], ncols=4, W=7,
+                            row_values=shapes, col_values=shapes)
+        # Color background, those cases without data.
+        for ax in axes.flatten():
+            ax.set_facecolor([0.6, 0.8, 0.7])
+        savefig(fig, f"{SAVEDIR_PLOTS}/heatmap_pairwise_decode-animal_date={grp}-2.pdf")
+        plt.close("all")
+
+    def _compute_mask_shapes_exist(df, shapes_in_order, rowname, colname):
+        """
+        """
+        
+        counts = np.zeros((len(shapes_in_order), len(shapes_in_order))) - np.inf
+        for i, lab1 in enumerate(shapes_in_order):
+            for j, lab2 in enumerate(shapes_in_order):
+                n = sum((df[rowname] == lab1) & (df[colname] == lab2))
+                counts[i, j] = n
+        assert np.all(counts>=0)
+
+        ma_exist = counts>0
+        plt.figure()
+        plt.imshow(ma_exist)
+
+        return counts, ma_exist
+    counts, ma_exist = _compute_mask_shapes_exist(DFSCORES_FULL, shapes, "shape_1", "shape_2");
+    ma_none = ~ma_exist
+    ### Plot 1D histogram of decoding (highlighting if significantly > 0.5)
+    from pythonlib.tools.pandastools import aggregGeneral, stringify_values
+    import seaborn as sns
+
+    # Agg across dates, so each shape_pair has one datapt
+    DFSCORES_AGG = aggregGeneral(stringify_values(DFSCORES), ["shape_pair", "analysis_kind", "animal", "bregion"], ["score", "score_adjusted", "score_minus_50"])
+    fig = sns.catplot(data=DFSCORES_AGG, x="bregion", y="score_minus_50", col="animal", jitter=True, alpha=0.3)
+    for ax in fig.axes.flatten():
+        ax.axhline(0, color="k", alpha=0.5)
+    savefig(fig, f"{SAVEDIR_PLOTS}/catplot_datapt=shape_pair-1.pdf")
+
+    fig = sns.catplot(data=DFSCORES_AGG, x="bregion", y="score_minus_50", col="animal", kind="bar")
+    for ax in fig.axes.flatten():
+        ax.axhline(0, color="k", alpha=0.5)
+    savefig(fig, f"{SAVEDIR_PLOTS}/catplot_datapt=shape_pair-2.pdf")
+
+    fig = sns.catplot(data=DFSCORES_AGG, x="bregion", y="score_minus_50", col="animal", kind="violin")
+    for ax in fig.axes.flatten():
+        ax.axhline(0, color="k", alpha=0.5)
+    savefig(fig, f"{SAVEDIR_PLOTS}/catplot_datapt=shape_pair-3.pdf")
+
+    fig = sns.catplot(data=DFSCORES_AGG, x="bregion", y="score_minus_50", col="animal", kind="boxen", color="k")
+    for ax in fig.axes.flatten():
+        ax.axhline(0, color="k", alpha=0.5)
+    savefig(fig, f"{SAVEDIR_PLOTS}/catplot_datapt=shape_pair-4.pdf")
+
+    # Plot for each date
+    fig = sns.catplot(data=DFSCORES, x="bregion", y="score_minus_50", row="animal", col="date", jitter=True, alpha=0.3)
+    # fig = sns.catplot(data=DFSCORES, x="bregion", y="score_minus_50", row="animal", col="date", kind="swarm", size=3)
+    for ax in fig.axes.flatten():
+        ax.axhline(0, color="k", alpha=0.5)
+    savefig(fig, f"{SAVEDIR_PLOTS}/catplot_datapt=shape_pair-5.pdf")
+
+    fig = sns.catplot(data=DFSCORES, x="bregion", y="score_minus_50", row="animal", hue="date", kind="point")
+    # fig = sns.catplot(data=DFSCORES, x="bregion", y="score_minus_50", row="animal", col="date", kind="swarm", size=3)
+    for ax in fig.axes.flatten():
+        ax.axhline(0, color="k", alpha=0.5)
+    savefig(fig, f"{SAVEDIR_PLOTS}/catplot_datapt=shape_pair-6.pdf")
+
+    plt.close("all")
+
 
 def decode_categorical(X, labels, expected_n_min_across_classes,
                        plot_resampled_data_path_nosuff=None, max_nsplits=None,
                        do_center=True, do_std=False,
-                       return_mean_score_over_splits=False):
+                       return_mean_score_over_splits=False,
+                       return_predictions_all_trials=False):
     """
     Helper to run multiple train-test splits (Kfold), including rebalancing data if labels are unbalanced, and
     then scoring using a balanced accuracty score, for a single time step.
@@ -570,21 +832,39 @@ def decode_categorical(X, labels, expected_n_min_across_classes,
 
         if mod is not None: # Happens, if only one class in dataset
             ################# Test on held out
-            score, score_adjusted = decode_apply_model_to_test_data(mod, X_test, labels_test)
-            # labels_predicted = mod.predict(X_test)
-            # score = balanced_accuracy_score(labels_test, labels_predicted, adjusted=False)
-            # score_adjusted = balanced_accuracy_score(labels_test, labels_predicted, adjusted=True)
-
-            # Save
-            RES.append({
-                "iter_kfold":i,
-                "score_xval":score,
-                "score_xval_adjusted":score_adjusted,
-                "n_dat":len(labels),
-                "n_splits":n_splits,
-                "n_min_across_labs":n_min_across_labs,
-                "n_max_across_labs":n_max_across_labs
-            })
+            if return_predictions_all_trials:
+                score, score_adjusted, labels_predicted, labels_test, conf_scores = decode_apply_model_to_test_data(mod, X_test, 
+                                                                                                labels_test, 
+                                                                                                return_predictions_all_trials=True)
+                
+                # Save
+                RES.append({
+                    "iter_kfold":i,
+                    "score_xval":score,
+                    "score_xval_adjusted":score_adjusted,
+                    "n_dat":len(labels),
+                    "n_splits":n_splits,
+                    "n_min_across_labs":n_min_across_labs,
+                    "n_max_across_labs":n_max_across_labs,
+                    "labels_predicted":labels_predicted,
+                    "labels_test":labels_test,
+                    "conf_scores":conf_scores
+                })
+            else:
+                score, score_adjusted = decode_apply_model_to_test_data(mod, X_test, labels_test, 
+                                                                        return_predictions_all_trials=False)
+                # labels_predicted = mod.predict(X_test)
+                # score = balanced_accuracy_score(labels_test, labels_predicted, adjusted=False)
+                # score_adjusted = balanced_accuracy_score(labels_test, labels_predicted, adjusted=True)
+                RES.append({
+                    "iter_kfold":i,
+                    "score_xval":score,
+                    "score_xval_adjusted":score_adjusted,
+                    "n_dat":len(labels),
+                    "n_splits":n_splits,
+                    "n_min_across_labs":n_min_across_labs,
+                    "n_max_across_labs":n_max_across_labs
+                })
 
     if return_mean_score_over_splits:
         score = np.mean([r["score_xval"] for r in RES])
@@ -592,6 +872,35 @@ def decode_categorical(X, labels, expected_n_min_across_classes,
         return score, score_adjusted
     else:
         return RES
+    
+def decode_categorical_plot_confusion_score_quick(RES, savedir=None):
+    """
+    QUick plot, pass in the output of decode_categorical(), 
+    and plots confusion matrix and score. 
+    PARAMS:
+    - RES, either list of dict, or dataframe made by converting that to df
+    """
+    from neuralmonkey.analyses.decode_good import plot_confusion_matrix
+
+    # Concat across allsplits
+    if isinstance(RES, list):
+        dfres = pd.DataFrame(RES) # n rows = n splits
+    else: 
+        dfres = RES
+        assert isinstance(dfres, pd.core.frame.DataFrame)
+
+    # Collect test and predicted labels across all splits
+    labels_predicted = []
+    labels_test = []
+    nsplits = len(dfres)
+    for i in range(nsplits): # n splits
+        labels_predicted.extend(dfres["labels_predicted"].values[i])
+        labels_test.extend(dfres["labels_test"].values[i])
+    assert len(labels_predicted)==len(labels_test)
+
+    score, score_adjusted, dfclasses = plot_confusion_matrix(labels_test, labels_predicted, savedir)
+
+    return score, score_adjusted, dfclasses
 
 def decodewrap_categorical_timeresolved_within_condition(pa, var_decode,
                                                         vars_conj_condition,
@@ -2306,3 +2615,41 @@ def cleanup_remove_labels_ignore(X, labels):
     labels = [labels[i] for i in inds_keep]
 
     return X, labels, inds_keep
+
+
+def plot_confusion_matrix(labels_test, labels_predicted, plot_savedir):
+    """
+    Helper to plot confusion matrix
+    PARAMS:
+    - labels_test and labels_predicted, lists
+    """
+    from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good
+    from sklearn.metrics import balanced_accuracy_score
+    from pythonlib.tools.pandastools import grouping_plot_n_samples_conjunction_heatmap
+    
+    # Confusion matrix
+    dfclasses = pd.DataFrame({"label_actual":labels_test, "label_predicted":labels_predicted})
+
+    score = balanced_accuracy_score(labels_test, labels_predicted, adjusted=False)
+    score_adjusted = balanced_accuracy_score(labels_test, labels_predicted, adjusted=True)
+
+    if plot_savedir is not None:
+        for annotate_heatmap in [False, True]:
+            # Plot summaries of accuracy
+            for norm_method in [None, "row_sub", "col_sub", "row_div", "col_div"]:
+                fig = grouping_plot_n_samples_conjunction_heatmap(dfclasses, "label_actual", 
+                                                                    "label_predicted", None, 
+                                                                    norm_method=norm_method, annotate_heatmap=annotate_heatmap)            
+                savefig(fig, f"{plot_savedir}/accuracy_heatmap-norm={norm_method}-annotate={annotate_heatmap}.pdf")
+
+        # Also plot scores
+        fig, ax = plt.subplots()
+        ax.stem(0, score, "ok", label="score")
+        ax.stem(1, score_adjusted, "or", label="score_adjusted")
+        ax.set_ylabel([0, 1])
+        ax.legend()
+        savefig(fig, f"{plot_savedir}/score_final.pdf")
+
+        plt.close("all")
+    
+    return score, score_adjusted, dfclasses

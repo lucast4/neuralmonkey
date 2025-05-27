@@ -32,7 +32,9 @@ fr_normalization_method = None
 
 
 def extract_dfallpa_helper(animal, date, question, combine_into_larger_areas, 
-                           events_keep=None, do_save=True):
+                           events_keep=None, do_save=True,
+                           replace_fr_sm_with_spike_counts=False, 
+                           spike_counts_bin_size=0.01):
 
     print("INPUT PARAMS:")
     print("animal, date, question, combine_into_larger_areas")
@@ -154,12 +156,17 @@ def extract_dfallpa_helper(animal, date, question, combine_into_larger_areas,
                                                 exclude_bad_areas = exclude_bad_areas,
                                                 SPIKES_VERSION = SPIKES_VERSION,
                                                 HACK_RENAME_SHAPES = HACK_RENAME_SHAPES,
-                                                fr_normalization_method=fr_normalization_method)
+                                                fr_normalization_method=fr_normalization_method,
+                                                replace_fr_sm_with_spike_counts=replace_fr_sm_with_spike_counts,
+                                                spike_counts_bin_size=spike_counts_bin_size)
     
     if do_save:
         t1 = list_time_windows[0][0]
         t2 = list_time_windows[0][1]
-        path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-{animal}-{date}-{which_level}-{SPIKES_VERSION}-norm={fr_normalization_method}-combine={combine_into_larger_areas}-t1={t1}-t2={t2}-quest={question}.pkl"
+        if replace_fr_sm_with_spike_counts:
+            path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-{animal}-{date}-{which_level}-{SPIKES_VERSION}-norm={fr_normalization_method}-combine={combine_into_larger_areas}-t1={t1}-t2={t2}-quest={question}-spkcnts_binsz={spike_counts_bin_size}.pkl"
+        else:
+            path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-{animal}-{date}-{which_level}-{SPIKES_VERSION}-norm={fr_normalization_method}-combine={combine_into_larger_areas}-t1={t1}-t2={t2}-quest={question}.pkl"
 
         pd.to_pickle(DFallpa, path)
         print("*** Saved to:", path)        
@@ -178,6 +185,12 @@ if __name__=="__main__":
         get_all_events = int(sys.argv[5])==1
     else:
         get_all_events = False
+
+    spike_counts_bin_size = 0.01
+    if len(sys.argv)>=7:
+        replace_fr_sm_with_spike_counts = bool(int(sys.argv[6])) # 
+    else:
+        replace_fr_sm_with_spike_counts = False
 
     # - To get fixations.
     # question = "PIG_BASE_saccade_fix_on" # holds variety of prepropoessing steps to clean data, specificalyl for PIG data.
@@ -199,7 +212,9 @@ if __name__=="__main__":
                                         return_none_if_no_exist=True)
     if DFallpa is None:
         DFallpa = extract_dfallpa_helper(animal, date, question, combine_into_larger_areas, events_keep=events_keep,
-                                         do_save=True)
+                                         do_save=True,
+                                         replace_fr_sm_with_spike_counts=replace_fr_sm_with_spike_counts,
+                                         spike_counts_bin_size=spike_counts_bin_size)
 
     # Save it
     # path = "/gorilla4/Dropbox/SCIENCE/FREIWALD_LAB/DATA/DFallpa.pkl"

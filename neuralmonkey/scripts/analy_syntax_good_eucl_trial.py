@@ -162,7 +162,7 @@ def state_space_targeted_pca_do_projection(DFallpa, variables, variables_is_cat,
         twind_scal = map_event_to_twind[event]
 
         # Expand channels to (chans X time bins)
-        pca_reduce = False
+        pca_reduce = True
         _, PA, _, _, _= PA.dataextract_state_space_decode_flex(twind_scal, tbin_dur, tbin_slide, "trials_x_chanstimes",
                                                             pca_reduce=pca_reduce, npcs_keep_force=npcs_keep_force)
 
@@ -217,7 +217,7 @@ def state_space_targeted_pca_scalar_single(PA, twind_scal, variables, variables_
         PA = PA.slice_by_dim_values_wrapper("times", twind_scal).agg_wrapper("times")
     else:
         # Expand channels to (chans X time bins)
-        pca_reduce = False
+        pca_reduce = True
         _, PA, _, _, _= PA.dataextract_state_space_decode_flex(twind_scal, tbin_dur, tbin_slide, "trials_x_chanstimes",
                                                             pca_reduce=pca_reduce, npcs_keep_force=npcs_keep_force)
 

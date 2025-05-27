@@ -18,7 +18,8 @@ import  matplotlib.pyplot as plt
 
 def load_handsaved_wrapper(animal=None, date=None, version=None, combine_areas=True, 
                            return_none_if_no_exist=False, use_time = True, question=None,
-                           ignore_question=False):
+                           ignore_question=False, also_return_path=False, 
+                           load_spike_counts_version=False, spike_counts_binsize=0.01):
     """ Load a pre-saved DfallPA -- not systematic, just hand saved versions.
     """ 
 
@@ -74,6 +75,14 @@ def load_handsaved_wrapper(animal=None, date=None, version=None, combine_areas=T
         # elif animal == "Pancho" and date == 230623 and version == "trial":
         #     # PROBLEM - is not rule extraction! Just PIG
         #     path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-Pancho-230623-trial-kilosort_if_exists-norm=None-combine=True.pkl"
+
+        if load_spike_counts_version:
+            # Load spike counts version
+            from pythonlib.tools.expttools import deconstruct_filename
+            path_parts = deconstruct_filename(path)
+            # for k, v in path_parts.items():
+            #     print(k, " -- ", v)
+            path = f"{path_parts['basedirs'][-1]}/{path_parts['filename_final_noext']}-spkcnts_binsz={spike_counts_binsize}.pkl"
     else:
         # Load by manully modifying code.
 
@@ -133,7 +142,10 @@ def load_handsaved_wrapper(animal=None, date=None, version=None, combine_areas=T
     else:
         print("Loading DFallpa from: ", path)
         DFallpa = pd.read_pickle(path)
-        return DFallpa
+        if also_return_path:
+            return DFallpa, path
+        else:
+            return DFallpa
 
 def _dfallpa_preprocess_sitesdirty_single_remove_chans(PA, dfres, good_chan_key = "good_chan"):
     """
@@ -163,7 +175,8 @@ def _dfallpa_preprocess_sitesdirty_single_remove_chans(PA, dfres, good_chan_key 
 
     return PA
 
-def dfallpa_preprocess_sitesdirty_single(PA, animal, date, plot_fr_after_replace_trials_dir=None):
+def dfallpa_preprocess_sitesdirty_single(PA, animal, date, 
+                                         plot_fr_after_replace_trials_dir=None, replace_bad_trials=True):
     """
     Clean up PA using multiple methods, based on firing rate stats, using metrics and decisions already
     computed.
@@ -233,54 +246,58 @@ def dfallpa_preprocess_sitesdirty_single(PA, animal, date, plot_fr_after_replace
     # PA.plotwrapper_smoothed_fr_split_by_label_and_subplots(37, "seqc_0_shape", "seqc_0_loc")
 
     ### (2) For each chan, remove the bad trials. Do so by replacing them with the average
-    # Get list of bad trialcodes for this chan
-    # chan = PA.Chans[11]
-    # chan = 354
-    dflab = PA.Xlabels["trials"]
-    # plot_fr_after_replace_trials_dir = "/tmp"
-    
-    # Track what was changed
-    map_chan_to_trialcodes_replaced = {}
-    for chan in PA.Chans:
-        map_chan_to_trialcodes_replaced[chan] = []
-        dfthis = dfres[dfres["chan"] == chan]
-        assert len(dfthis)==1
-        _inds_bad = dfthis["inds_bad"].values[0] # indices into trials
+    if replace_bad_trials:
+        # Get list of bad trialcodes for this chan
+        # chan = PA.Chans[11]
+        # chan = 354
+        dflab = PA.Xlabels["trials"]
+        # plot_fr_after_replace_trials_dir = "/tmp"
+        
+        # Track what was changed
+        map_chan_to_trialcodes_replaced = {}
+        for chan in PA.Chans:
+            map_chan_to_trialcodes_replaced[chan] = []
+            dfthis = dfres[dfres["chan"] == chan]
+            assert len(dfthis)==1
+            _inds_bad = dfthis["inds_bad"].values[0] # indices into trials
 
-        if len(_inds_bad)>0:
-            trialcodes_bad = [TRIALCODES[i] for i in _inds_bad]
+            if len(_inds_bad)>0:
+                trialcodes_bad = [TRIALCODES[i] for i in _inds_bad]
 
-            # get the mean activity for this chan by taking its flanking n trials that are not bad trialcodes
-            # ACTUALLY - get the mean activity for this chan by taking its good trials
-            ind_chan = PA.Chans.index(chan)
-            trialcodes_all = dflab["trialcode"].tolist()
-            trialcodes_good = [tc for tc in trialcodes_all if tc not in trialcodes_bad]
-            inds_trials_good = dflab[dflab["trialcode"].isin(trialcodes_good)].index.tolist()
-            inds_trials_bad = dflab[dflab["trialcode"].isin(trialcodes_bad)].index.tolist()
-            
-            if len(inds_trials_bad)>0: # Then bad trials exist
-                print("chan", chan, "Replacing these trials with mean good trial:", inds_trials_bad)
-
-                if plot_fr_after_replace_trials_dir is not None:                
-                    frvals_old = np.mean(PA.X[ind_chan, :, :], axis=1) # for plotting
+                # get the mean activity for this chan by taking its flanking n trials that are not bad trialcodes
+                # ACTUALLY - get the mean activity for this chan by taking its good trials
+                ind_chan = PA.Chans.index(chan)
+                trialcodes_all = dflab["trialcode"].tolist()
+                trialcodes_good = [tc for tc in trialcodes_all if tc not in trialcodes_bad]
+                inds_trials_good = dflab[dflab["trialcode"].isin(trialcodes_good)].index.tolist()
+                inds_trials_bad = dflab[dflab["trialcode"].isin(trialcodes_bad)].index.tolist()
                 
-                xmean_good = np.mean(PA.X[ind_chan, inds_trials_good, :], axis=0) # (ntimes,)
+                if len(inds_trials_bad)>0: # Then bad trials exist
+                    print("chan", chan, "Replacing these trials with mean good trial:", inds_trials_bad)
 
-                # For each bad trial, replace it with xmean_good
-                map_chan_to_trialcodes_replaced[chan].append(dflab.iloc[inds_trials_bad]["trialcode"].tolist())
-                for ind_trial in inds_trials_bad:
-                    PA.X[ind_chan, ind_trial, :] = xmean_good
+                    if plot_fr_after_replace_trials_dir is not None:                
+                        frvals_old = np.mean(PA.X[ind_chan, :, :], axis=1) # for plotting
+                    
+                    xmean_good = np.mean(PA.X[ind_chan, inds_trials_good, :], axis=0) # (ntimes,)
 
-                if plot_fr_after_replace_trials_dir is not None:
-                    # Sanity check, compare before and after 
-                    frvals_new = np.mean(PA.X[ind_chan, :, :], axis=1)
-                    fig, ax = plt.subplots(figsize=(40, 5))
+                    # For each bad trial, replace it with xmean_good
+                    map_chan_to_trialcodes_replaced[chan].append(dflab.iloc[inds_trials_bad]["trialcode"].tolist())
+                    for ind_trial in inds_trials_bad:
+                        PA.X[ind_chan, ind_trial, :] = xmean_good
 
-                    ax.plot(trialcodes_all, frvals_new, "or", alpha=0.8)
-                    ax.plot(trialcodes_all, frvals_old, "sk", alpha=0.8)
-                    rotate_x_labels(ax, 90)
-                    savefig(fig, f"{plot_fr_after_replace_trials_dir}/fr_after_replace_trial-chan={chan}.pdf")
-                    plt.close("all")    
+                    if plot_fr_after_replace_trials_dir is not None:
+                        # Sanity check, compare before and after 
+                        frvals_new = np.mean(PA.X[ind_chan, :, :], axis=1)
+                        fig, ax = plt.subplots(figsize=(40, 5))
+
+                        ax.plot(trialcodes_all, frvals_new, "or", alpha=0.8)
+                        ax.plot(trialcodes_all, frvals_old, "sk", alpha=0.8)
+                        rotate_x_labels(ax, 90)
+                        savefig(fig, f"{plot_fr_after_replace_trials_dir}/fr_after_replace_trial-chan={chan}.pdf")
+                        plt.close("all")    
+    else:
+        map_chan_to_trialcodes_replaced = None
+    
     return PA, map_chan_to_trialcodes_replaced
 
 def dfallpa_preprocess_sitesdirty_single_just_drift(PA, animal, date, slope_thresh = 0.12, PLOT=False, savedir=None):
@@ -415,7 +432,8 @@ def snippets_extract_popanals_split_bregion_twind(SP, list_time_windows, vars_ex
                                                   SAVEDIR=None, dosave=False,
                                                   combine_into_larger_areas=False,
                                                   events_keep=None,
-                                                  exclude_bad_areas=False):
+                                                  exclude_bad_areas=False,
+                                                  replace_fr_sm_with_spike_counts=False, spike_counts_bin_size=0.01):
     """ [GOOD] SP --> Multiple Popanals, each with speciifc (event, bregion, twind), and
     with all variables extracted into each pa.Xlabels["trials"]. The goal is that at can
     run all population analyses using these pa, without need for having beh datasets and
@@ -466,7 +484,9 @@ def snippets_extract_popanals_split_bregion_twind(SP, list_time_windows, vars_ex
             # event = SP.Params["list_events_uniqnames"][0]
             PA, _ = SP.dataextract_as_popanal_statespace(SP.Sites, event,
                                                          list_features_extraction=vars_extract_from_dfscalar,
-                                                      which_fr_sm = "fr_sm", max_frac_trials_lose=0.02)
+                                                      which_fr_sm = "fr_sm", max_frac_trials_lose=0.02,
+                                                      replace_fr_sm_with_spike_counts=replace_fr_sm_with_spike_counts,
+                                                      spike_counts_bin_size=spike_counts_bin_size)
 
             assert len(PA.X)>0
             # print("These are requested sites:", SP.Sites)
@@ -1125,7 +1145,9 @@ def dfallpa_extraction_load_wrapper_from_MS(MS, question, list_time_windows, whi
                                             HACK_RENAME_SHAPES=True, substrokes_plot_preprocess=True,
                                             strokes_split_into_multiple_pa=False,
                                             fr_normalization_method="each_time_bin", REGENERATE_SNIPPETS=True,
-                                            path_to_save_example_fr_normalization=None, prune_low_fr_sites=True):
+                                            path_to_save_example_fr_normalization=None, prune_low_fr_sites=True,
+                                            replace_fr_sm_with_spike_counts=False, 
+                                            spike_counts_bin_size=0.01):
     """ Wrapper of dfallpa_extraction_load_wrapper for loading given already loaded
     MS,
     From SP (already saved) --> DFallpa
@@ -1219,7 +1241,9 @@ def dfallpa_extraction_load_wrapper_from_MS(MS, question, list_time_windows, whi
                                                     list_features_extraction,
                                                     combine_into_larger_areas=combine_into_larger_areas,
                                                     events_keep=events_keep_this,
-                                                    exclude_bad_areas=exclude_bad_areas)
+                                                    exclude_bad_areas=exclude_bad_areas,
+                                                    replace_fr_sm_with_spike_counts=replace_fr_sm_with_spike_counts,
+                                                    spike_counts_bin_size=spike_counts_bin_size)
 
     # Bin times if needed
     if bin_by_time_dur is not None:
@@ -1307,7 +1331,9 @@ def dfallpa_extraction_load_wrapper(animal, date, question, list_time_windows, w
                                     rsa_ver_dist="euclidian_unbiased", rsa_subtr=None, rsa_agg=True, rsa_invar=None,
                                     SPIKES_VERSION="tdt", HACK_RENAME_SHAPES=True, substrokes_plot_preprocess=True,
                                     strokes_split_into_multiple_pa=False, fr_normalization_method="each_time_bin",
-                                    path_to_save_example_fr_normalization=None, prune_low_fr_sites=True):
+                                    path_to_save_example_fr_normalization=None, prune_low_fr_sites=True,
+                                    replace_fr_sm_with_spike_counts=False,
+                                    spike_counts_bin_size=0.01):
 
     """ [GOOD] Hihg level to extrqact
     DFallpa, with all preprocessing steps built in, must have already extgracted Snippets.
@@ -1361,7 +1387,9 @@ def dfallpa_extraction_load_wrapper(animal, date, question, list_time_windows, w
                                                           strokes_split_into_multiple_pa=strokes_split_into_multiple_pa,
                                                           fr_normalization_method=fr_normalization_method,
                                                           path_to_save_example_fr_normalization=path_to_save_example_fr_normalization,
-                                                          prune_low_fr_sites=prune_low_fr_sites)
+                                                          prune_low_fr_sites=prune_low_fr_sites,
+                                                          replace_fr_sm_with_spike_counts=replace_fr_sm_with_spike_counts,
+                                                          spike_counts_bin_size=spike_counts_bin_size)
 
     return DFallpa
 
@@ -1540,8 +1568,14 @@ def dfpa_slice_specific_windows(DFallpa, list_pa_get):
     DFallpa_THIS = pd.concat(list_df).reset_index(drop=True)
     return DFallpa_THIS
 
+def dfpa_group_and_split_concat():
+    """
+    """
+    assert False, "this just a placeholder to remember to use dfpa_group_and_split"
+
 def dfpa_group_and_split(DFallpa, vars_to_concat=None, vars_to_split=None,
-                         DEBUG=False, concat_dim="trials", pa_column="pa"):
+                         DEBUG=False, concat_dim="trials", pa_column="pa",
+                         how_deal_with_different_time_values="replace_with_dummy"):
     """ Flexible method to concatenate PAs across all levels for
     given dimensions (vars_to_concat) and to maintain separate PA
     for each level of variables in vars_to_split.
@@ -1563,18 +1597,18 @@ def dfpa_group_and_split(DFallpa, vars_to_concat=None, vars_to_split=None,
     """
     from neuralmonkey.classes.population import concatenate_popanals_flexible
 
-    assert concat_dim in ["trials", "times"], "not coded yet"
+    # assert concat_dim in ["trials", "times"], "not coded yet"
 
     allvars = ["which_level", "event", "bregion", "twind"]
 
     # They are redundant informations.
     if vars_to_concat is None:
         assert vars_to_split is not None
-        assert "bregion" not in vars_to_split, "For now, must have this, not sure how best to ###concat bregions, since they have diff chans..."
+        # assert "bregion" not in vars_to_split, "For now, must have this, not sure how best to ###concat bregions, since they have diff chans..."
         vars_to_concat = [var for var in allvars if var not in vars_to_split]
     else:
         assert vars_to_split is None
-        assert "bregion" not in vars_to_concat, "For now, must have this, not sure how best to ###concat bregions, since they have diff chans..."
+        # assert "bregion" not in vars_to_concat, "For now, must have this, not sure how best to ###concat bregions, since they have diff chans..."
         vars_to_split = [var for var in allvars if var not in vars_to_concat]
 
     # give a new conj var
@@ -1604,7 +1638,7 @@ def dfpa_group_and_split(DFallpa, vars_to_concat=None, vars_to_split=None,
         def F(x):
             # concatenate them
             list_pa = x[pa_column].tolist()
-            return concatenate_popanals_flexible(list_pa, concat_dim=concat_dim)[0]
+            return concatenate_popanals_flexible(list_pa, concat_dim=concat_dim, how_deal_with_different_time_values=how_deal_with_different_time_values)[0]
 
         DFallpa = DFallpa.groupby(vars_to_split, as_index=False).apply(F).reset_index(drop=True)
         # tmp = DFallpa.groupby(vars_to_split, as_index=False).apply(F)
@@ -1680,16 +1714,17 @@ def dfallpa_preprocess_sitesdirty_check_if_preprocessed(DFallpa, animal, date):
         chans_excluded = [ch for ch in pa.Chans if ch not in chans_saved]
         if len(chans_excluded)>0:
             print("Problem, you have not prprocessed dirty channels matching this neural data")
-            print("chans found:", chans_included)
-            print("chans missing:", chans_excluded)
-            print("chans exist in saved pool:", chans_saved)
+            print("pa.Chans that exist in sitesdirty dataset:", chans_included)
+            print("pa.Chans that are missing from sitesdirty dataset:", chans_excluded)
+            print("chans that exist in sitesdirty dataset:", chans_saved)
             return False
         
     return True
 
 def dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, fr_mean_subtract_method = "across_time_bins",
         do_sitesdirty_extraction=True, 
-        plot_clean_lowfr_chans = False, plot_low_fr_better_method=False):
+        plot_clean_lowfr_chans = False, plot_low_fr_better_method=False,
+        replace_bad_trials=True):
     """
     Apply seuqence of preprocessing steps to cases where multkiple events' PA were combined in DFallpa.
     I used this for decode moment stuff (around Jul 2024).
@@ -1785,7 +1820,9 @@ def dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, fr_mean_subtrac
             # os.makedirs(plot_fr_after_replace_trials_dir, exist_ok=True)
             plot_fr_after_replace_trials_dir = None
             print("... bregion ", bregion, "... event ", event)
-            PA, map_chan_to_trialcodes_replaced = dfallpa_preprocess_sitesdirty_single(PA, animal, date, plot_fr_after_replace_trials_dir)
+            PA, map_chan_to_trialcodes_replaced = dfallpa_preprocess_sitesdirty_single(PA, animal, 
+                                                                                       date, plot_fr_after_replace_trials_dir,
+                                                                                       replace_bad_trials=replace_bad_trials)
             assert not PA=="NODATA", "weird -- this shouldnt be possible -- should have triggered a re-extraction above..."
             list_pa.append(PA)
         print("PA.X.shape, before and after dfallpa_preprocess_sitesdirty_single")
@@ -2154,7 +2191,8 @@ def dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT = False):
 
 def dfpa_concat_normalize_fr_split_multbregion_flex(DFallpa, fr_mean_subtract_method = "across_time_bins", PLOT = False):
     """
-    For each bregion, concat across events (in time dimension) and run normalization, and then split back.
+    For each bregion, concat across events (i.e., find all cases with this bregion and concate them) 
+    (in time dimension) and run normalization, and then split back.
 
     This (flex) is bettern than dfpa_concat_normalize_fr_split_multbregion, becuase the latter requires same n trials 
     across PA. Here does not.
@@ -2179,7 +2217,6 @@ def dfpa_concat_normalize_fr_split_multbregion_flex(DFallpa, fr_mean_subtract_me
         assert np.all(pa.X>=0), "Detected that FR has already been normalized (centerized). Cannot run this again."
 
     # (1) First, do soft normalziation of FR
-
     list_bregion = DFallpa["bregion"].unique().tolist()
     for bregion in list_bregion:
         print("Running .. ", bregion)

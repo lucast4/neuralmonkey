@@ -2818,6 +2818,67 @@ class PopAnal():
         else:
             return Xredu, PAredu, stats_redu, Xfinal_before_redu, pca
 
+    def dataextract_smooth_gaussian(self, std_sec, plot=False):
+        """
+        Smooth FR over time, returning a copy.
+        Prunes the onset and offset, so the times will be subset of input times.
+        PARAMS:
+        - std_sec, std of gaussian kernel, in sec.
+        """
+
+        # Convolve spikes to smooth them
+        from scipy.signal.windows import gaussian
+        import matplotlib.pyplot as plt
+        from scipy.signal import lfilter, filtfilt
+
+        # Scale the width of the Gaussian by our bin width
+        bin_width_sec = np.mean(np.diff(self.Times))
+
+        std = int(std_sec / bin_width_sec)
+        if std==0:
+            std = 1
+
+        # We need a window length of 3 standard deviations on each side (x2)
+        M = std * 3 * 2
+        window = gaussian(M, std)
+        # Normalize so the window sums to 1
+        window = window / window.sum()
+
+        if plot:
+            _ = plt.stem(window)
+            
+        # Remove convolution artifacts
+        invalid_len = len(window) // 2
+        # Xfilt = lfilter(window, 1, self.X, axis=2)[:, :, invalid_len:]
+        # times_filt = self.Times[invalid_len:]
+
+        pad = int(invalid_len/2)
+        Xfilt = filtfilt(window, 1, self.X, axis=2)[:, :, pad:-pad]
+        times_filt = self.Times[pad:-pad]
+                
+        assert Xfilt.shape[2] == len(times_filt), f"Xfilt shape: {Xfilt.shape}, times shape: {len(times_filt)}"
+
+        # Visualize raw spikes, smoothed spikes, and PSTHs
+        if plot:
+            fig, (ax1, ax2, ax3) = plt.subplots(nrows=3, sharey=True)
+            _ = ax1.imshow(self.X[:, 0, :])
+            _ = ax2.imshow(Xfilt[:, 0, :])
+            ax2.set_title("One example trial")
+            ax2.set_xlabel("time")
+            ax2.set_ylabel("chan")
+            plt.tight_layout()
+
+            fig, ax = plt.subplots()
+            ax.plot(self.Times, self.X[0, 0, :])
+            ax.plot(times_filt, Xfilt[0, 0, :])
+
+            fig, ax = plt.subplots()
+            ax.plot(self.Times, self.X[10, 2, :])
+            ax.plot(times_filt, Xfilt[10, 2, :])
+
+        # create new PA
+        return self.copy_replacing_X(Xfilt, times_filt)
+        
     def dataextract_dimred_wrapper(self, scalar_or_traj, dim_red_method, savedir, 
                                    twind_pca, tbin_dur=None, tbin_slide=None, 
                                    NPCS_KEEP = 10,
@@ -3013,9 +3074,45 @@ class PopAnal():
         else:
             return Xredu, PAredu
 
+    def dataextract_subspace_targeted_pca_project(self, dfcoeff, list_subspace_tuples, normalization=None, 
+                                                  plot_orthonormalization=False):
+        """
+        Project self data onto subspace defined by axes which are columns in dfcoeff.
+        PARAMS:
+        - dfcoeff, columns are names of axes.
+        - list_subspace_tuples, list of tuples, each tuple is a subspace. Each subspace is a list of variables, which are the 
+        columns of dfcoeff, to pick out the axes to project onto.
+        """
+
+        # Get basis vectors
+        dict_subspace_pa = {}
+        dict_subspace_axes_orig = {}
+        dict_subspace_axes_normed = {}
+        for subspace_tuple in list_subspace_tuples:
+
+            basis_vectors_orig = dfcoeff.loc[:, subspace_tuple].values # (nchans, nrank)
+            PAredu, basis_vectors_normed = self.dataextract_project_data_denoise(basis_vectors_orig, normalization=normalization, 
+                                                         plot_orthonormalization=plot_orthonormalization)
+            dict_subspace_pa[tuple(subspace_tuple)] = PAredu
+            dict_subspace_axes_orig[tuple(subspace_tuple)] = basis_vectors_orig # in original space.
+            dict_subspace_axes_normed[tuple(subspace_tuple)] = basis_vectors_normed # in original space.
+
+            # For example
+            # print(PAredu.X.shape) # (2, 356, 1)
+            # print(PA.X.shape) (297, 356, 1)
+            # print(basis_vectors.shape) (297, 2)
+
+        if False:        
+            for k, v in dict_subspace_pa:
+                print(k, " -- ", type(k[0]), " -- ", v)
+
+        return dict_subspace_pa, dict_subspace_axes_orig, dict_subspace_axes_normed
+
+
     def dataextract_subspace_targeted_pca(self, variables, variables_is_cat, list_subspaces, demean=True, 
                                           normalization=None, plot_orthonormalization=False, 
-                                          PLOT_COEFF_HEATMAP=False, savedir_coeff_heatmap=None, PRINT=False):
+                                          PLOT_COEFF_HEATMAP=False, savedir_coeff_heatmap=None, PRINT=False,
+                                          get_axis_for_categorical_vars=True):
         """
         [GOOD] Get subspace for a set of variables, and then project data into that subspace.
         PARAMS:
@@ -3043,61 +3140,65 @@ class PopAnal():
 
         ### Collect coefficients across all neurons
         dfcoeff, res_all = PA.regress_neuron_task_variables_all_chans(variables, variables_is_cat, PLOT_COEFF_HEATMAP, 
-                                                                      PRINT=PRINT, savedir_coeff_heatmap=savedir_coeff_heatmap)
+                                                                      PRINT=PRINT, savedir_coeff_heatmap=savedir_coeff_heatmap,
+                                                                      get_axis_for_categorical_vars=get_axis_for_categorical_vars)
         
-        # Before get basis vectors, for categorical variables, get a single vector (first PC)
-        for subspace in list_subspaces:
-            for var_subspace in subspace:
-                if var_subspace not in dfcoeff.columns:
-                    # Assume it is categorical
-                    from neuralmonkey.analyses.state_space_good import dimredgood_pca
-                    # Get the levels for this categorical variable.
-                    original_feature_mapping = res_all[0]["original_feature_mapping"]
-                    list_var_inner = [k for k, v in original_feature_mapping.items() if v==var_subspace]
+        # # Before get basis vectors, for categorical variables, get a single vector (first PC)
+        # for subspace in list_subspaces:
+        #     for var_subspace in subspace:
+        #         if var_subspace not in dfcoeff.columns:
+        #             # Assume it is categorical
+        #             from neuralmonkey.analyses.state_space_good import dimredgood_pca
+        #             # Get the levels for this categorical variable.
+        #             original_feature_mapping = res_all[0]["original_feature_mapping"]
+        #             list_var_inner = [k for k, v in original_feature_mapping.items() if v==var_subspace]
 
-                    if False:
-                        print(list_var_inner)
-                        print(var_subspace)
-                        for k, v in original_feature_mapping.items():
-                            print(k, v)
-                    assert len(list_var_inner)>0
+        #             if False:
+        #                 print(list_var_inner)
+        #                 print(var_subspace)
+        #                 for k, v in original_feature_mapping.items():
+        #                     print(k, v)
+        #             assert len(list_var_inner)>0
                     
-                    # Do PCA to get the first PC
-                    data = dfcoeff.loc[:, list_var_inner].values
-                    assert len(data)>0
-                    # data = data - np.mean(data, axis=0, keepdims=True)
+        #             # Do PCA to get the first PC
+        #             data = dfcoeff.loc[:, list_var_inner].values
+        #             assert len(data)>0
+        #             # data = data - np.mean(data, axis=0, keepdims=True)
 
-                    Xpcakeep, Xpca, pca = dimredgood_pca(data, method="sklearn")
-                                                        #  plot_pca_explained_var_path="/tmp/test1.pdf", plot_loadings_path="/tmp/test2.pdf")
-                    dfcoeff[var_subspace] = Xpcakeep[:, 0]
+        #             Xpcakeep, Xpca, pca = dimredgood_pca(data, method="sklearn")
+        #                                                 #  plot_pca_explained_var_path="/tmp/test1.pdf", plot_loadings_path="/tmp/test2.pdf")
+        #             dfcoeff[var_subspace] = Xpcakeep[:, 0]
 
-        if PLOT_COEFF_HEATMAP:
-            from pythonlib.tools.snstools import heatmap
-            fig, _, _ = heatmap(dfcoeff, annotate_heatmap=False, diverge=True, labels_col=dfcoeff.columns, labels_row=self.Chans)         
-            if savedir_coeff_heatmap is not None:
-                savefig(fig, f"{savedir_coeff_heatmap}/regression_coeffs-adding_categorical_vars.pdf")
+        # if PLOT_COEFF_HEATMAP:
+        #     from pythonlib.tools.snstools import heatmap
+        #     fig, _, _ = heatmap(dfcoeff, annotate_heatmap=False, diverge=True, labels_col=dfcoeff.columns, labels_row=self.Chans)         
+        #     if savedir_coeff_heatmap is not None:
+        #         savefig(fig, f"{savedir_coeff_heatmap}/regression_coeffs-adding_categorical_vars.pdf")
+        #     PA.regress_neuron_task_variables_all_chans_plot_coeffs(dfcoeff, savedir_coeff_heatmap, suffix="adding_categorical_vars")
 
         # Get basis vectors
-        dict_subspace_pa = {}
-        dict_subspace_axes_orig = {}
-        dict_subspace_axes_normed = {}
-        for subspace_tuple in list_subspaces:
+        dict_subspace_pa, dict_subspace_axes_orig, dict_subspace_axes_normed = PA.dataextract_subspace_targeted_pca_project(
+            dfcoeff, list_subspaces, normalization, plot_orthonormalization)
+        # dict_subspace_pa = {}
+        # dict_subspace_axes_orig = {}
+        # dict_subspace_axes_normed = {}
+        # for subspace_tuple in list_subspaces:
 
-            basis_vectors_orig = dfcoeff.loc[:, subspace_tuple].values # (nchans, nrank)
-            PAredu, basis_vectors_normed = PA.dataextract_project_data_denoise(basis_vectors_orig, normalization=normalization, 
-                                                         plot_orthonormalization=plot_orthonormalization)
-            dict_subspace_pa[tuple(subspace_tuple)] = PAredu
-            dict_subspace_axes_orig[tuple(subspace_tuple)] = basis_vectors_orig # in original space.
-            dict_subspace_axes_normed[tuple(subspace_tuple)] = basis_vectors_normed # in original space.
+        #     basis_vectors_orig = dfcoeff.loc[:, subspace_tuple].values # (nchans, nrank)
+        #     PAredu, basis_vectors_normed = PA.dataextract_project_data_denoise(basis_vectors_orig, normalization=normalization, 
+        #                                                  plot_orthonormalization=plot_orthonormalization)
+        #     dict_subspace_pa[tuple(subspace_tuple)] = PAredu
+        #     dict_subspace_axes_orig[tuple(subspace_tuple)] = basis_vectors_orig # in original space.
+        #     dict_subspace_axes_normed[tuple(subspace_tuple)] = basis_vectors_normed # in original space.
 
-            # For example
-            # print(PAredu.X.shape) # (2, 356, 1)
-            # print(PA.X.shape) (297, 356, 1)
-            # print(basis_vectors.shape) (297, 2)
+        #     # For example
+        #     # print(PAredu.X.shape) # (2, 356, 1)
+        #     # print(PA.X.shape) (297, 356, 1)
+        #     # print(basis_vectors.shape) (297, 2)
 
-        if False:        
-            for k, v in dict_subspace_pa:
-                print(k, " -- ", type(k[0]), " -- ", v)
+        # if False:        
+        #     for k, v in dict_subspace_pa:
+        #         print(k, " -- ", type(k[0]), " -- ", v)
 
         return dict_subspace_pa, dict_subspace_axes_orig, dict_subspace_axes_normed, dfcoeff, PA
 
@@ -4185,7 +4286,7 @@ class PopAnal():
 
     def plotNeurTimecourse(self, trial, version="raw", **kwargs):
         X = self.extract_activity_copy(trial, version)
-        return plotNeurTimecourse(X, **kwargs)
+        return plotNeurTimecourse(X, times=self.Times, **kwargs)
 
     def plotwrapper_smoothed_fr(self, values_this_axis=None, axis_for_inds="chans", ax=None, 
                      plot_indiv=True, plot_summary=False, error_ver="sem",
@@ -4236,6 +4337,10 @@ class PopAnal():
         n_time_bins = X.shape[1]
 
         # 1) Plot indiividual traces?
+        if plot_summary==True and isinstance(pcol_indiv, str) and pcol_indiv=="k":
+            # Then this is default pcol color. make it the same as the sumary color.
+            pcol_indiv = pcol_summary
+
         if plot_indiv:
             fig1, ax1 = plotNeurTimecourse(X, times, ax=ax, color = pcol_indiv,
                 alpha=alpha, n_rand=plot_indiv_n_rand)
@@ -4273,9 +4378,10 @@ class PopAnal():
 
     def plotwrapper_smoothed_fr_split_by_label(self, dim_str, dim_variable, ax=None,
                                               plot_indiv=False, plot_summary=True,
-                                              event_bounds=[None, None, None],
+                                              event_bounds=(None, None, None),
                                               add_legend=True, legend_levels=None,
-                                               chan=None, dict_lev_color=None):
+                                               chan=None, dict_lev_color=None,
+                                               plot_indiv_n_rand=10):
         """ Plot separate smoothed fr traces, overlaid on single plot, each a different
         level of an inputted variable
         PARAMS:
@@ -4320,8 +4426,7 @@ class PopAnal():
             pcol = dict_lev_color[lev]
             pa.plotwrapper_smoothed_fr(ax=ax, plot_indiv=plot_indiv, plot_summary=plot_summary,
                                           pcol_indiv = pcol, pcol_summary=pcol,
-                                          event_bounds=event_bounds)
-
+                                          event_bounds=event_bounds, plot_indiv_n_rand=plot_indiv_n_rand)
         # add legend
         if add_legend:
             from pythonlib.tools.plottools import legend_add_manual
@@ -4330,7 +4435,8 @@ class PopAnal():
         return dict_lev_color.values()
 
     def plotwrappergrid_smoothed_fr_splot_var(self, var_row, var_col, chans, 
-                                              plot_indiv=False, do_sort=True):
+                                              plot_indiv=False, do_sort=True,
+                                              plot_indiv_n_rand=10):
         """
         Smoothed FR, in a 
         Grid of subplots:
@@ -4375,7 +4481,7 @@ class PopAnal():
                     for ch in chans:
                         pcol = map_chan_to_color[ch]
                         pa.plotwrapper_smoothed_fr([ch], axis_for_inds="chans", ax=ax, plot_indiv=plot_indiv, plot_summary=True,
-                                                pcol_summary=pcol, pcol_indiv = "k")
+                                                pcol_summary=pcol, pcol_indiv = "k", plot_indiv_n_rand=plot_indiv_n_rand)
 
                     ax.set_title((levcol, levrow))
                 else:
@@ -4386,7 +4492,8 @@ class PopAnal():
                     legend_add_manual(ax, map_chan_to_color.keys(), map_chan_to_color.values(), 0.2)
         return fig
 
-    def plotwrappergrid_smoothed_fr_splot_neuron(self, var_effect, vars_others, chans):
+    def plotwrappergrid_smoothed_fr_splot_neuron(self, var_effect, vars_others, chans, plot_indiv=False,
+                                                 plot_indiv_n_rand=10, plot_summary=True, sharey=True):
         """
         Grid of subplots...
         Subplot = (chan, vars_others); Colors = var_effect
@@ -4407,21 +4514,29 @@ class PopAnal():
         if len(chans)==0:
             print("chans you want to plot:", chans_orig)
             print("self.Chans:", self.Chans)
-            assert False, "did not input any existing chans"
 
         list_pa, levels = self.split_by_label("trials", vars_others)
         ncols = len(levels)
         nrows = len(chans)
-
-        fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*3, nrows*3), sharex=True, sharey=True, squeeze=False)
+        
+        fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*3, nrows*3), sharex=True, sharey=sharey, squeeze=False)
         for i, (lev, pa) in enumerate(zip(levels, list_pa)):
             for j, ch in enumerate(chans):
                 ax = axes[j][i]
 
                 add_legend = (i==len(levels)-1) and (j==len(chans)-1)
-                pa.plotwrapper_smoothed_fr_split_by_label("trials", var_effect, ax, chan=ch, add_legend=add_legend)
+                pa.plotwrapper_smoothed_fr_split_by_label("trials", var_effect, ax, chan=ch, add_legend=add_legend,
+                    plot_indiv=plot_indiv, plot_indiv_n_rand=plot_indiv_n_rand, plot_summary=plot_summary)
                 ax.set_title(lev)
-        
+
+                if i==0:
+                    ax.set_ylabel(f"ch {ch}")
+
+        if sharey==False:
+            # Make sure y is still shared within each row (each channel).
+            from pythonlib.tools.plottools import share_axes_row_or_col_of_subplots
+            share_axes_row_or_col_of_subplots(axes, "row", "y")
+
         return fig
 
     def plotwrapper_smoothed_fr_split_by_label_and_subplots(self, chan, var, vars_subplots):
@@ -4768,8 +4883,88 @@ class PopAnal():
 
 
     ##########################
+    def regress_neuron_task_variables_all_chans_plot_coeffs(self, dfcoeff, savedir_coeff_heatmap=None, suffix=None):
+        """
+        Helper to plot dfcoeff, which holds the the coefficients of the regression for each chan, where the coefficients are
+        the regression coefficients for each variable.
+        """
+        from pythonlib.tools.snstools import heatmap
+        fig, _, _ = heatmap(dfcoeff, annotate_heatmap=False, diverge=True, labels_col=dfcoeff.columns, labels_row=self.Chans)         
+        if savedir_coeff_heatmap is not None:
+            if suffix is not None:
+                savefig(fig, f"{savedir_coeff_heatmap}/regression_coeffs-{suffix}.pdf")
+            else:
+                savefig(fig, f"{savedir_coeff_heatmap}/regression_coeffs.pdf")
+
+    def regress_neuron_task_variables_all_chans_data_splits(self, variables, variables_is_cat, 
+                                                            var_effect_within_split, var_other_for_split):
+        """
+        For each chan, do multiple regression, where variables predicts firing rate.
+        Here, "data_splits" means that can compute regression axes using different splits of dataset, each a level of vars_others, and
+        then concatenate the results across all splits.
+        - e.g, useful if want to compute axis for chunk_within_rank, conditioned on each level of chunk_shape.
+        - also useful if you want to aggregate axes across different levels, to get a single better estimate of the axis.
+        PARAMS:
+        - variables, list of str, variables, to input input multipel regression.
+        - variables_is_cat, list of bool, not used in regression, but used in later code.
+        """    
+
+        # tbin_dur = 0.2
+        # tbin_slide = 0.1
+        # npcs_keep_force = 50
+        # normalization = "orthonormal"
+        PLOT_COEFF_HEATMAP = False
+        demean = False # Must be false, as we dont want function to modify PA
+        get_axis_for_categorical_vars = True
+
+        PAscal = self.norm_subtract_mean_each_chan()
+        assert PAscal.X.shape[2]==1, "must be scalra"
+
+        dflab = PAscal.Xlabels["trials"]
+        # var_subspace = "chunk_within_rank"
+
+        ### For each lev_other, extract the axis encoding <var_effect_within_split>
+        list_axes = []
+        # list_subspace_tuples = []
+        levs_other = dflab[var_other_for_split].unique()
+        for levo in levs_other:
+
+            # First, get subset of data
+            filtdict = {var_other_for_split:[levo]}
+            pathis = PAscal.slice_by_labels_filtdict(filtdict)
+
+            list_subspaces = []
+            # list_subspaces = [(var_effect_within_split,)]
+            _, _, _, dfcoeff, _ = pathis.dataextract_subspace_targeted_pca(
+                            variables, variables_is_cat, list_subspaces, demean=demean, 
+                            # normalization=normalization,
+                            PLOT_COEFF_HEATMAP=PLOT_COEFF_HEATMAP, savedir_coeff_heatmap=None, PRINT=False,
+                            get_axis_for_categorical_vars=get_axis_for_categorical_vars)
+
+            list_axes.append(dfcoeff[var_effect_within_split])
+
+        ### Store in a dataframe, the columns encoding <var_effect_within_split> within each levo (split)
+        columns_each_split = [(var_effect_within_split, levo) for levo in levs_other]
+        dfcoeff_splits = pd.DataFrame(np.stack(list_axes, axis=1), columns=columns_each_split)
+        
+        ### Rerun, using the entire data, not just the splits
+        _, _, _, dfcoeff_all, _ = PAscal.dataextract_subspace_targeted_pca(
+                            variables, variables_is_cat, [], demean=demean, 
+                            # normalization=normalization, 
+                            plot_orthonormalization=False, 
+                            PLOT_COEFF_HEATMAP=False, savedir_coeff_heatmap=None, PRINT=False, get_axis_for_categorical_vars=get_axis_for_categorical_vars)
+
+        ### Finally, merge the split and the all
+        for col in dfcoeff_splits.columns:
+            assert col not in dfcoeff_all.columns
+        DFCOEFF = pd.concat([dfcoeff_all, dfcoeff_splits], axis=1)    
+
+        # Also get the names of columns that are for the split levels:
+
+        return DFCOEFF, columns_each_split
+
     def regress_neuron_task_variables_all_chans(self, variables, variables_is_cat, PLOT_COEFF_HEATMAP=False, PRINT=False,
-                                                savedir_coeff_heatmap=None):
+                                                savedir_coeff_heatmap=None, get_axis_for_categorical_vars=False):
         """
         For each chan, do multiple regression, where variables predicts firing rate.
         """    
@@ -4787,11 +4982,41 @@ class PopAnal():
             })
         dfcoeff = pd.DataFrame(res)
 
+        # Before get basis vectors, for categorical variables, get a single vector (first PC)
+        if get_axis_for_categorical_vars:
+            print(dfcoeff.columns.tolist())
+            for var_subspace, var_is_cat in zip(variables, variables_is_cat):
+                print(var_subspace, var_is_cat)
+                if var_is_cat: 
+                    from neuralmonkey.analyses.state_space_good import dimredgood_pca
+                    # Get the levels for this categorical variable.
+                    original_feature_mapping = res_all[0]["original_feature_mapping"]
+                    list_var_inner = [k for k, v in original_feature_mapping.items() if v==var_subspace]
+
+                    if len(list_var_inner)==0:
+                        # This usually means this variable did not have enough variation to be part of regression model.
+                        # print(list_var_inner)
+                        # print("Var mappings:")
+                        # for k, v in original_feature_mapping.items():
+                        #     print(k, v)
+                        # print("Failed to find this var: ", var_subspace)
+                        # assert False
+                        continue
+                    
+                    # Do PCA to get the first PC
+                    data = dfcoeff.loc[:, list_var_inner].values
+                    assert len(data)>0
+
+                    Xpcakeep, _, _ = dimredgood_pca(data, method="sklearn")
+                                                        #  plot_pca_explained_var_path="/tmp/test1.pdf", plot_loadings_path="/tmp/test2.pdf")
+                    dfcoeff[var_subspace] = Xpcakeep[:, 0]
+
         if PLOT_COEFF_HEATMAP:
-            from pythonlib.tools.snstools import heatmap
-            fig, _, _ = heatmap(dfcoeff, annotate_heatmap=False, diverge=True, labels_col=dfcoeff.columns, labels_row=self.Chans)         
-            if savedir_coeff_heatmap is not None:
-                savefig(fig, f"{savedir_coeff_heatmap}/regression_coeffs.pdf")
+            self.regress_neuron_task_variables_all_chans_plot_coeffs(dfcoeff, savedir_coeff_heatmap)
+            # from pythonlib.tools.snstools import heatmap
+            # fig, _, _ = heatmap(dfcoeff, annotate_heatmap=False, diverge=True, labels_col=dfcoeff.columns, labels_row=self.Chans)         
+            # if savedir_coeff_heatmap is not None:
+            #     savefig(fig, f"{savedir_coeff_heatmap}/regression_coeffs.pdf")
 
         return dfcoeff, res_all
     
@@ -4859,7 +5084,7 @@ class PopAnal():
         return dict_coeff, model, data, original_feature_mapping
         
 def concatenate_popanals_flexible(list_pa, concat_dim="trials", how_deal_with_different_time_values="replace_with_dummy"):
-    """ Concatenates popanals (along trial dim) which may have different time bases (but
+    """ Concatenates popanals (along a given dim) which may have different time bases (but
     the same n time bins.
     If differnet, then replaces time with 0,1, 2... (index), otherwise uses actual time.
     PARAMS:
@@ -4913,8 +5138,13 @@ def concatenate_popanals_flexible(list_pa, concat_dim="trials", how_deal_with_di
                                      replace_times_with_dummy_variable=False)
 
     elif concat_dim=="chans":
+        # for pa in list_pa:
+        #     print(pa.Chans) 
         PA = concatenate_popanals(list_pa, "chans",
                                   all_pa_inherit_trials_of_pa_at_this_index=0)
+        # print("output")
+        # print(PA.Chans)
+        # assert False
     else:
         print(concat_dim)
         assert False
@@ -4938,7 +5168,8 @@ def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None,
     - list_pa, list of PopAnal objects
     - dim, int, which dimensiion to concat along
     - values_for_concatted_dim, list of items which are labels for
-    each value in the new concatted dimension. Must be apporopriate length.
+    each value in the new concatted dimension. Must be apporopriate length. If None, thne
+    concatenates the values in the input pa
     - map_idxpa_to_value, dict or list, mapping from index in list_pa toa value, 
     used to populate a new column named map_idxpa_to_value_colname
     - map_idxpa_to_value_colname, str, name of new col, mapping (se ablve0)
@@ -5019,6 +5250,7 @@ def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None,
 
     for d in ["times", "chans", "trials"]:
         check_this_dim[d] = (assert_otherdims_have_same_values) and (d in assert_otherdims_restrict_to_these)
+
     # - extract values
     if dim_str=="times":
         times = values_for_concatted_dim
@@ -5032,12 +5264,27 @@ def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None,
         trials = check_get_common_values_this_dim(list_pa, "trials", check_this_dim["trials"])
     elif dim_str=="chans":
         times = check_get_common_values_this_dim(list_pa, "times", check_this_dim["times"])
-        chans = values_for_concatted_dim
+        if values_for_concatted_dim is None:
+            _chans = []
+            for _pa in list_pa:
+                _chans.extend(_pa.Chans)
+            chans = _chans
+        else:
+            chans = values_for_concatted_dim
+        assert len(set(chans)) == len(chans), "have non-unique chans, this can run into error later"
         trials = check_get_common_values_this_dim(list_pa, "trials", check_this_dim["trials"])
     elif dim_str=="trials":
         times = check_get_common_values_this_dim(list_pa, "times", check_this_dim["times"])
         chans = check_get_common_values_this_dim(list_pa, "chans", check_this_dim["chans"])
-        trials = values_for_concatted_dim   
+
+        if values_for_concatted_dim is None:
+            _trials = []
+            for _pa in list_pa:
+                _trials.extend(_pa.Trials)
+            trials = _trials
+        else:
+            trials = values_for_concatted_dim   
+            assert len(set(trials)) == len(trials), "have non-unique chans, this can run into error later"
     else:
         print(dim_str)
         assert False

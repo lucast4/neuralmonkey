@@ -4,12 +4,15 @@ animal=$1
 
 if [[ $animal == Diego ]]; then
   # datelist=(230615 230630) # Chars, those left over (added to previous, this gets all)
-  datelist=(230619 231121 240809) #
+  # datelist=(230619 231121 240809) #
+  # datelist=(230618 230619) # Shape vs. size
+  datelist=(230618) # Shape vs. size
 
 elif [[ $animal == Pancho ]]; then
   # datelist=(220715 220603) # Chars, those left over (added to previous, this gets all)
   # datelist=(220918 221220 240508) # Chars, those left over (added to previous, this gets all)
-  datelist=(220716 220724 220712 220719) # Chars, those left over (added to previous, this gets all)
+  # datelist=(220716 220724 220712 220719) # Chars, those left over (added to previous, this gets all)
+  datelist=(220716 220717 240530) # Shape vs. size
 else
   echo $animal
   echo "Error! Inputed non-existing animal" 1>&2
