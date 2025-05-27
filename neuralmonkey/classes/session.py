@@ -8809,7 +8809,8 @@ class Session(object):
 
             ############# VERY HACKY,
             neural_trials_missing_beh, do_skip_trials = self._get_trials_list_skipped_trials()
-            trials = [t for t in trials if t not in neural_trials_missing_beh]
+            if neural_trials_missing_beh is not None:
+                trials = [t for t in trials if t not in neural_trials_missing_beh]
 
             # # Not sure if this works. It was commented out and then I turned it back on.
             # if (int(self.Date))==220609 and self.RecSession==0 and self.Animal=="Pancho":
