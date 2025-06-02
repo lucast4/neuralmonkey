@@ -2062,6 +2062,8 @@ class Session(object):
         :param dataset_version:
         :return:
         """
+
+        assert dataset_version=="raw", "always reload, to include latest things."
         if dataset_version=="cached":
             # Then load cached version
             paththis = f"{pathdir}/dataset_beh.pkl"
@@ -2206,7 +2208,7 @@ class Session(object):
                     self._CachedTrialsList = pickle.load(f)
 
                     # If trials need to be skipped, then this wont work. so dont do it.
-                    _, do_skip_trials = self._get_trials_list_skipped_trials()
+                    _, do_skip_trials = self._get_trials_list_skipped_trials(trials=[]) # enter dummy trials, as youjust want t know if this date has sipped trials...
                     if not do_skip_trials:
                         # Sanity check, that the trials in cached trials list are not incocnsitent with reloaded data.
                         # Should relaly just reconstruct each time from raw, since sometimes (rarely) there mistakes due
@@ -2224,7 +2226,7 @@ class Session(object):
 
                         trials_pass_fixation = [t for t in trials if self.beh_fixation_success(t)]
                         trials_missing = [t for t in trials_pass_fixation if t not in self._CachedTrialsList[(True, True)]]
-                        if len(trials_missing)>5 and len(trials_missing)/len(self._CachedTrialsList[(True, True)]) > 0.04:
+                        if len(trials_missing)>5 and len(trials_missing)/len(self._CachedTrialsList[(True, True)]) > 0.08:
                             # Is ok to miss a few, this can be explained by trials with no beh strokes matched to task.
                             print("trials cached: ", self._CachedTrialsList[(True, True)])
                             print("trials reloaded: ", trials_pass_fixation)
@@ -8656,7 +8658,7 @@ class Session(object):
             suc = getTrialsFixationSuccess(fd, trialml2)
             return suc
 
-    def _get_trials_list_skipped_trials(self):
+    def _get_trials_list_skipped_trials(self, trials):
         """
         Decide if this session has any hard coded trials to skip --- most of the time this is due to 
         losing power in amplifier, or other recording mishaps.
@@ -8731,6 +8733,7 @@ class Session(object):
             assert False, "fill this in! See recording log for what trials lost."
             
         else:
+            # This date is good!
             do_skip_trials = False
         
         return neural_trials_missing_beh, do_skip_trials
@@ -8808,8 +8811,9 @@ class Session(object):
             trials = list(range(len(self.TrialsOffset)))
 
             ############# VERY HACKY,
-            neural_trials_missing_beh, do_skip_trials = self._get_trials_list_skipped_trials()
-            trials = [t for t in trials if t not in neural_trials_missing_beh]
+            neural_trials_missing_beh, do_skip_trials = self._get_trials_list_skipped_trials(trials)
+            if neural_trials_missing_beh is not None:
+                trials = [t for t in trials if t not in neural_trials_missing_beh]
 
             # # Not sure if this works. It was commented out and then I turned it back on.
             # if (int(self.Date))==220609 and self.RecSession==0 and self.Animal=="Pancho":
