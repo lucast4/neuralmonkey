@@ -77,6 +77,7 @@ if __name__=="__main__":
     SP.DfScalar = SP.DfScalar[SP.DfScalar["clust_sim_max_GOOD"]==True].reset_index(drop=True)
 
     # Prune so that SP and CHAR have same shapes.
+    assert False, "replace the below with code in analy_euclidian_chars_sp"
     DFSCALAR = SP.DfScalar.copy()
     for prune_version in ["sp_char", "pig_char"]:
         SP.DfScalar = DFSCALAR.copy()
@@ -86,6 +87,10 @@ if __name__=="__main__":
         elif prune_version == "sp_char":
             task_kinds = ["prims_single", "character"]
             fd = {"task_kind":task_kinds}
+        elif prune_version == "sp_char_1plus":
+            # single prim + char (excluding first stroke)
+            task_kinds = ["prims_single", "character"]
+            fd = {"sp_char_1plus":[True]}
         elif prune_version == "sp_pig":
             task_kinds = ["prims_single", "prims_on_grid"]
             fd = {"task_kind":task_kinds}            

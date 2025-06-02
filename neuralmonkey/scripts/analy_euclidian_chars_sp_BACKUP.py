@@ -1,4 +1,6 @@
 """
+BACKUP --> this is the state when ran final and it was good... (6/1/25)
+
 Specifically to ask about reuse of prim representation in chars.
 This was previously done in analy_euclidian_dist_pop... but deicded that was too generic -- here there are specific
 things needed for chars.
@@ -322,13 +324,12 @@ def behstrokes_extract_char_clust_sim(PA, animal, date, savedir, PLOT=False):
     
     ### Load saved cluster values
     ds = DatStrokes()
-    which_shapes = None # This loads ALL shapes for Diego (not just main 21)
     if False: 
         # Older version, now fails if ds is empty
         df, _ = ds.clustergood_load_saved_cluster_shape_classes_input_basis_set(WHICH_BASIS=animal, 
-                                                                                WHICH_SHAPES=which_shapes, merge_with_self=False)
+                                                                                WHICH_SHAPES=None, merge_with_self=False)
     else:
-        df = ds.clustergood_load_saved_cluster_shape_classes_BASIC(animal, date, animal, which_shapes)
+        df = ds.clustergood_load_saved_cluster_shape_classes_BASIC(animal, date, animal, None)
 
     ### Extract (merge) cluster values into dflab
     # Slice df to match the rows in dflab
@@ -357,7 +358,7 @@ def behstrokes_extract_char_clust_sim(PA, animal, date, savedir, PLOT=False):
         dflab["clust_sim_max"].hist(bins=80, ax=ax)
         savefig(fig, f"{savedir}/hist-clust_sim_max.pdf")
 
-    ### Copy values to ds (just for plotting)
+    ### Copy values to ds
     ds.Dat = _df
     cols_copy = [VAR_SHAPE, "shape_semantic", "shape_semantic_grp", "task_kind"]
     for col in cols_copy:
@@ -521,13 +522,11 @@ def behstrokes_extract_char_clust_sim(PA, animal, date, savedir, PLOT=False):
 def behstrokes_preprocess_plot_motor_stats_similarity(DFallpa, animal, date, var_shape, SAVEDIR, 
                                                       char_stroke1_plus=True, nmax_for_pairs=30):
     """
-    [GOOD]
     Many plots of beh similarity, comparing SP to char(2nd stroke +), both in pariwise
     distance, and in within-task-kind stats.
 
-    Plots drawings as well as stats.
-
     Goal is to visualize how different the motor bebavioral actually is.
+
     """
     from pythonlib.tools.stroketools import strokes_bounding_box_dimensions
     import seaborn as sns
@@ -758,7 +757,6 @@ def behstrokes_preprocess_assign_col_bad_strokes(DFallpa, animal, date):
 def beh_plot_event_timing_stroke(PA, animal, date, savedir, shape_var = VAR_SHAPE, 
                                  MS=None):
     """
-    Make plots of timing of events within trial...
     NOTE: has to load MS, which takes a while...
     """
 
@@ -941,16 +939,16 @@ def params_shapes_remove(animal, date, shape_var):
     shapes_remove = []
     if animal=="Pancho":
         shapes_remove.append("line-UU-UU") # Sometimes direction flipped, and not caught by eucldian diffs
-        shapes_remove.append("line-UR-UR") # Added final run
+        shapes_remove.append("line-UR-UR")
     elif animal=="Diego":
-        shapes_remove.append("Lcentered-DR-DR") # Added final run
+        shapes_remove.append("Lcentered-DR-DR")
     
     return shapes_remove
 
 def preprocess_dfallpa_prune_chans_hand_coded(DFallpa, animal, date):
     """
     Remove chans that are bad, coded here by hand. This is usually cases that are drifty that are not
-    caught by other pruning. Based on visualizing fr over day and hand-coding days with drift.
+    caught by other pruning. 
     Updated 5/27/25.
 
     NOTE: this not good option, as the chans could change if redo kilosort, etc.
@@ -998,7 +996,7 @@ def preprocess_dfallpa_prune_chans_hand_coded(DFallpa, animal, date):
     if date in map_date_chans_remove:
         chans_remove = map_date_chans_remove[date]
     else:
-        return None
+        return
 
     # Remove those chans
     print(" ")
@@ -1023,7 +1021,7 @@ def preprocess_dfallpa_prune_chans(DFallpa, animal, date, SAVEDIR_ANALYSIS, PLOT
     """
     Helper to prune chans which fail in ways that indicate drift of FR across day. These used to
     be done in preprocess_pa, but better to do it before, since this fixes the chans that exist for
-    the day, allowing downstream code to do subsampling of chans correctly.
+    the day.
     """
     
     ### Do all preprocessing that removes chans here, BEFORE pruning chans
@@ -1074,7 +1072,6 @@ def preprocess_pa(animal, date, PA, savedir, prune_version, shape_var = VAR_SHAP
     from pythonlib.tools.plottools import savefig
 
     def _save_counts(PA, suff):
-        """ Helper function to save the shape counts in PA"""
         if savedir is not None:
             dflab = PA.Xlabels["trials"]
             fig = grouping_plot_n_samples_conjunction_heatmap(dflab, shape_var, "stroke_index", ["task_kind"])
@@ -1284,11 +1281,9 @@ def preprocess_pa(animal, date, PA, savedir, prune_version, shape_var = VAR_SHAP
     ### Plot counts
     _save_counts(PA, "3-after_clean_motor")
 
-    if False: # run 6, 8, 12    
-        # This keeps more shapes overall. It first merges DIego shapes, and then prunes, thus reducing the cases that will
-        # be pruned.
-        ### Beofre consolidating, only keep cases with at least 2 trials per task_kind. THis makes sure doesnt keep a shape
-        # whos char is all one shape, and SP is another (and then they merge)
+    if False: # run 6, 8, 12
+        # This keeps more shapes overall.
+        ### Beofre consolidating, only keep cases with at least 2 trials per task_kind
         if prune_version is not None:
             dflab = PA.Xlabels["trials"]
             _dfout,_  = extract_with_levels_of_conjunction_vars_helper(dflab, "task_kind", [shape_var], n_min_per_lev=2,
@@ -1343,8 +1338,7 @@ def preprocess_pa(animal, date, PA, savedir, prune_version, shape_var = VAR_SHAP
         _save_counts(PA, "6-final")
         
     else: # run 7, 9, 13
-        # This is more strict -- leads to fewer shapes. It first prunes (to shapes that exist in both sp and char) and then consolidates
-        # shape names.
+        # This is more strict -- leads to fewer shapes
 
         # -------------------------------------------------------------
         ############ FINALLY, prune to minimum n trials, based on having enough data across task_kinds
@@ -1370,8 +1364,6 @@ def preprocess_pa(animal, date, PA, savedir, prune_version, shape_var = VAR_SHAP
         # Do this here, after the above so that the above pruning will occur within each original shape name, is more accurate.
         # But before pruning, so that you don't throw out a lot of data.
         if False: # run 10 turned to false
-            # Decided it is better to keep all shapes, to get their scores, and then consolidate scores at end. This also helps have 
-            # dpca using more conditions.
             if consolidate_diego_shapes and animal=="Diego":
                 from pythonlib.drawmodel.tokens import MAP_SHAPESEM_TO_SHAPESEMGROUP, map_shsem_to_new_shsem
                 assert VAR_SHAPE == "shape_semantic", "this does nothing"
@@ -1876,7 +1868,7 @@ def euclidian_time_resolved_fast_shuffled(DFallpa, animal, date, SAVEDIR_ANALYSI
     var_conj = "task_kind"
     vars_group = [var_effect, var_conj]
 
-    QUICK_MODE = False # To quickly test subset of conditions -- I used this for revisions, debugging.
+    QUICK_MODE = False
 
     if False:
         # Params used during devo
@@ -1899,14 +1891,16 @@ def euclidian_time_resolved_fast_shuffled(DFallpa, animal, date, SAVEDIR_ANALYSI
             "00_stroke":[(-0.5, -0.05), (-0.5, 0), (-0.5, 0.1), (-0.3, 0.1), (-0.3, 0.2), (-0.4, 0.3), (-0.2, 0.3), (0.05, 0.5)],
             }
     else:
-        #### Final params (original submission)
+        #### Final params
         SUBSPACE_PROJ_FIT_TWIND = {
             # "00_stroke":[(-0.8, 0.3), (-0.8, 0), (-1, 0.3), (-0.5, 0.5)], 
             "00_stroke":[(-0.8, 0.3)], # The actual final used in the paper
         }
 
         LIST_SUBSPACE_PROJECTION = ["task_shape_si", "task_shape"]
-        LIST_PRUNE_VERSION = ["sp_char_0", "pig_char_0"] # GOOD
+        # LIST_PRUNE_VERSION = ["sp_char_0", "pig_char_0"] # GOOD
+        LIST_PRUNE_VERSION = ["sp_char_1plus", "sp_char"] # Just running for revisions.
+
         N_SPLITS = 10 # 6 is too low, I know beucase run-by-run variation for sp_char_0 is high when using 6.
 
         twind_analy = (-1, 0.6)
@@ -1959,10 +1953,36 @@ def euclidian_time_resolved_fast_shuffled(DFallpa, animal, date, SAVEDIR_ANALYSI
                 "00_stroke":[(-0.5, -0.05), (-0.35, -0.05), (-0.3, 0.)], # 
                 }
 
-    ### Do all preprocessing that removes chans here, BEFORE pruning chans. This allows
-    # correctly subsampling chans in inner code.
+    ### Do all preprocessing that removes chans here, BEFORE pruning chans
     preprocess_dfallpa_prune_chans(DFallpa, animal, date, SAVEDIR_ANALYSIS)
     preprocess_dfallpa_prune_chans_hand_coded(DFallpa, animal, date)
+    # from neuralmonkey.classes.population_mult import dfallpa_preprocess_sitesdirty_single_just_drift
+    # print("Running preprocess_clean_stable_single_prims_frate, printing chans...")
+    # list_pa = []
+    # for _, row in DFallpa.iterrows():
+    #     bregion = row["bregion"]
+    #     event = row["event"]
+    #     pa = row["pa"]
+
+    #     savedir = f"{SAVEDIR_ANALYSIS}/preprocess_remove_chans/{bregion}-{event}"
+    #     os.makedirs(savedir, exist_ok=True)
+    #     print(" --- ", bregion, event)
+
+    #     print("(1) preprocess_clean_stable_single_prims_frate")
+    #     print(f"before: (n={len(pa.Chans)}):", pa.Chans)
+
+    #     pa = preprocess_clean_stable_single_prims_frate(pa, savedir=savedir)    
+
+    #     print(f"after: (n={len(pa.Chans)}):", pa.Chans)
+
+    #     print("(2) dfallpa_preprocess_sitesdirty_single_just_drift")
+    #     print(f"before: (n={len(pa.Chans)}):", pa.Chans)
+    #     pa = dfallpa_preprocess_sitesdirty_single_just_drift(pa, animal, date)
+    #     print(f"after: (n={len(pa.Chans)}):", pa.Chans)
+
+    #     # Collect
+    #     list_pa.append(pa)
+    # DFallpa["pa"] = list_pa
 
     ### For subsampling chans
     # Only cosnider a subset of regions with most shape-related activity.
@@ -1986,10 +2006,10 @@ def euclidian_time_resolved_fast_shuffled(DFallpa, animal, date, SAVEDIR_ANALYSI
 
         ########### [MAJOR HACK]
         if DO_REGRESS_HACK:
-            # tbin_dur = 0.1
-            # tbin_slide = 0.02
-            # twind = twind_analy
-            PA_orig = PA_orig.regress_neuron_task_variables_subtract_from_activity(0.1, 0.02, twind_analy, var_effect)
+            tbin_dur = 0.1
+            tbin_slide = 0.02
+            twind = twind_analy
+            PA_orig = PA_orig.regress_neuron_task_variables_subtract_from_activity(tbin_dur, tbin_slide, twind, var_effect)
 
         if (DEBUG_bregion_list is not None) and (bregion not in DEBUG_bregion_list):
             continue
@@ -2053,7 +2073,7 @@ def euclidian_time_resolved_fast_shuffled(DFallpa, animal, date, SAVEDIR_ANALYSI
 
                             # Final save dir
                             if list_unstable_badstrokes == [(True, True, True)]:
-                                # Already ran above, the code that does: remove_drift, remove_singleprims_unstable
+                                # Already ran above.
                                 SAVEDIR = f"{SAVEDIR_ANALYSIS}/{which_level}-{bregion}-{event}--prune={prune_version}-ss={subspace_projection}-nodrift={True}-SpUnstable={True}-RmBadStrks={remove_trials_with_bad_strokes}-fit_twind={subspace_projection_fitting_twind}-subchaniterv2={i_sub}"
                                 # BEcuase alreayd doing above, avoid doing again here.
                                 remove_drift, remove_singleprims_unstable = False, False # Already done above in preprocess_dfallpa_prune_chans
@@ -2157,7 +2177,7 @@ def euclidian_time_resolved_fast_shuffled(DFallpa, animal, date, SAVEDIR_ANALYSI
                                 # train_inds has FEWER inds than test_inds
                                 train_inds = [int(i) for i in train_inds]
                                 test_inds = [int(i) for i in test_inds]
-                                assert len(train_inds)<=len(test_inds)
+                                # assert len(train_inds)<=len(test_inds)
 
                                 ############# DO DIM REDUCTION
                                 savedir = f"{SAVEDIR}/preprocess/i_dimredu={_i_dimredu}"
@@ -2303,7 +2323,6 @@ def euclidian_time_resolved(animal, date, PA, which_level,
 
 def targeted_dim_reduction_plot_single_run(DFDIST, var_effect, SAVEDIR):
     """
-    Plot results from euclidean dist usning targeted_dim_reduction.
     """
     import seaborn as sns
     from pythonlib.tools.snstools import rotateLabel
@@ -2402,8 +2421,8 @@ def targeted_dim_reduction_plot_single_run(DFDIST, var_effect, SAVEDIR):
 
 def targeted_dim_reduction_post_split_into_specicic_datasets(DFDIST, var_effect):
     """
-    # (1) Extract subset datasets, each reflecting comparison between two (tk_sifirst)
     DFDIST should have "animal" and "date" keys.
+
     """
 
     # This MUST be a single (animal, date) dataset -- assumes so. Check that it is.
@@ -2412,6 +2431,7 @@ def targeted_dim_reduction_post_split_into_specicic_datasets(DFDIST, var_effect)
     assert len(DFDIST["date"].unique())==1
     
     assert "tk_sifirst_sorted" in DFDIST, "need to postprocess first"
+
 
     # (1) Extract subset datasets, each reflecting comparison between two (tk_sifirst)
 
@@ -2490,10 +2510,10 @@ def targeted_dim_reduction_post_split_into_specicic_datasets(DFDIST, var_effect)
 
     return dict_dfdists
 
+
 def targeted_dim_reduction_wrapper(DFallpa, animal, date, SAVEDIR_ANALYSIS, variables,  
                                    variables_is_cat, var_effect = VAR_SHAPE):
     """
-    All code for performing and then computing targeted dim reduction, and then euclidean distance.
     """
     import os
 
@@ -2905,7 +2925,10 @@ def plot_heatmap_firing_rates_all_wrapper(DFallpa, SAVEDIR_ANALYSIS, animal, dat
 
         ########### [MAJOR HACK]
         if DO_HACK:
-            PA = PA.regress_neuron_task_variables_subtract_from_activity(0.1, 0.02, twind_analy)
+            tbin_dur = 0.1
+            tbin_slide = 0.05
+            twind = twind_analy
+            PA = PA.regress_neuron_task_variables_subtract_from_activity(tbin_dur, tbin_slide, twind)
         ############
 
         # for prune_version in ["sp_char_0", "pig_char_1plus"]:
@@ -2934,6 +2957,7 @@ def plot_heatmap_firing_rates_all_wrapper(DFallpa, SAVEDIR_ANALYSIS, animal, dat
             # for subspace_projection in ["task_shape"]: # NOTE: shape_prims_single not great, you lose some part of preSMA context-dependence...
                 if (DEBUG_subspace_projection is not None) and (DEBUG_subspace_projection!=subspace_projection):
                     continue
+
                 if subspace_projection is not None:
                     # plot only cleaned up data.
                     list_unstable_badstrokes = [(True, True, True)]
@@ -3911,6 +3935,23 @@ if __name__=="__main__":
             os.makedirs(SAVEDIR_ANALYSIS, exist_ok=True)
             print(SAVEDIR_ANALYSIS)
             behstrokes_extract_char_clust_sim(PA, animal, date, SAVEDIR_ANALYSIS, PLOT=True)
+        
+        elif plotdo==4.1:
+            """ [GOOD] Compare motor stats across characeter and sp.  Lot sof pltos.
+            for revision, focusing on char stroke 2+
+            """
+
+            var_shape = VAR_SHAPE
+            SAVEDIR_ANALYSIS = f"/lemur2/lucas/analyses/recordings/main/euclidian_char_sp/motor_comparison/{animal}-{date}-combine={combine}-var={var_shape}"
+            os.makedirs(SAVEDIR_ANALYSIS, exist_ok=True)
+            print(SAVEDIR_ANALYSIS)
+
+            # Set this to None, to run the first time, ie to get every single (char1+, sp) pair. This saves them so that
+            # later can load to do thresholding.
+            for nmax_for_pairs in [None, 30]:
+                # Also do 30, so that it makes example drwaing plots.
+                behstrokes_preprocess_plot_motor_stats_similarity(DFallpa, animal, date, var_shape, SAVEDIR_ANALYSIS, 
+                                                                char_stroke1_plus=True, nmax_for_pairs=nmax_for_pairs)
 
         elif plotdo==5:
             """
@@ -3921,9 +3962,6 @@ if __name__=="__main__":
             /home/lucas/code/neuralmonkey/neuralmonkey/notebooks_tutorials/241002_char_euclidian_pop.ipynb
             "### [MULT DAYS] for: euclidian_time_resolved_fast_shuffled"
             """
-
-            assert False, "should use 5.1 -- that code works, although 5 should work, but havenet tested"
-            # This was original submission.
 
             if VAR_SHAPE == "shape_semantic_grp":
                 SAVEDIR_ANALYSIS = f"/lemur2/lucas/analyses/recordings/main/euclidian_char_sp/EUCL_QUICK_SHUFFLE/{animal}-{date}-combine={combine}-wl={version}"
@@ -3944,29 +3982,22 @@ if __name__=="__main__":
         
         elif plotdo==5.1:
             """
-            Like 5, but HACKY for revision, looking at all stroke indices.
-            Now, this does all plots, including the original submission.
-
-            Then, do mult plots (summaries across dates and animals) using notebook: 
-            /home/lucas/code/neuralmonkey/neuralmonkey/notebooks_tutorials/241002_char_euclidian_pop.ipynb
-            "### [MULT DAYS] for: euclidian_time_resolved_fast_shuffled"
+            Like 5, but HACKY for revision, looking at all stroke indices
             """
 
             DEBUG_bregion_list = None
-            DO_RSA_HEATMAPS = True
-            HACK = True # Always on.
-            assert HACK == True
+            HACK = True
             # for DO_REGRESS_HACK in [True, False]:
             for DO_REGRESS_HACK in [True, False]:
                 SAVEDIR_ANALYSIS = f"/lemur2/lucas/analyses/recordings/main/euclidian_char_sp/EUCL_QUICK_SHUFFLE_revision-VAR_SHAPE={VAR_SHAPE}/{animal}-{date}-combine={combine}-wl={version}-00_stroke-regrhack={DO_REGRESS_HACK}"
                 os.makedirs(SAVEDIR_ANALYSIS, exist_ok=True)
                 print(SAVEDIR_ANALYSIS)
-                euclidian_time_resolved_fast_shuffled(DFallpa, animal, date, SAVEDIR_ANALYSIS, DO_RSA_HEATMAPS=DO_RSA_HEATMAPS, 
+                euclidian_time_resolved_fast_shuffled(DFallpa, animal, date, SAVEDIR_ANALYSIS, DO_RSA_HEATMAPS=True, 
                                         HACK = HACK, DEBUG_bregion_list=DEBUG_bregion_list, DO_REGRESS_HACK=DO_REGRESS_HACK)
             
         elif plotdo==6:
             """
-            Targeted dim reductions, and then followed by variety of analyses and plots:
+            Targeted dim reductions, many analyses and plots:
             - state space.
             - rsa.
             - euclidian distance
@@ -3994,6 +4025,7 @@ if __name__=="__main__":
                     targeted_dim_reduction_wrapper(DFallpa, animal, date, SAVEDIR_ANALYSIS,
                                                             variables, variables_is_cat, var_effect = var_effect)
 
+        elif plotdo==7:
             """
             GOOD - Motor vs. shape encoding
             """
@@ -4004,6 +4036,11 @@ if __name__=="__main__":
             
             motor_encoding_score_wrapper(DFallpa, animal, date, SAVEDIR_ANALYSIS)
         
+        elif plotdo==8:
+            # Cross-temporal scoring. Consider each time bin for char vs. each time bin for SP.
+            assert False, "in progress -- see notebook..."
+            # Notebook: /home/lucas/code/neuralmonkey/neuralmonkey/notebooks_tutorials/241002_char_euclidian_pop.ipynb
+            # Section: Cross-temporal scoring
         else:
             print(plotdo)
             assert False   
