@@ -1,13 +1,13 @@
 
 clear all; close all; 
-ANIMAL = 'Pancho';
-DATE = 220814;
-% SKIP_RAW_PLOTS_EACH_CLUST = true;
+ANIMAL = 'Diego';
+DATE = 231206;
+SKIP_RAW_PLOTS_EACH_CLUST = true;
 SKIP_LOADING_DATSTRUCT=true;
 
 % Run these, no without human intervention
-%kspostprocess_extract(ANIMAL, DATE);
-%kspostprocess_metrics_and_label(ANIMAL, DATE, SKIP_RAW_PLOTS_EACH_CLUST);
+% kspostprocess_extract(ANIMAL, DATE);
+% kspostprocess_metrics_and_label(ANIMAL, DATE, SKIP_RAW_PLOTS_EACH_CLUST);
     
 % This is the human manual curation step.
 kspostprocess_manual_curate_merge(ANIMAL, DATE, SKIP_LOADING_DATSTRUCT);
