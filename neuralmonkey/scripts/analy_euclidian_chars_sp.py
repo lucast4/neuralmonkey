@@ -1572,6 +1572,386 @@ def euclidian_time_resolved(animal, date, PA, which_level,
 
         plt.close("all")
 
+def targeted_dim_reduction_plot_single_run(DFDIST, var_effect, SAVEDIR):
+    """
+    Plot results from euclidean dist usning targeted_dim_reduction.
+    """
+    import seaborn as sns
+    from pythonlib.tools.snstools import rotateLabel
+    from pythonlib.tools.plottools import savefig
+    from pythonlib.tools.pandastools import grouping_plot_n_samples_conjunction_heatmap
+    from pythonlib.tools.pandastools import append_col_with_grp_index
+
+    DFDIST = append_col_with_grp_index(DFDIST, [f"{var_effect}_same", "task_kind_same"], "same-shape|tk")
+    DFDIST["tk_12_sorted"] = [tuple(sorted([x["task_kind_1"], x["task_kind_2"]])) for _, x in DFDIST.iterrows()]
+    DFDIST["sifirst_12_sorted"] = [tuple(sorted([x["stroke_index_is_first_1"], x["stroke_index_is_first_2"]])) for _, x in DFDIST.iterrows()]
+    # One plot for each pair of task kinds that are different.
+
+    # Create a new variable -- (task_kind, stroke is first)
+    for i in [1, 2]:
+        DFDIST = append_col_with_grp_index(DFDIST, [f"task_kind_{i}", f"stroke_index_is_first_{i}"], f"tk_sifirst_{i}")
+    DFDIST["tk_sifirst_same"] = DFDIST["tk_sifirst_1"] == DFDIST["tk_sifirst_2"]
+    DFDIST["tk_sifirst_12"] = DFDIST["tk_sifirst_1"] + "|" + DFDIST["tk_sifirst_2"]
+    DFDIST["tk_sifirst_sorted"] = [tuple(sorted([x["tk_sifirst_1"], x["tk_sifirst_2"]])) for _, x in DFDIST.iterrows()]
+
+    # Split into 
+    list_tk_sifirst = ["character|0", "character|1", "prims_single|1", "prims_on_grid|0", "prims_on_grid|1"]
+    list_tksi_pairs = []
+    for i in range(len(list_tk_sifirst)):
+        for j in range(len(list_tk_sifirst)):
+            if j>i:
+                tmp1 = list_tk_sifirst[i]
+                tmp2 = list_tk_sifirst[j]
+                if tmp1[:8] != tmp2[:8]:
+                    list_tksi_pairs.append(
+                        [list_tk_sifirst[i], list_tk_sifirst[j]]
+                    )
+
+    #TODO: Replace this section (this loop) with targeted_dim_reduction_post_split_into_specicic_datasets. This is tricky becuase this loop makes plots that are not included in targeted_dim_reduction_post_split_into_specicic_datasets
+    # TODO: ignore those plots. they are made in the final plotting done on the mult data. Use that code here.
+
+    for tk_sifirst_pair in list_tksi_pairs:
+        key = tuple(sorted(tk_sifirst_pair))
+        savedir = f"{SAVEDIR}/tk_sifirst_pair={key}"
+        os.makedirs(savedir, exist_ok=True)
+
+        # (1) Pull out this specific dataset
+        a = DFDIST["tk_sifirst_sorted"] == key
+        b = DFDIST["tk_sifirst_sorted"] == (tk_sifirst_pair[0], tk_sifirst_pair[0])
+        c = DFDIST["tk_sifirst_sorted"] == (tk_sifirst_pair[1], tk_sifirst_pair[1])
+        dfdist = DFDIST[(a | b | c)].reset_index(drop=True)
+        print(len(dfdist))
+
+        if False: # Old method, harder to work with
+            a = (DFDIST["task_kind_12"] == "character|prims_single") & (DFDIST["stroke_index_is_first_12"] == "0|1")
+            b = (DFDIST["task_kind_12"] == "prims_single|character") & (DFDIST["stroke_index_is_first_12"] == "1|0")
+            c = (DFDIST["task_kind_12"] == "character|character") & (DFDIST["stroke_index_is_first_12"] == "0|0")
+            d = (DFDIST["task_kind_12"] == "prims_single|prims_single") & (DFDIST["stroke_index_is_first_12"] == "1|1")
+
+            dfdist = DFDIST[(a | b | c | d)].reset_index(drop=True)
+            print(len(dfdist))
+
+        # Keep only those shapes that exists across the pair of (task_kind, si_is_first)
+        from pythonlib.tools.pandastools import grouping_print_n_samples
+        grouping_print_n_samples(DFDIST, ["tk_sifirst_sorted", "task_kind_12", "stroke_index_is_first_12"])
+        # Only keep shapes that exist in both tk_sifirst
+
+        from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper
+        # grouping_print_n_samples()
+        
+        tmp = dfdist.loc[:, [f"{var_effect}_1", "tk_sifirst_1"]].values.tolist() + dfdist.loc[:, [f"{var_effect}_2", "tk_sifirst_2"]].values.tolist()
+        dftmp = pd.DataFrame(tmp, columns=[var_effect, "tk_sifirst"])
+
+        fig = grouping_plot_n_samples_conjunction_heatmap(dftmp, var_effect, "tk_sifirst")
+        savefig(fig, f"{savedir}/counts_before_prune_to_shapes_enough_data.pdf")
+        dfout, dict_dfthis = extract_with_levels_of_conjunction_vars_helper(dftmp, "tk_sifirst", 
+                                                    [var_effect], 1, plot_counts_heatmap_savepath=f"{savedir}/counts.pdf")
+        
+        print(len(dftmp), " --> ", len(dfout))
+        shapes_keep = dfout[var_effect].unique().tolist()
+
+        print(len(dfdist))
+        dfdist = dfdist[(dfdist[f"{var_effect}_1"].isin(shapes_keep)) & (dfdist[f"{var_effect}_2"].isin(shapes_keep))].reset_index(drop=True)
+        print(len(dfdist))
+
+        if len(dfout)>0: # somtimetimes shap emight not exist across these cases
+            fig = grouping_plot_n_samples_conjunction_heatmap(dfout, var_effect, "tk_sifirst")
+            savefig(fig, f"{savedir}/counts_after_prune_to_shapes_enough_data.pdf")
+
+
+            for y in ["dist_yue_diff", "dist_mean"]:
+                fig = sns.catplot(data=dfdist, x="bregion", y=y, hue="same-shape|tk", 
+                            kind="bar", aspect=1)
+                rotateLabel(fig)
+                savefig(fig, f"{savedir}/catplot-summary-{y}-1.pdf")
+
+            from pythonlib.tools.pandastools import grouping_plot_n_samples_conjunction_heatmap
+            fig = grouping_plot_n_samples_conjunction_heatmap(dfdist, f"{var_effect}_1", f"{var_effect}_2", ["task_kind_12", "same-shape|tk"]);
+            savefig(fig, f"{savedir}/counts-after_prune_pairwise.pdf")
+        plt.close("all")
+
+
+def targeted_dim_reduction_post_split_into_specicic_datasets(DFDIST, var_effect):
+    """
+    # (1) Extract subset datasets, each reflecting comparison between two (tk_sifirst)
+    DFDIST should have "animal" and "date" keys.
+    """
+
+    # This MUST be a single (animal, date) dataset -- assumes so. Check that it is.
+    assert "date" in DFDIST
+    assert len(DFDIST["animal"].unique())==1
+    assert len(DFDIST["date"].unique())==1
+    
+    assert "tk_sifirst_sorted" in DFDIST, "need to postprocess first"
+
+    # (1) Extract subset datasets, each reflecting comparison between two (tk_sifirst)
+
+    # - Just get the potential pairs
+    list_tk_sifirst = ["character|0", "character|1", "prims_single|1", "prims_on_grid|0", "prims_on_grid|1"]
+    list_tksi_pairs = []
+    for i in range(len(list_tk_sifirst)):
+        for j in range(len(list_tk_sifirst)):
+            if j>i:
+                tmp1 = list_tk_sifirst[i]
+                tmp2 = list_tk_sifirst[j]
+                if tmp1[:8] != tmp2[:8]:
+                    list_tksi_pairs.append(
+                        [list_tk_sifirst[i], list_tk_sifirst[j]]
+                    )
+    # - For each pair, get the dataset
+    dict_dfdists = {}
+    for tk_sifirst_pair in list_tksi_pairs:
+        key = tuple(sorted(tk_sifirst_pair))
+
+        if False:
+            savedir = f"{SAVEDIR}/tk_sifirst_pair={key}"
+            os.makedirs(savedir, exist_ok=True)
+
+        # (1) Pull out this specific dataset
+        a = DFDIST["tk_sifirst_sorted"] == key
+        b = DFDIST["tk_sifirst_sorted"] == (tk_sifirst_pair[0], tk_sifirst_pair[0])
+        c = DFDIST["tk_sifirst_sorted"] == (tk_sifirst_pair[1], tk_sifirst_pair[1])
+        dfdist = DFDIST[(a | b | c)].reset_index(drop=True)
+
+        if False: # Old method, harder to work with
+            a = (DFDIST["task_kind_12"] == "character|prims_single") & (DFDIST["stroke_index_is_first_12"] == "0|1")
+            b = (DFDIST["task_kind_12"] == "prims_single|character") & (DFDIST["stroke_index_is_first_12"] == "1|0")
+            c = (DFDIST["task_kind_12"] == "character|character") & (DFDIST["stroke_index_is_first_12"] == "0|0")
+            d = (DFDIST["task_kind_12"] == "prims_single|prims_single") & (DFDIST["stroke_index_is_first_12"] == "1|1")
+
+            dfdist = DFDIST[(a | b | c | d)].reset_index(drop=True)
+            print(len(dfdist))
+
+        # (2) Keep only those shapes that have data across the pair of (task_kind, si_is_first)
+        from pythonlib.tools.pandastools import grouping_print_n_samples
+        from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper
+        if False:
+            grouping_print_n_samples(DFDIST, ["tk_sifirst_sorted", "task_kind_12", "stroke_index_is_first_12"])
+        
+        tmp = dfdist.loc[:, [f"{var_effect}_1", "tk_sifirst_1"]].values.tolist() + dfdist.loc[:, [f"{var_effect}_2", "tk_sifirst_2"]].values.tolist()
+        dftmp = pd.DataFrame(tmp, columns=[var_effect, "tk_sifirst"])
+
+        if False:
+            fig = grouping_plot_n_samples_conjunction_heatmap(dftmp, var_effect, "tk_sifirst")
+            savefig(fig, f"{savedir}/counts_before_prune_to_shapes_enough_data.pdf")
+
+        if False:
+            plot_counts_heatmap_savepath = f"{savedir}/counts.pdf"
+        else:
+            plot_counts_heatmap_savepath = None
+        dfout, _ = extract_with_levels_of_conjunction_vars_helper(dftmp, "tk_sifirst", 
+                                                    [var_effect], 1, plot_counts_heatmap_savepath=plot_counts_heatmap_savepath)
+        
+        if len(dfout)>0:
+            shapes_keep = dfout[var_effect].unique().tolist()
+        else:
+            shapes_keep = []
+
+        dfdist = dfdist[(dfdist[f"{var_effect}_1"].isin(shapes_keep)) & (dfdist[f"{var_effect}_2"].isin(shapes_keep))].reset_index(drop=True)
+
+        if False:
+            if len(dfout)>0: # somtimetimes shap emight not exist across these cases
+                fig = grouping_plot_n_samples_conjunction_heatmap(dfout, var_effect, "tk_sifirst")
+                savefig(fig, f"{savedir}/counts_after_prune_to_shapes_enough_data.pdf")
+
+        # SAVE IT.
+        dict_dfdists[key] = dfdist
+
+    plt.close("all")
+
+    return dict_dfdists
+
+def targeted_dim_reduction_wrapper(DFallpa, animal, date, SAVEDIR_ANALYSIS, variables,  
+                                   variables_is_cat, var_effect = VAR_SHAPE):
+    """
+    All code for performing and then computing targeted dim reduction, and then euclidean distance.
+    """
+    import os
+
+    # SAVEDIR = f"/tmp/CHAR_SP/{bregion}"
+    from neuralmonkey.scripts.analy_euclidian_chars_sp import preprocess_pa, N_MIN_TRIALS_PER_SHAPE, NPCS_KEEP
+    from pythonlib.tools.pandastools import append_col_with_grp_index, extract_with_levels_of_conjunction_vars_helper, extract_with_levels_of_var_good, grouping_plot_n_samples_conjunction_heatmap
+
+    # prune_version = None
+    twind_analy = (-1, 0.6)
+    
+    # twind_scal = (-0.5, -0.05)
+    list_twind_scal = [(-0.5, -0.05), (-0.3, 0.2), (-0.1, 0.3)]
+    list_npcs_keep = [2, 4, 6]
+
+    # For targeted pca
+    TBIN_DUR = 0.15
+    TBIN_SLIDE = 0.05
+
+    # Params -- targeted PCA
+    # variables = ["task_kind", "stroke_index_is_first", "loc_on_clust_cat", var_effect]
+    # variables_is_cat = [True, True, True, True]
+
+    # variables = ["task_kind", "stroke_index_is_first", var_effect]
+    # variables_is_cat = [True, True, True]
+
+    # variables = ["stroke_index_is_first", var_effect]
+    # variables_is_cat = [True, True]
+
+    # variables = ["stroke_index_is_first"]
+    # variables_is_cat = [True]
+
+    remove_drift, remove_singleprims_unstable, remove_trials_with_bad_strokes = True, True, True
+
+    list_dfdist =[]
+    for _, row in DFallpa.iterrows():
+        bregion = row["bregion"]
+        which_level = row["which_level"]
+        event = row["event"]
+        PA = row["pa"]
+
+        SAVEDIR = f"{SAVEDIR_ANALYSIS}/{which_level}-{bregion}-{event}-var={var_effect}"
+        os.makedirs(SAVEDIR, exist_ok=True)
+        print("SAVING AT ... ", SAVEDIR)
+
+        #### Final params
+        if False:
+            # This is what is done in paper
+            skip_dim_reduction = False # will do so below... THis just do other preprocessing, and widowing
+            subspace_projection = "task_shape"
+            tbin_dur = 0.15 # Matching params in other analyses
+            tbin_slide = 0.02
+            subspace_projection_fitting_twind = (-0.8, 0.3)
+            PAthis = preprocess_pa(animal, date, PA, savedir, prune_version, 
+                                n_min_trials_per_shape=N_MIN_TRIALS_PER_SHAPE, shape_var=var_effect, plot_drawings=False,
+                                remove_chans_fr_drift=remove_drift, subspace_projection=subspace_projection, 
+                                    twind_analy=twind_analy, tbin_dur=tbin_dur, tbin_slide=tbin_slide, NPCS_KEEP=NPCS_KEEP,
+                                    raw_subtract_mean_each_timepoint=False, remove_singleprims_unstable=remove_singleprims_unstable,
+                                    remove_trials_with_bad_strokes=remove_trials_with_bad_strokes, 
+                                    subspace_projection_fitting_twind=subspace_projection_fitting_twind,
+                                    skip_dim_reduction=skip_dim_reduction)
+        else:
+            # Clean up
+            # (Targeted dim reduction)
+            # skip_dim_reduction = True
+            # subspace_projection = None
+            savedir = f"{SAVEDIR}/preprocess"
+            os.makedirs(savedir, exist_ok=True)
+            tbin_dur = None
+            tbin_slide = None
+            PA = preprocess_pa(animal, date, PA, savedir, None, 
+                                n_min_trials_per_shape=N_MIN_TRIALS_PER_SHAPE, shape_var=var_effect, plot_drawings=False,
+                                remove_chans_fr_drift=remove_drift, subspace_projection=None, 
+                                    twind_analy=twind_analy, tbin_dur=tbin_dur, tbin_slide=tbin_slide, NPCS_KEEP=None,
+                                    raw_subtract_mean_each_timepoint=False, remove_singleprims_unstable=remove_singleprims_unstable,
+                                    remove_trials_with_bad_strokes=remove_trials_with_bad_strokes, 
+                                    subspace_projection_fitting_twind=None,
+                                    skip_dim_reduction=True)
+
+        ### Preprocessing
+        # Further prune so that each (task_kind, si_is_first) has minimum n trials
+        dflab = PA.Xlabels["trials"]
+        
+        dflab, inds_trials = extract_with_levels_of_var_good(dflab, [var_effect, "task_kind", "stroke_index_is_first"], N_MIN_TRIALS_PER_SHAPE)
+        PA = PA.slice_by_dim_indices_wrapper("trials", inds_trials)
+
+        fig = grouping_plot_n_samples_conjunction_heatmap(dflab, var_effect, "tk_sifirst")
+        plot_counts_heatmap_savepath = f"{SAVEDIR}/counts_actually_final.pdf"        
+        savefig(fig, plot_counts_heatmap_savepath)
+        plt.close("all")
+        # dflab = append_col_with_grp_index(dflab, [var_effect, "task_kind", "stroke_index_is_first"], "_tmp")
+
+        # Add some variables
+        dflab = PA.Xlabels["trials"]
+        dflab["loc_on_clust_cat"] = [f"clust_{x}" for x in dflab["loc_on_clust"]]
+        assert sum(dflab["gap_from_prev_angle_binned"].isna())==0
+        dflab["reach_angle_binned"] = [f"angle_{x}" for x in dflab["gap_from_prev_angle_binned"]]
+        PA.Xlabels["trials"] = dflab
+
+        ### RUN
+        from neuralmonkey.scripts.analy_syntax_good_eucl_trial import state_space_targeted_pca_scalar_single_one_var_mult_axes
+        LIST_VAR_VAROTHERS = [
+            (var_effect, ["task_kind", "stroke_index"]),
+            (var_effect, ["task_kind", "stroke_index_semantic"]),
+            (var_effect, ["task_kind"]),
+        #     ("task_kind", [var_effect]),
+        #     ("stroke_index_semantic", ["task_kind"]),
+            ("stroke_index_semantic", ["task_kind", var_effect]),
+        ]
+
+        LIST_DIMS = [(0,1), (2,3), (4,5)]
+
+        # Newer version, multiple dims for each var
+        for twind_scal in list_twind_scal:
+            
+            # Convert to scalar, and do dim reduction (targeted PCA)
+            npcs_keep_plot = 6
+            savedir = f"{SAVEDIR}/statespace/twindscal={twind_scal}-npcs={npcs_keep_plot}"
+            os.makedirs(savedir, exist_ok=True)
+            # savedir_pca_subspaces = f"{SAVEDIR}/pca_in_subspaces"
+            # os.makedirs(savedir_pca_subspaces, exist_ok=True)
+            pa_subspace, _, _, _, _ = state_space_targeted_pca_scalar_single_one_var_mult_axes(
+                    PA, twind_scal, variables, variables_is_cat, var_effect, npcs_keep_plot, 
+                    LIST_VAR_VAROTHERS, LIST_DIMS, savedir, just_extract_paredu=False,
+                    savedir_pca_subspaces=savedir, tbin_dur=TBIN_DUR, tbin_slide=TBIN_SLIDE)
+            
+            for npcs_keep in list_npcs_keep:
+                
+                pa_subspace_this = pa_subspace.slice_by_dim_indices_wrapper("chans", list(range(npcs_keep)))
+                assert pa_subspace_this.X.shape[0] == npcs_keep
+
+                ################################################
+                ### Compute euclidian distnace
+                # var_conj = "task_kind"
+                # vars_group = [var_effect, var_conj]
+                vars_group = [var_effect, "task_kind", "stroke_index_is_first"]
+
+                # MAke RSA Plot
+                from neuralmonkey.analyses.euclidian_distance import timevarying_compute_fast_to_scalar
+        
+                # Prune to scalar window
+                ###################################### Running euclidian
+
+                # (1) Data
+                # Make rsa heatmaps.
+                savedir = f"{SAVEDIR}/rsa_heatmap/twindscal={twind_scal}-npcs={npcs_keep}"
+                os.makedirs(savedir, exist_ok=True)
+                dfdist, _ = timevarying_compute_fast_to_scalar(pa_subspace_this, label_vars=vars_group, rsa_heatmap_savedir=savedir)
+
+                dfdist["bregion"] = bregion
+                # dfdist["prune_version"] = prune_version
+                dfdist["which_level"] = which_level
+                dfdist["event"] = event
+                # dfdist["subspace_projection"] = subspace_projection
+                # dfdist["subspace_projection_fitting_twind"] = [subspace_projection_fitting_twind for _ in range(len(dfdist))]
+                # dfdist["dim_redu_fold"] = _i_dimredu
+                dfdist["twind_scal"] = [twind_scal for _ in range(len(dfdist))]
+                dfdist["npcs_keep"] = npcs_keep
+                list_dfdist.append(dfdist)
+
+    DFDIST = pd.concat(list_dfdist).reset_index(drop=True)
+
+    ### SAVE IT
+    DFDIST.to_pickle(f"{SAVEDIR_ANALYSIS}/DFDIST.pkl")
+
+    ### PLOT
+    for twind_scal in list_twind_scal:
+        for npcs_keep in list_npcs_keep:
+            dfdist = DFDIST[(DFDIST["twind_scal"] == twind_scal) & (DFDIST["npcs_keep"] == npcs_keep)].reset_index(drop=True)
+            savedir = f"{SAVEDIR_ANALYSIS}/plots/twindscal={twind_scal}-npcs={npcs_keep}"
+            os.makedirs(savedir, exist_ok=True)
+            targeted_dim_reduction_plot_single_run(dfdist, var_effect, savedir)
+
+    if False: # these are too large to plot
+        import seaborn as sns
+        sns.catplot(data=DFDIST, x="bregion", y="dist_yue_diff", hue="same-shape|tk", 
+                    col="tk_12_sorted", row="sifirst_12_sorted", kind="bar",
+                    aspect=1.2)
+        import seaborn as sns
+        sns.catplot(data=DFDIST, x="bregion", y="dist_yue_diff", hue="shape_semantic_grp_same", 
+                    col="task_kind_12_sorted", row="stroke_index_is_first_same", kind="bar",
+                    aspect=1.5)
+        import seaborn as sns
+        sns.catplot(data=DFDIST, x="bregion", y="dist_yue_diff", hue="shape_semantic_grp_same", col="task_kind_12_sorted", row="stroke_index_is_first_12", kind="bar")    
+
+    plt.close("all")
+    
+    return DFDIST
 
 def run(animal, date,  DFallpa, SAVEDIR, subspace_projection, prune_version, NPCS_KEEP, 
         raw_subtract_mean_each_timepoint, n_min_trials_per_shape,
@@ -2745,6 +3125,35 @@ if __name__=="__main__":
             euclidian_time_resolved_fast_shuffled(DFallpa, animal, date, SAVEDIR_ANALYSIS, DO_RSA_HEATMAPS=DO_RSA_HEATMAPS)
         
         elif plotdo==6:
+            """
+            Targeted dim reductions, and then followed by variety of analyses and plots:
+            - state space.
+            - rsa.
+            - euclidian distance
+            See notebook for devo:
+            - # [GOOD] Targeted dim reduction --> Many plots
+            """
+
+            for var_effect in ["shape_semantic_grp", "shape_semantic"]:
+
+                # The set of regression variables.
+                LIST_VARIABLES = [
+                    ["task_kind", "stroke_index_is_first", "loc_on_clust_cat", "reach_angle_binned", var_effect],
+                    ["task_kind", "stroke_index_is_first", "loc_on_clust_cat", var_effect],
+                    ["task_kind", "stroke_index_is_first", var_effect],
+                    ["stroke_index_is_first", var_effect],
+                ]
+
+                for variables in LIST_VARIABLES:
+                    variables_is_cat = [True for _ in range(len(variables))]
+    
+                    SAVEDIR_ANALYSIS = f"/lemur2/lucas/analyses/recordings/main/euclidian_char_sp/targeted_pca/{animal}-{date}-combine={combine}/var={var_effect}--varsregr={'|'.join(variables)}"
+                    os.makedirs(SAVEDIR_ANALYSIS, exist_ok=True)
+                    print("Saving to: ", SAVEDIR_ANALYSIS)
+
+                    targeted_dim_reduction_wrapper(DFallpa, animal, date, SAVEDIR_ANALYSIS,
+                                                            variables, variables_is_cat, var_effect = var_effect)
+
             """
             GOOD - Motor vs. shape encoding
             """
