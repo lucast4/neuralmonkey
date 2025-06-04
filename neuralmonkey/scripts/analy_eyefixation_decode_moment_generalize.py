@@ -205,7 +205,7 @@ def _plot_all_dfscores(Dc, DFSCORES, savedir, VAR_EARLY_LATE):
     from pythonlib.tools.pandastools import summarize_featurediff
     DFSCORES_AGG = aggregGeneral(DFSCORES, ["twind", "var_test", "vars_others_grp", "decoder_class", "pa_class"], values=["score", "score_norm"], 
                 nonnumercols=["seqc_0_shape", VAR_EARLY_LATE, "same_class", "decoder_class_good", 'decoder_class_was_fixated', 
-                              "decoder_idx", "pa_class_is_in_decoder", "decoder_class_semantic", "decoder_class_is_in_pa", "decoder_class_semantic_str"])
+                              "pa_class_is_in_decoder", "decoder_class_semantic", "decoder_class_is_in_pa", "decoder_class_semantic_str"])
     DFSCORES_NOT_DRAWN = DFSCORES[DFSCORES["decoder_class_was_first_drawn"]==False].reset_index(drop=True)
     
     if False:
@@ -765,7 +765,7 @@ if __name__=="__main__":
     DFallpa = pd.concat([DFallpa1, DFallpa2]).reset_index(drop=True)
 
     from neuralmonkey.classes.population_mult import dfpa_concatbregion_preprocess_wrapper
-    dfpa_concatbregion_preprocess_wrapper(DFallpa, fr_mean_subtract_method=fr_normalization_method)
+    dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, fr_mean_subtract_method=fr_normalization_method)
 
     ### PLOTS
     SAVEDIR_ANALYSIS = f"/lemur2/lucas/analyses/recordings/main/eyetracking_analyses/DECODE_MOMENT_shape-fixation|seqc_0_shape/{animal}-{date}-combine={combine_areas}-wl={which_level}-norm={fr_normalization_method}"
