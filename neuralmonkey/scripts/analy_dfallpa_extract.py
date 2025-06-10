@@ -22,7 +22,7 @@ exclude_bad_areas = True
 SPIKES_VERSION = "kilosort_if_exists" # since Snippets not yet extracted for ks
 # SPIKES_VERSION = "tdt" # since Snippets not yet extracted for ks
 # combine_into_larger_areas = False
-
+# Diego_use_main_21 = False # For char clust, which set of labels to use
 
 # events_keep = None
 # events_keep = ["03_samp", "05_first_raise", "06_on_strokeidx_0"]
@@ -45,6 +45,9 @@ def extract_dfallpa_helper(animal, date, question, combine_into_larger_areas,
 
     if question=="PIG_BASE_saccade_fix_on":
         list_time_windows = [(-0.4, 0.4)] # to slice data including just within this time window (realtive to events)
+    elif question=="SP_BASE_stroke":
+        # Then want to get entire stroke
+        list_time_windows = [(-0.5, 2.5)]
     else:
         list_time_windows = [(-1.0, 1.8)]
         # list_time_windows = [(-0.8, 1.4)]
@@ -241,4 +244,4 @@ if __name__=="__main__":
 
     # Also extract sitedirty preprocessing (e..g, fr drift metrics)
     from neuralmonkey.classes.population_mult import dfpa_concatbregion_preprocess_wrapper
-    dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date)
+    dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, do_sitesdirty_extraction=True, spikes_version=SPIKES_VERSION)

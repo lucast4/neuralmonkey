@@ -3908,11 +3908,171 @@ class PopAnal():
 
 
     ################ BEHAVIOR
+    def behavior_extract_neural_stroke_aligned(self, ind_trial, lag_neural_vs_beh=0., 
+                                               var_strok="strok_beh", PRINT=False, PLOT=False):
+        """
+        Extract neural and stroke data, where neural data is clipped to align to stroke.
+
+        PARAMS:
+        - lag_neural_vs_beh = 0. # if negative this means get neural data that precedes behavior.
+
+        NOTE: assumes that self is stroke data -- ie. that time 0 is aligned to stroke onset.
+        NOTE: Deals with cases where there is not neough neural data to match duration of stroke, by
+        clipping off the end of the stroke, to match whatever neural data exists.
+
+        MINOR PROBLEM -- this runs over all trial sfor pa, but aligned to a single trail for beh... is
+        inefficient.
+        """
+        from pythonlib.tools.stroketools import strokesInterpolate2
+
+        pa_timestamp_stroke_onset = 0. # assumes self is stroke data.
+
+        self.behavior_extract_strokes_to_dflab(trial_take_first_stroke=True)
+        dflab = self.Xlabels["trials"]
+        strokes = dflab[var_strok].tolist()
+        # Condition the stroke
+        strok = strokes[ind_trial]
+
+        # Get strok, with times now zeroed to stroke onset
+        strok = strok.copy()
+        strok[:, 2] -= strok[0, 2] # to zero them
+        dur_take = strok[-1, 2] - strok[0, 2] # how long is the stroke?
+
+        if PRINT:
+            print("Starting times:")
+            print(self.Times)
+            print(strok[:, 2])
+            print(strok[-1, 2] - strok[0, 2])
+
+        # pull out time window from neural data matching the stroke
+        t1 = pa_timestamp_stroke_onset + lag_neural_vs_beh
+        t2 = pa_timestamp_stroke_onset + dur_take + lag_neural_vs_beh
+
+        if PLOT:
+            fig, axes = plt.subplots(2,1, sharex=True, sharey=True)
+            ax = axes.flatten()[0]
+            ax.plot(strok[:,2], strok[:,0], "b-", label="stroke")
+            ax.plot(self.Times, self.X[0, ind_trial, :], "r-", label="neural")
+            ax.set_title("before align")
+            ax.legend()
+            ax.axvline(t1, color="r")
+            ax.axvline(t2, color="r")
+
+        ###
+        pa = self.slice_by_dim_indices_wrapper("trials", [ind_trial]).slice_by_dim_values_wrapper("times", [t1, t2])
+        times_to_get_beh = pa.Times - lag_neural_vs_beh # undo the lag -- these are the times of beh that are desired
+        assert np.all(times_to_get_beh>=0)
+
+        # If not enough neural data, then need to clip off end of storkes
+        strok = strok[strok[:, 2]<=times_to_get_beh[-1]+0.01, :]
+
+        # Interpolate the beh so that it matches the neural time bins.
+        strok = strokesInterpolate2([strok], ["input_times", times_to_get_beh], plot_outcome=False)[0]
+        assert np.all(strok[:, 2] == times_to_get_beh)
+
+        if PLOT:
+            ax = axes.flatten()[1]
+            ax.plot(strok[:,2], strok[:,0], "b-", label="stroke")
+            ax.plot(pa.Times, pa.X[0, 0, :], "r-", label="neural")
+            ax.set_title("after align")
+            ax.set_xlabel("time (rel stroke onset)")
+            ax.legend()
+
+        if PRINT:
+            print(len(pa.Times))
+            print(strok.shape)
+            print("neural times: ", pa.Times)
+            print("beh times: ", times_to_get_beh)
+            print("beh times: ", strok[:,2])
+
+        return pa, strok
+    
+    def behavior_strokes_kinematics_stats(self, trial_take_first_stroke=True):
+        """
+        Extract strokes, and get variuos stats related to kinmetaics.
+        """
+        
+        assert trial_take_first_stroke, "assumes one stroke below.."
+
+        self.behavior_extract_strokes_to_dflab()
+        dflab = self.Xlabels["trials"]
+        strokes = dflab["strok_beh"].tolist()
+
+        ### MOTOR PARAMETERS
+        # get the initial velocity (angle and magnitude)
+        from pythonlib.dataset.dataset_strokes import DatStrokes
+        DS = DatStrokes()
+        
+        ### For each stroke, compute some features
+        import numpy as np
+        from pythonlib.tools.stroketools import sliceStrokes, slice_strok_by_frac_bounds
+        from pythonlib.tools.stroketools import feature_velocity_vector_angle_norm
+
+        # (1) For initial angle, take start of each stroke 
+        twind = [0, 0.15] # sec
+        strokes_sliced = sliceStrokes(strokes, twind, time_is_relative_each_onset=True, assert_no_lost_strokes=True)
+
+        # - velocity vector
+        angles = [] 
+        norms = []
+        for strok in strokes_sliced:
+            _, a, n = feature_velocity_vector_angle_norm(strok)
+            angles.append(a)
+            norms.append(n)
+        
+        # - circularity
+        from pythonlib.drawmodel.features import strokeCircularity
+        fraclow = 0
+        frachigh = 0.5
+        strokes_sliced = [slice_strok_by_frac_bounds(s, fraclow, frachigh) for s in strokes]
+        # strokes_sliced = slice_strok_by_frac_bounds(strokes, twind, time_is_relative_each_onset=True, assert_no_lost_strokes=True)
+
+        # circularities = strokeCircularity(strokes)
+        circularities = strokeCircularity(strokes_sliced)
+
+        # - location of onset.
+        # (reach angle, relative to on location)
+        onsets_x = [strok[0, 0] for strok in strokes]
+        onsets_y = [strok[0, 1] for strok in strokes]
+
+        # Bin the angles
+        from pythonlib.tools.vectools import bin_angle_by_direction
+        angles_binned = bin_angle_by_direction(angles, num_angle_bins=8)
+
+        # Put motor variables back into dflab
+        dflab["motor_angle"] = angles
+        # dflab["motor_angle_sin"] = angles
+
+        dflab["motor_angle_binned"] = angles_binned
+
+        if "gap_from_prev_angle" in dflab:
+            dflab["gap_from_prev_angle_binned"] = bin_angle_by_direction(dflab["gap_from_prev_angle"].values, num_angle_bins=8)
+
+        dflab["motor_norm"] = norms
+
+        dflab["motor_circ"] = circularities
+
+        dflab["motor_onsetx"] = onsets_x
+
+        dflab["motor_onsety"] = onsets_y
+
+        self.Xlabels["trials"] = dflab
+
     def behavior_extract_strokes_to_dflab(self, trial_take_first_stroke=False):
         """
         Extracts strokes_beh and strokes_task to dflab
         """
         dflab = self.Xlabels["trials"]
+
+        if ("strok_beh" in dflab) and ("strok_task" in dflab):
+            assert trial_take_first_stroke, "hacky only workse for this, assumes it is this"
+            # if trial_take_first_stroke:
+            #     # Then take the first stroke
+            #     for col in ["strok_beh", "strok_task"]:
+            #         strokes = dflab[col].tolist()
+            #         strokes = [s[0] for s in strokes]
+            #         dflab[col] = strokes
+            return
 
         # Collect all the strokes
         strokes_task = []

@@ -17,11 +17,11 @@ if [[ $animal == Diego ]]; then
   # question=RULE_ANBMCK_STROKE
   # combine=0
 
-  ### AnBmCk trial (all, for trial not stroke)
-  # datelist=(230728 231118 240822) # 
-  datelist=(230728 231118 240822 230723 230724 230726 230727 230730 230815 230816 230817 230913 230914 230915 231116 240827 250319 250321) # 
-  question=RULE_BASE_trial
-  combine=0
+  # ### AnBmCk trial (all, for trial not stroke)
+  # # datelist=(230728 231118 240822) # 
+  # datelist=(230728 231118 240822 230723 230724 230726 230727 230730 230815 230816 230817 230913 230914 230915 231116 240827 250319 250321) # 
+  # question=RULE_BASE_trial
+  # combine=0
 
   ### SP vs. Char,
   # # datelist=(231130 231205 231211 231122 231128 231129 231201 231213 231204) # Chars
@@ -30,12 +30,12 @@ if [[ $animal == Diego ]]; then
   # question=CHAR_BASE_stroke
   # combine=1
 
-  ## SP vs. Char,
+  # # SP vs. Char,
   # # datelist=(231130 231205 231211 231122 231128 231129 231201 231213 231204) # Chars
   # # datelist=(231120 231121 231206 231207 231218 231219 231220) # Chars, those left over (added to previous, this gets all)
   # # datelist=(231120 231206 231207 231218 231220) # Chars, those left over (added to previous, this gets all)
-  # # datelist=(231120 231122 231128 231129 231201 231204 231205 231206 231218 231220) # The final set
-  # datelist=(231120 231129 231220) # Missed
+  # # datelist=(231120 231122 231128 231129 231201 231205 231206 231218 231220) # ALL (neural)
+  # datelist=(231206) # KS gotten
   # question=CHAR_BASE_stroke
   # # question=CHAR_BASE_trial
   # combine=1
@@ -47,10 +47,11 @@ if [[ $animal == Diego ]]; then
   # combine=1 
   # get_all_events=1
 
-  ### SINGLE PRIMS (SP)
-  # datelist=(230614 230615 230618 230619 240508 240509 240510 240513 240530) # ALL (location and size) [DONE]
+  ## SINGLE PRIMS (SP)
+  datelist=(230614 230615 230618 230619 240508 240509 240510 240513 240530) # ALL (location and size) [DONE]
   # question=SP_BASE_trial
-  # combine=1
+  question=SP_BASE_stroke
+  combine=1
 
   # ### SP Psycho (switching)
   # # datelist=(240517 240521 240523 240730) # ALL
@@ -58,6 +59,16 @@ if [[ $animal == Diego ]]; then
   # question=SP_psycho_trial
   # combine=1
 
+  # PIG (saccade fixation)
+  # datelist=(230615 230628 230630 240625) 
+  # datelist=(230628 230630 240625) 
+  # question=PIG_BASE_saccade_fix_on
+  # combine=1
+  
+  # # PIG (trial)
+  # datelist=(230628 240625) 
+  # question=PIG_BASE_trial
+  # combine=1 
 
 elif [[ $animal == Diego_seqsup ]]; then
   ### AnBmCk vs. SEQSUP
@@ -72,16 +83,16 @@ elif [[ $animal == Pancho ]]; then
   
   # datelist=(240619 240808 240809) # Syntax TI
 
-  ## AnBmCk and AnBmCk(Two shape sets)
-  # datelist1=(230810 230811 230824 230826 230829 231114 231116 240830 220831 220901 220902 220906 220907 220908 220909 250321 250322) # AnBmCk, ALL
-  # datelist1=(230811 230824 230826 230829 231114 231116) # AnBmCk, SUBSET
-  # datelist1=(220831 220901) # NEED TO FIX BUG
-  datelist1=(250322) # added 4/4/25
-  datelist2=() # SUBSET
-  datelist=(${datelist1[@]} ${datelist2[@]})
-  echo ${datelist[@]}
-  combine=0
-  question=RULE_ANBMCK_STROKE
+  # ## AnBmCk and AnBmCk(Two shape sets)
+  # # datelist1=(230810 230811 230824 230826 230829 231114 231116 240830 220831 220901 220902 220906 220907 220908 220909 250321 250322) # AnBmCk, ALL
+  # # datelist1=(230811 230824 230826 230829 231114 231116) # AnBmCk, SUBSET
+  # # datelist1=(220831 220901) # NEED TO FIX BUG
+  # datelist1=(250322) # added 4/4/25
+  # datelist2=() # SUBSET
+  # datelist=(${datelist1[@]} ${datelist2[@]})
+  # echo ${datelist[@]}
+  # combine=0
+  # question=RULE_ANBMCK_STROKE
 
   # ### AnBmCk trial (all, for trial not stroke)
   # # datelist=(230810 230811 230824 230826 230829 231114 231116 240830 220831 220901 250321 250322 220902 220906 220907 220908 220909) # 
@@ -109,20 +120,39 @@ elif [[ $animal == Pancho ]]; then
   # combine=1 
   # get_all_events=1
 
-  # ## SINGLE PRIMS (SP)
-  # # datelist=(220606 220608 220715 220716 220724 220918 240508 240530) # MANY (location and size). Picked good ones.
-  # # datelist=(220606 220716 220724 220918 240508 240530) # MANY (location and size). Picked good ones. [DONE]
-  # # datelist=(240515) # 
-  # # datelist=(220606 220717 240510 240530) # This completes extraction for all size dates.
-  # # datelist=(221218) # 
-  # datelist=(220715 220716 220717 220724 240530) # Rerunning the final dates, to get PMvl
+  ## SINGLE PRIMS (SP)
+  # datelist=(220606 220608 220715 220716 220724 220918 240508 240530) # MANY (location and size). Picked good ones.
+  # datelist=(220606 220716 220724 220918 240508 240530) # MANY (location and size). Picked good ones. [DONE]
+  # datelist=(240515) # 
+  # datelist=(220606 220717 240510 240530) # This completes extraction for all size dates.
+  # datelist=(221218) # 
+  datelist=(220715 220716 220717 220724 240530) # Rerunning the final dates, to get PMvl
+  # datelist=(220717) # missed a date
   # question=SP_BASE_trial
-  # combine=1
+  question=SP_BASE_stroke
+  combine=1
 
   ### SP Psycho (switching)
   # datelist=(240516 240521 240524) # ALL
   # question=SP_psycho_trial
   # combine=1
+
+  # # PIG (trial)
+  # # datelist=(230620 230622 230623 230626 240612 240618) # all
+  # # datelist=(230622 230626 240612) # subset, just to be quicker
+  # datelist=(240612 240618) # all
+  # question=PIG_BASE_trial
+  # combine=1 
+
+elif [[ $animal == Pancho_pig_sacc_fix ]]; then
+  # PIG (saccade fixation)
+
+  # datelist=(230620 230622 230623 230626 240612 240618) # all
+  # datelist=(230622 230626 240612) # subset, just to be quicker
+  datelist=(240612 240618) # all
+  question=PIG_BASE_saccade_fix_on
+  combine=1
+  animal=Pancho
 
 elif [[ $animal == Pancho_seqsup ]]; then
   
@@ -148,7 +178,8 @@ elif [[ $animal == Pancho_sp_chars ]]; then
 
   # Trial
   # datelist=(220614 220616 220618 220621 220622 220624 220626 220627 220628 220630) # Additional ones
-  datelist=(220616 220621 220622 220624 220626 220627) # Additional ones
+  # datelist=(220616 220621 220622 220624 220626 220627) # Additional ones
+  datelist=(220614) # Additional ones
   combine=1
   question=CHAR_BASE_stroke
   animal=Pancho
