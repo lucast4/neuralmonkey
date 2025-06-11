@@ -3108,13 +3108,15 @@ class PopAnal():
 
         return dict_subspace_pa, dict_subspace_axes_orig, dict_subspace_axes_normed
 
-
-    def dataextract_subspace_targeted_pca(self, variables, variables_is_cat, list_subspaces, demean=True, 
+    def dataextract_subspace_targeted_pca_one_axis_per_var(self, variables, variables_is_cat, list_subspaces, demean=True, 
                                           normalization=None, plot_orthonormalization=False, 
                                           PLOT_COEFF_HEATMAP=False, savedir_coeff_heatmap=None, PRINT=False,
                                           get_axis_for_categorical_vars=True):
         """
         [GOOD] Get subspace for a set of variables, and then project data into that subspace.
+        one_axis_per_var --> returns projected so that each var gets one dimension. e.g., project onto a 3d space
+        defined by (shape, location, epoch)
+
         PARAMS:
         - variables, list of str, the variables that will be fit using regression, and from which the regression coefficients
         will be used to get the subspace. REgression performed independently for each neuron.
@@ -3139,68 +3141,79 @@ class PopAnal():
             PA = self
 
         ### Collect coefficients across all neurons
-        dfcoeff, res_all = PA.regress_neuron_task_variables_all_chans(variables, variables_is_cat, PLOT_COEFF_HEATMAP, 
+        dfcoeff, dfbases, res_all, original_feature_mapping = PA.regress_neuron_task_variables_all_chans(variables, variables_is_cat, PLOT_COEFF_HEATMAP, 
                                                                       PRINT=PRINT, savedir_coeff_heatmap=savedir_coeff_heatmap,
                                                                       get_axis_for_categorical_vars=get_axis_for_categorical_vars)
         
-        # # Before get basis vectors, for categorical variables, get a single vector (first PC)
-        # for subspace in list_subspaces:
-        #     for var_subspace in subspace:
-        #         if var_subspace not in dfcoeff.columns:
-        #             # Assume it is categorical
-        #             from neuralmonkey.analyses.state_space_good import dimredgood_pca
-        #             # Get the levels for this categorical variable.
-        #             original_feature_mapping = res_all[0]["original_feature_mapping"]
-        #             list_var_inner = [k for k, v in original_feature_mapping.items() if v==var_subspace]
-
-        #             if False:
-        #                 print(list_var_inner)
-        #                 print(var_subspace)
-        #                 for k, v in original_feature_mapping.items():
-        #                     print(k, v)
-        #             assert len(list_var_inner)>0
-                    
-        #             # Do PCA to get the first PC
-        #             data = dfcoeff.loc[:, list_var_inner].values
-        #             assert len(data)>0
-        #             # data = data - np.mean(data, axis=0, keepdims=True)
-
-        #             Xpcakeep, Xpca, pca = dimredgood_pca(data, method="sklearn")
-        #                                                 #  plot_pca_explained_var_path="/tmp/test1.pdf", plot_loadings_path="/tmp/test2.pdf")
-        #             dfcoeff[var_subspace] = Xpcakeep[:, 0]
-
-        # if PLOT_COEFF_HEATMAP:
-        #     from pythonlib.tools.snstools import heatmap
-        #     fig, _, _ = heatmap(dfcoeff, annotate_heatmap=False, diverge=True, labels_col=dfcoeff.columns, labels_row=self.Chans)         
-        #     if savedir_coeff_heatmap is not None:
-        #         savefig(fig, f"{savedir_coeff_heatmap}/regression_coeffs-adding_categorical_vars.pdf")
-        #     PA.regress_neuron_task_variables_all_chans_plot_coeffs(dfcoeff, savedir_coeff_heatmap, suffix="adding_categorical_vars")
 
         # Get basis vectors
         dict_subspace_pa, dict_subspace_axes_orig, dict_subspace_axes_normed = PA.dataextract_subspace_targeted_pca_project(
             dfcoeff, list_subspaces, normalization, plot_orthonormalization)
-        # dict_subspace_pa = {}
-        # dict_subspace_axes_orig = {}
-        # dict_subspace_axes_normed = {}
-        # for subspace_tuple in list_subspaces:
-
-        #     basis_vectors_orig = dfcoeff.loc[:, subspace_tuple].values # (nchans, nrank)
-        #     PAredu, basis_vectors_normed = PA.dataextract_project_data_denoise(basis_vectors_orig, normalization=normalization, 
-        #                                                  plot_orthonormalization=plot_orthonormalization)
-        #     dict_subspace_pa[tuple(subspace_tuple)] = PAredu
-        #     dict_subspace_axes_orig[tuple(subspace_tuple)] = basis_vectors_orig # in original space.
-        #     dict_subspace_axes_normed[tuple(subspace_tuple)] = basis_vectors_normed # in original space.
-
-        #     # For example
-        #     # print(PAredu.X.shape) # (2, 356, 1)
-        #     # print(PA.X.shape) (297, 356, 1)
-        #     # print(basis_vectors.shape) (297, 2)
-
-        # if False:        
-        #     for k, v in dict_subspace_pa:
-        #         print(k, " -- ", type(k[0]), " -- ", v)
 
         return dict_subspace_pa, dict_subspace_axes_orig, dict_subspace_axes_normed, dfcoeff, PA
+
+    def dataextract_subspace_targeted_pca_one_var_mult_axes(self, variables, variables_is_cat, var_subspace, npcs_keep,
+                                                demean=True, 
+                                                normalization=None, plot_orthonormalization=False, 
+                                                PLOT_COEFF_HEATMAP=False, savedir_coeff_heatmap=None, PRINT=False,
+                                                get_axis_for_categorical_vars=True, savedir_pca_subspaces=None):
+        """
+        [GOOD] Get subspace for a set of variables, and then project data into that subspace.
+        one_var --> returns ndim, projected to this var, where dims are defined by PCA on the basis set spanned by
+        the levels for this categorical var.
+
+        PARAMS:
+        - variables, list of str, the variables that will be fit using regression, and from which the regression coefficients
+        will be used to get the subspace. REgression performed independently for each neuron.
+        PARAMS:
+        - variables, list of str, the variables that will be fit using regression, and from which the regression coefficients
+        - variables_is_cat, list of bool, whether each variable is categorical or not.
+        - list_subspaces, list of tuples, each tuple is a subspace. Each subspace is a list of variables.
+        - normalization, str, either None, "norm", or "orthonormalize".
+        """ 
+
+        # for subspace_tuple in list_subspaces:
+        #     assert isinstance(subspace_tuple, (tuple, list))
+        #     assert isinstance(subspace_tuple[0], str)
+
+        # Input must be scalarized
+        assert self.X.shape[2]==1
+
+        # Demean 
+        if demean:
+            PA = self.norm_subtract_mean_each_chan()
+        else:
+            PA = self
+
+        ### Collect coefficients across all neurons
+        _, dfbases, res_all, original_feature_mapping = PA.regress_neuron_task_variables_all_chans(variables, variables_is_cat, PLOT_COEFF_HEATMAP, 
+                                                                      PRINT=PRINT, savedir_coeff_heatmap=savedir_coeff_heatmap,
+                                                                      get_axis_for_categorical_vars=get_axis_for_categorical_vars, 
+                                                                      savedir_pca_subspaces=savedir_pca_subspaces)
+        
+        # Get basis vectors --> dfcoeff dataframe
+        tmp = dfbases[dfbases["var_subspace"] == var_subspace]
+        assert len(tmp)==1
+        Xpca = tmp["Xpca"].values[0]
+        explained_variance_ratio_ = tmp["explained_variance_ratio_"].values[0]
+        dfcoeff = pd.DataFrame(Xpca, columns=range(Xpca.shape[1]))
+
+        # Given PCA of the categorical variables, project onto any subspace
+        # - keep maximum num dims
+        ndims = Xpca.shape[1]
+        if npcs_keep>ndims:
+            npcs_keep = ndims
+        # make this ndims subspace
+        subspace_tuple = tuple(range(npcs_keep))
+        list_subspaces = [subspace_tuple]
+        dict_subspace_pa, dict_subspace_axes_orig, dict_subspace_axes_normed = PA.dataextract_subspace_targeted_pca_project(
+            dfcoeff, list_subspaces, normalization, plot_orthonormalization)
+
+        pa_subspace = dict_subspace_pa[subspace_tuple]
+        subspace_axes_orig = dict_subspace_axes_orig[subspace_tuple]
+        subspace_axes_normed = dict_subspace_axes_normed[subspace_tuple]
+
+        return pa_subspace, subspace_axes_orig, subspace_axes_normed, dfcoeff, PA
 
     def dataextract_project_data_denoise(self, basis_vectors, version="projection", 
                                          normalization=None, plot_orthonormalization=False):
@@ -5095,7 +5108,7 @@ class PopAnal():
 
             list_subspaces = []
             # list_subspaces = [(var_effect_within_split,)]
-            _, _, _, dfcoeff, _ = pathis.dataextract_subspace_targeted_pca(
+            _, _, _, dfcoeff, _, dfbases = pathis.dataextract_subspace_targeted_pca(
                             variables, variables_is_cat, list_subspaces, demean=demean, 
                             # normalization=normalization,
                             PLOT_COEFF_HEATMAP=PLOT_COEFF_HEATMAP, savedir_coeff_heatmap=None, PRINT=False,
@@ -5108,7 +5121,7 @@ class PopAnal():
         dfcoeff_splits = pd.DataFrame(np.stack(list_axes, axis=1), columns=columns_each_split)
         
         ### Rerun, using the entire data, not just the splits
-        _, _, _, dfcoeff_all, _ = PAscal.dataextract_subspace_targeted_pca(
+        _, _, _, dfcoeff_all, _, dfbases = PAscal.dataextract_subspace_targeted_pca(
                             variables, variables_is_cat, [], demean=demean, 
                             # normalization=normalization, 
                             plot_orthonormalization=False, 
@@ -5124,10 +5137,14 @@ class PopAnal():
         return DFCOEFF, columns_each_split
 
     def regress_neuron_task_variables_all_chans(self, variables, variables_is_cat, PLOT_COEFF_HEATMAP=False, PRINT=False,
-                                                savedir_coeff_heatmap=None, get_axis_for_categorical_vars=False):
+                                                savedir_coeff_heatmap=None, get_axis_for_categorical_vars=False,
+                                                savedir_pca_subspaces=None):
         """
         For each chan, do multiple regression, where variables predicts firing rate.
         """    
+
+        assert len(variables) == len(variables_is_cat)
+
         res = []
         res_all = []
         for chan_idx in range(len(self.Chans)):
@@ -5171,6 +5188,8 @@ class PopAnal():
                                                         #  plot_pca_explained_var_path="/tmp/test1.pdf", plot_loadings_path="/tmp/test2.pdf")
                     dfcoeff[var_subspace] = Xpcakeep[:, 0]
 
+                    # Also, optionally, get not just first PC
+
         if PLOT_COEFF_HEATMAP:
             self.regress_neuron_task_variables_all_chans_plot_coeffs(dfcoeff, savedir_coeff_heatmap)
             # from pythonlib.tools.snstools import heatmap
@@ -5178,11 +5197,62 @@ class PopAnal():
             # if savedir_coeff_heatmap is not None:
             #     savefig(fig, f"{savedir_coeff_heatmap}/regression_coeffs.pdf")
 
-        return dfcoeff, res_all
+        # Get mapping from input variables to their levels (i.e,. their coefficent names)
+        original_feature_mapping = res_all[0]["original_feature_mapping"]
+        for x in res_all:
+            assert original_feature_mapping == x["original_feature_mapping"], "failed sanity check! diff chanels have diff mapping, why?"
+
+        ### Get multi-D subspace for each categorical variable. 
+        # Get a subspace that is higher-D than just 1-D
+        res = []
+        for var_subspace, var_is_cat in zip(variables, variables_is_cat):
+            if var_is_cat: 
+                from neuralmonkey.analyses.state_space_good import dimredgood_pca
+                # Get the levels for this categorical variable.
+                list_var_inner = [k for k, v in original_feature_mapping.items() if v==var_subspace]
+
+                if len(list_var_inner)==0:
+                    # This usually means this variable did not have enough variation to be part of regression model.
+                    # print(list_var_inner)
+                    # print("Var mappings:")
+                    # for k, v in original_feature_mapping.items():
+                    #     print(k, v)
+                    # print("Failed to find this var: ", var_subspace)
+                    # assert False
+                    continue
+                
+                # Do PCA to get the first PC
+                data = dfcoeff.loc[:, list_var_inner].values
+                assert len(data)>0
+
+                print(f"For var={var_subspace}, this many levels: {len(list_var_inner)}")
+                if savedir_pca_subspaces is not None:
+                    plot_pca_explained_var_path = f"{savedir_pca_subspaces}/pca-var_explained-{var_subspace}.pdf"
+                    plot_loadings_path = f"{savedir_pca_subspaces}/pca-loadings-{var_subspace}.pdf"
+                else:
+                    plot_pca_explained_var_path, plot_loadings_path = None, None
+
+                _, Xpca, _, explained_variance_ratio_, components_ = dimredgood_pca(data, method="sklearn", 
+                                                plot_pca_explained_var_path=plot_pca_explained_var_path, 
+                                                plot_loadings_path=plot_loadings_path, return_stats=True)
+
+                # store everything
+                res.append({
+                    "var_subspace":var_subspace,
+                    "var_is_cat":var_is_cat,
+                    "list_var_inner":list_var_inner,
+                    "Xpca":Xpca,
+                    "explained_variance_ratio_":explained_variance_ratio_,
+                    "components_":components_,
+                })
+        dfbases = pd.DataFrame(res)
+
+        return dfcoeff, dfbases, res_all, original_feature_mapping
     
     def regress_neuron_task_variables(self, chan_idx, variables, variables_is_cat, PRINT=False):
         """
         For a single chan, do multiple regression, where variables predicts firing rate.
+        Must be using scalar neural data
         """    
         import pandas as pd
         import statsmodels.api as sm

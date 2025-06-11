@@ -133,7 +133,8 @@ def preprocess_dfallpa(DFallpa, subspace_projection, tbin_slide, tbin_dur, saved
     return LIST_DIMS
     
 
-def state_space_targeted_pca_do_projection(DFallpa, variables, variables_is_cat, list_subspaces, SAVEDIR):
+def state_space_targeted_pca_do_projection(DFallpa, variables, variables_is_cat, list_subspaces, SAVEDIR,
+                                           tbin_dur = 0.2, tbin_slide = 0.1):
     """
     Run dim reduction in bulk and extract dim reduced PA objects, and return in a dict.
     RETURNS:
@@ -147,8 +148,8 @@ def state_space_targeted_pca_do_projection(DFallpa, variables, variables_is_cat,
     from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_WRAPPER, trajgood_plot_colorby_splotby_scalar_WRAPPER
     from neuralmonkey.analyses.state_space_good import dimredgood_subspace_variance_accounted_for
 
-    tbin_dur = 0.2
-    tbin_slide = 0.1
+    # tbin_dur = 0.2
+    # tbin_slide = 0.1
     npcs_keep_force = 50
     normalization = "orthonormal"
     PLOT_COEFF_HEATMAP = False
@@ -185,8 +186,9 @@ def state_space_targeted_pca_do_projection(DFallpa, variables, variables_is_cat,
 
     return map_BrEvSs_to_Paredu
 
-def state_space_targeted_pca_scalar_single(PA, twind_scal, variables, variables_is_cat, list_subspaces, 
-                                           LIST_VAR_VAROTHERS, LIST_DIMS, SAVEDIR, just_extract_paredu=False):
+def state_space_targeted_pca_scalar_single_one_axis_per_var(PA, twind_scal, variables, variables_is_cat, list_subspaces, 
+                                           LIST_VAR_VAROTHERS, LIST_DIMS, SAVEDIR, just_extract_paredu=False, 
+                                           tbin_dur = 0.2, tbin_slide = 0.1):
     """
     [GOOD], do targeted PCA for a single PA, along with state space plots.
     PARAMS:
@@ -205,11 +207,13 @@ def state_space_targeted_pca_scalar_single(PA, twind_scal, variables, variables_
     from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_WRAPPER, trajgood_plot_colorby_splotby_scalar_WRAPPER
     from neuralmonkey.analyses.state_space_good import dimredgood_subspace_variance_accounted_for
 
-    tbin_dur = 0.2
-    tbin_slide = 0.1
+    # tbin_dur = 0.2
+    # tbin_slide = 0.1
     npcs_keep_force = 50
     normalization = "orthonormal"
     PLOT_COEFF_HEATMAP = True
+
+    assert list_subspaces is not None
 
     ### Convert to scalat
     if False:
@@ -223,7 +227,8 @@ def state_space_targeted_pca_scalar_single(PA, twind_scal, variables, variables_
 
     ### Compute regression -- get coefficients
     savedir_coeff_heatmap = f"{SAVEDIR}"
-    dict_subspace_pa, dict_subspace_axes_orig, dict_subspace_axes_normed, dfcoeff, PA = PA.dataextract_subspace_targeted_pca(variables, variables_is_cat, list_subspaces, demean=True, 
+    dict_subspace_pa, dict_subspace_axes_orig, dict_subspace_axes_normed, dfcoeff, PA = PA.dataextract_subspace_targeted_pca_one_axis_per_var(
+                                            variables, variables_is_cat, list_subspaces, demean=True, 
                                             normalization=normalization, plot_orthonormalization=False, 
                                             PLOT_COEFF_HEATMAP=PLOT_COEFF_HEATMAP, PRINT=False,
                                             savedir_coeff_heatmap=savedir_coeff_heatmap)
@@ -232,7 +237,7 @@ def state_space_targeted_pca_scalar_single(PA, twind_scal, variables, variables_
     if just_extract_paredu:
         return dict_subspace_pa, dict_subspace_axes_orig, dict_subspace_axes_normed, dfcoeff, PA
     
-    ### Plot all subspaces
+    ### Compute subspace angles
     for subspace in list_subspaces:
 
         savedir = f"/{SAVEDIR}/subspace={subspace}"
@@ -256,30 +261,177 @@ def state_space_targeted_pca_scalar_single(PA, twind_scal, variables, variables_
                     out = dimredgood_subspace_variance_accounted_for(data_mean, basis_vectors_1, basis_vectors_2)
                     from pythonlib.tools.expttools import writeDictToTxtFlattened
                     writeDictToTxtFlattened(out, f"{savedir}/VAF-subspace={subspace}.txt")
+    
+    ### Plot all subspaces
+    for subspace in list_subspaces:
+
+        savedir = f"/{SAVEDIR}/subspace={subspace}"
+        os.makedirs(savedir, exist_ok=True)
 
         ### PLOT -- plot state space
         PAredu = dict_subspace_pa[subspace]
-        Xredu = PAredu.X # (chans, trials, 1)
-        dflab = PAredu.Xlabels["trials"]
-        x = Xredu.squeeze().T # (trials, chans)
+        state_space_targeted_pca_scalar_single_plot_(PAredu, LIST_VAR_VAROTHERS, LIST_DIMS, savedir)
+    # for subspace in list_subspaces
+    #     ### PLOT -- plot state space
+    #     PAredu = dict_subspace_pa[subspace]
+    #     Xredu = PAredu.X # (chans, trials, 1)
+    #     dflab = PAredu.Xlabels["trials"]
+    #     x = Xredu.squeeze().T # (trials, chans)
 
-        for i, (var_effect, vars_others) in enumerate(LIST_VAR_VAROTHERS):
-            if (var_effect in dflab.columns) and all([_var in dflab.columns for _var in vars_others]):
+    #     for i, (var_effect, vars_others) in enumerate(LIST_VAR_VAROTHERS):
+    #         if (var_effect in dflab.columns) and all([_var in dflab.columns for _var in vars_others]):
 
-                ### Plot scalars
-                # First, save counts
-                fig = grouping_plot_n_samples_heatmap_var_vs_grpvar(dflab, var_effect, vars_others)
-                savefig(fig, f"{savedir}/counts-{i}-var={var_effect}-varother={'|'.join(vars_others)}")
+    #             ### Plot scalars
+    #             # First, save counts
+    #             fig = grouping_plot_n_samples_heatmap_var_vs_grpvar(dflab, var_effect, vars_others)
+    #             savefig(fig, f"{savedir}/counts-{i}-var={var_effect}-varother={'|'.join(vars_others)}")
 
-                # Second, plot scalars
-                trajgood_plot_colorby_splotby_scalar_WRAPPER(x, dflab, var_effect, savedir,
-                                                                vars_subplot=vars_others, list_dims=LIST_DIMS,
-                                                                overlay_mean_orig=True)
-                plt.close("all")
+    #             # Second, plot scalars
+    #             trajgood_plot_colorby_splotby_scalar_WRAPPER(x, dflab, var_effect, savedir,
+    #                                                             vars_subplot=vars_others, list_dims=LIST_DIMS,
+    #                                                             overlay_mean_orig=True)
+    #             plt.close("all")
         
     return dict_subspace_pa, dict_subspace_axes_orig, dict_subspace_axes_normed, dfcoeff, PA
 
 
+def state_space_targeted_pca_scalar_single_one_var_mult_axes(PA, twind_scal, variables, variables_is_cat, 
+                                                             var_subspace, npcs_keep, 
+                                                             LIST_VAR_VAROTHERS, LIST_DIMS, SAVEDIR, 
+                                                             just_extract_paredu=False,
+                                                             savedir_pca_subspaces=None, 
+                                                             tbin_dur = 0.2, tbin_slide = 0.1):
+    """
+    [GOOD], do targeted PCA for a single PA, along with state space plots.
+    PARAMS:
+    - variables: list of variables to regress out
+    - variables_is_cat: list of bools, whether each variable is categorical. This doesnt affect the regression, so your data
+    needs to be either cat or ordinal.
+    list_subspaces: list of tuples, each tuple is a subspace to project onto. usually tuples are of length 2, holding strings 
+    referring to the variable names.
+    - LIST_VAR_VAROTHERS, LIST_DIMS, SAVEDIR, for plotting state space.
+    """
+    from neuralmonkey.scripts.analy_euclidian_chars_sp import params_subspace_projection
+    from pythonlib.tools.pandastools import append_col_with_grp_index, grouping_plot_n_samples_heatmap_var_vs_grpvar
+    from neuralmonkey.analyses.state_space_good import _trajgood_plot_colorby_scalar_BASE_GOOD
+    from pythonlib.tools.plottools import share_axes_row_or_col_of_subplots
+    from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_scalar_2dgrid_bregion
+    from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_WRAPPER, trajgood_plot_colorby_splotby_scalar_WRAPPER
+    from neuralmonkey.analyses.state_space_good import dimredgood_subspace_variance_accounted_for
+
+    # tbin_dur = 0.2
+    # tbin_slide = 0.1
+    npcs_keep_force = 50
+    normalization = "orthonormal"
+    PLOT_COEFF_HEATMAP = SAVEDIR is not None
+    
+    ### Convert to scalat
+    if False:
+        # Get scalars
+        PA = PA.slice_by_dim_values_wrapper("times", twind_scal).agg_wrapper("times")
+    else:
+        # Expand channels to (chans X time bins)
+        if False: # old
+            pca_reduce = True
+            _, PAscal, _, _, _= PA.dataextract_state_space_decode_flex(twind_scal, tbin_dur, tbin_slide, "trials_x_chanstimes",
+                                                                pca_reduce=pca_reduce, npcs_keep_force=npcs_keep_force)
+        else:
+            # Identical, and is cleaner code
+            savedir_pca = f"{SAVEDIR}/pca"
+            os.makedirs(savedir_pca, exist_ok=True)
+            _, PAscal = PA.dataextract_dimred_wrapper("scal", "pca", savedir_pca, twind_scal, tbin_dur, tbin_slide,
+                                        npcs_keep_force)            
+
+    ### Compute regression -- get coefficients
+    savedir_coeff_heatmap = f"{SAVEDIR}"
+    pa_subspace, subspace_axes_orig, subspace_axes_normed, dfcoeff, PAscal = PAscal.dataextract_subspace_targeted_pca_one_var_mult_axes(
+                                                variables, variables_is_cat, var_subspace, npcs_keep, 
+                                                demean=True, 
+                                                normalization=normalization, plot_orthonormalization=False, 
+                                                PLOT_COEFF_HEATMAP=PLOT_COEFF_HEATMAP, PRINT=False,
+                                                savedir_coeff_heatmap=savedir_coeff_heatmap,
+                                                savedir_pca_subspaces=savedir_pca_subspaces)
+
+    # Skip plots, just get data
+    if just_extract_paredu:
+        assert False
+        return dict_subspace_pa, dict_subspace_axes_orig, dict_subspace_axes_normed, dfcoeff, PA
+    
+    ### Compute subspace angles
+    if False: # Might work, need to check that it works.
+        for subspace in list_subspaces:
+
+            savedir = f"/{SAVEDIR}/subspace={subspace}"
+            os.makedirs(savedir, exist_ok=True)
+
+            ### Get VAF between each axis of subspace
+            # - first, get meaned data.
+            # data_trials = x.T # (chans, trials)
+            subspace_axes = dict_subspace_axes_orig[subspace]
+            assert len(subspace)==subspace_axes.shape[1]
+            min_n_trials_in_lev = 3
+            pa_mean = PA.slice_and_agg_wrapper("trials", variables, min_n_trials_in_lev=min_n_trials_in_lev)
+            data_mean = pa_mean.X.squeeze() # (nchans, nconditions)
+
+            naxes = subspace_axes.shape[1]
+            for i in range(naxes):
+                for j in range(naxes):
+                    if j>i:
+                        basis_vectors_1 = subspace_axes[:,i][:, None]
+                        basis_vectors_2 = subspace_axes[:,j][:, None]
+                        out = dimredgood_subspace_variance_accounted_for(data_mean, basis_vectors_1, basis_vectors_2)
+                        from pythonlib.tools.expttools import writeDictToTxtFlattened
+                        writeDictToTxtFlattened(out, f"{savedir}/VAF-subspace={subspace}.txt")
+        
+    ### Plot all subspaces
+    if SAVEDIR is not None:
+        savedir = f"/{SAVEDIR}/subspace={var_subspace}"
+        os.makedirs(savedir, exist_ok=True)
+
+        ### PLOT -- plot state space
+        state_space_targeted_pca_scalar_single_plot_(pa_subspace, LIST_VAR_VAROTHERS, LIST_DIMS, savedir)
+        
+    return pa_subspace, subspace_axes_orig, subspace_axes_normed, dfcoeff, PAscal
+
+
+def state_space_targeted_pca_scalar_single_plot_(pa_subspace, LIST_VAR_VAROTHERS, LIST_DIMS, savedir):
+    """
+    [GOOD], do targeted PCA for a single PA, along with state space plots.
+    PARAMS:
+    - variables: list of variables to regress out
+    - variables_is_cat: list of bools, whether each variable is categorical. This doesnt affect the regression, so your data
+    needs to be either cat or ordinal.
+    list_subspaces: list of tuples, each tuple is a subspace to project onto. usually tuples are of length 2, holding strings 
+    referring to the variable names.
+    - LIST_VAR_VAROTHERS, LIST_DIMS, SAVEDIR, for plotting state space.
+    """
+    from neuralmonkey.scripts.analy_euclidian_chars_sp import params_subspace_projection
+    from pythonlib.tools.pandastools import append_col_with_grp_index, grouping_plot_n_samples_heatmap_var_vs_grpvar
+    from neuralmonkey.analyses.state_space_good import _trajgood_plot_colorby_scalar_BASE_GOOD
+    from pythonlib.tools.plottools import share_axes_row_or_col_of_subplots
+    from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_scalar_2dgrid_bregion
+    from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_WRAPPER, trajgood_plot_colorby_splotby_scalar_WRAPPER
+    from neuralmonkey.analyses.state_space_good import dimredgood_subspace_variance_accounted_for
+
+    ### Plot all subspaces
+    Xredu = pa_subspace.X # (chans, trials, 1)
+    dflab = pa_subspace.Xlabels["trials"]
+    x = Xredu.squeeze().T # (trials, chans)
+
+    for i, (var_effect, vars_others) in enumerate(LIST_VAR_VAROTHERS):
+        if (var_effect in dflab.columns) and all([_var in dflab.columns for _var in vars_others]):
+
+            ### Plot scalars
+            # First, save counts
+            fig = grouping_plot_n_samples_heatmap_var_vs_grpvar(dflab, var_effect, vars_others)
+            savefig(fig, f"{savedir}/counts-{i}-var={var_effect}-varother={'|'.join(vars_others)}")
+
+            # Second, plot scalars
+            trajgood_plot_colorby_splotby_scalar_WRAPPER(x, dflab, var_effect, savedir,
+                                                            vars_subplot=vars_others, list_dims=LIST_DIMS,
+                                                            overlay_mean_orig=True)
+            plt.close("all")
+        
 def targeted_pca_euclidian_dist_angles(DFallpa, SAVEDIR_ANALYSIS, 
                                        variables, variables_is_cat, list_subspaces, LIST_VAR_VAROTHERS_SS, # For dim reduction and plotting state space
                                        subspace_tuple, LIST_VAR_VAROTHERS_ANGLES,
