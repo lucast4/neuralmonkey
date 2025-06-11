@@ -19,7 +19,7 @@ import  matplotlib.pyplot as plt
 def load_handsaved_wrapper(animal=None, date=None, version=None, combine_areas=True, 
                            return_none_if_no_exist=False, use_time = True, question=None,
                            ignore_question=False, also_return_path=False, 
-                           load_spike_counts_version=False, spike_counts_binsize=0.01):
+                           load_spike_counts_version=False, spike_counts_binsize=0.01, twind=None):
     """ Load a pre-saved DfallPA -- not systematic, just hand saved versions.
     """ 
 
@@ -30,12 +30,16 @@ def load_handsaved_wrapper(animal=None, date=None, version=None, combine_areas=T
         # Load using params input
         norm = None
         if use_time:
-            if version == "saccade_fix_on":
-                t1 = -0.4
-                t2 = 0.4
+            if twind is None:
+                if version == "saccade_fix_on":
+                    t1 = -0.4
+                    t2 = 0.4
+                else:
+                    t1 = -1.0
+                    t2 = 1.8
             else:
-                t1 = -1.0
-                t2 = 1.8
+                t1 = twind[0]
+                t2 = twind[1]
             if question is None:
                 path = f"/lemur2/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-{animal}-{date}-{version}-kilosort_if_exists-norm={norm}-combine={combine_areas}-t1={t1}-t2={t2}.pkl"
             else:
@@ -303,20 +307,27 @@ def dfallpa_preprocess_sitesdirty_single(PA, animal, date,
 def dfallpa_preprocess_sitesdirty_single_just_drift(PA, animal, date, slope_thresh = 0.12, PLOT=False, savedir=None):
     """
     Quick, just to additionally apply another threshold on top of whatever is done
-    in dfallpa_preprocess_sitesdirty_single (i.e, hard codede rsults)
+    in dfallpa_preprocess_sitesdirty_single (i.e, hard codede rsults). This uses the same
+    precomputed drift metric, etc, but applies new thresholds.
     PARAMS:
     - slope_thresh = 0.12, 0.12 is strict, chosen for Pancho char dates... to avoid SP and
     CHAR being really differnet.
     RETURNS:
     - a copy of PA, channels pruned
     """
-
+    import seaborn as sns
     from neuralmonkey.metrics.goodsite import load_firingrate_drift
     dfres, _, _, _ = load_firingrate_drift(animal, date)
 
     if PLOT:
-        dfres["slope_over_mean"].hist(bins=100)
-    
+        # display(dfres)
+        from pythonlib.tools.snstools import rotateLabel
+        fig = sns.catplot(data=dfres, x="slope_over_mean", y="chan", hue="bregion_combined", kind="bar", aspect=0.2, height=30, orient="h")
+        rotateLabel(fig)
+        # dfres["slope_over_mean"].hist(bins=100)
+        savefig(fig, f"{savedir}/catplot-chans-slope_over_mean.pdf")
+        plt.close("all")
+        
     try:
         dfres["good_chan_slope"] = ~((dfres["slope_over_mean"]>slope_thresh) | (dfres["slope_over_mean"]<-slope_thresh))
         pa = _dfallpa_preprocess_sitesdirty_single_remove_chans(PA, dfres, good_chan_key="good_chan_slope")
@@ -329,7 +340,7 @@ def dfallpa_preprocess_sitesdirty_single_just_drift(PA, animal, date, slope_thre
     if savedir is not None:
         from pythonlib.tools.expttools import writeDictToTxtFlattened
         chans_pruned = [ch for ch in PA.Chans if ch not in pa.Chans]
-        writeDictToTxtFlattened({"chans_orig":PA.Chans, "chans_new":pa.Chans, "chans_pruned":chans_pruned}, f"{savedir}/drift_pruned_chans.txt")
+        writeDictToTxtFlattened({"chans_orig":PA.Chans, "chans_new":pa.Chans, "chans_pruned":chans_pruned}, f"{savedir}/drift_pruned_chans_not_related_to_bloques.txt")
     return pa
 
     # from neuralmonkey.classes.population_mult import _dfallpa_preprocess_sitesdirty_single_remove_chans
@@ -1698,7 +1709,11 @@ def dfpa_group_and_split(DFallpa, vars_to_concat=None, vars_to_split=None,
 def dfallpa_preprocess_sitesdirty_check_if_preprocessed(DFallpa, animal, date):
     """
     REturn bool for whether all chans in DFallpa have an
-    already-preprocessed sitedirty data that is saved.
+    already-preprocessed sitedirty data that is saved. 
+
+    Also does mnay sanity checks that the channels indeed do line up. This is not 
+    guaranteed to be correct (in that some might be called ok but not actually), 
+    but it is almost.
     """
     from neuralmonkey.metrics.goodsite import load_firingrate_drift
 
@@ -1706,25 +1721,103 @@ def dfallpa_preprocess_sitesdirty_check_if_preprocessed(DFallpa, animal, date):
     dfres, _, _, _ = load_firingrate_drift(animal, date)
     if isinstance(dfres, str) and dfres == "NODATA":
         return False
-    
+
+    # (1b) Old version -- doesnt have bregion_combined
+    if "bregion_combined" not in dfres:
+        from neuralmonkey.classes.session import MAP_REGION_TO_COMBINED_REGION
+        dfres["bregion_combined"] = [MAP_REGION_TO_COMBINED_REGION[br] for br in dfres["bregion"]]
+
     # (2) Check that all chans exist
-    chans_saved = dfres["chan"].tolist() 
-    for pa in DFallpa["pa"].tolist():
-        chans_included = [ch for ch in pa.Chans if ch in chans_saved]
-        chans_excluded = [ch for ch in pa.Chans if ch not in chans_saved]
-        if len(chans_excluded)>0:
-            print("Problem, you have not prprocessed dirty channels matching this neural data")
-            print("pa.Chans that exist in sitesdirty dataset:", chans_included)
-            print("pa.Chans that are missing from sitesdirty dataset:", chans_excluded)
-            print("chans that exist in sitesdirty dataset:", chans_saved)
+    # chans_saved = dfres["chan"].tolist() 
+    # for pa in DFallpa["pa"].tolist():
+    #     chans_included = [ch for ch in pa.Chans if ch in chans_saved]
+    #     chans_excluded = [ch for ch in pa.Chans if ch not in chans_saved]
+    #     if len(chans_excluded)>0:
+    #         print("Problem, you have not prprocessed dirty channels matching this neural data")
+    #         print("pa.Chans that exist in sitesdirty dataset:", chans_included)
+    #         print("pa.Chans that are missing from sitesdirty dataset:", chans_excluded)
+    #         print("chans that exist in sitesdirty dataset:", chans_saved)
+    #         return False
+    for _, row in DFallpa.iterrows():
+        bregion = row["bregion"]
+        pa = row["pa"]
+
+        chans_in_pa = pa.Chans
+        chans_in_dfres = dfres[dfres["bregion_combined"] == bregion]["chan"].tolist()
+
+        # Every chan in PA must be in dfres
+        if not all([ch in chans_in_dfres for ch in chans_in_pa]):
+            print("chans_in_pa:", chans_in_pa)
+            print("chans_in_dfres:", chans_in_dfres)
+            print("chans in pa, not in dfres:", [ch for ch in chans_in_pa if ch not in chans_in_dfres])
+            print("This means that probably ")
+            print("Probably you need to re-extract Dfallpa (or sitesdirty, whichever was older)")
             return False
-        
+
+    # (3) Check that channels are lined up, based on comapring fr of current data with saved data.
+    from pythonlib.tools.pandastools import slice_by_row_label
+    # from pythonlib.tools.plottools import savefig
+    dfres_fr = compute_firing_rate_percentiles_each_chan(DFallpa, prctilevals=[50]) 
+
+    # Get median fr from drift
+    dfres["fr_median"] = [np.median(frvals) for frvals in dfres["frvals"]]
+
+    # Prune drift data to just the chans that exist
+    dfres_drift = slice_by_row_label(dfres, "chan", dfres_fr["chan"].tolist(), True, True)
+
+    # Check 1: correlation between median fr (across chans)
+    x = dfres_drift["fr_median"]
+    y = dfres_fr["rate"]
+    corr = np.corrcoef(x, y)[0, 1]
+    if corr<0.8:
+        fig, ax = plt.subplots()
+        ax.plot(x,y, "ok")
+        ax.set_title(f"corr = {corr}")
+        savefig(fig, "/tmp/sanity.pdf")
+        print("fr are not correlated.. chans mismatch?")
+        return False
+
+    # Check #2, not a single chan with very diff fr between the two dataset
+    MINFR = 25  # only consider cases with fr above this. below this, there is lots of noise.
+    # -- 1. First side
+    xx = x[x>MINFR]
+    yy = y[x>MINFR]
+    frac_diff = np.abs(xx - yy)/(xx + yy)
+    n_bad = sum(frac_diff>0.5)
+    n_good = sum(frac_diff<=0.5)
+    if n_bad/n_good>0.04:
+    # if not all(frac_diff<0.5):
+        fig, ax = plt.subplots()
+        ax.plot(xx, frac_diff, "ok")
+        print(1, "n_bad, n_good, n_bad/n_good:", n_bad, n_good, n_bad/n_good)
+        savefig(fig, "/tmp/sanity.pdf")
+        print("some chans with very diff fr... ther shouldnt be even a single one")
+        return False
+
+    # -- 2. Other side
+    xx = x[y>MINFR]
+    yy = y[y>MINFR]
+    frac_diff = np.abs(xx - yy)/(xx + yy)
+    n_bad = sum(frac_diff>0.5)
+    n_good = sum(frac_diff<=0.5)
+    if n_bad/n_good>0.04:
+    # if not all(frac_diff<0.5):
+        fig, ax = plt.subplots()
+        ax.plot(xx, frac_diff, "ok")
+        savefig(fig, "/tmp/sanity.pdf")
+        print(2, "n_bad, n_good, n_bad/n_good:", n_bad, n_good, n_bad/n_good)
+        print("some chans with very diff fr... ther shouldnt be even a single one")
+        return False
+    
+    # OK, passed all tests
     return True
 
 def dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, fr_mean_subtract_method = "across_time_bins",
-        do_sitesdirty_extraction=True, 
+        do_sitesdirty_extraction=False,  
         plot_clean_lowfr_chans = False, plot_low_fr_better_method=False,
-        replace_bad_trials=True):
+        replace_bad_trials=True,
+        spikes_version="kilosort_if_exists",
+        skip_sitesdirty=False):
     """
     Apply seuqence of preprocessing steps to cases where multkiple events' PA were combined in DFallpa.
     I used this for decode moment stuff (around Jul 2024).
@@ -1732,8 +1825,8 @@ def dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, fr_mean_subtrac
     # fr_mean_subtract_method = "each_time_bin"
     PARAMS:
     - do_sitesdirty_extraction, bool, if True, then does (slow, like 10 min) extracation of sitesdirty preprocess metrics.
-    Only does this if it can't find it already done and saved.
-    NOTE: by default will ALWAYS prune chans by sitedirty, if the data exists.
+    Only does this if it can't find it already done and saved. If False, then throws error, forcing you to make a decision/
+    NOTE: by default will ALWAYS prune chans by sitedirty.
     RETURNS:
     - DFallpa, with "pa" column being copies that have been processed. 
     Note that DFallpa output CAN be diff length from input, if sitedirty processessing throws out all chans for a PA, it is removed.
@@ -1776,21 +1869,23 @@ def dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, fr_mean_subtrac
     #         print("chans found:", chans_included)
     #         print("chans missing:", chans_excluded)
     #         DRIFT_DATA_EXISTS = False
-    
-    if DRIFT_DATA_EXISTS==True:
-        # Then good to go
-        DO_SITESDIRTY = True
-    elif DRIFT_DATA_EXISTS==False and do_sitesdirty_extraction==True:
-        # Then extract the drift data.
-        from neuralmonkey.classes.session import load_mult_session_helper
-        MS = load_mult_session_helper(date, animal)
-        MS.sitesdirtygood_preprocess_wrapper(PLOT_EACH_TRIAL=True)
-        DO_SITESDIRTY = True
-    elif DRIFT_DATA_EXISTS==False and do_sitesdirty_extraction==False:
-        DO_SITESDIRTY = False
-    else:
-        assert False, "not posbile"
 
+    if not skip_sitesdirty:
+        if DRIFT_DATA_EXISTS==True:
+            # Then good to go
+            DO_SITESDIRTY = True
+        elif DRIFT_DATA_EXISTS==False and do_sitesdirty_extraction==True:
+            # Then extract the drift data.
+            from neuralmonkey.classes.session import load_mult_session_helper
+            MS = load_mult_session_helper(date, animal, spikes_version=spikes_version)
+            MS.sitesdirtygood_preprocess_wrapper(PLOT_EACH_TRIAL=True)
+            DO_SITESDIRTY = True
+        elif DRIFT_DATA_EXISTS==False and do_sitesdirty_extraction==False:
+            print("Problem is probably that dfallpa is old (e.g., this is stroke version, and sitesdirty was done for trial version, and so is more up to date)")
+            assert False, "failed to find good sitesdirty. You need to decide whether to reextract dfallpa. You usually do this, as this autoamtilcaly does sitesdirty, so it makes everything up to date"
+            # DO_SITESDIRTY = False
+        else:
+            assert False, "not posbile"
     # for pa in DFallpa
     # tmp, _ = dfallpa_preprocess_sitesdirty_single(DFallpa["pa"].values[0], animal, date)
     # if tmp == "NODATA" and do_sitesdirty_extraction:
@@ -1807,38 +1902,39 @@ def dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, fr_mean_subtrac
     #     DO_SITESDIRTY = True
        
     # Try again
-    if DO_SITESDIRTY:
-        print("============== REMOVING DIRTY SITES:")
-        # Then it exists -- run it.
-        # savedir = "/tmp"
-        list_pa = []
-        for i, row in DFallpa.iterrows():
-            PA = row["pa"]
-            bregion = row["bregion"]
-            event = row["event"]
-            # plot_fr_after_replace_trials_dir = f"{savedir}/{row['bregion']}-{row['event']}"
-            # os.makedirs(plot_fr_after_replace_trials_dir, exist_ok=True)
-            plot_fr_after_replace_trials_dir = None
-            print("... bregion ", bregion, "... event ", event)
-            PA, map_chan_to_trialcodes_replaced = dfallpa_preprocess_sitesdirty_single(PA, animal, 
-                                                                                       date, plot_fr_after_replace_trials_dir,
-                                                                                       replace_bad_trials=replace_bad_trials)
-            assert not PA=="NODATA", "weird -- this shouldnt be possible -- should have triggered a re-extraction above..."
-            list_pa.append(PA)
-        print("PA.X.shape, before and after dfallpa_preprocess_sitesdirty_single")
-        for i in range(len(DFallpa)):
-            x = tuple(DFallpa.loc[i, ["bregion", "event", "twind"]].tolist())
-            pa1 = DFallpa.iloc[i]["pa"]
-            pa2 = list_pa[i]
-            if pa2 is None:
-                # Then all data has been removed
-                print(x, pa1.X.shape, " --> ", None, "(i.e., all neurons pruned)")
-            else:
-            # for pa1, pa2 in zip(DFallpa["pa"].tolist(), list_pa):
-                print(x, pa1.X.shape, " --> ", pa2.X.shape)
-                # print(pa1.X.shape[0], " --> ", pa2.X.shape[0])
-        # Replace PA
-        DFallpa["pa"] = list_pa         
+    if not skip_sitesdirty:
+        if DO_SITESDIRTY:
+            print("============== REMOVING DIRTY SITES:")
+            # Then it exists -- run it.
+            # savedir = "/tmp"
+            list_pa = []
+            for i, row in DFallpa.iterrows():
+                PA = row["pa"]
+                bregion = row["bregion"]
+                event = row["event"]
+                # plot_fr_after_replace_trials_dir = f"{savedir}/{row['bregion']}-{row['event']}"
+                # os.makedirs(plot_fr_after_replace_trials_dir, exist_ok=True)
+                plot_fr_after_replace_trials_dir = None
+                print("... bregion ", bregion, "... event ", event)
+                PA, map_chan_to_trialcodes_replaced = dfallpa_preprocess_sitesdirty_single(PA, animal, 
+                                                                                        date, plot_fr_after_replace_trials_dir,
+                                                                                        replace_bad_trials=replace_bad_trials)
+                assert not PA=="NODATA", "weird -- this shouldnt be possible -- should have triggered a re-extraction above..."
+                list_pa.append(PA)
+            print("PA.X.shape, before and after dfallpa_preprocess_sitesdirty_single")
+            for i in range(len(DFallpa)):
+                x = tuple(DFallpa.loc[i, ["bregion", "event", "twind"]].tolist())
+                pa1 = DFallpa.iloc[i]["pa"]
+                pa2 = list_pa[i]
+                if pa2 is None:
+                    # Then all data has been removed
+                    print(x, pa1.X.shape, " --> ", None, "(i.e., all neurons pruned)")
+                else:
+                # for pa1, pa2 in zip(DFallpa["pa"].tolist(), list_pa):
+                    print(x, pa1.X.shape, " --> ", pa2.X.shape)
+                    # print(pa1.X.shape[0], " --> ", pa2.X.shape[0])
+            # Replace PA
+            DFallpa["pa"] = list_pa         
 
     _remove_rows_with_pa_none(DFallpa)
     # # Remove rows that have "none" for pa
@@ -1873,6 +1969,21 @@ def dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, fr_mean_subtrac
     # (7) Sort trials by trialcode
     print(" == (7) Sort trials by trialcode")
     dfallpa_preprocess_sort_by_trialcode(DFallpa)
+
+    # # (8) Optionally, remove additional channels based on more stringet drift metrics.
+    # # This useful for blocked days, to avoid any drift potentialyl causing differences
+    # # across blocks.
+    # if remove_chans_more_stringent_fr_drift:
+    #     print("Running remove_chans_more_stringent_fr_drift, printing chans...")
+    #     for _, row in DFallpa.iterrows():
+    #         bregion = row["bregion"]
+    #         event = row["event"]
+    #         pa = row["pa"]
+    #         print(" --- ", bregion, event)
+    #         print(f"before: (n={len(pa.Chans)}):", pa.Chans)
+    #         pa = dfallpa_preprocess_sitesdirty_single_just_drift(pa, animal, date)
+    #         print(f"after: (n={len(pa.Chans)}):", pa.Chans)
+    #         assert False, "reassign to dfallpa"
 
 def dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT = False):
     """
