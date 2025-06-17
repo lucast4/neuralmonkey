@@ -3582,6 +3582,57 @@ class PopAnal():
         # assert False
         return X, PAfinal, PAslice, pca, X_before_dimred
 
+    def dataextract_metrics_scalar(self, idx_chan, list_var):
+        """
+        Extract data as a MetricsScalar object, which holds methods for computing
+        modulation stats at unit-level. This is older code, so need
+        to hack here to make it fit into ms.
+        PARAMS:
+        - list_var, var that you will potentially care about for anova
+        """
+        from neuralmonkey.metrics.scalar import MetricsScalar, _calc_modulation_by_frsm
+        
+        # Collect all neural data as a list of trials
+        list_x = []
+        for it, _ in enumerate(self.Trials):
+            x = self.X[idx_chan, it, :]
+            list_x.append(x[None, :])
+        list_times = [np.array(self.Times)[None, :] for _ in range(len(list_x))]
+
+        # Extract a copy of dflab with the neural data appended
+        dflab = self.Xlabels["trials"]
+        data = dflab.copy()
+        data["fr_sm"] = list_x
+        data["fr_sm_sqrt"] = list_x
+        data["fr_sm_times"] = list_times
+        data["event_aligned"] = "dummy"
+        data["event"] = "dummy"
+
+        ms = MetricsScalar(data, list_var)
+
+        return ms
+    
+    def metrics_scalar_compute_r2(self, idx_chan, var):
+        """
+        Helper to convert self to MetricsScalar object, and then to 
+        compute r2 using the method I used previously, taking maximum time winodw, 
+        and subtracting shuffled version.
+        """
+
+        ms = self.dataextract_metrics_scalar(idx_chan, [var])
+        r2 = ms.modulationgood_wrapper_(var, "r2_maxtime_1way_mshuff", return_as_score_zscore_tuple=False)["dummy"]
+        return r2
+
+        # var ="shape_semantic"
+        # levels = data[var].unique()
+
+        # r2, SS, SST = _calc_modulation_by_frsm(data, var, levels, COL_FR="fr_sm", plot_fr=False, plot_results=False, do_shuffle=False)
+        # print(r2, SS, SST)
+        # nshuff = 20
+        # list_r2_shuff = [_calc_modulation_by_frsm(data, var, levels, COL_FR="fr_sm", plot_fr=False, plot_results=False, do_shuffle=True)[0] for ishuff in range(nshuff)]
+
+        # r2 - np.mean(list_r2_shuff)
+
     def _dataextract_split_by_label_grp_for_statespace(self, grpvars):
         """
         Return a dataframe, where each row is a single level of conjunctive grpvars,

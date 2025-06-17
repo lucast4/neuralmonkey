@@ -1741,10 +1741,10 @@ def _calc_modulation_by_frsm(dfthis, var, levels, COL_FR = 'fr_sm_sqrt',
 
     if plot_results:
         fig, ax = plt.subplots()
-        ax.hist(residuals_total, bins=20, histtype="step")
+        ax.hist(residuals_total, bins=20, histtype="step", label="ss_tot")
         ax.hist(residuals_levels, bins=20, histtype="step", label="levels")
         ax.legend()
-        ax.set_title(f"r2={r2}, SS={SS}, SST={SST}")
+        ax.set_title(f"residuals...r2={r2}, SS={SS}, SST={SST}")
     
     return r2, SS, SST
     
