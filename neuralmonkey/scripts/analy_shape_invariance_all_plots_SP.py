@@ -754,6 +754,9 @@ def euclidian_time_resolved_fast_shuffled_mult_reload(animal, date, var_other, a
         if animal=="Pancho" and date==220614:
             # Then this date doesnt have SP. this could fail if you didnt also analyze PIG
             return None, None, None
+        elif animal=="Diego" and date==231120:
+            # Then this date doesnt have SP. this could fail if you didnt also analyze PIG
+            return None, None, None
         else:
             assert False, "empty data..."
     
@@ -941,7 +944,6 @@ def euclidian_time_resolved_fast_shuffled_mult_stats_v3(animal, date, var_other,
         #         print("skippig, as this event ", grp[2], " not in ", events_keep)
         #         continue
 
-        print(grp)
         dfthis = DFDISTS.iloc[inds].reset_index(drop=True)
 
         if shuffle_method==0:
@@ -1112,7 +1114,6 @@ def euclidian_time_resolved_fast_shuffled_mult_stats_v3(animal, date, var_other,
         res = []
         list_df =[]
         for _i, (grp, inds) in enumerate(grpdict.items()):
-            print(grp)
             dfthis = DFSTATS.iloc[inds].reset_index(drop=True)
             if len(dfthis)>4:
                 print(len(dfthis))
@@ -1937,7 +1938,9 @@ def _remove_shape(DFDISTS, list_sh_remove, var_same_same):
 
     return DFDISTS_THIS, DFDISTS_THIS_AGG
 
-def euclidianshuff_stats_linear_plot_wrapper(DFDISTS, SAVEDIR_PLOTS, var_other, var_effect="seqc_0_shape", do_vs_zero=False):
+def euclidianshuff_stats_linear_plot_wrapper(DFDISTS, SAVEDIR_PLOTS, var_other, var_effect="seqc_0_shape", 
+                                             do_vs_zero=False,
+                                             subsample_plot_each_iter_stats=False):
     """
     MAkes all plots and does stats, for stats.
     PARAMS:
@@ -1988,7 +1991,6 @@ def euclidianshuff_stats_linear_plot_wrapper(DFDISTS, SAVEDIR_PLOTS, var_other, 
     grp_vars = ["event", "subspace|twind"]
     grpdict = grouping_append_and_return_inner_items_good(DFDISTS_DATPT_LABEL1, grp_vars)
     for grp, inds in grpdict.items():
-        print(grp)
         dfdists_labels = DFDISTS_DATPT_LABEL1.iloc[inds].reset_index(drop=True)
 
         from pythonlib.tools.pandastools import grouping_print_n_samples
@@ -2029,7 +2031,6 @@ def euclidianshuff_stats_linear_plot_wrapper(DFDISTS, SAVEDIR_PLOTS, var_other, 
         ncontrasts = 2
         ncomparisons = nregions * ncontrasts
         alpha_bonf = alpha/ncomparisons
-        print(alpha_bonf)
         import seaborn as sns
         fig = sns.catplot(data=DFSTATS_vs0, x="bregion", y="pval_log10", hue="coeffname_simple", row="event", col="subspace|twind", kind="bar")
         for ax in fig.axes.flatten():
@@ -2057,7 +2058,6 @@ def euclidianshuff_stats_linear_plot_wrapper(DFDISTS, SAVEDIR_PLOTS, var_other, 
         grpdict_pval = grouping_append_and_return_inner_items_good(DFSTATS_vs0, grp_vars)
 
         for grp, inds in grpdict_dat.items():
-            print(grp)
             dfthis = DFDISTS.iloc[inds].reset_index(drop=True)
 
             inds_pval = grpdict_pval[grp]
@@ -2095,7 +2095,8 @@ def euclidianshuff_stats_linear_plot_wrapper(DFDISTS, SAVEDIR_PLOTS, var_other, 
     savedir = f"{SAVEDIR_PLOTS}/SUBSAMPLE"
     os.makedirs(savedir, exist_ok=True)
     var_datapt = None
-    _euclidianshuff_stats_linear_2br_scatter_wrapper_SUBSAMPLE(DFDISTS, var_effect, var_same_same, var_datapt, savedir)
+    _euclidianshuff_stats_linear_2br_scatter_wrapper_SUBSAMPLE(DFDISTS, var_effect, var_same_same, var_datapt, savedir,
+                                                               plot_each_iter_stats=subsample_plot_each_iter_stats)
 
     ###############################################################
     ### Compare areas
@@ -2268,7 +2269,6 @@ def _euclidianshuff_stats_linear_vs0_compute(DFDISTS, var_same_same, plot_coeff=
     contrast_levels = ["0|1", "1|0", "1|1"]
     res = []
     for grp, inds in grpdict.items():
-        print(grp)
         dfthis = DFDISTS.iloc[inds].reset_index(drop=True)
         dflm = dfthis[(dfthis[var_same_same].isin(contrast_levels))].reset_index(drop=True)
         import statsmodels.formula.api as smf
@@ -2398,13 +2398,12 @@ def _euclidianshuff_stats_linear_2br_compute(DFDISTS, var_same_same, var_datapt)
         var_datapt = "shapeloc12"
 
     yvar = "dist_yue_diff"
-    grp_vars = ["event", "subspace|twind"]
+    grp_vars = ["event", "subspace|twind", "metaparams"]
     grpdict = grouping_append_and_return_inner_items_good(DFDISTS, grp_vars)
 
     list_bregion = ORDER_BREGION
     res = []
     for grp, inds in grpdict.items():
-        print(grp)
         for contrast_lev  in ["1|0", "0|1"]:
             for i in range(len(list_bregion)):
                 for j in range(len(list_bregion)):
@@ -2479,13 +2478,12 @@ def _euclidianshuff_stats_linear_2br_compute_nsigs(DFSTATS_2BR, var_same_same, p
     # var_value = "dist_yue_diff"
 
     # grpvar = "subspace|twind"
-    grp_vars = ["event", "subspace|twind"]
+    grp_vars = ["event", "subspace|twind", "metaparams"]
     # grpdict_dat = grouping_append_and_return_inner_items_good(DFDISTS, grp_vars)
     grpdict_pval = grouping_append_and_return_inner_items_good(DFSTATS_2BR, grp_vars)
 
     res = []
     for grp, inds in grpdict_pval.items():
-        print(grp)
         dfthis_pval = DFSTATS_2BR.iloc[inds].reset_index(drop=True)
 
         # For this region, count how it compares to other regions.
@@ -2504,6 +2502,7 @@ def _euclidianshuff_stats_linear_2br_compute_nsigs(DFSTATS_2BR, var_same_same, p
                 var_same_same:_grp[1],
                 grp_vars[0]:grp[0],
                 grp_vars[1]:grp[1],
+                grp_vars[2]:grp[2],
                 "pval_thresh":pval_thresh
             })
     DFSTATS_2BR_NSIGS = pd.DataFrame(res)
@@ -2513,7 +2512,8 @@ def _euclidianshuff_stats_linear_2br_compute_nsigs(DFSTATS_2BR, var_same_same, p
 
 def _euclidianshuff_stats_linear_2br_scatter_wrapper(DFDISTS, var_same_same, var_datapt, SAVEDIR_PLOTS,
                                                      plot_heatmap_counts=True,
-                                                     plot_catplots=True):
+                                                     plot_catplots=True,
+                                                     plot_results_scatter=True):
     """
     Wrapper for computing pairwise stats and plotting as scatterplots.
     PARAMS:
@@ -2528,10 +2528,11 @@ def _euclidianshuff_stats_linear_2br_scatter_wrapper(DFDISTS, var_same_same, var
     # This means that could have repeated conditions across days, leading to more datapts.
     """
 
-    savedir = f"{SAVEDIR_PLOTS}/linear_model_region_vs_region"
-    import os
-    os.makedirs(savedir, exist_ok=True)
-    print(savedir)
+    if plot_heatmap_counts or plot_catplots or plot_results_scatter:
+        savedir = f"{SAVEDIR_PLOTS}/linear_model_region_vs_region"
+        import os
+        os.makedirs(savedir, exist_ok=True)
+        print(savedir)
 
     ### First, save heatmap showing the datapts counts
     if plot_heatmap_counts:
@@ -2540,7 +2541,6 @@ def _euclidianshuff_stats_linear_2br_scatter_wrapper(DFDISTS, var_same_same, var
         grp_vars = ["subspace|twind", "event", "bregion"]
         grpdict = grouping_append_and_return_inner_items_good(DFDISTS, grp_vars)
         for grp, inds in grpdict.items():
-            print(grp)
             dfthis = DFDISTS.iloc[inds].reset_index(drop=True)
 
             if ("date" in dfthis) and ("labels_1" in dfthis) and ("labels_2" in dfthis):
@@ -2569,9 +2569,19 @@ def _euclidianshuff_stats_linear_2br_scatter_wrapper(DFDISTS, var_same_same, var
     alpha_bonf_hard = alpha/(npairs * ncomp)
 
     if plot_catplots:
+        ### First, plot nsig
+        from pythonlib.tools.pandastools import plot_subplots_heatmap, stringify_values
+        for pval_thresh in  [alpha_bonf_hard]:
+            DFSTATS_2BR_NSIGS = _euclidianshuff_stats_linear_2br_compute_nsigs(DFSTATS_2BR, var_same_same, pval_thresh)
+            DFSTATS_2BR_NSIGS = append_col_with_grp_index(DFSTATS_2BR_NSIGS, [var_same_same, "pval_thresh"], "var_same_same|pvalthresh")
+            fig, axes = plot_subplots_heatmap(DFSTATS_2BR_NSIGS, "bregion", "var_same_same|pvalthresh", "n_sig", "metaparams", annotate_heatmap=True)
+            savefig(fig, f"{savedir}/nsig_heatmap-pval_thresh={pval_thresh}.pdf")
+            # display(DFSTATS_2BR_NSIGS)
+            # assert False
+
+        ### Second, plot catplots
         z = np.max(np.abs(np.percentile(DFSTATS_2BR["coeff_val"], [0.5, 99.5])))
         ZLIMS = [-z, z]
-
 
         import seaborn as sns
         from pythonlib.tools.pandastools import plot_subplots_heatmap, stringify_values
@@ -2579,7 +2589,6 @@ def _euclidianshuff_stats_linear_2br_scatter_wrapper(DFDISTS, var_same_same, var
         grp_vars = ["subspace|twind", "event"]
         grpdict = grouping_append_and_return_inner_items_good(DFSTATS_2BR, grp_vars)
         for grp, inds in grpdict.items():
-            print(grp)
             dfstats = DFSTATS_2BR.iloc[inds].reset_index(drop=True)
 
             fig, axes = plot_subplots_heatmap(dfstats, "bregion1", "bregion2", "coeff_val", var_same_same, 
@@ -2615,9 +2624,10 @@ def _euclidianshuff_stats_linear_2br_scatter_wrapper(DFDISTS, var_same_same, var
             plt.close("all")
 
     ################################# PLOTS
-    from neuralmonkey.scripts.analy_shape_invariance_all_plots_SP import _euclidianshuff_stats_linear_2br_compute, _euclidianshuff_stats_linear_2br_scatter, _euclidianshuff_stats_linear_2br_compute
-    _euclidianshuff_stats_linear_2br_scatter(DFDISTS, DFSTATS_2BR, var_same_same, [alpha_bonf_easy, alpha_bonf_hard], savedir,
-                                             plot_heatmap_counts=plot_heatmap_counts)
+    if plot_results_scatter:
+        from neuralmonkey.scripts.analy_shape_invariance_all_plots_SP import _euclidianshuff_stats_linear_2br_compute, _euclidianshuff_stats_linear_2br_scatter, _euclidianshuff_stats_linear_2br_compute
+        _euclidianshuff_stats_linear_2br_scatter(DFDISTS, DFSTATS_2BR, var_same_same, [alpha_bonf_easy, alpha_bonf_hard], savedir,
+                                                plot_heatmap_counts=plot_heatmap_counts)
     
     return DFSTATS_2BR
 
@@ -2725,7 +2735,7 @@ def _euclidianshuff_stats_linear_2br_scatter(DFDISTS, DFSTATS_2BR, var_same_same
 
 
 def _euclidianshuff_stats_linear_2br_scatter_wrapper_SUBSAMPLE(DFDISTS, var_effect, var_same_same, var_datapt, 
-                                                               SAVEDIR_PLOTS):
+                                                               SAVEDIR_PLOTS, plot_each_iter_stats=False):
     """
     Each iter, subsample shapes within each day to try to have comparable number of cases across days --> to balance the days.
     """
@@ -2752,7 +2762,7 @@ def _euclidianshuff_stats_linear_2br_scatter_wrapper_SUBSAMPLE(DFDISTS, var_effe
     list_df_2br_nsigs = []
     list_dfdists = []
     for i_sub_iter in range(niter):
-
+        print("subsample, iter :", i_sub_iter)
         ### Get subsampled dfdists
         map_dateprune_to_shapes = {}
         list_df = []
@@ -2778,10 +2788,8 @@ def _euclidianshuff_stats_linear_2br_scatter_wrapper_SUBSAMPLE(DFDISTS, var_effe
 
             list_df.append(dfdists)
         DFDISTS_THIS = pd.concat(list_df).reset_index(drop=True)
-        print(len(DFDISTS), len(DFDISTS_THIS))
 
         ### Get stats
-        from neuralmonkey.scripts.analy_shape_invariance_all_plots_SP import _euclidianshuff_stats_linear_2br_scatter_wrapper
         from pythonlib.tools.pandastools import aggregGeneral
 
         var_datapt, agg_over_dates, use_symmetric_dfdist = None, False, False
@@ -2793,9 +2801,19 @@ def _euclidianshuff_stats_linear_2br_scatter_wrapper_SUBSAMPLE(DFDISTS, var_effe
                                                                         plot_catplots=False, plot_heatmap_counts=False)
 
         ### Get n sig
-        from neuralmonkey.scripts.analy_shape_invariance_all_plots_SP import _euclidianshuff_stats_linear_2br_compute, _euclidianshuff_stats_linear_2br_compute_nsigs
-        dfdists_agg_2br = _euclidianshuff_stats_linear_2br_compute(DFDISTS_THIS, var_same_same, var_datapt)
-
+        from neuralmonkey.scripts.analy_shape_invariance_all_plots_SP import _euclidianshuff_stats_linear_2br_compute, _euclidianshuff_stats_linear_2br_compute_nsigs, _euclidianshuff_stats_linear_2br_scatter_wrapper
+        if False:
+            # Old  method. Works fine, but doesnt have option to plot stats details.
+            dfdists_agg_2br = _euclidianshuff_stats_linear_2br_compute(DFDISTS_THIS, var_same_same, var_datapt)
+        else:
+            # New method, can plot stats for each iter.
+            _savedir = f"{SAVEDIR_PLOTS}/i_sub_iter={i_sub_iter}"
+            os.makedirs(_savedir, exist_ok=True)
+            dfdists_agg_2br = _euclidianshuff_stats_linear_2br_scatter_wrapper(DFDISTS_THIS, var_same_same, var_datapt, _savedir,
+                                                                plot_heatmap_counts=False,
+                                                                plot_catplots=plot_each_iter_stats,
+                                                                plot_results_scatter=False)
+        
         n_bregions = 8
         from math import factorial, comb
         npairs = comb(n_bregions, 2)
@@ -2823,7 +2841,7 @@ def _euclidianshuff_stats_linear_2br_scatter_wrapper_SUBSAMPLE(DFDISTS, var_effe
     from pythonlib.tools.pandastools import replace_None_with_string
     df_2br_nsigs_all = replace_None_with_string(df_2br_nsigs_all)
     vars_grp = ["agg_over_dates", "bregion", "same-shape_semantic|task_kind",
-                                    "event", "subspace|twind", "pval_thresh"]
+                                    "event", "subspace|twind", "pval_thresh", "metaparams"]
     # print("HERERE2:")
     # print(df_2br_nsigs_all.columns)
     # assert len(df_2br_nsigs_all)>0
@@ -2870,19 +2888,19 @@ def _euclidianshuff_stats_linear_2br_scatter_plot(DFDISTS, DFSTATS_2BR_NSIGS, va
     # NOTE: shapeloc12 actually means shape-(task_kind)12
     if ("date" in DFDISTS) and ("labels_1" in DFDISTS) and ("labels_2" in DFDISTS):
         savepath = f"{savedir}/samplesize-each_datapt.txt"
-        grouping_print_n_samples(DFDISTS, ["bregion", "event", "subspace|twind", "labels_1", "labels_2", "date"])
+        grouping_print_n_samples(DFDISTS, ["bregion", "event", "subspace|twind", "labels_1", "labels_2", "date"], savepath=savepath)
 
     # NOTE: shapeloc12 actually means shape-(task_kind)12 -- to show that.
     if ("loc1" in DFDISTS) and ("date" in DFDISTS) and ("labels_1" in DFDISTS):
         savepath = f"{savedir}/samplesize-if_char_expt_then_remind_that_loc_is_taskkind.txt"
-        grouping_print_n_samples(DFDISTS, ["labels_1", "date"])
+        grouping_print_n_samples(DFDISTS, ["labels_1", "date", "metaparams"], savepath=savepath)
 
     ### Plot
     var_value = "dist_yue_diff"
 
     ### Plot summary heatmaps
     DFSTATS_2BR_NSIGS = append_col_with_grp_index(DFSTATS_2BR_NSIGS, [var_same_same, "pval_thresh"], "var_same_same|pvalthresh")
-    fig, axes = plot_subplots_heatmap(DFSTATS_2BR_NSIGS, "bregion", "var_same_same|pvalthresh", "n_sig", "event")
+    fig, axes = plot_subplots_heatmap(DFSTATS_2BR_NSIGS, "bregion", "var_same_same|pvalthresh", "n_sig", "metaparams", annotate_heatmap=True)
     savefig(fig, f"{savedir}/nsig_heatmap-pval_thresh={pval_thresh}.pdf")
 
     grp_vars = ["subspace|twind", "event"]
@@ -2890,7 +2908,6 @@ def _euclidianshuff_stats_linear_2br_scatter_plot(DFDISTS, DFSTATS_2BR_NSIGS, va
     grpdict_pval = grouping_append_and_return_inner_items_good(DFSTATS_2BR_NSIGS, grp_vars)
 
     for grp, inds in grpdict_dat.items():
-        print(grp)
         dfthis = DFDISTS.iloc[inds].reset_index(drop=True)
 
         inds_pval = grpdict_pval[grp]

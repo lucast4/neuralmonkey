@@ -8,7 +8,7 @@ animal=Diego
 # datelist=(231205 231122 231128 231129 231201) # [A] FINAL (has sp across mult bloques)
 # datelist=(231120 231121 231206 231218 231220) # [B] ADDED (leaving out 231207, lacking preprocess) [only one SP bloque]
 # datelist=(231205 231122 231128 231129 231201 231120 231121 231206 231218 231220) # [A and B]
-datelist=(231205 231122 231128 231129 231201 231120 231206 231218 231220) # [A and B] [ignoring 231121]
+datelist=(231220 231205 231122 231128 231129 231201 231120 231206 231218) # [A and B] [ignoring 231121]
 # datelist=(231122 231206) # 
 
 combine=1
@@ -22,7 +22,7 @@ do
   sleep 10s
 done
 # sleep 180m
-sleep 30s
+sleep 10m
 
 ###################
 animal=Pancho

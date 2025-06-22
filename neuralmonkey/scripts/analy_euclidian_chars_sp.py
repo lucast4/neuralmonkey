@@ -216,7 +216,7 @@ def behstrokes_map_clustshape_to_thresh(animal):
             "circle-6-1-0":0.56,
             "line-8-1-0":0.7,
             "line-8-2-0":0.7,
-            "line-8-3-0":0.7,
+            "line-8-3-0":0.92, # 0.7
             "line-8-4-0":0.7,
             "squiggle3-3-1-0":0.58,
             "squiggle3-3-2-0":0.58,
@@ -228,10 +228,10 @@ def behstrokes_map_clustshape_to_thresh(animal):
         map_clustshape_to_thresh = {
             "Lcentered-4-1-0":0.6,
             "Lcentered-4-2-0":0.6,
-            "Lcentered-4-3-0":0.6,
+            "Lcentered-4-3-0":0.8, # was 0.6
             "Lcentered-4-4-0":0.6,
             # "V-2-1-0":0,
-            "V-2-2-0":0.6,
+            "V-2-2-0":0.74, # was 0.6
             "V-2-3-0":0.6,
             "V-2-4-0":0.6,
             # "arcdeep-4-1-0":0,
@@ -941,9 +941,10 @@ def params_shapes_remove(animal, date, shape_var):
     shapes_remove = []
     if animal=="Pancho":
         shapes_remove.append("line-UU-UU") # Sometimes direction flipped, and not caught by eucldian diffs
-        shapes_remove.append("line-UR-UR") # Added final run
+        # shapes_remove.append("line-UR-UR") # Added final run
     elif animal=="Diego":
-        shapes_remove.append("Lcentered-DR-DR") # Added final run
+        # shapes_remove.append("Lcentered-DR-DR") # Added final run'
+        pass
     
     return shapes_remove
 
@@ -970,17 +971,29 @@ def preprocess_dfallpa_prune_chans_hand_coded(DFallpa, animal, date):
         #     231206:[75, 83, 125, 127],
         #     231218:[1036, 1047, 1052, 1060, 1072, 1091, 1094]
         # }
-        # 5/28/25 -- even more strict
+        # # 5/28/25 -- even more strict
+        # map_date_chans_remove = {
+        #     231120:[1041, 1043, 1066, 1088],
+        #     231122:[],
+        #     231128:[1044, 1045, 1056, 1062, 1064, 1068],
+        #     231129:[1039],
+        #     231201:[1044, 1057, 1058, 1072],
+        #     231205:[1039, 1041, 1043, 1051, 1055, 1057, 1061, 1079, 1086],
+        #     231206:[],
+        #     231218:[1036, 1047, 1052, 1057, 1060, 1072, 1090]
+        # }
+        # 6/11/25 - Final, lenient
         map_date_chans_remove = {
-            231120:[1041, 1043, 1066, 1088],
+            231120:[1043],
             231122:[],
-            231128:[1044, 1045, 1056, 1062, 1064, 1068],
-            231129:[1039],
+            231128:[1045, 1062, 1068],
+            231129:[1064],
             231201:[1044, 1057, 1058, 1072],
-            231205:[1039, 1041, 1043, 1051, 1055, 1057, 1061, 1079, 1086],
-            231206:[],
-            231218:[1036, 1047, 1052, 1057, 1060, 1072, 1090]
+            231205:[1039, 1043, 1057, 1061, 1079, 1086],
+            231206:[1048],
+            231218:[1036, 1047, 1057, 1060, 1072, 1090]
         }
+        # map_date_chans_remove = {}
     elif animal == "Pancho":
         # # 5/27/25
         # map_date_chans_remove = {}
@@ -991,6 +1004,7 @@ def preprocess_dfallpa_prune_chans_hand_coded(DFallpa, animal, date):
             220624:[1067],
             220630:[1075],
         }
+        # map_date_chans_remove = {}
     else:
         print(animal)
         assert False
@@ -1067,7 +1081,8 @@ def preprocess_pa(animal, date, PA, savedir, prune_version, shape_var = VAR_SHAP
                   remove_trials_with_bad_strokes=True, subspace_projection_fitting_twind=None,
                   skip_dim_reduction=False, scalar_or_traj="traj",
                   remove_trials_too_fast=REMOVE_TRIALS_TOO_FAST,
-                  consolidate_diego_shapes=True):
+                  consolidate_diego_shapes=True,
+                  consolidate_diego_shapes_actually=False):
     """
     Does not modofiy PA, returns copy
     """ 
@@ -1123,6 +1138,11 @@ def preprocess_pa(animal, date, PA, savedir, prune_version, shape_var = VAR_SHAP
     b = (dflab["task_kind"]=="character") & (dflab["stroke_index"] > 0)
     dflab["pigall_char_1plus"] = a | b
 
+    a = dflab["task_kind"]=="prims_single"
+    b = (dflab["task_kind"]=="prims_on_grid") & (dflab["stroke_index"] > 0)
+    c = (dflab["task_kind"]=="character") & (dflab["stroke_index"] > 0)
+    dflab["sp_pigchar_1plus"] = a | b | c
+
     PA.Xlabels["trials"] = dflab
 
     ### Remove cases that are SP and stroke index > 0
@@ -1172,6 +1192,9 @@ def preprocess_pa(animal, date, PA, savedir, prune_version, shape_var = VAR_SHAP
         elif prune_version == "pigall_char_1plus":
             task_kinds = ["prims_on_grid", "character"]
             fd = {"pigall_char_1plus":[True]}
+        elif prune_version == "sp_pigchar_1plus":
+            task_kinds = ["prims_single", "prims_on_grid", "character"]
+            fd = {"sp_pigchar_1plus":[True]}
         else:
             assert False
         PA = PA.slice_by_labels_filtdict(fd)
@@ -1385,6 +1408,24 @@ def preprocess_pa(animal, date, PA, savedir, prune_version, shape_var = VAR_SHAP
 
                 ### Plot counts
                 _save_counts(PA, "6-diego_after_merges_shapes")
+
+    # -------------------------------------------------------------
+    # Consoldiate shape names. 
+    # Do this here, after the above so that the above pruning will occur within each original shape name, is more accurate.
+    # But before pruning, so that you don't throw out a lot of data.
+    if consolidate_diego_shapes_actually and animal=="Diego":
+        from pythonlib.drawmodel.tokens import MAP_SHAPESEM_TO_SHAPESEMGROUP, map_shsem_to_new_shsem
+        assert VAR_SHAPE == "shape_semantic", "this does nothing"
+        dflab = PA.Xlabels["trials"]
+        # Consolidate Diego shapes
+        dflab["shape_semantic"] = [map_shsem_to_new_shsem[sh] if sh in map_shsem_to_new_shsem.keys() else sh for sh in dflab["shape_semantic"]]
+        # Sanity check that this doesnt change shape_sem_grp
+        for _, row in dflab.iterrows():
+            assert MAP_SHAPESEM_TO_SHAPESEMGROUP[row["shape_semantic"]] == row["shape_semantic_grp"]
+        PA.Xlabels["trials"] = dflab
+
+        ### Plot counts
+        _save_counts(PA, "5-diego_after_merges_shapes")
 
     ############# PRINT AND PLOT FINAL TRIAL COUNTS
     if plot_drawings:
@@ -1863,7 +1904,8 @@ def euclidian_time_resolved_fast_shuffled(DFallpa, animal, date, SAVEDIR_ANALYSI
                                           DO_RSA_HEATMAPS=False,
                                           HACK=False,
                                           DEBUG_bregion_list=None,
-                                          DO_REGRESS_HACK=False): 
+                                          DO_REGRESS_HACK=False,
+                                          HACK_Diego_reorder_shapes=False): 
                                           
     """
     Good! Much faster method. And does one thing important for more rigorous result:
@@ -1953,8 +1995,9 @@ def euclidian_time_resolved_fast_shuffled(DFallpa, animal, date, SAVEDIR_ANALYSI
 
         if QUICK_MODE:
             # Just the essentials
+            # LIST_SUBSPACE_PROJECTION = ["task_shape", "task_shape_si"]
             LIST_SUBSPACE_PROJECTION = ["task_shape"]
-            LIST_PRUNE_VERSION = ["sp_char_1plus", "sp_char_0"] # Just running for revisions.
+            LIST_PRUNE_VERSION = ["sp_char_0", "sp_char_1plus"] # Just running for revisions.
             map_event_to_listtwind_scal = {
                 "00_stroke":[(-0.5, -0.05), (-0.35, -0.05), (-0.3, 0.)], # 
                 }
@@ -2091,8 +2134,47 @@ def euclidian_time_resolved_fast_shuffled(DFallpa, animal, date, SAVEDIR_ANALYSI
                                 #     twind = twind_analy
                                 #     PA = PA.regress_neuron_task_variables_subtract_from_activity(tbin_dur, tbin_slide, twind)
 
+                                PArsa = PA.copy()
+
+                                if (animal, date) == ("Diego", 231220) and HACK_Diego_reorder_shapes:
+                                    dflab = PArsa.Xlabels["trials"]
+                                    # Simply reorder to match initial submission
+                                    # sorted(list(dflab["shape_semantic"].unique()))
+                                    shapes_in_order = ['arcdeep-DD-DD',
+                                        'arcdeep-RR-RR',
+                                        'arcdeep-UU-UU',
+                                        'V-DD-DD',
+                                        'V-RR-RR',
+                                        'V-UU-UU',
+                                        'Lcentered-DL-DL',
+                                        'Lcentered-DR-DR',
+                                        'Lcentered-UL-UL',
+                                        'Lcentered-UR-UR',
+                                        'usquare-DD-DD',
+                                        'usquare-RR-RR',
+                                        'usquare-UU-UU',
+                                        'zigzagSq-LL-0.0',
+                                        'zigzagSq-LL-1.0',
+                                        'zigzagSq-UU-0.0',
+                                        'circle-XX-XX',
+                                        'line-LL-LL',
+                                        'line-UL-UL',
+                                        'line-UR-UR',
+                                        'line-UU-UU',
+                                        'squiggle3-LL-0.0',
+                                        'squiggle3-LL-1.0',
+                                        'squiggle3-UU-0.0']
+                                    map_shape_to_shapeordered = {}
+                                    for i, sh in enumerate(shapes_in_order):
+                                        if i<10:
+                                            map_shape_to_shapeordered[sh] = f"0{i}-{sh}"
+                                        else:
+                                            map_shape_to_shapeordered[sh] = f"{i}-{sh}"
+                                    dflab["shape_semantic"] = [map_shape_to_shapeordered[sh] for sh in dflab["shape_semantic"]]   
+                                    PArsa.Xlabels["trials"] = dflab
+
                                 ############
-                                PAthis = preprocess_pa(animal, date, PA, None, prune_version, 
+                                PAthis = preprocess_pa(animal, date, PArsa, None, prune_version, 
                                                     n_min_trials_per_shape=N_MIN_TRIALS_PER_SHAPE, shape_var=var_effect, plot_drawings=False,
                                                     remove_chans_fr_drift=remove_drift, subspace_projection=subspace_projection, 
                                                         twind_analy=twind_analy, tbin_dur=tbin_dur, tbin_slide=tbin_slide, NPCS_KEEP=NPCS_KEEP,
@@ -2832,14 +2914,19 @@ def run(animal, date,  DFallpa, SAVEDIR, subspace_projection, prune_version, NPC
         plt.close("all")
 
 def plot_heatmap_firing_rates_all_wrapper(DFallpa, SAVEDIR_ANALYSIS, animal, date, 
-                                          DEBUG_skip_drawings=False, DEBUG_bregion=None,
+                                          DEBUG_skip_drawings=False, DEBUG_bregion_list=None,
                                           DEBUG_subspace_projection=None,
                                           var_conj = "task_kind",
                                           LIST_PRUNE_VERSION=None,
                                           list_twind_scal=None,
                                           LIST_SUBSPACE_PROJECTION=None,
                                           heatmap_quick_version=False,
-                                          DO_HACK=False):
+                                          DO_HACK=False, do_heatmap=True, do_state_space=True,
+                                          keep_only_shapes_that_exist_across_all_contexts=False,
+                                          consolidate_diego_shapes_actually=False,
+                                          also_plot_clean_version=False,
+                                          HACK_Diego_reorder_shapes=False,
+                                          keep_only_shapes_that_exist_across_all_contexts_min_n=None):
     """
     Wrapper, to plot all FR heatmaps (trial vs time) with diff variations.
     Gaol is to visualize theraw data as clsoely and broadly as possible, see effect,
@@ -2890,9 +2977,19 @@ def plot_heatmap_firing_rates_all_wrapper(DFallpa, SAVEDIR_ANALYSIS, animal, dat
         PLOT_CLEAN_VERSION = True
         plot_bad_strokes=True
 
+    LIST_PLOT_CLEAN_VERSION = [PLOT_CLEAN_VERSION]
+    if also_plot_clean_version:
+        if True not in LIST_PLOT_CLEAN_VERSION:
+            LIST_PLOT_CLEAN_VERSION.append(True)
+
     # Revision
     remove_trials_too_fast = True
 
+    # Remove bad chans (doing same steps as do for euclidean distance)
+    preprocess_dfallpa_prune_chans(DFallpa, animal, date, SAVEDIR_ANALYSIS)
+    preprocess_dfallpa_prune_chans_hand_coded(DFallpa, animal, date)
+
+    # RUN
     drawings_done = []
     for _, row in DFallpa.iterrows():
         bregion = row["bregion"]
@@ -2900,12 +2997,13 @@ def plot_heatmap_firing_rates_all_wrapper(DFallpa, SAVEDIR_ANALYSIS, animal, dat
         event = row["event"]
         PA = row["pa"]
 
-        if (DEBUG_bregion is not None) and (DEBUG_bregion!=bregion):
+        if (DEBUG_bregion_list is not None) and (bregion not in DEBUG_bregion_list):
             continue
 
         ########### [MAJOR HACK]
         if DO_HACK:
-            PA = PA.regress_neuron_task_variables_subtract_from_activity(0.1, 0.02, twind_analy)
+            PA = PA.regress_neuron_task_variables_subtract_from_activity(0.1, 0.02, twind_analy, VAR_SHAPE)
+
         ############
 
         # for prune_version in ["sp_char_0", "pig_char_1plus"]:
@@ -2918,7 +3016,8 @@ def plot_heatmap_firing_rates_all_wrapper(DFallpa, SAVEDIR_ANALYSIS, animal, dat
                 os.makedirs(savedir, exist_ok=True)
                 preprocess_pa(animal, date, PAtmp, savedir, prune_version, 
                                 n_min_trials_per_shape=n_min_trials_per_shape, plot_drawings=True,
-                                remove_trials_too_fast=remove_trials_too_fast)
+                                remove_trials_too_fast=remove_trials_too_fast,
+                                consolidate_diego_shapes_actually=consolidate_diego_shapes_actually)
                 drawings_done.append(prune_version)
 
                 try:
@@ -2969,8 +3068,48 @@ def plot_heatmap_firing_rates_all_wrapper(DFallpa, SAVEDIR_ANALYSIS, animal, dat
                                                 twind_analy=twind_analy, tbin_dur=tbin_dur, tbin_slide=tbin_slide, NPCS_KEEP=NPCS_KEEP,
                                                 raw_subtract_mean_each_timepoint=False, remove_singleprims_unstable=remove_singleprims_unstable,
                                                 remove_trials_with_bad_strokes=remove_trials_with_bad_strokes, 
-                                                subspace_projection_fitting_twind=subspace_projection_fitting_twind)
+                                                subspace_projection_fitting_twind=subspace_projection_fitting_twind,
+                                                remove_trials_too_fast=remove_trials_too_fast,
+                                                consolidate_diego_shapes_actually=consolidate_diego_shapes_actually)
 
+                        if (animal, date) == ("Diego", 231220) and HACK_Diego_reorder_shapes:
+                            dflab = pa.Xlabels["trials"]
+                            # Hand inputed, simply to sort order to match initial submission
+                            # sorted(list(dflab["shape_semantic"].unique()))
+                            shapes_in_order = ['arcdeep-DD-DD',
+                                'arcdeep-RR-RR',
+                                'arcdeep-UU-UU',
+                                'V-DD-DD',
+                                'V-RR-RR',
+                                'V-UU-UU',
+                                'Lcentered-DL-DL',
+                                'Lcentered-DR-DR',
+                                'Lcentered-UL-UL',
+                                'Lcentered-UR-UR',
+                                'usquare-DD-DD',
+                                'usquare-RR-RR',
+                                'usquare-UU-UU',
+                                'zigzagSq-LL-0.0',
+                                'zigzagSq-LL-1.0',
+                                'zigzagSq-UU-0.0',
+                                'circle-XX-XX',
+                                'line-LL-LL',
+                                'line-UL-UL',
+                                'line-UR-UR',
+                                'line-UU-UU',
+                                'squiggle3-LL-0.0',
+                                'squiggle3-LL-1.0',
+                                'squiggle3-UU-0.0']
+                            map_shape_to_shapeordered = {}
+                            for i, sh in enumerate(shapes_in_order):
+                                if i<10:
+                                    map_shape_to_shapeordered[sh] = f"0{i}-{sh}"
+                                else:
+                                    map_shape_to_shapeordered[sh] = f"{i}-{sh}"
+
+                            dflab["shape_semantic"] = [map_shape_to_shapeordered[sh] for sh in dflab["shape_semantic"]]   
+                            pa.Xlabels["trials"] = dflab
+                            
                         for subtr_time_mean, zscore, subtr_baseline in list_mean_zscore_base:
 
                             # Optionally prune to specific time window before plotting state space.
@@ -2985,7 +3124,7 @@ def plot_heatmap_firing_rates_all_wrapper(DFallpa, SAVEDIR_ANALYSIS, animal, dat
                                 else:
                                     pathis = pa.copy()
 
-                                zlims = None
+                                # zlims = None
                                 if zscore:
                                     pathis = pathis.norm_rel_all_timepoints()
                                     diverge = True
@@ -3001,38 +3140,60 @@ def plot_heatmap_firing_rates_all_wrapper(DFallpa, SAVEDIR_ANALYSIS, animal, dat
                                     diverge = True
 
                                 ### Plot pathis.
-                                for mean_over_trials in list_heatmap_means:
-                                    # savedirthis = f"{SAVEDIR}/HEATMAP-subtr_version={subtr_version}-mean={mean_over_trials}"
-                                    savedirthis = f"{SAVEDIR}/HEATMAP-zscore={zscore}-subtr_time_mean={subtr_time_mean}-subtrbase={subtr_baseline}-mean={mean_over_trials}-twindscal={twindscal}"
-                                    os.makedirs(savedirthis, exist_ok=True)
+                                if do_heatmap:
+                                    for mean_over_trials in list_heatmap_means:
+                                        # savedirthis = f"{SAVEDIR}/HEATMAP-subtr_version={subtr_version}-mean={mean_over_trials}"
+                                        savedirthis = f"{SAVEDIR}/HEATMAP-zscore={zscore}-subtr_time_mean={subtr_time_mean}-subtrbase={subtr_baseline}-mean={mean_over_trials}-twindscal={twindscal}"
+                                        os.makedirs(savedirthis, exist_ok=True)
 
-                                    from neuralmonkey.neuralplots.population import heatmapwrapper_many_useful_plots
-                                    heatmapwrapper_many_useful_plots(pathis, savedirthis, var_effect=var_effect, 
-                                                                    var_conj=var_conj, 
-                                                                    var_is_blocks=var_is_blocks, mean_over_trials=mean_over_trials,
-                                                                    flip_rowcol=True, plot_fancy=True, n_rand_trials=5,
-                                                                    diverge=diverge)
+                                        from neuralmonkey.neuralplots.population import heatmapwrapper_many_useful_plots
+                                        heatmapwrapper_many_useful_plots(pathis, savedirthis, var_effect=var_effect, 
+                                                                        var_conj=var_conj, 
+                                                                        var_is_blocks=var_is_blocks, mean_over_trials=mean_over_trials,
+                                                                        flip_rowcol=True, plot_fancy=True, n_rand_trials=5,
+                                                                        diverge=diverge)
 
                                 ###################################### Running euclidian
-                                if subspace_projection is not None: # State space plots do not make sense for raw data...
-                                    # savedirthis = f"{SAVEDIR}/SS-subtr_version={subtr_version}"
-                                    nmin_trials_per_lev = 5
-                                    # Plot state space
-                                    LIST_VAR = [
-                                        var_effect,
-                                    ]
-                                    LIST_VARS_OTHERS = [
-                                        (var_conj,),
-                                    ]
-                                    list_dim_timecourse = list(range(NPCS_KEEP))
-                                    list_dims = [(0,1), (1,2), (2,3), (3,4)]
+                                if do_state_space:
+                                    # Do this AFTER consolidating and getting projection.
+                                    if keep_only_shapes_that_exist_across_all_contexts:
+                                        # Only keep shapes that exist across all conditions
+                                        from pythonlib.tools.pandastools import append_col_with_grp_index, extract_with_levels_of_conjunction_vars_helper
 
-                                    savedirthis = f"{SAVEDIR}/SS-zscore={zscore}-subtr_time_mean={subtr_time_mean}-subtrbase={subtr_baseline}-twindscal={twindscal}"
-                                    os.makedirs(savedirthis, exist_ok=True)
+                                        dflab = pa.Xlabels["trials"]
+                                        # dflab = append_col_with_grp_index(dflab, ["task_kind", "stroke_index_is_first"], "tk_sifirst")
+                                        levels_var = list(dflab["tk_sifirst"].unique())
+                                        path_counts_pre = f"{savedir}/counts_prune_pre.pdf"
+                                        path_counts = f"{savedir}/counts_prune_post.pdf"
+                                        if keep_only_shapes_that_exist_across_all_contexts_min_n is None:
+                                            _n_min = n_min_trials_per_shape
+                                        else:
+                                            _n_min = keep_only_shapes_that_exist_across_all_contexts_min_n
+                                        dfout, _ = extract_with_levels_of_conjunction_vars_helper(dflab, "tk_sifirst", [VAR_SHAPE], 
+                                                                            _n_min, path_counts, lenient_allow_data_if_has_n_levels=None, 
+                                                                            levels_var=levels_var, plot_counts_also_before_prune_path=path_counts_pre)
+                                        pathis = pathis.slice_by_dim_indices_wrapper("trials", dfout["_index"].tolist())
 
-                                    pathis.plot_state_space_good_wrapper(savedirthis, LIST_VAR, LIST_VARS_OTHERS, PLOT_CLEAN_VERSION=PLOT_CLEAN_VERSION,
-                                                                    list_dim_timecourse=list_dim_timecourse, list_dims=list_dims,
-                                                                    nmin_trials_per_lev=nmin_trials_per_lev)                
+                                    if subspace_projection is not None: # State space plots do not make sense for raw data...
+                                        for PLOT_CLEAN_VERSION in LIST_PLOT_CLEAN_VERSION:
+                                            # savedirthis = f"{SAVEDIR}/SS-subtr_version={subtr_version}"
+                                            # Plot state space
+                                            LIST_VAR = [
+                                                var_effect,
+                                            ]
+                                            LIST_VARS_OTHERS = [
+                                                (var_conj,),
+                                            ]
+                                            list_dim_timecourse = list(range(NPCS_KEEP))
+                                            # list_dims = [(0,1), (1,2), (2,3), (3,4)]
+                                            list_dims = [(0,1), (1,2), (2,3)]
+
+                                            savedirthis = f"{SAVEDIR}/SS-zscore={zscore}-subtr_time_mean={subtr_time_mean}-subtrbase={subtr_baseline}-twindscal={twindscal}-clean={PLOT_CLEAN_VERSION}"
+                                            os.makedirs(savedirthis, exist_ok=True)
+
+                                            pathis.plot_state_space_good_wrapper(savedirthis, LIST_VAR, LIST_VARS_OTHERS, PLOT_CLEAN_VERSION=PLOT_CLEAN_VERSION,
+                                                                            list_dim_timecourse=list_dim_timecourse, list_dims=list_dims,
+                                                                            nmin_trials_per_lev=n_min_trials_per_shape)                
 
 # def plot_heatmap_firing_rates_all(PA, savedir):
 #     """
@@ -3749,7 +3910,10 @@ if __name__=="__main__":
         # # Euclidian quiuck, using regression
         PLOTS_DO = [5.1] #
         PLOTS_DO = [5.1, 1.1] #
-        PLOTS_DO = [5.1] #
+        PLOTS_DO = [1.3] #
+        # PLOTS_DO = [5.2] #
+
+        # PLOTS_DO = [1.2] #
 
         # Motor stats
         # PLOTS_DO = [4.1] #
@@ -3883,6 +4047,85 @@ if __name__=="__main__":
                                             heatmap_quick_version=heatmap_quick_version,
                                             DO_HACK=DO_HACK)
 
+        elif plotdo==1.2:
+            """
+            [GOOD, REVISION]
+            6/13/25 -- HEATMAP and SS, final version for examples figure 
+            Mainly for the example figure in supplemental, showing trajectories before and after regression (effect of first stroke).
+            Clean, and comparing first stroke to subsequent strokes.
+            """
+
+            # First, plot state space [HEATMAP code]
+            from neuralmonkey.scripts.analy_euclidian_chars_sp import plot_heatmap_firing_rates_all_wrapper
+            import os
+
+            DEBUG_bregion = "PMv"
+            var_conj = "tk_sifirst"
+            list_twind_scal = [(-0.6, 0.2)]
+            LIST_SUBSPACE_PROJECTION = ["task_shape"]
+
+            heatmap_quick_version = True
+            do_heatmap = False
+            also_plot_clean_version = True
+            for regress_out_first_stroke in [False, True]:
+                # for consolidate_diego_shapes_actually in [False, True]:
+                for consolidate_diego_shapes_actually in [True]:
+                            
+                    # regress_out_first_stroke = True
+                    # LIST_PRUNE_VERSION = [None, "sp_char", "sp_char_1plus", "sp_pig", "sp_pig_1plus", "sp_pigchar_1plus"]
+                    LIST_PRUNE_VERSION = [None, "sp_char", "sp_pig"]
+                    keep_only_shapes_that_exist_across_all_contexts = True
+                    # consolidate_diego_shapes_actually = True
+
+                    SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/euclidian_char_sp/HEATMAPS_regress_example/{animal}-{date}-combine={combine}-regress={regress_out_first_stroke}-consolidateshapes={consolidate_diego_shapes_actually}"
+                    os.makedirs(SAVEDIR, exist_ok=True)
+                    print(SAVEDIR)
+
+                    plot_heatmap_firing_rates_all_wrapper(DFallpa, SAVEDIR, animal, date, 
+                                                            DEBUG_skip_drawings=True, DEBUG_bregion=DEBUG_bregion,
+                                                            DEBUG_subspace_projection=None,
+                                                            var_conj=var_conj,
+                                                            LIST_PRUNE_VERSION=LIST_PRUNE_VERSION,
+                                                            list_twind_scal=list_twind_scal,
+                                                            LIST_SUBSPACE_PROJECTION=LIST_SUBSPACE_PROJECTION,
+                                                            heatmap_quick_version=heatmap_quick_version,
+                                                            DO_HACK=regress_out_first_stroke,
+                                                            do_heatmap=do_heatmap, 
+                                                            keep_only_shapes_that_exist_across_all_contexts=keep_only_shapes_that_exist_across_all_contexts,
+                                                            consolidate_diego_shapes_actually=consolidate_diego_shapes_actually,
+                                                            also_plot_clean_version=also_plot_clean_version)
+
+        elif plotdo==1.3:
+            """
+            [GOOD, FINAL for revision figure, main figure heatmap and ss for example Diego 231220]
+            This is separate in order to just plot this animal/date quickly.
+            
+            Just reordering shapes so matches more closely the original submission (for revision)
+            """
+            SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/euclidian_char_sp/HEATMAPS-just_shape_reorder/{animal}-{date}-combine={combine}"
+            os.makedirs(SAVEDIR, exist_ok=True)
+            print(SAVEDIR)
+            DEBUG_bregion_list = ["PMv", "preSMA"]
+            LIST_SUBSPACE_PROJECTION = ["task_shape"]
+            DEBUG_skip_drawings = True
+            do_state_space = True
+            consolidate_diego_shapes_actually=True
+            HACK_Diego_reorder_shapes = True
+            heatmap_quick_version = False
+            LIST_PRUNE_VERSION = ["sp_char_0"]
+            keep_only_shapes_that_exist_across_all_contexts = True
+            keep_only_shapes_that_exist_across_all_contexts_min_n = 5
+            plot_heatmap_firing_rates_all_wrapper(DFallpa, SAVEDIR, animal, date, DEBUG_bregion_list=DEBUG_bregion_list,
+                                                  LIST_SUBSPACE_PROJECTION=LIST_SUBSPACE_PROJECTION,
+                                                  DEBUG_skip_drawings=DEBUG_skip_drawings,
+                                                  consolidate_diego_shapes_actually=consolidate_diego_shapes_actually,
+                                                  do_state_space=do_state_space,
+                                                  LIST_PRUNE_VERSION=LIST_PRUNE_VERSION,
+                                                  HACK_Diego_reorder_shapes=HACK_Diego_reorder_shapes, 
+                                                  heatmap_quick_version=heatmap_quick_version,
+                                                  keep_only_shapes_that_exist_across_all_contexts=keep_only_shapes_that_exist_across_all_contexts,
+                                                  keep_only_shapes_that_exist_across_all_contexts_min_n=keep_only_shapes_that_exist_across_all_contexts_min_n)
+
         elif plotdo==2:
             """
             Time-resolved euclidian distances - STROKES VERSION
@@ -3914,6 +4157,23 @@ if __name__=="__main__":
             os.makedirs(SAVEDIR_ANALYSIS, exist_ok=True)
             print(SAVEDIR_ANALYSIS)
             behstrokes_extract_char_clust_sim(PA, animal, date, SAVEDIR_ANALYSIS, PLOT=True)
+        
+        elif plotdo==4.1:
+            """ [GOOD, REVISION] Compare motor stats across characeter and sp.  Lot sof pltos.
+            for revision, focusing on char stroke 2+
+            """
+
+            var_shape = VAR_SHAPE
+            SAVEDIR_ANALYSIS = f"/lemur2/lucas/analyses/recordings/main/euclidian_char_sp/motor_comparison/{animal}-{date}-combine={combine}-var={var_shape}"
+            os.makedirs(SAVEDIR_ANALYSIS, exist_ok=True)
+            print(SAVEDIR_ANALYSIS)
+
+            # Set this to None, to run the first time, ie to get every single (char1+, sp) pair. This saves them so that
+            # later can load to do thresholding.
+            for nmax_for_pairs in [None, 30]:
+                # Also do 30, so that it makes example drwaing plots.
+                behstrokes_preprocess_plot_motor_stats_similarity(DFallpa, animal, date, var_shape, SAVEDIR_ANALYSIS, 
+                                                                char_stroke1_plus=True, nmax_for_pairs=nmax_for_pairs)
 
         elif plotdo==5:
             """
@@ -3967,6 +4227,24 @@ if __name__=="__main__":
                 euclidian_time_resolved_fast_shuffled(DFallpa, animal, date, SAVEDIR_ANALYSIS, DO_RSA_HEATMAPS=DO_RSA_HEATMAPS, 
                                         HACK = HACK, DEBUG_bregion_list=DEBUG_bregion_list, DO_REGRESS_HACK=DO_REGRESS_HACK)
             
+        elif plotdo==5.2:
+            """
+            [GOOD, REVISION]
+            Solely to make RSA for Diego 231220 matching order of shapes in original submission
+            """
+            DEBUG_bregion_list = ["PMv", "preSMA"]
+            DO_RSA_HEATMAPS = True
+            HACK = True # Always on.
+            assert HACK == True
+            HACK_Diego_reorder_shapes = True
+            for DO_REGRESS_HACK in [True]:
+                SAVEDIR_ANALYSIS = f"/lemur2/lucas/analyses/recordings/main/euclidian_char_sp/EUCL_QUICK_SHUFFLE_revision-VAR_SHAPE={VAR_SHAPE}-justRSA/{animal}-{date}-combine={combine}-wl={version}-00_stroke-regrhack={DO_REGRESS_HACK}"
+                os.makedirs(SAVEDIR_ANALYSIS, exist_ok=True)
+                print(SAVEDIR_ANALYSIS)
+                euclidian_time_resolved_fast_shuffled(DFallpa, animal, date, SAVEDIR_ANALYSIS, DO_RSA_HEATMAPS=DO_RSA_HEATMAPS, 
+                                        HACK = HACK, DEBUG_bregion_list=DEBUG_bregion_list, DO_REGRESS_HACK=DO_REGRESS_HACK,
+                                        HACK_Diego_reorder_shapes=HACK_Diego_reorder_shapes)
+            
         elif plotdo==6:
             """
             Targeted dim reductions, and then followed by variety of analyses and plots:
@@ -3997,7 +4275,9 @@ if __name__=="__main__":
                     targeted_dim_reduction_wrapper(DFallpa, animal, date, SAVEDIR_ANALYSIS,
                                                             variables, variables_is_cat, var_effect = var_effect)
 
+        elif plotdo==7:
             """
+            [IN PROGRESS -- not great]
             GOOD - Motor vs. shape encoding
             """
 
@@ -4007,6 +4287,11 @@ if __name__=="__main__":
             
             motor_encoding_score_wrapper(DFallpa, animal, date, SAVEDIR_ANALYSIS)
         
+        elif plotdo==8:
+            # Cross-temporal scoring. Consider each time bin for char vs. each time bin for SP.
+            assert False, "in progress -- see notebook..."
+            # Notebook: /home/lucas/code/neuralmonkey/neuralmonkey/notebooks_tutorials/241002_char_euclidian_pop.ipynb
+            # Section: Cross-temporal scoring
         else:
             print(plotdo)
             assert False   
