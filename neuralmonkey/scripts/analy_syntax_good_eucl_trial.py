@@ -1575,7 +1575,7 @@ if __name__=="__main__":
                 regression_wrapper_wrapper(DFallpa, LIST_VAR_VAROTHERS_REGR, SAVEDIR_ANALYSIS, ndims)
 
     elif 2.1 in PLOTS_DO:
-
+        # [MAYBE this:] state space plots, using targeted PCA
         variables = ["epoch", "FEAT_num_strokes_beh", "seqc_0_loc", "seqc_0_shape", "syntax_slot_0", "syntax_slot_1", "syntax_slot_2"]
         variables_is_cat = [True, True, True, True, False, False, False]
 

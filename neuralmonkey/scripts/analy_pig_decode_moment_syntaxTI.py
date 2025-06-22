@@ -206,11 +206,12 @@ def dfallpa_preprocess_condition(DFallpa, shape_var_suff="shape", loc_var_suff="
     # shape_var_suff = "shapesemgrp"
     # loc_var_suff = "loc_on_clust"
 
-    for i, row in DFallpa.iterrows():
+    for _, row in DFallpa.iterrows():
+        PA = row["pa"]
+        dflab = PA.Xlabels["trials"]
+
         if row["which_level"] == "trial":
-            print(row["bregion"])
-            PA = row["pa"]
-            dflab = PA.Xlabels["trials"]
+            print(row["which_level"], row["bregion"])
             
             nstrokes_max = max(dflab["FEAT_num_strokes_beh"])
             
@@ -229,6 +230,8 @@ def dfallpa_preprocess_condition(DFallpa, shape_var_suff="shape", loc_var_suff="
             dflab["shapes_drawn"] = list_shapes_drawn            
             dflab["locs_drawn"] = list_locs_drawn   
 
+        # - successful sequence?
+        dflab["success_binary_quick"] = [row["FEAT_num_strokes_task"]==row["FEAT_num_strokes_beh"] for i, row in dflab.iterrows()]
 
 def _syntax_concrete_string_to_indices(s):
     """
