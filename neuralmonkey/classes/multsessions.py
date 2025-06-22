@@ -908,6 +908,88 @@ class MultSessions(object):
 
         return PA, fig
 
+    ################### TRIALPOP
+    def trialpop_extract_wrapper(self, events_that_must_include = ("on_strokeidx_0",),
+                                 event_on = "samp", event_off = "post", pre_dur = -0.1, post_dur = 0.1):
+        """
+        Extract PA trialpop -- another data strucutre where each row is a trial, with variable durations allowed.
+        """
+        # Get the events that are in the session
+
+        # Get prominent events
+        events = self.SessionsList[0].events_default_list_events(include_stroke_endpoints=True, include_events_from_dict=True)
+
+        sites = self.sitegetter_all(how_combine="intersect")
+        tmp = []
+        res = []
+        for sessnum, sn in enumerate(self.SessionsList):
+            # For each trial, get activity within a window (aligned to onset and offset events).
+            trials = sn.get_trials_list(True, True, events_that_must_include = events_that_must_include)
+            print(f"Sess {sessnum} == extracting these trials: {trials}")
+
+            # sites = sn.sitegetterKS_all_sites()
+            # fail_if_times_outside_existing = True
+            # ons = []
+            # offs = []
+            for t in trials:
+                time_on = sn.events_get_time_helper(event_on, t, assert_one=True)[0]
+                time_off = sn.events_get_time_helper(event_off, t, assert_one=True)[0]
+                # print(t, time_on, time_off)
+                # ons.append(time_on)
+                # offs.append(time_off)   
+                post_dur_rel_timeon = time_off - time_on + post_dur
+                time_start_incl_flank = time_on + pre_dur
+                time_off_incl_flank = time_off + post_dur
+
+                if True:
+                    # Just get the entire trial
+                    pa = sn.popanal_generate_save_trial(t)
+                    pa = pa._slice_by_time_window(time_start_incl_flank, time_off_incl_flank, return_as_popanal=True)
+                else:
+                    # Problem, this always realigns to start at 0.
+                    pa, trials_all, times_all, idx_trialtime_all = sn.smoothedfr_extract_timewindow_bytimes([t], [time_on], sites, 
+                        pre_dur=pre_dur, post_dur=_post_dur, realign_to_time=False)
+
+                # Also get spike times
+                map_site_to_spiketimes = {}
+                for s in sites:
+                    st = sn._snippets_extract_single_snip_spiketimes(s, t,
+                        time_on, pre_dur, post_dur_rel_timeon, subtract_event_time=False)
+                    map_site_to_spiketimes[s] = st
+
+                # Also get events
+                map_event_to_times = {ev:sn.events_get_time_helper(ev, t) for ev in events}
+
+                # Stroke times
+                ons, offs = sn.strokes_extract_ons_offs(t)
+                # assert len(ons)>0, "should have cau"
+                # assert len(offs)>0
+
+                res.append({
+                    "sess":sessnum,
+                    "SN":sn,
+                    "trial":t,
+                    "trialcode":sn.datasetbeh_trial_to_trialcode(t),
+                    "pa":pa,
+                    "time_start_incl_flank":time_start_incl_flank,
+                    "time_off_incl_flank":time_off_incl_flank,
+                    "spike_times":map_site_to_spiketimes,
+                    "event_times":map_event_to_times,
+                    "stroke_ons":ons,
+                    "stroke_offs":offs,
+                })
+
+            # for t in trials:
+            #     print(t)
+            #     if False:
+            #         dfeventsn, list_events = sn.eventsdataframe_extract_timings(events, trials)
+            #     else:
+            #         map_event_to_times = {ev:sn.events_get_time_helper(ev, t) for ev in events}
+
+            #     # # tmp.append(dfeventsn)
+            #     # tmp.append(map_event_to_times)
+
+        return pd.DataFrame(res)
 
     ################### SITES
     # (Generally asserts that all sessions have same channels ...)
