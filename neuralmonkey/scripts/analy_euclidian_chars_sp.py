@@ -3696,6 +3696,9 @@ if __name__=="__main__":
     from neuralmonkey.classes.population_mult import extract_single_pa
     from neuralmonkey.analyses.state_space_good import euclidian_distance_compute_trajectories_single, euclidian_distance_compute_trajectories
 
+    from pythonlib.dataset.dataset import DIEGO_USE_MAIN_21
+    assert DIEGO_USE_MAIN_21 == False, "All analyses here use Diego's expanded set of prims, and then consolidate post-hoc, or in the code within here"
+
     animal = sys.argv[1]
     date = int(sys.argv[2])
     combine = int(sys.argv[3])==1
