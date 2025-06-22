@@ -1659,9 +1659,11 @@ class PopAnal():
                                              min_n_datapts_unconstrained=1, plot_train_test_counts=False, plot_indices=False,
                                              plot_all_folds=False):
         """
-        [Good] Split data (trials) in stratitied manner by label, with helping to make sure not have not enough trials in output
+        [Good] Split data (trials) in stratitied manner by label, with helping to make sure have enough trials in output
         (constraints).
 
+        One set (constrained) will have at least <n_constrained> datapts per each level of label_grp_vars.
+        
         PARAMS:
         - nsplits, each time does newly with shuffle (with replacment).
         - fraction_constrained_set = 0.75 # Take most for the euclidian distance (less for dpca)
@@ -1860,7 +1862,9 @@ class PopAnal():
         pa1.Xlabels["trials"] = pa1.Xlabels["trials"].drop("tmp", axis=1)
         pa2.Xlabels["trials"] = pa2.Xlabels["trials"].drop("tmp", axis=1)
 
-        return pa1, pa2
+        pa_train = pa1
+        pa_test = pa2
+        return pa_train, pa_test
 
     def split_train_test_random(self, frac_test):
         """
@@ -2974,6 +2978,7 @@ class PopAnal():
             reshape_method = "chans_x_trials_x_times"
             if tbin_dur == "default":
                 tbin_dur = 0.15
+            if tbin_slide == "default":
                 tbin_slide = 0.02
         elif scalar_or_traj in ["scal", "scalar"]:
             reshape_method = "trials_x_chanstimes"
@@ -5105,8 +5110,114 @@ class PopAnal():
             ####
             plt.close("all")    
 
+    def plot_heatmap_state_euclidean_wrapper(self, var_effect, var_other, SAVEDIR, 
+                                             list_twind_scal_eucl, 
+                                             LIST_VAR_SS, LIST_VARS_OTHERS_SS, list_dims=None, ndims_timecourse=4,
+                                             twind_base = (-0.6, -0.05),
+                                             do_heatmap=True, do_state_space=True, do_euclidean=True):
+        """
+        General helper for summarizing activity for this population,
+        to makes all plots I tend to make, including heatmaps, RSA, state space, euclidean distance.
+        NOTE: must first do dim reduction, etc, and use that processed PA for this plots.
+        """
+        from neuralmonkey.neuralplots.population import heatmapwrapper_many_useful_plots
+        import seaborn as sns
 
-    ##########################
+        list_heatmap_means = [True]
+        # list_mean_zscore_base = [(False, True, False)]
+        list_mean_zscore_base = [(False, False, False), (True, False, False)]
+        PLOT_CLEAN_VERSION = False
+        # plot_bad_strokes=False
+
+        ### HEATMAP and STATE SPACE
+        for subtr_time_mean, zscore, subtr_baseline in list_mean_zscore_base:
+
+            pathis = self.copy()
+            diverge = False
+
+            if zscore:
+                pathis = pathis.norm_rel_all_timepoints()
+                zlims = None
+                # zlims = [-2, 2]
+                diverge = True
+            else:
+                zlims = None
+
+            if subtr_time_mean:
+                pathis = pathis.norm_subtract_trial_mean_each_timepoint()
+                diverge = True
+
+            if subtr_baseline:
+                pathis = pathis.norm_rel_base_window(twind_base, "subtract")
+                diverge = True
+
+            for mean_over_trials in list_heatmap_means:
+                savedirthis = f"{SAVEDIR}/zscore={zscore}-subtr_time_mean={subtr_time_mean}-subtrbase={subtr_baseline}-mean={mean_over_trials}"
+                os.makedirs(savedirthis, exist_ok=True)
+
+                ######## HEATMAPS
+                if do_heatmap:
+                    heatmapwrapper_many_useful_plots(pathis, savedirthis, var_effect, var_other, False, 
+                                                    mean_over_trials=mean_over_trials, zlims=zlims, flip_rowcol=True,
+                                                    plot_fancy=True, diverge=diverge)  
+
+                    plt.close("all")
+
+            ###################################### Running euclidian
+            nmin_trials_per_lev = 4
+            # Plot state space
+            # LIST_VAR = [
+            #     var_effect,
+            # ]
+            # LIST_VARS_OTHERS = [
+            #     (var_conj,),
+            # ]
+
+            if list_dims is None:
+                list_dims = [(0,1), (1,2), (2,3), (3,4)]
+            list_dim_timecourse = list(range(ndims_timecourse))
+
+            savedirthis = f"{SAVEDIR}/SS-zscore={zscore}-subtr_time_mean={subtr_time_mean}-subtrbase={subtr_baseline}"
+            os.makedirs(savedirthis, exist_ok=True)
+
+            if do_state_space:
+                pathis.plot_state_space_good_wrapper(savedirthis, LIST_VAR_SS, LIST_VARS_OTHERS_SS, PLOT_CLEAN_VERSION=PLOT_CLEAN_VERSION,
+                                                list_dim_timecourse=list_dim_timecourse, list_dims=list_dims,
+                                                nmin_trials_per_lev=nmin_trials_per_lev)                
+
+
+        ### Euclidean and RSA
+        # Newer version, multiple dims for each var
+        if do_euclidean:
+            list_dfdist = []
+            for twind_scal in list_twind_scal_eucl:
+                ###################################### Running euclidian
+                from neuralmonkey.analyses.euclidian_distance import timevarying_compute_fast_to_scalar
+                
+                pa = self.slice_by_dim_values_wrapper("times", twind_scal)
+
+                # (1) Data
+                savedir = f"{SAVEDIR}/euclidean-twindscal={twind_scal}"
+                os.makedirs(savedir, exist_ok=True)
+                dfdist, _ = timevarying_compute_fast_to_scalar(pa, [var_effect, var_other], rsa_heatmap_savedir=savedir,
+                                                                plot_conjunctions_savedir=savedir)
+
+                # import seaborn as sns
+                fig = sns.catplot(data=dfdist, x=f"same-{var_effect}|{var_other}", y="dist_yue_diff", alpha=0.5, jitter=True)
+                savefig(fig, f"{savedir}/catplot-1.pdf")
+                fig = sns.catplot(data=dfdist, x=f"same-{var_effect}|{var_other}", y="dist_yue_diff", kind="bar")
+                savefig(fig, f"{savedir}/catplot-2.pdf")
+
+                plt.close("all")
+
+                dfdist["twind_scal"] = [twind_scal for _ in range(len(dfdist))]
+                list_dfdist.append(dfdist)
+        else:
+            list_dfdist = None
+
+        return list_dfdist
+
+##########################
     def regress_neuron_task_variables_all_chans_plot_coeffs(self, dfcoeff, savedir_coeff_heatmap=None, suffix=None):
         """
         Helper to plot dfcoeff, which holds the the coefficients of the regression for each chan, where the coefficients are
@@ -5363,7 +5474,44 @@ class PopAnal():
             print(coef_array)   
 
         return dict_coeff, model, data, original_feature_mapping
-        
+
+    def regress_neuron_task_variables_subtract_from_activity(self, tbin_dur, tbin_slide, twind, var_shape):
+        """
+        HACKY, to remove effect of first stroke, by regressing out from activity (raw, PA.X)
+        """
+        import numpy as np
+
+        # Convert to desired time bins
+        pa = self.slice_by_dim_values_wrapper("times", twind)
+        pa = pa.agg_by_time_windows_binned(tbin_dur, tbin_slide)
+
+        # For each time bin, do regression.
+        n_time_bins = pa.X.shape[2]
+        X = np.zeros([pa.X.shape[0], pa.X.shape[1], n_time_bins]) - np.inf # Initialize holder for final data.
+        for i in range(n_time_bins):
+            pathis = pa.slice_by_dim_indices_wrapper("times", [i])
+
+            var_effect = var_shape
+            variables = ["stroke_index_is_first", "task_kind", var_effect]
+            variables_is_cat = [True for _ in range(len(variables))]
+            dfcoeff, _, _, _ = pathis.regress_neuron_task_variables_all_chans(variables, 
+                                                                            variables_is_cat)
+
+            # This is the value you should subtract from all cases with first stroke = True
+            a = dfcoeff["C(stroke_index_is_first)[T.True]"].values[:, None] # (nchans, 1)
+
+            dflab = pa.Xlabels["trials"]
+            b = dflab["stroke_index_is_first"].astype(int).values[:, None] # (ntrials, 1)
+
+            X[:, :, i] = np.dot(a, b.T) # (nchans, ntrials). should subtract this from X at this timepoint.
+
+        assert np.all(X > -np.inf), "check that is all filled"        
+
+        # Do subtraction
+        pa.X = pa.X - X
+
+        return pa
+
 def concatenate_popanals_flexible(list_pa, concat_dim="trials", how_deal_with_different_time_values="replace_with_dummy"):
     """ Concatenates popanals (along a given dim) which may have different time bases (but
     the same n time bins.
