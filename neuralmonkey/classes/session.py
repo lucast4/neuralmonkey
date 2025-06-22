@@ -6940,7 +6940,7 @@ class Session(object):
             else:
                 assert event_endpoints is None
 
-            fig1d, axes1d = plt.subplots(3,1, figsize=(15,10), squeeze=False)
+            fig1d, axes1d = plt.subplots(4,1, figsize=(20,10), squeeze=False, sharex=True)
 
             ax = axes1d.flatten()[0]
             ax.plot(times_tdt, vals_tdt_calibrated[:,0], label="tdt_x", color="b")
@@ -6975,6 +6975,10 @@ class Session(object):
             # - overlay trial events
             self.plotmod_overlay_trial_events(ax, trial)
 
+            # Also put line underneath coloring the shapes
+            ax = axes1d.flatten()[3]
+            self.beh_eye_fixation_task_shape_overlay_plot(trial, ax)
+            
             # overlay on task image
             fig2d, axes2d = plt.subplots(2, 2, figsize=(10,10))
 
@@ -9214,7 +9218,6 @@ class Session(object):
         # Plot y markers splitting the blocks
         ymarks = [y-0.5 for y in list_index_first_trial_in_block]
         self.plotmod_overlay_y_events(ax, ymarks, list_labels, True, textcolor="m")
-        
         if xmin is not None:
             ax.set_xlim(xmin=xmin)
         if xmax is not None:
@@ -10094,7 +10097,8 @@ class Session(object):
 
         return self._BehEyeAlignOffset
 
-    def beh_eye_fixation_extract_and_assign_task_shape(self, trial, PLOT=False, event_endpoints=None, return_fig=False):
+    def beh_eye_fixation_extract_and_assign_task_shape(self, trial, PLOT=False, event_endpoints=None, 
+                                                       return_fig=False, fig_savedir=None):
         """
         Good helper to extract fixations for a trial, optionally within a range of events, and assigning the shape he is looking at, with
         constraints on closeness in distance, and in time from onset of first event (i.e, in getting clean fixations).
@@ -10103,6 +10107,8 @@ class Session(object):
         import pandas as pd
         from pythonlib.tools.distfunctools import closest_pt_twotrajs
 
+        if fig_savedir is not None:
+            return_fig = True
 
         # Params - criteria for assigining a shape to fiaation, based on distance
         MIN_DIST_TASK_TO_FIX = 70 # radius (from closest point along stroke stroke task image), fixation must be within this to assign to this shape (L2)
@@ -10136,6 +10142,10 @@ class Session(object):
                     ax.axhline(cen[1]-MIN_DIST_TASK_TO_FIX, color="r", linestyle="--")
                     ax.axhline(cen[1]+MIN_DIST_TASK_TO_FIX, color="r", linestyle="--")
 
+        if fig_savedir is not None:
+            savefig(fig1d, f"{fig_savedir}/timecourse.pdf")
+            savefig(fig2d, f"{fig_savedir}/overlaid_image.pdf")
+            
         # For each fixation, get its distance to task shapes.
         list_dist_to_closest_token = []
         list_idx_closest_token = []
@@ -10173,7 +10183,10 @@ class Session(object):
                 ax.text(fix_cen[0], fix_cen[1], f"#{i}-dist={dist_closest:.1f}")
                 if dist_closest>MIN_DIST_TASK_TO_FIX:
                     ax.plot(fix_cen[0], fix_cen[1], "xr")
-                        
+
+            if fig_savedir:
+                savefig(fig, f"{fig_savedir}/overlaid_image_clean.pdf")
+            
         # Get final list of good fixations
         res = []
         for i in range(len(data_centroids)):
@@ -10377,6 +10390,8 @@ class Session(object):
 
                 if plot_vlines:
                     ax.axvline(t1, color=col, alpha=vlines_alpha, linestyle=":")
+        from pythonlib.tools.plottools import legend_add_manual
+        legend_add_manual(ax, map_shape_to_col.keys(), map_shape_to_col.values())
         
         return dffix, map_shape_to_y, map_shape_to_col
 
