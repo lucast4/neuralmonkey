@@ -6034,7 +6034,7 @@ class Snippets(object):
         return fig, ax
 
     def _plotgood_rasters_split_by_feature_levels(self, ax, dfthis, var, event=None, 
-        levels_var=None, xmin=None, xmax=None):
+        levels_var=None, xmin=None, xmax=None, OVERLAY_TRIAL_EVENTS=True):
         """
         Plot rasters for this dataset, blocked by levels of a given feature (var). 
         PARAMS:
@@ -6085,12 +6085,12 @@ class Snippets(object):
             ymax_prev+=len(trials)
             
         # 1) Plot all spike times
-        overlay_trial_events = self._CONCATTED_SNIPPETS==False
+        overlay_trial_events = self._CONCATTED_SNIPPETS==False and OVERLAY_TRIAL_EVENTS
         sn.plot_raster_spiketimes_blocked(ax, list_list_st, list_labels, list_list_trials, 
             list_list_evtimes, xmin = xmin, xmax=xmax, overlay_trial_events=overlay_trial_events)
 
         # 2) for each session, plot its event times.        
-        if self._CONCATTED_SNIPPETS:
+        if self._CONCATTED_SNIPPETS and OVERLAY_TRIAL_EVENTS:
             # Overlay each sub sn
 
             # i flatten
@@ -6410,15 +6410,17 @@ class Snippets(object):
         return fig, axesall
 
     def plotgood_rasters_smfr_each_level_combined(self, site, var, 
-                vars_others=None, event=None, plotvers=("raster", "smfr"),
-                                                  OVERWRITE_n_min=None,
-                                                  OVERWRITE_lenient_n=None,
-                                                  balance_same_levels_across_ovar=False):
+                                    vars_others=None, event=None, plotvers=("raster", "smfr"),
+                                    OVERWRITE_n_min=None,
+                                    OVERWRITE_lenient_n=None,
+                                    balance_same_levels_across_ovar=False,
+                                    clean=False):
         """ [Good], plot in a single figure both rasters (top row) and sm fr (bottom), aligned.
         Each column is a level of vars_others. 
         PARAMS;
         - var, str, the variable, e.g, epoch"
         --- or list of str, which will be interpreted as conjunction var.
+        - clean, then does not plot events onto the rasters.
         NOTE:
         - this could be made flexible so that each column is anyting, such as events.
 
@@ -6441,6 +6443,8 @@ class Snippets(object):
 
         assert event is not None, "or else OVERWRITE_n_min wont work, it will counta cross all event"
 
+        OVERLAY_TRIAL_EVENTS = not clean
+            
         if isinstance(var, (tuple, list)):
             from pythonlib.tools.pandastools import append_col_with_grp_index
             self.DfScalar = append_col_with_grp_index(self.DfScalar, var, "_tmp")
@@ -6487,7 +6491,7 @@ class Snippets(object):
                 axes = axesall[0]
                 for ax, (lev_other, dfthis) in zip(axes.flatten(), levdat.items()):
                     self._plotgood_rasters_split_by_feature_levels(ax, dfthis, var, event=event,
-                        xmin=xmin, xmax=xmax)
+                        levels_var=levels_var, xmin=xmin, xmax=xmax, OVERLAY_TRIAL_EVENTS=OVERLAY_TRIAL_EVENTS)
                     # Make sure is readable even if is long name.
                     ax.set_title(map_level_to_idx[lev_other], fontsize=FONTSIZE, wrap=True)
                     ax.set_ylabel(map_level_to_idx[lev_other], fontsize=FONTSIZE, wrap=True)

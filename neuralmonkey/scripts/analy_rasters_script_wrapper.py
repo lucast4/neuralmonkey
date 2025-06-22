@@ -55,7 +55,7 @@ def get_events_keep(which_level):
         assert False
     return EVENTS_KEEP
 
-def plotter(SP, var, vars_others, event, SAVEDIR, OVERWRITE_n_min, OVERWRITE_lenient_n):
+def plotter(SP, var, vars_others, event, SAVEDIR, OVERWRITE_n_min, OVERWRITE_lenient_n, clean=False):
     savedir = f"{SAVEDIR}/var={var}-others={'|'.join(vars_others)}/{event}"
     os.makedirs(savedir, exist_ok=True)
 
@@ -71,7 +71,7 @@ def plotter(SP, var, vars_others, event, SAVEDIR, OVERWRITE_n_min, OVERWRITE_len
                                             lenient_allow_data_if_has_n_levels=OVERWRITE_lenient_n,
                                             PRINT_AND_SAVE_TO=f"{savedir}/00_counts_conjunction_GOOD.txt",
                                             plot_counts_heatmap_savepath=f"{savedir}/00_counts_conjunction_heatmap_GOOD.pdf")
-
+    
     # Rasters
     for chan in SP.Sites:
         chan_text = SP.session_sitegetter_summarytext(chan)
@@ -113,7 +113,8 @@ def plotter(SP, var, vars_others, event, SAVEDIR, OVERWRITE_n_min, OVERWRITE_len
                                                                         plotvers=plotvers,
                                                                         OVERWRITE_n_min=OVERWRITE_n_min,
                                                                         OVERWRITE_lenient_n=OVERWRITE_lenient_n,
-                                                                        balance_same_levels_across_ovar=balance_same_levels_across_ovar)
+                                                                        balance_same_levels_across_ovar=balance_same_levels_across_ovar,
+                                                                        clean=clean)
             if fig is not None:
                 savefig(fig, path)
                 print("Saved rasters to: ", path)
@@ -132,6 +133,7 @@ if __name__=="__main__":
     animal = sys.argv[1]
     date = int(sys.argv[2])
     question = sys.argv[3]
+    clean = int(sys.argv[4])==1
 
     ############# USUALYL HARD-CODED PARAMS
     # Load q_params
@@ -186,4 +188,4 @@ if __name__=="__main__":
     else:
         for var, vars_others, OVERWRITE_lenient_n in zip(LIST_VAR, LIST_VARS_OTHERS, LIST_OVERWRITE_lenient_n):
             for event in EVENTS_KEEP:
-                plotter(SP, var, vars_others, event, SAVEDIR, OVERWRITE_n_min, OVERWRITE_lenient_n)
+                plotter(SP, var, vars_others, event, SAVEDIR, OVERWRITE_n_min, OVERWRITE_lenient_n, clean=clean)
