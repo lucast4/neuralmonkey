@@ -126,8 +126,8 @@ elif [[ $animal == Pancho ]]; then
   # datelist=(240515) # 
   # datelist=(220606 220717 240510 240530) # This completes extraction for all size dates.
   # datelist=(221218) # 
-  datelist=(220715 220716 220717 220724 240530) # Rerunning the final dates, to get PMvl
-  # datelist=(220717) # missed a date
+  datelist=(220715 220716 220717 220724 240530) # ALL DATES Rerunning the final dates, to get PMvl
+  datelist=(220716) # missed dates
   # question=SP_BASE_trial
   question=SP_BASE_stroke
   combine=1

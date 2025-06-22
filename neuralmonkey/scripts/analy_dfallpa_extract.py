@@ -47,7 +47,7 @@ def extract_dfallpa_helper(animal, date, question, combine_into_larger_areas,
         list_time_windows = [(-0.4, 0.4)] # to slice data including just within this time window (realtive to events)
     elif question=="SP_BASE_stroke":
         # Then want to get entire stroke
-        list_time_windows = [(-0.5, 2.5)]
+        list_time_windows = [(-0.5, 2.1)]
     else:
         list_time_windows = [(-1.0, 1.8)]
         # list_time_windows = [(-0.8, 1.4)]
