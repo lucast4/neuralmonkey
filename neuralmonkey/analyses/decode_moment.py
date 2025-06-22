@@ -722,16 +722,24 @@ class Decoder():
     def _timeseries_plot_by_shape_drawn_order(self, probs_mat_all_strokeindex, times, labels, MAP_INDEX_TO_COL,
                                               ax, ylims=None):
         """
-        Helper to plot one curve for each storke index (0, 1, 2,...) -- i.e,. for each trial,
-        what was the decode for sahpe that was done first (this is "0") and second ("1") and so on.
-        For each trial this may be different shape, but only conisder its stroke index. 
+        [Legacy name for this function, it was not accurate, better to be _timeseries_plot_flex()]
+        """
+        return self._timeseries_plot_flex(self, probs_mat_all_strokeindex, times, labels, MAP_INDEX_TO_COL,
+                                              ax, ylims)
+    
+    def _timeseries_plot_flex(self, probs_mat_all_strokeindex, times, labels, MAP_INDEX_TO_COL,
+                                              ax, ylims=None, plot_legend=True):
+        """
+        [Low-level] Helper to plot one curve for each label (usually, the decoder, but could be anything, as long
+        as aligned with dimensions of probs_mat).
 
-        Used for shape sequence plots, showing the timecourse of decode for the different strokes that will 
-        be drawn on that trial.
-
+        Use for plotting, how well each decoder does, across time.
+        
         PARAMS:
         - probs_mat_all_strokeindex, array of probs, (nlables, ntrials, ntimes)
-        - MAP_INDEX_TO_COL, dict, from index 0, 1, 2... --> 4-d color array
+        - times, the within-trial time
+        - labels, list of str (usualyl decoder names)
+        - MAP_INDEX_TO_COL, dict, to map from label to 4-d color array. If None, then decides within.
         """
         from pythonlib.tools.plottools import color_make_map_discrete_labels
 
@@ -747,7 +755,7 @@ class Decoder():
 
         probs_mat_strokeindex = np.mean(probs_mat_all_strokeindex, axis=1).T
         self._plot_single_trial(probs_mat_strokeindex, times, labels=labels, map_lab_to_col=MAP_INDEX_TO_COL, ax=ax, 
-                            plot_legend=True, alpha=1)
+                            plot_legend=plot_legend, alpha=1)
         
         ax.axhline(0, color="k", alpha=0.5)
 
@@ -758,7 +766,7 @@ class Decoder():
                                 SIZE=4, ylims=None, filter_n_strokes_using="both"):
         """
         Make a single figure with timecoures of deocde, where each subplot are all trials with one specific n strokes drawn,
-        and further optionally filtered by conjunction of that an a filtdict.
+        and further optionally filtered by conjunctiontimeseries_plot_wrapper of that an a filtdict.
 
         NOTE: n strokes = x means trials where n strokes drawn and task are both x
 
@@ -769,15 +777,15 @@ class Decoder():
         trials of this n-strokes). Note: input {}, then just a single plot averaging over all data
         - n_strokes_using, whether to use "beh", "tasks", or "both" to classify each trail's nstrokes.
         """
-
+  
         if list_n_strokes is None:
             list_n_strokes = sorted(PAprobs.Xlabels["trials"]["FEAT_num_strokes_beh"].unique().tolist())
-        if len(list_title_filtdict)==0 or list_title_filtdict is None:
+        if list_title_filtdict is None or len(list_title_filtdict)==0:
             list_title_filtdict = [("all", {})]
 
         ncols = len(list_title_filtdict)
         nrows = len(list_n_strokes)
-        fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*SIZE, nrows*SIZE), sharex=True, sharey=True)
+        fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*SIZE, nrows*SIZE), sharex=True, sharey=True, squeeze=False)
 
         ### FILTER
         ct = 0
