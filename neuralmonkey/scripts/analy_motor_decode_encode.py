@@ -26,6 +26,8 @@ from pythonlib.tools.pandastools import grouping_plot_n_samples_conjunction_heat
 from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good
 import seaborn as sns
 
+VAR_SHAPE = "shape_semantic"
+VAR_LOC = "gridloc"
 
 def preprocess_pa_to_alignedneuralmotor(PA, lag_neural_vs_beh):
     """
@@ -145,7 +147,7 @@ def score_wrapper(DFRES, DFLAB, inds_train, inds_test, method, beh_variables, PR
     assert len(DFRES)==len(DFLAB)
     assert beh_variables is not None, "for now, shouild pass in."
 
-    variables_categorical = ["seqc_0_shape", "seqc_0_loc"]
+    variables_categorical = [VAR_SHAPE, VAR_LOC]
     variables_motor = ["pos_x", "pos_y", "vel_x", "vel_y"]
     for v in beh_variables:
         assert v in variables_categorical + variables_motor, "you want to inlucde a variable in regression which will not be part of data"
@@ -245,7 +247,7 @@ def score_wrapper(DFRES, DFLAB, inds_train, inds_test, method, beh_variables, PR
         for dim_y in range(nchans):
             # Method: statsmodel
             y_var = f"neural_{dim_y}"
-            # x_vars = ["vel_x", "vel_y", "pos_x", "pos_y", "seqc_0_shape"]
+            # x_vars = ["vel_x", "vel_y", "pos_x", "pos_y", VAR_SHAPE]
             # x_vars_is_cat = [False, False, False, False, True]
             # x_vars = ["vel_x", "vel_y", "pos_x", "pos_y"]
             # x_vars_is_cat = [False, False, False, False]
@@ -382,7 +384,7 @@ def _score_obsolete(DFRES, DFLAB, inds_train, inds_test, method, PRINT=False, be
     assert False, "this is obsolete"
 
     assert len(DFRES)==len(DFLAB)
-    variables_take = ["seqc_0_shape", "seqc_0_loc"]
+    variables_take = [VAR_SHAPE, VAR_LOC]
     variables_motor = ["pos_x", "pos_y", "vel_x", "vel_y"]
     for v in beh_variables:
         assert v in variables_take + variables_motor, "you want to inlucde a variable in regression which will not be part of data"
@@ -486,7 +488,7 @@ def _score_obsolete(DFRES, DFLAB, inds_train, inds_test, method, PRINT=False, be
             else:
                 # Method: statsmodel
                 y_var = f"neural_{dim_y}"
-                # x_vars = ["vel_x", "vel_y", "pos_x", "pos_y", "seqc_0_shape"]
+                # x_vars = ["vel_x", "vel_y", "pos_x", "pos_y", VAR_SHAPE]
                 # x_vars_is_cat = [False, False, False, False, True]
                 x_vars = ["vel_x", "vel_y", "pos_x", "pos_y"]
                 x_vars_is_cat = [False, False, False, False]
@@ -637,7 +639,7 @@ def analy_decode_encode_wrapper(DFallpa, SAVEDIR):
     test_size = 0.2
     assert nsplits==5 and test_size==0.2, "this works, in that there is enough data to have at least one of each shape for each split."
 
-    # beh_variables = ["vel_x", "vel_y", "pos_x", "pos_y", "seqc_0_shape"]
+    # beh_variables = ["vel_x", "vel_y", "pos_x", "pos_y", VAR_SHAPE]
     # beh_variables = ["vel_x", "vel_y", "pos_x", "pos_y"]
 
     # traintest_method = 2
@@ -673,19 +675,19 @@ def analy_decode_encode_wrapper(DFallpa, SAVEDIR):
         from pythonlib.tools.pandastools import extract_with_levels_of_var_good, grouping_print_n_samples
         dflab = PA.Xlabels["trials"]
         
-        grouping_print_n_samples(dflab, ["seqc_0_shape", "seqc_0_loc", "gridsize"], savepath=f"{savedir_this}/counts-1-pre.txt")
-        grouping_print_n_samples(dflab, ["seqc_0_shape"], savepath=f"{savedir_this}/counts-2-pre.txt")
+        grouping_print_n_samples(dflab, [VAR_SHAPE, VAR_LOC, "gridsize"], savepath=f"{savedir_this}/counts-1-pre.txt")
+        grouping_print_n_samples(dflab, [VAR_SHAPE], savepath=f"{savedir_this}/counts-2-pre.txt")
         
-        # _, inds_keep_1 = extract_with_levels_of_var_good(dflab, ["seqc_0_shape", "seqc_0_loc", "gridsize"], n_min_per_var=3)
-        # _, inds_keep_2 = extract_with_levels_of_var_good(dflab, ["seqc_0_shape"], n_min_per_var=5)
+        # _, inds_keep_1 = extract_with_levels_of_var_good(dflab, [VAR_SHAPE, VAR_LOC, "gridsize"], n_min_per_var=3)
+        # _, inds_keep_2 = extract_with_levels_of_var_good(dflab, [VAR_SHAPE], n_min_per_var=5)
         
         # inds_keep = sorted([i for i in inds_keep_1 if i in inds_keep_2])
 
-        _, inds_keep = extract_with_levels_of_var_good(dflab, ["seqc_0_shape"], n_min_per_var=nsplits)
+        _, inds_keep = extract_with_levels_of_var_good(dflab, [VAR_SHAPE], n_min_per_var=nsplits)
         PA = PA.slice_by_dim_indices_wrapper("trials", inds_keep)
 
-        grouping_print_n_samples(PA.Xlabels["trials"], ["seqc_0_shape", "seqc_0_loc", "gridsize"], savepath=f"{savedir_this}/counts-1-clean.txt")
-        grouping_print_n_samples(PA.Xlabels["trials"], ["seqc_0_shape"], savepath=f"{savedir_this}/counts-2-clean.txt")
+        grouping_print_n_samples(PA.Xlabels["trials"], [VAR_SHAPE, VAR_LOC, "gridsize"], savepath=f"{savedir_this}/counts-1-clean.txt")
+        grouping_print_n_samples(PA.Xlabels["trials"], [VAR_SHAPE], savepath=f"{savedir_this}/counts-2-clean.txt")
 
         # print(len(inds_keep_1), inds_keep_1)
         # print(len(inds_keep_2), inds_keep_2)
@@ -698,13 +700,13 @@ def analy_decode_encode_wrapper(DFallpa, SAVEDIR):
                 for beh_variables, beh_variables_code in [
                     [("vel_x", "vel_y"), "vels"],
                     [("pos_x", "pos_y", "vel_x", "vel_y"), "motor"],
-                    [("seqc_0_shape",), "shape"],
-                    [("pos_x", "pos_y", "vel_x", "vel_y", "seqc_0_shape"), "motor_shape"],
+                    [(VAR_SHAPE,), "shape"],
+                    [("pos_x", "pos_y", "vel_x", "vel_y", VAR_SHAPE), "motor_shape"],
                     ]:
         # for traintest_method in [2]:
         #     for score_method in ["encoding"]:
         #         for beh_variables, beh_variables_code in [
-        #             [("seqc_0_shape",), "shape"],
+        #             [(VAR_SHAPE,), "shape"],
         #             ]:
 
                     # Ignore certain combinations
@@ -751,7 +753,7 @@ def analy_decode_encode_wrapper(DFallpa, SAVEDIR):
                             ### METHOD 1 -- split by variable (e.g, shape, and test generalization to other shapes)
                             # Second, do train-test splits
                             dflab = PA.Xlabels["trials"]
-                            grpdict = grouping_append_and_return_inner_items_good(dflab, ["seqc_0_shape"])
+                            grpdict = grouping_append_and_return_inner_items_good(dflab, [VAR_SHAPE])
                             for grp, inds in grpdict.items():
                                 inds_test = inds
                                 inds_train = [i for i in range(len(dflab)) if i not in inds_test]
@@ -782,7 +784,7 @@ def analy_decode_encode_wrapper(DFallpa, SAVEDIR):
 
                         elif traintest_method==2:
                             ### METHOD 2 -- train-test splits at level of trials, stratified across levels of given variable.
-                            label_grp_vars = ["seqc_0_shape", "seqc_0_loc", "gridsize"]
+                            label_grp_vars = [VAR_SHAPE, VAR_LOC, "gridsize"]
                             plot_train_test_counts = True
                             min_frac_datapts_unconstrained = 0.01 
                             n_constrained = 1 #
@@ -796,11 +798,12 @@ def analy_decode_encode_wrapper(DFallpa, SAVEDIR):
                             print("Saving ttsplit counts to: ", f"{savedir}/ttsplitmeth=2-counts-con.pdf")
                             plt.close("all")
 
-                            for inds_train, inds_test in folds:               
+                            for _i_fold, (inds_train, inds_test) in enumerate(folds):               
                                 # print("n train/test: ", len(inds_train), len(inds_test)) 
 
                                 resthis, r2_train_all, r2_test_all = score_wrapper(DFRES, DFLAB, inds_train, inds_test, method=score_method, beh_variables=beh_variables)
                                 for r in resthis:
+                                    r["_i_fold"] = _i_fold
                                     r["bregion"] = bregion
                                     r["event"] = event
                                     r["lag_neural_vs_beh"] = lag_neural_vs_beh
@@ -810,6 +813,7 @@ def analy_decode_encode_wrapper(DFallpa, SAVEDIR):
                                 res_all.extend(resthis)
 
                                 res_all_combdim.append({
+                                    "_i_fold":_i_fold,
                                     "bregion":bregion,
                                     "event":event,
                                     "lag_neural_vs_beh":lag_neural_vs_beh,
@@ -835,6 +839,337 @@ def analy_decode_encode_wrapper(DFallpa, SAVEDIR):
                     os.makedirs(savedir_plots, exist_ok=True)
                     plot_all(DFDECODE, DFDECODE_COMB, savedir_plots)
 
+def multanaly_load_all_dates(version="stroke", plot_each_day = True):
+    """
+    Helper to load all dates and plot, including individuals, and combined.
+    PARAMS:
+    - plot_each_day, If false, to just collect data.
+    """
+    from neuralmonkey.classes.session import _REGIONS_IN_ORDER_COMBINED
+
+    # animal = "Diego"
+    # date = 230615
+    combine = True
+
+    if version=="trial":
+        event = "06_on_strokeidx_0"
+    elif version=="stroke":
+        event = "00_stroke"
+    else:
+        assert False
+
+    ### Go thru each date.
+    LIST_DFDECODE = []
+    LIST_DFDECODE_COMB = []
+    for animal in ["Diego", "Pancho"]:
+        if animal=="Diego":
+            # list_date = [240508, 230614, 230615, 230618, 230619]
+            list_date = [240508, 230614, 230615, 230618]
+            # list_date = []
+        elif animal == "Pancho":
+            list_date = [220715, 220724, 220716, 220717, 240530]
+            # list_date = [220715]
+        else:
+            assert False
+
+        for date in list_date:
+            if False:
+                SAVEDIR_ANALYSIS = f"/lemur2/lucas/analyses/recordings/main/MOTOR_DECODE_ENCODE/OLD/{animal}-{date}-combine={combine}-wl={version}"
+            else:
+                SAVEDIR_ANALYSIS = f"/lemur2/lucas/analyses/recordings/main/MOTOR_DECODE_ENCODE/{animal}-{date}-combine={combine}-wl={version}"
+
+            try:
+                list_dfdecode = []
+                list_dfdecode_comb = []
+                for bregion in _REGIONS_IN_ORDER_COMBINED:
+                    for traintest_method in [1, 2]:
+                        for score_method in ["encoding", "decoding"]:
+                            for beh_variables, beh_variables_code in [
+                                    [("vel_x", "vel_y"), "vels"],
+                                    [("pos_x", "pos_y", "vel_x", "vel_y"), "motor"],
+                                    [("seqc_0_shape",), "shape"],
+                                    # [("pos_x", "pos_y", "vel_x", "vel_y", "seqc_0_shape"), "motor_shape"],
+                                ]:
+
+                                # Ignore certain combinations
+                                # - Cannot decode categorical
+                                if score_method=="decoding" and beh_variables_code in ["shape", "motor_shape"]:
+                                    continue
+                                # - Cannot do cross-shape generalization if shape is included in variables
+                                if traintest_method==1 and beh_variables_code in ["shape", "motor_shape"]:
+                                    continue
+                                
+                                savedir = f"{SAVEDIR_ANALYSIS}/ttsplitmeth={traintest_method}-scoremeth={score_method}-behvar={beh_variables_code}/{bregion}-{event}"
+                                os.makedirs(savedir, exist_ok=True)
+                                print(savedir)
+                                # writeDictToTxtFlattened({
+                                #     "NPCS_KEEP":NPCS_KEEP,
+                                #     "list_time_lag":list_time_lag,
+                                #     "beh_variables":beh_variables,
+                                #     "beh_variables_code":beh_variables_code,
+                                # }, f"{savedir}/params.txt")
+
+                                dfdecode = pd.read_pickle(f"{savedir}/DFDECODE.pkl")
+                                dfdecode_comb = pd.read_pickle(f"{savedir}/DFDECODE_COMB.pkl")
+
+                                list_dfdecode.append(dfdecode)
+                                list_dfdecode_comb.append(dfdecode_comb)
+                DFDECODE = pd.concat(list_dfdecode).reset_index(drop=True)
+                DFDECODE_COMB = pd.concat(list_dfdecode_comb).reset_index(drop=True)
+
+
+                ### Plot
+                if plot_each_day:
+                    SAVEDIR_PLOT = f"{SAVEDIR_ANALYSIS}/SUMMARY_PLOTS"
+                    os.makedirs(SAVEDIR_PLOT, exist_ok=True)
+                    plot_all(DFDECODE, DFDECODE_COMB, SAVEDIR_PLOT)
+
+                # for beh_var_code in DFDECODE_COMB["beh_variables_code"].unique():
+                #     dfdecode_comb = DFDECODE_COMB[DFDECODE_COMB["beh_variables_code"] == beh_var_code].reset_index(drop=True)
+                #     dfdecode = DFDECODE[DFDECODE["beh_variables_code"] == beh_var_code].reset_index(drop=True)
+                #     savedir = f"{SAVEDIR_PLOT}/beh_variables_code={beh_var_code}"
+                #     os.makedirs(savedir, exist_ok=True)
+                #     plot_all(dfdecode, dfdecode_comb, savedir)
+
+                DFDECODE["animal"] = animal
+                DFDECODE["date"] = str(date)
+                DFDECODE_COMB["animal"] = animal
+                DFDECODE_COMB["date"] = str(date)
+                
+                LIST_DFDECODE.append(DFDECODE)
+                LIST_DFDECODE_COMB.append(DFDECODE_COMB)
+
+            except Exception as err:
+                print(err)
+                pass
+
+    DFDECODE = pd.concat(LIST_DFDECODE).reset_index(drop=True)
+    DFDECODE_COMB = pd.concat(LIST_DFDECODE_COMB).reset_index(drop=True)        
+
+    SAVEDIR_PLOTS = f"/lemur2/lucas/analyses/recordings/main/MOTOR_DECODE_ENCODE/MULT_PLOTS-version={version}"
+    os.makedirs(SAVEDIR_PLOTS, exist_ok=True)
+
+    return DFDECODE, DFDECODE_COMB, SAVEDIR_PLOTS
+
+def multanaly_plot_all_dates(DFDECODE, DFDECODE_COMB, SAVEDIR):
+    """
+    Helper to plot final mult-date plots, with results from multanaly_load_all_dates()
+    """
+    for keep_only_enough_shapes in [False, True]:
+
+        SAVEDIR_PLOTS = f"{SAVEDIR}/onlyenoughshapes={keep_only_enough_shapes}"
+        os.makedirs(SAVEDIR_PLOTS, exist_ok=True)
+
+        # Preprocess
+        from pythonlib.tools.pandastools import append_col_with_grp_index, stringify_values
+        DFDECODE_COMB = append_col_with_grp_index(DFDECODE_COMB, ["traintest_method", "score_method", "beh_variables_code"], "method")
+        DFDECODE_COMB = stringify_values(DFDECODE_COMB)
+        DFDECODE_COMB = append_col_with_grp_index(DFDECODE_COMB, ["animal", "date"], "ani_date")
+        DFDECODE_COMB = append_col_with_grp_index(DFDECODE_COMB, ["_i_fold", "grp_test"], "split_id") # id covering both across both ttsplit methods
+
+        if False: # not using
+            DFDECODE = append_col_with_grp_index(DFDECODE, ["traintest_method", "score_method", "beh_variables_code"], "method")
+            DFDECODE = stringify_values(DFDECODE)
+            DFDECODE = append_col_with_grp_index(DFDECODE, ["animal", "date"], "ani_date")
+            DFDECODE = append_col_with_grp_index(DFDECODE, ["_i_fold", "grp_test"], "split_id")
+
+        # Optionally, only keep if have enough shapes in that day
+        if keep_only_enough_shapes:
+            min_n_shapes = 4
+            ani_dates_keep = []
+            for ani_date in DFDECODE_COMB["ani_date"].unique():
+                df = DFDECODE_COMB[(DFDECODE_COMB["traintest_method"]==1) & (DFDECODE_COMB["ani_date"]==ani_date)]
+                n_shape = len(df["grp_test"].unique())
+                print(ani_date, n_shape)
+                if n_shape>=min_n_shapes:
+                    ani_dates_keep.append(ani_date)
+                else:
+                    print("Removing: ", ani_date)
+            DFDECODE_COMB = DFDECODE_COMB[DFDECODE_COMB["ani_date"].isin(ani_dates_keep)].reset_index(drop=True)
+            if False:
+                DFDECODE = DFDECODE[DFDECODE["ani_date"].isin(ani_dates_keep)].reset_index(drop=True)
+
+        # Agg to get single datapt per day (originally, is one datapt per split/grp)
+        from pythonlib.tools.pandastools import aggregGeneral
+        DFDECODE_COMB_AGG = aggregGeneral(DFDECODE_COMB, ["animal", "date", "method", "ani_date", "bregion", "event", "lag_neural_vs_beh", 
+                                    "traintest_method", "score_method", "beh_variables_code"], ["r2_train", "r2_test"])
+
+        # Get scalar summary
+        twind = [-0.2, 0.05]
+
+        dftmp = DFDECODE_COMB[(DFDECODE_COMB["lag_neural_vs_beh"] >= twind[0]) & (DFDECODE_COMB["lag_neural_vs_beh"] <= twind[1])]
+
+        DFDECODE_COMB_AGG_SCAL = aggregGeneral(dftmp, ["animal", "date", "method", "ani_date", "bregion", "event", 
+            "traintest_method", "score_method", "beh_variables_code"], ["r2_train", "r2_test"])
+
+        DFDECODE_COMB_SCAL = aggregGeneral(dftmp, ["animal", "date", "method", "ani_date", "bregion", "event", 
+            "traintest_method", "score_method", "beh_variables_code", "split_id"], ["r2_train", "r2_test"])
+
+        from neuralmonkey.neuralplots.brainschematic import datamod_reorder_by_bregion
+        DFDECODE_COMB_AGG = datamod_reorder_by_bregion(DFDECODE_COMB_AGG)
+        DFDECODE_COMB_SCAL = datamod_reorder_by_bregion(DFDECODE_COMB_SCAL)
+        DFDECODE_COMB_AGG_SCAL = datamod_reorder_by_bregion(DFDECODE_COMB_AGG_SCAL)
+
+        # Summary timecourses, for each date.
+        for meth in DFDECODE_COMB["method"].unique():
+            dfdecode_comb = DFDECODE_COMB[DFDECODE_COMB["method"] == meth]
+            for y_var in ["r2_test", "r2_train"]:
+                fig = sns.relplot(data=dfdecode_comb, x="lag_neural_vs_beh", y=y_var, hue="date", col="bregion", row="animal", kind="line", errorbar="se")
+                for ax in fig.axes.flatten():
+                    ax.axhline(0, color="k", alpha=0.5)
+                savefig(fig, f"{SAVEDIR_PLOTS}/datapt=splits-meth={meth}-yvar={y_var}-relplot-1.pdf")
+                plt.close("all")
+                
+        for y_var in ["r2_test", "r2_train"]:
+            fig = sns.catplot(data=DFDECODE_COMB_AGG_SCAL, x="bregion", y=y_var, hue="date", row="animal", col="method", alpha=0.8, jitter=True)
+            for ax in fig.axes.flatten():
+                ax.axhline(0, color="k", alpha=0.5)
+                savefig(fig, f"{SAVEDIR_PLOTS}/datapt=aggscal-yvar={y_var}-catplot-1.pdf")
+                plt.close("all")
+
+        for motor_or_vel in ["motor", "vels"]:
+            if motor_or_vel=="motor":
+                map_anidate_to_method = {
+                    "Diego|240508":"1|encoding|motor",
+                    "Diego|230614":"1|encoding|motor",
+                    "Diego|230615":"1|encoding|motor",
+                    "Diego|230618":"1|encoding|motor",
+                    "Diego|230619":"1|encoding|motor",
+                    "Pancho|220715":"1|encoding|motor",
+                    "Pancho|220716":"1|encoding|motor",
+                    "Pancho|220717":"2|encoding|motor",
+                    "Pancho|220724":"2|encoding|motor",
+                    "Pancho|240530":"1|encoding|motor",
+                }
+            elif motor_or_vel=="vels":
+                map_anidate_to_method = {
+                    "Diego|240508":"1|encoding|vels",
+                    "Diego|230614":"1|encoding|vels",
+                    "Diego|230615":"1|encoding|vels",
+                    "Diego|230618":"1|encoding|vels",
+                    "Diego|230619":"1|encoding|vels",
+                    "Pancho|220715":"1|encoding|vels",
+                    "Pancho|220716":"1|encoding|vels",
+                    "Pancho|220717":"2|encoding|vels",
+                    "Pancho|220724":"2|encoding|vels",
+                    "Pancho|240530":"1|encoding|vels",
+                }
+            else:
+                assert False
+
+            list_df = []
+            for ani_date in DFDECODE_COMB["ani_date"].unique():
+                method = map_anidate_to_method[ani_date]
+                df = DFDECODE_COMB[(DFDECODE_COMB["ani_date"]==ani_date) & (DFDECODE_COMB["method"]==method)]
+                list_df.append(df)
+            dfdecode_comb = pd.concat(list_df).reset_index(drop=True)
+
+            list_df = []
+            for ani_date in DFDECODE_COMB_AGG["ani_date"].unique():
+                method = map_anidate_to_method[ani_date]
+                df = DFDECODE_COMB_AGG[(DFDECODE_COMB_AGG["ani_date"]==ani_date) & (DFDECODE_COMB_AGG["method"]==method)]
+                list_df.append(df)
+            dfdecode_comb_agg = pd.concat(list_df).reset_index(drop=True)
+
+            list_df = []
+            for ani_date in DFDECODE_COMB_AGG_SCAL["ani_date"].unique():
+                method = map_anidate_to_method[ani_date]
+                df = DFDECODE_COMB_AGG_SCAL[(DFDECODE_COMB_AGG_SCAL["ani_date"]==ani_date) & (DFDECODE_COMB_AGG_SCAL["method"]==method)]
+                list_df.append(df)
+            dfdecode_comb_agg_scal = pd.concat(list_df).reset_index(drop=True)
+
+            list_df = []
+            for ani_date in DFDECODE_COMB_SCAL["ani_date"].unique():
+                method = map_anidate_to_method[ani_date]
+                df = DFDECODE_COMB_SCAL[(DFDECODE_COMB_SCAL["ani_date"]==ani_date) & (DFDECODE_COMB_SCAL["method"]==method)]
+                list_df.append(df)
+            dfdecode_comb_scal = pd.concat(list_df).reset_index(drop=True)
+        
+            for y_var in ["r2_train", "r2_test"]:
+
+                ### (1) datapt = splits
+                for suff, dfdecode_this in [
+                    ("datapt=splits", dfdecode_comb),
+                    ("datapt=date", dfdecode_comb_agg),
+                    ]:
+                    fig = sns.relplot(data=dfdecode_this, x="lag_neural_vs_beh", y=y_var, hue="date", col="bregion", row="animal", kind="line", errorbar="se")
+                    for ax in fig.axes.flatten():
+                        ax.axhline(0, color="k", alpha=0.5)
+                    savefig(fig, f"{SAVEDIR_PLOTS}/clean={motor_or_vel}-datapt={suff}-yvar={y_var}-relplot-1.pdf")
+
+                    fig = sns.relplot(data=dfdecode_this, x="lag_neural_vs_beh", y=y_var, col="bregion", row="animal", kind="line", errorbar="se")
+                    for ax in fig.axes.flatten():
+                        ax.axhline(0, color="k", alpha=0.5)
+                    savefig(fig, f"{SAVEDIR_PLOTS}/clean={motor_or_vel}-datapt={suff}-yvar={y_var}-relplot-2.pdf")
+
+                    fig = sns.relplot(data=dfdecode_this, x="lag_neural_vs_beh", y=y_var, hue="bregion", row="animal", kind="line", errorbar="se")
+                    for ax in fig.axes.flatten():
+                        ax.axhline(0, color="k", alpha=0.5)
+                    savefig(fig, f"{SAVEDIR_PLOTS}/clean={motor_or_vel}-datapt={suff}-yvar={y_var}-relplot-3.pdf")
+
+                ### (1) datapt = date, scalar
+                for suff, dfdecode_this in [
+                    ("datapt=splits", dfdecode_comb_scal),
+                    ("datapt=date", dfdecode_comb_agg_scal),
+                    ]:
+
+                    fig = sns.catplot(data=dfdecode_this, x="bregion", y=y_var, hue="date", row="animal", alpha=0.5, jitter=True)
+                    for ax in fig.axes.flatten():
+                        ax.axhline(0, color="k", alpha=0.5)
+                    savefig(fig, f"{SAVEDIR_PLOTS}/clean={motor_or_vel}-datapt={suff}-yvar={y_var}-catplot-1.pdf")
+
+                    fig = sns.catplot(data=dfdecode_this, x="bregion", y=y_var, hue="animal", kind="boxen")
+                    for ax in fig.axes.flatten():
+                        ax.axhline(0, color="k", alpha=0.5)
+                    savefig(fig, f"{SAVEDIR_PLOTS}/clean={motor_or_vel}-datapt={suff}-yvar={y_var}-catplot-2.pdf")
+
+                    fig = sns.catplot(data=dfdecode_this, x="bregion", y=y_var, hue="animal", kind="bar", errorbar="se")
+                    for ax in fig.axes.flatten():
+                        ax.axhline(0, color="k", alpha=0.5)
+                    savefig(fig, f"{SAVEDIR_PLOTS}/clean={motor_or_vel}-datapt={suff}-yvar={y_var}-catplot-3.pdf")
+
+                    fig = sns.catplot(data=dfdecode_this, x="bregion", y=y_var, kind="boxen", errorbar="se")
+                    for ax in fig.axes.flatten():
+                        ax.axhline(0, color="k", alpha=0.5)
+                    savefig(fig, f"{SAVEDIR_PLOTS}/clean={motor_or_vel}-datapt={suff}-yvar={y_var}-catplot-4.pdf")
+
+                    plt.close("all")
+
+                ##### Stats -- pairwise comparison between areas
+                from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good
+                from pythonlib.tools.statstools import compute_all_pairwise_stats_wrapper, signrank_wilcoxon_from_df
+                from pythonlib.tools.statstools import compute_all_pairwise_signrank_wrapper
+
+                contrast_var = "bregion"
+                doplots = True
+
+                # (1) Within each animal                
+                grpdict = grouping_append_and_return_inner_items_good(dfdecode_comb_scal, ["animal", "method"])
+                for grp, inds in grpdict.items():
+                    df = dfdecode_comb_scal.iloc[inds].reset_index(drop=True)
+                    
+                    if False:
+                        compute_all_pairwise_stats_wrapper(df, ["bregion"], yvar, True, savedir, test_ver="rank_sum")
+                    else:
+                        # Better, paired data
+                        datapt_vars = ["date", "split_id"]
+                        savedir =  f"{SAVEDIR_PLOTS}/stats-clean={motor_or_vel}-datapt=split-yvar={y_var}/grp={grp}"
+                        os.makedirs(savedir, exist_ok=True)
+                        compute_all_pairwise_signrank_wrapper(df, datapt_vars, contrast_var, y_var, doplots, savedir)
+                        plt.close("all")
+
+                # (1) Combining across animals
+                grpdict = grouping_append_and_return_inner_items_good(dfdecode_comb_scal, ["method"])
+                for grp, inds in grpdict.items():
+                    df = dfdecode_comb_scal.iloc[inds].reset_index(drop=True)
+                    
+                    # Better, paired data
+                    datapt_vars = ["animal", "date", "split_id"]
+                    savedir =  f"{SAVEDIR_PLOTS}/stats-combineanimals-clean={motor_or_vel}-datapt=split-yvar={y_var}/grp={grp}"
+                    os.makedirs(savedir, exist_ok=True)
+                    compute_all_pairwise_signrank_wrapper(df, datapt_vars, contrast_var, y_var, doplots, savedir)
+                    plt.close("all")
+
 if __name__=="__main__":
 
     from neuralmonkey.scripts.analy_dfallpa_extract import extract_dfallpa_helper
@@ -851,19 +1186,38 @@ if __name__=="__main__":
 
     animal = sys.argv[1]
     date = int(sys.argv[2])
-
-    # animal = "Diego"
-    # date = 230615
     combine = True
-    question = "SP_BASE_trial"
-    version = "trial"
-    
+
+    if VAR_SHAPE=="shape_semantic":
+        question = "SP_BASE_stroke"
+        version = "stroke"
+        # Dfallpa with different durations, trying to max the window, based on shortest stroke.
+        if animal=="Diego":
+            twind = (-0.5, 2.5)
+        elif animal=="Pancho":
+            if date==240530:
+                twind = (-0.5, 2.5)
+            elif date in [220715, 220717, 220724]:
+                twind = (-0.5, 2.2)
+            elif date in [220716]:
+                twind = (-0.5, 2.1)
+            else:
+                assert False
+        else:
+            assert False
+    elif VAR_SHAPE=="seqc_0_shape":
+        question = "SP_BASE_trial"
+        version = "trial"
+        twind = (-1.0, 1.8)
+    else:
+        assert False
+
     # Load a single DFallPA
 
     ### Load and preprocess
-    DFallpa = load_handsaved_wrapper(animal, date, version=version, combine_areas=combine, question=question)
+    DFallpa = load_handsaved_wrapper(animal, date, version=version, combine_areas=combine, question=question, twind=twind)
 
-    DFallpa = DFallpa[DFallpa["event"] == "06_on_strokeidx_0"].reset_index(drop=True)
+    DFallpa = DFallpa[DFallpa["event"].isin(["00_stroke", "06_on_strokeidx_0"])].reset_index(drop=True)
 
     dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date)
 
