@@ -783,7 +783,28 @@ def beh_plot_event_timing_stroke(PA, animal, date, savedir, shape_var = VAR_SHAP
         savefig(fig, f"{savedir}/event_timing-each={shape_var}-2-xlims={xlims}.pdf")
     
         
+def preprocess_diego_consolidate_shapes(PA, animal, var_shape=VAR_SHAPE):
+    """
+    Consolidate Diego shapes. Renames the Z and U to squiggle and arc
 
+    RETURNS:
+    - (nothing) -- modifies PA in place.
+    """
+    from pythonlib.drawmodel.tokens import MAP_SHAPESEM_TO_SHAPESEMGROUP, map_shsem_to_new_shsem
+    
+    # Checks
+    assert animal=="Diego"
+    assert var_shape == "shape_semantic", "this does nothing"
+
+    dflab = PA.Xlabels["trials"]
+    dflab["shape_semantic"] = [map_shsem_to_new_shsem[sh] if sh in map_shsem_to_new_shsem.keys() else sh for sh in dflab["shape_semantic"]]
+    
+    # Sanity check that this doesnt change shape_sem_grp
+    for _, row in dflab.iterrows():
+        assert MAP_SHAPESEM_TO_SHAPESEMGROUP[row["shape_semantic"]] == row["shape_semantic_grp"]
+
+    # Update PA
+    PA.Xlabels["trials"] = dflab
 
 def preprocess_clean_stable_single_prims_frate(PA, twind=None, savedir=None):
     """
@@ -1195,6 +1216,9 @@ def preprocess_pa(animal, date, PA, savedir, prune_version, shape_var = VAR_SHAP
         elif prune_version == "sp_pigchar_1plus":
             task_kinds = ["prims_single", "prims_on_grid", "character"]
             fd = {"sp_pigchar_1plus":[True]}
+        elif prune_version=="char":
+            task_kinds = ["character"]
+            fd = {}
         else:
             assert False
         PA = PA.slice_by_labels_filtdict(fd)
