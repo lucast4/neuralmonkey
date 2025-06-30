@@ -4435,6 +4435,8 @@ class Session(object):
             assert False, "preSMAa was flipped"
         if self.Animal=="Pancho" and int(self.Date)==220714:
             assert False, "FPa was flipped"
+        if self.Animal=="Pancho" and int(self.Date)==240730:
+            assert False, "SMAp was flipped"
         
         assert False, "code it"
 
