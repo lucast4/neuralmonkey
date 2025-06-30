@@ -28,8 +28,9 @@ import seaborn as sns
 
 VAR_SHAPE = "shape_semantic"
 VAR_LOC = "gridloc"
+VARIABLES_MOTOR = ["pos_x", "pos_y", "vel_x", "vel_y", "acc_x", "acc_y"]
 
-def preprocess_pa_to_alignedneuralmotor(PA, lag_neural_vs_beh):
+def preprocess_pa_to_alignedneuralmotor(PA, lag_neural_vs_beh, do_zscore=False):
     """
     For each trial, get neural and stroke data, aligned, and placed into a new dataframe, wjhere eacjh
     row is a trial. Do this for both position and velocity data.
@@ -41,25 +42,59 @@ def preprocess_pa_to_alignedneuralmotor(PA, lag_neural_vs_beh):
     for i in range(len(PA.Trials)):
         pa1, strok1 = PA.behavior_extract_neural_stroke_aligned(i, lag_neural_vs_beh, var_strok="strok_beh", PLOT=False)
         pa2, strok2 = PA.behavior_extract_neural_stroke_aligned(i, lag_neural_vs_beh, var_strok="strok_beh_vel", PLOT=False)
+        pa3, strok3 = PA.behavior_extract_neural_stroke_aligned(i, lag_neural_vs_beh, var_strok="strok_beh_acc", PLOT=False)
         try:
             assert isnear(pa1.X, pa2.X)
+            assert isnear(pa1.X, pa3.X)
         except Exception as err:
             print(" ---- ")
             print(pa1.X)
             print(pa2.X)
+            print(pa3.X)
             print(type(pa1.X))
             print(type(pa2.X))
+            print(type(pa3.X))
             raise err
         res.append({
             "ind_trial":i,
             "x_neural":pa1.X[:, 0, :],
             "strok_beh":strok1,
             "strok_beh_vel":strok2,
+            "strok_beh_acc":strok3,
         })
     DFRES = pd.DataFrame(res)
     DFLAB = PA.Xlabels["trials"]
+
+    if do_zscore:
+        preprocess_zscore_dfres(DFRES)
+
     return DFRES, DFLAB
 
+def preprocess_zscore_dfres(DFRES):
+    """
+    zscore the data values, x, and y, for strok_beh and strok_beh_vel
+    RETURNS:
+    - modifies DFRES
+    """
+
+    for col in ["strok_beh", "strok_beh_vel", "strok_beh_acc"]:
+        print(".. zscoring : ", col)
+        vals_tmp = DFRES[col].values[0]
+        assert vals_tmp.shape[1] == 3, "expecting x,y,t"
+
+        # (1) Get global mean and std
+        vals = np.concatenate(DFRES[col].tolist())[:, :2]
+        vals_mean = np.mean(vals, axis=0, keepdims=True)
+        vals_std = np.std(vals, axis=0, keepdims=True)
+
+        # (2) For each row(trial), use that mean and std to compute zscore
+        list_vals = []
+        for vals_this in DFRES[col].values:
+            vals_this = vals_this.copy()
+            vals_this[:, :2] = (vals_this[:, :2] - vals_mean) / vals_std
+            list_vals.append(vals_this)
+        DFRES[col] = list_vals
+        
 def preprocess_alignedneuralmotor_to_flattened(dfres, dflab_orig, variables_take = None):
     """
     Convert from aligned-neural-motor data (dfres) to flattened data that can then pass into regression
@@ -78,7 +113,8 @@ def preprocess_alignedneuralmotor_to_flattened(dfres, dflab_orig, variables_take
     import numpy as np
     X = np.concatenate(dfres["x_neural"], axis=1).T # (ndat, nchans)
     Ypos = np.concatenate(dfres["strok_beh"], axis=0)[:, :2] # ndat, 2
-    Yvel = np.concatenate(dfres["strok_beh_vel"], axis=0)[:, :2] # ndat, 2
+    Yvel = np.concatenate(dfres["strok_beh_vel"], axis=0)[:, :2] # ndat, 2  
+    Yacc = np.concatenate(dfres["strok_beh_acc"], axis=0)[:, :2] # ndat, 2  
     assert X.shape[0] == Ypos.shape[0] == Yvel.shape[0]
 
     # Also optionally get varialbes, repeated to same length
@@ -100,9 +136,9 @@ def preprocess_alignedneuralmotor_to_flattened(dfres, dflab_orig, variables_take
     else:
         variables = None
 
-    return X, Ypos, Yvel, variables
+    return X, Ypos, Yvel, Yacc, variables
 
-def preprocess_convert_flattened_to_dataregress(neural, pos, vel, variables_dict):
+def preprocess_convert_flattened_to_dataregress(neural, pos, vel, acc, variables_dict):
     """
     Convert flattened data to data structure useful as input to regression, with
     formatting for statsmodel
@@ -111,7 +147,7 @@ def preprocess_convert_flattened_to_dataregress(neural, pos, vel, variables_dict
 
     """
 
-    data = pd.DataFrame({"vel_x":vel[:, 0], "vel_y":vel[:, 1], "pos_x":pos[:,0], "pos_y":pos[:, 1]})
+    data = pd.DataFrame({"vel_x":vel[:, 0], "vel_y":vel[:, 1], "pos_x":pos[:,0], "pos_y":pos[:, 1], "acc_x":acc[:, 0], "acc_y":acc[:, 1]})
 
     # Get each neural chan
     nchans = neural.shape[1]
@@ -148,7 +184,7 @@ def score_wrapper(DFRES, DFLAB, inds_train, inds_test, method, beh_variables, PR
     assert beh_variables is not None, "for now, shouild pass in."
 
     variables_categorical = [VAR_SHAPE, VAR_LOC]
-    variables_motor = ["pos_x", "pos_y", "vel_x", "vel_y"]
+    variables_motor = VARIABLES_MOTOR
     for v in beh_variables:
         assert v in variables_categorical + variables_motor, "you want to inlucde a variable in regression which will not be part of data"
 
@@ -161,12 +197,13 @@ def score_wrapper(DFRES, DFLAB, inds_train, inds_test, method, beh_variables, PR
     # Extract train/test splits
     dfres_train = DFRES.iloc[inds_train].reset_index(drop=True)
     dfres_test = DFRES.iloc[inds_test].reset_index(drop=True)
-    neural_train, pos_train, vel_train, variables_dict_train = preprocess_alignedneuralmotor_to_flattened(dfres_train, DFLAB, variables_take=variables_categorical)
-    neural_test, pos_test, vel_test, variables_dict_test = preprocess_alignedneuralmotor_to_flattened(dfres_test, DFLAB, variables_take=variables_categorical)
+    neural_train, pos_train, vel_train, acc_train, variables_dict_train = preprocess_alignedneuralmotor_to_flattened(dfres_train, DFLAB, variables_take=variables_categorical)
+    neural_test, pos_test, vel_test, acc_test, variables_dict_test = preprocess_alignedneuralmotor_to_flattened(dfres_test, DFLAB, variables_take=variables_categorical)
+
     
     ### Formatting
-    data_train = preprocess_convert_flattened_to_dataregress(neural_train, pos_train, vel_train, variables_dict_train)
-    data_test = preprocess_convert_flattened_to_dataregress(neural_test, pos_test, vel_test, variables_dict_test)
+    data_train = preprocess_convert_flattened_to_dataregress(neural_train, pos_train, vel_train, acc_train, variables_dict_train)
+    data_test = preprocess_convert_flattened_to_dataregress(neural_test, pos_test, vel_test, acc_test, variables_dict_test)
 
     ### COLLECT DATA
     resthis = []
@@ -629,8 +666,10 @@ def analy_decode_encode_wrapper(DFallpa, SAVEDIR):
         # First equalize their fs
         strokes = sample_rate_equalize_across_strokes(strokes)
         strokes_vels, _ = strokesVelocity(strokes, None)
+        strokes_acc, _ = strokesVelocity(strokes_vels, None)
         dflab["strok_beh"] = strokes # Replace, so that matches lengths of each strok in strokes_vels
         dflab["strok_beh_vel"] = strokes_vels
+        dflab["strok_beh_acc"] = strokes_acc
         PA.Xlabels["trials"] = dflab
 
     ### RUN
@@ -639,8 +678,8 @@ def analy_decode_encode_wrapper(DFallpa, SAVEDIR):
     test_size = 0.2
     assert nsplits==5 and test_size==0.2, "this works, in that there is enough data to have at least one of each shape for each split."
 
-    # beh_variables = ["vel_x", "vel_y", "pos_x", "pos_y", VAR_SHAPE]
-    # beh_variables = ["vel_x", "vel_y", "pos_x", "pos_y"]
+
+
 
     # traintest_method = 2
     # score_method = "encoding"
@@ -682,7 +721,6 @@ def analy_decode_encode_wrapper(DFallpa, SAVEDIR):
         # _, inds_keep_2 = extract_with_levels_of_var_good(dflab, [VAR_SHAPE], n_min_per_var=5)
         
         # inds_keep = sorted([i for i in inds_keep_1 if i in inds_keep_2])
-
         _, inds_keep = extract_with_levels_of_var_good(dflab, [VAR_SHAPE], n_min_per_var=nsplits)
         PA = PA.slice_by_dim_indices_wrapper("trials", inds_keep)
 
@@ -698,16 +736,14 @@ def analy_decode_encode_wrapper(DFallpa, SAVEDIR):
         for traintest_method in [1, 2]:
             for score_method in ["encoding", "decoding"]:
                 for beh_variables, beh_variables_code in [
+                    [("acc_x", "acc_y"), "acc"],
                     [("vel_x", "vel_y"), "vels"],
+                    [("vel_x", "vel_y", "acc_x", "acc_y"), "accvels"],
                     [("pos_x", "pos_y", "vel_x", "vel_y"), "motor"],
-                    [(VAR_SHAPE,), "shape"],
-                    [("pos_x", "pos_y", "vel_x", "vel_y", VAR_SHAPE), "motor_shape"],
+                    [("pos_x", "pos_y", "vel_x", "vel_y", "acc_x", "acc_y"), "accmotor"],
+                    [(VAR_SHAPE,), "shape"], # Optionally add these
+                    [("pos_x", "pos_y", "vel_x", "vel_y", VAR_SHAPE), "motor_shape"], # Optionally add these
                     ]:
-        # for traintest_method in [2]:
-        #     for score_method in ["encoding"]:
-        #         for beh_variables, beh_variables_code in [
-        #             [(VAR_SHAPE,), "shape"],
-        #             ]:
 
                     # Ignore certain combinations
                     # - Cannot decode categorical
@@ -733,20 +769,7 @@ def analy_decode_encode_wrapper(DFallpa, SAVEDIR):
 
                         ### RUN for this bregion
                         # First, extract all data, before doing any train-test splits
-                        DFRES, DFLAB = preprocess_pa_to_alignedneuralmotor(PA, lag_neural_vs_beh)
-                        # res = []
-                        # for i in range(len(PA.Trials)):
-                        #     pa1, strok1 = PA.behavior_extract_neural_stroke_aligned(i, lag_neural_vs_beh, var_strok="strok_beh", PLOT=False)
-                        #     pa2, strok2 = PA.behavior_extract_neural_stroke_aligned(i, lag_neural_vs_beh, var_strok="strok_beh_vel", PLOT=False)
-                        #     assert isnear(pa1.X, pa2.X)
-                        #     res.append({
-                        #         "ind_trial":i,
-                        #         "x_neural":pa1.X[:, 0, :],
-                        #         "strok_beh":strok1,
-                        #         "strok_beh_vel":strok2,
-                        #     })
-                        # DFRES = pd.DataFrame(res)
-                        # DFLAB = PA.Xlabels["trials"]
+                        DFRES, DFLAB = preprocess_pa_to_alignedneuralmotor(PA, lag_neural_vs_beh, do_zscore=True)
 
                         ########## TRAIN-TEST SPLITS
                         if traintest_method == 1:
@@ -839,7 +862,7 @@ def analy_decode_encode_wrapper(DFallpa, SAVEDIR):
                     os.makedirs(savedir_plots, exist_ok=True)
                     plot_all(DFDECODE, DFDECODE_COMB, savedir_plots)
 
-def multanaly_load_all_dates(version="stroke", plot_each_day = True):
+def multanaly_load_all_dates(question, version="stroke", plot_each_day = True, velocity_only=False):
     """
     Helper to load all dates and plot, including individuals, and combined.
     PARAMS:
@@ -856,27 +879,55 @@ def multanaly_load_all_dates(version="stroke", plot_each_day = True):
     elif version=="stroke":
         event = "00_stroke"
     else:
-        assert False
+        assert False    
+
+    if velocity_only:
+        list_params = [
+                                [("vel_x", "vel_y"), "vels"],
+                                ]
+    else:
+        list_params = [
+                                [("acc_x", "acc_y"), "acc"],
+                                [("vel_x", "vel_y"), "vels"],
+                                [("vel_x", "vel_y", "acc_x", "acc_y"), "accvels"],
+                                [("pos_x", "pos_y", "vel_x", "vel_y"), "motor"],
+                                [("pos_x", "pos_y", "vel_x", "vel_y", "acc_x", "acc_y"), "accmotor"],
+                                [(VAR_SHAPE,), "shape"], # Optionally add these
+                                [("pos_x", "pos_y", "vel_x", "vel_y", VAR_SHAPE), "motor_shape"], # Optionally add these
+                                ]
+
 
     ### Go thru each date.
     LIST_DFDECODE = []
     LIST_DFDECODE_COMB = []
     for animal in ["Diego", "Pancho"]:
-        if animal=="Diego":
-            # list_date = [240508, 230614, 230615, 230618, 230619]
-            list_date = [240508, 230614, 230615, 230618]
-            # list_date = []
-        elif animal == "Pancho":
-            list_date = [220715, 220724, 220716, 220717, 240530]
-            # list_date = [220715]
+    
+        if question in ["SP_BASE_stroke", "SP_BASE_trial"]:
+            if animal=="Diego":
+                list_date = [240508, 230614, 230615, 230618, 230619]
+                # list_date = [240508, 230614, 230615, 230618]
+                # list_date = []
+            elif animal == "Pancho":
+                list_date = [220715, 220724, 220716, 220717, 240530]
+                # list_date = [220715]
+            else:
+                assert False
+        elif question == "CHAR_BASE_stroke":
+            if animal=="Diego":
+                list_date = [231220, 231205, 231122, 231128, 231129, 231201, 231120, 231206, 231218]
+            elif animal == "Pancho":
+                list_date = [220614, 220616, 220621, 220622, 220624, 220627, 220618, 220626, 220628, 220630]
+            else:
+                assert False
         else:
+            print(question)
             assert False
 
         for date in list_date:
             if False:
-                SAVEDIR_ANALYSIS = f"/lemur2/lucas/analyses/recordings/main/MOTOR_DECODE_ENCODE/OLD/{animal}-{date}-combine={combine}-wl={version}"
+                SAVEDIR_ANALYSIS = f"/lemur2/lucas/analyses/recordings/main/MOTOR_DECODE_ENCODE/OLD/{animal}-{date}-combine={combine}-wl={version}-q={question}"
             else:
-                SAVEDIR_ANALYSIS = f"/lemur2/lucas/analyses/recordings/main/MOTOR_DECODE_ENCODE/{animal}-{date}-combine={combine}-wl={version}"
+                SAVEDIR_ANALYSIS = f"/lemur2/lucas/analyses/recordings/main/MOTOR_DECODE_ENCODE/{animal}-{date}-combine={combine}-wl={version}-q={question}"
 
             try:
                 list_dfdecode = []
@@ -884,13 +935,14 @@ def multanaly_load_all_dates(version="stroke", plot_each_day = True):
                 for bregion in _REGIONS_IN_ORDER_COMBINED:
                     for traintest_method in [1, 2]:
                         for score_method in ["encoding", "decoding"]:
-                            for beh_variables, beh_variables_code in [
-                                    [("vel_x", "vel_y"), "vels"],
-                                    [("pos_x", "pos_y", "vel_x", "vel_y"), "motor"],
-                                    [("seqc_0_shape",), "shape"],
-                                    # [("pos_x", "pos_y", "vel_x", "vel_y", "seqc_0_shape"), "motor_shape"],
-                                ]:
+                            # for beh_variables, beh_variables_code in [
+                            #         [("vel_x", "vel_y"), "vels"],
+                            #         [("pos_x", "pos_y", "vel_x", "vel_y"), "motor"],
+                            #         [("seqc_0_shape",), "shape"],
+                            #         # [("pos_x", "pos_y", "vel_x", "vel_y", "seqc_0_shape"), "motor_shape"],
+                            #     ]:
 
+                            for beh_variables, beh_variables_code in list_params:
                                 # Ignore certain combinations
                                 # - Cannot decode categorical
                                 if score_method=="decoding" and beh_variables_code in ["shape", "motor_shape"]:
@@ -900,7 +952,7 @@ def multanaly_load_all_dates(version="stroke", plot_each_day = True):
                                     continue
                                 
                                 savedir = f"{SAVEDIR_ANALYSIS}/ttsplitmeth={traintest_method}-scoremeth={score_method}-behvar={beh_variables_code}/{bregion}-{event}"
-                                os.makedirs(savedir, exist_ok=True)
+                                # os.makedirs(savedir, exist_ok=True)
                                 print(savedir)
                                 # writeDictToTxtFlattened({
                                 #     "NPCS_KEEP":NPCS_KEEP,
@@ -917,10 +969,9 @@ def multanaly_load_all_dates(version="stroke", plot_each_day = True):
                 DFDECODE = pd.concat(list_dfdecode).reset_index(drop=True)
                 DFDECODE_COMB = pd.concat(list_dfdecode_comb).reset_index(drop=True)
 
-
                 ### Plot
                 if plot_each_day:
-                    SAVEDIR_PLOT = f"{SAVEDIR_ANALYSIS}/SUMMARY_PLOTS"
+                    SAVEDIR_PLOT = f"{SAVEDIR_ANALYSIS}/SUMMARY_PLOTS/q={question}"
                     os.makedirs(SAVEDIR_PLOT, exist_ok=True)
                     plot_all(DFDECODE, DFDECODE_COMB, SAVEDIR_PLOT)
 
@@ -940,86 +991,251 @@ def multanaly_load_all_dates(version="stroke", plot_each_day = True):
                 LIST_DFDECODE_COMB.append(DFDECODE_COMB)
 
             except Exception as err:
-                print(err)
-                pass
+                # print(err)
+                # pass
+                raise err
 
     DFDECODE = pd.concat(LIST_DFDECODE).reset_index(drop=True)
     DFDECODE_COMB = pd.concat(LIST_DFDECODE_COMB).reset_index(drop=True)        
 
-    SAVEDIR_PLOTS = f"/lemur2/lucas/analyses/recordings/main/MOTOR_DECODE_ENCODE/MULT_PLOTS-version={version}"
-    os.makedirs(SAVEDIR_PLOTS, exist_ok=True)
+    DFDECODE["n_test"] = [len(x) for x in DFDECODE["inds_test"]]
+
+    SAVEDIR_PLOTS = f"/lemur2/lucas/analyses/recordings/main/MOTOR_DECODE_ENCODE/MULT_PLOTS-version={version}-q={question}"
+    # os.makedirs(SAVEDIR_PLOTS, exist_ok=True)
 
     return DFDECODE, DFDECODE_COMB, SAVEDIR_PLOTS
 
-def multanaly_plot_all_dates(DFDECODE, DFDECODE_COMB, SAVEDIR):
+def multanaly_preprocess_min_sample_size(DFDECODE, DFDECODE_COMB, n_min):
+    """
+    Prune data to keep just train-test splits with min sample size (in the test set).
+    """
+
+    from pythonlib.tools.pandastools import replace_None_with_string, aggregGeneral, stringify_values
+    # DFDECODE_COMB = stringify_values(DFDECODE_COMB)
+    DFDECODE_COMB = replace_None_with_string(DFDECODE_COMB)
+    # DFDECODE = stringify_values(DFDECODE)
+
+    # Get sample size for each (animal, date, grp)
+    dftmp = aggregGeneral(DFDECODE, ["grp_test", "traintest_method", "animal", "date"], ["n_test"])
+    # dftmp = stringify_values(dftmp)
+
+    map_adgt_to_nsamp = {}
+    for _, row in dftmp.iterrows():
+        a = row["animal"]
+        d = row["date"]
+        g = row["grp_test"]
+        t = row["traintest_method"]
+        
+        n_samp = row["n_test"]
+
+        key = (a,d,g,t)
+        if key in map_adgt_to_nsamp:
+            assert map_adgt_to_nsamp[key] == n_samp
+        else:
+            map_adgt_to_nsamp[key] = n_samp
+            
+    # Assign sample sizes to DFDECODE_COMB
+    list_n_samp = []
+    for _, row in DFDECODE_COMB.iterrows():
+        a = row["animal"]
+        d = row["date"]
+        g = row["grp_test"]
+        t = row["traintest_method"]
+        key = (a,d,g,t)
+
+        n_samp = map_adgt_to_nsamp[key]
+
+        list_n_samp.append(n_samp)
+    DFDECODE_COMB["n_test"] = list_n_samp
+
+    ### Prune based on sample size.
+    DFDECODE_COMB["n_test"].hist(bins=30)
+    # n_min = 30 # good
+    DFDECODE_COMB = DFDECODE_COMB[DFDECODE_COMB["n_test"] > n_min].reset_index(drop=True)
+    DFDECODE = DFDECODE[DFDECODE["n_test"] > n_min].reset_index(drop=True)
+
+    return DFDECODE, DFDECODE_COMB
+
+def multanaly_preprocess(DFDECODE_COMB, keep_only_enough_shapes, twind = None, aggmethod="mean"):
+    """
+    Various general preprocessing for loaded multiple-date-animal data.
+    """ 
+
+    if twind is None:
+        twind = [-0.2, 0.05]
+
+    # Preprocess
+    from pythonlib.tools.pandastools import append_col_with_grp_index, stringify_values
+    DFDECODE_COMB = append_col_with_grp_index(DFDECODE_COMB, ["traintest_method", "score_method", "beh_variables_code"], "method")
+    DFDECODE_COMB = stringify_values(DFDECODE_COMB)
+    DFDECODE_COMB = append_col_with_grp_index(DFDECODE_COMB, ["animal", "date"], "ani_date")
+    DFDECODE_COMB = append_col_with_grp_index(DFDECODE_COMB, ["_i_fold", "grp_test"], "split_id") # id covering both across both ttsplit methods
+
+    if False: # not using
+        DFDECODE = append_col_with_grp_index(DFDECODE, ["traintest_method", "score_method", "beh_variables_code"], "method")
+        DFDECODE = stringify_values(DFDECODE)
+        DFDECODE = append_col_with_grp_index(DFDECODE, ["animal", "date"], "ani_date")
+        DFDECODE = append_col_with_grp_index(DFDECODE, ["_i_fold", "grp_test"], "split_id")
+
+    # Optionally, only keep if have enough shapes in that day
+    if keep_only_enough_shapes:
+        min_n_shapes = 4
+        ani_dates_keep = []
+        for ani_date in DFDECODE_COMB["ani_date"].unique():
+            df = DFDECODE_COMB[(DFDECODE_COMB["traintest_method"]==1) & (DFDECODE_COMB["ani_date"]==ani_date)]
+            n_shape = len(df["grp_test"].unique())
+            print(ani_date, n_shape)
+            if n_shape>=min_n_shapes:
+                ani_dates_keep.append(ani_date)
+            else:
+                print("Removing: ", ani_date)
+        DFDECODE_COMB = DFDECODE_COMB[DFDECODE_COMB["ani_date"].isin(ani_dates_keep)].reset_index(drop=True)
+        if False:
+            DFDECODE = DFDECODE[DFDECODE["ani_date"].isin(ani_dates_keep)].reset_index(drop=True)
+
+    # Agg to get single datapt per day (originally, is one datapt per split/grp)
+    # - agg over split (i.e., test groups).
+    from pythonlib.tools.pandastools import aggregGeneral
+    DFDECODE_COMB_AGG = aggregGeneral(DFDECODE_COMB, ["animal", "date", "method", "ani_date", "bregion", "event", "lag_neural_vs_beh", 
+                                "traintest_method", "score_method", "beh_variables_code"], ["r2_train", "r2_test"], aggmethod=[aggmethod])
+
+    # Get scalar summary
+    # - Agg over time
+    # twind = [-0.2, 0.05]
+    dftmp = DFDECODE_COMB[(DFDECODE_COMB["lag_neural_vs_beh"] >= twind[0]) & (DFDECODE_COMB["lag_neural_vs_beh"] <= twind[1])]
+    DFDECODE_COMB_AGG_SCAL = aggregGeneral(dftmp, ["animal", "date", "method", "ani_date", "bregion", "event", 
+        "traintest_method", "score_method", "beh_variables_code"], ["r2_train", "r2_test"])
+    DFDECODE_COMB_SCAL = aggregGeneral(dftmp, ["animal", "date", "method", "ani_date", "bregion", "event", 
+        "traintest_method", "score_method", "beh_variables_code", "split_id"], ["r2_train", "r2_test"])
+
+    from neuralmonkey.neuralplots.brainschematic import datamod_reorder_by_bregion
+    DFDECODE_COMB_AGG = datamod_reorder_by_bregion(DFDECODE_COMB_AGG)
+    DFDECODE_COMB_SCAL = datamod_reorder_by_bregion(DFDECODE_COMB_SCAL)
+    DFDECODE_COMB_AGG_SCAL = datamod_reorder_by_bregion(DFDECODE_COMB_AGG_SCAL)
+
+    return DFDECODE_COMB, DFDECODE_COMB_AGG, DFDECODE_COMB_SCAL, DFDECODE_COMB_AGG_SCAL
+
+def multanaly_plot_all_dates(DFDECODE, DFDECODE_COMB, SAVEDIR, question, 
+                             plot_clean=True, aggmethod="mean", keep_only_enough_shapes=False,
+                             do_stats = True, twind=None):
     """
     Helper to plot final mult-date plots, with results from multanaly_load_all_dates()
     """
-    for keep_only_enough_shapes in [False, True]:
+    from neuralmonkey.scripts.analy_motor_decode_encode import multanaly_preprocess
 
-        SAVEDIR_PLOTS = f"{SAVEDIR}/onlyenoughshapes={keep_only_enough_shapes}"
-        os.makedirs(SAVEDIR_PLOTS, exist_ok=True)
-
-        # Preprocess
-        from pythonlib.tools.pandastools import append_col_with_grp_index, stringify_values
-        DFDECODE_COMB = append_col_with_grp_index(DFDECODE_COMB, ["traintest_method", "score_method", "beh_variables_code"], "method")
-        DFDECODE_COMB = stringify_values(DFDECODE_COMB)
-        DFDECODE_COMB = append_col_with_grp_index(DFDECODE_COMB, ["animal", "date"], "ani_date")
-        DFDECODE_COMB = append_col_with_grp_index(DFDECODE_COMB, ["_i_fold", "grp_test"], "split_id") # id covering both across both ttsplit methods
-
-        if False: # not using
-            DFDECODE = append_col_with_grp_index(DFDECODE, ["traintest_method", "score_method", "beh_variables_code"], "method")
-            DFDECODE = stringify_values(DFDECODE)
-            DFDECODE = append_col_with_grp_index(DFDECODE, ["animal", "date"], "ani_date")
-            DFDECODE = append_col_with_grp_index(DFDECODE, ["_i_fold", "grp_test"], "split_id")
-
-        # Optionally, only keep if have enough shapes in that day
-        if keep_only_enough_shapes:
-            min_n_shapes = 4
-            ani_dates_keep = []
-            for ani_date in DFDECODE_COMB["ani_date"].unique():
-                df = DFDECODE_COMB[(DFDECODE_COMB["traintest_method"]==1) & (DFDECODE_COMB["ani_date"]==ani_date)]
-                n_shape = len(df["grp_test"].unique())
-                print(ani_date, n_shape)
-                if n_shape>=min_n_shapes:
-                    ani_dates_keep.append(ani_date)
-                else:
-                    print("Removing: ", ani_date)
-            DFDECODE_COMB = DFDECODE_COMB[DFDECODE_COMB["ani_date"].isin(ani_dates_keep)].reset_index(drop=True)
-            if False:
-                DFDECODE = DFDECODE[DFDECODE["ani_date"].isin(ani_dates_keep)].reset_index(drop=True)
-
-        # Agg to get single datapt per day (originally, is one datapt per split/grp)
-        from pythonlib.tools.pandastools import aggregGeneral
-        DFDECODE_COMB_AGG = aggregGeneral(DFDECODE_COMB, ["animal", "date", "method", "ani_date", "bregion", "event", "lag_neural_vs_beh", 
-                                    "traintest_method", "score_method", "beh_variables_code"], ["r2_train", "r2_test"])
-
-        # Get scalar summary
+    if twind is None:
         twind = [-0.2, 0.05]
 
-        dftmp = DFDECODE_COMB[(DFDECODE_COMB["lag_neural_vs_beh"] >= twind[0]) & (DFDECODE_COMB["lag_neural_vs_beh"] <= twind[1])]
+    if aggmethod=="mean":
+        estimator = np.mean
+    elif aggmethod=="median":
+        estimator = np.median
+    else:
+        assert False
 
-        DFDECODE_COMB_AGG_SCAL = aggregGeneral(dftmp, ["animal", "date", "method", "ani_date", "bregion", "event", 
-            "traintest_method", "score_method", "beh_variables_code"], ["r2_train", "r2_test"])
+    SAVEDIR_PLOTS = f"{SAVEDIR}/onlyenoughshapes={keep_only_enough_shapes}"
+    os.makedirs(SAVEDIR_PLOTS, exist_ok=True)
 
-        DFDECODE_COMB_SCAL = aggregGeneral(dftmp, ["animal", "date", "method", "ani_date", "bregion", "event", 
-            "traintest_method", "score_method", "beh_variables_code", "split_id"], ["r2_train", "r2_test"])
+    DFDECODE_COMB, DFDECODE_COMB_AGG, DFDECODE_COMB_SCAL, DFDECODE_COMB_AGG_SCAL = multanaly_preprocess(
+        DFDECODE_COMB, keep_only_enough_shapes=keep_only_enough_shapes, twind=twind, aggmethod=aggmethod)
 
-        from neuralmonkey.neuralplots.brainschematic import datamod_reorder_by_bregion
-        DFDECODE_COMB_AGG = datamod_reorder_by_bregion(DFDECODE_COMB_AGG)
-        DFDECODE_COMB_SCAL = datamod_reorder_by_bregion(DFDECODE_COMB_SCAL)
-        DFDECODE_COMB_AGG_SCAL = datamod_reorder_by_bregion(DFDECODE_COMB_AGG_SCAL)
+    # # Preprocess
+    # from pythonlib.tools.pandastools import append_col_with_grp_index, stringify_values
+    # DFDECODE_COMB = append_col_with_grp_index(DFDECODE_COMB, ["traintest_method", "score_method", "beh_variables_code"], "method")
+    # DFDECODE_COMB = stringify_values(DFDECODE_COMB)
+    # DFDECODE_COMB = append_col_with_grp_index(DFDECODE_COMB, ["animal", "date"], "ani_date")
+    # DFDECODE_COMB = append_col_with_grp_index(DFDECODE_COMB, ["_i_fold", "grp_test"], "split_id") # id covering both across both ttsplit methods
 
+    # if False: # not using
+    #     DFDECODE = append_col_with_grp_index(DFDECODE, ["traintest_method", "score_method", "beh_variables_code"], "method")
+    #     DFDECODE = stringify_values(DFDECODE)
+    #     DFDECODE = append_col_with_grp_index(DFDECODE, ["animal", "date"], "ani_date")
+    #     DFDECODE = append_col_with_grp_index(DFDECODE, ["_i_fold", "grp_test"], "split_id")
+
+    # # Optionally, only keep if have enough shapes in that day
+    # if keep_only_enough_shapes:
+    #     min_n_shapes = 4
+    #     ani_dates_keep = []
+    #     for ani_date in DFDECODE_COMB["ani_date"].unique():
+    #         df = DFDECODE_COMB[(DFDECODE_COMB["traintest_method"]==1) & (DFDECODE_COMB["ani_date"]==ani_date)]
+    #         n_shape = len(df["grp_test"].unique())
+    #         print(ani_date, n_shape)
+    #         if n_shape>=min_n_shapes:
+    #             ani_dates_keep.append(ani_date)
+    #         else:
+    #             print("Removing: ", ani_date)
+    #     DFDECODE_COMB = DFDECODE_COMB[DFDECODE_COMB["ani_date"].isin(ani_dates_keep)].reset_index(drop=True)
+    #     if False:
+    #         DFDECODE = DFDECODE[DFDECODE["ani_date"].isin(ani_dates_keep)].reset_index(drop=True)
+
+    # # Agg to get single datapt per day (originally, is one datapt per split/grp)
+    # # - agg over split (i.e., test groups).
+    # from pythonlib.tools.pandastools import aggregGeneral
+    # DFDECODE_COMB_AGG = aggregGeneral(DFDECODE_COMB, ["animal", "date", "method", "ani_date", "bregion", "event", "lag_neural_vs_beh", 
+    #                             "traintest_method", "score_method", "beh_variables_code"], ["r2_train", "r2_test"], aggmethod=[aggmethod])
+
+    # # Get scalar summary
+    # # - Agg over time
+    # dftmp = DFDECODE_COMB[(DFDECODE_COMB["lag_neural_vs_beh"] >= twind[0]) & (DFDECODE_COMB["lag_neural_vs_beh"] <= twind[1])]
+    # DFDECODE_COMB_AGG_SCAL = aggregGeneral(dftmp, ["animal", "date", "method", "ani_date", "bregion", "event", 
+    #     "traintest_method", "score_method", "beh_variables_code"], ["r2_train", "r2_test"])
+    # DFDECODE_COMB_SCAL = aggregGeneral(dftmp, ["animal", "date", "method", "ani_date", "bregion", "event", 
+    #     "traintest_method", "score_method", "beh_variables_code", "split_id"], ["r2_train", "r2_test"])
+
+    # from neuralmonkey.neuralplots.brainschematic import datamod_reorder_by_bregion
+    # DFDECODE_COMB_AGG = datamod_reorder_by_bregion(DFDECODE_COMB_AGG)
+    # DFDECODE_COMB_SCAL = datamod_reorder_by_bregion(DFDECODE_COMB_SCAL)
+    # DFDECODE_COMB_AGG_SCAL = datamod_reorder_by_bregion(DFDECODE_COMB_AGG_SCAL)
+
+    if True:
         # Summary timecourses, for each date.
         for meth in DFDECODE_COMB["method"].unique():
             dfdecode_comb = DFDECODE_COMB[DFDECODE_COMB["method"] == meth]
+            dfdecode_comb_scal = DFDECODE_COMB_SCAL[DFDECODE_COMB_SCAL["method"] == meth]
+            
             for y_var in ["r2_test", "r2_train"]:
-                fig = sns.relplot(data=dfdecode_comb, x="lag_neural_vs_beh", y=y_var, hue="date", col="bregion", row="animal", kind="line", errorbar="se")
+                fig = sns.relplot(data=dfdecode_comb, x="lag_neural_vs_beh", y=y_var, hue="date", col="bregion", row="animal", kind="line", 
+                                    errorbar="se", estimator=estimator)
                 for ax in fig.axes.flatten():
                     ax.axhline(0, color="k", alpha=0.5)
                 savefig(fig, f"{SAVEDIR_PLOTS}/datapt=splits-meth={meth}-yvar={y_var}-relplot-1.pdf")
                 plt.close("all")
-                
+
+                fig = sns.relplot(data=dfdecode_comb, x="lag_neural_vs_beh", y=y_var, hue="bregion", row="animal", kind="line", errorbar="se",
+                                    estimator=estimator)
+                for ax in fig.axes.flatten():
+                    ax.axhline(0, color="k", alpha=0.5)
+                savefig(fig, f"{SAVEDIR_PLOTS}/datapt=splits-meth={meth}-yvar={y_var}-relplot-2.pdf")
+
+                fig = sns.relplot(data=dfdecode_comb, x="lag_neural_vs_beh", y=y_var, hue="bregion", kind="line", errorbar="se",
+                                    estimator=estimator)
+                for ax in fig.axes.flatten():
+                    ax.axhline(0, color="k", alpha=0.5)
+                savefig(fig, f"{SAVEDIR_PLOTS}/datapt=splits-meth={meth}-yvar={y_var}-relplot-3.pdf")
+
+                # plot each date
+                fig = sns.relplot(data=dfdecode_comb, x="lag_neural_vs_beh", y=y_var, hue="bregion", col="ani_date", col_wrap=6, kind="line", 
+                                    errorbar="se", estimator=estimator)
+                for ax in fig.axes.flatten():
+                    ax.axhline(0, color="k", alpha=0.5)
+                savefig(fig, f"{SAVEDIR_PLOTS}/datapt=splits-meth={meth}-yvar={y_var}-relplot-date.pdf")
+                plt.close("all")
+
+                # Some main catplots
+                fig = sns.catplot(data=dfdecode_comb_scal, x="bregion", y=y_var, hue="animal", kind="boxen")
+                for ax in fig.axes.flatten():
+                    ax.axhline(0, color="k", alpha=0.5)
+                savefig(fig, f"{SAVEDIR_PLOTS}/datapt=splits-meth={meth}-yvar={y_var}-catplot-1.pdf")
+
+                fig = sns.catplot(data=dfdecode_comb_scal, x="bregion", y=y_var, hue="animal", kind="bar",
+                                    errorbar="se", estimator=estimator)                              
+                for ax in fig.axes.flatten():
+                    ax.axhline(0, color="k", alpha=0.5)
+                savefig(fig, f"{SAVEDIR_PLOTS}/datapt=splits-meth={meth}-yvar={y_var}-catplot-2.pdf")
+
+                plt.close("all")
+
+    if False: # I don't use this... (use below instead)
         for y_var in ["r2_test", "r2_train"]:
             fig = sns.catplot(data=DFDECODE_COMB_AGG_SCAL, x="bregion", y=y_var, hue="date", row="animal", col="method", alpha=0.8, jitter=True)
             for ax in fig.axes.flatten():
@@ -1027,35 +1243,47 @@ def multanaly_plot_all_dates(DFDECODE, DFDECODE_COMB, SAVEDIR):
                 savefig(fig, f"{SAVEDIR_PLOTS}/datapt=aggscal-yvar={y_var}-catplot-1.pdf")
                 plt.close("all")
 
+    if plot_clean:
         for motor_or_vel in ["motor", "vels"]:
-            if motor_or_vel=="motor":
-                map_anidate_to_method = {
-                    "Diego|240508":"1|encoding|motor",
-                    "Diego|230614":"1|encoding|motor",
-                    "Diego|230615":"1|encoding|motor",
-                    "Diego|230618":"1|encoding|motor",
-                    "Diego|230619":"1|encoding|motor",
-                    "Pancho|220715":"1|encoding|motor",
-                    "Pancho|220716":"1|encoding|motor",
-                    "Pancho|220717":"2|encoding|motor",
-                    "Pancho|220724":"2|encoding|motor",
-                    "Pancho|240530":"1|encoding|motor",
-                }
-            elif motor_or_vel=="vels":
-                map_anidate_to_method = {
-                    "Diego|240508":"1|encoding|vels",
-                    "Diego|230614":"1|encoding|vels",
-                    "Diego|230615":"1|encoding|vels",
-                    "Diego|230618":"1|encoding|vels",
-                    "Diego|230619":"1|encoding|vels",
-                    "Pancho|220715":"1|encoding|vels",
-                    "Pancho|220716":"1|encoding|vels",
-                    "Pancho|220717":"2|encoding|vels",
-                    "Pancho|220724":"2|encoding|vels",
-                    "Pancho|240530":"1|encoding|vels",
-                }
-            else:
-                assert False
+            if question == "CHAR_BASE_stroke":
+                # All dates get the same
+                list_ani_date = set(DFDECODE_COMB_AGG["animal"] + "|" + DFDECODE_COMB_AGG["date"])
+                if motor_or_vel == "motor":
+                    map_anidate_to_method = {ad:"1|encoding|motor" for ad in list_ani_date}
+                elif motor_or_vel == "vels":
+                    map_anidate_to_method = {ad:"1|encoding|vels" for ad in list_ani_date}
+                else:
+                    assert False
+            elif question in ["SP_BASE_stroke", "SP_BASE_trial"]:
+                # Dates without enough shapes -- they use method 2
+                if motor_or_vel=="motor":
+                    map_anidate_to_method = {
+                        "Diego|240508":"1|encoding|motor",
+                        "Diego|230614":"1|encoding|motor",
+                        "Diego|230615":"1|encoding|motor",
+                        "Diego|230618":"1|encoding|motor",
+                        "Diego|230619":"1|encoding|motor",
+                        "Pancho|220715":"1|encoding|motor",
+                        "Pancho|220716":"1|encoding|motor",
+                        "Pancho|220717":"2|encoding|motor",
+                        "Pancho|220724":"2|encoding|motor",
+                        "Pancho|240530":"1|encoding|motor",
+                    }
+                elif motor_or_vel=="vels":
+                    map_anidate_to_method = {
+                        "Diego|240508":"1|encoding|vels",
+                        "Diego|230614":"1|encoding|vels",
+                        "Diego|230615":"1|encoding|vels",
+                        "Diego|230618":"1|encoding|vels",
+                        "Diego|230619":"1|encoding|vels",
+                        "Pancho|220715":"1|encoding|vels",
+                        "Pancho|220716":"1|encoding|vels",
+                        "Pancho|220717":"2|encoding|vels",
+                        "Pancho|220724":"2|encoding|vels",
+                        "Pancho|240530":"1|encoding|vels",
+                    }
+                else:
+                    assert False
 
             list_df = []
             for ani_date in DFDECODE_COMB["ani_date"].unique():
@@ -1084,7 +1312,10 @@ def multanaly_plot_all_dates(DFDECODE, DFDECODE_COMB, SAVEDIR):
                 df = DFDECODE_COMB_SCAL[(DFDECODE_COMB_SCAL["ani_date"]==ani_date) & (DFDECODE_COMB_SCAL["method"]==method)]
                 list_df.append(df)
             dfdecode_comb_scal = pd.concat(list_df).reset_index(drop=True)
-        
+
+            if len(dfdecode_comb)==0:
+                continue
+
             for y_var in ["r2_train", "r2_test"]:
 
                 ### (1) datapt = splits
@@ -1092,17 +1323,20 @@ def multanaly_plot_all_dates(DFDECODE, DFDECODE_COMB, SAVEDIR):
                     ("datapt=splits", dfdecode_comb),
                     ("datapt=date", dfdecode_comb_agg),
                     ]:
-                    fig = sns.relplot(data=dfdecode_this, x="lag_neural_vs_beh", y=y_var, hue="date", col="bregion", row="animal", kind="line", errorbar="se")
+                    fig = sns.relplot(data=dfdecode_this, x="lag_neural_vs_beh", y=y_var, hue="date", col="bregion", row="animal", kind="line", 
+                                        errorbar="se", estimator=estimator)
                     for ax in fig.axes.flatten():
                         ax.axhline(0, color="k", alpha=0.5)
                     savefig(fig, f"{SAVEDIR_PLOTS}/clean={motor_or_vel}-datapt={suff}-yvar={y_var}-relplot-1.pdf")
 
-                    fig = sns.relplot(data=dfdecode_this, x="lag_neural_vs_beh", y=y_var, col="bregion", row="animal", kind="line", errorbar="se")
+                    fig = sns.relplot(data=dfdecode_this, x="lag_neural_vs_beh", y=y_var, col="bregion", row="animal", kind="line", errorbar="se",
+                                        estimator=estimator)
                     for ax in fig.axes.flatten():
                         ax.axhline(0, color="k", alpha=0.5)
                     savefig(fig, f"{SAVEDIR_PLOTS}/clean={motor_or_vel}-datapt={suff}-yvar={y_var}-relplot-2.pdf")
 
-                    fig = sns.relplot(data=dfdecode_this, x="lag_neural_vs_beh", y=y_var, hue="bregion", row="animal", kind="line", errorbar="se")
+                    fig = sns.relplot(data=dfdecode_this, x="lag_neural_vs_beh", y=y_var, hue="bregion", row="animal", kind="line", errorbar="se",
+                                        estimator=estimator)
                     for ax in fig.axes.flatten():
                         ax.axhline(0, color="k", alpha=0.5)
                     savefig(fig, f"{SAVEDIR_PLOTS}/clean={motor_or_vel}-datapt={suff}-yvar={y_var}-relplot-3.pdf")
@@ -1123,52 +1357,126 @@ def multanaly_plot_all_dates(DFDECODE, DFDECODE_COMB, SAVEDIR):
                         ax.axhline(0, color="k", alpha=0.5)
                     savefig(fig, f"{SAVEDIR_PLOTS}/clean={motor_or_vel}-datapt={suff}-yvar={y_var}-catplot-2.pdf")
 
-                    fig = sns.catplot(data=dfdecode_this, x="bregion", y=y_var, hue="animal", kind="bar", errorbar="se")
+                    fig = sns.catplot(data=dfdecode_this, x="bregion", y=y_var, hue="animal", kind="bar", errorbar="se",
+                                                                    estimator=estimator)
                     for ax in fig.axes.flatten():
                         ax.axhline(0, color="k", alpha=0.5)
                     savefig(fig, f"{SAVEDIR_PLOTS}/clean={motor_or_vel}-datapt={suff}-yvar={y_var}-catplot-3.pdf")
 
-                    fig = sns.catplot(data=dfdecode_this, x="bregion", y=y_var, kind="boxen", errorbar="se")
+                    fig = sns.catplot(data=dfdecode_this, x="bregion", y=y_var, kind="boxen", errorbar="se", 
+                                        estimator=estimator)
                     for ax in fig.axes.flatten():
                         ax.axhline(0, color="k", alpha=0.5)
                     savefig(fig, f"{SAVEDIR_PLOTS}/clean={motor_or_vel}-datapt={suff}-yvar={y_var}-catplot-4.pdf")
 
                     plt.close("all")
 
-                ##### Stats -- pairwise comparison between areas
-                from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good
-                from pythonlib.tools.statstools import compute_all_pairwise_stats_wrapper, signrank_wilcoxon_from_df
-                from pythonlib.tools.statstools import compute_all_pairwise_signrank_wrapper
+                if do_stats:
+                    ##### Stats -- pairwise comparison between areas
+                    from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good
+                    from pythonlib.tools.statstools import compute_all_pairwise_stats_wrapper, signrank_wilcoxon_from_df
+                    from pythonlib.tools.statstools import compute_all_pairwise_signrank_wrapper
 
-                contrast_var = "bregion"
-                doplots = True
+                    contrast_var = "bregion"
+                    doplots = True
 
-                # (1) Within each animal                
-                grpdict = grouping_append_and_return_inner_items_good(dfdecode_comb_scal, ["animal", "method"])
-                for grp, inds in grpdict.items():
-                    df = dfdecode_comb_scal.iloc[inds].reset_index(drop=True)
-                    
-                    if False:
-                        compute_all_pairwise_stats_wrapper(df, ["bregion"], yvar, True, savedir, test_ver="rank_sum")
-                    else:
+                    # (1) Within each animal                
+                    grpdict = grouping_append_and_return_inner_items_good(dfdecode_comb_scal, ["animal", "method"])
+                    for grp, inds in grpdict.items():
+                        df = dfdecode_comb_scal.iloc[inds].reset_index(drop=True)
+                        
+                        if False:
+                            compute_all_pairwise_stats_wrapper(df, ["bregion"], yvar, True, savedir, test_ver="rank_sum")
+                        else:
+                            # Better, paired data
+                            datapt_vars = ["date", "split_id"]
+                            savedir =  f"{SAVEDIR_PLOTS}/stats-clean={motor_or_vel}-datapt=split-yvar={y_var}/grp={grp}"
+                            os.makedirs(savedir, exist_ok=True)
+                            compute_all_pairwise_signrank_wrapper(df, datapt_vars, contrast_var, y_var, doplots, savedir)
+                            plt.close("all")
+
+                    # (1) Combining across animals
+                    grpdict = grouping_append_and_return_inner_items_good(dfdecode_comb_scal, ["method"])
+                    for grp, inds in grpdict.items():
+                        df = dfdecode_comb_scal.iloc[inds].reset_index(drop=True)
+                        
                         # Better, paired data
-                        datapt_vars = ["date", "split_id"]
-                        savedir =  f"{SAVEDIR_PLOTS}/stats-clean={motor_or_vel}-datapt=split-yvar={y_var}/grp={grp}"
+                        datapt_vars = ["animal", "date", "split_id"]
+                        savedir =  f"{SAVEDIR_PLOTS}/stats-combineanimals-clean={motor_or_vel}-datapt=split-yvar={y_var}/grp={grp}"
                         os.makedirs(savedir, exist_ok=True)
                         compute_all_pairwise_signrank_wrapper(df, datapt_vars, contrast_var, y_var, doplots, savedir)
                         plt.close("all")
 
-                # (1) Combining across animals
-                grpdict = grouping_append_and_return_inner_items_good(dfdecode_comb_scal, ["method"])
-                for grp, inds in grpdict.items():
-                    df = dfdecode_comb_scal.iloc[inds].reset_index(drop=True)
-                    
-                    # Better, paired data
-                    datapt_vars = ["animal", "date", "split_id"]
-                    savedir =  f"{SAVEDIR_PLOTS}/stats-combineanimals-clean={motor_or_vel}-datapt=split-yvar={y_var}/grp={grp}"
-                    os.makedirs(savedir, exist_ok=True)
-                    compute_all_pairwise_signrank_wrapper(df, datapt_vars, contrast_var, y_var, doplots, savedir)
-                    plt.close("all")
+def preprocess_character_strokes(DFallpa, animal, date, SAVEDIR_ANALYSIS):
+    """
+    Preprocess, specifically if running character dates.
+    RETURNS:
+    - Modifies DFallpa in place, replacing its "pa" column
+
+    """
+    from neuralmonkey.scripts.analy_euclidian_chars_sp import preprocess_pa, behstrokes_preprocess_assign_col_bad_strokes
+
+    twind_analy = (-0.5, 1.8)
+    tbin_dur = 0.1
+    tbin_slide = 0.02
+    var_effect = "shape_semantic"
+    DO_REGRESS_HACK = True
+
+    if False: # done below now
+        # Rename shapes (consolidate for Diego)
+        from neuralmonkey.scripts.analy_euclidian_chars_sp import preprocess_diego_consolidate_shapes
+        for pa in DFallpa["pa"].values:
+            preprocess_diego_consolidate_shapes(pa, animal)
+    
+    # Clean up channels
+    from neuralmonkey.scripts.analy_euclidian_chars_sp import preprocess_dfallpa_prune_chans, preprocess_dfallpa_prune_chans_hand_coded
+    preprocess_dfallpa_prune_chans(DFallpa, animal, date, SAVEDIR_ANALYSIS)
+    preprocess_dfallpa_prune_chans_hand_coded(DFallpa, animal, date)
+
+    # Correct for first-stroke effect
+    ########### [MAJOR HACK]
+    if DO_REGRESS_HACK:
+        list_pa = [pa.regress_neuron_task_variables_subtract_from_activity(tbin_dur, tbin_slide, twind_analy, var_effect) for pa in DFallpa["pa"].values]
+    DFallpa["pa"] = list_pa
+
+    # Determine if rows are bad or good beh storkes (dont prune yet)
+    behstrokes_preprocess_assign_col_bad_strokes(DFallpa, animal, date)
+
+    # General preprocessing
+    prune_version = "char" # Keep only character trials
+    N_MIN_TRIALS_PER_SHAPE = 4
+    subspace_projection = None
+    remove_trials_with_bad_strokes = True
+    remove_singleprims_unstable = True
+    remove_trials_too_fast = True
+    remove_drift = True
+    consolidate_diego_shapes_actually = True
+
+    subspace_projection_fitting_twind = None
+    skip_dim_reduction = True # will do so below... THis just do other preprocessing, and widowing
+    NPCS_KEEP = None
+    list_pa = []
+    for _, row in DFallpa.iterrows():
+        PA = row["pa"]
+        bregion = row["bregion"]
+        event = row["event"]
+
+        savedir = f"{SAVEDIR_ANALYSIS}/{bregion}-{event}"
+        os.makedirs(savedir, exist_ok=True)
+
+        PAthis = preprocess_pa(animal, date, PA, savedir, prune_version, 
+                            n_min_trials_per_shape=N_MIN_TRIALS_PER_SHAPE, shape_var=var_effect, plot_drawings=False,
+                            remove_chans_fr_drift=remove_drift, subspace_projection=subspace_projection, 
+                                twind_analy=twind_analy, tbin_dur=tbin_dur, tbin_slide=tbin_slide, NPCS_KEEP=NPCS_KEEP,
+                                raw_subtract_mean_each_timepoint=False, remove_singleprims_unstable=remove_singleprims_unstable,
+                                remove_trials_with_bad_strokes=remove_trials_with_bad_strokes, 
+                                subspace_projection_fitting_twind=subspace_projection_fitting_twind,
+                                skip_dim_reduction=skip_dim_reduction,
+                                remove_trials_too_fast=remove_trials_too_fast,
+                                consolidate_diego_shapes_actually=consolidate_diego_shapes_actually)
+        list_pa.append(PAthis)
+        plt.close("all")
+    DFallpa["pa"] = list_pa    
 
 if __name__=="__main__":
 
@@ -1186,44 +1494,54 @@ if __name__=="__main__":
 
     animal = sys.argv[1]
     date = int(sys.argv[2])
+    question = sys.argv[3] # SP_BASE_stroke
     combine = True
 
-    if VAR_SHAPE=="shape_semantic":
-        question = "SP_BASE_stroke"
-        version = "stroke"
-        # Dfallpa with different durations, trying to max the window, based on shortest stroke.
-        if animal=="Diego":
-            twind = (-0.5, 2.5)
-        elif animal=="Pancho":
-            if date==240530:
+    if question in ["SP_BASE_stroke", "SP_BASE_trial"]:
+        if VAR_SHAPE=="shape_semantic":
+            # question = "SP_BASE_stroke"
+            version = "stroke"
+            # Dfallpa with different durations, trying to max the window, based on shortest stroke.
+            if animal=="Diego":
                 twind = (-0.5, 2.5)
-            elif date in [220715, 220717, 220724]:
-                twind = (-0.5, 2.2)
-            elif date in [220716]:
-                twind = (-0.5, 2.1)
+            elif animal=="Pancho":
+                if date==240530:
+                    twind = (-0.5, 2.5)
+                elif date in [220715, 220717, 220724]:
+                    twind = (-0.5, 2.2)
+                elif date in [220716]:
+                    twind = (-0.5, 2.1)
+                else:
+                    assert False
             else:
                 assert False
+        elif VAR_SHAPE=="seqc_0_shape":
+            # question = "SP_BASE_trial"
+            version = "trial"
+            twind = (-1.0, 1.8)
         else:
             assert False
-    elif VAR_SHAPE=="seqc_0_shape":
-        question = "SP_BASE_trial"
-        version = "trial"
-        twind = (-1.0, 1.8)
     else:
-        assert False
+        version = "stroke"
+        twind = (-1.0, 1.8)
 
-    # Load a single DFallPA
+    # Savedir
+    SAVEDIR_ANALYSIS = f"/lemur2/lucas/analyses/recordings/main/MOTOR_DECODE_ENCODE/{animal}-{date}-combine={combine}-wl={version}-q={question}"
+    os.makedirs(SAVEDIR_ANALYSIS, exist_ok=True)
+    print(SAVEDIR_ANALYSIS)
 
     ### Load and preprocess
     DFallpa = load_handsaved_wrapper(animal, date, version=version, combine_areas=combine, question=question, twind=twind)
 
     DFallpa = DFallpa[DFallpa["event"].isin(["00_stroke", "06_on_strokeidx_0"])].reset_index(drop=True)
 
+    # Generally, run this
     dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date)
 
+    if question in ["CHAR_BASE_stroke"]:
+        # Characters
+        savedir = f"{SAVEDIR_ANALYSIS}/preprocess"
+        preprocess_character_strokes(DFallpa, animal, date, savedir)
+
     ### RUN
-    SAVEDIR_ANALYSIS = f"/lemur2/lucas/analyses/recordings/main/MOTOR_DECODE_ENCODE/{animal}-{date}-combine={combine}-wl={version}"
-    os.makedirs(SAVEDIR_ANALYSIS, exist_ok=True)
-    print(SAVEDIR_ANALYSIS)
-    
     analy_decode_encode_wrapper(DFallpa, SAVEDIR_ANALYSIS)
