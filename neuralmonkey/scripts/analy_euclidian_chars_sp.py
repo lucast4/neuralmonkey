@@ -49,131 +49,138 @@ VAR_SHAPE_TRIAL = "seqc_0_shapesemgrp"
 
 REMOVE_TRIALS_TOO_FAST = True
 
-def load_euclidian_time_resolved_fast_shuffled(animal, date, bregion, morphset, inds_in_morphset_keep, do_prune_ambig,
-                                               var_context_diff, event, twind_final, scalar_or_traj, dim_red_method, NPCS_KEEP):
+# def load_euclidian_time_resolved_fast_shuffled(animal, date, bregion, morphset, inds_in_morphset_ambiguous, do_prune_ambig,
+#                                                var_context_diff, event, twind_final, scalar_or_traj, dim_red_method, NPCS_KEEP,
+#                                                manuscript_version=False):
+#     """
     
-    from neuralmonkey.classes.session import _REGIONS_IN_ORDER_COMBINED
-    from pythonlib.tools.pandastools import aggregGeneral, extract_with_levels_of_conjunction_vars
+#     """
+#     from neuralmonkey.classes.session import _REGIONS_IN_ORDER_COMBINED
+#     from pythonlib.tools.pandastools import aggregGeneral, extract_with_levels_of_conjunction_vars
 
 
-    def _prune_ambig_at_least_n_trials_per_base(DF, df_version, n_min_per_lev = 3):
-        """
-        Input DF must be trial level (before agging)
-        Returns copy
-        """
+#     def _prune_ambig_at_least_n_trials_per_base(DF, df_version, n_min_per_lev = 3):
+#         """
+#         Input DF must be trial level (before agging)
+#         Returns copy
+#         """
         
-        if df_version=="DFDIST":
-            vars_datapt = ["idx_morph_temp", "idxmorph_assigned_2", "time_bin_idx"] # DFDIST
-        elif df_version=="DFPROJ_INDEX":
-            vars_datapt = ["idx_morph_temp", "time_bin_idx"] # DFPROJ_INDEX
-        else:
-            print(df_version)
-            assert False
+#         if df_version=="DFDIST":
+#             vars_datapt = ["idx_morph_temp", "idxmorph_assigned_2", "time_bin_idx"] # DFDIST
+#         elif df_version=="DFPROJ_INDEX":
+#             vars_datapt = ["idx_morph_temp", "time_bin_idx"] # DFPROJ_INDEX
+#         else:
+#             print(df_version)
+#             assert False
 
-        # (1) Split into ambig vs. (unambig + learned)
-        DF["assigned_label"].value_counts()
-        dfthis = DF[DF["assigned_label"] == "ambig"].reset_index(drop=True)
+#         # (1) Split into ambig vs. (unambig + learned)
+#         DF["assigned_label"].value_counts()
+#         dfthis = DF[DF["assigned_label"] == "ambig"].reset_index(drop=True)
 
-        # (2) Only keep (idx_morph_temp) that has at least n trials for both base1 and base2
-        from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper
-        df_ambig, _ = extract_with_levels_of_conjunction_vars_helper(dfthis, "assigned_base_simple", 
-                                                                    vars_datapt, 
-                                                                    n_min_per_lev, None, 2, levels_var=["base1", "base2"], 
-                                                                    remove_extra_columns=True)
-        if len(df_ambig)==0:
-            df_ambig, _ = extract_with_levels_of_conjunction_vars_helper(dfthis, "assigned_base_simple", 
-                                                                        vars_datapt, 
-                                                                        n_min_per_lev-1, None, 2, levels_var=["base1", "base2"],
-                                                                        remove_extra_columns=True)
+#         # (2) Only keep (idx_morph_temp) that has at least n trials for both base1 and base2
+#         from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper
+#         df_ambig, _ = extract_with_levels_of_conjunction_vars_helper(dfthis, "assigned_base_simple", 
+#                                                                     vars_datapt, 
+#                                                                     n_min_per_lev, None, 2, levels_var=["base1", "base2"], 
+#                                                                     remove_extra_columns=True)
+#         if len(df_ambig)==0:
+#             df_ambig, _ = extract_with_levels_of_conjunction_vars_helper(dfthis, "assigned_base_simple", 
+#                                                                         vars_datapt, 
+#                                                                         n_min_per_lev-1, None, 2, levels_var=["base1", "base2"],
+#                                                                         remove_extra_columns=True)
 
-            assert len(df_ambig)>0, "you removed all ambig cases. reduce n until you keep all morphsets"
+#             assert len(df_ambig)>0, "you removed all ambig cases. reduce n until you keep all morphsets"
 
-        # (3) Concat with the remaining
-        df_others = DF[DF["assigned_label"] != "ambig"].reset_index(drop=True)
-        df_combined = pd.concat([df_ambig, df_others]).reset_index(drop=True)
+#         # (3) Concat with the remaining
+#         df_others = DF[DF["assigned_label"] != "ambig"].reset_index(drop=True)
+#         df_combined = pd.concat([df_ambig, df_others]).reset_index(drop=True)
 
-        if False:
-            # To see grouping counts that shows what the above is doing:
-            dfthis = DF[DF["time_bin_idx"]==0].reset_index(drop=True)
-            grouping_plot_n_samples_conjunction_heatmap(dfthis, "idx_morph_temp", "assigned_base_simple", ["idxmorph_assigned_2"]);
-            # grouping_plot_n_samples_conjunction_heatmap(dfthis, "idxmorph_assigned_1", "idxmorph_assigned_2", ["seqc_0_loc_1"]);
+#         if False:
+#             # To see grouping counts that shows what the above is doing:
+#             dfthis = DF[DF["time_bin_idx"]==0].reset_index(drop=True)
+#             grouping_plot_n_samples_conjunction_heatmap(dfthis, "idx_morph_temp", "assigned_base_simple", ["idxmorph_assigned_2"]);
+#             # grouping_plot_n_samples_conjunction_heatmap(dfthis, "idxmorph_assigned_1", "idxmorph_assigned_2", ["seqc_0_loc_1"]);
 
-        return df_combined
+#         return df_combined
 
-    ### Default params
-    # event = "03_samp"
+#     ### Default params
+#     # event = "03_samp"
 
-    exclude_flank = True
-    # dim_red_method = "dpca"
-    # proj_twind = (0.1, 1.0)
-    # combine = True
-    # raw_subtract_mean_each_timepoint = False
-    # scalar_or_traj = "traj"
-    # NPCS_KEEP = 8
-    # twind_final = (-0.3, 1.2)
+#     # exclude_flank = True
+#     # dim_red_method = "dpca"
+#     # proj_twind = (0.1, 1.0)
+#     # combine = True
+#     # raw_subtract_mean_each_timepoint = False
+#     # scalar_or_traj = "traj"
+#     # NPCS_KEEP = 8
+#     # twind_final = (-0.3, 1.2)
 
-    ### LOAD
-    SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/decode_moment/PSYCHO_SP/{animal}-{date}-logistic-combine=True/analy_switching_GOOD_euclidian_index/ev={event}-scal={scalar_or_traj}-dimred={dim_red_method}-twind={twind_final}-npcs={NPCS_KEEP}/bregion={bregion}/morphset={morphset}"
-    # SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/decode_moment/PSYCHO_SP/{animal}-{date}-logistic-combine=True/switching_euclidian_score_and_plot_traj/ev={event}-subtr={raw_subtract_mean_each_timepoint}-scal={scalar_or_traj}-dimred=dpca-twind=(-0.1, 1.2)-npcs={NPCS_KEEP}/bregion={bregion}/morphset={morphset}"
-    # SAVEDIR = f"{SAVEDIR_BASE_LOAD}/{animal}-{date}-logistic-combine={combine}/euclidian_score_and_plot/ev={EVENT}-subtr={raw_subtract_mean_each_timepoint}-scal={scalar_or_traj}-dimred={dim_red_method}-twind={proj_twind}-npcs={NPCS_KEEP}-flank={exclude_flank}"
-    print("Loading from: ", SAVEDIR)
+#     ### LOAD
+#     if manuscript_version:
+#         SAVEDIR_BASE = f"/lemur2/lucas/analyses/manuscripts/1_action_symbols/REPRODUCED_FIGURES/fig5dh/{animal}-{date}/analy_switching_GOOD_euclidian_index"
+#     else:
+#         SAVEDIR_BASE = f"/lemur2/lucas/analyses/recordings/main/decode_moment/PSYCHO_SP/{animal}-{date}-logistic-combine=True/analy_switching_GOOD_euclidian_index"
+#     SAVEDIR = f"{SAVEDIR_BASE}/ev={event}-scal={scalar_or_traj}-dimred={dim_red_method}-twind={twind_final}-npcs={NPCS_KEEP}/bregion={bregion}/morphset={morphset}"
+#     # SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/decode_moment/PSYCHO_SP/{animal}-{date}-logistic-combine=True/switching_euclidian_score_and_plot_traj/ev={event}-subtr={raw_subtract_mean_each_timepoint}-scal={scalar_or_traj}-dimred=dpca-twind=(-0.1, 1.2)-npcs={NPCS_KEEP}/bregion={bregion}/morphset={morphset}"
+#     # SAVEDIR = f"{SAVEDIR_BASE_LOAD}/{animal}-{date}-logistic-combine={combine}/euclidian_score_and_plot/ev={EVENT}-subtr={raw_subtract_mean_each_timepoint}-scal={scalar_or_traj}-dimred={dim_red_method}-twind={proj_twind}-npcs={NPCS_KEEP}-flank={exclude_flank}"
+#     print("Loading from: ", SAVEDIR)
 
-    # Load data
-    DFDIST = pd.read_pickle(f"{SAVEDIR}/DFDIST.pkl")
-    DFPROJ_INDEX = pd.read_pickle(f"{SAVEDIR}/DFPROJ_INDEX.pkl")
+#     # Load data
+#     DFDIST = pd.read_pickle(f"{SAVEDIR}/DFDIST.pkl")
+#     DFPROJ_INDEX = pd.read_pickle(f"{SAVEDIR}/DFPROJ_INDEX.pkl")
 
-    # Newer code uses location as a context diff var.
-    if var_context_diff is None:
-        # so downstream code works.
-        DFPROJ_INDEX["seqc_0_loc"] = "ignore"
-    elif var_context_diff=="seqc_0_loc":
-        DFPROJ_INDEX["seqc_0_loc"] = [lab[1] for lab in DFPROJ_INDEX["labels_1_datapt"]]
-    else:
-        print(var_context_diff)
-        assert False
+#     # Newer code uses location as a context diff var.
+#     if var_context_diff is None:
+#         # so downstream code works.
+#         DFPROJ_INDEX["seqc_0_loc"] = "ignore"
+#     elif var_context_diff=="seqc_0_loc":
+#         DFPROJ_INDEX["seqc_0_loc"] = [lab[1] for lab in DFPROJ_INDEX["labels_1_datapt"]]
+#     else:
+#         print(var_context_diff)
+#         assert False
 
-    if do_prune_ambig:
-        DFPROJ_INDEX = _prune_ambig_at_least_n_trials_per_base(DFPROJ_INDEX, "DFPROJ_INDEX")
-        DFDIST = _prune_ambig_at_least_n_trials_per_base(DFDIST, "DFDIST")
+#     if do_prune_ambig:
+#         DFPROJ_INDEX = _prune_ambig_at_least_n_trials_per_base(DFPROJ_INDEX, "DFPROJ_INDEX")
+#         DFDIST = _prune_ambig_at_least_n_trials_per_base(DFDIST, "DFDIST")
 
-    # Agg across trials
-    DFPROJ_INDEX_AGG = aggregGeneral(DFPROJ_INDEX, ["idxmorph_assigned", "time_bin_idx", "seqc_0_loc"], ["dist_index", "dist_index_norm", "time_bin"], nonnumercols=["assigned_base_simple", "assigned_base", "assigned_label", "idx_morph_temp"])
-    DFDIST_AGG = aggregGeneral(DFDIST, ["idxmorph_assigned_1", "idxmorph_assigned_2", "time_bin_idx"], ["dist_mean", "DIST_50", "DIST_98", "dist_norm", "dist_yue_diff", "time_bin"], nonnumercols=["assigned_base_simple", "assigned_base", "assigned_label", "idx_morph_temp"])
+#     # Agg across trials
+#     DFPROJ_INDEX_AGG = aggregGeneral(DFPROJ_INDEX, ["idxmorph_assigned", "time_bin_idx", "seqc_0_loc"], ["dist_index", "dist_index_norm", "time_bin"], nonnumercols=["assigned_base_simple", "assigned_base", "assigned_label", "idx_morph_temp"])
+#     DFDIST_AGG = aggregGeneral(DFDIST, ["idxmorph_assigned_1", "idxmorph_assigned_2", "time_bin_idx"], ["dist_mean", "DIST_50", "DIST_98", "dist_norm", "dist_yue_diff", "time_bin"], nonnumercols=["assigned_base_simple", "assigned_base", "assigned_label", "idx_morph_temp"])
 
-    try:
-        # all inds that should be ambig --> make sure they are called that.
-        # prolbem is that some cases I did not call ambig if there were only a few cases of base1/base2.  But Ishould not 
-        # do this.
-        # if False: # skip this check, since sometimes auto detection doesnt call it ambig (too few trials, or is too noisy)
-        assert all(DFDIST[DFDIST["idx_morph_temp"].isin(inds_in_morphset_keep)]["assigned_label"] == "ambig"), "why this was not called ambig? Prob it only had a couple trials... Fix the original code that called ambig vs. not-ambig."
+#     try:
+#         # all inds that should be ambig --> make sure they are called that.
+#         # prolbem is that some cases I did not call ambig if there were only a few cases of base1/base2.  But Ishould not 
+#         # do this.
+#         # if False: # skip this check, since sometimes auto detection doesnt call it ambig (too few trials, or is too noisy)
+#         assert all(DFDIST[DFDIST["idx_morph_temp"].isin(inds_in_morphset_ambiguous)]["assigned_label"] == "ambig"), "why this was not called ambig? Prob it only had a couple trials... Fix the original code that called ambig vs. not-ambig."
 
-        # all other inds --> make sure not called ambig.
-        assert not any(DFDIST[~DFDIST["idx_morph_temp"].isin(inds_in_morphset_keep)]["assigned_label"]=="ambig"), "in this case, definitely go with my hand label"
-    except AssertionError as err:
-        from pythonlib.tools.pandastools import grouping_print_n_samples
-        print("--------------")
-        print(animal, date, morphset)
-        print("Indices I manually said to keep: ", inds_in_morphset_keep)
-        print("Indices automatilcaly labeled as ambig: ", grouping_print_n_samples(DFDIST, ["idx_morph_temp", "assigned_label"]))
-        # print(err)
-        raise err
+#         # all other inds --> make sure not called ambig.
+#         assert not any(DFDIST[~DFDIST["idx_morph_temp"].isin(inds_in_morphset_ambiguous)]["assigned_label"]=="ambig"), "in this case, definitely go with my hand label"
+#     except AssertionError as err:
+#         from pythonlib.tools.pandastools import grouping_print_n_samples
+#         print("--------------")
+#         print(animal, date, morphset)
+#         print("Indices I manually said to keep: ", inds_in_morphset_ambiguous)
+#         print("Indices automatilcaly labeled as ambig: ", grouping_print_n_samples(DFDIST, ["idx_morph_temp", "assigned_label"]))
+#         # print(err)
+#         raise err
     
-    if not all([x in DFPROJ_INDEX_AGG["assigned_base"].unique().tolist() for x in ['base1', 'ambig_base1', 'ambig_base2', 'base2']]):
-        # if not sorted(DFPROJ_INDEX_AGG["assigned_label"].unique()) == ['ambig', 'base', 'not_ambig']:
-        print("Skipping", animal, date, morphset, " since doesnt have all 3 trial labels. Just has: ", sorted(DFPROJ_INDEX_AGG["assigned_label"].unique()))     
-        return None
+#     if not all([x in DFPROJ_INDEX_AGG["assigned_base"].unique().tolist() for x in ['base1', 'ambig_base1', 'ambig_base2', 'base2']]):
+#         # if not sorted(DFPROJ_INDEX_AGG["assigned_label"].unique()) == ['ambig', 'base', 'not_ambig']:
+#         print("Skipping", animal, date, morphset, " since doesnt have all 3 trial labels. Just has: ", sorted(DFPROJ_INDEX_AGG["assigned_label"].unique()))     
+#         return None
 
-    for df in [DFDIST, DFDIST_AGG, DFPROJ_INDEX, DFPROJ_INDEX_AGG]:
-        df["animal"] = animal
-        df["date"] = date
-        df["bregion"] = bregion
-        df["morphset"] = morphset
+#     for df in [DFDIST, DFDIST_AGG, DFPROJ_INDEX, DFPROJ_INDEX_AGG]:
+#         df["animal"] = animal
+#         df["date"] = date
+#         df["bregion"] = bregion
+#         df["morphset"] = morphset
 
-        # Important, numerical precision...
-        df["time_bin"] = df["time_bin"].apply(lambda x:np.round(x, 3))
-        # df.sort_values("time_bin").reset_index(drop=True)
+#         # Important, numerical precision...
+#         df["time_bin"] = df["time_bin"].apply(lambda x:np.round(x, 3))
+#         # df.sort_values("time_bin").reset_index(drop=True)
 
-    return DFDIST, DFDIST_AGG, DFPROJ_INDEX, DFPROJ_INDEX_AGG
+#     return DFDIST, DFDIST_AGG, DFPROJ_INDEX, DFPROJ_INDEX_AGG
 
 def behstrokes_map_clustshape_to_thresh(animal):
     """
@@ -1103,9 +1110,12 @@ def preprocess_pa(animal, date, PA, savedir, prune_version, shape_var = VAR_SHAP
                   skip_dim_reduction=False, scalar_or_traj="traj",
                   remove_trials_too_fast=REMOVE_TRIALS_TOO_FAST,
                   consolidate_diego_shapes=True,
-                  consolidate_diego_shapes_actually=False):
+                  consolidate_diego_shapes_actually=False,
+                  manuscript_version=False):
     """
     Does not modofiy PA, returns copy
+    PARAMS:
+    - manuscript_version, if True, then doesnt do any cleaning of data (assumes is already done)
     """ 
     from pythonlib.tools.plottools import savefig
 
@@ -1270,63 +1280,66 @@ def preprocess_pa(animal, date, PA, savedir, prune_version, shape_var = VAR_SHAP
             if savedir is not None:
                 savefig(fig, f"{savedir}/stroke_drawings-before_remove_unaligned_strokes-iter_{i}.pdf")
 
-    ### Detect cases where CHAR and SP have different stroke onsets for the same identified stroke
-    dflab = PA.Xlabels["trials"]
-    from pythonlib.dataset.dataset_strokes import DatStrokes
-    ds = DatStrokes()
-    grpdict = grouping_append_and_return_inner_items_good(dflab, [shape_var])
-    shapes_keep = []
-    for (sh,), inds in grpdict.items():
-        strokes = dflab.iloc[inds]["strok_beh"]
-        succ =  ds._strokes_check_all_aligned_direction(strokes, plot_failure=True, thresh=0.7)
-        if succ:
-            shapes_keep.append(sh)
-        else:
-            print("remove this shape, not consistent across trials: ", sh)
-
-    ### Also remove some added by hand
-    shapes_remove = params_shapes_remove(animal, date, shape_var)
-    print("Also removing tese shapes. by hand: ", shapes_remove)
-    shapes_keep = [sh for sh in shapes_keep if sh not in shapes_remove]
-    
-    print("Keeping these shapes, becuase they are not similar strokes between SP and CHAR:", shapes_keep)
-    PA = PA.slice_by_labels_filtdict({shape_var:shapes_keep})
-
-    ### Remove bad strokes baesd on new hand-entere clust sim thresholds.
-    if remove_trials_with_bad_strokes:
-        print("Removing bad strokes, using hand-entered clust_sim_max thresholds...")
+    if not manuscript_version:
+        ### Detect cases where CHAR and SP have different stroke onsets for the same identified stroke
         dflab = PA.Xlabels["trials"]
-        # behstrokes_preprocess_prune_trials_bad_strokes(DFallpa, animal, date)
-        inds = dflab[(dflab["clust_sim_max_GOOD"]==True) | (dflab["task_kind"]=="prims_single")].index.tolist() # keep only the "GOOD" cases
-        print(PA.X.shape[1], " --> ", len(inds), " (num trials) ")
-        PA = PA.slice_by_dim_indices_wrapper("trials", inds, reset_trial_indices=True)
+        from pythonlib.dataset.dataset_strokes import DatStrokes
+        ds = DatStrokes()
+        grpdict = grouping_append_and_return_inner_items_good(dflab, [shape_var])
+        shapes_keep = []
+        for (sh,), inds in grpdict.items():
+            strokes = dflab.iloc[inds]["strok_beh"]
+            succ =  ds._strokes_check_all_aligned_direction(strokes, plot_failure=True, thresh=0.7)
+            if succ:
+                shapes_keep.append(sh)
+            else:
+                print("remove this shape, not consistent across trials: ", sh)
+
+        ### Also remove some added by hand
+        shapes_remove = params_shapes_remove(animal, date, shape_var)
+        print("Also removing tese shapes. by hand: ", shapes_remove)
+        shapes_keep = [sh for sh in shapes_keep if sh not in shapes_remove]
+        
+        print("Keeping these shapes, becuase they are not similar strokes between SP and CHAR:", shapes_keep)
+        PA = PA.slice_by_labels_filtdict({shape_var:shapes_keep})
+
+    if not manuscript_version:
+        ### Remove bad strokes baesd on new hand-entere clust sim thresholds.
+        if remove_trials_with_bad_strokes:
+            print("Removing bad strokes, using hand-entered clust_sim_max thresholds...")
+            dflab = PA.Xlabels["trials"]
+            # behstrokes_preprocess_prune_trials_bad_strokes(DFallpa, animal, date)
+            inds = dflab[(dflab["clust_sim_max_GOOD"]==True) | (dflab["task_kind"]=="prims_single")].index.tolist() # keep only the "GOOD" cases
+            print(PA.X.shape[1], " --> ", len(inds), " (num trials) ")
+            PA = PA.slice_by_dim_indices_wrapper("trials", inds, reset_trial_indices=True)
 
     ### Plot counts
     _save_counts(PA, "2-after_apply_clust_stim_max")
 
     ### Remove trials with bad motor behavior (too fast)
-    if remove_trials_too_fast:
-        print("Removing strokes that are too fast (gap or stroke)...")
-        
-        dflab = PA.Xlabels["trials"]
-        print("start n: ", len(dflab))
-        a = dflab["failed_strokedur"]
-        b = dflab["failed_gapdur"]
-        c = dflab["task_kind"] == "prims_single"
-        inds = dflab[~(a | b) | c].index.tolist()
-        PA = PA.slice_by_dim_indices_wrapper("trials", inds, reset_trial_indices=True)
-        print("end n: ", len(inds))
+    if not manuscript_version:
+        if remove_trials_too_fast:
+            print("Removing strokes that are too fast (gap or stroke)...")
+            
+            dflab = PA.Xlabels["trials"]
+            print("start n: ", len(dflab))
+            a = dflab["failed_strokedur"]
+            b = dflab["failed_gapdur"]
+            c = dflab["task_kind"] == "prims_single"
+            inds = dflab[~(a | b) | c].index.tolist()
+            PA = PA.slice_by_dim_indices_wrapper("trials", inds, reset_trial_indices=True)
+            print("end n: ", len(inds))
 
-        if savedir is not None:
-            fig = sns.catplot(data=dflab, x="task_kind", y="gap_from_prev_dur", alpha=0.15, hue="failed_gapdur")
-            savefig(fig, f"{savedir}/remove_trials_fast-gap-1.pdf")
-            fig = sns.catplot(data=dflab, x="task_kind", y="gap_from_prev_dur", alpha=0.15, hue="failed_gapdur", col=shape_var, col_wrap=6)
-            savefig(fig, f"{savedir}/remove_trials_fast-gap-2.pdf")
+            if savedir is not None:
+                fig = sns.catplot(data=dflab, x="task_kind", y="gap_from_prev_dur", alpha=0.15, hue="failed_gapdur")
+                savefig(fig, f"{savedir}/remove_trials_fast-gap-1.pdf")
+                fig = sns.catplot(data=dflab, x="task_kind", y="gap_from_prev_dur", alpha=0.15, hue="failed_gapdur", col=shape_var, col_wrap=6)
+                savefig(fig, f"{savedir}/remove_trials_fast-gap-2.pdf")
 
-            fig = sns.catplot(data=dflab, x="task_kind", y="time_duration", alpha=0.15, hue="failed_strokedur")
-            savefig(fig, f"{savedir}/remove_trials_fast-stroke-1.pdf")
-            fig = sns.catplot(data=dflab, x="task_kind", y="time_duration", alpha=0.15, hue="failed_strokedur", col=shape_var, col_wrap=6)
-            savefig(fig, f"{savedir}/remove_trials_fast-stroke-2.pdf")
+                fig = sns.catplot(data=dflab, x="task_kind", y="time_duration", alpha=0.15, hue="failed_strokedur")
+                savefig(fig, f"{savedir}/remove_trials_fast-stroke-1.pdf")
+                fig = sns.catplot(data=dflab, x="task_kind", y="time_duration", alpha=0.15, hue="failed_strokedur", col=shape_var, col_wrap=6)
+                savefig(fig, f"{savedir}/remove_trials_fast-stroke-2.pdf")
 
     ### Plot counts
     _save_counts(PA, "3-after_clean_motor")
@@ -1475,16 +1488,17 @@ def preprocess_pa(animal, date, PA, savedir, prune_version, shape_var = VAR_SHAP
             savefig(fig, f"{savedir}/stroke_drawings-after_remove_unaligned_strokes-iter_{i}.pdf")
 
     ############################
-    # Optioanlly, remove channels with drift
-    if remove_chans_fr_drift:
-        from neuralmonkey.classes.population_mult import dfallpa_preprocess_sitesdirty_single_just_drift
-        PA = dfallpa_preprocess_sitesdirty_single_just_drift(PA, animal, date, savedir=savedir)
+    if not manuscript_version:
+        # Optioanlly, remove channels with drift
+        if remove_chans_fr_drift:
+            from neuralmonkey.classes.population_mult import dfallpa_preprocess_sitesdirty_single_just_drift
+            PA = dfallpa_preprocess_sitesdirty_single_just_drift(PA, animal, date, savedir=savedir)
 
-    if remove_singleprims_unstable:
-        PA = preprocess_clean_stable_single_prims_frate(PA, savedir=savedir)    
-        if PA is None:
-            return None
-        
+        if remove_singleprims_unstable:
+            PA = preprocess_clean_stable_single_prims_frate(PA, savedir=savedir)    
+            if PA is None:
+                return None
+            
     ############ PROJECTION
     if not skip_dim_reduction:
         from neuralmonkey.scripts.analy_shape_invariance_all_plots_SP import _preprocess_pa_dim_reduction
@@ -1929,20 +1943,24 @@ def euclidian_time_resolved_fast_shuffled(DFallpa, animal, date, SAVEDIR_ANALYSI
                                           HACK=False,
                                           DEBUG_bregion_list=None,
                                           DO_REGRESS_HACK=False,
-                                          HACK_Diego_reorder_shapes=False): 
+                                          HACK_Diego_reorder_shapes=False,
+                                          LIST_SUBSPACE_PROJECTION_INPUT=None,
+                                          LIST_PRUNE_VERSION_INPUT = None,
+                                          QUICK_MODE=False,
+                                          manuscript_version=False): 
                                           
     """
     Good! Much faster method. And does one thing important for more rigorous result:
     1. Train-test split for dim redu (separate for fitting[smaller] and then final data projected)
 
     Derived from euclidian_time_resolved_fast_shuffled() in shape_invar_SP
+    QUICK_MODE = False # To quickly test subset of conditions -- I used this for revisions, debugging.
     """
     # assert False, "save split, or else file gets to mult GB -- run seprately for each bregion."
     var_effect=VAR_SHAPE
     var_conj = "task_kind"
     vars_group = [var_effect, var_conj]
 
-    QUICK_MODE = False # To quickly test subset of conditions -- I used this for revisions, debugging.
 
     if False:
         # Params used during devo
@@ -1995,7 +2013,7 @@ def euclidian_time_resolved_fast_shuffled(DFallpa, animal, date, SAVEDIR_ANALYSI
 
         LIST_SUBSPACE_PROJECTION = ["task_shape", "task_shape_si"]
         # LIST_PRUNE_VERSION = ["sp_char_1plus", "sp_char_0", "pig0_char_1plus", "pigall_char_1plus", "sp_pig_1plus"] # Just running for revisions.
-        LIST_PRUNE_VERSION = ["sp_char_1plus", "sp_char_0", "pig0_char_1plus", "sp_pig_1plus"] # Just running for revisions.
+        LIST_PRUNE_VERSION = ["sp_char_1plus", "sp_char_0", "sp_pig_1plus"] # Just running for revisions.
 
         N_SPLITS = 10 # 6 is too low, I know beucase run-by-run variation for sp_char_0 is high when using 6.
 
@@ -2026,10 +2044,23 @@ def euclidian_time_resolved_fast_shuffled(DFallpa, animal, date, SAVEDIR_ANALYSI
                 "00_stroke":[(-0.5, -0.05), (-0.35, -0.05), (-0.3, 0.)], # 
                 }
 
+    if LIST_SUBSPACE_PROJECTION_INPUT is not None:
+        LIST_SUBSPACE_PROJECTION = LIST_SUBSPACE_PROJECTION_INPUT
+
+    if LIST_PRUNE_VERSION_INPUT is not None:
+        LIST_PRUNE_VERSION = LIST_PRUNE_VERSION_INPUT
+
+    if manuscript_version:
+        LIST_SUBSPACE_PROJECTION = ["task_shape"]
+        map_event_to_listtwind_scal = {
+            "00_stroke":[(-0.5, -0.05), (-0.35, -0.05)], # 
+            }
+
     ### Do all preprocessing that removes chans here, BEFORE pruning chans. This allows
     # correctly subsampling chans in inner code.
-    preprocess_dfallpa_prune_chans(DFallpa, animal, date, SAVEDIR_ANALYSIS)
-    preprocess_dfallpa_prune_chans_hand_coded(DFallpa, animal, date)
+    if not manuscript_version:
+        preprocess_dfallpa_prune_chans(DFallpa, animal, date, SAVEDIR_ANALYSIS)
+        preprocess_dfallpa_prune_chans_hand_coded(DFallpa, animal, date)
 
     ### For subsampling chans
     # Only cosnider a subset of regions with most shape-related activity.
@@ -2205,7 +2236,8 @@ def euclidian_time_resolved_fast_shuffled(DFallpa, animal, date, SAVEDIR_ANALYSI
                                                         raw_subtract_mean_each_timepoint=False, remove_singleprims_unstable=remove_singleprims_unstable,
                                                         remove_trials_with_bad_strokes=remove_trials_with_bad_strokes, 
                                                         subspace_projection_fitting_twind=subspace_projection_fitting_twind,
-                                                        remove_trials_too_fast=remove_trials_too_fast)
+                                                        remove_trials_too_fast=remove_trials_too_fast,
+                                                        manuscript_version=manuscript_version)
                                 
                                 if PAthis is not None:
                                     list_twind_scalar = map_event_to_listtwind_scal[event]
@@ -2232,7 +2264,8 @@ def euclidian_time_resolved_fast_shuffled(DFallpa, animal, date, SAVEDIR_ANALYSI
                                                     remove_trials_with_bad_strokes=remove_trials_with_bad_strokes, 
                                                     subspace_projection_fitting_twind=subspace_projection_fitting_twind,
                                                     skip_dim_reduction=skip_dim_reduction,
-                                                    remove_trials_too_fast=remove_trials_too_fast)
+                                                    remove_trials_too_fast=remove_trials_too_fast,
+                                                    manuscript_version=manuscript_version)
 
                             if PAthis is None:
                                 continue
@@ -2950,7 +2983,8 @@ def plot_heatmap_firing_rates_all_wrapper(DFallpa, SAVEDIR_ANALYSIS, animal, dat
                                           consolidate_diego_shapes_actually=False,
                                           also_plot_clean_version=False,
                                           HACK_Diego_reorder_shapes=False,
-                                          keep_only_shapes_that_exist_across_all_contexts_min_n=None):
+                                          keep_only_shapes_that_exist_across_all_contexts_min_n=None,
+                                          manuscript_version=False):
     """
     Wrapper, to plot all FR heatmaps (trial vs time) with diff variations.
     Gaol is to visualize theraw data as clsoely and broadly as possible, see effect,
@@ -2989,8 +3023,7 @@ def plot_heatmap_firing_rates_all_wrapper(DFallpa, SAVEDIR_ANALYSIS, animal, dat
 
     if heatmap_quick_version:
         list_heatmap_means = [True]
-        # list_mean_zscore_base = [(False, True, False)]
-        list_mean_zscore_base = [(False, False, False), (True, False, False)]
+        list_mean_zscore_base = [(False, False, False), (True, False, False), (False, True, False)]
         PLOT_CLEAN_VERSION = False
         plot_bad_strokes=False
     else:
@@ -3009,9 +3042,10 @@ def plot_heatmap_firing_rates_all_wrapper(DFallpa, SAVEDIR_ANALYSIS, animal, dat
     # Revision
     remove_trials_too_fast = True
 
-    # Remove bad chans (doing same steps as do for euclidean distance)
-    preprocess_dfallpa_prune_chans(DFallpa, animal, date, SAVEDIR_ANALYSIS)
-    preprocess_dfallpa_prune_chans_hand_coded(DFallpa, animal, date)
+    if not manuscript_version:
+        # Remove bad chans (doing same steps as do for euclidean distance)
+        preprocess_dfallpa_prune_chans(DFallpa, animal, date, SAVEDIR_ANALYSIS)
+        preprocess_dfallpa_prune_chans_hand_coded(DFallpa, animal, date)
 
     # RUN
     drawings_done = []
@@ -3041,7 +3075,8 @@ def plot_heatmap_firing_rates_all_wrapper(DFallpa, SAVEDIR_ANALYSIS, animal, dat
                 preprocess_pa(animal, date, PAtmp, savedir, prune_version, 
                                 n_min_trials_per_shape=n_min_trials_per_shape, plot_drawings=True,
                                 remove_trials_too_fast=remove_trials_too_fast,
-                                consolidate_diego_shapes_actually=consolidate_diego_shapes_actually)
+                                consolidate_diego_shapes_actually=consolidate_diego_shapes_actually,
+                                manuscript_version=manuscript_version)
                 drawings_done.append(prune_version)
 
                 try:
@@ -3094,7 +3129,8 @@ def plot_heatmap_firing_rates_all_wrapper(DFallpa, SAVEDIR_ANALYSIS, animal, dat
                                                 remove_trials_with_bad_strokes=remove_trials_with_bad_strokes, 
                                                 subspace_projection_fitting_twind=subspace_projection_fitting_twind,
                                                 remove_trials_too_fast=remove_trials_too_fast,
-                                                consolidate_diego_shapes_actually=consolidate_diego_shapes_actually)
+                                                consolidate_diego_shapes_actually=consolidate_diego_shapes_actually,
+                                                manuscript_version=manuscript_version)
 
                         if (animal, date) == ("Diego", 231220) and HACK_Diego_reorder_shapes:
                             dflab = pa.Xlabels["trials"]

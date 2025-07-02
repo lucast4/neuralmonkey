@@ -105,7 +105,7 @@ def preprocess_dfallpa(DFallpa):
 
     
 
-def heatmap_bregions_events_wrapper(DFallpa, PAtrial, SAVEDIR):
+def heatmap_bregions_events_wrapper(DFallpa, PAtrial, SAVEDIR, list_hack_abs=None, list_norm = None, list_sort=None):
     """
     Wrapper to make all kinds of heatmaps showing mean activity fore ach neruon (y axis) as function of time,
     split into subplots of (bregion, event).
@@ -116,10 +116,17 @@ def heatmap_bregions_events_wrapper(DFallpa, PAtrial, SAVEDIR):
 
     # Baseline is during samp
     base_twind = _get_twind_between_these_events(PAtrial, "fixtch", "samp")
-    
-    for HACK_ABS_VALUE in [False, True]:
-        for base_norm_method in ["subtract", "zscore"]:
-            for sort_by in ["value", "modulation"]:
+
+    if list_hack_abs is None:
+        list_hack_abs = [False, True]
+    if list_norm is None:
+        list_norm = ["subtract", "zscore"]
+    if list_sort is None:
+        list_sort = ["value", "modulation"]
+        
+    for HACK_ABS_VALUE in list_hack_abs:
+        for base_norm_method in list_norm:
+            for sort_by in list_sort:
                 for e1, e2 in zip(PAtrial.Params["events_all"][:-1], PAtrial.Params["events_all"][1:]):
                     sort_twind = _get_twind_between_these_events(PAtrial, e1, e2)
 

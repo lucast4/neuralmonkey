@@ -309,6 +309,7 @@ def dfallpa_preprocess_sitesdirty_single_just_drift(PA, animal, date, slope_thre
     Quick, just to additionally apply another threshold on top of whatever is done
     in dfallpa_preprocess_sitesdirty_single (i.e, hard codede rsults). This uses the same
     precomputed drift metric, etc, but applies new thresholds.
+    NOTE: This doesnt use PA.X (activity) at all.
     PARAMS:
     - slope_thresh = 0.12, 0.12 is strict, chosen for Pancho char dates... to avoid SP and
     CHAR being really differnet.

@@ -5114,7 +5114,9 @@ class PopAnal():
                                              list_twind_scal_eucl, 
                                              LIST_VAR_SS, LIST_VARS_OTHERS_SS, list_dims=None, ndims_timecourse=4,
                                              twind_base = (-0.6, -0.05),
-                                             do_heatmap=True, do_state_space=True, do_euclidean=True):
+                                             do_heatmap=True, do_state_space=True, do_euclidean=True,
+                                             list_mean_zscore_base=None,
+                                             quick_mode=False):
         """
         General helper for summarizing activity for this population,
         to makes all plots I tend to make, including heatmaps, RSA, state space, euclidean distance.
@@ -5123,9 +5125,18 @@ class PopAnal():
         from neuralmonkey.neuralplots.population import heatmapwrapper_many_useful_plots
         import seaborn as sns
 
+        if list_mean_zscore_base is None:
+            # # For heatmap...
+            # list_mean_zscore_base = [(False, False, False), (False, True, True), (True, False, False), (True, True, False), (False, False, True)]
+
+            # For state space...
+            list_mean_zscore_base = [(False, False, False), (True, False, False),  (False, True, True)]
+
+        if quick_mode:
+            list_mean_zscore_base = [(False, False, False), (False, True, True)] # Good for SS and z-score, respectively.
+
         list_heatmap_means = [True]
         # list_mean_zscore_base = [(False, True, False)]
-        list_mean_zscore_base = [(False, False, False), (True, False, False)]
         PLOT_CLEAN_VERSION = False
         # plot_bad_strokes=False
 
@@ -5173,14 +5184,14 @@ class PopAnal():
             #     (var_conj,),
             # ]
 
-            if list_dims is None:
-                list_dims = [(0,1), (1,2), (2,3), (3,4)]
-            list_dim_timecourse = list(range(ndims_timecourse))
-
-            savedirthis = f"{SAVEDIR}/SS-zscore={zscore}-subtr_time_mean={subtr_time_mean}-subtrbase={subtr_baseline}"
-            os.makedirs(savedirthis, exist_ok=True)
-
             if do_state_space:
+                if list_dims is None:
+                    list_dims = [(0,1), (1,2), (2,3), (3,4)]
+                list_dim_timecourse = list(range(ndims_timecourse))
+
+                savedirthis = f"{SAVEDIR}/SS-zscore={zscore}-subtr_time_mean={subtr_time_mean}-subtrbase={subtr_baseline}"
+                os.makedirs(savedirthis, exist_ok=True)
+
                 pathis.plot_state_space_good_wrapper(savedirthis, LIST_VAR_SS, LIST_VARS_OTHERS_SS, PLOT_CLEAN_VERSION=PLOT_CLEAN_VERSION,
                                                 list_dim_timecourse=list_dim_timecourse, list_dims=list_dims,
                                                 nmin_trials_per_lev=nmin_trials_per_lev)                

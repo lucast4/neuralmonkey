@@ -238,7 +238,6 @@ def preprocess_pa(PA, animal, date, var_other, savedir, remove_drift, subspace_p
         fig.savefig(path)
 
     # ------------------------------ (done)
-
     # Optioanlly, remove channels with drift
     if remove_drift:
         from neuralmonkey.classes.population_mult import dfallpa_preprocess_sitesdirty_single_just_drift
@@ -360,7 +359,8 @@ def euclidian_time_resolved(DFallpa, animal, date, var_other, SAVEDIR_ANALYSIS):
                     plt.close("all")
 
 def euclidian_time_resolved_fast_shuffled(DFallpa, animal, date, var_other, SAVEDIR_ANALYSIS,
-                                          DO_SHUFFLE=False, DO_RSA_HEATMAPS=False, var_context_same=None):
+                                          DO_SHUFFLE=False, DO_RSA_HEATMAPS=False, var_context_same=None,
+                                          quick_mode=False):
     """
     Good! Much faster method. And does two other things important for more rigorous result:
     1. Train-test split for dim redu (separate for fitting[smaller] and then final data projected)
@@ -374,7 +374,6 @@ def euclidian_time_resolved_fast_shuffled(DFallpa, animal, date, var_other, SAVE
     --> I stopped doing shuffle, since all I wanted was the dfdists. I then run shuffling on those, using method #3.
     - DO_RSA_HEATMAPS, bool. This may take significantly more time...
     """
-    import seaborn as sns
     # assert False, "save split, or else file gets to mult GB -- run seprately for each bregion."
     import seaborn as sns
 
@@ -418,11 +417,19 @@ def euclidian_time_resolved_fast_shuffled(DFallpa, animal, date, var_other, SAVE
     else:
         assert False
 
+    if quick_mode:
+        list_subspace_projection = ["shape"]
+
     map_event_to_listtwind = {
             "03_samp":[(0.05, 0.3), (0.3, 0.6), (0.05, 0.6), (0.5, 1.0)],
             "05_first_raise":[(-0.5,  -0.1), (-0.1, 0.5)],
             "06_on_strokeidx_0":[(-0.5, -0.1), (-0.4, -0.05), (0, 0.5)],
         }
+        
+    if quick_mode:
+        map_event_to_listtwind = {
+                "03_samp":[(0.05, 0.6)],
+            }
 
     list_dfdist =[]
     list_dfdist_shuff =[]
@@ -631,7 +638,10 @@ def euclidian_time_resolved_fast_shuffled_mult_reload(animal, date, var_other, a
                                                       analysis_kind="shape_invar", convert_to_df_with_postprocessing=False,
                                                       merge_pancho_ss_twinds=False, savedir=None,
                                                       DO_FURTHER_POSTPROCESSING=False, 
-                                                      prune_min_n_trials=None, old_run_number=None):
+                                                      prune_min_n_trials=None, old_run_number=None,
+                                                      SAVEDIR_BASE = None,
+                                                      SAVEDIR_BASE_char=None,
+                                                      manuscript_version=False):
     """
     Helper to reload a SINGLE DAY, and do relevant postprocessing and agging. 
 
@@ -652,10 +662,16 @@ def euclidian_time_resolved_fast_shuffled_mult_reload(animal, date, var_other, a
     combine = True
     # var_other = "seqc_0_loc"
 
+    if SAVEDIR_BASE is None:
+        SAVEDIR_BASE = "/lemur2/lucas/analyses/recordings/main/shape_invariance/EUCLIDIAN_SHUFF"
+
+    if SAVEDIR_BASE_char is None:
+        SAVEDIR_BASE_char = "/lemur2/lucas/analyses/recordings/main/euclidian_char_sp/EUCL_QUICK_SHUFFLE"
+
     if analysis_kind in ["shape_invar_clean_loc", "shape_invar_clean_size", "shape_invar"]:
         var_effect = "seqc_0_shape"
         var_other = var_other
-        SAVEDIR_ORIG = "/lemur2/lucas/analyses/recordings/main/shape_invariance/EUCLIDIAN_SHUFF"
+        SAVEDIR_ORIG = SAVEDIR_BASE
         SAVEDIR = f"{SAVEDIR_ORIG}/{animal}-{date}-combine={combine}-var_other={var_other}"
     elif analysis_kind == "shape_invar_context":
         # Like shape invar, but better, since it uses a context variable (e.g compare shape vs. loc, conditioned on context of size)
@@ -669,33 +685,33 @@ def euclidian_time_resolved_fast_shuffled_mult_reload(animal, date, var_other, a
         else:
             print(var_other)
             assert False
-        SAVEDIR_ORIG = "/lemur2/lucas/analyses/recordings/main/shape_invariance/EUCLIDIAN_SHUFF"
+        SAVEDIR_ORIG = SAVEDIR_BASE
         SAVEDIR = f"{SAVEDIR_ORIG}/{animal}-{date}-combine={combine}-var_other={var_other}-var_context_same={var_context_same}"
     elif analysis_kind == "char_sp":
         # /lemur2/lucas/analyses/recordings/main/euclidian_char_sp/EUCL_QUICK_SHUFFLE/Diego-231120-combine=True-wl=stroke
         var_effect = "shape_semantic_grp"
         var_other = "task_kind"
         wl = "stroke"
-        SAVEDIR_ORIG = "/lemur2/lucas/analyses/recordings/main/euclidian_char_sp/EUCL_QUICK_SHUFFLE"
+        SAVEDIR_ORIG = SAVEDIR_BASE_char
         SAVEDIR = f"{SAVEDIR_ORIG}/{animal}-{date}-combine={combine}-wl={wl}"
     elif analysis_kind == "char_sp_05_first_raise":
         var_effect = "shape_semantic_grp"
         var_other = "task_kind"
         wl = "trial"
-        SAVEDIR_ORIG = "/lemur2/lucas/analyses/recordings/main/euclidian_char_sp/EUCL_QUICK_SHUFFLE"
+        SAVEDIR_ORIG = SAVEDIR_BASE_char
         SAVEDIR = f"{SAVEDIR_ORIG}/{animal}-{date}-combine={combine}-wl={wl}-05_first_raise"
     elif analysis_kind == "char_sp_04_go_cue":
         var_effect = "shape_semantic_grp"
         var_other = "task_kind"
         wl = "trial"
-        SAVEDIR_ORIG = "/lemur2/lucas/analyses/recordings/main/euclidian_char_sp/EUCL_QUICK_SHUFFLE"
+        SAVEDIR_ORIG = SAVEDIR_BASE_char
         SAVEDIR = f"{SAVEDIR_ORIG}/{animal}-{date}-combine={combine}-wl={wl}-04_go_cue"
     elif analysis_kind == "char_sp_00_stroke":
         # GOOD - THis is the one I used...
         var_effect = "shape_semantic_grp"
         var_other = "task_kind"
         wl = "stroke"
-        SAVEDIR_ORIG = "/lemur2/lucas/analyses/recordings/main/euclidian_char_sp/EUCL_QUICK_SHUFFLE"
+        SAVEDIR_ORIG = SAVEDIR_BASE_char
         SAVEDIR = f"{SAVEDIR_ORIG}/{animal}-{date}-combine={combine}-wl={wl}-00_stroke"
     elif analysis_kind in ["char_sp_00_stroke_revision_regr", "char_sp_00_stroke_revision_noregr"]:
         assert False, "not using shape_semantic_grp anymore"
@@ -725,10 +741,13 @@ def euclidian_time_resolved_fast_shuffled_mult_reload(animal, date, var_other, a
             assert False
         
         if old_run_number is not None:
-            SAVEDIR_ORIG = f"/lemur2/lucas/analyses/recordings/main/euclidian_char_sp/EUCL_QUICK_SHUFFLE_revision_runs/run{old_run_number}"
+            SAVEDIR_ORIG = f"{SAVEDIR_BASE_char}_revision_runs/run{old_run_number}"
         else:
-            SAVEDIR_ORIG = f"/lemur2/lucas/analyses/recordings/main/euclidian_char_sp/EUCL_QUICK_SHUFFLE_revision-VAR_SHAPE={var_effect}"
+            SAVEDIR_ORIG = f"{SAVEDIR_BASE_char}_revision-VAR_SHAPE={var_effect}"
         SAVEDIR = f"{SAVEDIR_ORIG}/{animal}-{date}-combine={combine}-wl={wl}-00_stroke-regrhack={regrhack}"
+
+        if manuscript_version:
+            SAVEDIR = f"/lemur2/lucas/analyses/manuscripts/1_action_symbols/REPRODUCED_FIGURES/fig6f/{animal}-{date}-regrhack={regrhack}"
     else:
         print(analysis_kind)
         assert False
@@ -1500,7 +1519,7 @@ def euclidian_time_resolved_fast_shuffled_mult_scatter_plots(analysis_kind="shap
                                                              DO_FURTHER_POSTPROCESSING=False, PLOT_EACH_PAIR=False,
                                                              prune_min_n_trials=None,
                                                              list_metaparams_plot_each_pair=None,
-                                                             do_catplots=False):
+                                                             do_catplots=False, SAVEDIR_BASE=None):
     """
     GOOD -- Main wrapper to load and plot across days, without bothering about shuffle stats.
     Loads data saved by euclidian_time_resolved_fast_shuffled, across dates, and concats, and plots.
@@ -1526,22 +1545,27 @@ def euclidian_time_resolved_fast_shuffled_mult_scatter_plots(analysis_kind="shap
     from pythonlib.tools.pandastools import plot_45scatter_means_flexible_grouping
     from pythonlib.tools.pandastools import plot_subplots_heatmap, sort_by_two_columns_separate_keys
 
+    # if manuscript_version and analysis_kind=="shape_invar_clean_loc":
+    #     SAVEDIR_MULT = "/lemur2/lucas/analyses/recordings/main/shape_invariance/EUCLIDIAN_SHUFF/MULT"
+    if SAVEDIR_BASE is None:
+        SAVEDIR_BASE = "/lemur2/lucas/analyses/recordings/main/shape_invariance/EUCLIDIAN_SHUFF"
+
     if analysis_kind=="shape_invar_clean_loc":
-        SAVEDIR_MULT = "/lemur2/lucas/analyses/recordings/main/shape_invariance/EUCLIDIAN_SHUFF/MULT"
+        SAVEDIR_MULT = f"{SAVEDIR_BASE}/MULT"
         var_effect = "seqc_0_shape"
         LIST_ANIMAL_VAROTHER = [
             ("Pancho", "seqc_0_loc"),
             ("Diego", "seqc_0_loc"),
             ]
     elif analysis_kind=="shape_invar_clean_size":
-        SAVEDIR_MULT = "/lemur2/lucas/analyses/recordings/main/shape_invariance/EUCLIDIAN_SHUFF/MULT"
+        SAVEDIR_MULT = f"{SAVEDIR_BASE}/MULT"
         var_effect = "seqc_0_shape"
         LIST_ANIMAL_VAROTHER = [
             ("Pancho", "gridsize"),
             ("Diego", "gridsize"),
             ]
     elif analysis_kind=="shape_invar":
-        SAVEDIR_MULT = "/lemur2/lucas/analyses/recordings/main/shape_invariance/EUCLIDIAN_SHUFF/MULT"
+        SAVEDIR_MULT = f"{SAVEDIR_BASE}/MULT"
         var_effect = "seqc_0_shape"
         LIST_ANIMAL_VAROTHER = [
             ("Pancho", "seqc_0_loc"),
@@ -1550,7 +1574,7 @@ def euclidian_time_resolved_fast_shuffled_mult_scatter_plots(analysis_kind="shap
             ("Diego", "gridsize"),
             ]
     elif analysis_kind=="shape_invar_context":
-        SAVEDIR_MULT = "/lemur2/lucas/analyses/recordings/main/shape_invariance/EUCLIDIAN_SHUFF/MULT"
+        SAVEDIR_MULT = f"{SAVEDIR_BASE}/MULT"
         var_effect = "seqc_0_shape"
         LIST_ANIMAL_VAROTHER = [
             ("Pancho", "seqc_0_loc"),
@@ -1610,11 +1634,13 @@ def euclidian_time_resolved_fast_shuffled_mult_scatter_plots(analysis_kind="shap
         for date in list_date:
             print("Trying to load this animal, var_other, date: ", animal, var_other, date)
             counts_savedir = f"{SAVEDIR}/postprocessing"
-            dfdists, dfdists_agg, _ = euclidian_time_resolved_fast_shuffled_mult_reload(animal, date, var_other=var_other, analysis_kind=analysis_kind,
+            dfdists, dfdists_agg, _ = euclidian_time_resolved_fast_shuffled_mult_reload(animal, date, var_other=var_other, 
+                                                                                        analysis_kind=analysis_kind,
                                                                                   convert_to_df_with_postprocessing=True, 
                                                                                   savedir=counts_savedir,
                                                                                   DO_FURTHER_POSTPROCESSING=DO_FURTHER_POSTPROCESSING,
-                                                                                  prune_min_n_trials=prune_min_n_trials)
+                                                                                  prune_min_n_trials=prune_min_n_trials,
+                                                                                  SAVEDIR_BASE=SAVEDIR_BASE)
             
             if dfdists is None:
                 print("Skipping this animal date (empty data):", animal, date)
@@ -1673,133 +1699,6 @@ def euclidian_time_resolved_fast_shuffled_mult_scatter_plots(analysis_kind="shap
                                         PLOT_EACH_PAIR=False, do_catplots=do_catplots, do_quick=do_quick)
             plt.close("all")
 
-        # return DFDISTS, DFDISTS_AGG, SAVEDIR_PLOTS # NO, since SAVEDIR_PLOTS is for one day
-        # return DFDISTS, DFDISTS_AGG
-
-        # var_same_same = f"same-{var_effect}|{var_other}"
-        # var_value = "dist_yue_diff"
-
-        # savedir = f"{SAVEDIR}/scatterplots"
-        # os.makedirs(savedir, exist_ok=True)
-
-        # # Each event
-        # grp_vars = ["which_level", "prune_version", "event"]
-        # grpdict_dat = grouping_append_and_return_inner_items_good(DFDISTS_AGG, grp_vars)
-
-        # for grp, inds_dat in grpdict_dat.items():
-        #     # inds_pval = grpdict_pval[grp]
-        #     dfthis_dat = DFDISTS_AGG.iloc[inds_dat]
-
-        #     ### Plot
-        #     _, fig = plot_45scatter_means_flexible_grouping(dfthis_dat, var_same_same, "1|0", "0|1", "subspace|twind", 
-        #                                         var_value, "bregion", True, shareaxes=True)
-            
-        #     savefig(fig, f"{savedir}/EVENTS-scatter45-grp={grp}.pdf")
-        #     plt.close("all")
-            
-        # # Each event
-        # grp_vars = ["which_level", "prune_version", "subspace|twind"]
-        # grpdict_dat = grouping_append_and_return_inner_items_good(DFDISTS_AGG, grp_vars)
-
-        # for grp, inds_dat in grpdict_dat.items():
-        #     # inds_pval = grpdict_pval[grp]
-        #     dfthis_dat = DFDISTS_AGG.iloc[inds_dat]
-
-        #     ### Plot
-        #     _, fig = plot_45scatter_means_flexible_grouping(dfthis_dat, var_same_same, "1|0", "0|1", "event", 
-        #                                         var_value, "bregion", True, shareaxes=True)
-            
-        #     savefig(fig, f"{savedir}/SUBSPACE-scatter45-grp={grp}.pdf")
-        #     plt.close("all")
-
-        # # Show each date
-        # grp_vars = ["which_level", "event", "prune_version", "subspace|twind"]
-        # grpdict_dat = grouping_append_and_return_inner_items_good(DFDISTS_AGG, grp_vars)
-
-        # for grp, inds_dat in grpdict_dat.items():
-        #     # inds_pval = grpdict_pval[grp]
-        #     dfthis_dat = DFDISTS_AGG.iloc[inds_dat]
-
-        #     ### Plot
-        #     _, fig = plot_45scatter_means_flexible_grouping(dfthis_dat, var_same_same, "1|0", "0|1", "bregion", 
-        #                                         var_value, "date", True, shareaxes=True)
-            
-        #     savefig(fig, f"{savedir}/DATES-scatter45-grp={grp}.pdf")
-        #     plt.close("all")
-
-        # grp_vars = ["bregion"]
-        # grpdict_dat = grouping_append_and_return_inner_items_good(DFDISTS_AGG, grp_vars)
-
-        # for grp, inds_dat in grpdict_dat.items():
-        #     # inds_pval = grpdict_pval[grp]
-        #     dfthis_dat = DFDISTS_AGG.iloc[inds_dat]
-
-        #     ### Plot
-        #     _, fig = plot_45scatter_means_flexible_grouping(dfthis_dat, var_same_same, "1|0", "0|1", "metaparams", 
-        #                                         var_value, "date", True, shareaxes=True, SIZE=3.5)
-            
-        #     savefig(fig, f"{savedir}/REGIONS-scatter45-grp={grp}.pdf")
-        #     plt.close("all")
-
-
-        # ### Plot
-        # dfthis_dat = DFDISTS_AGG
-        # _, fig = plot_45scatter_means_flexible_grouping(dfthis_dat, var_same_same, "1|0", "0|1", "metaparams", 
-        #                                     var_value, "bregion", True, shareaxes=True, SIZE=3.5)
-
-        # savefig(fig, f"{savedir}/ALL.pdf")
-        # plt.close("all")
-
-        # # Each event
-        # grp_vars = ["which_level", "prune_version", "subspace|twind", "event"]
-        # grpdict_dat = grouping_append_and_return_inner_items_good(DFDISTS_AGG, grp_vars)
-
-        # for grp, inds_dat in grpdict_dat.items():
-        #     # inds_pval = grpdict_pval[grp]
-        #     dfthis_dat = DFDISTS_AGG.iloc[inds_dat]
-
-        #     ### Plot
-        #     _, fig = plot_45scatter_means_flexible_grouping(dfthis_dat, var_same_same, "1|0", "0|1", "date", 
-        #                                         var_value, "bregion", True, shareaxes=True)
-            
-        #     savefig(fig, f"{savedir}/ALL_DATES-scatter45-grp={grp}.pdf")
-        #     plt.close("all")
-
-        # ### Also plot each pair of conditions (low-level plots) in heatmap
-        # if PLOT_EACH_PAIR:
-        #     DFDISTS = sort_by_two_columns_separate_keys(DFDISTS, "bregion", f"same-{var_effect}|task_kind")
-        #     DFDISTS = append_col_with_grp_index(DFDISTS, ["bregion", f"same-{var_effect}|task_kind"], "br_same")
-        #     grpdict = grouping_append_and_return_inner_items_good(DFDISTS, ["metaparams", "animal", "date"])
-
-        #     if list_metaparams_plot_each_pair is not None:
-        #         grpdict = {grp:inds for grp, inds in grpdict.items() if grp[0] in list_metaparams_plot_each_pair}
-        #     if len(grpdict)==0:
-        #         print(list_metaparams_plot_each_pair)
-        #         assert False
-            
-        #     for grp, inds in grpdict.items():
-        #         dfdists = DFDISTS.iloc[inds].reset_index(drop=True)
-
-        #         dfdists = dfdists[dfdists[f"same-{var_effect}|task_kind"] != "1|1"].reset_index(drop=True) # to remove 1/4 of subplots.
-        #         fig, _ = plot_subplots_heatmap(dfdists, f"{var_effect}_1", f"{var_effect}_2", "dist_yue_diff", "br_same", 
-        #                                         False, True, ncols=6)
-
-        #         savefig(fig, f"{savedir}/allpairs_heatmap-{grp}.pdf")
-        #         plt.close("all")
-        # else:
-        #     # Then just plot the counts, is faster
-        #     grpdict = grouping_append_and_return_inner_items_good(DFDISTS, ["animal", "date", "prune_version"])
-        #     for grp, inds in grpdict.items():
-        #         dfdists = DFDISTS.iloc[inds].reset_index(drop=True)
-        #         # grouping_print_n_samples(dfdists, ["animal", "date", "metaparams", "same-shape_semantic_grp|task_kind", "shape_semantic_grp_1", "shape_semantic_grp_2"])
-        #         # grouping_print_n_samples(dfdists, ["same-shape_semantic_grp|task_kind", "shape_semantic_grp_1", "shape_semantic_grp_2", "animal", "date"])
-        #         # asds
-        #         fig = grouping_plot_n_samples_conjunction_heatmap(dfdists, f"{var_effect}_1", f"{var_effect}_2", 
-        #                                                     [f"same-{var_effect}|task_kind"], annotate_heatmap=False,
-        #                                                     FIGSIZE=5, n_columns=4)
-        #         savefig(fig, f"{savedir}/allpairs_counts-{grp}.pdf")
-        #         plt.close("all")
-
 def _euclidianshuff_stats_linear_load_mult_dates_postprocess(DFDISTS):
     """
     Various conditioning of DFDISTS, to prep for linear model stats, mainly making the relevant variables 
@@ -1807,6 +1706,9 @@ def _euclidianshuff_stats_linear_load_mult_dates_postprocess(DFDISTS):
     """
     from pythonlib.tools.pandastools import append_col_with_grp_index, grouping_plot_n_samples_conjunction_heatmap
     from pythonlib.tools.pandastools import convert_var_to_categorical, convert_var_to_categorical_mult_columns
+
+    DFDISTS["labels_pair_unique"] = [tuple(sorted((row["labels_1"], row["labels_2"]))) for _, row in DFDISTS.iterrows()]
+    DFDISTS["shapes_pair_unique"] = [tuple(sorted((row["labels_1"][0], row["labels_2"][0]))) for _, row in DFDISTS.iterrows()]
 
     DFDISTS["shape1"] = [lab[0] for lab in DFDISTS["labels_1"].tolist()]
     DFDISTS["loc1"] = [lab[1] for lab in DFDISTS["labels_1"].tolist()]
@@ -1835,7 +1737,8 @@ def _euclidianshuff_stats_linear_load_mult_dates_postprocess(DFDISTS):
     return DFDISTS
 
 def euclidianshuff_stats_linear_load_mult_dates(animal, list_date, var_other, analysis_kind, merge_pancho_ss_twinds=False,
-                                                old_run_number=None):
+                                                old_run_number=None, SAVEDIR_BASE=None, SAVEDIR_BASE_char=None,
+                                                manuscript_version=False):
     """
     Loads multiple days, with preprpicessing.
     This is important in that if FIRST concats dates, appends (animal, date) to shape and loc variables, and then
@@ -1849,7 +1752,9 @@ def euclidianshuff_stats_linear_load_mult_dates(animal, list_date, var_other, an
         dfdists, _, _ = euclidian_time_resolved_fast_shuffled_mult_reload(animal, date, var_other, 
                                                                         convert_to_df_with_postprocessing=True,
                                                                         merge_pancho_ss_twinds=merge_pancho_ss_twinds,
-                                                                        analysis_kind=analysis_kind, old_run_number=old_run_number)
+                                                                        analysis_kind=analysis_kind, old_run_number=old_run_number,
+                                                                        SAVEDIR_BASE=SAVEDIR_BASE, SAVEDIR_BASE_char=SAVEDIR_BASE_char,
+                                                                        manuscript_version=manuscript_version)
         if dfdists is not None: # Sometimes date doesnt have data...
             dfdists["animal"] = animal
             dfdists["date"] = date
@@ -1940,7 +1845,8 @@ def _remove_shape(DFDISTS, list_sh_remove, var_same_same):
 
 def euclidianshuff_stats_linear_plot_wrapper(DFDISTS, SAVEDIR_PLOTS, var_other, var_effect="seqc_0_shape", 
                                              do_vs_zero=False,
-                                             subsample_plot_each_iter_stats=False):
+                                             subsample_plot_each_iter_stats=False,
+                                             do_subsample_method=True):
     """
     MAkes all plots and does stats, for stats.
     PARAMS:
@@ -2091,12 +1997,13 @@ def euclidianshuff_stats_linear_plot_wrapper(DFDISTS, SAVEDIR_PLOTS, var_other, 
         DFSTATS_vs0 = None
 
     ### COMPARE AREAS
-    ### Also plot with subsampling of (shape, tk) conditions.
-    savedir = f"{SAVEDIR_PLOTS}/SUBSAMPLE"
-    os.makedirs(savedir, exist_ok=True)
-    var_datapt = None
-    _euclidianshuff_stats_linear_2br_scatter_wrapper_SUBSAMPLE(DFDISTS, var_effect, var_same_same, var_datapt, savedir,
-                                                               plot_each_iter_stats=subsample_plot_each_iter_stats)
+    if do_subsample_method:
+        ### Also plot with subsampling of (shape, tk) conditions.
+        savedir = f"{SAVEDIR_PLOTS}/SUBSAMPLE"
+        os.makedirs(savedir, exist_ok=True)
+        var_datapt = None
+        _euclidianshuff_stats_linear_2br_scatter_wrapper_SUBSAMPLE(DFDISTS, var_effect, var_same_same, var_datapt, savedir,
+                                                                plot_each_iter_stats=subsample_plot_each_iter_stats)
 
     ###############################################################
     ### Compare areas
@@ -2143,111 +2050,6 @@ def euclidianshuff_stats_linear_plot_wrapper(DFDISTS, SAVEDIR_PLOTS, var_other, 
         DFSTATS_2BR = _euclidianshuff_stats_linear_2br_scatter_wrapper(dfdists_agg, var_same_same, var_datapt, savedir,
                                                                        plot_heatmap_counts=plot_heatmap_counts, 
                                                                        plot_catplots=plot_catplots)
-
-
-    # savedir = f"{SAVEDIR_PLOTS}/linear_model_region_vs_region"
-    # import os
-    # os.makedirs(savedir, exist_ok=True)
-    # print(savedir)
-
-    # ### First, save heatmap showing the datapts counts
-    # from pythonlib.tools.pandastools import grouping_print_n_samples, grouping_plot_n_samples_conjunction_heatmap
-
-    # grp_vars = ["subspace|twind", "event", "bregion"]
-    # grpdict = grouping_append_and_return_inner_items_good(DFDISTS, grp_vars)
-    # for grp, inds in grpdict.items():
-    #     print(grp)
-    #     dfthis = DFDISTS.iloc[inds].reset_index(drop=True)
-        
-    #     savepath = f"{savedir}/COUNTS_USED_IN_STATS-grp={grp}-counts.txt"
-    #     grouping_print_n_samples(dfthis, [var_same_same, "bregion", "labels_1", "labels_2", "date"], savepath=savepath)
-
-    #     fig = grouping_plot_n_samples_conjunction_heatmap(dfthis, "labels_1", "labels_2", [var_same_same, "date"])
-    #     savefig(fig, f"{savedir}/COUNTS_USED_IN_STATS-grp={grp}-counts.pdf")
-
-    #     # only run this once, as it takes a while, and once is enough
-    #     break
-
-    # ### Compute stats
-    # from neuralmonkey.scripts.analy_shape_invariance_all_plots_SP import _euclidianshuff_stats_linear_2br_compute
-    # DFSTATS_2BR = _euclidianshuff_stats_linear_2br_compute(DFDISTS, var_same_same)
-
-    # # Save text file of the sample sizes
-    # from pythonlib.tools.pandastools import grouping_print_n_samples
-
-    # savepath = f"{savedir}/samplesize-confirmed_this_used_in_stats.txt"
-    # grouping_print_n_samples(DFDISTS, ["bregion", "event", "subspace|twind", var_same_same], savepath=savepath)
-
-    # if "date" in DFDISTS:
-    #     savepath = f"{savedir}/samplesize-confirmed_this_used_in_stats-split_by_date.txt"
-    #     grouping_print_n_samples(DFDISTS, ["bregion", "event", "subspace|twind", var_same_same, "date"], savepath=savepath)
-
-    # # NOTE: shapeloc12 actually means shape-(task_kind)12
-    # savepath = f"{savedir}/samplesize-each_datapt.txt"
-    # grouping_print_n_samples(DFDISTS, ["bregion", "event", "subspace|twind", "labels_1", "labels_2", "shapeloc12", "date"])
-
-    # # NOTE: shapeloc12 actually means shape-(task_kind)12 -- to show that.
-    # savepath = f"{savedir}/samplesize-if_char_expt_then_remind_that_loc_is_taskkind.txt"
-    # grouping_print_n_samples(DFDISTS, ["loc1", "labels_1", "date"])
-
-    # ### Plot
-    # z = np.max(np.abs(np.percentile(DFSTATS_2BR["coeff_val"], [0.5, 99.5])))
-    # ZLIMS = [-z, z]
-
-    # from neuralmonkey.classes.session import _REGIONS_IN_ORDER_COMBINED
-    # from math import factorial, comb
-
-    # order_bregion = _REGIONS_IN_ORDER_COMBINED
-    # npairs = comb(len(order_bregion), 2)
-    # ncomp = 2
-    # alpha=0.05
-    # alpha_bonf_easy = alpha/(npairs)
-    # alpha_bonf_hard = alpha/(npairs * ncomp)
-
-    # import seaborn as sns
-    # from pythonlib.tools.pandastools import plot_subplots_heatmap, stringify_values
-    
-    # grp_vars = ["subspace|twind", "event"]
-    # grpdict = grouping_append_and_return_inner_items_good(DFSTATS_2BR, grp_vars)
-    # for grp, inds in grpdict.items():
-    #     print(grp)
-    #     dfstats = DFSTATS_2BR.iloc[inds].reset_index(drop=True)
-
-    #     fig, axes = plot_subplots_heatmap(dfstats, "bregion1", "bregion2", "coeff_val", var_same_same, 
-    #                                 True, True, None, True, W=6, ZLIMS=ZLIMS, row_values=order_bregion, col_values=order_bregion)
-    #     savefig(fig, f"{savedir}/COMPARE_AREAS-grp={grp}.pdf")
-        
-
-    #     zlims = [-5, 0]
-    #     fig, _ = plot_subplots_heatmap(dfstats, "bregion1", "bregion2", "pval_log10", var_same_same, 
-    #                                 False, True, None, True, W=6, ZLIMS=zlims, row_values=order_bregion, col_values=order_bregion)
-    #     savefig(fig, f"{savedir}/COMPARE_AREAS-grp={grp}-pvals.pdf")
-        
-    #     zlims = [np.log10(alpha_bonf_hard)-3, np.log10(alpha_bonf_hard)]
-    #     fig, _ = plot_subplots_heatmap(dfstats, "bregion1", "bregion2", "pval_log10", var_same_same, 
-    #                                 False, True, None, True, W=6, ZLIMS=zlims, row_values=order_bregion, col_values=order_bregion)
-    #     savefig(fig, f"{savedir}/COMPARE_AREAS-grp={grp}-pvals_bonf.pdf")
-
-    #     fig = sns.catplot(data=dfstats, x="bregion1", y="coeff_val", hue=var_same_same, col="bregion2", 
-    #                 col_order=order_bregion, order=order_bregion, col_wrap=6, kind="bar")
-    #     savefig(fig, f"{savedir}/COMPARE_AREAS-catplot-grp={grp}.pdf")
-
-    #     fig = sns.catplot(data=dfstats, x="bregion1", y="pval_log10", hue=var_same_same, col="bregion2", 
-    #                 col_order=order_bregion, order=order_bregion, col_wrap=6, kind="bar")
-    #     for ax in fig.axes:
-    #         ax.axhline(np.log10(0.05))
-    #         ax.axhline(np.log10(0.005))
-    #         ax.axhline(np.log10(0.0005))
-    #         ax.axhline(np.log10(alpha_bonf_easy), color="r")
-    #         ax.axhline(np.log10(alpha_bonf_hard), color="r")
-    #         ax.set_ylim(bottom=-8)
-    #     savefig(fig, f"{savedir}/COMPARE_AREAS-catplot-grp={grp}-pvalues.pdf")
-
-    #     plt.close("all")
-
-    # ################################# PLOTS
-    # from neuralmonkey.scripts.analy_shape_invariance_all_plots_SP import _euclidianshuff_stats_linear_2br_compute, _euclidianshuff_stats_linear_2br_scatter, _euclidianshuff_stats_linear_2br_compute
-    # _euclidianshuff_stats_linear_2br_scatter(DFDISTS, DFSTATS_2BR, var_same_same, [alpha_bonf_easy, alpha_bonf_hard], savedir)
 
     return DFDISTS, DFDISTS_DATPT_LABEL1, DFSTATS_vs0, DFSTATS_2BR
 
@@ -2840,7 +2642,7 @@ def _euclidianshuff_stats_linear_2br_scatter_wrapper_SUBSAMPLE(DFDISTS, var_effe
 
     from pythonlib.tools.pandastools import replace_None_with_string
     df_2br_nsigs_all = replace_None_with_string(df_2br_nsigs_all)
-    vars_grp = ["agg_over_dates", "bregion", "same-shape_semantic|task_kind",
+    vars_grp = ["agg_over_dates", "bregion", var_same_same,
                                     "event", "subspace|twind", "pval_thresh", "metaparams"]
     # print("HERERE2:")
     # print(df_2br_nsigs_all.columns)
@@ -2967,7 +2769,8 @@ def _euclidianshuff_stats_linear_2br_scatter_plot(DFDISTS, DFSTATS_2BR_NSIGS, va
         plt.close("all")
 
 
-def statespace_traj_plot(DFallpa, animal, date, SAVEDIR_ANALYSIS, var_other):
+def statespace_traj_plot(DFallpa, animal, date, SAVEDIR_ANALYSIS, var_other,
+                         manuscript_version=False):
     """ Use the wrapper plotting for state spac,e which includes sclaar, traj, and 
     timecoures.
 
@@ -3000,6 +2803,16 @@ def statespace_traj_plot(DFallpa, animal, date, SAVEDIR_ANALYSIS, var_other):
     else:
         assert False
 
+    if manuscript_version:
+        list_subspace_projection = ["shape"]
+        list_subtr = [False]
+        list_smth = [True]
+        list_dims = [(0,1), (1,3), (1,2)]
+    else:
+        list_subtr = [False, True]
+        list_smth = [False, True]
+        list_dims = [(0,1), (1,3), (1,2), (2,3), (3,4)]
+
     remove_drift, remove_singleprims_unstable, remove_trials_with_bad_strokes = True, True, True
 
     for _, row in DFallpa.iterrows():
@@ -3008,7 +2821,7 @@ def statespace_traj_plot(DFallpa, animal, date, SAVEDIR_ANALYSIS, var_other):
         event = row["event"]
         PA = row["pa"]
 
-        for subspace_projection in list_subspace_projection: #
+        for subspace_projection in list_subspace_projection: 
 
             ############################
             if subspace_projection in [None, "pca"]:
@@ -3031,8 +2844,8 @@ def statespace_traj_plot(DFallpa, animal, date, SAVEDIR_ANALYSIS, var_other):
                                    raw_subtract_mean_each_timepoint=False)
                 
                 ####### Plot state space
-                for subtr_time_mean in [False, True]:
-                    for do_another_smooth in [False, True]:
+                for subtr_time_mean in list_subtr:
+                    for do_another_smooth in list_smth:
                         
                         if subtr_time_mean:
                             pathis = pa.norm_subtract_trial_mean_each_timepoint()
@@ -3055,7 +2868,7 @@ def statespace_traj_plot(DFallpa, animal, date, SAVEDIR_ANALYSIS, var_other):
                         ]
                         PLOT_CLEAN_VERSION = True
                         list_dim_timecourse = list(range(NPCS_KEEP))
-                        list_dims = [(0,1), (1,3), (1,2), (2,3), (3,4)]
+                        # list_dims = [(0,1), (1,3), (1,2), (2,3), (3,4)]
                         time_bin_size = None # or else will have choppy trajectories
                         pathis.plot_state_space_good_wrapper(savedir, LIST_VAR, LIST_VARS_OTHERS, PLOT_CLEAN_VERSION=PLOT_CLEAN_VERSION,
                                                         list_dim_timecourse=list_dim_timecourse, list_dims=list_dims,
@@ -3408,7 +3221,8 @@ def statespace_scalar_plot(DFallpa, animal, date, SAVEDIR, var_other):
                                                                     pa_var = "pa_redu", 
                                                                     prune_min_n_trials=N_MIN_TRIALS_PER_SHAPE, pretty_plot=True, alpha=0.7)
 
-def heatmaps_plot_wrapper(DFallpa, animal, date, SAVEDIR_ANALYSIS, var_other="seqc_0_loc"):
+def heatmaps_plot_wrapper(DFallpa, animal, date, SAVEDIR_ANALYSIS, var_other="seqc_0_loc",
+                          list_subspace_projection=None, quick_mode=False):
     """
     Make all the plots of shape vs. var_other
     """
@@ -3432,12 +3246,14 @@ def heatmaps_plot_wrapper(DFallpa, animal, date, SAVEDIR_ANALYSIS, var_other="se
         "06_on_strokeidx_0":[(-0.5, -0.05), (0.05, 0.5)],
     }
 
-    if var_other == "seqc_0_loc":
-        list_subspace_projection = ["pca_proj", "pca", "shape", "shape_loc", None]
-    elif var_other == "gridsize":
-        list_subspace_projection = ["pca_proj", "pca", "shape", "shape_size", None]
-    else:
-        assert False
+    if list_subspace_projection is None:
+        if var_other == "seqc_0_loc":
+            list_subspace_projection = ["pca_proj", "pca", "shape", "shape_loc", None]
+        elif var_other == "gridsize":
+            list_subspace_projection = ["pca_proj", "pca", "shape", "shape_size", None]
+        else:
+            assert False
+
 
     # drawings_done = []
     for _, row in DFallpa.iterrows():
@@ -3480,68 +3296,77 @@ def heatmaps_plot_wrapper(DFallpa, animal, date, SAVEDIR_ANALYSIS, var_other="se
                     pa = preprocess_pa(PA, animal, date, var_other, savedir, remove_drift, subspace_projection, 
                                        subspace_projection_fitting_twind, twind_analy, tbin_dur, tbin_slide, 
                                        raw_subtract_mean_each_timepoint=False)
-                    
-                    assert False, "repalce the below pa.plot_heatmap_state_euclidean_wrapper()"
-                    for subtr_time_mean, zscore, subtr_baseline in [
-                        (False, False, False), (False, True, True), (True, False, False), (True, True, False), (False, False, True)
-                        ]:
 
-                        pathis = pa.copy()
-                        diverge = False
+                    if True:
+                        # list_mean_zscore_base = [(False, False, False), (False, True, True), (True, False, False), (True, True, False), (False, False, True)]
+                        list_twind_scal_eucl = None
+                        var_effect = "seqc_0_shape"
+                        pa.plot_heatmap_state_euclidean_wrapper(var_effect, var_other, SAVEDIR, 
+                                                list_twind_scal_eucl, 
+                                                None, None, list_dims=None, twind_base = (-0.6, -0.05),
+                                                do_heatmap=True, do_state_space=False, do_euclidean=False,
+                                                quick_mode=quick_mode)
+                    else:    
+                        for subtr_time_mean, zscore, subtr_baseline in [
+                            (False, False, False), (False, True, True), (True, False, False), (True, True, False), (False, False, True)
+                            ]:
 
-                        if zscore:
-                            pathis = pathis.norm_rel_all_timepoints()
-                            zlims = None
-                            # zlims = [-2, 2]
-                            diverge = True
-                        else:
-                            zlims = None
+                            pathis = pa.copy()
+                            diverge = False
 
-                        if subtr_time_mean:
-                            pathis = pathis.norm_subtract_trial_mean_each_timepoint()
-                            diverge = True
+                            if zscore:
+                                pathis = pathis.norm_rel_all_timepoints()
+                                zlims = None
+                                # zlims = [-2, 2]
+                                diverge = True
+                            else:
+                                zlims = None
 
-                        if subtr_baseline:
-                            twind_base = [-0.6, -0.05]
-                            pathis = pathis.norm_rel_base_window(twind_base, "subtract")
-                            diverge = True
+                            if subtr_time_mean:
+                                pathis = pathis.norm_subtract_trial_mean_each_timepoint()
+                                diverge = True
 
-                        for mean_over_trials in list_mean_over_trials:
-                            savedirthis = f"{SAVEDIR}/zscore={zscore}-subtr_time_mean={subtr_time_mean}-subtrbase={subtr_baseline}-mean={mean_over_trials}"
-                            os.makedirs(savedirthis, exist_ok=True)
+                            if subtr_baseline:
+                                twind_base = [-0.6, -0.05]
+                                pathis = pathis.norm_rel_base_window(twind_base, "subtract")
+                                diverge = True
 
-                            ######## HEATMAPS
-                            heatmapwrapper_many_useful_plots(pathis, savedirthis, "seqc_0_shape", var_other, False, 
-                                                            mean_over_trials=mean_over_trials, zlims=zlims, flip_rowcol=True,
-                                                            plot_fancy=True, diverge=diverge)  
+                            for mean_over_trials in list_mean_over_trials:
+                                savedirthis = f"{SAVEDIR}/zscore={zscore}-subtr_time_mean={subtr_time_mean}-subtrbase={subtr_baseline}-mean={mean_over_trials}"
+                                os.makedirs(savedirthis, exist_ok=True)
 
-                            plt.close("all")
+                                ######## HEATMAPS
+                                heatmapwrapper_many_useful_plots(pathis, savedirthis, "seqc_0_shape", var_other, False, 
+                                                                mean_over_trials=mean_over_trials, zlims=zlims, flip_rowcol=True,
+                                                                plot_fancy=True, diverge=diverge)  
 
-                        if False: # This is done in state-space plots now, see the other code in statespace_traj_plot()..
-                            ######## SMOOTHED FR
-                            savedirthis = f"{SAVEDIR}/zscore={zscore}-subtr_time_mean={subtr_time_mean}/smoothed_fr"
-                            os.makedirs(savedirthis, exist_ok=True)
-                            chans = pathis.Chans[:8]
+                                plt.close("all")
 
-                            # make this a grid of (dims, locs)
-                            vars_subplots = [var_other]
-                            var = "seqc_0_shape"
-                            fig = pathis.plotwrappergrid_smoothed_fr_splot_neuron(var, vars_subplots, chans);
-                            for ax in fig.axes:
-                                ax.axhline(0, color="k", alpha=0.3)
-                                ax.axvline(0, color="k", alpha=0.3)
-                            savefig(fig, f"{savedirthis}/subplot=neuron.pdf")
+                            if False: # This is done in state-space plots now, see the other code in statespace_traj_plot()..
+                                ######## SMOOTHED FR
+                                savedirthis = f"{SAVEDIR}/zscore={zscore}-subtr_time_mean={subtr_time_mean}/smoothed_fr"
+                                os.makedirs(savedirthis, exist_ok=True)
+                                chans = pathis.Chans[:8]
 
-                            # Grid of (shape, loc)
-                            var_col = "seqc_0_shape"
-                            var_row = var_other
-                            fig = pathis.plotwrappergrid_smoothed_fr_splot_var(var_row, var_col, chans)
-                            for ax in fig.axes:
-                                ax.axhline(0, color="k", alpha=0.3)
-                                ax.axvline(0, color="k", alpha=0.3)
-                            savefig(fig, f"{savedirthis}/subplot=vars.pdf")
+                                # make this a grid of (dims, locs)
+                                vars_subplots = [var_other]
+                                var = "seqc_0_shape"
+                                fig = pathis.plotwrappergrid_smoothed_fr_splot_neuron(var, vars_subplots, chans);
+                                for ax in fig.axes:
+                                    ax.axhline(0, color="k", alpha=0.3)
+                                    ax.axvline(0, color="k", alpha=0.3)
+                                savefig(fig, f"{savedirthis}/subplot=neuron.pdf")
 
-                            plt.close("all")
+                                # Grid of (shape, loc)
+                                var_col = "seqc_0_shape"
+                                var_row = var_other
+                                fig = pathis.plotwrappergrid_smoothed_fr_splot_var(var_row, var_col, chans)
+                                for ax in fig.axes:
+                                    ax.axhline(0, color="k", alpha=0.3)
+                                    ax.axvline(0, color="k", alpha=0.3)
+                                savefig(fig, f"{savedirthis}/subplot=vars.pdf")
+
+                                plt.close("all")
 
 def timewarped_strokes_wrapper(animal, date, SAVEDIR_ANALYSIS):
     """
