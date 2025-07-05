@@ -22,6 +22,217 @@ from pythonlib.tools.plottools import savefig
 from neuralmonkey.analyses.decode_moment import pipeline_train_test_scalar_score_with_splits, pipeline_train_test_scalar_score_split_gridloc
 
 
+def analy_state_space_plots(PA, SAVEDIR, twind_pca, raw_subtract_mean_each_timepoint=False):
+    """
+    State space plots to look for effect of novelty.
+    """
+
+    # (1) Dim reduction
+    for scalar_or_traj in ["scal", "traj"]:
+        for dim_red_method in ["pca", "dpca"]:
+            savedir = f"{SAVEDIR}/{dim_red_method}-{scalar_or_traj}"
+            os.makedirs(savedir, exist_ok=True)
+
+            if scalar_or_traj == "scal":
+                tbin_dur = 0.15
+                tbin_slide = 0.1
+            elif scalar_or_traj == "traj":
+                tbin_dur = 0.15
+                tbin_slide = 0.02
+            else:
+                assert False
+
+            # tbin_dur=0.1
+            # tbin_slide=0.05
+            NPCS_KEEP = 10
+            dpca_var = "seqc_0_shape_pref"
+            dpca_vars_group = None
+            dpca_filtdict=None
+            dpca_proj_twind = None
+            
+            _, PAredu = PA.dataextract_dimred_wrapper(scalar_or_traj, dim_red_method, savedir, 
+                                            twind_pca, tbin_dur, tbin_slide, NPCS_KEEP, 
+                                            dpca_var, dpca_vars_group, dpca_filtdict, dpca_proj_twind, 
+                                            raw_subtract_mean_each_timepoint,
+                                            umap_n_components = 3)
+                                        
+            # (2) Plot state space
+            LIST_VAR = [
+                "seqc_0_shape_pref",
+                "seqc_0_shape_pref",
+                "seqc_0_shape_pref",
+                "seqc_0_shape_pref",
+                "shape_is_novel_all",
+                "shape_is_novel_all",
+            ]
+
+            LIST_VARS_OTHERS = [
+                ("task_kind",), 
+                ("task_kind", "seqc_0_loc"), 
+                ("task_kind", "shape_is_novel_all"), 
+                ("task_kind", "seqc_0_loc", "shape_is_novel_all"), 
+                ("task_kind",), 
+                ("task_kind", "seqc_0_loc"), 
+                ]
+
+            LIST_FILTDICT = None
+
+            LIST_PRUNE_MIN_N_LEVS = None
+
+            # PLOT_CLEAN_VERSION = False
+            time_bin_size = 0.05
+            nmin_trials_per_lev = 4
+            PAredu.plot_state_space_good_wrapper(savedir, LIST_VAR, LIST_VARS_OTHERS, LIST_FILTDICT, LIST_PRUNE_MIN_N_LEVS,
+                                                time_bin_size=time_bin_size, nmin_trials_per_lev=nmin_trials_per_lev)
+
+
+def analy_euclidian_dist(PA, SAVEDIR, twind_pca, raw_subtract_mean_each_timepoint, NPCS_KEEP):
+    """
+    Get pairiwse euclkidiain distances and from that address different quesitons re: novel prims
+
+    Firs todesn doim resudction.
+
+    """
+    from pythonlib.tools.pandastools import stringify_values
+    from neuralmonkey.analyses.state_space_good import euclidian_distance_compute_trajectories_single
+    from pythonlib.tools.pandastools import append_col_with_grp_index
+    import seaborn as sns
+    from pythonlib.tools.pandastools import stringify_values
+    import numpy as np
+    from pythonlib.tools.snstools import rotateLabel
+    from pythonlib.tools.statstools import ttest_unpaired, plotmod_pvalues
+
+    # (3) Euclidian distances
+
+    # Compute distance using trajectories
+    # - Dim reduction
+    # scalar_or_traj = "scal"
+    dim_red_method = "dpca"
+    savedir = f"{SAVEDIR}/pca"
+    os.makedirs(savedir, exist_ok=True)
+    # twind_pca = (0.1, 1)
+    tbin_dur=0.1
+    tbin_slide=0.02
+    dpca_var = "seqc_0_shape_pref"
+    dpca_vars_group = None
+    dpca_filtdict=None
+    dpca_proj_twind = None
+    scalar_or_traj = "traj"
+    _, PAredu = PA.dataextract_dimred_wrapper(scalar_or_traj, dim_red_method, savedir, 
+                                    twind_pca, tbin_dur, tbin_slide, NPCS_KEEP, 
+                                    dpca_var, dpca_vars_group, dpca_filtdict, dpca_proj_twind, 
+                                    raw_subtract_mean_each_timepoint)
+
+    # Claen up              
+    n_min = 4
+    PAredu = PAredu.slice_by_labels_filtdict({"aborted":[False]})
+    PAredu = PAredu.slice_extract_with_levels_of_var_good_prune(["seqc_0_shape_pref", "seqc_0_loc"], n_min)
+
+    ### Compute euclidian distance, between pairwise pts.
+    var_effect = "seqc_0_shape_pref"
+    # var_others = ["shape_is_novel_all", "seqc_0_loc"]
+    var_others = ["shape_is_novel_all"]
+    cldist, list_res = euclidian_distance_compute_trajectories_single(PAredu, var_effect, var_others, 
+                                                            version_distance="euclidian", return_cldist=True, get_reverse_also=False)
+    dfres = pd.DataFrame(list_res)
+    dfres[dfres["dat_level"] == "pts_yue_diff"]
+
+    ### First, extract agged data (i.e., a single distance between each pair of shapes)
+    # - for each shape, get its pairwise distance with all other shapes
+    var_others = ["shape_is_novel_all"]
+    context_input = None
+    dat_level = "pts"
+    PLOT_MASKS= False
+    dfres_agg, cldist_agg = cldist.rsa_distmat_score_all_pairs_of_label_groups(return_as_clustclass=True, 
+                                                                               return_as_clustclass_which_var_score="dist_yue_diff")
+
+    dfres_agg["same_grp"] = [row["labels_1"] == row["labels_2"] for i, row in dfres_agg.iterrows()]
+    dfres_agg["same_grp"] = [row["labels_1"] == row["labels_2"] for i, row in dfres_agg.iterrows()]
+    # _dfres = _dfres[_dfres["same_grp"]==True].reset_index(drop=True)
+    dfres_agg = append_col_with_grp_index(dfres_agg, ["shape_is_novel_all_1", "shape_is_novel_all_2"], "shape_is_novel_all_both")
+
+    ################################ QUESTIONS
+    ### (1) Are shapes more separated (from other shapes) within learned or novel prims?
+    # Method 1 - Get distance between shapes, splitting by their pairwise novelty status
+    var_others = ["shape_is_novel_all"]
+    context_input = None
+    PLOT_MASKS= False
+    res, DIST_NULL_50, DIST_NULL_95, DIST_NULL_98 = cldist_agg.rsa_distmat_score_same_diff_by_context(var_effect, var_others, 
+                                                                                                      context_input,
+                                                "pts", PLOT_MASKS=PLOT_MASKS, plot_mask_path="/tmp/mask.pdf", 
+                                                dir_to_print_lab_each_mask=None,
+                                                path_for_save_print_lab_each_mask=None)
+    _dfres = pd.DataFrame(res)
+    _dfres = stringify_values(_dfres)
+
+    fig = sns.catplot(data=_dfres, x="levo", y="dist", hue="context_samediff", kind="bar")
+    savefig(fig, f"{SAVEDIR}/Q1_shape_separation-x=novel-y=dist_yue_diff-hue=context_samediff.pdf")
+
+    # Method 2 - Simply plot the results
+    fig = sns.catplot(data=dfres_agg, x="shape_is_novel_all_both", y="dist_yue_diff", jitter=True, alpha=0.2)
+    savefig(fig, f"{SAVEDIR}/Q1_shape_separation-x=novel-y=dist_yue_diff-1.pdf")
+
+    fig = sns.catplot(data=dfres_agg, x="shape_is_novel_all_both", y="dist_yue_diff", kind="bar")
+    savefig(fig, f"{SAVEDIR}/Q1_shape_separation-x=novel-y=dist_yue_diff-2.pdf")
+
+    fig, _ = cldist_agg.rsa_plot_heatmap()
+    savefig(fig, f"{SAVEDIR}/Q1_rsa_heatmap.pdf")
+
+    plt.close("all")
+
+    ### (2) Are learned and novel prims separated from each other?
+    # - average pairwise distance between all shapes, split by their novelty status
+    _dfres, _cldist = cldist_agg.rsa_distmat_score_all_pairs_of_label_groups(label_vars=["shape_is_novel_all"], 
+                                                                    return_as_clustclass=True, return_as_clustclass_which_var_score="dist_mean")
+    # - plot heatmap
+    fig, _ = _cldist.rsa_plot_heatmap()
+    savefig(fig, f"{SAVEDIR}/Q2_learned_novel_separated-rsa_heatmap.pdf")
+
+    # - plot catplot
+    _dfres = stringify_values(_dfres)
+    fig = sns.catplot(data=_dfres, x="labels_1", y="dist_mean", hue="labels_2", kind="bar")
+    savefig(fig, f"{SAVEDIR}/Q2_learned_novel_separated-x=shape-y=dist_yue_diff-1.pdf")
+
+    fig = sns.catplot(data=_dfres, x="labels_1", y="dist_mean", hue="labels_2", kind="point")
+    savefig(fig, f"{SAVEDIR}/Q2_learned_novel_separated-x=shape-y=dist_yue_diff-2.pdf")
+    plt.close("all")
+
+
+    ### (3) Is trial-by-trial variability higher for novel prims?
+    # - for each shape, get its pairwise distance with itself
+    var_others = ["shape_is_novel_all"]
+    context_input = None
+    PLOT_MASKS= False
+    _dfres, _cldist = cldist.rsa_distmat_score_all_pairs_of_label_groups(return_as_clustclass=True, 
+                                                                         return_as_clustclass_which_var_score="dist_mean")
+
+    _dfres["same_grp"] = [row["labels_1"] == row["labels_2"] for i, row in _dfres.iterrows()]
+    _dfres = _dfres[_dfres["same_grp"]==True].reset_index(drop=True)
+    assert np.all(_dfres["shape_is_novel_all_1"] == _dfres["shape_is_novel_all_2"])
+
+    _dfres = stringify_values(_dfres)
+    fig = sns.catplot(data=_dfres, x="labels_1", y="dist_norm", hue="shape_is_novel_all_1", orient="v", aspect=1.8)
+    rotateLabel(fig)
+    savefig(fig, f"{SAVEDIR}/Q3_trial_variability-x=shape-hue=novel.pdf")
+
+    fig = sns.catplot(data=_dfres, x="shape_is_novel_all_1", y="dist_norm", hue="shape_is_novel_all_1")
+    rotateLabel(fig)
+    savefig(fig, f"{SAVEDIR}/Q3_trial_variability-x=novel-1.pdf")
+
+    fig = sns.catplot(data=_dfres, x="shape_is_novel_all_1", y="dist_norm", hue="shape_is_novel_all_1", kind="point", errorbar=("ci", 68))
+    rotateLabel(fig)
+    # Overlay p value
+    x = _dfres[_dfres["shape_is_novel_all_1"]==True]["dist_norm"].values
+    y = _dfres[_dfres["shape_is_novel_all_1"]==False]["dist_norm"].values
+    p =ttest_unpaired(x, y, equal_var=False, permutations=None).pvalue
+    for ax in fig.axes.flatten():
+        ax.set_title(f"p={p:.6f} [ttest]")
+
+    savefig(fig, f"{SAVEDIR}/Q3_trial_variability-x=novel-2.pdf")
+
+    plt.close("all")
+
+
 def analy_novelprim_prepare_dataset(DFallpa, animal, date, SAVEDIR_BASE):
 
     # Cleanup, some days should group gridloc
@@ -248,6 +459,7 @@ if __name__=="__main__":
     animal = sys.argv[1]
     date = int(sys.argv[2])
     version = "split_gridloc"
+    WHICH_PLOTS = [0]
 
     # LIST_COMBINE_AREAS = [True, False]
     # fr_normalization_method = "across_time_bins" # Slightly better
@@ -264,7 +476,7 @@ if __name__=="__main__":
 
     #################### PREPROCESSING
     from neuralmonkey.classes.population_mult import dfpa_concatbregion_preprocess_clean_bad_channels, dfpa_concatbregion_preprocess_wrapper
-    dfpa_concatbregion_preprocess_wrapper(DFallpa)
+    dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date)
 
 
     from neuralmonkey.scripts.analy_pig_decode_moment_syntaxTI import dfallpa_preprocess_condition
@@ -274,135 +486,162 @@ if __name__=="__main__":
 
     analy_novelprim_prepare_dataset(DFallpa, animal, date, SAVEDIR_BASE)
     
+    if 0 in WHICH_PLOTS:
+        # Summary:
+        # Good state space.
+        # And euclidian using scalar (not timecourse)
+        raw_subtract_mean_each_timepoint = False
 
-    if version == "split_gridloc":
-        # Split by gridloc
-        list_loc = None
-        auto_prune_locations = True
-        list_downsample_trials = [False, True]
-        PLOT_TEST = True
-    elif version == "train_test_split":
-        list_downsample_trials = [False, True]
-        # Train/test splits
-        do_train_splits_nsplits=10
-        score_user_test_data = False
-        PLOT_TEST_SPLIT = False
-        DO_TRAIN_TEST_SPLIT=True
-        PLOT_TEST_CONCATTED = True
+        list_bregion = DFallpa["bregion"].unique().tolist()
+        for bregion in list_bregion:
+            for event, twind_pca in [
+                ("06_on_strokeidx_0", (-0.1, 0.3)),
+                ("03_samp", (0.1, 1.0)),
+                ]:
+                for raw_subtract_mean_each_timepoint in [False, True]:
+                    
+                    PA = extract_single_pa(DFallpa, bregion, None, event=event)
 
-    else:
-        assert False
+                    savedir = f"{SAVEDIR_BASE}/state_space_and_euclidian/{bregion}/{event}-subtr={raw_subtract_mean_each_timepoint}/state_space_plots"
+                    os.makedirs(savedir, exist_ok=True)
+                    analy_state_space_plots(PA, savedir, twind_pca, raw_subtract_mean_each_timepoint)
 
-    # Just to get these, since they were left out...
-    list_downsample_trials = [True]
+                    for npcs_keep in [3, 6, 10]:
+                        savedir = f"{SAVEDIR_BASE}/state_space_and_euclidian/{bregion}/{event}-subtr={raw_subtract_mean_each_timepoint}/euclidian_plots-npcs_keep={npcs_keep}"
+                        os.makedirs(savedir, exist_ok=True)
+                        analy_euclidian_dist(PA, savedir, twind_pca, raw_subtract_mean_each_timepoint, npcs_keep)
 
-    ################ SCORE DATA     
-    # PARAMS
-    for downsample_trials in list_downsample_trials:
-        if downsample_trials:
-            # So that the lowest N doesnt pull all other categories down.
-            n_min_per_var = 10
-        else:
-            n_min_per_var = 7
-        
+                        plt.close("all")
+    
+    if 1 in WHICH_PLOTS:
         if version == "split_gridloc":
-            n_min_per_var = 6 # to allow gen across loc.
+            # Split by gridloc
+            list_loc = None
+            auto_prune_locations = True
+            list_downsample_trials = [False, True]
+            PLOT_TEST = True
+        elif version == "train_test_split":
+            list_downsample_trials = [False, True]
+            # Train/test splits
+            do_train_splits_nsplits=10
+            score_user_test_data = False
+            PLOT_TEST_SPLIT = False
+            DO_TRAIN_TEST_SPLIT=True
+            PLOT_TEST_CONCATTED = True
 
-        for TWIND_TEST in [(0.05, 1.2), (0.05, 0.6), (0.6, 1.2)]:
-            do_upsample_balance=True
-            PLOT_DECODER = False
+        else:
+            assert False
 
-            TWIND_TRAIN = (0.05, 1.2)
+        # Just to get these, since they were left out...
+        list_downsample_trials = [True]
 
-            # Subtrract baseline?
-            subtract_baseline=False
-            subtract_baseline_twind=None
-            include_null_data = False
-            prune_labels_exist_in_train_and_test = True
+        ################ SCORE DATA     
+        # PARAMS
+        for downsample_trials in list_downsample_trials:
+            if downsample_trials:
+                # So that the lowest N doesnt pull all other categories down.
+                n_min_per_var = 10
+            else:
+                n_min_per_var = 7
+            
+            if version == "split_gridloc":
+                n_min_per_var = 6 # to allow gen across loc.
 
-            # - Train params
-            event_train = "03_samp"
-            twind_train = TWIND_TRAIN
-            var_train = "seqc_0_shape_pref"
-            filterdict_train = None
+            for TWIND_TEST in [(0.05, 1.2), (0.05, 0.6), (0.6, 1.2)]:
+                do_upsample_balance=True
+                PLOT_DECODER = False
 
-            # - Test params
-            var_test = "seqc_0_shape_pref"
-            event_test = "03_samp"
-            which_level_test = "trial"
-            filterdict_test = None
-            # list_twind_test = [(-0.8, -0.05), TWIND_TEST]
-            list_twind_test = [TWIND_TEST]
+                TWIND_TRAIN = (0.05, 1.2)
 
-            # Other params
-            SAVEDIR = f"{SAVEDIR_BASE}/downsample_trials={downsample_trials}-TWIND_TEST={TWIND_TEST}-version={version}-nmin={n_min_per_var}"
+                # Subtrract baseline?
+                subtract_baseline=False
+                subtract_baseline_twind=None
+                include_null_data = False
+                prune_labels_exist_in_train_and_test = True
 
-            list_bregion = DFallpa["bregion"].unique().tolist()
-            for bregion in list_bregion:
-                savedir = f"{SAVEDIR}/{bregion}/decoder_training"
-                os.makedirs(savedir, exist_ok=True)
-                print(savedir)
+                # - Train params
+                event_train = "03_samp"
+                twind_train = TWIND_TRAIN
+                var_train = "seqc_0_shape_pref"
+                filterdict_train = None
 
-                if version == "split_gridloc":
-                    # n_min_per_var = 4 # to allow gen across loc.
-                    # n_min_per_var = 5 # to allow gen across loc.
-                    do_train_splits_nsplits = 6
-                    dfscores, decoders, list_pa_train, list_pa_test = pipeline_train_test_scalar_score_split_gridloc(list_loc, savedir,
-                                                                                                                    DFallpa, 
-                                                                                    bregion, var_train, event_train, 
-                                                                                    twind_train, filterdict_train,
-                                                        var_test, event_test, list_twind_test, filterdict_test, 
-                                                        include_null_data=include_null_data, 
-                                                        prune_labels_exist_in_train_and_test=prune_labels_exist_in_train_and_test, 
-                                                        PLOT=PLOT_DECODER, PLOT_TEST=PLOT_TEST,
-                                                        which_level_test=which_level_test, n_min_per_var=n_min_per_var,
-                                                        subtract_baseline=subtract_baseline, subtract_baseline_twind=subtract_baseline_twind,
-                                                        do_upsample_balance=do_upsample_balance, downsample_trials=downsample_trials,
-                                                        auto_prune_locations=auto_prune_locations, do_train_splits_nsplits=do_train_splits_nsplits)
-                    Dc = decoders[0]
+                # - Test params
+                var_test = "seqc_0_shape_pref"
+                event_test = "03_samp"
+                which_level_test = "trial"
+                filterdict_test = None
+                # list_twind_test = [(-0.8, -0.05), TWIND_TEST]
+                list_twind_test = [TWIND_TEST]
 
-                else:
-                    if not DO_TRAIN_TEST_SPLIT:
-                        dfscores, Dc, PAtrain, PAtest = pipeline_train_test_scalar_score(DFallpa, bregion, var_train, event_train, 
-                                                                                        twind_train, filterdict_train,
-                                                            var_test, event_test, list_twind_test, filterdict_test, savedir,
-                                                            include_null_data=include_null_data, decoder_method_index=None,
-                                                            prune_labels_exist_in_train_and_test=prune_labels_exist_in_train_and_test, PLOT=PLOT_DECODER,
-                                                            which_level_test=which_level_test, n_min_per_var=n_min_per_var,
-                                                            subtract_baseline=subtract_baseline, subtract_baseline_twind=subtract_baseline_twind,
-                                                            do_upsample_balance=do_upsample_balance, downsample_trials=downsample_trials)
-                    else:
-                        dfscores, dfscores_usertest, dfscores_both, decoders, trainsets, PAtest = pipeline_train_test_scalar_score_with_splits(DFallpa, 
+                # Other params
+                SAVEDIR = f"{SAVEDIR_BASE}/downsample_trials={downsample_trials}-TWIND_TEST={TWIND_TEST}-version={version}-nmin={n_min_per_var}"
+
+                list_bregion = DFallpa["bregion"].unique().tolist()
+                for bregion in list_bregion:
+                    savedir = f"{SAVEDIR}/{bregion}/decoder_training"
+                    os.makedirs(savedir, exist_ok=True)
+                    print(savedir)
+
+                    if version == "split_gridloc":
+                        # n_min_per_var = 4 # to allow gen across loc.
+                        # n_min_per_var = 5 # to allow gen across loc.
+                        do_train_splits_nsplits = 6
+                        dfscores, decoders, list_pa_train, list_pa_test = pipeline_train_test_scalar_score_split_gridloc(list_loc, savedir,
+                                                                                                                        DFallpa, 
                                                                                         bregion, var_train, event_train, 
                                                                                         twind_train, filterdict_train,
-                                                            var_test, event_test, list_twind_test, filterdict_test, savedir,
-                                                            include_null_data=include_null_data, decoder_method_index=None,
+                                                            var_test, event_test, list_twind_test, filterdict_test, 
+                                                            include_null_data=include_null_data, 
                                                             prune_labels_exist_in_train_and_test=prune_labels_exist_in_train_and_test, 
-                                                            PLOT_TRAIN=PLOT_DECODER, PLOT_TEST_SPLIT=PLOT_TEST_SPLIT, PLOT_TEST_CONCATTED=PLOT_TEST_CONCATTED,
+                                                            PLOT=PLOT_DECODER, PLOT_TEST=PLOT_TEST,
                                                             which_level_test=which_level_test, n_min_per_var=n_min_per_var,
                                                             subtract_baseline=subtract_baseline, subtract_baseline_twind=subtract_baseline_twind,
                                                             do_upsample_balance=do_upsample_balance, downsample_trials=downsample_trials,
-                                                            do_train_splits_nsplits=do_train_splits_nsplits, 
-                                                            score_user_test_data=score_user_test_data)
+                                                            auto_prune_locations=auto_prune_locations, do_train_splits_nsplits=do_train_splits_nsplits)
                         Dc = decoders[0]
 
-                # Condition dfscores
-                dflab = DFallpa["pa"].values[0].Xlabels["trials"]
-                analy_novelprims_dfscores_condition(dfscores, dflab)
+                    else:
+                        if not DO_TRAIN_TEST_SPLIT:
+                            dfscores, Dc, PAtrain, PAtest = pipeline_train_test_scalar_score(DFallpa, bregion, var_train, event_train, 
+                                                                                            twind_train, filterdict_train,
+                                                                var_test, event_test, list_twind_test, filterdict_test, savedir,
+                                                                include_null_data=include_null_data, decoder_method_index=None,
+                                                                prune_labels_exist_in_train_and_test=prune_labels_exist_in_train_and_test, PLOT=PLOT_DECODER,
+                                                                which_level_test=which_level_test, n_min_per_var=n_min_per_var,
+                                                                subtract_baseline=subtract_baseline, subtract_baseline_twind=subtract_baseline_twind,
+                                                                do_upsample_balance=do_upsample_balance, downsample_trials=downsample_trials)
+                        else:
+                            dfscores, dfscores_usertest, dfscores_both, decoders, trainsets, PAtest = pipeline_train_test_scalar_score_with_splits(DFallpa, 
+                                                                                            bregion, var_train, event_train, 
+                                                                                            twind_train, filterdict_train,
+                                                                var_test, event_test, list_twind_test, filterdict_test, savedir,
+                                                                include_null_data=include_null_data, decoder_method_index=None,
+                                                                prune_labels_exist_in_train_and_test=prune_labels_exist_in_train_and_test, 
+                                                                PLOT_TRAIN=PLOT_DECODER, PLOT_TEST_SPLIT=PLOT_TEST_SPLIT, PLOT_TEST_CONCATTED=PLOT_TEST_CONCATTED,
+                                                                which_level_test=which_level_test, n_min_per_var=n_min_per_var,
+                                                                subtract_baseline=subtract_baseline, subtract_baseline_twind=subtract_baseline_twind,
+                                                                do_upsample_balance=do_upsample_balance, downsample_trials=downsample_trials,
+                                                                do_train_splits_nsplits=do_train_splits_nsplits, 
+                                                                score_user_test_data=score_user_test_data)
+                            Dc = decoders[0]
 
-                ### Save this bregion
-                import pickle
-                savedir = f"{SAVEDIR}/{bregion}"
-                with open(f"{savedir}/dfscores.pkl", "wb") as f:
-                    pickle.dump(dfscores, f)
-                with open(f"{savedir}/Dc.pkl", "wb") as f:
-                    pickle.dump(Dc, f)
-                with open(f"{savedir}/dflab.pkl", "wb") as f:
-                    pickle.dump(dflab, f)
+                    # Condition dfscores
+                    dflab = DFallpa["pa"].values[0].Xlabels["trials"]
+                    analy_novelprims_dfscores_condition(dfscores, dflab)
 
-                ######################## PLOTS
-                from neuralmonkey.analyses.decode_moment import analy_psychoprim_score_postsamp
-                savedir = f"{SAVEDIR}/{bregion}/PLOTS"
-                os.makedirs(savedir, exist_ok=True)
-                print(savedir)
-                analy_novelprim_score_postsamp(dfscores, Dc, savedir)
+                    ### Save this bregion
+                    import pickle
+                    savedir = f"{SAVEDIR}/{bregion}"
+                    with open(f"{savedir}/dfscores.pkl", "wb") as f:
+                        pickle.dump(dfscores, f)
+                    with open(f"{savedir}/Dc.pkl", "wb") as f:
+                        pickle.dump(Dc, f)
+                    with open(f"{savedir}/dflab.pkl", "wb") as f:
+                        pickle.dump(dflab, f)
+
+                    ######################## PLOTS
+                    from neuralmonkey.analyses.decode_moment import analy_psychoprim_score_postsamp
+                    savedir = f"{SAVEDIR}/{bregion}/PLOTS"
+                    os.makedirs(savedir, exist_ok=True)
+                    print(savedir)
+                    analy_novelprim_score_postsamp(dfscores, Dc, savedir)
