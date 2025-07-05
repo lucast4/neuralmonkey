@@ -31,10 +31,12 @@ def decode_apply_model_to_test_data(mod, x_test, labels_test,
     PARAMS:
     - x_test, (ntrials, ndims)
     - labels_test (ntrials)
+
+    MS: checked
     """
     from sklearn.metrics import balanced_accuracy_score
 
-    x_test, labels_test, inds_keep = cleanup_remove_labels_ignore(x_test, labels_test)
+    x_test, labels_test, _ = cleanup_remove_labels_ignore(x_test, labels_test)
     assert x_test.shape[0]==len(labels_test)
 
     labels_predicted = mod.predict(x_test)
@@ -59,7 +61,6 @@ def decode_apply_model_to_test_data(mod, x_test, labels_test,
         # Also get conficence scores.
         conf_scores = mod.decision_function(x_test) # (ntrials, nclasses), distance of samp from
         # decision boundary
-
         return score, score_adjusted, labels_predicted, labels_test, conf_scores
     else:
         return score, score_adjusted
@@ -236,17 +237,16 @@ def decode_train_model(X_train, labels_train, plot_resampled_data_path_nosuff=No
     - X_train, scalar acgivity to decode, a single time bin, (ntrials, nchans)
     - labels_train, list of cat valuyes. len ntrials
     RETURNS:
-        - mod
+    - mod
+
+    MS: checked
     """
-    from pythonlib.tools.listtools import tabulate_list
-    from sklearn.model_selection import StratifiedKFold
-    from sklearn.metrics import balanced_accuracy_score
     from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotbydims_scalar
 
     assert len(X_train.shape)==2
     assert X_train.shape[0]==len(labels_train)
 
-    X_train, labels_train, inds_keep = cleanup_remove_labels_ignore(X_train, labels_train)
+    X_train, labels_train, _ = cleanup_remove_labels_ignore(X_train, labels_train)
 
     if X_train is None or len(labels_train)==0:
         return None
@@ -365,7 +365,6 @@ def decode_categorical_within_condition(X, dflab, var_decode, vars_conj_conditio
                 "train_labels_counts":train_labels_counts,
                 "n_classes_test":len(train_labels_counts)
             })
-
     dfres = pd.DataFrame(RES)
 
     # aggregate, to get one score for each var_decode
@@ -381,7 +380,6 @@ def decode_categorical_within_condition(X, dflab, var_decode, vars_conj_conditio
 
     return dfres, dfres_agg
 
-
 def decode_categorical_cross_condition(X, dflab, var_decode, vars_conj_condition,
                                        do_center=True, do_std=False):
     """
@@ -395,10 +393,10 @@ def decode_categorical_cross_condition(X, dflab, var_decode, vars_conj_condition
     - var_decode, string, variable to decode.
     - vars_conj_condition, list of str, conjuctive variable that will condition decoder on
     vars_conj_condition = ["seqc_0_loc"]
+
+    MS: checked
     """
 
-    # labels_decode = pd.factorize(dflab[var_decode])[0]
-    # labels_condition = pd.factorize(dflab[var_condition])[0]
     from sklearn.metrics import balanced_accuracy_score
     from pythonlib.tools.listtools import tabulate_list
     from pythonlib.tools.pandastools import grouping_append_and_return_inner_items
@@ -420,12 +418,10 @@ def decode_categorical_cross_condition(X, dflab, var_decode, vars_conj_condition
     # Iterate over all levels of conditioned grp vars
     RES = []
     for grp_train, inds_train in groupdict.items():
-        # print(grp_train, len(inds_train))
 
         # This group provides training data
         X_train = X[inds_train, :] # (ntrials, nchans)
         labels_train = [labels_all[i] for i in inds_train]
-
         train_labels_counts = tabulate_list(labels_train)
 
         if len(set(labels_train))>1:
@@ -444,7 +440,6 @@ def decode_categorical_cross_condition(X, dflab, var_decode, vars_conj_condition
 
                     # Gather test data
                     X_test = X[inds_test, :] # (ntrials, nchans)
-                    # labels_test = labels_all[inds_test]
                     labels_test = [labels_all[i] for i in inds_test]
 
                     # check the distribution of var_decode labels.
@@ -460,7 +455,8 @@ def decode_categorical_cross_condition(X, dflab, var_decode, vars_conj_condition
                     if len(X_test)>0:
                         # score it
                         score, score_adjusted, labels_predicted, labels_test, conf_scores = decode_apply_model_to_test_data(mod, 
-                                                                                                            X_test, labels_test, return_predictions_all_trials=True)
+                                                                                                            X_test, labels_test, 
+                                                                                                            return_predictions_all_trials=True)
                         # Save results
                         RES.append({
                             "var_decode":var_decode,
@@ -773,11 +769,13 @@ def decode_categorical(X, labels, expected_n_min_across_classes,
          'n_max_across_labs': 113}
     NOTE: Splits must be done BEFORE upsampling. otherwise, test data will contribute to the upsampling and
     therefore leak into training data.
+
+    MS: checked
     """
-    from pythonlib.tools.nptools import bin_values_categorical_factorize
+    # from pythonlib.tools.nptools import bin_values_categorical_factorize
     from pythonlib.tools.listtools import tabulate_list
     from sklearn.model_selection import StratifiedKFold
-    from sklearn.metrics import balanced_accuracy_score
+    # from sklearn.metrics import balanced_accuracy_score
 
     labels = list(labels)
     X, labels, inds_keep = cleanup_remove_labels_ignore(X, labels)
@@ -853,9 +851,7 @@ def decode_categorical(X, labels, expected_n_min_across_classes,
             else:
                 score, score_adjusted = decode_apply_model_to_test_data(mod, X_test, labels_test, 
                                                                         return_predictions_all_trials=False)
-                # labels_predicted = mod.predict(X_test)
-                # score = balanced_accuracy_score(labels_test, labels_predicted, adjusted=False)
-                # score_adjusted = balanced_accuracy_score(labels_test, labels_predicted, adjusted=True)
+
                 RES.append({
                     "iter_kfold":i,
                     "score_xval":score,
@@ -922,6 +918,8 @@ def decodewrap_categorical_timeresolved_within_condition(pa, var_decode,
     - vars_conj_conjunction, list of str, conditioned vairalb.e
     - prune_do, bool, then autoatmically prunes data so that each level of conj var has at least
     <prune_min_n_levs> levels with at least <prune_min_n_trials> trials.
+
+    MS: checked
     """
     from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars
 
@@ -931,7 +929,7 @@ def decodewrap_categorical_timeresolved_within_condition(pa, var_decode,
     if prune_do:
         balance_no_missed_conjunctions = False # Since this is within condition.
         dflab = pa.Xlabels["trials"]
-        dfout, dict_dfthis = extract_with_levels_of_conjunction_vars(dflab, var_decode, vars_conj_condition,
+        dfout, _ = extract_with_levels_of_conjunction_vars(dflab, var_decode, vars_conj_condition,
                                                                  n_min_across_all_levs_var=prune_min_n_trials,
                                                                  lenient_allow_data_if_has_n_levels=prune_min_n_levs,
                                                                  prune_levels_with_low_n=True,
@@ -1000,6 +998,8 @@ def decodewrap_categorical_timeresolved_cross_condition(pa, var_decode,
     - subtract_mean_vars_conj, bool, if True, then subtracts mean with ineach level of vars_conj_conjunction
     RETURNS:
         - (None, if prunes all data).
+
+    MS: checked
     """
     from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars
 
@@ -1050,8 +1050,6 @@ def decodewrap_categorical_timeresolved_cross_condition(pa, var_decode,
     times = pa.Times
     dflab = pa.Xlabels["trials"]
 
-    # assert False
-
     # Decode, for each time bin.
     list_tbin = range(X.shape[2])
     res = []
@@ -1062,9 +1060,6 @@ def decodewrap_categorical_timeresolved_cross_condition(pa, var_decode,
                                                                   vars_conj_condition,
                                                                   do_center=do_center, do_std=do_std) 
         if len(dfresthis)>0:
-            # print("---------------")
-            # display(dfresthis)
-            # display(dfres_agg)
             assert len(dfres_agg)==1
 
             # 3. Collect data
@@ -1339,7 +1334,7 @@ def decodewrapouterloop_categorical_timeresolved_within_condition(DFallpa, list_
 
     RES = []
     already_done = []
-    for i, row in DFallpa.iterrows():
+    for _, row in DFallpa.iterrows():
         br = row["bregion"]
         tw = row["twind"]
         ev = row["event"]
@@ -1414,7 +1409,7 @@ def decodewrapouterloop_categorical_timeresolved_within_condition(DFallpa, list_
 
 def decodewrapouterloop_categorical_timeresolved_cross_condition(DFallpa, list_var_decode,
                                                                  list_vars_conj,
-                                                 SAVEDIR, time_bin_size=0.1, slide=0.05,
+                                                                SAVEDIR, time_bin_size=0.1, slide=0.05,
                                                                  subtract_mean_vars_conj=False,
                                                                   filtdict = None,
                                                                  separate_by_task_kind = True):
@@ -1431,7 +1426,7 @@ def decodewrapouterloop_categorical_timeresolved_cross_condition(DFallpa, list_v
 
     RES = []
     already_done = []
-    for i, row in DFallpa.iterrows():
+    for _, row in DFallpa.iterrows():
         br = row["bregion"]
         tw = row["twind"]
         ev = row["event"]
@@ -1445,9 +1440,8 @@ def decodewrapouterloop_categorical_timeresolved_cross_condition(DFallpa, list_v
 
         for task_kind in list_task_kind:
             pa = PA.slice_by_labels("trials", "_task_kind", [task_kind])
-            # print(pa.Xlabels["trials"]["task_kind"].unique())
-            # assert False
 
+            # For each (var, vars_others) set
             for var_decode, vars_conj_condition in zip(list_var_decode, list_vars_conj):
                 print(ev, br, tw, var_decode)
 
@@ -1485,7 +1479,7 @@ def decodewrapouterloop_categorical_timeresolved_cross_condition(DFallpa, list_v
     DFRES = pd.DataFrame(RES)
 
     ### PLOT
-    from pythonlib.tools.pandastools import convert_to_2d_dataframe, grouping_plot_n_samples_conjunction_heatmap, plot_subplots_heatmap
+    # from pythonlib.tools.pandastools import convert_to_2d_dataframe, grouping_plot_n_samples_conjunction_heatmap, plot_subplots_heatmap
     import seaborn as sns
     import matplotlib.pyplot as plt
 
@@ -2440,14 +2434,14 @@ def preprocess_factorize_class_labels_ints(DFallpa, savepath=None):
     """
     Convert all shape and location class labels to integers, which are identical across
     all pa in DFallpa, and which covers all variables iwth strings ("shape") and ("loc"),
-    except those with classes in labels_to_ignore
+    except those with classes in labels_to_ignore. This allows having a predictable type (int) 
+    across decoding anlayses
     PARAMS:
     - savepath, full path to save dict holding mapping between ints and labels.
     RETURNS:
         - (Modifies without returning, DFallpa, with pa updated so its labeles are ints)
         - (REturns) MAP_LABELS_TO_INT, holding params, including maps from int to class labels.
     """
-
 
     ################# GET LIST OF VARIABLES
     pa = DFallpa["pa"].values[0]
@@ -2529,10 +2523,16 @@ def preprocess_factorize_class_labels_ints(DFallpa, savepath=None):
 
     MAP_LABELS_TO_INT = {}
     def _replace_labels(name, list_variables):
+        """
+        Replace classes with ints, and make sure the ints are consistent 
+        across all simialr variables (e.g,, all shape varibales)
+
+        Modifies each PA of DFallPA
+        """
         # ------- RUN
         map_int_to_class = {}
-        ct=0
-        for i, row in DFallpa.iterrows():
+        count=0
+        for _, row in DFallpa.iterrows():
             dflab = row["pa"].Xlabels["trials"]
             for var in list_variables:
                 if var in dflab.columns:
@@ -2545,8 +2545,8 @@ def preprocess_factorize_class_labels_ints(DFallpa, savepath=None):
                             else:
                                 if not _isin(cl, list(map_int_to_class.values())):
                                 # if cl not in list(map_int_to_class.values()):
-                                    map_int_to_class[ct] = cl
-                                    ct +=1
+                                    map_int_to_class[count] = cl
+                                    count +=1
                         except Exception as err:
                             print(var)
                             print(list_variables)
@@ -2558,16 +2558,17 @@ def preprocess_factorize_class_labels_ints(DFallpa, savepath=None):
                             print(type(cl))
                             print("Issue with  mixed types...?")
                             raise err
-        map_class_to_int = {cl:i for i, cl in map_int_to_class.items()}
-
+        map_class_to_int = {cl:i for i, cl in map_int_to_class.items()} # invert the mapping
         for k, v in map_class_to_int.items():
             print(k, " --- ", v)
-        for i, row in DFallpa.iterrows():
+
+        for _, row in DFallpa.iterrows():
             pathis = row["pa"]
             dflab = pathis.Xlabels["trials"]
             for var in list_variables:
                 if var in dflab.columns:
                     dflab[var] = [map_class_to_int[cl] for cl in dflab[var]]
+
         MAP_LABELS_TO_INT[name] = {
             "labels_to_ignore":LABELS_IGNORE,
             "map_int_to_class":map_int_to_class,
@@ -2593,7 +2594,8 @@ def preprocess_factorize_class_labels_ints(DFallpa, savepath=None):
 
 def cleanup_remove_labels_ignore(X, labels):
     """
-    Remove trials that have classes matching those in LABELS_IGNORE
+    Remove trials that have classes matching those in LABELS_IGNORE,
+    which are usualyl dummy variables
     PARAMS:
     - X, eitehr (chans, trials, times) or (trials, chans)
     - labels, list, len trials.

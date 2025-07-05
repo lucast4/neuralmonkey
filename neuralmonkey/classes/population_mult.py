@@ -1511,25 +1511,18 @@ def load_dataset_single(animal, date, which_level):
 
 def extract_single_pa(DFallpa, bregion, twind=None, which_level = "trial", event = "03_samp",
                       pa_field="pa"):
-    """ Quick, get a isngle pa... failing if not found.
+    """ 
+    Quick, get a isngle pa from DFallpa... failing if not found.
+    RETURNS:
+    - a copy of the PA
     """
 
     if twind is None:
         list_twind = DFallpa["twind"].unique().tolist()
     else:
         list_twind = [twind]
-    # if twind is None:
-    #     assert len(DFallpa["twind"].unique())==1
-    #     twind = DFallpa["twind"].values[0]
 
-
-    # assert twind is not None
-    # display(DFallpa)
-    # assert False
     a = DFallpa["which_level"]==which_level
-    # print(a)
-    # print(which_level, type(which_level))
-    # assert False
     b = DFallpa["event"]==event
     c = DFallpa["bregion"]==bregion
     d = DFallpa["twind"].isin(list_twind)
@@ -2304,7 +2297,8 @@ def dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT = False):
 def dfpa_concat_normalize_fr_split_multbregion_flex(DFallpa, fr_mean_subtract_method = "across_time_bins", PLOT = False):
     """
     For each bregion, concat across events (i.e., find all cases with this bregion and concate them) 
-    (in time dimension) and run normalization, and then split back.
+    (in time dimension) and run fr normalization, and then split back. This ensures that same normalization applies
+    across all data for a given region
 
     This (flex) is bettern than dfpa_concat_normalize_fr_split_multbregion, becuase the latter requires same n trials 
     across PA. Here does not.
@@ -2320,6 +2314,8 @@ def dfpa_concat_normalize_fr_split_multbregion_flex(DFallpa, fr_mean_subtract_me
     
     RETURNS:
     - Modifies each pa in DFallpa (changing pa.X to be normalized), without changing anything else.
+
+    MS: checked
     """
     from neuralmonkey.analyses.state_space_good import _popanal_preprocess_normalize_softzscore_raw
 
@@ -2339,12 +2335,12 @@ def dfpa_concat_normalize_fr_split_multbregion_flex(DFallpa, fr_mean_subtract_me
         X = np.concatenate([pa.X.reshape(pa.X.shape[0], -1) for pa in list_pa], axis=1) # (nchans, trials*times)
         _, DENOM, CENTER = _popanal_preprocess_normalize_softzscore_raw(X)
 
-        # Apply this same DENOM and CENTER to all pa
+        # Apply this same DENOM and CENTER to all pa for the bregion
         for pa in list_pa:
             if PLOT:
                 pa.plotNeurHeat(0)
 
-            pa.X = pa.X/DENOM[:, :, None]
+            pa.X = pa.X/(DENOM[:, :, None])
             
             if PLOT:
                 pa.plotNeurHeat(0)

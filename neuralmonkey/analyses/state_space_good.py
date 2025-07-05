@@ -129,32 +129,34 @@ def _popanal_preprocess_normalize_softzscore_raw(x):
     assert len(x.shape)==2
 
     #### (1) How much to rescale FR
+    
     # STD (across all trials and times)
     normvec = np.std(x, axis=1)
     assert len(normvec.shape)==1
+    normvec = np.reshape(normvec, [normvec.shape[0], 1]) # (chans, 1) # std for each chan, across (times, trials).
     # normvec = np.reshape(normvec, [normvec.shape[0]]) # (chans, 1, 1) # std for each chan, across (times, trials).
-    normvec = np.reshape(normvec, [normvec.shape[0], 1]) # (chans,) # std for each chan, across (times, trials).
     # normmin = np.percentile(normvec, [2.5]) # get the min (std fr across time/conditions) across channels, add this on to still have
 
-    # min fr, to make this a "soft" normalization
+    # Min fr across all chans (mean frs), to make this a "soft" normalization
     frmean_each_chan = np.mean(x, axis=1) # (chans, 1, 1) # mean for each chan, across (times, trials).
     frmin = np.min(frmean_each_chan) # scalar
     # frmin = np.min(np.mean(np.mean(PA.X, axis=1, keepdims=True), axis=2, keepdims=True)) # (chans, 1, 1)) # min (mean fr across time/condition) across chans
 
     # to further help making this "soft"
-    abs_fr_min = 3 # any fr around this low, want to penalize drastically, effectively making it not contyribute much to population activit.
+    abs_fr_min = 3 # any fr around this low, want to penalize more, effectively making it contyribute less to population activit.
 
     # DENOM = (normvec+normmin)
     # DENOM = (normvec + normmin + frmin + abs_fr_min) # To further lower infleunce of low FR neurons (started 2/8/24, 2:55pm)
     DENOM = (normvec + frmin + abs_fr_min) # To make more similar across chans. (started 2/11/24)
 
-    # Do normalization.
+    ### Do normalization.
+    # Rescale fr [0, around 2]
     x_norm = x.copy()
     assert len(DENOM.shape)==len(x_norm.shape)
     x_norm = x_norm/DENOM
 
-    #### (2) After rescaling (by dividing), get mean (which will be subtracted to do soft z-score)
-    CENTER = np.mean(x_norm, axis=1, keepdims=True)
+    # After rescaling (by dividing), get mean (which will be subtracted to do soft z-score)
+    CENTER = np.mean(x_norm, axis=1, keepdims=True) # (nchans, 1)
     x_norm = x_norm-CENTER
 
     return x_norm, DENOM, CENTER
@@ -2407,7 +2409,7 @@ def dimredgood_nonlinear_embed_data(X, METHOD="umap", n_components=2, tsne_perp=
     PARAMS:
     - X, already-preprocessed data, (nsamps, ndims)
     RETURNS:
-        - Xredu, (nsamp, n_components)
+    - Xredu, (nsamp, n_components)
     """
     nsamp = X.shape[0]
     if METHOD == "tsne":
@@ -2426,7 +2428,6 @@ def dimredgood_nonlinear_embed_data(X, METHOD="umap", n_components=2, tsne_perp=
         print("UMAP, Using this n_neighbors:", umap_n_neighbors, ", nsamp =", nsamp, ", n_components: ", n_components)
         min_dist = 0.1
         reducer = umap.UMAP(n_components=n_components, n_neighbors=umap_n_neighbors, min_dist=min_dist)
-        # mapper = reducer.fit(X)
         Xredu = reducer.fit_transform(X)
     elif METHOD == "mds":
         from sklearn.manifold import MDS
@@ -2590,8 +2591,6 @@ def dimredgood_pca_project(components, X, plot_pca_explained_var_path=None,
     :return:
     - Xredu, (ntrials, n_components)
     """
-    from pythonlib.tools.nptools import isnear
-
 
     # Decide if do reshape first
     if do_additional_reshape_from_ChTrTi:
@@ -2599,10 +2598,6 @@ def dimredgood_pca_project(components, X, plot_pca_explained_var_path=None,
         Xorig = X.copy()
         nchans, ntrials, ntimes = Xorig.shape
         X = np.reshape(Xorig, [nchans, ntrials * ntimes]).T # (ntrials*ntimes, nchans)        
-        # print(components.shape)
-        # print(Xorig.shape)
-        # print(X.shape)
-        # assert False
 
     # Sanity checks
     if not X.shape[1] == components.shape[1]:
@@ -2613,6 +2608,7 @@ def dimredgood_pca_project(components, X, plot_pca_explained_var_path=None,
     
     # print("HERE", np.mean(X, axis=0))
     if False: # Need this False in order to project data that hasnt had each time bin subtracted...
+        from pythonlib.tools.nptools import isnear
         assert np.all(np.mean(X, axis=0)<0.1)
     # assert isnear(np.mean(X, axis=0), np.zeros(X.shape)) # Check that X is zeroed, or else the variance calcualtion may be weird, and the result can be weird.
 
@@ -2634,12 +2630,6 @@ def dimredgood_pca_project(components, X, plot_pca_explained_var_path=None,
     else:
         Xredu_in_orig_shape = None
 
-    # print(Xorig.shape)
-    # print(components.shape)
-    # print(Xredu.shape)
-    # print(Xredu_in_orig_shape.shape)
-    # assert False
-        
     if plot_pca_explained_var_path is not None:
         fig, axes = plt.subplots(1,2, figsize=(8,3))
 
@@ -2662,7 +2652,6 @@ def dimredgood_pca_project(components, X, plot_pca_explained_var_path=None,
         "explained_variance_ratio_":explained_variance_ratio_
     }
     return Xredu, stats, Xredu_in_orig_shape
-
 
 def dimredgood_pca(X, n_components=None,
                    how_decide_npcs_keep = "cumvar",
@@ -2697,7 +2686,6 @@ def dimredgood_pca(X, n_components=None,
     elif method=="svd":
         # No recenter or rescale. Otehrwise owrks identically to above (tested).
         # Copied from sklearn.decomposion._pca._fit()
-
         if False:
             # If do this, thens hould be identical to sklearn (tested).
             X = X.copy()
@@ -2705,10 +2693,7 @@ def dimredgood_pca(X, n_components=None,
 
         from sklearn.utils.extmath import svd_flip
         U, S, Vt = np.linalg.svd(X, full_matrices=False)
-
-        # flip eigenvectors' sign to enforce deterministic output
-        U, Vt = svd_flip(U, Vt)
-
+        U, Vt = svd_flip(U, Vt) # flip sign of eigenvectors ,to force deterministic output
         components_ = Vt
 
         # Get variance explained by singular values
@@ -2716,7 +2701,7 @@ def dimredgood_pca(X, n_components=None,
         explained_variance_ratio_ = explained_variance_ / explained_variance_.sum()
         # singular_values_ = S.copy()  # Store the singular values.
 
-        Xpca = np.dot(X, components_.T)
+        Xpca = np.dot(X, components_.T) # get projection
 
         # Store pca weights
         pca = {
@@ -2750,6 +2735,7 @@ def dimredgood_pca(X, n_components=None,
     Xpcakeep = Xpca[:, :npcs_keep]
     assert Xpcakeep.shape[1] == npcs_keep
 
+    ### Plot?
     if plot_pca_explained_var_path is not None:
         fig, axes = plt.subplots(1,2, figsize=(8,3))
 
@@ -2782,8 +2768,6 @@ def dimredgood_pca(X, n_components=None,
         ax.set_ylabel("pcs")
         ax.set_xlabel("features (chans x twind)")
         savefig(fig, plot_loadings_path)
-        # print(plot_loadings_feature_labels)
-        # assert False
 
     if return_stats:
         return Xpcakeep, Xpca, pca, explained_variance_ratio_, components_

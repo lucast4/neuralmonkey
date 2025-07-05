@@ -20,30 +20,58 @@ from neuralmonkey.classes.session import _REGIONS_IN_ORDER_COMBINED
 from neuralmonkey.analyses.state_space_good import euclidian_distance_compute_trajectories_single
 
 
-def analy_51_mult_load(do_prune_ambig, var_context_diff, event, twind_final, scalar_or_traj, dim_red_method, NPCS_KEEP,
-                       manuscript_version=False):
+def analy_51_mult_load_manuscript(do_prune_ambig, var_context_diff, event, twind_final, scalar_or_traj, 
+                                  dim_red_method, NPCS_KEEP):
     """
-    GOOD
-    
-    Load data and plot, for #5.1, which is categ switching, euclidian dist, good plots.
+    GOOD -- Load data and plot, for categ switching, euclidian dist, good plots.
     Final, for paper.
 
     Returns loaded data.
 
+    MS: checked
+    """
+    from pythonlib.dataset.scripts.analy_manuscript_figures_FINAL import fig5_load_data
+
+    LIST_EXPTS = [("Diego", 240517), ("Diego", 240521), ("Diego", 240523), ("Diego", 240730), 
+                ("Pancho", 240516), ("Pancho", 240521), ("Pancho", 240524)]
+    LIST_REGIONS = _REGIONS_IN_ORDER_COMBINED
+
+    list_dfproj_index = []
+    list_dfproj_index_agg = []
+    for animal, date in LIST_EXPTS:
+        _, _, _, list_morphset, _ = fig5_load_data(animal, date)
+        for bregion in LIST_REGIONS:
+            for morphset in list_morphset:
+                inds_in_morphset_ambiguous = None
+                _, _, dfproj_index, dfproj_index_agg = load_euclidian_time_resolved_fast_shuffled(animal, 
+                                                                                            date, bregion, morphset, 
+                                                                                            inds_in_morphset_ambiguous, do_prune_ambig,
+                                                                                            var_context_diff,
+                                                                                            event=event, twind_final=twind_final,
+                                                                                            scalar_or_traj=scalar_or_traj,
+                                                                                            dim_red_method=dim_red_method,
+                                                                                            NPCS_KEEP=NPCS_KEEP, 
+                                                                                            manuscript_version=True)
+                list_dfproj_index.append(dfproj_index)
+                list_dfproj_index_agg.append(dfproj_index_agg)
+
+    return list_dfproj_index, list_dfproj_index_agg, LIST_REGIONS
+
+
+def analy_51_mult_load(do_prune_ambig, var_context_diff, event, twind_final, scalar_or_traj, dim_red_method, NPCS_KEEP,
+                       manuscript_version=False):
+    """
+    GOOD -- Load data and plot, for #5.1, which is categ switching, euclidian dist, good plots.
+    Final, for paper.
+
+    Returns loaded data.
     """
     from pythonlib.dataset.dataset_analy.psychometric_singleprims import params_good_morphsets_switching
 
     LIST_EXPTS = [("Diego", 240517), ("Diego", 240521), ("Diego", 240523), ("Diego", 240730), 
                 ("Pancho", 240516), ("Pancho", 240521), ("Pancho", 240524)]
-    # LIST_EXPTS = [("Diego", 240517), ("Diego", 240521), ("Diego", 240523), ("Diego", 240730), 
-    #               ("Pancho", 240516), ("Pancho", 240524)]
-
     LIST_REGIONS = _REGIONS_IN_ORDER_COMBINED
 
-
-    # var_context_diff = "seqc_0_loc"
-
-    # list_dfdist_agg = []
     list_dfproj_index = []
     list_dfproj_index_agg = []
     for animal, date in LIST_EXPTS:
@@ -78,18 +106,20 @@ def load_euclidian_time_resolved_fast_shuffled(animal, date, bregion, morphset, 
                                                var_context_diff, event, twind_final, scalar_or_traj, dim_red_method, NPCS_KEEP,
                                                manuscript_version=False):
     """
-    Load previousl saved data
+    Load previousl saved data, and perform various postprocessing steps.
+    
+    MS: checked
     """
     from neuralmonkey.classes.session import _REGIONS_IN_ORDER_COMBINED
-    from pythonlib.tools.pandastools import aggregGeneral, extract_with_levels_of_conjunction_vars
-
+    from pythonlib.tools.pandastools import aggregGeneral
 
     def _prune_ambig_at_least_n_trials_per_base(DF, df_version, n_min_per_lev = 3):
         """
+        Prune to ensure that ambig have at least n trials per base (base1 base2)
         Input DF must be trial level (before agging)
         Returns copy
         """
-        
+        from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper
         if df_version=="DFDIST":
             vars_datapt = ["idx_morph_temp", "idxmorph_assigned_2", "time_bin_idx"] # DFDIST
         elif df_version=="DFPROJ_INDEX":
@@ -103,7 +133,6 @@ def load_euclidian_time_resolved_fast_shuffled(animal, date, bregion, morphset, 
         dfthis = DF[DF["assigned_label"] == "ambig"].reset_index(drop=True)
 
         # (2) Only keep (idx_morph_temp) that has at least n trials for both base1 and base2
-        from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper
         df_ambig, _ = extract_with_levels_of_conjunction_vars_helper(dfthis, "assigned_base_simple", 
                                                                     vars_datapt, 
                                                                     n_min_per_lev, None, 2, levels_var=["base1", "base2"], 
@@ -128,26 +157,12 @@ def load_euclidian_time_resolved_fast_shuffled(animal, date, bregion, morphset, 
 
         return df_combined
 
-    ### Default params
-    # event = "03_samp"
-
-    # exclude_flank = True
-    # dim_red_method = "dpca"
-    # proj_twind = (0.1, 1.0)
-    # combine = True
-    # raw_subtract_mean_each_timepoint = False
-    # scalar_or_traj = "traj"
-    # NPCS_KEEP = 8
-    # twind_final = (-0.3, 1.2)
-
     ### LOAD
     if manuscript_version:
         SAVEDIR_BASE = f"/lemur2/lucas/analyses/manuscripts/1_action_symbols/REPRODUCED_FIGURES/fig5dh/{animal}-{date}/analy_switching_GOOD_euclidian_index"
     else:
         SAVEDIR_BASE = f"/lemur2/lucas/analyses/recordings/main/decode_moment/PSYCHO_SP/{animal}-{date}-logistic-combine=True/analy_switching_GOOD_euclidian_index"
     SAVEDIR = f"{SAVEDIR_BASE}/ev={event}-scal={scalar_or_traj}-dimred={dim_red_method}-twind={twind_final}-npcs={NPCS_KEEP}/bregion={bregion}/morphset={morphset}"
-    # SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/decode_moment/PSYCHO_SP/{animal}-{date}-logistic-combine=True/switching_euclidian_score_and_plot_traj/ev={event}-subtr={raw_subtract_mean_each_timepoint}-scal={scalar_or_traj}-dimred=dpca-twind=(-0.1, 1.2)-npcs={NPCS_KEEP}/bregion={bregion}/morphset={morphset}"
-    # SAVEDIR = f"{SAVEDIR_BASE_LOAD}/{animal}-{date}-logistic-combine={combine}/euclidian_score_and_plot/ev={EVENT}-subtr={raw_subtract_mean_each_timepoint}-scal={scalar_or_traj}-dimred={dim_red_method}-twind={proj_twind}-npcs={NPCS_KEEP}-flank={exclude_flank}"
     print("Loading from: ", SAVEDIR)
 
     # Load data
@@ -169,29 +184,30 @@ def load_euclidian_time_resolved_fast_shuffled(animal, date, bregion, morphset, 
         DFDIST = _prune_ambig_at_least_n_trials_per_base(DFDIST, "DFDIST")
 
     # Agg across trials
-    DFPROJ_INDEX_AGG = aggregGeneral(DFPROJ_INDEX, ["idxmorph_assigned", "time_bin_idx", "seqc_0_loc"], ["dist_index", "dist_index_norm", "time_bin"], nonnumercols=["assigned_base_simple", "assigned_base", "assigned_label", "idx_morph_temp"])
-    DFDIST_AGG = aggregGeneral(DFDIST, ["idxmorph_assigned_1", "idxmorph_assigned_2", "time_bin_idx"], ["dist_mean", "DIST_50", "DIST_98", "dist_norm", "dist_yue_diff", "time_bin"], nonnumercols=["assigned_base_simple", "assigned_base", "assigned_label", "idx_morph_temp"])
+    DFPROJ_INDEX_AGG = aggregGeneral(DFPROJ_INDEX, ["idxmorph_assigned", "time_bin_idx", "seqc_0_loc"], 
+                                     ["dist_index", "dist_index_norm", "time_bin"], 
+                                     nonnumercols=["assigned_base_simple", "assigned_base", "assigned_label", "idx_morph_temp"])
+    DFDIST_AGG = aggregGeneral(DFDIST, ["idxmorph_assigned_1", "idxmorph_assigned_2", "time_bin_idx"], 
+                               ["dist_mean", "DIST_50", "DIST_98", "dist_norm", "dist_yue_diff", "time_bin"], 
+                               nonnumercols=["assigned_base_simple", "assigned_base", "assigned_label", "idx_morph_temp"])
 
-    try:
-        # all inds that should be ambig --> make sure they are called that.
-        # prolbem is that some cases I did not call ambig if there were only a few cases of base1/base2.  But Ishould not 
-        # do this.
-        # if False: # skip this check, since sometimes auto detection doesnt call it ambig (too few trials, or is too noisy)
-        assert all(DFDIST[DFDIST["idx_morph_temp"].isin(inds_in_morphset_ambiguous)]["assigned_label"] == "ambig"), "why this was not called ambig? Prob it only had a couple trials... Fix the original code that called ambig vs. not-ambig."
+    if inds_in_morphset_ambiguous is not None:
+        # Then you are saying that these must ambig inds... for sanity check
+        try:
+            # all inds that should be ambig --> make sure they are called that.
+            assert all(DFDIST[DFDIST["idx_morph_temp"].isin(inds_in_morphset_ambiguous)]["assigned_label"] == "ambig"), "why this was not called ambig? Prob it only had a couple trials... Fix the original code that called ambig vs. not-ambig."
+            # all other inds --> make sure not called ambig.
+            assert not any(DFDIST[~DFDIST["idx_morph_temp"].isin(inds_in_morphset_ambiguous)]["assigned_label"]=="ambig"), "in this case, definitely go with my hand label"
+        except AssertionError as err:
+            from pythonlib.tools.pandastools import grouping_print_n_samples
+            print("--------------")
+            print(animal, date, morphset)
+            print("Indices I manually said to keep: ", inds_in_morphset_ambiguous)
+            print("Indices automatilcaly labeled as ambig: ", grouping_print_n_samples(DFDIST, ["idx_morph_temp", "assigned_label"]))
+            raise err
 
-        # all other inds --> make sure not called ambig.
-        assert not any(DFDIST[~DFDIST["idx_morph_temp"].isin(inds_in_morphset_ambiguous)]["assigned_label"]=="ambig"), "in this case, definitely go with my hand label"
-    except AssertionError as err:
-        from pythonlib.tools.pandastools import grouping_print_n_samples
-        print("--------------")
-        print(animal, date, morphset)
-        print("Indices I manually said to keep: ", inds_in_morphset_ambiguous)
-        print("Indices automatilcaly labeled as ambig: ", grouping_print_n_samples(DFDIST, ["idx_morph_temp", "assigned_label"]))
-        # print(err)
-        raise err
     
     if not all([x in DFPROJ_INDEX_AGG["assigned_base"].unique().tolist() for x in ['base1', 'ambig_base1', 'ambig_base2', 'base2']]):
-        # if not sorted(DFPROJ_INDEX_AGG["assigned_label"].unique()) == ['ambig', 'base', 'not_ambig']:
         print("Skipping", animal, date, morphset, " since doesnt have all 3 trial labels. Just has: ", sorted(DFPROJ_INDEX_AGG["assigned_label"].unique()))     
         return None
 
@@ -203,20 +219,20 @@ def load_euclidian_time_resolved_fast_shuffled(animal, date, bregion, morphset, 
 
         # Important, numerical precision...
         df["time_bin"] = df["time_bin"].apply(lambda x:np.round(x, 3))
-        # df.sort_values("time_bin").reset_index(drop=True)
 
     return DFDIST, DFDIST_AGG, DFPROJ_INDEX, DFPROJ_INDEX_AGG
 
 def analy_51_mult_postprocess(list_dfproj_index, list_dfproj_index_agg, do_clean_labels):
     """
     Preprocess data, after loading, for analysis #5.1
+
+    MS: checked
     """
     from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good
     from pythonlib.tools.pandastools import aggregGeneral, extract_with_levels_of_conjunction_vars
+    from pythonlib.tools.pandastools import append_col_with_grp_index
+    from pythonlib.tools.nptools import isnear
 
-    if False: # not being used
-        DFDIST = pd.concat(list_dfdist).reset_index(drop=True)
-        DFDIST_AGG = pd.concat(list_dfdist_agg).reset_index(drop=True)
     DFPROJ_INDEX = pd.concat(list_dfproj_index).reset_index(drop=True)
     DFPROJ_INDEX_AGG = pd.concat(list_dfproj_index_agg).reset_index(drop=True)
 
@@ -224,19 +240,14 @@ def analy_51_mult_postprocess(list_dfproj_index, list_dfproj_index_agg, do_clean
     DFPROJ_INDEX_AGG["time_bin"] = np.round(DFPROJ_INDEX_AGG["time_bin"]*1000)/1000
     DFPROJ_INDEX["time_bin"] = np.round(DFPROJ_INDEX["time_bin"]*1000)/1000
 
-    # del list_dfdist, list_dfdist_agg, list_dfproj_index, list_dfproj_index_agg
-
-    from pythonlib.tools.pandastools import append_col_with_grp_index
+    # Add useful columns
     DFPROJ_INDEX = append_col_with_grp_index(DFPROJ_INDEX, ["animal", "date", "morphset"], "an_da_ms")
     DFPROJ_INDEX_AGG = append_col_with_grp_index(DFPROJ_INDEX_AGG, ["animal", "date", "morphset"], "an_da_ms")
 
-    if False:
-        DFDIST_AGG["time_bin"] = np.round(DFDIST_AGG["time_bin"]*1000)/1000
-        DFDIST_AGG = append_col_with_grp_index(DFDIST_AGG, ["animal", "date", "morphset"], "an_da_ms")
-
-    ### OPTIONALLY, clean to just morphsets with both bases for all 3 labels
+    ### OPTIONALLY, clean to just morphsets with both bases for all 3 labels. This 
+    # ensure balanced data when summarizing across experiments. 
     if do_clean_labels:
-        ### First, each of (ambig, base, notambig) should have both bas1 and badses2
+        # First, each of (ambig, base, notambig) should have both bas1 and badses2
         vars_others = ["an_da_ms", "assigned_label", "seqc_0_loc"]
         levels_var = ["base1", "base2"]
         DFPROJ_INDEX, _= extract_with_levels_of_conjunction_vars(DFPROJ_INDEX, "assigned_base_simple", vars_others, levels_var, 
@@ -245,11 +256,7 @@ def analy_51_mult_postprocess(list_dfproj_index, list_dfproj_index_agg, do_clean
         DFPROJ_INDEX_AGG, _= extract_with_levels_of_conjunction_vars(DFPROJ_INDEX_AGG, "assigned_base_simple", vars_others, levels_var, 
                                                 1, False, 2, False, plot_counts_heatmap_savepath=None)
         
-        if False:
-            DFDIST_AGG, _= extract_with_levels_of_conjunction_vars(DFDIST_AGG, "assigned_base_simple", vars_others, levels_var, 
-                                                    1, False, 2, False, plot_counts_heatmap_savepath=None)
-        
-        # Second, only morphsets with all (3 labels x 2 base1/base2)
+        # Second, only morphsets that have all (3 labels x 2 base1/base2) should be kept
         vars_others = ["an_da_ms", "seqc_0_loc"]
         levels_var = ["not_ambig", "base", "ambig"]
         DFPROJ_INDEX, _= extract_with_levels_of_conjunction_vars(DFPROJ_INDEX, "assigned_label", vars_others, levels_var, 
@@ -258,34 +265,27 @@ def analy_51_mult_postprocess(list_dfproj_index, list_dfproj_index_agg, do_clean
         DFPROJ_INDEX_AGG, _= extract_with_levels_of_conjunction_vars(DFPROJ_INDEX_AGG, "assigned_label", vars_others, levels_var, 
                                                 1, False, len(levels_var), False, plot_counts_heatmap_savepath=None)
 
-        if False:
-            DFDIST_AGG, _= extract_with_levels_of_conjunction_vars(DFDIST_AGG, "assigned_label", vars_others, levels_var, 
-                                                    1, False, len(levels_var), False, plot_counts_heatmap_savepath=None)
-
-
-    ### Agg over locations, for
-    # Agg over locations
+    # Agg over locations, for
     if False:
         DFPROJ_INDEX_AGG = aggregGeneral(DFPROJ_INDEX_AGG, ["an_da_ms", "bregion", "idxmorph_assigned", "time_bin_idx"], ["dist_index", "dist_index_norm", "time_bin"], nonnumercols=["assigned_base_simple", "assigned_base", "assigned_label"])
 
-    # (2) Get different of dist (base2-base1)
-    from pythonlib.tools.nptools import isnear
-    # A single score (difference of dist index)
-    grpdict = grouping_append_and_return_inner_items_good(DFPROJ_INDEX_AGG, ["animal", "date", "morphset", "bregion", "seqc_0_loc"])
+    # (2) Compute different of dist (base2-base1) (for difference plots) -- single score (difference of dist index)
 
     # - get for each (animal, date, morphset)
-    res = []
     res2 = []
     times = None
+    grpdict = grouping_append_and_return_inner_items_good(DFPROJ_INDEX_AGG, ["animal", "date", "morphset", "bregion", "seqc_0_loc"])
     for (animal, date, morphset, bregion, seqc_0_loc), inds in grpdict.items():
         print(animal, date, morphset)
         df = DFPROJ_INDEX_AGG.iloc[inds].reset_index(drop=True)
         _times, dist_index_diff_base, dist_index_diff_notambig, dist_index_diff_ambig = _analy_switching_statespace_euclidian_traj_computediff(df)
+        # Sanity check that each iter has same times.
         if times is not None:
             assert isnear(_times, times)
         else:
             times = _times
-
+         
+        # Collect results, each time bin.
         label = "base"
         for i, (t, d) in enumerate(zip(times, dist_index_diff_base)):
             res2.append({
@@ -341,13 +341,36 @@ def analy_51_mult_postprocess(list_dfproj_index, list_dfproj_index_agg, do_clean
     
     return DFPROJ_INDEX, DFPROJ_INDEX_AGG, DFPROJ_INDEX_AGG_DIFF_LOCS, DFPROJ_INDEX_AGG_DIFF
 
+def analy_51_plots_timecourse_manuscript(DFPROJ_INDEX_AGG_DIFF, savedir):
+    """
+    Plot timecourses.. GOOD.
+
+    MS: checked
+    """
+    import seaborn as sns
+
+    # Plot
+    bregion = "PMv"
+    dfthis = DFPROJ_INDEX_AGG_DIFF[DFPROJ_INDEX_AGG_DIFF["bregion"] == bregion].reset_index(drop=True)
+    for row in [None, "animal"]:
+        hue_order = ["base", "not_ambig", "ambig"]
+        fig = sns.relplot(data=dfthis, x="time_bin", y="dist_index_diff", hue="label", 
+                        kind="line", errorbar=("ci", 68), row=row, hue_order=hue_order)
+        for ax in fig.axes.flatten():
+            ax.axhline(0, color="k", alpha=0.25)
+            ax.axvline(0, color="k", alpha=0.25)
+        savefig(fig, f"{savedir}/MS-DFPROJ_INDEX_AGG_DIFF-dist_index-label-row={row}.pdf")
+    
+    plt.close("all")
+
 def analy_51_plots_timecourse(DFPROJ_INDEX_AGG, DFPROJ_INDEX_AGG_DIFF, DFPROJ_INDEX_AGG_DIFF_LOCS, LIST_REGIONS,
                               savedir, manuscript_version=False):
     """
     Plot timecourses.. GOOD.
+
+    MS: checked
     """
     import seaborn as sns
-    # (1) Heatmaps
 
     if not manuscript_version:
         # (1) Catplots
@@ -446,22 +469,102 @@ def analy_51_plots_timecourse(DFPROJ_INDEX_AGG, DFPROJ_INDEX_AGG_DIFF, DFPROJ_IN
 
     plt.close("all")
         
+
+def analy_51_plots_scalar_manuscript(DFPROJ_INDEX, DFPROJ_INDEX_AGG, DFPROJ_INDEX_AGG_DIFF, savedir):
+    """
+    GOOD - plot scalars sumamries. get scalar by taking mean in time window.
+
+    MS: checked
+    """
+    from pythonlib.tools.pandastools import aggregGeneral
+    from neuralmonkey.scripts.analy_decode_moment_psychometric import analy_switching_GOOD_stats_linear_2br_compute
+    from neuralmonkey.classes.session import _REGIONS_IN_ORDER_COMBINED
+
+    twind_scal = (0.65, 1.1)
+    suff = "late"
+
+    ### GEt time window, and scalar
+    dfthis = DFPROJ_INDEX[(DFPROJ_INDEX["time_bin"]>twind_scal[0]) & (DFPROJ_INDEX["time_bin"]<twind_scal[1])].reset_index(drop=True)
+    DFPROJ_INDEX_SCAL = aggregGeneral(dfthis, ["idx_row_datapt", "animal", "date", "morphset", "bregion"], ["dist_index"], nonnumercols="all")
+
+    # One datapt for each idxmorph_assigned, i.e., each idxmorph, except if is ambig, in which case is both.
+    dfthis = DFPROJ_INDEX_AGG[(DFPROJ_INDEX_AGG["time_bin"]>twind_scal[0]) & (DFPROJ_INDEX_AGG["time_bin"]<twind_scal[1])].reset_index(drop=True)
+    DFPROJ_INDEX_AGG_SCAL = aggregGeneral(dfthis, ["idxmorph_assigned", "animal", "date", "morphset", "bregion"], ["dist_index"], nonnumercols="all")
+
+    # Each datapt is like A2-A1, etc. (so each expt can give max 3 datapts)
+    dfthis = DFPROJ_INDEX_AGG_DIFF[(DFPROJ_INDEX_AGG_DIFF["time_bin"]>twind_scal[0]) & (DFPROJ_INDEX_AGG_DIFF["time_bin"]<twind_scal[1])].reset_index(drop=True)
+    DFPROJ_INDEX_AGG_DIFF_SCAL = aggregGeneral(dfthis, ["animal", "date", "morphset", "bregion", "label", "an_da_ms"], ["dist_index_diff"], nonnumercols="all")
+
+    ### Plots
+    # Plot the specific exmaple in paper
+    an_da_ms = "Pancho|240524|8"
+    bregion = "PMv"
+    dfthis = DFPROJ_INDEX_SCAL[(DFPROJ_INDEX_SCAL["an_da_ms"] == an_da_ms) & (DFPROJ_INDEX_SCAL["bregion"] == bregion)].reset_index(drop=True)
+    fig = sns.catplot(data=dfthis, x="idx_morph_temp", y="dist_index", hue="assigned_base_simple", 
+                      jitter=True, alpha=0.75, sharex=False)
+    for ax in fig.axes.flatten():
+        ax.axhline(0.5, color="k", alpha=0.25)
+    savefig(fig, f"{savedir}/MS-DFPROJ_INDEX_SCAL-all-1-twind={suff}.pdf")
+    
+    ######################### One datapt per each of (base1, ambig1, ... ambig2, base2)
+    DFPROJ_INDEX_AGG_SCAL_2 = aggregGeneral(DFPROJ_INDEX_AGG_SCAL, ["animal",	"date", "morphset", "bregion", "assigned_base"], ["dist_index"], nonnumercols="all")
+    order = ["base1", "not_ambig_base1", "ambig_base1", "ambig_base2", "not_ambig_base2", "base2"]
+
+    bregion = "PMv"
+    dfthis = DFPROJ_INDEX_AGG_SCAL_2[(DFPROJ_INDEX_AGG_SCAL_2["bregion"] == bregion)].reset_index(drop=True)
+    fig = sns.catplot(data=dfthis, x="assigned_base", y="dist_index", hue="assigned_base_simple", order=order)
+    for ax in fig.axes.flatten():
+        ax.axhline(0.5, color="k", alpha=0.25)
+    savefig(fig, f"{savedir}/MS-DFPROJ_INDEX_AGG_SCAL_2-assigned_base-twind={suff}.pdf")
+
+
+    #### FINAL, stats, and plotting differences between areas.
+    savedirthis = f"{savedir}/twind_scal={twind_scal}-suff={suff}"
+    os.makedirs(savedirthis, exist_ok=True)
+    analy_switching_GOOD_stats_linear_2br_compute(DFPROJ_INDEX_AGG_DIFF_SCAL, savedirthis)
+
+    #### Final summary scalars
+    fig = sns.catplot(data=DFPROJ_INDEX_AGG_DIFF_SCAL, x="bregion", y="dist_index_diff", col="label", hue="animal", 
+                    kind="bar", errorbar="se", order=_REGIONS_IN_ORDER_COMBINED)
+    savefig(fig, f"{savedirthis}/catplot-1.pdf")
+
+    fig = sns.catplot(data=DFPROJ_INDEX_AGG_DIFF_SCAL, x="bregion", y="dist_index_diff", col="label", hue="animal", 
+                    jitter=True, order=_REGIONS_IN_ORDER_COMBINED)
+    for ax in fig.axes.flatten():
+        ax.axhline(0)
+    savefig(fig, f"{savedirthis}/catplot-2.pdf")
+
+    fig = sns.catplot(data=DFPROJ_INDEX_AGG_DIFF_SCAL, x="bregion", y="dist_index_diff", col="label",
+                    kind="bar", errorbar="se", order=_REGIONS_IN_ORDER_COMBINED)
+    savefig(fig, f"{savedirthis}/catplot-3.pdf")
+    
+    fig = sns.catplot(data=DFPROJ_INDEX_AGG_DIFF_SCAL, x="bregion", y="dist_index_diff", col="label", 
+                    jitter=True, order=_REGIONS_IN_ORDER_COMBINED)
+    for ax in fig.axes.flatten():
+        ax.axhline(0)
+    savefig(fig, f"{savedirthis}/catplot-4.pdf")
+
+    plt.close("all")
+
+
 def analy_51_plots_scalar(DFPROJ_INDEX, DFPROJ_INDEX_AGG, DFPROJ_INDEX_AGG_DIFF, twind_scal, suff, savedir,
                           manuscript_version=False):
     """
-    GOOD - plot scalars.
+    GOOD - plot scalars sumamries. get scalar by taking mean in time window.
+
+    MS: checked
     """
     from pythonlib.tools.pandastools import aggregGeneral, extract_with_levels_of_conjunction_vars
     from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars
     from pythonlib.tools.snstools import rotateLabel
 
     ### GEt time window, and scalar
-    _DFPROJ_INDEX = DFPROJ_INDEX[(DFPROJ_INDEX["time_bin"]>twind_scal[0]) & (DFPROJ_INDEX["time_bin"]<twind_scal[1])].reset_index(drop=True)
-    DFPROJ_INDEX_SCAL = aggregGeneral(_DFPROJ_INDEX, ["idx_row_datapt", "animal", "date", "morphset", "bregion"], ["dist_index"], nonnumercols="all")
+    dfthis = DFPROJ_INDEX[(DFPROJ_INDEX["time_bin"]>twind_scal[0]) & (DFPROJ_INDEX["time_bin"]<twind_scal[1])].reset_index(drop=True)
+    DFPROJ_INDEX_SCAL = aggregGeneral(dfthis, ["idx_row_datapt", "animal", "date", "morphset", "bregion"], ["dist_index"], nonnumercols="all")
 
     # One datapt for each idxmorph_assigned, i.e., each idxmorph, except if is ambig, in which case is both.
-    _DFPROJ_INDEX_AGG = DFPROJ_INDEX_AGG[(DFPROJ_INDEX_AGG["time_bin"]>twind_scal[0]) & (DFPROJ_INDEX_AGG["time_bin"]<twind_scal[1])].reset_index(drop=True)
-    DFPROJ_INDEX_AGG_SCAL = aggregGeneral(_DFPROJ_INDEX_AGG, ["idxmorph_assigned", "animal", "date", "morphset", "bregion"], ["dist_index"], nonnumercols="all")
+    dfthis = DFPROJ_INDEX_AGG[(DFPROJ_INDEX_AGG["time_bin"]>twind_scal[0]) & (DFPROJ_INDEX_AGG["time_bin"]<twind_scal[1])].reset_index(drop=True)
+    DFPROJ_INDEX_AGG_SCAL = aggregGeneral(dfthis, ["idxmorph_assigned", "animal", "date", "morphset", "bregion"], ["dist_index"], nonnumercols="all")
 
     # Each datapt is like A2-A1, etc. (so each expt can give max 3 datapts)
     dfthis = DFPROJ_INDEX_AGG_DIFF[(DFPROJ_INDEX_AGG_DIFF["time_bin"]>twind_scal[0]) & (DFPROJ_INDEX_AGG_DIFF["time_bin"]<twind_scal[1])].reset_index(drop=True)
@@ -687,18 +790,18 @@ def analy_51_plots_scalar(DFPROJ_INDEX, DFPROJ_INDEX_AGG, DFPROJ_INDEX_AGG_DIFF,
     plt.close("all")
 
 def _analy_switching_statespace_euclidian_traj_computediff(df):
-    # savedir = f"{SAVEDIR}/plots"
-    # os.makedirs(savedir, exist_ok=True)
-    ################ Convert to a single number - separation between base1 and base2
-    # reshape
-    # -----
+    """
+    Convert to a single number - separation between base1 and base2, at each time bin.
+    i.e, get difference in dfdist.
+
+    MS: checked
+    """
+    
     from pythonlib.tools.pandastools import convert_to_2d_dataframe
 
     # reshape
-    # list_cat_1 = ["base1", "not_ambig_base1", "ambig_base1", "ambig_base2", "not_ambig_base2", "base2"]
     dfthis, _, _, _ = convert_to_2d_dataframe(df, "assigned_base", "time_bin", False, "mean", 
                                                 "dist_index")
-
     dist_index_diff_base = dfthis.loc["base2", :] - dfthis.loc["base1", :]
 
     if ("not_ambig_base1" in dfthis.index.tolist()) and ("not_ambig_base2" in dfthis.index.tolist()):
@@ -711,9 +814,6 @@ def _analy_switching_statespace_euclidian_traj_computediff(df):
     else:
         dist_index_diff_ambig = None
 
-    # dfsummary = pd.concat([dist_index_diff_base, dist_index_diff_notambig, dist_index_diff_ambig], axis=1)
-    # dfsummary = dfsummary.reset_index(names=["time_bin"])
-
     times = dist_index_diff_base.index.values
     if not np.all(np.diff(times)>0):
         print(times)
@@ -722,11 +822,15 @@ def _analy_switching_statespace_euclidian_traj_computediff(df):
     return times, dist_index_diff_base, dist_index_diff_notambig, dist_index_diff_ambig
 
 def _analy_switching_statespace_euclidian_traj_plots(DFPROJ_INDEX, DFDIST, savedir):
-    # savedir = f"{SAVEDIR}/plots"
-    # os.makedirs(savedir, exist_ok=True)
-    ################ Convert to a single number - separation between base1 and base2
-    # reshape
+    """
+    Wrapper for plots, for switching categories.
+
+    MS: ok
+    """
     from pythonlib.tools.pandastools import convert_to_2d_dataframe
+    import seaborn as sns
+    
+    ################ Convert to a single number - separation between base1 and base2
     for norm_sub, zlims in [
         (None, None),
         # (None, [0, 1]),
@@ -746,28 +850,11 @@ def _analy_switching_statespace_euclidian_traj_plots(DFPROJ_INDEX, DFDIST, saved
         savefig(fig, f"{savedir}/2D-assigned_base-norm={norm_sub}-zlims={zlims}.pdf")
 
     # -----
-    # A single score (difference of dist index)
+    # A single score (difference of dist index), ie.. difference in dfdist (e.g., running plot)
     times, dist_index_diff_base, dist_index_diff_notambig, dist_index_diff_ambig = _analy_switching_statespace_euclidian_traj_computediff(DFPROJ_INDEX)
-    # dist_index_diff_base = dfthis.loc["base2", :] - dfthis.loc["base1", :]
-
-    # if ("not_ambig_base1" in dfthis.index.tolist()) and ("not_ambig_base2" in dfthis.index.tolist()):
-    #     dist_index_diff_notambig = dfthis.loc["not_ambig_base2", :] - dfthis.loc["not_ambig_base1", :]
-    # else:
-    #     dist_index_diff_notambig = None
-
-    # if ("ambig_base1" in dfthis.index.tolist()) and ("ambig_base2" in dfthis.index.tolist()):
-    #     dist_index_diff_ambig = dfthis.loc["ambig_base2", :] - dfthis.loc["ambig_base1", :]
-    # else:
-    #     dist_index_diff_ambig = None
-
-    # dfsummary = pd.concat([dist_index_diff_base, dist_index_diff_notambig, dist_index_diff_ambig], axis=1)
-    # dfsummary = dfsummary.reset_index(names=["time_bin"])
 
     ###################### PLOTS
-    import seaborn as sns
-
     # (1) Plots using euclidian dist (norm)
-    # Clean plots
     df_base12_only = DFDIST[DFDIST["idxmorph_assigned_2"].isin(["0|base1", "99|base2"])].reset_index(drop=True)
 
     for dfthis, suff in [
@@ -782,19 +869,19 @@ def _analy_switching_statespace_euclidian_traj_plots(DFPROJ_INDEX, DFDIST, saved
 
         hue_order = sorted(dfthis["idxmorph_assigned_1"].unique())
         fig = sns.relplot(data=dfthis, x="time_bin", y="dist_norm", col="idxmorph_assigned_2", col_wrap=5, hue="idxmorph_assigned_1", kind="line", 
-                            errorbar=("ci", 68), hue_order=hue_order)
+                            errorbar="se", hue_order=hue_order)
         savefig(fig, f"{savedir}/DFDIST-dist_norm-idxmorph_assigned_2-1-{suff}.pdf")
 
         # hue_order = sorted(dfthis["assigned_base"].unique())
         hue_order = ["base1", "not_ambig_base1", "ambig_base1", "ambig_base2", "not_ambig_base2", "base2"]
         fig = sns.relplot(data=dfthis, x="time_bin", y="dist_norm", col="idxmorph_assigned_2", col_wrap=5, hue="assigned_base", 
-                        kind="line", errorbar=("ci", 68), hue_order=hue_order)
+                        kind="line", errorbar="se", hue_order=hue_order)
         savefig(fig, f"{savedir}/DFDIST-dist_norm-idxmorph_assigned_2-2-{suff}.pdf")
     plt.close("all")
     
     # (2) Plots using dist index
     hue_order = sorted(DFPROJ_INDEX["idxmorph_assigned"].unique())
-    fig = sns.relplot(data=DFPROJ_INDEX, x="time_bin", y="dist_index", hue="idxmorph_assigned", kind="line", errorbar=("ci", 68),
+    fig = sns.relplot(data=DFPROJ_INDEX, x="time_bin", y="dist_index", hue="idxmorph_assigned", kind="line", errorbar="se",
                     hue_order=hue_order)
     savefig(fig, f"{savedir}/DFPROJ_INDEX-dist_index-idxmorph_assigned.pdf")
 
@@ -825,11 +912,7 @@ def _analy_switching_statespace_euclidian_traj_plots(DFPROJ_INDEX, DFDIST, saved
                 col_order=col_order)
     savefig(fig, f"{savedir}/DFPROJ_INDEX-TRIALS-idx_row_datapt.pdf")
 
-
     # (4) Plot dist index, difference bteween base2 - base1
-    # from pythonlib.tools.plottools import makeColors
-    # pcols = makeColors(3)
-
     fig, axes = plt.subplots(1,2, figsize=(12,4))
     for ax, ylim in zip(axes.flatten(), [None, (-0.1, 0.6)]):
         ax.set_xlabel("time (sec)")
@@ -857,7 +940,9 @@ def _analy_switching_statespace_euclidian_traj_plots(DFPROJ_INDEX, DFDIST, saved
 
 def _analy_switching_statespace_euclidian_traj_condition(PAredu, DFPROJ_INDEX, DFDIST, DFPROJ_INDEX_AGG=None, DFDIST_AGG=None):
     """
-    Condition the data dfs, modifiying them in place
+    Postprocess, e.g. adding columns, to the dfs, modifiying them in place
+
+    MS: checked
     """
     dflab = PAredu.Xlabels["trials"]
 
@@ -866,7 +951,7 @@ def _analy_switching_statespace_euclidian_traj_condition(PAredu, DFPROJ_INDEX, D
     map_idxassign_to_assignedbase = {}
     map_idxassign_to_assignedbase_simple = {}
     map_idxassign_to_idx_morph = {}
-    for i, row in dflab.iterrows():
+    for _, row in dflab.iterrows():
         if row["idxmorph_assigned"] not in map_idxassign_to_label:
             map_idxassign_to_label[row["idxmorph_assigned"]] = row["assigned_label"]
             map_idxassign_to_assignedbase[row["idxmorph_assigned"]] = row["assigned_base"]
@@ -932,10 +1017,55 @@ def analy_switching_statespace_euclidian_traj(PAredu, savedir, make_plots=False,
 
     return DFPROJ_INDEX, DFDIST, DFPROJ_INDEX_AGG, DFDIST_AGG
 
+def analy_switching_statespace_euclidian_good_manuscript(PAredu, SAVEDIR, PLOT_CLEAN_VERSION=False):
+    """
+    Vareiuos plots related to switching (ambigious trials), 
+    using euclidian distance, and making state space plots.
+
+    NOTE: just does state space plots.
+
+    PARAMS:
+    - skip_eucl_dist, bool, whether to compute and plot euclidean dist between states. Note that 
+    this is not used in the main dfdist analysis.
+    """
+    ##############################
+    ### State space plots
+    savedir = f"{SAVEDIR}/state_space"
+    os.makedirs(savedir, exist_ok=True)
+
+    LIST_VAR = [
+        # "idxmorph_assigned",
+        "idxmorph_assigned",
+        "idx_morph_temp",
+        "assigned_base_simple",
+        "assigned_base_simple",
+    ]
+    LIST_VARS_OTHERS = [
+        # ("task_kind",),
+        ("assigned_label",),
+        ("assigned_base_simple",),
+        ("idx_morph_temp",),
+        ("assigned_label",),
+    ]
+    LIST_PRUNE_MIN_N_LEVS = [1 for _ in range(len(LIST_VAR))]
+    nmin_trials_per_lev = 1
+    list_dim_timecourse = list(range(6))
+    list_dims = [(0,1), (1,2), (2,3), (3,4)]
+    PAredu.plot_state_space_good_wrapper(savedir, LIST_VAR, LIST_VARS_OTHERS, 
+                                        LIST_PRUNE_MIN_N_LEVS=LIST_PRUNE_MIN_N_LEVS, nmin_trials_per_lev=nmin_trials_per_lev,
+                                        list_dim_timecourse=list_dim_timecourse, PLOT_CLEAN_VERSION=PLOT_CLEAN_VERSION,
+                                        list_dims=list_dims)
+
+
 def analy_switching_statespace_euclidian_good(PAredu, SAVEDIR, PLOT_CLEAN_VERSION=False,
                                               skip_eucl_dist=False):
     """
-    Good plots related to switching (ambigious trials), using euclidian distance, and making state space plots.
+    Vareiuos plots related to switching (ambigious trials), 
+    using euclidian distance, and making state space plots.
+
+    PARAMS:
+    - skip_eucl_dist, bool, whether to compute and plot euclidean dist between states. Note that 
+    this is not used in the main dfdist analysis.
     """
     import pickle
 
@@ -1223,150 +1353,13 @@ def _rank_idxs_append(df):
 def _compute_df_using_dist_index_traj(pa, var_effect = "idx_morph_temp", effect_lev_base1=0, effect_lev_base2=99,
                                       list_grps_get=None, version="pts_time", var_context_diff=None, plot_conjunctions_savedir=None):
     """
+    For each trial, get its primitive alignment index, using euclidean distances. See within
     """
     DFPROJ_INDEX, DFDIST, DFPROJ_INDEX_AGG, DFDIST_AGG, DFPROJ_INDEX_DIFFS = pa.dataextract_as_distance_index_between_two_base_classes(
         var_effect, effect_lev_base1, effect_lev_base2, list_grps_get, version, var_context_diff=var_context_diff, 
         plot_conjunctions_savedir=plot_conjunctions_savedir)
+    
     return DFPROJ_INDEX, DFDIST, DFPROJ_INDEX_AGG, DFDIST_AGG, DFPROJ_INDEX_DIFFS
-    
-    # from neuralmonkey.scripts.analy_decode_moment_psychometric import dfdist_to_dfproj_index
-    # from neuralmonkey.scripts.analy_decode_moment_psychometric import dfdist_to_dfproj_index_datapts
-    # # At each time, score distance between pairs of groupigs 
-    # from pythonlib.tools.pandastools import aggregGeneral 
-
-    # if version=="pts_time":
-    #     # Use indiv datapts (distnace between pts vs. groups), and separately for each time bin
-    #     pts_or_groups="pts"
-    #     return_as_single_mean_over_time=False
-    # elif version == "pts_scal":
-    #     # Use indiv datapts, but use mean eucl distance across tiem bins. 
-    #     # NOTE: this mean is taken of the eucl dist across time ibns, which themselves are computed independetmyl.
-    #     # so this is nothing special. Is not that good - might as well run using pts_time, and then average the result over tmime.
-    #     pts_or_groups="pts"
-    #     return_as_single_mean_over_time=True
-    # elif version == "grps_time":
-    #     # Distance bewteen (group vs. group), separately fro each time bin.
-    #     pts_or_groups="grps"
-    #     return_as_single_mean_over_time=False
-    # elif version == "grps_scal":
-    #     # See above.
-    #     pts_or_groups="grps"
-    #     return_as_single_mean_over_time=True
-    # else:
-    #     print(version)
-    #     assert False, "typo for version?"
-
-    # ### Get distance between all trials at each time bin
-    # version_distance = "euclidian"
-    # if return_as_single_mean_over_time:
-    #     # Each trial pair --> scalar
-    #     cldist = pa.dataextract_as_distance_matrix_clusters_flex([var_effect], version_distance=version_distance,
-    #                                                                             accurately_estimate_diagonal=False, 
-    #                                                                             return_as_single_mean_over_time=return_as_single_mean_over_time)
-
-    #     if pts_or_groups=="pts":
-    #         # Score each datapt
-    #         # For each datapt, get its distance to each of the groupings.
-    #         # --> nrows = (ndatapts x n groups).
-    #         # list_grps_get = [
-    #         #     ("0|base1",),  
-    #         #     ("99|base2",)
-    #         #     ] # This is important, or else will fail if there are any (idx|assign) with only one datapt.
-    #         DFDIST = cldist.rsa_distmat_score_all_pairs_of_label_groups_datapts(get_only_one_direction=False, list_grps_get=list_grps_get)
-    #         DFPROJ_INDEX = dfdist_to_dfproj_index_datapts(DFDIST, var_effect=var_effect, 
-    #                                                 effect_lev_base1=effect_lev_base1, effect_lev_base2=effect_lev_base2)
-    #         # dfproj_index
-    #         # order = sorted(dfproj_index["idxmorph_assigned_1"].unique())
-    #         # sns.catplot(data=dfproj_index, x="idxmorph_assigned_1", y="dist_index", aspect=2, order=order)
-    #     elif pts_or_groups=="grps":
-    #         # Score pairs of (group, group)
-    #         # Obsolete, because this is just above, followed by agging
-    #         DFDIST = cldist.rsa_distmat_score_all_pairs_of_label_groups(get_only_one_direction=False)
-
-    #         # convert distnaces to distance index
-    #         DFPROJ_INDEX = dfdist_to_dfproj_index(DFDIST, var_effect=var_effect, 
-    #                                                 effect_lev_base1=effect_lev_base1, effect_lev_base2=effect_lev_base2)
-    #     else:
-    #         assert False
-
-    #     # Take mean over trials
-    #     if pts_or_groups=="pts":
-    #         DFPROJ_INDEX_AGG = aggregGeneral(DFPROJ_INDEX, ["labels_1_datapt", var_effect], ["dist_index"])
-    #         DFDIST_AGG = aggregGeneral(DFDIST, ["labels_1_datapt", "labels_2_grp", var_effect, f"{var_effect}_1", f"{var_effect}_2"], ["dist_mean", "DIST_50", "DIST_98", "dist_norm", "dist_yue_diff"])
-    #     elif pts_or_groups == "grps":
-    #         DFPROJ_INDEX_AGG = None
-    #         DFDIST_AGG = None
-    #     else:
-    #         assert False
-
-    # else:
-    #     # Each trial pair --> vector
-    #     list_cldist, list_time = pa.dataextract_as_distance_matrix_clusters_flex([var_effect], version_distance=version_distance,
-    #                                                                             accurately_estimate_diagonal=False, 
-    #                                                                             return_as_single_mean_over_time=return_as_single_mean_over_time)
-    
-
-    #     ### For each time bin, for each trial, get its dist index relative to base1 and base2.
-    #     list_dfproj_index = []
-    #     list_dfdist = []
-    #     for i, (cldist, time) in enumerate(zip(list_cldist, list_time)):
-    #         if pts_or_groups=="pts":
-    #             # Score each datapt
-    #             # For each datapt, get its distance to each of the groupings.
-    #             # --> nrows = (ndatapts x n groups).
-    #             # list_grps_get = [
-    #             #     ("0|base1",),  
-    #             #     ("99|base2",)
-    #             #     ] # This is important, or else will fail if there are any (idx|assign) with only one datapt.
-    #             dfdist = cldist.rsa_distmat_score_all_pairs_of_label_groups_datapts(get_only_one_direction=False, list_grps_get=list_grps_get)
-    #             dfproj_index = dfdist_to_dfproj_index_datapts(dfdist, var_effect=var_effect, 
-    #                                                     effect_lev_base1=effect_lev_base1, effect_lev_base2=effect_lev_base2)
-    #             # dfproj_index
-    #             # order = sorted(dfproj_index["idxmorph_assigned_1"].unique())
-    #             # sns.catplot(data=dfproj_index, x="idxmorph_assigned_1", y="dist_index", aspect=2, order=order)
-    #         elif pts_or_groups=="grps":
-    #             # Score pairs of (group, group)
-    #             # Obsolete, because this is just above, followed by agging
-    #             dfdist = cldist.rsa_distmat_score_all_pairs_of_label_groups(get_only_one_direction=False)
-
-    #             # convert distnaces to distance index
-    #             dfproj_index = dfdist_to_dfproj_index(dfdist, var_effect=var_effect, 
-    #                                                     effect_lev_base1=effect_lev_base1, effect_lev_base2=effect_lev_base2)
-    #         else:
-    #             assert False
-
-    #         dfproj_index["time_bin"] = time
-    #         dfdist["time_bin"] = time
-
-    #         dfproj_index["time_bin_idx"] = i
-    #         dfdist["time_bin_idx"] = i
-
-    #         list_dfproj_index.append(dfproj_index)
-    #         list_dfdist.append(dfdist)
-
-    #     ### Clean up the results
-    #     DFPROJ_INDEX = pd.concat(list_dfproj_index).reset_index(drop=True)
-    #     DFDIST = pd.concat(list_dfdist).reset_index(drop=True)
-    #     # DFDIST[var_effect] = DFDIST[f"{var_effect}_1"]
-
-    #     # Take mean over trials
-    #     if pts_or_groups=="pts":
-    #         DFPROJ_INDEX_AGG = aggregGeneral(DFPROJ_INDEX, ["labels_1_datapt", var_effect, "time_bin_idx"], ["dist_index"], nonnumercols=["time_bin"])
-    #         DFDIST_AGG = aggregGeneral(DFDIST, ["labels_1_datapt", "labels_2_grp", var_effect, f"{var_effect}_1", f"{var_effect}_2", "time_bin_idx"], ["dist_mean", "DIST_50", "DIST_98", "dist_norm", "dist_yue_diff", "time_bin"])
-    #     elif pts_or_groups == "grps":
-    #         DFPROJ_INDEX_AGG = None
-    #         DFDIST_AGG = None
-    #     else:
-    #         assert False
-
-    # ######## GET DIFFERENCE ACROSS ADJACENT IDNICES
-    # if var_effect == "idx_morph_temp":
-    #     _rank_idxs_append(DFPROJ_INDEX)
-    #     DFPROJ_INDEX_DIFFS = convert_dist_to_distdiff(DFPROJ_INDEX, "dist_index", "idx_morph_temp_rank")
-    # else:
-    #     DFPROJ_INDEX_DIFFS = None
-
-    # return DFPROJ_INDEX, DFDIST, DFPROJ_INDEX_AGG, DFDIST_AGG, DFPROJ_INDEX_DIFFS
 
 def _compute_df_using_dist_index(pa, var_effect = "idx_morph_temp", effect_lev_base1=0, effect_lev_base2=99):
     """
@@ -1896,13 +1889,14 @@ def _analy_extract_PA_dim_reduction(PA, savedir, restricted_twind_for_dpca, twin
                                     scalar_or_traj, dim_red_method, tbin_dur, pca_tbin_slice,
                                     NPCS_KEEP, raw_subtract_mean_each_timepoint=False):
     """
-    Just dim reduction
+    Perform dim reduction on PA.
+
+    MS: checked
     """
     ############### DIM REDUCTION
     # -- Fixed params
     superv_dpca_var = "idx_morph_temp"
     superv_dpca_vars_group = None
-    # dim_red_method = "dpca"
 
     ### DIM REDUCTION
     savedirpca = f"{savedir}/pca_construction"
@@ -1910,9 +1904,6 @@ def _analy_extract_PA_dim_reduction(PA, savedir, restricted_twind_for_dpca, twin
 
     if restricted_twind_for_dpca is None:
         restricted_twind_for_dpca = twind_final
-    #     twind_pca = proj_twind
-    # else:
-    #     twind_pca = restricted_twind_for_dpca
 
     Xredu, PAredu = PA.dataextract_dimred_wrapper(scalar_or_traj, dim_red_method, savedirpca, 
             restricted_twind_for_dpca, tbin_dur, pca_tbin_slice, NPCS_KEEP = NPCS_KEEP,
@@ -2685,14 +2676,13 @@ def analy_switching_statespace_euclidian_score_and_plot(DFallpa, SAVEDIR_BASE, m
 
 def analy_switching_GOOD_stats_linear_2br_compute(DFPROJ_INDEX_AGG_DIFF_SCAL, savedir):
     """
-
     Considers each row of DFPROJ_INDEX_AGG_DIFF_SCAL as a datapt. Each is expeted to be
     a single (ani, date, ms). -- ie this combines all data across experiments. 
 
     Then gets paired effect (conditions on ani_date_ms) for each pair of regions.
 
+    MS: checked
     """
-    from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good
     import statsmodels.formula.api as smf
 
     label_lev = "ambig"
@@ -2714,7 +2704,7 @@ def analy_switching_GOOD_stats_linear_2br_compute(DFPROJ_INDEX_AGG_DIFF_SCAL, sa
                 formula = f"{yvar} ~ C(bregion, Treatment('{bregion1}')) + C(an_da_ms)"
                 md = smf.ols(formula, dflm)
                 mdf = md.fit()
-                mdf.summary()
+                # mdf.summary()
                 
                 coefficients = mdf.params
                 dfcoeff = coefficients.reset_index()
@@ -2767,7 +2757,7 @@ def analy_switching_GOOD_stats_linear_2br_compute(DFPROJ_INDEX_AGG_DIFF_SCAL, sa
 
     dfstats = DFSTATS_2BR.copy()
 
-    fig, axes = plot_subplots_heatmap(dfstats, "bregion1", "bregion2", "coeff_val", var_same_same, 
+    fig, _ = plot_subplots_heatmap(dfstats, "bregion1", "bregion2", "coeff_val", var_same_same, 
                                 True, True, None, True, W=6, ZLIMS=ZLIMS, row_values=order_bregion, col_values=order_bregion)
     savefig(fig, f"{savedir}/COMPARE_AREAS-grp={grp}.pdf")
 
@@ -2802,6 +2792,239 @@ def analy_switching_GOOD_stats_linear_2br_compute(DFPROJ_INDEX_AGG_DIFF_SCAL, sa
     savefig(fig, f"{savedir}/COMPARE_AREAS-catplot-grp={grp}-pvalues.pdf")
 
     plt.close("all")
+
+def analy_switching_GOOD_euclidian_index_manuscript(DFallpa, SAVEDIR_BASE, map_tcmorphset_to_idxmorph, 
+                                                        list_morphset, map_tcmorphset_to_info,
+                                                        make_plots=True, save_df=True,
+                                                        DO_RSA_HEATMAPS=False, var_context_diff="seqc_0_loc",
+                                                        do_train_test_splits=True):
+    """
+    Good--final plots of distance index (i.e,, relative distance from 0 and 99) but clean.
+    i.e., is like analy_switching_statespace_euclidian_traj, but the follwoing:
+    - train-test splits for dim reduction, otherwise there is overfitting.
+    - using different twinds (smaller) for fitting subspace compared to the entire data window.
+    
+    PARAMS:
+    - var_context_diff, if None ignore, otherwise is string variable. Theneucl distance will be taken between pairs of datapts that
+    are different for this variable. (e.g., seqc_0_loc, then needs to generalize across locations)
+    - do_train_test_splits, should leave True, as if not, then there is bias. Note that this is (probably) true even if you
+    have something for var_context_diff.
+
+    MS: checked
+    """
+    
+    twind_scal_rsa = (0.6, 1.0) # LATE
+
+    var_effect = "idxmorph_assigned"
+    effect_lev_base1 = "0|base1"
+    effect_lev_base2 = "99|base2"
+
+    # (1) Split into two
+
+    scalar_or_traj = "traj"
+    tbin_slide = 0.02
+    raw_subtract_mean_each_timepoint = False
+    NPCS_KEEP = 8
+    tbin_dur = 0.15
+
+    fit_twind = (0.05, 0.9)
+    final_twind = (-0.3, 1.2)
+    superv_dpca_var = "idx_morph_temp_loc"
+    superv_dpca_vars_group = None
+    dim_red_method = "dpca"
+    EVENT = "03_samp"
+    
+    if do_train_test_splits:
+        # N_SPLITS_OUTER = 6 # 2 is fine, but 6 is prob better, might be high variance.
+        # N_SPLITS_INNER = 2
+        N_SPLITS_OUTER = 1
+        N_SPLITS_INNER = 8
+    else:
+        N_SPLITS_OUTER = 1
+        N_SPLITS_INNER = 1
+    
+    ########################### S
+    list_bregion = DFallpa["bregion"].unique().tolist()
+
+    ### Run
+    SAVEDIR = f"{SAVEDIR_BASE}/analy_switching_GOOD_euclidian_index/ev={EVENT}-scal={scalar_or_traj}-dimred={dim_red_method}-twind={final_twind}-npcs={NPCS_KEEP}"
+
+    for bregion in list_bregion:
+        for morphset in list_morphset:
+            
+            print(list_morphset, morphset)
+            savedir = f"{SAVEDIR}/bregion={bregion}/morphset={morphset}"
+            os.makedirs(savedir, exist_ok=True)
+            print("Saving to:", savedir)
+
+            if DO_RSA_HEATMAPS:
+                # Plot pairwise distances (rsa heatmaps).
+                # This is done separatee to below becuase it doesnt use the train-test splits.
+                # It shold but I would have to code way to merge multple Cl, which is doable.
+                from neuralmonkey.analyses.euclidian_distance import timevarying_compute_fast_to_scalar
+
+                _PA = extract_single_pa(DFallpa, bregion, None, "trial", EVENT)
+                _, PAthis = _analy_extract_PA_dim_reduction(_PA, None, fit_twind, final_twind,
+                                                scalar_or_traj, dim_red_method, tbin_dur, tbin_slide,
+                                                NPCS_KEEP, raw_subtract_mean_each_timepoint=raw_subtract_mean_each_timepoint)
+                savedirthis = f"{savedir}/rsa_heatmap/twindscal={twind_scal_rsa}"
+                os.makedirs(savedirthis, exist_ok=True)
+
+                # Prune to scalar window
+                PAthis = PAthis.slice_by_dim_values_wrapper("times", twind_scal_rsa)
+
+                # Make rsa heatmaps.
+                vars_group = ["idxmorph_assigned"]
+                timevarying_compute_fast_to_scalar(PAthis, vars_group, rsa_heatmap_savedir=savedirthis)
+
+            ### Extract data (without dim redu)
+            PA = extract_single_pa(DFallpa, bregion, None, "trial", EVENT)
+            TRIALCODES_ORDERED = PA.Xlabels["trials"]["trialcode"].tolist()
+
+            ### Iter over splits, each time collecting and scoring.
+            list_dfindex =[]
+            list_dfdist = []
+            already_plotted_dimredu =False
+            for i_outer in range(N_SPLITS_OUTER):
+                
+                # For train-test split, make sure all final cases are present (e.g., ambig)
+                if var_context_diff is not None:
+                    _vars_grp = [var_effect, var_context_diff]
+                else:
+                    _vars_grp = [var_effect]
+
+                if N_SPLITS_INNER==1:
+                    # Then dont split. Put all the trials into the inds.
+                    _indsall = list(range(len(PA.Trials)))
+                    folds_dflab = [(_indsall, _indsall)]
+                else:
+                    # Better, more careful, ensuring enough data for euclidian distance.
+                    fraction_constrained_set=0.75
+                    n_constrained = 3 # Ideally have more than 1 pair
+
+                    # - must get these
+                    dflab = PA.Xlabels["trials"]
+                    if var_context_diff is not None:
+                        a = [(effect_lev_base1, _lev) for _lev in dflab[var_context_diff].unique().tolist()]
+                        b = [(effect_lev_base2, _lev) for _lev in dflab[var_context_diff].unique().tolist()]
+                        list_labels_need_n = a + b # Need the endpoints
+                    else:
+                        list_labels_need_n = [effect_lev_base1, effect_lev_base2]
+
+                    min_frac_datapts_unconstrained=None
+                    plot_train_test_counts=True
+                    plot_indices=False
+                    from pythonlib.tools.exceptions import NotEnoughDataException
+                    try:
+                        min_n_datapts_unconstrained=len(PA.Xlabels["trials"][superv_dpca_var].unique())
+                        folds_dflab, fig_unc, fig_con = PA.split_stratified_constrained_grp_var(N_SPLITS_INNER, _vars_grp, 
+                                                                        fraction_constrained_set, n_constrained, 
+                                                                        list_labels_need_n, min_frac_datapts_unconstrained,  
+                                                                        min_n_datapts_unconstrained, plot_train_test_counts, plot_indices)
+                    except NotEnoughDataException as err:
+                        # Try, more lenient
+                        min_n_datapts_unconstrained=int(len(PA.Xlabels["trials"][superv_dpca_var].unique())/2)
+                        folds_dflab, fig_unc, fig_con = PA.split_stratified_constrained_grp_var(N_SPLITS_INNER, _vars_grp, 
+                                                                        fraction_constrained_set, n_constrained, 
+                                                                        list_labels_need_n, min_frac_datapts_unconstrained,  
+                                                                        min_n_datapts_unconstrained, plot_train_test_counts, plot_indices)
+                    except Exception as err:
+                        raise err
+                        
+                    savefig(fig_con, f"{savedir}/after_split_constrained_fold_0.pdf")
+                    savefig(fig_unc, f"{savedir}/after_split_unconstrained_fold_0.pdf")
+                    plt.close("all")
+
+                for i_dimredu, (train_inds, test_inds) in enumerate(folds_dflab):
+                    print(f"...splits, i_outer={i_outer}, i_inner={i_dimredu}")
+                    # train_inds, fewer inds than than test_inds
+                    inds_pa_fit = [int(i) for i in train_inds] # 
+                    inds_pa_final = [int(i) for i in test_inds] # each ind occurs only once
+
+                    savedir = f"{SAVEDIR}/bregion={bregion}/morphset={morphset}/preprocess/i_outer={i_outer}-i_dimredu={i_dimredu}"
+                    os.makedirs(savedir, exist_ok=True)
+
+                    if already_plotted_dimredu:
+                        savedir_this = None
+                    else:
+                        savedir_this = savedir
+                        already_plotted_dimredu = True
+                    _, PAredu = PA.dataextract_dimred_wrapper("traj", dim_red_method, savedir_this, 
+                                                    fit_twind, tbin_dur=tbin_dur, tbin_slide=tbin_slide, 
+                                                    NPCS_KEEP = NPCS_KEEP,
+                                                    dpca_var = superv_dpca_var, dpca_vars_group = superv_dpca_vars_group, 
+                                                    dpca_proj_twind = final_twind, 
+                                                    raw_subtract_mean_each_timepoint=False,
+                                                    inds_pa_fit=inds_pa_fit, inds_pa_final=inds_pa_final,
+                                                    n_min_per_lev_lev_others=1)
+
+                    # (2) For each split, get a dist_index score.
+                    from neuralmonkey.scripts.analy_decode_moment_psychometric import _compute_df_using_dist_index_traj
+                    ########################################
+                    ### Get single trial pairwise distances over time.
+                    list_grps_get = [(effect_lev_base1,), (effect_lev_base2,)]
+                        # ("0|base1",),  
+                        # ("99|base2",)
+                        # ] # This is important, or else will fail if there are any (idx|assign) with only one datapt.
+                    print("Getting dist_index vs. these base levels: ", list_grps_get)
+                    dfproj_index, dfdist, _, _, _ = _compute_df_using_dist_index_traj(PAredu, var_effect, 
+                                                                                      effect_lev_base1, effect_lev_base2,
+                                                                                      list_grps_get=list_grps_get,
+                                                                                      var_context_diff=var_context_diff,
+                                                                                      plot_conjunctions_savedir=savedir)
+
+                    ############## SAVE
+                    # NOTE: dfproj_index already has trialcodes, so it doesnt need inner index...
+                    dfproj_index["i_dimredu"] = i_dimredu
+                    dfproj_index["i_outer"] = i_outer
+
+                    dfdist["i_dimredu"] = i_dimredu
+                    dfdist["i_outer"] = i_outer
+
+                    list_dfindex.append(dfproj_index)
+                    list_dfdist.append(dfdist)
+
+            # Check that the output matches the input trialcodes
+            DFDIST = pd.concat(list_dfdist).reset_index(drop=True)
+            DFPROJ_INDEX = pd.concat(list_dfindex).reset_index(drop=True)
+
+            # give new index row, based on unique trialcodes
+            # trialcodes = DFDIST["trialcode"].unique().tolist()
+            DFPROJ_INDEX["idx_row_datapt"] = [TRIALCODES_ORDERED.index(tc) for tc in DFPROJ_INDEX["trialcode"]]
+            DFDIST["idx_row_datapt"] = [TRIALCODES_ORDERED.index(tc) for tc in DFDIST["trialcode"]]
+
+            # Aggregate so that each trialcode gets single datapt
+            from pythonlib.tools.pandastools import aggregGeneral
+            DFPROJ_INDEX = aggregGeneral(DFPROJ_INDEX, ["idx_row_datapt", "trialcode", "time_bin_idx", "labels_1_datapt"], 
+                                         ["dist_index", "dist_index_norm", "time_bin"], nonnumercols="all")
+            DFDIST = aggregGeneral(DFDIST, ["idx_row_datapt", "trialcode", "time_bin_idx", "labels_1_datapt", "labels_2_grp"], 
+                                   ["dist_mean", "DIST_50", "DIST_98", "dist_norm", "dist_yue_diff", "time_bin"], nonnumercols="all")
+            
+            # Round the times to nearest ms
+            DFDIST["time_bin"] = np.round(DFDIST["time_bin"]*1000)/1000
+            DFPROJ_INDEX["time_bin"] = np.round(DFPROJ_INDEX["time_bin"]*1000)/1000
+
+            # Condition
+            _analy_switching_statespace_euclidian_traj_condition(PA, DFPROJ_INDEX, DFDIST, None, None)
+
+            ### PLOTS
+            savedir = f"{SAVEDIR}/bregion={bregion}/morphset={morphset}/plots"
+            os.makedirs(savedir, exist_ok=True)
+
+            ###### PLOTS
+            if make_plots:
+                _analy_switching_statespace_euclidian_traj_plots(DFPROJ_INDEX, DFDIST, savedir)
+
+            if save_df:
+                # Save the reuslts
+                savedir = f"{SAVEDIR}/bregion={bregion}/morphset={morphset}"
+                os.makedirs(savedir, exist_ok=True)
+                
+                pd.to_pickle(DFPROJ_INDEX, f"{savedir}/DFPROJ_INDEX.pkl")
+                pd.to_pickle(DFDIST, f"{savedir}/DFDIST.pkl")
+                # pd.to_pickle(DFPROJ_INDEX_AGG, f"{savedir}/DFPROJ_INDEX_AGG.pkl")
+                # pd.to_pickle(DFDIST_AGG, f"{savedir}/DFDIST_AGG.pkl")
+            plt.close("all")
 
 
 def analy_switching_GOOD_euclidian_index(DFallpa, SAVEDIR_BASE, map_tcmorphset_to_idxmorph, 
@@ -3069,6 +3292,58 @@ def analy_switching_GOOD_euclidian_index(DFallpa, SAVEDIR_BASE, map_tcmorphset_t
                 # pd.to_pickle(DFDIST_AGG, f"{savedir}/DFDIST_AGG.pkl")
             plt.close("all")
 
+
+def analy_switching_GOOD_state_space_manuscript(DFallpa, SAVEDIR_BASE, list_morphset,
+                                                list_dim_red_method=None):
+    """
+    FINAL good state space plots, for switching morph expts, just focused on trajectories.
+    Is better than analy_switching_statespace_euclidian_score_and_plot, in that here are 
+    plots clean version, and uses larger time window.
+    NOTE: here does not do scalar state space plots, or anyting with euclidean distance.
+
+    MS: checked
+    """
+
+    list_bregion = ["PMv"]
+    TWIND_ANALY = (-0.4, 1.2) # This is just for windowing final data, not for fitting pca.
+
+    if list_dim_red_method is None:
+        list_dim_red_method = ["pca_proj", "dpca"]
+
+    EVENT = "03_samp"
+
+    NPCS_KEEP = 8
+    scalar_or_traj = "traj"
+    tbin_dur = 0.2
+    tbin_slide = 0.01
+    raw_subtract_mean_each_timepoint = False
+
+    fit_twind = (0.05, 0.9)
+    final_twind = TWIND_ANALY
+
+    EVENT = "03_samp"
+
+    ########################### STATE SPACE PLOTS (all, good), AND VARIOUS METRICS    
+    list_npcs_keep = [NPCS_KEEP]
+    
+    raw_subtract_mean_each_timepoint = False
+    for dim_red_method in list_dim_red_method:
+        ### Run
+        SAVEDIR = f"{SAVEDIR_BASE}/analy_switching_GOOD_state_space/ev={EVENT}-subtr={raw_subtract_mean_each_timepoint}-scal={scalar_or_traj}-dimred={dim_red_method}-twind={final_twind}-npcs={NPCS_KEEP}"
+
+        for bregion in list_bregion:
+            for morphset in list_morphset:
+
+                savedir = f"{SAVEDIR}/bregion={bregion}/morphset={morphset}"
+                os.makedirs(savedir, exist_ok=True)
+                
+                _PA = extract_single_pa(DFallpa, bregion, None, "trial", EVENT)
+                _, PAredu = _analy_extract_PA_dim_reduction(_PA, None, fit_twind, final_twind,
+                                                scalar_or_traj, dim_red_method, tbin_dur, tbin_slide,
+                                                NPCS_KEEP, raw_subtract_mean_each_timepoint=raw_subtract_mean_each_timepoint)
+
+                ### Analysis -- get all distance scores.
+                analy_switching_statespace_euclidian_good_manuscript(PAredu, savedir, PLOT_CLEAN_VERSION=True)
 
 def analy_switching_GOOD_state_space(DFallpa, SAVEDIR_BASE, map_tcmorphset_to_idxmorph, 
                                                         list_morphset, map_tcmorphset_to_info,

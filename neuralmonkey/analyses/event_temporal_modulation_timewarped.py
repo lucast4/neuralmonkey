@@ -21,7 +21,7 @@ def _get_twind_between_these_events(PAtrial, ev1, ev2, pad=0.005):
     return twind
 
 
-def load_and_preprocess_PAtrialpop(animal, date):
+def load_and_preprocess_PAtrialpop(animal, date, fr_mean_subtract_method ="across_time_bins"):
     """
     PAtrialpop is a single PA, time-warped across events, and holding all bregions
     """
@@ -57,7 +57,7 @@ def load_and_preprocess_PAtrialpop(animal, date):
     DFallpa = pd.DataFrame(res)
 
     # Preprocess
-    dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date)
+    dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, fr_mean_subtract_method=fr_mean_subtract_method)
 
     preprocess_dfallpa(DFallpa)
 
@@ -76,7 +76,7 @@ def load_and_preprocess_PAtrialpop(animal, date):
 
 def preprocess_dfallpa(DFallpa):
     """
-
+    Split into train and test, for heatmap plotting
     """
 
     # Get baseline pa
@@ -93,7 +93,7 @@ def preprocess_dfallpa(DFallpa):
     for pa in DFallpa["pa"].values:
         frac = compute_frac_split(len(pa.Trials))
         try:
-            # pa_large, pa_small = pa.split_sample_stratified_by_label(["seqc_0_shape", "seqc_0_loc"], frac, False)
+            # Split to balance the distribution of shape labels across splits.
             pa_large, pa_small = pa.split_sample_stratified_by_label(["seqc_0_shape"], frac, False)
         except Exception as err:
             pa_large, pa_small = pa.split_train_test_random(frac)
@@ -102,8 +102,6 @@ def preprocess_dfallpa(DFallpa):
         list_pa_small.append(pa_small)
     DFallpa["pa_large"] = list_pa_large
     DFallpa["pa_small"] = list_pa_small
-
-    
 
 def heatmap_bregions_events_wrapper(DFallpa, PAtrial, SAVEDIR, list_hack_abs=None, list_norm = None, list_sort=None):
     """
@@ -189,15 +187,6 @@ def heatmap_bregions_events(DFallpa, base_event, base_twind, sort_event, sort_tw
         stats_base_dict[bregion] = (xmean, xstd)
 
     # Get sortinds 
-    # map_region_to_sortevent = {
-    #     "M1":"06_on_strokeidx_0",
-    #     "M1":"06_on_strokeidx_0",
-    #     "M1":"06_on_strokeidx_0",
-    #     "M1":"06_on_strokeidx_0",
-    #     "M1":"06_on_strokeidx_0",
-
-    #     'PMv', 'PMd', 'dlPFC', 'vlPFC', 'FP', 'SMA', 'preSMA
-    # }
     map_region_to_sortevent = {region:sort_event for region in list_bregion}
     sortinds_dict = {}
     # sort_event = "06_on_strokeidx_0"

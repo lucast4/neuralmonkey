@@ -155,7 +155,9 @@ def _preprocess_pa_dim_reduction(PA, subspace_projection, subspace_projection_fi
                                  inds_pa_fit=None, inds_pa_final=None,
                                  n_min_per_lev_lev_others=1, scalar_or_traj="traj"):
     """
-    Helper to do dim reductions.
+    Helper to do dim reduction on PA, returning copy of PA that is modifed.
+
+    MS: checked
     """
     from neuralmonkey.scripts.analy_euclidian_chars_sp import params_subspace_projection
     if subspace_projection is not None:
@@ -362,10 +364,12 @@ def euclidian_time_resolved_fast_shuffled(DFallpa, animal, date, var_other, SAVE
                                           DO_SHUFFLE=False, DO_RSA_HEATMAPS=False, var_context_same=None,
                                           quick_mode=False):
     """
-    Good! Much faster method. And does two other things important for more rigorous result:
+    Compute pariwise euclidean distance, using trajectories.
+
+    Good! Much faster method compared to previosu. And does two other things important for more rigorous result:
     1. Train-test split for dim redu (separate for fitting[smaller] and then final data projected)
 
-    Also gets shuffled data.
+    Also gets shuffled data optionally
 
     PARAMS:
     - DO_SHUFFLE, bool, if True, then gets shuffle by shuffling 3 ways, all working at level of trial.
@@ -374,20 +378,13 @@ def euclidian_time_resolved_fast_shuffled(DFallpa, animal, date, var_other, SAVE
     --> I stopped doing shuffle, since all I wanted was the dfdists. I then run shuffling on those, using method #3.
     - DO_RSA_HEATMAPS, bool. This may take significantly more time...
     """
-    # assert False, "save split, or else file gets to mult GB -- run seprately for each bregion."
     import seaborn as sns
 
     # assert var_context_same is not None, "to make sure I dont forget. you can just enter a dummy variable"
     assert var_context_same is None, "didnt seem towork, so for paper I just used None. Should fix it if want to use."
     var_effect = "seqc_0_shape"
-    # vars_group = [var_effect, var_other]
-    # if var_other == "seqc_0_loc":
-    #     var_context_same = "gridsize"
-    # elif var_other == "gridsize":
-    #     var_context_same = "seqc_0_loc"
-    # else:
-    #     assert False
 
+    # If do train-test split for getting subspace and then computing distance after projecting to that subsapce.
     N_SPLITS_OUTER = 1
     N_SPLITS = 8
     N_SHUFF_PER_SPLIT = int(np.ceil(1000/6))
@@ -408,7 +405,6 @@ def euclidian_time_resolved_fast_shuffled(DFallpa, animal, date, var_other, SAVE
         "05_first_raise":[(-0.3, 0.3)],
         "06_on_strokeidx_0":[(-0.5, -0.05), (0.05, 0.5)],
     }
-
 
     if var_other == "seqc_0_loc":
         list_subspace_projection = ["shape", "shape_loc"]
@@ -632,6 +628,181 @@ def euclidian_time_resolved_fast_shuffled(DFallpa, animal, date, var_other, SAVE
         pickle.dump(list_dfdist, f)
     with open(f"{SAVEDIR_ANALYSIS}/list_dfdist_shuff.pkl", "wb") as f:
         pickle.dump(list_dfdist_shuff, f)
+
+
+def euclidian_time_resolved_fast_shuffled_manuscript(DFallpa, animal, date, var_other, SAVEDIR_ANALYSIS,
+                                          DO_SHUFFLE=False, DO_RSA_HEATMAPS=False, var_context_same=None,
+                                          quick_mode=False):
+    """
+    Compute pariwise euclidean distance, using trajectories.
+    
+    Also plot RSA matrices
+
+    Good! Much faster method compared to previosu. And does two other things important for more rigorous result:
+    1. Train-test split for dim redu (separate for fitting[smaller] and then final data projected)
+
+    Also gets shuffled data optionally
+
+    PARAMS:
+    - DO_SHUFFLE, bool, if True, then gets shuffle by shuffling 3 ways, all working at level of trial.
+    To analyze and plot results of shuffle, use Stats method #1
+    (See notebookb: /home/lucas/code/neuralmonkey/neuralmonkey/notebooks_tutorials/241110_shape_invariance_all_plots_SP.ipynb)
+    --> I stopped doing shuffle, since all I wanted was the dfdists. I then run shuffling on those, using method #3.
+    - DO_RSA_HEATMAPS, bool. This may take significantly more time...
+
+    MS: checked
+    """
+    import seaborn as sns
+    assert var_context_same is None
+    var_effect = "seqc_0_shape"
+
+    # If do train-test split for getting subspace and then computing distance after projecting to that subsapce.
+    N_SPLITS_OUTER = 1
+    N_SPLITS = 8
+    N_SHUFF_PER_SPLIT = int(np.ceil(1000/6))
+    DO_SHUFFLE = False
+
+    twind_analy = TWIND_ANALY
+    tbin_dur = 0.15
+    tbin_slide = 0.02
+
+    if int(date)>220720:
+        twind = (0.05, 0.9)
+    else:
+        twind = (0.05, 0.6)
+
+    SUBSPACE_PROJ_FIT_TWIND = {
+        "03_samp":[twind],
+    }
+
+    list_subspace_projection = ["shape"]
+
+    map_event_to_listtwind = {
+            "03_samp":[(0.05, 0.6)],
+        }
+
+    list_dfdist =[]
+    list_dfdist_shuff =[]
+    for _, row in DFallpa.iterrows():
+        bregion = row["bregion"]
+        which_level = row["which_level"]
+        event = row["event"]
+        PA = row["pa"]
+
+        for subspace_projection in list_subspace_projection:
+            list_fit_twind = SUBSPACE_PROJ_FIT_TWIND[event]
+            
+            for subspace_projection_fitting_twind in list_fit_twind:
+                
+                # Final save dir
+                SAVEDIR = f"{SAVEDIR_ANALYSIS}/{which_level}-{bregion}-{event}-ss={subspace_projection}-fit_twind={subspace_projection_fitting_twind}"
+                os.makedirs(SAVEDIR, exist_ok=True)
+                print("SAVING AT ... ", SAVEDIR)
+
+                if DO_RSA_HEATMAPS:
+                    # Plot pairwise distances (rsa heatmaps).
+                    # This is done separatee to below becuase it doesnt use the train-test splits.
+                    # It shold but I would have to code way to merge multple Cl, which is doable.
+                    from neuralmonkey.analyses.euclidian_distance import timevarying_compute_fast_to_scalar
+
+                    PAthis = _preprocess_pa_dim_reduction(PA, subspace_projection, subspace_projection_fitting_twind,
+                                                twind_analy, tbin_dur, tbin_slide, None)
+
+                    list_twind_scalar = map_event_to_listtwind[event]
+                    for twind_scal in list_twind_scalar:
+                        savedir = f"{SAVEDIR}/rsa_heatmap/twindscal={twind_scal}"
+                        os.makedirs(savedir, exist_ok=True)
+
+                        # Prune to scalar window
+                        pa = PAthis.slice_by_dim_values_wrapper("times", twind_scal)
+
+                        # Make rsa heatmaps.
+                        timevarying_compute_fast_to_scalar(pa, [var_effect, var_other], rsa_heatmap_savedir=savedir, 
+                                                            var_context_same=var_context_same)
+
+                # Preprocess
+                savedir = f"{SAVEDIR}/preprocess"
+                os.makedirs(savedir, exist_ok=True)
+
+                PAthis = PA.copy()
+
+                ########### DO TRAIN-TEST SPLITS
+                for i_outer in range(N_SPLITS_OUTER):
+                    if var_context_same is not None:
+                        _vars_grp = [var_effect, var_other, var_context_same]
+                    else:
+                        _vars_grp = [var_effect, var_other]
+                    
+                    # Better, more careful, ensuring enough data for euclidian distance.
+                    fraction_constrained_set=0.75
+                    n_constrained=3 # Ideally have more than 1 pair
+                    list_labels_need_n=None
+                    min_frac_datapts_unconstrained=None
+                    min_n_datapts_unconstrained=len(PAthis.Xlabels["trials"][var_effect].unique())
+                    plot_train_test_counts=True
+                    plot_indices=False
+                    folds_dflab, fig_unc, fig_con = PAthis.split_stratified_constrained_grp_var(N_SPLITS, _vars_grp, 
+                                                                    fraction_constrained_set, n_constrained, 
+                                                                    list_labels_need_n, min_frac_datapts_unconstrained,  
+                                                                    min_n_datapts_unconstrained, plot_train_test_counts, plot_indices)
+                    savefig(fig_con, f"{savedir}/after_split_constrained_fold_0.pdf")
+                    savefig(fig_unc, f"{savedir}/after_split_unconstrained_fold_0.pdf")
+                    plt.close("all")
+
+                    for _i_dimredu, (inds_fit_pca, inds_final) in enumerate(folds_dflab):
+                        print(f"...splits, i_outer={i_outer}, i_inner={_i_dimredu}")
+
+                        # train_inds, more inds than than test_inds
+                        inds_fit_pca = [int(i) for i in inds_fit_pca]
+                        inds_final = [int(i) for i in inds_final]
+
+                        savedir = f"{SAVEDIR}/preprocess/i_outer={i_outer}-i_dimredu={_i_dimredu}"
+                        os.makedirs(savedir, exist_ok=True)
+                        
+                        PAthisRedu = _preprocess_pa_dim_reduction(PAthis, subspace_projection, subspace_projection_fitting_twind,
+                                    twind_analy, tbin_dur, tbin_slide, savedir=savedir, raw_subtract_mean_each_timepoint=False,
+                                    inds_pa_fit=inds_fit_pca, inds_pa_final=inds_final)
+
+                        if PAthisRedu is None:
+                            continue
+
+                        # Take different windows (for computing scalar score)
+                        # Go thru diff averaging windows (to get scalar)
+                        list_twind_scalar = map_event_to_listtwind[event]
+                        for twind_scal in list_twind_scalar:
+                            
+                            pa = PAthisRedu.slice_by_dim_values_wrapper("times", twind_scal)
+
+                            ###################################### Running euclidian
+                            from neuralmonkey.analyses.euclidian_distance import timevarying_compute_fast_to_scalar
+                            
+                            # (1) Data
+                            dfdist, _ = timevarying_compute_fast_to_scalar(pa, [var_effect, var_other], 
+                                                                            var_context_same=var_context_same,
+                                                                            plot_conjunctions_savedir=savedir)
+                            
+                            dfdist["bregion"] = bregion
+                            dfdist["which_level"] = which_level
+                            dfdist["event"] = event
+                            dfdist["subspace_projection"] = subspace_projection
+                            dfdist["subspace_projection_fitting_twind"] = [subspace_projection_fitting_twind for _ in range(len(dfdist))]
+                            dfdist["shuffle_ver"] = "ignore"
+                            dfdist["shuffled"] = False
+                            dfdist["shuffle_iter"] = 0
+                            dfdist["dim_redu_fold"] = _i_dimredu
+                            dfdist["i_outer"] = i_outer
+                            dfdist["twind_scal"] = [twind_scal for _ in range(len(dfdist))]
+                            list_dfdist.append(dfdist)
+
+                            plt.close("all")
+
+    # FINAL SAVE
+    import pickle
+    with open(f"{SAVEDIR_ANALYSIS}/list_dfdist.pkl", "wb") as f:
+        pickle.dump(list_dfdist, f)
+    with open(f"{SAVEDIR_ANALYSIS}/list_dfdist_shuff.pkl", "wb") as f:
+        pickle.dump(list_dfdist_shuff, f)
+
     
 def euclidian_time_resolved_fast_shuffled_mult_reload(animal, date, var_other, also_load_shuffled=False,
                                                       rename_event_with_eventtwind=True, events_keep=None,
@@ -648,6 +819,8 @@ def euclidian_time_resolved_fast_shuffled_mult_reload(animal, date, var_other, a
     Two rounds of agging:
     1. over replicates (chan subsets, and trial subsets)
     2. over label pairs.
+
+    MS: checked
     """
     import pickle
     import os
@@ -657,10 +830,7 @@ def euclidian_time_resolved_fast_shuffled_mult_reload(animal, date, var_other, a
         assert analysis_kind in ["char_sp_00_stroke_revision_regr_seman", "char_sp_00_stroke_revision_noregr_seman"]
     assert convert_to_df_with_postprocessing==True, "I usually do this -- are you sure?"
 
-    # animal = "Diego"
-    # date = 230615
     combine = True
-    # var_other = "seqc_0_loc"
 
     if SAVEDIR_BASE is None:
         SAVEDIR_BASE = "/lemur2/lucas/analyses/recordings/main/shape_invariance/EUCLIDIAN_SHUFF"
@@ -707,7 +877,7 @@ def euclidian_time_resolved_fast_shuffled_mult_reload(animal, date, var_other, a
         SAVEDIR_ORIG = SAVEDIR_BASE_char
         SAVEDIR = f"{SAVEDIR_ORIG}/{animal}-{date}-combine={combine}-wl={wl}-04_go_cue"
     elif analysis_kind == "char_sp_00_stroke":
-        # GOOD - THis is the one I used...
+        # GOOD
         var_effect = "shape_semantic_grp"
         var_other = "task_kind"
         wl = "stroke"
@@ -754,6 +924,7 @@ def euclidian_time_resolved_fast_shuffled_mult_reload(animal, date, var_other, a
 
     SAVEDIR_PLOTS = f"{SAVEDIR}/RELOADED_PLOTS"
     os.makedirs(SAVEDIR_PLOTS, exist_ok=True)
+
     print("Loading: ", f"{SAVEDIR}/list_dfdist.pkl")
     with open(f"{SAVEDIR}/list_dfdist.pkl", "rb") as f:
         list_dfdist = pickle.load(f)
@@ -780,11 +951,11 @@ def euclidian_time_resolved_fast_shuffled_mult_reload(animal, date, var_other, a
             assert False, "empty data..."
     
     if merge_pancho_ss_twinds and animal=="Pancho":
-        # earlier days used shorter window, beucase hold perioud was shorter. Change the name, so that can merge across dates.
+        # earlier days used shorter window, beucase hold perioud was shorter. Simply change the name,
+        # so that can merge across dates.
         for df in list_dfdist:
             tmp = []
-            # print(df["subspace_projection_fitting_twind"].value_counts())
-            for i, row in df.iterrows():
+            for _, row in df.iterrows():
                 if (row["subspace_projection_fitting_twind"] == (0.05, 0.9)) and (row["event"]=="03_samp"):
                     tmp.append(("post", "post"))
                 elif (row["subspace_projection_fitting_twind"] == (0.05, 0.6)) and (row["event"]=="03_samp"):
@@ -792,10 +963,6 @@ def euclidian_time_resolved_fast_shuffled_mult_reload(animal, date, var_other, a
                 else:
                     tmp.append(row["subspace_projection_fitting_twind"])
             df["subspace_projection_fitting_twind"] = tmp
-            # display(df)
-            # print(df["subspace_projection_fitting_twind"].value_counts())
-            # assert False
-    # assert False
 
     # Now, events have multiple possible twind_scalar. to allow compatible with code,
     # rename events to events+scal.
@@ -814,8 +981,6 @@ def euclidian_time_resolved_fast_shuffled_mult_reload(animal, date, var_other, a
 
     if convert_to_df_with_postprocessing:
         ### (2) Prep dataset
-        # savedir = f"{SAVEDIR_PLOTS}/stats_method_3_using_shuffle_dist_mat-nshuff={n_shuff}"
-        # os.makedirs(savedir, exist_ok=True)
         from neuralmonkey.neuralplots.brainschematic import datamod_reorder_by_bregion
         from pythonlib.tools.pandastools import append_col_with_grp_index, aggregGeneral
         import pandas as pd
@@ -828,6 +993,7 @@ def euclidian_time_resolved_fast_shuffled_mult_reload(animal, date, var_other, a
         DFDISTS["date"] = date
 
         if "prune_version" not in DFDISTS:
+            # Add a dummy variable
             DFDISTS["prune_version"] = "none"
 
         print("appending...")
@@ -852,7 +1018,6 @@ def euclidian_time_resolved_fast_shuffled_mult_reload(animal, date, var_other, a
 
         # Agg all the "metaparams"
         from pythonlib.tools.pandastools import append_col_with_grp_index
-        # DFDISTS_AGG = append_col_with_grp_index(DFDISTS_AGG, ["prune_version", "subspace|twind", "event"], "metaparams")
         DFDISTS = append_col_with_grp_index(DFDISTS, ["prune_version", "subspace|twind", "event"], "metaparams")
 
         ### Do general postprocessing of DFDISTS
@@ -1515,6 +1680,142 @@ def _euclidian_time_resolved_fast_shuffled_mult_scatter_plots_params(analysis_ki
         assert False
     return list_date
 
+def euclidian_time_resolved_fast_shuffled_mult_scatter_plots_manuscriptshape(analysis_kind="shape_invar", just_return_df=False, 
+                                                             DO_FURTHER_POSTPROCESSING=False, PLOT_EACH_PAIR=False,
+                                                             prune_min_n_trials=None,
+                                                             list_metaparams_plot_each_pair=None,
+                                                             do_catplots=False, SAVEDIR_BASE=None):
+    """
+    GOOD -- Main wrapper to load and plot across days, without bothering about shuffle stats.
+    Loads data saved by euclidian_time_resolved_fast_shuffled, across dates, and concats, and plots.
+
+    PARAMS:
+    - analysis_kind, "shape_invar", "char_sp"
+
+    Works for both (i) shape invar and (ii) char_sp. 
+    Goal is for this to work for anything. 
+
+    RETURNS:
+    - DFDISTS, each datapt is a label pair (agged over trials and replicates (chan subsets and trial subsets)
+    - DFDISTS_AGG, each datapt is a single condition pair (e.g., same|diff) agged over labels.
+
+    MS: checked
+    """
+    from neuralmonkey.scripts.analy_shape_invariance_all_plots_SP import euclidian_time_resolved_fast_shuffled_mult_reload
+    import os
+    from pythonlib.tools.pandastools import aggregGeneral
+    import pandas as pd
+    import matplotlib.pyplot as plt
+    from pythonlib.tools.pandastools import grouping_plot_n_samples_conjunction_heatmap
+    
+    # if manuscript_version and analysis_kind=="shape_invar_clean_loc":
+    #     SAVEDIR_MULT = "/lemur2/lucas/analyses/recordings/main/shape_invariance/EUCLIDIAN_SHUFF/MULT"
+    if SAVEDIR_BASE is None:
+        SAVEDIR_BASE = "/lemur2/lucas/analyses/recordings/main/shape_invariance/EUCLIDIAN_SHUFF"
+
+    if analysis_kind=="shape_invar_clean_loc":
+        SAVEDIR_MULT = f"{SAVEDIR_BASE}/MULT"
+        var_effect = "seqc_0_shape"
+        LIST_ANIMAL_VAROTHER = [
+            ("Pancho", "seqc_0_loc"),
+            ("Diego", "seqc_0_loc"),
+            ]
+    elif analysis_kind=="shape_invar_clean_size":
+        SAVEDIR_MULT = f"{SAVEDIR_BASE}/MULT"
+        var_effect = "seqc_0_shape"
+        LIST_ANIMAL_VAROTHER = [
+            ("Pancho", "gridsize"),
+            ("Diego", "gridsize"),
+        ]
+    else:
+        print(analysis_kind)
+        assert False
+
+    if just_return_df:
+        # Just take one -- this is for debugging.
+        LIST_ANIMAL_VAROTHER = LIST_ANIMAL_VAROTHER[:1]
+
+    for animal, var_other in LIST_ANIMAL_VAROTHER:
+        if animal == "Diego" and var_other == "seqc_0_loc":
+            list_date = [230614, 230615, 240508]
+        elif animal == "Diego" and var_other == "gridsize":
+            list_date = [230618, 230619]
+        elif animal == "Pancho" and var_other == "seqc_0_loc":
+            list_date = [220715, 220724]                
+        elif animal == "Pancho" and var_other == "gridsize":
+            list_date = [220716, 220717, 240530]
+        else:
+            assert False
+
+        SAVEDIR = f"{SAVEDIR_MULT}/analy={analysis_kind}-{animal}-var={var_effect}-varother={var_other}-{min(list_date)}-{max(list_date)}-post={DO_FURTHER_POSTPROCESSING}-prunen={prune_min_n_trials}"
+        os.makedirs(SAVEDIR, exist_ok=True)
+        print(SAVEDIR)
+
+        # Collect all dates data
+        list_df_raw = []
+        list_df = []
+        for date in list_date:
+            print("Trying to load this animal, var_other, date: ", animal, var_other, date)
+            counts_savedir = f"{SAVEDIR}/postprocessing"
+            dfdists, dfdists_agg, _ = euclidian_time_resolved_fast_shuffled_mult_reload(animal, date, var_other=var_other, 
+                                                                                        analysis_kind=analysis_kind,
+                                                                                  convert_to_df_with_postprocessing=True, 
+                                                                                  savedir=counts_savedir,
+                                                                                  DO_FURTHER_POSTPROCESSING=DO_FURTHER_POSTPROCESSING,
+                                                                                  prune_min_n_trials=prune_min_n_trials,
+                                                                                  SAVEDIR_BASE=SAVEDIR_BASE)
+            
+            if dfdists is None:
+                print("Skipping this animal date (empty data):", animal, date)
+            else:
+                dfdists["animal"] = animal
+                dfdists["date"] = date
+                dfdists_agg["animal"] = animal
+                dfdists_agg["date"] = date
+
+                list_df_raw.append(dfdists)
+                list_df.append(dfdists_agg)
+
+        DFDISTS = pd.concat(list_df_raw).reset_index(drop=True)
+        DFDISTS_AGG = pd.concat(list_df).reset_index(drop=True)
+
+        # SAVE COUNTS
+        # assert False, "use the plotting function in euclidian_distance.py"
+        for var in ["prune_version", "subspace|twind", "event"]:
+            fig = grouping_plot_n_samples_conjunction_heatmap(DFDISTS_AGG, "date", var, ["animal"])
+            savefig(fig, f"{SAVEDIR}/groupcounts-var={var}.pdf")
+            plt.close("all")
+
+        if just_return_df:
+            # return DFDISTS, DFDISTS_AGG, SAVEDIR_PLOTS # NO, since SAVEDIR_PLOTS is for one day
+            return DFDISTS, DFDISTS_AGG
+
+        ### Plot summaries
+        from neuralmonkey.analyses.euclidian_distance import dfdist_summary_plots_wrapper
+        dfdist_summary_plots_wrapper(DFDISTS, DFDISTS_AGG, var_effect, var_other, SAVEDIR,
+                                 PLOT_EACH_PAIR=PLOT_EACH_PAIR, 
+                                 list_metaparams_plot_each_pair=list_metaparams_plot_each_pair,
+                                 do_catplots=do_catplots)
+                                 
+        ### Plot distribution for each shapes
+        from pythonlib.tools.pandastools import aggregGeneral
+        from neuralmonkey.analyses.euclidian_distance import dfdist_summary_plots_wrapper
+        shapes = sorted(set(DFDISTS[f"{var_effect}_1"].tolist() + DFDISTS[f"{var_effect}_2"].tolist()))
+        var_same_same = f"same-{var_effect}|{var_other}"
+        for sh in shapes:
+            dfdists = DFDISTS[(DFDISTS[f"{var_effect}_1"]==sh) | (DFDISTS[f"{var_effect}_2"]==sh)].reset_index(drop=True)
+            dfdists_agg = aggregGeneral(dfdists, ["animal", "date", "metaparams", "bregion", "prune_version", 
+                                                    "which_level", "event", "subspace|twind", var_same_same],
+                                        ["dist_mean", "dist_norm", "dist_yue_diff", "DIST_50", "DIST_98"], nonnumercols="all")
+                
+            savedir = f"{SAVEDIR}/EACH_SHAPE/shape={sh}"
+            os.makedirs(savedir, exist_ok=True)
+            do_catplots = False
+            do_quick = True
+            dfdist_summary_plots_wrapper(dfdists, dfdists_agg, var_effect, var_other, SAVEDIR=savedir,
+                                        PLOT_EACH_PAIR=False, do_catplots=do_catplots, do_quick=do_quick)
+            plt.close("all")
+
 def euclidian_time_resolved_fast_shuffled_mult_scatter_plots(analysis_kind="shape_invar", just_return_df=False, 
                                                              DO_FURTHER_POSTPROCESSING=False, PLOT_EACH_PAIR=False,
                                                              prune_min_n_trials=None,
@@ -1703,6 +2004,8 @@ def _euclidianshuff_stats_linear_load_mult_dates_postprocess(DFDISTS):
     """
     Various conditioning of DFDISTS, to prep for linear model stats, mainly making the relevant variables 
     caterogical, and conjuntive with (Aniaml, date) -- i.e each datapt is (shape_pair, animal, date)
+
+    MS: checked
     """
     from pythonlib.tools.pandastools import append_col_with_grp_index, grouping_plot_n_samples_conjunction_heatmap
     from pythonlib.tools.pandastools import convert_var_to_categorical, convert_var_to_categorical_mult_columns
@@ -1743,10 +2046,9 @@ def euclidianshuff_stats_linear_load_mult_dates(animal, list_date, var_other, an
     Loads multiple days, with preprpicessing.
     This is important in that if FIRST concats dates, appends (animal, date) to shape and loc variables, and then
     converts to category. If convert to cat first, then loses the uniquenss of each (naimal, date) datapt.
-    """
-    from pythonlib.tools.pandastools import append_col_with_grp_index, grouping_plot_n_samples_conjunction_heatmap
-    from pythonlib.tools.pandastools import convert_var_to_categorical, convert_var_to_categorical_mult_columns
 
+    MS: checked
+    """
     list_dfdists=[]
     for date in list_date:
         dfdists, _, _ = euclidian_time_resolved_fast_shuffled_mult_reload(animal, date, var_other, 
@@ -1843,17 +2145,118 @@ def _remove_shape(DFDISTS, list_sh_remove, var_same_same):
 
     return DFDISTS_THIS, DFDISTS_THIS_AGG
 
+def euclidianshuff_stats_linear_plot_wrapper_manuscript(DFDISTS, SAVEDIR_PLOTS, var_other, var_effect="seqc_0_shape", 
+                                             subsample_plot_each_iter_stats=False,
+                                             do_subsample_method=True):
+    """
+    GOOD, MAkes all plots and does stats, final plots for manuscript.
+    PARAMS:
+    - DFDISTS, 
+    (can be single date or multiple dates, in the latter case make sure that each shape is shape-date conjucntion)
+    
+    MS: checked
+    """
+    from pythonlib.tools.pandastools import grouping_print_n_samples
+    from pythonlib.tools.pandastools import plot_45scatter_means_flexible_grouping
+    from neuralmonkey.scripts.analy_shape_invariance_all_plots_SP import _euclidianshuff_stats_linear_2br_scatter_wrapper
+    from pythonlib.tools.pandastools import aggregGeneral
+
+    assert len(DFDISTS["prune_version"].unique())==1, "code assumes only one, becuase was written for shape invar"
+    assert len(DFDISTS["which_level"].unique())==1, "code assumes only one, becuase was written for shape invar"
+    
+    var_same_same = f"same-{var_effect}|{var_other}"
+
+    ########### SCATTER OF EACH CASE
+    savedir = f"{SAVEDIR_PLOTS}/scatter_each_label1"
+    import os
+    os.makedirs(savedir, exist_ok=True)
+    print(savedir)
+
+    ### FINAL AGGS
+    # (1) each datapt is a unique label (i.e., shape-location) (multiple datapts per 0|1)
+    # - make a dupliated, so you have symmetric data
+    tmp = DFDISTS.copy()
+    tmp["labels_2"] = DFDISTS["labels_1"]
+    tmp["labels_1"] = DFDISTS["labels_2"]
+    tmp = pd.concat([tmp, DFDISTS]).reset_index(drop=True)
+    if False: # Sanity check that got diagonals
+        from pythonlib.tools.pandastools import grouping_plot_n_samples_conjunction_heatmap
+        grouping_plot_n_samples_conjunction_heatmap(tmp, "labels_1", "labels_2")
+
+    # Maintain separate dates
+    DFDISTS_DATPT_SHAPE1_EACHDATE = aggregGeneral(tmp, ["animal", "metaparams", "bregion", "prune_version", "which_level", "event", 
+                                               "subspace|twind", f"{var_effect}_1", var_same_same, "date"],
+                ["dist_mean", "dist_norm", "dist_yue_diff", "DIST_50", "DIST_98"], nonnumercols="all")
+    # Agg over dates
+    DFDISTS_DATPT_LABEL1 = aggregGeneral(tmp, ["animal", "metaparams", "bregion", "prune_version", "which_level", "event", 
+                                               "subspace|twind", "labels_1", var_same_same],
+                ["dist_mean", "dist_norm", "dist_yue_diff", "DIST_50", "DIST_98"], nonnumercols="all")
+
+    ### Plots, scatters
+    grp_vars = ["event", "subspace|twind"]
+    grpdict = grouping_append_and_return_inner_items_good(DFDISTS_DATPT_LABEL1, grp_vars)
+    for grp, inds in grpdict.items():
+        dfdists_labels = DFDISTS_DATPT_LABEL1.iloc[inds].reset_index(drop=True)
+
+        savepath = f"{savedir}/scatter_each_label1-grp={grp}-counts.txt"
+        grouping_print_n_samples(dfdists_labels, [var_same_same, "bregion", "labels_1"], savepath=savepath)
+
+        # Scatter plot, showing distributions of datapts
+        _, fig = plot_45scatter_means_flexible_grouping(dfdists_labels, var_same_same, "1|0", "0|1", "bregion", "dist_yue_diff", "labels_1", 
+                                                        shareaxes=True, plot_text=False, SIZE=3.8, alpha=0.3);
+        savefig(fig, f"{savedir}/scatter_each_label1-grp={grp}.pdf")
+        
+        plt.close("all")
+
+    ### COMPARE AREAS
+    if do_subsample_method:
+        ### Also plot with subsampling of (shape, tk) conditions.
+        savedir = f"{SAVEDIR_PLOTS}/SUBSAMPLE"
+        os.makedirs(savedir, exist_ok=True)
+        var_datapt = None
+        _euclidianshuff_stats_linear_2br_scatter_wrapper_SUBSAMPLE(DFDISTS, var_effect, var_same_same, var_datapt, savedir,
+                                                                plot_each_iter_stats=subsample_plot_each_iter_stats)
+
+    ###############################################################
+    ### Compare areas
+    # Note, here each datapt is conjunction of variables + (animal, date), where variables could be, for instance, (shape, loc).
+    # i.e., (prim1, loc2) x (animal, date) is a single datapt. 
+    # And then the plots/analyses are each pair of these. 
+    # This means that could have repeated conditions across days, leading to more datapts.
+    plot_heatmap_counts = False
+    plot_catplots = False
+    var_datapt, agg_over_dates, use_symmetric_dfdist = None, False, False
+    
+    if use_symmetric_dfdist:
+        dfdists = DFDISTS_DATPT_SHAPE1_EACHDATE
+    else:
+        dfdists = DFDISTS
+
+    dfdists_agg = dfdists
+        
+    savedir = f"{SAVEDIR_PLOTS}/var_datapt={var_datapt}-aggoverdates={agg_over_dates}"
+    os.makedirs(savedir, exist_ok=True)
+
+    DFSTATS_2BR = _euclidianshuff_stats_linear_2br_scatter_wrapper(dfdists_agg, var_same_same, var_datapt, savedir,
+                                                                    plot_heatmap_counts=plot_heatmap_counts, 
+                                                                    plot_catplots=plot_catplots)
+
+    return DFDISTS, DFDISTS_DATPT_LABEL1, DFSTATS_2BR
+
+
 def euclidianshuff_stats_linear_plot_wrapper(DFDISTS, SAVEDIR_PLOTS, var_other, var_effect="seqc_0_shape", 
                                              do_vs_zero=False,
                                              subsample_plot_each_iter_stats=False,
                                              do_subsample_method=True):
     """
-    MAkes all plots and does stats, for stats.
+    GOOD, MAkes all plots and does stats, final plots for manuscript.
     PARAMS:
     - DFDISTS, 
     (can be single date or multiple dates, in the latter case make sure that each shape is shape-date conjucntion)
     date
     """
+    from pythonlib.tools.pandastools import grouping_print_n_samples
+    from pythonlib.tools.pandastools import plot_45scatter_means_flexible_grouping
 
     assert len(DFDISTS["prune_version"].unique())==1, "code assumes only one, becuase was written for shape invar"
     assert len(DFDISTS["which_level"].unique())==1, "code assumes only one, becuase was written for shape invar"
@@ -1869,6 +2272,7 @@ def euclidianshuff_stats_linear_plot_wrapper(DFDISTS, SAVEDIR_PLOTS, var_other, 
 
     ## FINAL AGGS
     # (1) each datapt is a unique label (i.e., shape-location) (multiple datapts per 0|1)
+    # - make a dupliated, so you have symmetric data
     tmp = DFDISTS.copy()
     tmp["labels_2"] = DFDISTS["labels_1"]
     tmp["labels_1"] = DFDISTS["labels_2"]
@@ -1876,6 +2280,7 @@ def euclidianshuff_stats_linear_plot_wrapper(DFDISTS, SAVEDIR_PLOTS, var_other, 
     if False: # Sanity check that got diagonals
         from pythonlib.tools.pandastools import grouping_plot_n_samples_conjunction_heatmap
         grouping_plot_n_samples_conjunction_heatmap(tmp, "labels_1", "labels_2")
+
     # Maintain separate dates
     DFDISTS_DATPT_SHAPE1_EACHDATE = aggregGeneral(tmp, ["animal", "metaparams", "bregion", "prune_version", "which_level", "event", 
                                                "subspace|twind", f"{var_effect}_1", var_same_same, "date"],
@@ -1899,7 +2304,6 @@ def euclidianshuff_stats_linear_plot_wrapper(DFDISTS, SAVEDIR_PLOTS, var_other, 
     for grp, inds in grpdict.items():
         dfdists_labels = DFDISTS_DATPT_LABEL1.iloc[inds].reset_index(drop=True)
 
-        from pythonlib.tools.pandastools import grouping_print_n_samples
         savepath = f"{savedir}/scatter_each_label1-grp={grp}-counts.txt"
         grouping_print_n_samples(dfdists_labels, [var_same_same, "bregion", "labels_1"], savepath=savepath)
 
@@ -1908,7 +2312,6 @@ def euclidianshuff_stats_linear_plot_wrapper(DFDISTS, SAVEDIR_PLOTS, var_other, 
             grouping_plot_n_samples_conjunction_heatmap(dfdists_labels, "labels_1", var_same_same)
 
         # Scatter plot, showing distributions of datapts
-        from pythonlib.tools.pandastools import plot_45scatter_means_flexible_grouping
         _, fig = plot_45scatter_means_flexible_grouping(dfdists_labels, var_same_same, "1|0", "0|1", "bregion", "dist_yue_diff", "labels_1", 
                                                         shareaxes=True, plot_text=False, SIZE=3.8, alpha=0.3);
         savefig(fig, f"{savedir}/scatter_each_label1-grp={grp}.pdf")
@@ -1924,10 +2327,6 @@ def euclidianshuff_stats_linear_plot_wrapper(DFDISTS, SAVEDIR_PLOTS, var_other, 
         print(savedir)
 
         # # Or, load multiple dates from 
-        # from neuralmonkey.scripts.analy_shape_invariance_all_plots_SP import euclidian_time_resolved_fast_shuffled_mult_scatter_plots
-
-        # analysis_kind = "shape_invar_clean_loc"
-        # DFDISTS, DFDISTS_AGG = euclidian_time_resolved_fast_shuffled_mult_scatter_plots(analysis_kind, just_return_df=True)
         from neuralmonkey.scripts.analy_shape_invariance_all_plots_SP import _euclidianshuff_stats_linear_vs0_compute
         DFSTATS_vs0 = _euclidianshuff_stats_linear_vs0_compute(DFDISTS, var_same_same)
 
@@ -2184,36 +2583,34 @@ def _euclidianshuff_stats_linear_vs0_compute(DFDISTS, var_same_same, plot_coeff=
 
 def _euclidianshuff_stats_linear_2br_compute(DFDISTS, var_same_same, var_datapt):
     """
-    Compute pairwise stats for effect, across each pair of brain regions.
+    Compute pairwise stats (each pair is two brain regions) 
+    for effect, across each pair of brain regions.
     PARAMS:
     - DFDISTS, one datapt for each (label1, label2), ie already agged over trials, but keeping all conditions present.
-
+    RETURNS:
+    - DFSTATS_2BR, each row is a bregion pair
+    MS: checked
     """
     from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good
-    from pythonlib.tools.plottools import color_make_map_discrete_labels
-    from pythonlib.tools.pandastools import plot_45scatter_means_flexible_grouping
-    # from neuralmonkey.classes.session import _REGIONS_IN_ORDER_COMBINED
     import statsmodels.formula.api as smf
-    # order_bregion = _REGIONS_IN_ORDER_COMBINED
 
     if var_datapt is None:
         var_datapt = "shapeloc12"
 
     yvar = "dist_yue_diff"
+    list_bregion = ORDER_BREGION
     grp_vars = ["event", "subspace|twind", "metaparams"]
     grpdict = grouping_append_and_return_inner_items_good(DFDISTS, grp_vars)
-
-    list_bregion = ORDER_BREGION
     res = []
     for grp, inds in grpdict.items():
-        for contrast_lev  in ["1|0", "0|1"]:
+        dfthis = DFDISTS.iloc[inds].reset_index(drop=True)
+        for contrast_lev  in ["1|0", "0|1"]: 
             for i in range(len(list_bregion)):
                 for j in range(len(list_bregion)):
                     if j>i:
                         bregion1 = list_bregion[i]
                         bregion2 = list_bregion[j]
                         
-                        dfthis = DFDISTS.iloc[inds].reset_index(drop=True)
                         dflm = dfthis[
                             (dfthis[var_same_same]==contrast_lev) & (dfthis["bregion"].isin([bregion1, bregion2]))
                             ].reset_index(drop=True)
@@ -2225,8 +2622,9 @@ def _euclidianshuff_stats_linear_2br_compute(DFDISTS, var_same_same, var_datapt)
                             grouping_print_n_samples(dflm, ["bregion", "event", "subspace|twind", "same-seqc_0_shape|seqc_0_loc"], 
                                                     savepath=savepath)
 
+                        # Linear model, to get effect of contrast
+                        # - fixed effect of brain region and each datapt level
                         formula = f"{yvar} ~ C(bregion, Treatment('{bregion1}')) + C({var_datapt})"
-                        # formula = f"{yvar} ~ C(bregion, Treatment('{bregion1}')) + C({var_datapt}) + C(date)"
 
                         md = smf.ols(formula, dflm)
                         mdf = md.fit()
@@ -2255,6 +2653,7 @@ def _euclidianshuff_stats_linear_2br_compute(DFDISTS, var_same_same, var_datapt)
 
     DFSTATS_2BR = pd.DataFrame(res)
     DFSTATS_2BR["pval_log10"] = np.log10(DFSTATS_2BR["pval"])
+
     # Make a mirror image
     dftmp = DFSTATS_2BR.copy()
     dftmp["bregion1"] = DFSTATS_2BR["bregion2"]
@@ -2269,8 +2668,14 @@ def _euclidianshuff_stats_linear_2br_compute(DFDISTS, var_same_same, var_datapt)
 
 def _euclidianshuff_stats_linear_2br_compute_nsigs(DFSTATS_2BR, var_same_same, pval_thresh):
     """
-    Summarize pairwise by counting, for each region, how mnay cases (in comparisong to other regions) 
+    Given stats, one for each pair of bregions,
+    summarize pairwise by counting, for each region, how mnay cases (in comparisong to other regions) 
     it has that are significantly higher effect 
+
+    RETURNS:
+    - DFSTATS_2BR_NSIGS, holds, for each bregion and contrast, the number of other bregions is beats
+
+    MS: checked
     """
 
     #################### Summarize pairwise by counting, for each region, how mnay cases (in comparisong to other regions)
@@ -2279,16 +2684,13 @@ def _euclidianshuff_stats_linear_2br_compute_nsigs(DFSTATS_2BR, var_same_same, p
     # var_pval = "pval"
     # var_value = "dist_yue_diff"
 
-    # grpvar = "subspace|twind"
+    # Check each anlays
     grp_vars = ["event", "subspace|twind", "metaparams"]
-    # grpdict_dat = grouping_append_and_return_inner_items_good(DFDISTS, grp_vars)
     grpdict_pval = grouping_append_and_return_inner_items_good(DFSTATS_2BR, grp_vars)
-
     res = []
     for grp, inds in grpdict_pval.items():
         dfthis_pval = DFSTATS_2BR.iloc[inds].reset_index(drop=True)
 
-        # For this region, count how it compares to other regions.
         if False:
             grouping_plot_n_samples_conjunction_heatmap(dfthis_pval, "bregion1", "bregion2", ["same-seqc_0_shape|seqc_0_loc"])
 
@@ -2312,7 +2714,7 @@ def _euclidianshuff_stats_linear_2br_compute_nsigs(DFSTATS_2BR, var_same_same, p
     return DFSTATS_2BR_NSIGS
 
 
-def _euclidianshuff_stats_linear_2br_scatter_wrapper(DFDISTS, var_same_same, var_datapt, SAVEDIR_PLOTS,
+def _euclidianshuff_stats_linear_2br_scatter_wrapper(DFDISTS, var_same_same, var_datapt, SAVEDIR_PLOTS, 
                                                      plot_heatmap_counts=True,
                                                      plot_catplots=True,
                                                      plot_results_scatter=True):
@@ -2328,17 +2730,22 @@ def _euclidianshuff_stats_linear_2br_scatter_wrapper(DFDISTS, var_same_same, var
     # i.e., (prim1, loc2) x (animal, date) is a single datapt. 
     # And then the plots/analyses are each pair of these. 
     # This means that could have repeated conditions across days, leading to more datapts.
+
+    MS: checked
     """
+    from neuralmonkey.scripts.analy_shape_invariance_all_plots_SP import _euclidianshuff_stats_linear_2br_compute
+    from neuralmonkey.classes.session import _REGIONS_IN_ORDER_COMBINED
+    from math import comb
+    import os
+    from pythonlib.tools.pandastools import grouping_print_n_samples, grouping_plot_n_samples_conjunction_heatmap
 
     if plot_heatmap_counts or plot_catplots or plot_results_scatter:
         savedir = f"{SAVEDIR_PLOTS}/linear_model_region_vs_region"
-        import os
         os.makedirs(savedir, exist_ok=True)
         print(savedir)
 
     ### First, save heatmap showing the datapts counts
     if plot_heatmap_counts:
-        from pythonlib.tools.pandastools import grouping_print_n_samples, grouping_plot_n_samples_conjunction_heatmap
 
         grp_vars = ["subspace|twind", "event", "bregion"]
         grpdict = grouping_append_and_return_inner_items_good(DFDISTS, grp_vars)
@@ -2356,19 +2763,15 @@ def _euclidianshuff_stats_linear_2br_scatter_wrapper(DFDISTS, var_same_same, var
             break
 
     ### Compute stats
-    from neuralmonkey.scripts.analy_shape_invariance_all_plots_SP import _euclidianshuff_stats_linear_2br_compute
     DFSTATS_2BR = _euclidianshuff_stats_linear_2br_compute(DFDISTS, var_same_same, var_datapt)
 
     ### Plot
-    from neuralmonkey.classes.session import _REGIONS_IN_ORDER_COMBINED
-    from math import factorial, comb
-
     order_bregion = _REGIONS_IN_ORDER_COMBINED
     npairs = comb(len(order_bregion), 2)
     ncomp = 2
     alpha=0.05
     alpha_bonf_easy = alpha/(npairs)
-    alpha_bonf_hard = alpha/(npairs * ncomp)
+    alpha_bonf_hard = alpha/(npairs * ncomp) # 
 
     if plot_catplots:
         ### First, plot nsig
@@ -2378,8 +2781,6 @@ def _euclidianshuff_stats_linear_2br_scatter_wrapper(DFDISTS, var_same_same, var
             DFSTATS_2BR_NSIGS = append_col_with_grp_index(DFSTATS_2BR_NSIGS, [var_same_same, "pval_thresh"], "var_same_same|pvalthresh")
             fig, axes = plot_subplots_heatmap(DFSTATS_2BR_NSIGS, "bregion", "var_same_same|pvalthresh", "n_sig", "metaparams", annotate_heatmap=True)
             savefig(fig, f"{savedir}/nsig_heatmap-pval_thresh={pval_thresh}.pdf")
-            # display(DFSTATS_2BR_NSIGS)
-            # assert False
 
         ### Second, plot catplots
         z = np.max(np.abs(np.percentile(DFSTATS_2BR["coeff_val"], [0.5, 99.5])))
@@ -2397,7 +2798,6 @@ def _euclidianshuff_stats_linear_2br_scatter_wrapper(DFDISTS, var_same_same, var
                                         True, True, None, True, W=6, ZLIMS=ZLIMS, row_values=order_bregion, col_values=order_bregion)
             savefig(fig, f"{savedir}/COMPARE_AREAS-grp={grp}.pdf")
             
-
             zlims = [-5, 0]
             fig, _ = plot_subplots_heatmap(dfstats, "bregion1", "bregion2", "pval_log10", var_same_same, 
                                         False, True, None, True, W=6, ZLIMS=zlims, row_values=order_bregion, col_values=order_bregion)
@@ -2436,7 +2836,7 @@ def _euclidianshuff_stats_linear_2br_scatter_wrapper(DFDISTS, var_same_same, var
 def _euclidianshuff_stats_linear_2br_scatter(DFDISTS, DFSTATS_2BR, var_same_same, list_alpha_bonf, savedir,
                                              plot_heatmap_counts=True):
     """
-    All things related to plotting results from comparing 2 bregions.
+    Low-level stuff: All things related to plotting results from comparing 2 bregions.
     """
     # Plot scatterplot using this as color.
     from pythonlib.tools.plottools import map_coord_to_color_2dgradient
@@ -2459,82 +2859,6 @@ def _euclidianshuff_stats_linear_2br_scatter(DFDISTS, DFSTATS_2BR, var_same_same
         DFSTATS_2BR_NSIGS = _euclidianshuff_stats_linear_2br_compute_nsigs(DFSTATS_2BR, var_same_same, pval_thresh)
         _euclidianshuff_stats_linear_2br_scatter_plot(DFDISTS, DFSTATS_2BR_NSIGS, var_same_same, pval_thresh, savedir,
                                                     plot_heatmap_counts=plot_heatmap_counts)
-
-
-        # ### Plot summary heatmaps
-        # DFSTATS_2BR_NSIGS = append_col_with_grp_index(DFSTATS_2BR_NSIGS, [var_same_same, "pval_thresh"], "var_same_same|pvalthresh")
-        # fig, axes = plot_subplots_heatmap(DFSTATS_2BR_NSIGS, "bregion", "var_same_same|pvalthresh", "n_sig", "event")
-        # savefig(fig, f"{savedir}/nsig_heatmap-pval_thresh={pval_thresh}.pdf")
-
-        # grp_vars = ["subspace|twind", "event"]
-        # grpdict_dat = grouping_append_and_return_inner_items_good(DFDISTS, grp_vars)
-        # grpdict_pval = grouping_append_and_return_inner_items_good(DFSTATS_2BR_NSIGS, grp_vars)
-
-        # for grp, inds in grpdict_dat.items():
-        #     print(grp)
-        #     dfthis = DFDISTS.iloc[inds].reset_index(drop=True)
-
-        #     inds_pval = grpdict_pval[grp]
-        #     dfthis_pval = DFSTATS_2BR_NSIGS.iloc[inds_pval]
-
-        #     ### For each region, determine if it is signif for shape, loc, or shapeandloc
-        #     # first, map from region to color.
-        #     map_bregion_pval_status = {}
-        #     for bregion in ORDER_BREGION:
-                
-        #         tmp = dfthis_pval[(dfthis_pval["bregion"]==bregion) & (dfthis_pval[var_same_same]=="0|1")]["n_sig"]
-        #         assert len(tmp)==1
-        #         n_shape = tmp.values[0]
-
-        #         tmp = dfthis_pval[(dfthis_pval["bregion"]==bregion) & (dfthis_pval[var_same_same]=="1|0")]["n_sig"]
-        #         assert len(tmp)==1
-        #         n_loc = tmp.values[0]
-
-        #         # print(tmp)
-        #         # assert False
-        #         # n_shape = dfthis_pval[(dfthis_pval["bregion"]==bregion) & (dfthis_pval[var_same_same]=="0|1")]["n_sig"].values[0]
-        #         # n_loc = dfthis_pval[(dfthis_pval["bregion"]==bregion) & (dfthis_pval[var_same_same]=="1|0")]["n_sig"].values[0]
-
-        #         p_status = (n_shape, n_loc)
-        #         map_bregion_pval_status[bregion] = p_status
-
-        #     ### Map to color, based on nsig for (loc, shape)
-        #     map_bregion_to_color = {}
-        #     for bregion, coord in map_bregion_pval_status.items():
-        #         n_shape = coord[0]
-        #         n_loc = coord[1]
-        #         col = map_coord_to_color_2dgradient(n_loc, n_shape, 0, n_bregions-1, 0, n_bregions-1)
-        #         map_bregion_to_color[bregion] = col
-
-        #     ### Plot sample size
-        #     if not counts_plotted:
-        #         from pythonlib.tools.pandastools import grouping_print_n_samples
-
-        #         if plot_heatmap_counts:
-        #             savepath = f"{savedir}/COUNTS_USED_IN_SCATTER_MEANS={grp}-counts-1.txt"
-        #             if "labels_1" in dfthis and "labels_2" in dfthis and "date" in dfthis:
-        #                 grouping_print_n_samples(dfthis, [var_same_same, "bregion", "labels_1", "labels_2", "date"], savepath=savepath)
-
-        #                 fig = grouping_plot_n_samples_conjunction_heatmap(dfthis, "labels_1", "labels_2", [var_same_same, "date"])
-        #                 savefig(fig, f"{savedir}/COUNTS_USED_IN_SCATTER_MEANS-grp={grp}.pdf")
-
-        #             if ("shape1" in dfthis) and ("loc1" in dfthis):
-        #                 savepath = f"{savedir}/COUNTS_USED_IN_SCATTER_MEANS={grp}-counts-2.txt"
-        #                 grouping_print_n_samples(dfthis, [var_same_same, "bregion", "shape1", "loc1", "shape2", "loc2"], savepath=savepath)
-
-        #         counts_plotted = True
-                
-        #     ### Plot it
-        #     _, fig = plot_45scatter_means_flexible_grouping(dfthis, var_same_same, "1|0", "0|1", "event", 
-        #                                         var_value, "bregion", True, shareaxes=True,
-        #                                         map_dataptlev_to_color=map_bregion_to_color, alpha=1,
-        #                                         edgecolor="k", SIZE=3)
-            
-        #     savefig(fig, f"{savedir}/scatter-{grp}-alpha={pval_thresh}.pdf")
-        #     writeDictToTxt(map_bregion_pval_status, f"{savedir}/n_cases_win-{grp}-alpha={pval_thresh}-{var_same_same}.txt")
-
-        #     plt.close("all")
-
 
 def _euclidianshuff_stats_linear_2br_scatter_wrapper_SUBSAMPLE(DFDISTS, var_effect, var_same_same, var_datapt, 
                                                                SAVEDIR_PLOTS, plot_each_iter_stats=False):
@@ -2668,7 +2992,10 @@ def _euclidianshuff_stats_linear_2br_scatter_wrapper_SUBSAMPLE(DFDISTS, var_effe
 def _euclidianshuff_stats_linear_2br_scatter_plot(DFDISTS, DFSTATS_2BR_NSIGS, var_same_same, pval_thresh, savedir,
                                              plot_heatmap_counts=True):
     """
-    Low-level code for plotting results, scatterplots of stats results.
+    Low-level code for plotting results, scatterplots of stats results. Makes scatterplot with colors corresponding to
+    signficance.
+
+    MS: checked
     """
     from pythonlib.tools.plottools import map_coord_to_color_2dgradient
     from pythonlib.tools.pandastools import plot_45scatter_means_flexible_grouping
@@ -2767,6 +3094,87 @@ def _euclidianshuff_stats_linear_2br_scatter_plot(DFDISTS, DFSTATS_2BR_NSIGS, va
         writeDictToTxt(map_bregion_pval_status, f"{savedir}/n_cases_win-{grp}-alpha={pval_thresh}-{var_same_same}.txt")
 
         plt.close("all")
+
+def statespace_traj_plot_manuscript(DFallpa, animal, date, SAVEDIR_ANALYSIS, var_other):
+    """ 
+    Plot PCA trajectories, colored byshape and split by <var_other>. 
+    Makes "pretty plots"
+    """
+
+    var_effect = "seqc_0_shape"
+    raw_subtract_mean_each_timepoint = False
+    twind_analy = TWIND_ANALY
+    tbin_dur = 0.2
+    tbin_slide = 0.01
+
+    if int(date)>220720:
+        twind = (0.05, 0.9)
+    else:
+        twind = (0.05, 0.6)
+
+    SUBSPACE_PROJ_FIT_TWIND = {
+        "03_samp":[twind],
+    }
+
+    list_subspace_projection = ["shape"]
+
+    list_subtr = [False]
+    list_smth = [True]
+    list_dims = [(0,1), (1,3), (1,2)]
+
+
+    for _, row in DFallpa.iterrows():
+        bregion = row["bregion"]
+        which_level = row["which_level"]
+        event = row["event"]
+        PA = row["pa"]
+
+        for subspace_projection in list_subspace_projection: 
+
+            ############################
+            list_fit_twind = SUBSPACE_PROJ_FIT_TWIND[event]
+            
+            for subspace_projection_fitting_twind in list_fit_twind:
+                
+                # Final save dir
+                SAVEDIR = f"{SAVEDIR_ANALYSIS}/{which_level}-{bregion}-{event}-ss={subspace_projection}-fit_twind={subspace_projection_fitting_twind}"
+                os.makedirs(SAVEDIR, exist_ok=True)
+                print("SAVING AT ... ", SAVEDIR)
+
+                # Preprocess
+                savedir = f"{SAVEDIR}/preprocess"
+                os.makedirs(savedir, exist_ok=True)
+                pa = _preprocess_pa_dim_reduction(PA, subspace_projection, subspace_projection_fitting_twind,
+                                            twind_analy, tbin_dur, tbin_slide, savedir)
+                
+                ####### Plot state space
+                for subtr_time_mean in list_subtr:
+                    for do_another_smooth in list_smth:
+                        
+                        if subtr_time_mean:
+                            pathis = pa.norm_subtract_trial_mean_each_timepoint()
+                        else:
+                            pathis = pa.copy()
+                        
+                        if do_another_smooth:    
+                            pathis = pathis.agg_by_time_windows_binned(tbin_dur, tbin_slide)
+
+                        savedir = f"{SAVEDIR}/subtrmean={subtr_time_mean}-do_another_smooth={do_another_smooth}"
+                        os.makedirs(savedir, exist_ok=True)
+
+                        LIST_VAR = [
+                            var_effect,
+                        ]
+                        LIST_VARS_OTHERS = [
+                            (var_other,),
+                        ]
+                        PLOT_CLEAN_VERSION = True
+                        list_dim_timecourse = list(range(NPCS_KEEP))
+                        # list_dims = [(0,1), (1,3), (1,2), (2,3), (3,4)]
+                        time_bin_size = None # or else will have choppy trajectories
+                        pathis.plot_state_space_good_wrapper(savedir, LIST_VAR, LIST_VARS_OTHERS, PLOT_CLEAN_VERSION=PLOT_CLEAN_VERSION,
+                                                        list_dim_timecourse=list_dim_timecourse, list_dims=list_dims,
+                                                        time_bin_size=time_bin_size)                
 
 
 def statespace_traj_plot(DFallpa, animal, date, SAVEDIR_ANALYSIS, var_other,
@@ -2876,8 +3284,13 @@ def statespace_traj_plot(DFallpa, animal, date, SAVEDIR_ANALYSIS, var_other,
 
 def decodercross_plot(DFallpa, SAVEDIR_ANALYSIS):
     """
+    Wrapper to performing decoding analys, training one onset subset of data (eg., locations 1) and
+    testing on held-out subset (e.g., lcoations2-4), for example, for decoding primitive.
+
     Decode shpae with across conditios of location or size, then compute scalar summary score
     by averageing over time window.
+
+    MS: checked
     """
     from neuralmonkey.analyses.decode_good import preprocess_factorize_class_labels_ints
     from neuralmonkey.analyses.decode_good import decodewrapouterloop_categorical_timeresolved_within_condition, decodewrapouterloop_categorical_timeresolved_cross_condition
@@ -2891,7 +3304,6 @@ def decodercross_plot(DFallpa, SAVEDIR_ANALYSIS):
     SAVEDIR = f"{SAVEDIR_ANALYSIS}/2_cross_condition_decoding"
     os.makedirs(SAVEDIR, exist_ok=True)
     print(SAVEDIR)
-
 
     filtdict = None
     separate_by_task_kind = True
@@ -2956,7 +3368,8 @@ def decodercross_plot(DFallpa, SAVEDIR_ANALYSIS):
                             "task_kind", "tk_ev", "decodekind"], ["score", "score_adjusted"])
 
         # Combine decodekinds into single plot
-        fig = sns.catplot(data=dfagg, x="bregion", y="score_adjusted", hue="decodekind", col="var_decode_and_conj", row="event", kind="bar")
+        fig = sns.catplot(data=dfagg, x="bregion", y="score_adjusted", hue="decodekind", 
+                          col="var_decode_and_conj", row="event", kind="bar")
         savefig(fig, f"{savedir}/scalar-twind={twind}-catplot-combined.pdf")
 
         # One plot for each decodekind (like older plots)
@@ -3221,6 +3634,63 @@ def statespace_scalar_plot(DFallpa, animal, date, SAVEDIR, var_other):
                                                                     pa_var = "pa_redu", 
                                                                     prune_min_n_trials=N_MIN_TRIALS_PER_SHAPE, pretty_plot=True, alpha=0.7)
 
+def heatmaps_plot_wrapper_manuscript(DFallpa, animal, date, SAVEDIR_ANALYSIS, var_other="seqc_0_loc", quick_mode=True):
+    """
+    Plot heatmap of firing rate (after PCA), splittin by shape vs. var_other
+    """
+    from neuralmonkey.neuralplots.population import heatmapwrapper_many_useful_plots
+
+    raw_subtract_mean_each_timepoint = False
+    twind_analy = TWIND_ANALY
+    tbin_dur = 0.2
+    tbin_slide = 0.01
+    if int(date)>220720:
+        twind = (0.05, 1.0)
+    else:
+        twind = (0.05, 0.6)
+    SUBSPACE_PROJ_FIT_TWIND = {
+        "03_samp":[twind],
+    }
+    list_subspace_projection = ["shape"]
+
+    for _, row in DFallpa.iterrows():
+        bregion = row["bregion"]
+        which_level = row["which_level"]
+        event = row["event"]
+        PA = row["pa"]
+
+        for subspace_projection in list_subspace_projection: # NOTE: shape_prims_single not great, you lose some part of preSMA context-dependence...
+            # plot only cleaned up data.
+            list_mean_over_trials = [False, True]
+                
+
+            if subspace_projection in [None, "pca"]:
+                list_fit_twind = [twind_analy]
+            else:
+                list_fit_twind = SUBSPACE_PROJ_FIT_TWIND[event]
+
+            for subspace_projection_fitting_twind in list_fit_twind:
+                
+                SAVEDIR = f"{SAVEDIR_ANALYSIS}/{which_level}-{bregion}-{event}-ss={subspace_projection}-fit_twind={subspace_projection_fitting_twind}"
+                os.makedirs(SAVEDIR, exist_ok=True)
+
+                print("SAVING AT ... ", SAVEDIR)
+
+                ############################
+                savedir = f"{SAVEDIR}/preprocess"
+                os.makedirs(savedir, exist_ok=True)
+
+                pa = _preprocess_pa_dim_reduction(PA, subspace_projection, subspace_projection_fitting_twind,
+                                            twind_analy, tbin_dur, tbin_slide, savedir)
+
+                list_twind_scal_eucl = None
+                var_effect = "seqc_0_shape"
+                pa.plot_heatmap_state_euclidean_wrapper(var_effect, var_other, SAVEDIR, 
+                                        list_twind_scal_eucl, 
+                                        None, None, list_dims=None, twind_base = (-0.6, -0.05),
+                                        do_heatmap=True, do_state_space=False, do_euclidean=False,
+                                        quick_mode=quick_mode)
+
 def heatmaps_plot_wrapper(DFallpa, animal, date, SAVEDIR_ANALYSIS, var_other="seqc_0_loc",
                           list_subspace_projection=None, quick_mode=False):
     """
@@ -3254,8 +3724,6 @@ def heatmaps_plot_wrapper(DFallpa, animal, date, SAVEDIR_ANALYSIS, var_other="se
         else:
             assert False
 
-
-    # drawings_done = []
     for _, row in DFallpa.iterrows():
         bregion = row["bregion"]
         which_level = row["which_level"]
@@ -3267,14 +3735,11 @@ def heatmaps_plot_wrapper(DFallpa, animal, date, SAVEDIR_ANALYSIS, var_other="se
                 # Then also plot raw, without clearning
                 list_unstable_badstrokes = [(False, False, False), (True, True, True)]
                 list_mean_over_trials = [True]
-                # mean_over_trials = True
             else:
                 # plot only cleaned up data.
                 list_unstable_badstrokes = [(True, True, True)]
                 list_mean_over_trials = [False, True]
-                # mean_over_trials = False
                 
-            # for remove_drift in [False]:
             for remove_drift, remove_singleprims_unstable, remove_trials_with_bad_strokes in list_unstable_badstrokes:
 
                 if subspace_projection in [None, "pca"]:

@@ -1825,21 +1825,22 @@ class PopAnal():
     
     def split_sample_stratified_by_label(self, label_grp_vars, test_size=0.5, PRINT=False):
         """
-        REturn two evenly slit PA, using up all the trials in self, and mainting the same proportion of classes of
+        REturn two evenly (or uneven, if test_size not 0.5) slit PA, 
+        using up all the trials in self, and mainting the same proportion of classes of
         conj-var label_grp_vars (i.e,, stratified).
+
+        MS: checked
         """
-        from pythonlib.tools.statstools import balanced_stratified_resample_kfold
+        # from pythonlib.tools.statstools import balanced_stratified_resample_kfold
         from pythonlib.tools.pandastools import append_col_with_grp_index
         from pythonlib.tools.statstools import stratified_resample_split_kfold
+        from pythonlib.tools.listtools import tabulate_list
 
         # COnvert to conjunctive label as strings.
-        # assert "tmp" not in self.Xlabels["trials"].columns
         self.Xlabels["trials"] = append_col_with_grp_index(self.Xlabels["trials"], label_grp_vars, "tmp")
         labels = self.Xlabels["trials"]["tmp"].tolist()
-        # labels = dflab["tmp"].tolist()
 
         # Get split indices for the two groups.
-        from pythonlib.tools.listtools import tabulate_list
         outdict = tabulate_list(labels)
         if PRINT:
             print("Labels, split:")
@@ -2105,6 +2106,7 @@ class PopAnal():
                                                                                             version = version)
         sns.catplot(data=DFPROJ_INDEX, x="idx_morph_temp", y="dist_index", kind="point")
 
+        MS: skimmed
         """
         from neuralmonkey.scripts.analy_decode_moment_psychometric import dfdist_to_dfproj_index
         from neuralmonkey.scripts.analy_decode_moment_psychometric import dfdist_to_dfproj_index_datapts
@@ -2164,9 +2166,7 @@ class PopAnal():
                 DFDIST = cldist.rsa_distmat_score_all_pairs_of_label_groups_datapts(list_grps_get=list_grps_get)
                 DFPROJ_INDEX = dfdist_to_dfproj_index_datapts(DFDIST, var_effect=var_effect, 
                                                         effect_lev_base1=effect_lev_base1, effect_lev_base2=effect_lev_base2)
-                # dfproj_index
-                # order = sorted(dfproj_index["idxmorph_assigned_1"].unique())
-                # sns.catplot(data=dfproj_index, x="idxmorph_assigned_1", y="dist_index", aspect=2, order=order)
+
             elif pts_or_groups=="grps":
                 # Score pairs of (group, group)
                 # Obsolete, because this is just above, followed by agging
@@ -2190,7 +2190,6 @@ class PopAnal():
 
         else:
             # Each trial pair --> vector
-    
             if var_context_diff is not None:
                 _vars_grp = [var_effect, var_context_diff]
             else:
@@ -2226,17 +2225,12 @@ class PopAnal():
                     dfdist = cldist.rsa_distmat_score_all_pairs_of_label_groups_datapts(list_grps_get=list_grps_get,
                                                                                         ignore_self_distance=ignore_self_distance)
 
-                    # display(dfdist)
-                    # assert False, "confirm that levels are 2-tuples"
-
                     if var_context_diff is not None:
                         # Only keep cases where the datapt has different level of <var_context_diff> compared to the grp.
                         dfdist = dfdist[dfdist[f"{var_context_diff}_same"]==False].reset_index(drop=True)
                     dfproj_index = dfdist_to_dfproj_index_datapts(dfdist, var_effect=var_effect, 
                                                             effect_lev_base1=effect_lev_base1, effect_lev_base2=effect_lev_base2)
-                    # dfproj_index
-                    # order = sorted(dfproj_index["idxmorph_assigned_1"].unique())
-                    # sns.catplot(data=dfproj_index, x="idxmorph_assigned_1", y="dist_index", aspect=2, order=order)
+
                 elif pts_or_groups=="grps":
                     # Score pairs of (group, group)
                     # Obsolete, because this is just above, followed by agging
@@ -2266,9 +2260,6 @@ class PopAnal():
             DFDIST = pd.concat(list_dfdist).reset_index(drop=True)
             # DFDIST[var_effect] = DFDIST[f"{var_effect}_1"]
 
-            # display(DFPROJ_INDEX)
-            # display(DFDIST)
-            # assert False
             # Take mean over trials
             if pts_or_groups=="pts":
                 DFPROJ_INDEX_AGG = aggregGeneral(DFPROJ_INDEX, ["labels_1_datapt", var_effect, "time_bin_idx"], ["dist_index"], nonnumercols=["time_bin"])
@@ -2321,7 +2312,6 @@ class PopAnal():
         assert sorted(trialcodes)==sorted(set(DFDIST["trialcode"]))
 
         return DFPROJ_INDEX, DFDIST, DFPROJ_INDEX_AGG, DFDIST_AGG, DFPROJ_INDEX_DIFFS
-
 
 
     def dataextractwrap_distance_between_groups(self, vars_group, version):
@@ -2382,6 +2372,8 @@ class PopAnal():
         - LIST_CLDIST, List of Cl, each holding distance of shape (ntrials, trials), if version_distance 
         is pairwise between pts, or shape (ngroups, ngroups), if version_distance is distribugtional (ie.
         is pairwise between levels of conjucntion of var_group)
+
+        MS: ok
         """
         from pythonlib.cluster.clustclass import Clusters
 
@@ -2451,7 +2443,7 @@ class PopAnal():
         # Sanity check that all Cl match
         labels = None
         labels_cols = None
-        for t, Cldist in zip(LIST_TIME, LIST_CLDIST):
+        for _, Cldist in zip(LIST_TIME, LIST_CLDIST):
             # check labels match
             if labels is not None:
                 assert labels == Cldist.Labels
@@ -2491,6 +2483,9 @@ class PopAnal():
         """
         Helper to construct pca space (deminxed pca) in flexible ways, and then project raw data onto this space.
         Uses representations that are sliced data (n sub slices, concate into vector).
+
+        In general first averaging over trials to get means for variable, and then
+        doing PCA on those means, then projeceting trial data onto those PCs
 
         Does work of projecting raw data onto this space.
 
@@ -2536,9 +2531,6 @@ class PopAnal():
         RETURNS None if no data found for this var_pca
         """
         from neuralmonkey.analyses.state_space_good import dimredgood_pca_project
-
-        # if savedir_plots is None:
-        #     savedir_plots = "/tmp"
 
         # If the inputed variables are not exist, then return None
         if var_pca not in self.Xlabels["trials"].columns:
@@ -2596,20 +2588,6 @@ class PopAnal():
             assert inds_pa_final is not None
             pa = PAraw.slice_by_dim_indices_wrapper("trials", inds_pa_fit) # fewer trials usually
             PAraw = PAraw.slice_by_dim_indices_wrapper("trials", inds_pa_final)
-
-            # Devo -- doing train/test split here.
-            # # Split PA into fit and held-out
-            # test_size = 0.1
-            # if vars_grouping is not None:
-            #     _vars_grp = [var_pca] + vars_grouping
-            # else:
-            #     _vars_grp = [var_pca]
-            # PAraw, pa = PAraw.split_sample_stratified_by_label(_vars_grp, test_size=test_size, PRINT=False)
-            # print(PAraw.X.shape)
-            # print(pa.X.shape)
-            # print(n_min_per_lev_lev_others)
-            # n_min_per_lev_lev_others = 1
-
         else:
             # Fit using same data.
             pa = PAraw.copy()
@@ -2628,6 +2606,7 @@ class PopAnal():
         if pa is None:
             print("No variation found for this var_pca (reutrning None): ", var_pca)
             return (None for _ in range(5))
+        
         if PLOT_STEPS:
             pa.plotwrapper_smoothed_fr_split_by_label_and_subplots(chan, var_pca, vars_grouping)
 
@@ -2681,17 +2660,11 @@ class PopAnal():
                                                           plot_loadings_path=plot_loadings_path, how_decide_npcs_keep="cumvar",
                                                           pca_frac_var_keep=0.95, 
                                                         norm_subtract_single_mean_each_chan=False)
+        
         pca["explained_variance_ratio_initial_construct_space"] = pca["explained_variance_ratio_"]
         del pca["explained_variance_ratio_"]
         pca["X_before_dimred"] = X_before_dimred
         pca["nclasses_of_var_pca"] = nclasses_of_var_pca
-        # print("----")
-        # print(pa.X.shape)
-        # print(PApca.X.shape)
-        # print(pca["X_before_dimred"].shape)
-        # print(pca["components"].shape)
-        # assert False
-        # assert False
 
         if SANITY:
             from neuralmonkey.analyses.state_space_good import dimredgood_pca_project
@@ -2723,7 +2696,7 @@ class PopAnal():
                                                             skip_subplots_lack_mult_colors=False,
                                                             save_suffix=save_suffix)
 
-        ########### (3) Project RAW data back into this space
+        ### (3) Project RAW data back into this space
         # Figure out how many dimensions to keep (for euclidian).
         n1 = pca["nclasses_of_var_pca"] # num classes of superv_dpca_var that exist. this is upper bound on dims.
         if n1<4:
@@ -2738,84 +2711,12 @@ class PopAnal():
         if n3<4:
             n3 = 4
         n_pcs_subspace_max = min([n1, n2, n3, n_pcs_subspace_max])
-
-        # PApca = PApca.slice_by_dim_indices_wrapper("chans", list(range(n_pcs_keep_euclidian)))
         
-        if True:
-            Xredu, PAredu, stats_redu, Xfinal_before_redu, pca = PAraw.dataextract_pca_demixed_subspace_project(pca, proj_twind, 
-                                                proj_tbindur, proj_tbin_slice, reshape_method,
-                                                dimredgood_pca_project_do_reshape, n_pcs_subspace_max, do_pca_after_project_on_subspace,
-                                                savedir_plots)
-        else:
-            # - preprocess data
-            Xfinal_before_redu, PAfinal_before_redu, _, _, _ = PAraw.dataextract_state_space_decode_flex(pca_twind, pca_tbindur, pca_tbin_slice,
-                                                                                    reshape_method=reshape_method, pca_reduce=False,
-                                                                                    norm_subtract_single_mean_each_chan=False)
-            
-            ### Project all raw data
-            plot_pca_explained_var_path = f"{savedir_plots}/expvar_reproj_raw.pdf"
-            Xredu, stats_redu, Xredu_in_orig_shape = dimredgood_pca_project(pca["components"], 
-                                                                            Xfinal_before_redu, 
-                                                                            plot_pca_explained_var_path=plot_pca_explained_var_path,
-                                                                            do_additional_reshape_from_ChTrTi=dimredgood_pca_project_do_reshape)
-
-            if dimredgood_pca_project_do_reshape:
-                # TRAJ, returns (ndims, ntrials,  ntimes)
-                del Xredu
-
-                # Keep only n final dimensions in subspace
-                if n_pcs_subspace_max is not None and n_pcs_subspace_max <= Xredu_in_orig_shape.shape[0]:
-                    Xredu_in_orig_shape = Xredu_in_orig_shape[:n_pcs_subspace_max, :, :]
-
-                if do_pca_after_project_on_subspace:
-                    assert False, "not yet coded for trajecroreis"
-                    # Optionally, do PCA again on raw data that was projected into this subspace (useful for visualization).
-                    # [IGNORE -- this is counterproductive]. This is just for rotation...
-                    from neuralmonkey.analyses.state_space_good import dimredgood_pca
-                    plot_pca_explained_var_path_this = f"{savedir_plots}/expvar_pca_after_subspace_projection.pdf"
-                    plot_loadings_path_this = f"{savedir_plots}/loadings_pca_after_subspace_projection.pdf"
-                    Xredu, _, _ = dimredgood_pca(Xredu, how_decide_npcs_keep = "keep_all",
-                                    plot_pca_explained_var_path=plot_pca_explained_var_path_this,
-                                plot_loadings_path=plot_loadings_path_this)
-
-                # Get a PA holding final projected data
-                PAredu = PAfinal_before_redu.copy_replacing_X(Xredu_in_orig_shape)
-
-                # print(Xredu_in_orig_shape.shape) # (npcs, ntrials, ntimes)
-                # print(PAredu.X.shape) # (npcs, ntrials, ntimes)
-                # print(Xfinal_before_redu.shape) # (nchans, ntrials, ntimes)
-                # print(pca["X_before_dimred"].shape) # (nchans, ngroups, ntimes)
-                # assert False
-                return Xredu_in_orig_shape, PAredu, stats_redu, Xfinal_before_redu, pca
-
-            else:
-                # SCALAR, returns (ntrials, ndims)
-
-                # Keep only n final dimensions in subspace
-                if n_pcs_subspace_max is not None and n_pcs_subspace_max <= Xredu.shape[1]:
-                    Xredu = Xredu[:, :n_pcs_subspace_max]
-
-                if do_pca_after_project_on_subspace:
-                    # Optionally, do PCA again on raw data that was projected into this subspace (useful for visualization).
-                    # [IGNORE -- this is counterproductive]. This is just for rotation...
-                    from neuralmonkey.analyses.state_space_good import dimredgood_pca
-                    plot_pca_explained_var_path_this = f"{savedir_plots}/expvar_pca_after_subspace_projection.pdf"
-                    plot_loadings_path_this = f"{savedir_plots}/loadings_pca_after_subspace_projection.pdf"
-                    Xredu, _, _ = dimredgood_pca(Xredu, how_decide_npcs_keep = "keep_all",
-                                    plot_pca_explained_var_path=plot_pca_explained_var_path_this,
-                                plot_loadings_path=plot_loadings_path_this)
-
-                # Get a PA holding final projected data
-                assert len(PAfinal_before_redu.Xlabels["trials"]) == Xredu.shape[0]
-                PAredu = PopAnal(Xredu.T[:, :, None].copy(), [0])  # (ndimskeep, ntrials, 1)
-                PAredu.Xlabels = {dim:df.copy() for dim, df in PAfinal_before_redu.Xlabels.items()}
-
-                # print(Xredu.shape)
-                # print(PAredu.X.shape)
-                # print(Xfinal_before_redu.shape)
-                # print(pca["X_before_dimred"].shape)
-                # assert False
-                return Xredu, PAredu, stats_redu, Xfinal_before_redu, pca
+        # Project trial data to this space
+        Xredu, PAredu, stats_redu, Xfinal_before_redu, pca = PAraw.dataextract_pca_demixed_subspace_project(pca, proj_twind, 
+                                            proj_tbindur, proj_tbin_slice, reshape_method,
+                                            dimredgood_pca_project_do_reshape, n_pcs_subspace_max, do_pca_after_project_on_subspace,
+                                            savedir_plots)
         
         if return_raw_data:
             return Xredu, PAredu, stats_redu, Xfinal_before_redu, pca, PAraw
@@ -2911,6 +2812,8 @@ class PopAnal():
         --- if scalar_or_traj==scal --> (ntrials, ndims)
         --- if scalar_or_traj==traj --> (ndims, ntrials, ntimes)
         - PAredu, holding reduced data.
+        
+        MS: checked
         """
 
         PA = self
@@ -3035,7 +2938,6 @@ class PopAnal():
                 else:
                     dimredgood_pca_project_do_reshape = False
 
-
                 if False: # SANITY
                     from neuralmonkey.analyses.state_space_good import dimredgood_pca_project
                     X = pca["X_before_dimred"]
@@ -3046,18 +2948,15 @@ class PopAnal():
                     print("HCECK tmp/test2 -- This should match the exp var above...")
                     assert False
 
-
                 Xredu, PAredu, _, _, _ = PAraw.dataextract_pca_demixed_subspace_project(pca, dpca_proj_twind, 
                                                     tbin_dur, tbin_slide, reshape_method,
                                                     dimredgood_pca_project_do_reshape, NPCS_KEEP, False, savedir)
 
-            # n_pcs_keep_euclidian = PAredu.X.shape[1]
 
         elif METHOD=="dpca":
-            # Then does targeted dim reduction, first averaging over trials to get means for variable.
-
+            # Then does targeted dim reduction, first averaging over trials to get means for variable, and then
+            # doing PCA on those means, then projeceting trial data onto those PCs
             assert dpca_var is not None
-            # n_min_per_lev_lev_others = 4
             Xredu, PAredu, _, _, pca = PA.dataextract_pca_demixed_subspace(dpca_var, dpca_vars_group,
                                                             twind_pca, tbin_dur, # -- PCA params start
                                                             dpca_filtdict,
@@ -3247,8 +3146,8 @@ class PopAnal():
         """
         from neuralmonkey.analyses.state_space_good import dimredgood_pca_project
 
-        ########### Project RAW data back into this space
-        # - preprocess data
+        ### Project RAW data back into this space
+        # - preprocess data to the correct shape
         Xfinal_before_redu, PAfinal_before_redu, _, _, _ = self.dataextract_state_space_decode_flex(pca_twind, pca_tbindur, pca_tbin_slice,
                                                                                  reshape_method=reshape_method, pca_reduce=False,
                                                                                  norm_subtract_single_mean_each_chan=False)
@@ -3314,13 +3213,7 @@ class PopAnal():
             PAredu = PopAnal(Xredu.T[:, :, None].copy(), [0])  # (ndimskeep, ntrials, 1)
             PAredu.Xlabels = {dim:df.copy() for dim, df in PAfinal_before_redu.Xlabels.items()}
 
-            # print(Xredu.shape)
-            # print(PAredu.X.shape)
-            # print(Xfinal_before_redu.shape)
-            # print(pca["X_before_dimred"].shape)
-            # assert False
             return Xredu, PAredu, stats_redu, Xfinal_before_redu, pca
-
 
     def dataextract_state_space_decode_flex(self, twind_overall=None,
                                             tbin_dur=None, tbin_slide=None,
@@ -3380,14 +3273,12 @@ class PopAnal():
 
         if norm_subtract_single_mean_each_chan:
             # Normalize activity before doing pca?
-            # - at very least, always subtract mean within each channel (not going as far as subtracting mean
-            # within eahc time point of each channel).
             PAslice = PAslice.norm_subtract_mean_each_chan()
 
         if PLOT_EXAMPLE_X_BEFORE_GO_INTO_PCA:
             PAslice.plotNeurHeat(0)
 
-        ## DIM REDUCTION
+        ### DIM REDUCTION
         nchans, ntrials, ntimes = PAslice.X.shape
         if reshape_method == "chans_x_trialstimes":
             # E.g. if decoding, soemtimes want each time bin as datapt.
@@ -3395,10 +3286,8 @@ class PopAnal():
             dflab = PAslice.Xlabels["trials"]
             list_x = []
             list_dflab = []
-            # labels_all = []
             for i in range(ntimes):
-                list_x.append(PAslice.X[:, :, i])
-                # labels_all.extend(labels)
+                list_x.append(PAslice.X[:, :, i]) # (chans, trials)
                 list_dflab.append(dflab)
             X_before_dimred = np.concatenate(list_x, axis=1) # (nchans, ntrials x ntimes)
             dflab_final = pd.concat(list_dflab).reset_index(drop=True)
@@ -3423,24 +3312,15 @@ class PopAnal():
             # assert X.shape[0] == PAfinal.X.shape[1]
 
         elif reshape_method=="trials_x_chanstimes":
+            from neuralmonkey.analyses.state_space_good import dimredgood_pca
             # Reshape to (ntrials, nchans*ntimes)
             tmp = np.transpose(PAslice.X, (1, 0, 2)) # (trials, chans, times)
             X = np.reshape(tmp, [ntrials, nchans * ntimes]) # (ntrials, nchans*timebins)
             X_before_dimred = X.copy()
 
-            # Sanitych check
-            if False: # no need to check. know it works.
-                trial = 0
-                tmp = np.concatenate([PAslice.X[:, trial, i] for i in range(ntimes)])
-                if not np.isclose(np.std(X[trial]), np.std(tmp)):
-                    print(np.std(X[trial]))
-                    print(np.std(tmp))
-                    assert False, "bug in reshaping"
-
             if pca_reduce:
                 print("Running PCA")
                 print(how_decide_npcs_keep, pca_frac_var_keep, pca_frac_min_keep)
-                from neuralmonkey.analyses.state_space_good import dimredgood_pca
                 # Make labels (chans x timebins)
                 ntimes = len(PAslice.Times)
                 col_labels = []
@@ -3505,7 +3385,7 @@ class PopAnal():
 
             # No need to reshape
             X = PAslice.X
-            X_before_dimred = X.copy()
+            X_before_dimred = PAslice.X.copy()
 
             ################## Get in shape.
             X = np.reshape(PAslice.X, [nchans, ntrials * ntimes]).T # (ntrials*ntimes, nchans)
@@ -3563,28 +3443,13 @@ class PopAnal():
             if pca_reduce:
                 assert X.shape == PAfinal.X.shape
 
-            # # Extra dimreduction step?
-            # assert extra_dimred_method is None, "not yet coded.. a bit tricky?"
-
         else:
             print(reshape_method)
             assert False
 
-            # X = PAslice.X
-            #
-            # if pca_reduce:
-            #     assert False, "not coded..."
-            #
-            # assert extra_dimred_method is None, "not yet coded"
-
         if not pca_reduce:
             pca = None
-            # PAfinal = None
 
-        # print(X.shape)
-        # print(PAfinal.X.shape)
-        # print(PAslice.X.shape)
-        # assert False
         return X, PAfinal, PAslice, pca, X_before_dimred
 
     def dataextract_metrics_scalar(self, idx_chan, list_var):
@@ -4873,6 +4738,8 @@ class PopAnal():
         - PLOT_CLEAN_VERSION, bool, if true, then amkes the plot prety.
         - nmin_trials_per_lev, prunes levels with fewer trials thant his.
         - time_bin_size, this is the final separation in time between the pts that are plotted (i.e., is "slide")
+
+        MS: checked
         """
 
         from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_WRAPPER
@@ -5055,7 +4922,7 @@ class PopAnal():
                                 raise err
 
 
-            ### (2) var  (combining across subplot vars)
+            ### (2) var (combining across subplot vars)
             if var not in vars_already_state_space_plotted:
                 vars_already_state_space_plotted.append(var)
                 # (2a) Traj

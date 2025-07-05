@@ -72,7 +72,10 @@ def timevarying_compute_fast_to_scalar(PA, label_vars=("seqc_0_shape", "seqc_0_l
                                        get_group_distances=True, context_dict=None,
                                        get_only_one_direction=True):
     """
+    Compute pariwise euclidean distance, using trajectories.
+
     [Fast code] -- do all steps to extract dfdist, starting from PA.
+
     POTENTIAL PROBLOEM (is ok, emeprically): it doesnt get time-varying, it goes straight from (ndims, ntimes) --> scalar,
     for each trial. This is so that it can work with the distmat_construct_wrapper helper
     function, but it is really not necesary, and would be a quick way to get time-varying also,
@@ -87,6 +90,8 @@ def timevarying_compute_fast_to_scalar(PA, label_vars=("seqc_0_shape", "seqc_0_l
     - prune_levs_min_n_trials, then throws out any levels of grouping vars, label_vars + [var_context_same], which lack at least 2
     trials. Need at laest 2, otherwise error in dist computation.
     - context_dict, dict with {"same":[], "diff":[]}, where each holds list of strings (variables).
+
+    MS: checked
     """
     from pythonlib.tools.distfunctools import distmat_construct_wrapper
     from pythonlib.cluster.clustclass import Clusters
@@ -202,6 +207,7 @@ def timevarying_compute_fast_to_scalar(PA, label_vars=("seqc_0_shape", "seqc_0_l
     # Get distnace matrix.
     def dist_func(x1, x2):
         """
+        Euclidean ditance
         x1, x2, (ndims, ntimes), a trial-slice.
         Return scalar distance, averaged over all time.
         """
@@ -221,6 +227,7 @@ def timevarying_compute_fast_to_scalar(PA, label_vars=("seqc_0_shape", "seqc_0_l
     Cldist = Clusters(dmat, list_lab, list_lab, ver="dist", params=params, trialcodes=trialcodes)
 
     if rsa_heatmap_savedir is not None:
+        from itertools import permutations
         # This fn also returns dfdist. The reason I dont keep ti is that here I get both directions. I am not sure
         # if this would do wierd things downstream
         zlims = None
@@ -229,7 +236,6 @@ def timevarying_compute_fast_to_scalar(PA, label_vars=("seqc_0_shape", "seqc_0_l
                                                                           return_as_clustclass=True,
                                                                           context_dict=context_dict)
         n = min([len(label_vars), 3])
-        from itertools import permutations
         list_sort_order = sorted(permutations(range(n)))
         for sort_order in list_sort_order:
 
@@ -251,13 +257,7 @@ def timevarying_compute_fast_to_scalar(PA, label_vars=("seqc_0_shape", "seqc_0_l
         # convert to cldist.
         dfdist = Cldist.rsa_distmat_score_all_pairs_of_label_groups(label_vars=label_vars, get_only_one_direction=get_only_one_direction, 
                                                                     context_dict=context_dict)
-        # for i in range(len(label_vars)):
-        #     for j in range(len(label_vars)):
-        #         if j>i:
-        #             var1 = label_vars[0]
-        #             var2 = label_vars[1]
-        #             dfdist = append_col_with_grp_index(dfdist, [f"{var1}_same", f"{var2}_same"], f"same-{var1}|{var2}")
-
+        
         #### If this has context input, then additional steps
         if var_context_same is not None:
             if False:
@@ -310,9 +310,6 @@ def dfdist_postprocess_condition_prune_to_var_pairs_exist(dfdist, var_effect, va
     from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper
 
     # (2) Keep only those shapes that have data across the pair of (task_kind, si_is_first)
-
-    # if plot_counts_savedir:
-    #     grouping_print_n_samples(DFDIST, ["tk_sifirst_sorted", "task_kind_12", "stroke_index_is_first_12"])
 
     # First, collect all (var1, var2) levels
     tmp = dfdist.loc[:, [f"{var_effect}_1", f"{var_context}_1"]].values.tolist() + dfdist.loc[:, [f"{var_effect}_2", f"{var_context}_2"]].values.tolist()
@@ -453,6 +450,7 @@ def dfdist_postprocess_wrapper(DFDISTS, var_effect, var_other, savedir,
     from neuralmonkey.analyses.euclidian_distance import dfdist_extract_label_vars_specific
     from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good, plot_subplots_heatmap, append_col_with_grp_index, sort_by_two_columns_separate_keys
     from neuralmonkey.analyses.euclidian_distance import dfdist_postprocess_condition_prune_to_var_pairs_exist
+    from pythonlib.tools.pandastools import append_col_with_grp_index
 
     DFDISTS = DFDISTS.reset_index(drop=True)
 
@@ -460,7 +458,6 @@ def dfdist_postprocess_wrapper(DFDISTS, var_effect, var_other, savedir,
     assert "date" in DFDISTS.columns
 
     if "metaparams" not in DFDISTS:
-        from pythonlib.tools.pandastools import append_col_with_grp_index
         tmp = ["prune_version", "subspace_projection", "subspace_twind", "remove_drift", "raw_subtract_mean_each_timepoint", "remove_singleprims_unstable"]
         possible_keys = []
         for k in tmp:
@@ -482,9 +479,6 @@ def dfdist_postprocess_wrapper(DFDISTS, var_effect, var_other, savedir,
         list_dfdist =[]
         for grp, inds in grpdict.items():
             dfdists = DFDISTS.iloc[inds].reset_index(drop=True)
-
-            # plot_counts_savedir = "/tmp"
-            # plot_counts_savedir = None
             plot_counts_savedir = f"{savedir}/{grp}"
             os.makedirs(plot_counts_savedir, exist_ok=True)
             dfdists_new = dfdist_postprocess_condition_prune_to_var_pairs_exist(dfdists, var_effect, var_other, plot_counts_savedir)
@@ -523,7 +517,7 @@ def dfdist_postprocess_wrapper(DFDISTS, var_effect, var_other, savedir,
                 from pythonlib.tools.pandastools import grouping_print_n_samples
                 grouping_print_n_samples(dftmp, ["shape_semantic_grp", "n", "task_kind"])
 
-            # The pool of shapes to ignore
+            # The pool of shapes to ignore with too few trials.
             # - ignore a shape if it has less than n for _ANY_ task_kind or 
             shapes_ignore = dftmp[dftmp["n"] < prune_min_n_trials][var_effect].unique().tolist()
 
@@ -560,6 +554,8 @@ def dfdist_summary_plots_wrapper(DFDISTS, DFDISTS_AGG, var_effect, var_other, SA
     - PLOT_EACH_PAIR, bool, if True, then plots heatmap of distances between each condition. Takes time.
     - list_metaparams_plot_each_pair, list of str, the metaparams levsl to plots for each pair, If None, then plots
     all. This is useful to reduce amount of time, focusing on just what matters.
+
+    MS: checked
     """
     import seaborn as sns
     from pythonlib.tools.pandastools import grouping_plot_n_samples_conjunction_heatmap, plot_45scatter_means_flexible_grouping, grouping_append_and_return_inner_items_good
