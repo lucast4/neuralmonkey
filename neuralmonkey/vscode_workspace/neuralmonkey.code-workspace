@@ -11,6 +11,9 @@
 		},
 		{
 			"path": "../../../drawmonkey/drawmonkey/notebooks_datasets"
+		},
+		{
+			"path": "../../../ms_1_action_symbols/figure_notebooks"
 		}
 	],
 	"settings": {
