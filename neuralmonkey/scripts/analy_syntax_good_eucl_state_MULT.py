@@ -3,7 +3,7 @@ Organizing good plots for syntax, espeically:
 - euclidian dist
 - state space
 
-NOTEBOOK: 230510_syntax_good.ipynb
+NOTEBOOK: 250510_syntax_good.ipynb
 
 """
 
