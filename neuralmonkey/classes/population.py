@@ -1659,6 +1659,94 @@ class PopAnal():
                                              min_n_datapts_unconstrained=1, plot_train_test_counts=False, plot_indices=False,
                                              plot_all_folds=False):
         """
+
+        Generate stratified cross-validation folds with constraints on minimum sample sizes.
+        
+        Creates multiple train-test splits where each fold contains two sets:
+        - **Constrained set**: Guaranteed ≥n_constrained trials per label group (typically for testing)
+        - **Unconstrained set**: Remaining trials (typically for training)
+        
+        Uses sampling with replacement across folds to ensure constraints are met.
+        
+        PARAMETERS
+        ----------
+        nsplits : int
+            Number of cross-validation folds to generate
+        label_grp_vars : list of str
+            Column names in self.Xlabels["trials"] defining trial groups for stratification.
+            Each unique combination of these variables defines a stratum.
+        fraction_constrained_set : float, default=0.5
+            Target fraction of trials to allocate to constrained set for each label group
+        n_constrained : int, default=2
+            Minimum number of trials required per label group in constrained set
+        list_labels_need_n : list of tuples, optional
+            Specific label combinations that must have ≥n_constrained trials in constrained set.
+            If any fail this requirement, raises NotEnoughDataException.
+        min_frac_datapts_unconstrained : float, optional
+            Minimum fraction of total trials that must remain in unconstrained set
+        min_n_datapts_unconstrained : int, default=1
+            Minimum absolute number of trials that must remain in unconstrained set
+        plot_train_test_counts : bool, default=False
+            Whether to plot trial count heatmaps for first fold
+        plot_indices : bool, default=False
+            Whether to plot trial indices for debugging
+        plot_all_folds : bool, default=False
+            Whether to plot trial counts for all folds (can be slow)
+        
+        RETURNS
+        -------
+        folds : list of tuples
+            List of (unconstrained_indices, constrained_indices) for each fold.
+            Each element contains numpy arrays of trial indices.
+        fig_unc : matplotlib.Figure or None
+            Heatmap showing trial counts in unconstrained set (if plot_train_test_counts=True)
+        fig_con : matplotlib.Figure or None
+            Heatmap showing trial counts in constrained set (if plot_train_test_counts=True)
+        
+        RAISES
+        ------
+        NotEnoughDataException
+            If constraints cannot be satisfied with available data
+        
+        EXAMPLES
+        --------
+        Basic usage for 5-fold cross-validation:
+        
+        >>> # Split trials by shape and location, ensuring ≥3 trials per group in test set
+        >>> folds, _, _ = pa.split_stratified_constrained_grp_var(
+        ...     nsplits=5,
+        ...     label_grp_vars=['shape', 'location'], 
+        ...     n_constrained=3,
+        ...     fraction_constrained_set=0.3
+        ... )
+        >>> 
+        >>> # Use first fold
+        >>> train_indices, test_indices = folds[0]
+        >>> pa_train = pa.slice_by_dim_indices_wrapper("trials", train_indices)
+        >>> pa_test = pa.slice_by_dim_indices_wrapper("trials", test_indices)
+        
+        With specific label requirements:
+        
+        >>> # Ensure specific conditions have enough test trials
+        >>> required_labels = [('circle', 'center'), ('square', 'left')]
+        >>> folds, _, _ = pa.split_stratified_constrained_grp_var(
+        ...     nsplits=3,
+        ...     label_grp_vars=['shape', 'location'],
+        ...     n_constrained=5,
+        ...     list_labels_need_n=required_labels,
+        ...     plot_train_test_counts=True
+        ... )
+        
+        NOTES
+        -----
+        - Uses sampling WITH replacement across folds, so same trial can appear in multiple folds
+        - Constrained set typically used for testing (needs guaranteed sample sizes)
+        - Unconstrained set typically used for training (can handle variable sample sizes)
+        - If a label group has ≤n_constrained total trials, all go to constrained set
+        - For machine learning: constrained_set → test, unconstrained_set → train
+
+        
+        OLD, my docs
         [Good] Split data (trials) in stratitied manner by label, with helping to make sure have enough trials in output
         (constraints).
 
@@ -1673,7 +1761,8 @@ class PopAnal():
         len(dflab[dpca_var].unique()) # 
         - list_labels_need_n, e..g, [('arcdeep-4-4-0', (-1, 1), 'rig3_3x3_big')]
         """
-        from pythonlib.tools.statstools import split_stratified_constrained, split_stratified_constrained_multiple
+        # from pythonlib.tools.statstools import split_stratified_constrained, split_stratified_constrained_multiple
+        from pythonlib.tools.statstools import split_stratified_constrained_multiple
         from pythonlib.tools.pandastools import _check_index_reseted, grouping_plot_n_samples_conjunction_heatmap_helper
 
         ### Extract labels
@@ -2978,15 +3067,64 @@ class PopAnal():
         else:
             return Xredu, PAredu
 
+    def dataextract_subspace_targeted_pca_project_helper(self, dfbases, var_subspace, npcs_keep,
+                                                         normalization=None, plot_orthonormalization=False):
+        """
+        Project self.X onto PCA axes that are already computed in dfbases, where dfbases is gotten from 
+        self.regress_neuron_task_variables_all_chans(). This helper is useful becuase it figures out the
+        number of available dimensions.
+
+        PARAMS:
+        - dfbases, holds the Xpca axes for each variable. These don't have to be orthonormalized yet.
+        - var_subspace, string, item in the "var_subspace" column of dfbases that you want to index
+
+        RETURNS:
+        - pa_subspace, PA holding data projected to <var_subspace> subspace
+        - subspace_axes_orig
+        - subspace_axes_normed
+        - dfcoeff
+        """
+        # Get basis vectors --> dfcoeff dataframe
+        tmp = dfbases[dfbases["var_subspace"] == var_subspace]
+        if len(tmp)!=1:
+            print(dfbases)
+            print(dfbases["var_subspace"].unique())
+            print(var_subspace)
+            assert False
+        Xpca = tmp["Xpca"].values[0]
+        dfcoeff = pd.DataFrame(Xpca, columns=range(Xpca.shape[1]))
+        # explained_variance_ratio_ = tmp["explained_variance_ratio_"].values[0]
+
+        # - keep maximum num dims
+        ndims = Xpca.shape[1]
+        if npcs_keep>ndims:
+            npcs_keep = ndims
+
+        # make this ndims subspace
+        subspace_tuple = tuple(range(npcs_keep))
+        dict_subspace_pa, dict_subspace_axes_orig, dict_subspace_axes_normed = self.dataextract_subspace_targeted_pca_project(
+            dfcoeff, [subspace_tuple], normalization, plot_orthonormalization)
+
+        pa_subspace = dict_subspace_pa[subspace_tuple]
+        subspace_axes_orig = dict_subspace_axes_orig[subspace_tuple]
+        subspace_axes_normed = dict_subspace_axes_normed[subspace_tuple]
+
+        return pa_subspace, subspace_axes_orig, subspace_axes_normed, dfcoeff
+
     def dataextract_subspace_targeted_pca_project(self, dfcoeff, list_subspace_tuples, normalization=None, 
                                                   plot_orthonormalization=False):
         """
-        Project self data onto subspace defined by axes which are columns in dfcoeff.
+        Project self data onto subspace defined by axes which are columns in dfcoeff. 
+
         PARAMS:
-        - dfcoeff, columns are names of axes.
+        - dfcoeff, dataframe holding axes, where columns are names of axes (which correspond to items in list_subspace_tuples). 
+        They don't yet need to be orthonormal, etc.
         - list_subspace_tuples, list of tuples, each tuple is a subspace. Each subspace is a list of variables, which are the 
         columns of dfcoeff, to pick out the axes to project onto.
         """
+
+        # Clean up so no na. This can happen with overcomplete bases.
+        dfcoeff = dfcoeff.fillna(0.0)
 
         # Get basis vectors
         dict_subspace_pa = {}
@@ -3045,9 +3183,9 @@ class PopAnal():
             PA = self
 
         ### Collect coefficients across all neurons
-        dfcoeff, dfbases, res_all, original_feature_mapping = PA.regress_neuron_task_variables_all_chans(variables, variables_is_cat, PLOT_COEFF_HEATMAP, 
-                                                                      PRINT=PRINT, savedir_coeff_heatmap=savedir_coeff_heatmap,
-                                                                      get_axis_for_categorical_vars=get_axis_for_categorical_vars)
+        dfcoeff, dfbases, res_all, original_feature_mapping = PA.regress_neuron_task_variables_all_chans(variables, variables_is_cat, 
+                                                                        PLOT_COEFF_HEATMAP, PRINT=PRINT, savedir_coeff_heatmap=savedir_coeff_heatmap,
+                                                                        get_axis_for_categorical_vars=get_axis_for_categorical_vars)
         
 
         # Get basis vectors
@@ -3056,11 +3194,144 @@ class PopAnal():
 
         return dict_subspace_pa, dict_subspace_axes_orig, dict_subspace_axes_normed, dfcoeff, PA
 
+    # dataextract_subspace_targeted_pca_subtract_confounds
+    def dataextract_subspace_targeted_pca_wrapper(self, variables_cont, variables_cat, vars_remove,
+                                                             var_subspace, npcs_keep, normalization="orthonormal",
+                                                             PLOT_COEFF_HEATMAP=False, PRINT=False,
+                                                             savedir_coeff_heatmap=None, savedir_pca_subspaces=None,
+                                                             inds_trials_pa_train=None, inds_trials_pa_test=None,
+                                                             demean=False, plot_orthonormalization=False):
+        """
+        [Good] Flexible helper to project self.X onto a subspace defined using OLS on each neuron 
+        to get coefficients for each variable, and then orthonormlaize to get subspace, 
+        and then project data into that subspace.
+        
+        Also option to subtract a chosen subset of those variable's coefficients (i.e, controlling for confounds) 
+        before projecting onto another set of variables (using the same coefficents from the original regression 
+        -- note that this is identical to redoing regression after subtracting)
+
+        Two advances compared to: self.dataextract_subspace_targeted_pca_one_var_mult_axes(): (i) works also with continuous varialbes. 
+        This is very easy, just pass it in without, and (ii) subtracts a subset of variables (resulting in left over residual)
+        
+        PARAMS:
+        - variables_cont, list of str, continuous variables to include.
+        - variables_cat, list of str, categorical variables to include.
+        - vars_remove, list of str, which variables to regress out. To skip, use None or empty list.
+        - var_subspace, either str or tuple of strings, to project to (after applying vars_remove)
+        - normalization, str, either None, "norm", or "orthonormalize".
+        - inds_trials_pa_train, inds_trials_pa_test, optionally, inds to train and then project data onto subsapce
+
+        Examples:
+        variables_cont = ("motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y")
+        variables_cat = ("gridloc", "DIFF_gridloc", "stroke_index_is_first", "chunk_rank", "shape", "rank_conj")
+        vars_remove = ["motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", 
+                    "velmean_x", "velmean_y", "gridloc", "DIFF_gridloc", "stroke_index_is_first"]
+
+        """
+        from patsy import dmatrix
+        from neuralmonkey.analyses.regression_good import formula_string_construct
+
+        # Demean 
+        if demean:
+            PA = self.norm_subtract_mean_each_chan()
+        else:
+            PA = self
+
+        assert self.X.shape[2]==1
+        variables = variables_cont + variables_cat
+        variables_is_cat = [False for _ in range(len(variables_cont))] + [True for _ in range(len(variables_cat))]
+
+        ### Optionally split into train and test PA
+        if inds_trials_pa_train is not None:
+            pa_train = PA.slice_by_dim_indices_wrapper("trials", inds_trials_pa_train)
+        else:
+            pa_train = PA
+        
+        if inds_trials_pa_test is not None:
+            pa_test = PA.slice_by_dim_indices_wrapper("trials", inds_trials_pa_test)
+        else:
+            pa_test = PA
+
+        ### (1) Regression, to get coefficients
+        # Do neuron-level regression and PCA of coeffs to get subspaces
+        # dflab = pa_train.Xlabels["trials"]
+        dfcoeff, dfbases, res_all, original_feature_mapping = pa_train.regress_neuron_task_variables_all_chans(
+            variables, variables_is_cat, PLOT_COEFF_HEATMAP, PRINT=PRINT,
+            savedir_coeff_heatmap=savedir_coeff_heatmap, savedir_pca_subspaces=savedir_pca_subspaces)
+
+        ### (2) Subtract residuals, doing this to test data
+        if vars_remove is not None and len(vars_remove)>0:
+            dflab_test = pa_test.Xlabels["trials"]
+            vars_remove_is_cat = [variables_is_cat[variables.index(v)] for v in vars_remove]
+            subset_formula = formula_string_construct("frate", vars_remove, vars_remove_is_cat, exclude_var_response=True)
+            # Go thru each unit, getting its residuals
+            list_xresid =[]
+            for ind_chan in range(len(pa_test.Chans)):
+                frates = pa_test.X[ind_chan, :, 0]
+                model = res_all[ind_chan]["model"]
+
+                # Make new design matrix
+                X_subset = dmatrix("~" + subset_formula, dflab_test, return_type="dataframe")
+
+                # --- extract coefficients for these terms from full model ---
+                beta_subset = model.params.reindex(X_subset.design_info.column_names).fillna(0.0).values # fillna, otherwise will fail if there is overparametrized case.
+                if np.any(np.isnan(beta_subset)):
+                    print(model.params)
+                    print(beta_subset)
+                    print(X_subset.design_info.column_names)
+                    assert False, "why nan?"
+
+                # --- compute predictions from subset terms only ---
+                frates_subset = X_subset.values @ beta_subset # (ntrials, nfeats) * (nfeats) --> (ntrials)
+                
+                # --- residuals relative to subset predictions ---
+                xresid = frates - frates_subset
+
+                if False:
+                    fig, ax = plt.subplots()
+                    ax.plot(self.X[ind_chan, :, 0], yhat_subset, "xk", alpha=0.1)
+                    assert False
+
+                list_xresid.append(xresid)
+            Xresid = np.stack(list_xresid)[:, :, None]
+            PAresid = pa_test.copy_replacing_X(Xresid)
+        else:
+            # Just copy over
+            PAresid = pa_test.copy()
+
+        if False:
+            # Sanity check, project the residuals onto the desired subspace
+            # NOTE: This returns EXACTLY the same coefficients from before removing confounds.
+            dfcoeff2, dfbases2, res_all2, original_feature_mapping2 = PAresid.regress_neuron_task_variables_all_chans(
+                variables, variables_is_cat, True)
+
+        ### (3) Project to subspace.
+        if var_subspace is None:
+            # Then skip this
+            pa_subspace, subspace_axes_orig, subspace_axes_normed = None, None, None
+        elif isinstance(var_subspace, str):
+            # var_subspace = "rank_conj" 
+            pa_subspace, subspace_axes_orig, subspace_axes_normed, _ = PAresid.dataextract_subspace_targeted_pca_project_helper(
+                    dfbases, var_subspace, npcs_keep, normalization, plot_orthonormalization)
+        elif isinstance(var_subspace, (list, tuple)):
+            # vars_this_subspace = ("motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", 
+            #             "velmean_x", "velmean_y", "gridloc", "DIFF_gridloc")
+            dfbases = PAresid.regress_neuron_task_variables_convert_coeff_to_basis(dfcoeff, 
+                                                                var_subspace, original_feature_mapping, savedir_pca_subspaces)
+            pa_subspace, subspace_axes_orig, subspace_axes_normed, _ = PAresid.dataextract_subspace_targeted_pca_project_helper(
+                    dfbases, "this", npcs_keep, normalization, plot_orthonormalization)
+
+        else:
+            assert False
+            
+        return pa_subspace, subspace_axes_orig, subspace_axes_normed, dfcoeff, pa_test, PAresid, original_feature_mapping
+        
     def dataextract_subspace_targeted_pca_one_var_mult_axes(self, variables, variables_is_cat, var_subspace, npcs_keep,
                                                 demean=True, 
                                                 normalization=None, plot_orthonormalization=False, 
                                                 PLOT_COEFF_HEATMAP=False, savedir_coeff_heatmap=None, PRINT=False,
-                                                get_axis_for_categorical_vars=True, savedir_pca_subspaces=None):
+                                                get_axis_for_categorical_vars=True, savedir_pca_subspaces=None,
+                                                inds_trials_pa_train=None, inds_trials_pa_test=None):
         """
         [GOOD] Get subspace for a set of variables, and then project data into that subspace.
         one_var --> returns ndim, projected to this var, where dims are defined by PCA on the basis set spanned by
@@ -3076,48 +3347,77 @@ class PopAnal():
         - normalization, str, either None, "norm", or "orthonormalize".
         """ 
 
+        assert False, "obsolete, this is identical to dataextract_subspace_targeted_pca_wrapper() with vars_remove = None "
         # for subspace_tuple in list_subspaces:
         #     assert isinstance(subspace_tuple, (tuple, list))
         #     assert isinstance(subspace_tuple[0], str)
 
         # Input must be scalarized
         assert self.X.shape[2]==1
-
+        assert var_subspace is not None
+        if var_subspace not in variables:
+            print("var_subspace:", var_subspace)
+            print("variables:", variables)
+            assert False
+         
         # Demean 
         if demean:
             PA = self.norm_subtract_mean_each_chan()
         else:
             PA = self
 
+        ### Optionally split into train and test PA
+        if inds_trials_pa_train is not None:
+            pa_train = PA.slice_by_dim_indices_wrapper("trials", inds_trials_pa_train)
+        else:
+            pa_train = PA
+        
+        if inds_trials_pa_test is not None:
+            pa_test = PA.slice_by_dim_indices_wrapper("trials", inds_trials_pa_test)
+        else:
+            pa_test = PA
+
+        # print(pa_train.X.shape, pa_test.X.shape)
+        # assert False
+
         ### Collect coefficients across all neurons
-        _, dfbases, res_all, original_feature_mapping = PA.regress_neuron_task_variables_all_chans(variables, variables_is_cat, PLOT_COEFF_HEATMAP, 
+        # dfbases holds PCA dimensions for each variable (i.e., subspace)
+        _, dfbases, _, _ = pa_train.regress_neuron_task_variables_all_chans(variables, variables_is_cat, PLOT_COEFF_HEATMAP, 
                                                                       PRINT=PRINT, savedir_coeff_heatmap=savedir_coeff_heatmap,
                                                                       get_axis_for_categorical_vars=get_axis_for_categorical_vars, 
                                                                       savedir_pca_subspaces=savedir_pca_subspaces)
-        
-        # Get basis vectors --> dfcoeff dataframe
-        tmp = dfbases[dfbases["var_subspace"] == var_subspace]
-        assert len(tmp)==1
-        Xpca = tmp["Xpca"].values[0]
-        explained_variance_ratio_ = tmp["explained_variance_ratio_"].values[0]
-        dfcoeff = pd.DataFrame(Xpca, columns=range(Xpca.shape[1]))
 
-        # Given PCA of the categorical variables, project onto any subspace
-        # - keep maximum num dims
-        ndims = Xpca.shape[1]
-        if npcs_keep>ndims:
-            npcs_keep = ndims
-        # make this ndims subspace
-        subspace_tuple = tuple(range(npcs_keep))
-        list_subspaces = [subspace_tuple]
-        dict_subspace_pa, dict_subspace_axes_orig, dict_subspace_axes_normed = PA.dataextract_subspace_targeted_pca_project(
-            dfcoeff, list_subspaces, normalization, plot_orthonormalization)
+        if True:
+            pa_subspace, subspace_axes_orig, subspace_axes_normed, dfcoeff = pa_test.dataextract_subspace_targeted_pca_project_helper(
+                dfbases, var_subspace, npcs_keep, normalization, plot_orthonormalization)
+        else:
+            # Get basis vectors --> dfcoeff dataframe
+            tmp = dfbases[dfbases["var_subspace"] == var_subspace]
+            if len(tmp)!=1:
+                print(dfbases)
+                print(dfbases["var_subspace"].unique())
+                print(var_subspace)
+                assert False
+            Xpca = tmp["Xpca"].values[0]
+            # explained_variance_ratio_ = tmp["explained_variance_ratio_"].values[0]
+            dfcoeff = pd.DataFrame(Xpca, columns=range(Xpca.shape[1]))
 
-        pa_subspace = dict_subspace_pa[subspace_tuple]
-        subspace_axes_orig = dict_subspace_axes_orig[subspace_tuple]
-        subspace_axes_normed = dict_subspace_axes_normed[subspace_tuple]
+            # Given PCA of the categorical variables, project onto any subspace
+            # - keep maximum num dims
+            ndims = Xpca.shape[1]
+            if npcs_keep>ndims:
+                npcs_keep = ndims
+            # make this ndims subspace
+            subspace_tuple = tuple(range(npcs_keep))
+            list_subspaces = [subspace_tuple]
+            dict_subspace_pa, dict_subspace_axes_orig, dict_subspace_axes_normed = pa_test.dataextract_subspace_targeted_pca_project(
+                dfcoeff, list_subspaces, normalization, plot_orthonormalization)
 
-        return pa_subspace, subspace_axes_orig, subspace_axes_normed, dfcoeff, PA
+            pa_subspace = dict_subspace_pa[subspace_tuple]
+            subspace_axes_orig = dict_subspace_axes_orig[subspace_tuple]
+            subspace_axes_normed = dict_subspace_axes_normed[subspace_tuple]
+
+        return pa_subspace, subspace_axes_orig, subspace_axes_normed, dfcoeff, pa_test
 
     def dataextract_project_data_denoise(self, basis_vectors, version="projection", 
                                          normalization=None, plot_orthonormalization=False):
@@ -3921,21 +4221,23 @@ class PopAnal():
 
         return pa, strok
     
-    def behavior_strokes_kinematics_stats(self, trial_take_first_stroke=True):
+    def behavior_strokes_kinematics_stats(self, trial_take_first_stroke=True, twind=None):
         """
-        Extract strokes, and get variuos stats related to kinmetaics.
+        Extract strokes from self.Xlabels["trials"], and get variuos stats related to kinmetaics, and then store
+        in self.Xlabels["trials"]
         """
         
         assert trial_take_first_stroke, "assumes one stroke below.."
 
-        self.behavior_extract_strokes_to_dflab()
+        self.behavior_extract_strokes_to_dflab(trial_take_first_stroke=trial_take_first_stroke)
         dflab = self.Xlabels["trials"]
         strokes = dflab["strok_beh"].tolist()
 
         ### MOTOR PARAMETERS
         # get the initial velocity (angle and magnitude)
-        from pythonlib.dataset.dataset_strokes import DatStrokes
-        DS = DatStrokes()
+        if False:
+            from pythonlib.dataset.dataset_strokes import DatStrokes
+            DS = DatStrokes()
         
         ### For each stroke, compute some features
         import numpy as np
@@ -3943,17 +4245,24 @@ class PopAnal():
         from pythonlib.tools.stroketools import feature_velocity_vector_angle_norm
 
         # (1) For initial angle, take start of each stroke 
-        twind = [0, 0.15] # sec
+        if twind is None:
+            twind = [0, 0.15] # sec
         strokes_sliced = sliceStrokes(strokes, twind, time_is_relative_each_onset=True, assert_no_lost_strokes=True)
 
         # - velocity vector
         angles = [] 
         norms = []
+        vels = []
         for strok in strokes_sliced:
-            _, a, n = feature_velocity_vector_angle_norm(strok)
+            velmean, a, n = feature_velocity_vector_angle_norm(strok, fs_allow_outlier_timestamp_intervals=True)
             angles.append(a)
             norms.append(n)
-        
+            vels.append(velmean)
+
+        vels = np.stack(vels)
+        dflab["velmean_x"] = vels[:, 0]
+        dflab["velmean_y"] = vels[:, 1]
+
         # - circularity
         from pythonlib.drawmodel.features import strokeCircularity
         fraclow = 0
@@ -3981,6 +4290,9 @@ class PopAnal():
 
         if "gap_from_prev_angle" in dflab:
             dflab["gap_from_prev_angle_binned"] = bin_angle_by_direction(dflab["gap_from_prev_angle"].values, num_angle_bins=8)
+            
+        dflab["gap_from_prev_x"] = dflab["gap_from_prev_dist"] * np.cos(dflab["gap_from_prev_angle"])
+        dflab["gap_from_prev_y"] = dflab["gap_from_prev_dist"] * np.sin(dflab["gap_from_prev_angle"])
 
         dflab["motor_norm"] = norms
 
@@ -5114,7 +5426,7 @@ class PopAnal():
         """
         For each chan, do multiple regression, where variables predicts firing rate.
         Here, "data_splits" means that can compute regression axes using different splits of dataset, each a level of vars_others, and
-        then concatenate the results across all splits.
+        then concatenate the results across all splits, to result in a single subspace
         - e.g, useful if want to compute axis for chunk_within_rank, conditioned on each level of chunk_shape.
         - also useful if you want to aggregate axes across different levels, to get a single better estimate of the axis.
         PARAMS:
@@ -5176,19 +5488,101 @@ class PopAnal():
 
         return DFCOEFF, columns_each_split
 
+    def regress_neuron_task_variables_convert_coeff_to_basis(self, dfcoeff, vars_this_subspace, original_feature_mapping,
+                                                             savedir_pca_subspaces=None, convert_to_dfbasis=True):
+        """
+        Convert coefficients to subspace using PCA, given set of regression coefficients (dfcoeff) and variables to combine
+        into this subspace (vars_this_subspace)
+
+        PARAMS:
+        - vars_this_subspace, list of str, the variable names to include in making this subspace
+            vars_this_subspace = ("motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", 
+                        "velmean_x", "velmean_y", "gridloc", "DIFF_gridloc")
+        RETURNS:
+        - dfbases, one, row, this subspace's basis
+        """
+        from neuralmonkey.analyses.state_space_good import dimredgood_pca
+
+        # convert vars to columns
+        # Get the levels for this categorical variable.
+        list_var_inner = [k for k, v in original_feature_mapping.items() if v in vars_this_subspace]
+        
+        if len(list_var_inner)==0:
+            # This usually means this variable did not have enough variation to be part of regression model.
+            # print(list_var_inner)
+            # print("Var mappings:")
+            # for k, v in original_feature_mapping.items():
+            #     print(k, v)
+            # print("Failed to find this var: ", var_subspace)
+            # assert False
+            return None, None, None
+
+        # Do PCA to get the first PC
+        data = dfcoeff.loc[:, list_var_inner].values
+        assert data.shape[1]==len(list_var_inner)
+
+        print(f"[doing pca for var={vars_this_subspace}, this many levels: {len(list_var_inner)+1}")
+        if savedir_pca_subspaces is not None:
+            plot_pca_explained_var_path = f"{savedir_pca_subspaces}/pca-var_explained-{'|'.join(vars_this_subspace)}.pdf"
+            plot_loadings_path = f"{savedir_pca_subspaces}/pca-loadings-{'|'.join(vars_this_subspace)}.pdf"
+        else:
+            plot_pca_explained_var_path, plot_loadings_path = None, None
+
+        _, Xpca, _, explained_variance_ratio_, components_ = dimredgood_pca(data, method="sklearn", 
+                                        plot_pca_explained_var_path=plot_pca_explained_var_path, 
+                                        plot_loadings_path=plot_loadings_path, return_stats=True)
+
+        if convert_to_dfbasis:
+            res = []
+            res.append({
+                "var_subspace":"this",
+                "Xpca":Xpca,
+                "explained_variance_ratio_":explained_variance_ratio_,
+                "components_":components_,
+            })
+            dfbases = pd.DataFrame(res)
+
+            return dfbases
+        else:
+            return Xpca, explained_variance_ratio_, components_
+
+    def regress_neuron_task_variables_all_chans_residuals(self, variables, variables_is_cat, PLOT_COEFF_HEATMAP=False, PRINT=False,
+                                                savedir_coeff_heatmap=None, get_axis_for_categorical_vars=False,
+                                                savedir_pca_subspaces=None, also_return_updated_variables=False):
+        """
+        Control for variables by regressing them out of self.X. 
+        """
+        dfcoeff, dfbases, res_all, original_feature_mapping = self.regress_neuron_task_variables_all_chans(variables, variables_is_cat, 
+                                                                PLOT_COEFF_HEATMAP, PRINT, savedir_coeff_heatmap, 
+                                                                get_axis_for_categorical_vars, savedir_pca_subspaces, 
+                                                                also_return_updated_variables)
+        
+        Xresid = np.stack([x["residuals"] for x in res_all], axis=0) # (nneur, ntrials)
+        Xresid = Xresid[:, :, None] # (nneur, ntrials, 1)
+        PAresid = self.copy_replacing_X(Xresid)
+        print("TODO !!!!: use ridge regression")
+        return PAresid
+        
     def regress_neuron_task_variables_all_chans(self, variables, variables_is_cat, PLOT_COEFF_HEATMAP=False, PRINT=False,
                                                 savedir_coeff_heatmap=None, get_axis_for_categorical_vars=False,
-                                                savedir_pca_subspaces=None):
+                                                savedir_pca_subspaces=None, also_return_updated_variables=False):
         """
-        For each chan, do multiple regression, where variables predicts firing rate.
-        """    
+        For each chan, do multiple regression, where variables predicts firing rate, and then return the combined coefficients
 
-        assert len(variables) == len(variables_is_cat)
+        PARAMS:
+        - return_as_residuals, bool, if True, then returns copy of self, with X replaced with residuals, after subtracting predicted
+        activity given variables.
+        """    
+        x1 = self.X.copy()
+        if variables_is_cat is None:
+            variables_is_cat = [True for _ in range(len(variables))]
+        else:
+            assert len(variables) == len(variables_is_cat)
 
         res = []
         res_all = []
         for chan_idx in range(len(self.Chans)):
-            dict_coeff, model, data, original_feature_mapping = self.regress_neuron_task_variables(chan_idx, variables, 
+            dict_coeff, model, data, original_feature_mapping, variables, variables_is_cat = self.regress_neuron_task_variables(chan_idx, variables, 
                                                                                                 variables_is_cat, PRINT=PRINT)
             res.append(dict_coeff)
             res_all.append({
@@ -5224,8 +5618,12 @@ class PopAnal():
                     data = dfcoeff.loc[:, list_var_inner].values
                     assert len(data)>0
 
+                    # if np.var(data)==0:
+                    #     Xpcakeep = data
+                    # else:
                     Xpcakeep, _, _ = dimredgood_pca(data, method="sklearn")
                                                         #  plot_pca_explained_var_path="/tmp/test1.pdf", plot_loadings_path="/tmp/test2.pdf")
+                    # print("Shapes: ", Xpcakeep.shape, data.shape)
                     dfcoeff[var_subspace] = Xpcakeep[:, 0]
 
                     # Also, optionally, get not just first PC
@@ -5247,47 +5645,59 @@ class PopAnal():
         res = []
         for var_subspace, var_is_cat in zip(variables, variables_is_cat):
             if var_is_cat: 
-                from neuralmonkey.analyses.state_space_good import dimredgood_pca
-                # Get the levels for this categorical variable.
-                list_var_inner = [k for k, v in original_feature_mapping.items() if v==var_subspace]
-
-                if len(list_var_inner)==0:
-                    # This usually means this variable did not have enough variation to be part of regression model.
-                    # print(list_var_inner)
-                    # print("Var mappings:")
-                    # for k, v in original_feature_mapping.items():
-                    #     print(k, v)
-                    # print("Failed to find this var: ", var_subspace)
-                    # assert False
-                    continue
-                
-                # Do PCA to get the first PC
-                data = dfcoeff.loc[:, list_var_inner].values
-                assert len(data)>0
-
-                print(f"For var={var_subspace}, this many levels: {len(list_var_inner)}")
-                if savedir_pca_subspaces is not None:
-                    plot_pca_explained_var_path = f"{savedir_pca_subspaces}/pca-var_explained-{var_subspace}.pdf"
-                    plot_loadings_path = f"{savedir_pca_subspaces}/pca-loadings-{var_subspace}.pdf"
+                if True:
+                    Xpca, explained_variance_ratio_, components_ = self.regress_neuron_task_variables_convert_coeff_to_basis(
+                            dfcoeff, [var_subspace], original_feature_mapping, savedir_pca_subspaces, convert_to_dfbasis=False)
+                    if Xpca is None:
+                        print(var_subspace)
+                        continue
                 else:
-                    plot_pca_explained_var_path, plot_loadings_path = None, None
+                    from neuralmonkey.analyses.state_space_good import dimredgood_pca
+                    # Get the levels for this categorical variable.
+                    list_var_inner = [k for k, v in original_feature_mapping.items() if v==var_subspace]
 
-                _, Xpca, _, explained_variance_ratio_, components_ = dimredgood_pca(data, method="sklearn", 
-                                                plot_pca_explained_var_path=plot_pca_explained_var_path, 
-                                                plot_loadings_path=plot_loadings_path, return_stats=True)
+                    if len(list_var_inner)==0:
+                        # This usually means this variable did not have enough variation to be part of regression model.
+                        # print(list_var_inner)
+                        # print("Var mappings:")
+                        # for k, v in original_feature_mapping.items():
+                        #     print(k, v)
+                        # print("Failed to find this var: ", var_subspace)
+                        # assert False
+                        continue
+                    
+                    # Do PCA to get the first PC
+                    data = dfcoeff.loc[:, list_var_inner].values
+                    assert len(data)>0
+
+                    print(f"For var={var_subspace}, this many levels: {len(list_var_inner)}")
+                    if savedir_pca_subspaces is not None:
+                        plot_pca_explained_var_path = f"{savedir_pca_subspaces}/pca-var_explained-{var_subspace}.pdf"
+                        plot_loadings_path = f"{savedir_pca_subspaces}/pca-loadings-{var_subspace}.pdf"
+                    else:
+                        plot_pca_explained_var_path, plot_loadings_path = None, None
+
+                    _, Xpca, _, explained_variance_ratio_, components_ = dimredgood_pca(data, method="sklearn", 
+                                                    plot_pca_explained_var_path=plot_pca_explained_var_path, 
+                                                    plot_loadings_path=plot_loadings_path, return_stats=True)
 
                 # store everything
                 res.append({
                     "var_subspace":var_subspace,
                     "var_is_cat":var_is_cat,
-                    "list_var_inner":list_var_inner,
+                    # "list_var_inner":list_var_inner,
                     "Xpca":Xpca,
                     "explained_variance_ratio_":explained_variance_ratio_,
                     "components_":components_,
                 })
         dfbases = pd.DataFrame(res)
 
-        return dfcoeff, dfbases, res_all, original_feature_mapping
+        assert np.all(x1==self.X), "I dont expect it to change based on this functino..."
+
+        if also_return_updated_variables:
+            return dfcoeff, dfbases, res_all, original_feature_mapping, variables, variables_is_cat
+        else:
+            return dfcoeff, dfbases, res_all, original_feature_mapping
     
     def regress_neuron_task_variables(self, chan_idx, variables, variables_is_cat, PRINT=False):
         """
@@ -5298,6 +5708,19 @@ class PopAnal():
         import statsmodels.api as sm
         import statsmodels.formula.api as smf
 
+        dflab = self.Xlabels["trials"]
+
+        # Only use variables that have at least 2 levels in data, or else may run into error later.
+        _variables = []
+        _variables_is_cat = []
+        for v, vcat in zip(variables, variables_is_cat):
+            if len(dflab[v].unique())>1:
+                _variables.append(v)
+                _variables_is_cat.append(vcat)
+        variables = _variables
+        variables_is_cat = _variables_is_cat
+        assert len(variables)>0
+
         ### Average over time
         assert self.X.shape[2]==1, "you must pass in scalars -- e.g, could mean over time"
         # pa = self.slice_by_dim_values_wrapper("times", twind_scal)
@@ -5307,27 +5730,22 @@ class PopAnal():
         frates = self.X[chan_idx, :, 0] # (ntrials, )
 
         ### Feeatures
-        dflab = self.Xlabels["trials"]
         # TODO: Check for correlated variables.
         data = dflab.loc[:, variables].copy()
         data["frate"] = frates
 
         ### Construct function string
-        # list_feature_names = []
-        func = f"frate ~"
-        for var, var_is_cat in zip(variables, variables_is_cat):
-            if var_is_cat == False:
-                func += f" {var} + "
-                # list_feature_names.append(var)
-        for var, var_is_cat in zip(variables, variables_is_cat):
-            if var_is_cat == True:
-                func += f" C({var}) + "
-                # list_feature_names.append(var)
-        # remove the + at the end
-        func = func[:-3]
+        from neuralmonkey.analyses.regression_good import formula_string_construct
+        func = formula_string_construct("frate", variables, variables_is_cat)
+
+        # # z-score all continuous varialbes
+        # data[["cont1", "cont2"]] = (data[["cont1", "cont2"]] - data[["cont1", "cont2"]].mean()) / data[["cont1", "cont2"]].std()
 
         ### Run regression
         model = smf.ols(func, data=data).fit()
+        # model = smf.ols(func, data=data).fit_regularized(alpha=0.00001)
+        # display(model.summary())
+        # assert False
 
         # Extract the coefficients
         feature_names = model.params.index.tolist()
@@ -5351,7 +5769,7 @@ class PopAnal():
             print(feature_names)
             print(coef_array)   
 
-        return dict_coeff, model, data, original_feature_mapping
+        return dict_coeff, model, data, original_feature_mapping, variables, variables_is_cat
 
     def regress_neuron_task_variables_subtract_from_activity(self, tbin_dur, tbin_slide, twind, var_shape):
         """

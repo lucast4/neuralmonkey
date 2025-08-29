@@ -3265,7 +3265,7 @@ def targeted_dim_reduction_wrapper(DFallpa, animal, date, SAVEDIR_ANALYSIS, vari
             # savedir_pca_subspaces = f"{SAVEDIR}/pca_in_subspaces"
             # os.makedirs(savedir_pca_subspaces, exist_ok=True)
             pa_subspace, _, _, _, _ = state_space_targeted_pca_scalar_single_one_var_mult_axes(
-                    PA, twind_scal, variables, variables_is_cat, var_effect, npcs_keep_plot, 
+                    PA, twind_scal, [], variables, var_effect, npcs_keep_plot, 
                     LIST_VAR_VAROTHERS, LIST_DIMS, savedir, just_extract_paredu=False,
                     savedir_pca_subspaces=savedir, tbin_dur=TBIN_DUR, tbin_slide=TBIN_SLIDE)
             

@@ -1019,6 +1019,19 @@ class Snippets(object):
         sn, _ = self._session_extract_sn_and_trial()
         return sn.sitegetter_summarytext(chan)
 
+    def session_sitegetter_map_site_to_region(self, chan):
+        """
+        Return dict holding bregion info for this chan
+        This assumes matcjhed sites across all SN.
+        """
+        sn, _ = self._session_extract_sn_and_trial()
+        dat = {
+            "bregion_combined": sn.sitegetterKS_map_site_to_region(chan, region_combined=True),
+            "bregion":sn.sitegetterKS_map_site_to_region(chan, region_combined=False),
+            "chan":chan,
+            }
+        return dat
+    
     # def session_plot_raster_create_figure_blank(self, duration, n_raster_lines, 
     #         n_subplot_rows=1, nsubplot_cols=1, 
     #         reduce_height_for_sm_fr=False, sharex=True):

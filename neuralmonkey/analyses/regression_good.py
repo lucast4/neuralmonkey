@@ -115,6 +115,64 @@ def fit_and_score_regression_with_categorical_predictor(data_train, y_var, x_var
 
     return dict_coeff, model, original_feature_mapping, results
 
+def plot_ols_results(model, ci=True, alpha=0.05, figsize=(8, 5)):
+    """
+    Plot OLS regression coefficient estimates with confidence intervals or standard errors.
+
+    Plots results from: fit_and_score_regression_with_categorical_predictor()
+    
+    Parameters:
+    - model: a fitted statsmodels OLS model object.
+    - ci (bool): If True, plot confidence intervals. If False, plot ±1 standard error.
+    - alpha (float): significance level, for what to color pvals in plots
+    - figsize (tuple): size of the plot.
+    """
+    # Extract values
+    summary_df = model.summary2().tables[1]
+    summary_df = summary_df.rename(columns={
+        'Coef.': 'coef',
+        'Std.Err.': 'se',
+        '[0.025': 'ci_lower',
+        '0.975]': 'ci_upper',
+        'P>|t|': 'pval'
+    })
+
+    # Add column for error bars
+    if ci:
+        lower = summary_df['ci_lower']
+        upper = summary_df['ci_upper']
+        error_lower = summary_df['coef'] - lower
+        error_upper = upper - summary_df['coef']
+    else:
+        error_lower = summary_df['se']
+        error_upper = summary_df['se']
+
+    # Prepare plot
+    fig, ax = plt.subplots(figsize=figsize)
+    y_pos = range(len(summary_df))
+    ax.errorbar(summary_df['coef'], y_pos,
+                xerr=[error_lower, error_upper],
+                fmt='o', capsize=5, color='black')
+
+    ax.axvline(0, color='gray', linestyle='--')
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(summary_df.index)
+    ax.set_xlabel('Coefficient Estimate')
+    ax.invert_yaxis()  # Highest term on top
+
+    # Annotate with p-values
+    for i, pval in enumerate(summary_df['pval']):
+        if pval < alpha:
+            color = "r"
+        else:
+            color = "b"
+        ax.text(summary_df['coef'].iloc[i], i,
+                f"p={pval:.3g}",
+                va='center', ha='left' if summary_df['coef'].iloc[i] >= 0 else 'right',
+                fontsize=9, color=color, alpha=0.5)
+
+    return fig
+
 def fit_and_score_regression(X_train, y_train, X_test=None, y_test=None, 
                              do_upsample=False, version="ridge", PRINT=False,
                              ridge_alpha=1, demean=True, also_return_predictions=False):
@@ -250,3 +308,246 @@ def ordinal_fit_and_score_train_test_splits(X, y_ordinal, max_nsplits=None, expe
     r2_test_mean = np.mean(dfres["r2_test"])
 
     return dfres, r2_test_mean
+
+
+def kernel_ordinal_logistic_regression(X, y, rescale_std=True, PLOT=False, do_grid_search=True,
+                                       grid_n_splits=3):
+    """
+    Ordinal logistic regressino, with option (defualt) to use kernel transformation, which is
+    useful if you have non-linear relationship between X and y. 
+
+    y is ordinal (0, 1, 2, 3), and X is continuously varying data
+    
+    PARAMS:
+    - X, (ntrials, ndims)
+    - y, (ntrials), ordered labels, must be integers. They must be 0, 1, 2..., (ie no negative, no gaps)
+    - rescale_std, if True, then z-scores. If False, then just demeans.
+
+    NOTE:
+    - Given returned model, res["model"], can score any new data in same space as input X by running
+    y_pred = model.predict(X)
+    """
+    import numpy as np
+    # import matplotlib.pyplot as plt
+    from sklearn.model_selection import StratifiedKFold
+    # from sklearn.metrics import accuracy_score
+    # from scipy.stats import spearmanr
+    from sklearn.metrics import pairwise_distances, balanced_accuracy_score
+    import numpy as np
+    from sklearn.preprocessing import StandardScaler
+    from sklearn.kernel_approximation import Nystroem  # or RBFSampler
+    from sklearn.pipeline import Pipeline
+    from sklearn.model_selection import StratifiedKFold, GridSearchCV
+    import mord  # ordered logit
+
+    assert all([isinstance(yy, (int, np.integer)) for yy in y])
+    assert np.all(np.diff(sorted(set(y)))==1)
+    # assert min(y)==0
+    assert len(set(y))>1
+
+    ### Determine CV params
+    # First, determine length scale (gamma, inverse radius), based on heuristic using the 
+    # median inter-point distance
+    D2 = pairwise_distances(X, metric="sqeuclidean")
+    median_d2 = np.median(D2)
+    gamma0 = 1.0 / median_d2
+    gammas = gamma0 * np.logspace(-1.5, 1.5, 5)
+
+    # n_components (cannot be more than the n samples, or else warning)
+    n_samples = X.shape[0]
+    ker__n_components = [x for x in [2, 4, 8, 16, 32, 64, 128] if x < 0.8*n_samples]
+    ker__n_components = ker__n_components[-4:]
+    n_components0 = max([x for x in [2, 4, 8, 16, 32, 64] if x<0.8*n_samples])
+
+    ### Pipeline
+    steps = [
+        ('sc', StandardScaler(with_std=rescale_std)),
+        ('ker', Nystroem(kernel='rbf', gamma=gamma0, n_components=n_components0, random_state=None)),
+        ('ord', mord.LogisticIT(alpha=1.0))  # proportional odds (ordered logit)
+    ]
+    pipe = Pipeline(steps)
+
+    if do_grid_search:
+
+        if False:
+            print("Median heuristic gamma:", gamma0)
+            print("Gamma grid:", gammas)
+
+        param_grid = {
+            # 'ker__gamma': [0.1, 0.3, 1.0, 3.0],
+            'ker__gamma': gammas,
+            'ker__n_components': ker__n_components,
+            'ord__alpha': [0.05, 0.2, 1.0, 5.0],
+        }
+        # print(param_grid)
+
+        ### Do grid-search
+        cv = StratifiedKFold(n_splits=grid_n_splits, shuffle=True, random_state=None)
+        gs = GridSearchCV(pipe, param_grid, cv=cv, scoring='accuracy', n_jobs=-1)
+        gs.fit(X, y)
+
+        ### Return results
+        best_params = gs.best_params_
+        model = gs.best_estimator_
+    else:
+        model = pipe
+        best_params = None
+        model.fit(X, y)
+
+    y_pred = model.predict(X)
+
+    # Compute the latent score manually
+    X_trans = model[:-1].transform(X) # Get transformed features (after scaler/kernel)
+    ord_model = model.named_steps['ord']
+    s = X_trans @ ord_model.coef_
+    # theta = model.named_steps['ord'].theta_        # thresholds separating classes
+
+    # Get score
+    score = balanced_accuracy_score(y, y_pred)
+
+    res = {
+        "cv_best_params":best_params,
+        "model":model,
+        "y_pred":y_pred,
+        "s":s, # latent state
+        "score":score,
+    }
+
+    if PLOT:
+        fig = kernel_ordinal_logistic_regression_plot(X, y, res)
+        return res, fig
+    else:
+        return res
+
+def kernel_ordinal_logistic_regression_plot(X, y, res):
+    """
+    Plot results of Ordinal logistic regressino, gotten from 
+    kernel_ordinal_logistic_regression()
+    """
+    import seaborn as sns
+    from sklearn.decomposition import PCA
+    from sklearn.metrics import balanced_accuracy_score
+
+    # s = res["s"]
+    # y_pred = res["y_pred"]
+    # score = res["score"]
+    model = res["model"]
+    X_trans = model[:-1].transform(X) # Get transformed features (after scaler/kernel)
+    ord_model = model.named_steps['ord']
+    s = X_trans @ ord_model.coef_ # Latent 1D variable.
+    y_pred = model.predict(X)
+    score = balanced_accuracy_score(y, y_pred)
+
+    # Plot just the first 2 dimensions
+    S = 4
+    fig, axes = plt.subplots(1, 7, figsize=(7*S, S))
+
+    ax = axes.flatten()[0]
+    sns.scatterplot(x = X[:, 0], y = X[:, 1], hue=y, ax=ax, alpha=0.65)
+    ax.set_title("original labels")
+
+    ax = axes.flatten()[1]
+    sns.scatterplot(x = X[:, 0], y = X[:, 1], hue=s, ax=ax, alpha=0.65)
+    ax.set_title("latent state (ord regress)")
+
+    # ---- 2. Simple geometry test: first PC projection vs. ordinal labels ----
+    pca = PCA(n_components=1)
+    s_pca = pca.fit_transform(X).ravel()
+    # rho, _ = spearmanr(s, y)
+    ax = axes.flatten()[2]
+    sns.scatterplot(x = X[:, 0], y = X[:, 1], hue=s_pca, ax=ax, alpha=0.65)
+    ax.set_title("latent state (1D PCA)")
+
+    ax = axes.flatten()[3]
+    sns.scatterplot(x = X[:, 0], y = X[:, 1], hue=y_pred, ax=ax, alpha=0.65)
+    ax.set_title("predicted labels")
+
+    ax = axes.flatten()[4]
+    sns.histplot(x=y, y=y_pred, ax=ax)
+    # ax.scatter(y, y_pred, c=s)
+    ax.set_xlabel("y actual")
+    ax.set_ylabel("y pred")
+    ax.set_title(f"score: {score:.2f}")
+
+    # Also plot on a line, relative to the latent variable.
+    ax = axes.flatten()[5]
+    sns.histplot(x=s, hue=y, element="poly", ax=ax)
+    ax.set_xlabel("s (latent variable)")
+    ax.set_title("actual labels")
+    
+    ax = axes.flatten()[6]
+    sns.histplot(x=s, hue=y_pred, element="poly", ax=ax)
+    ax.set_xlabel("s (latent variable)")
+    ax.set_title("predicted labels")
+    
+    return fig
+    
+def _kernel_ordinal_logistic_regression_example(rescale_std=True):
+    """
+    Simulate data and run example
+    """
+
+    # ---- 1. Simulate neural-like data on a curved 2D manifold ----
+    # We'll embed ordinal categories along a nonlinear curve (arc of a circle)
+    rng = np.random.default_rng(0)
+    n_per_class = 80
+
+    # Arc angles for 3 ordinal categories: bad, ok, good
+    angles = {
+        0: rng.normal(loc=0.2*np.pi, scale=0.05, size=n_per_class),
+        1: rng.normal(loc=0.5*np.pi, scale=0.05, size=n_per_class),
+        2: rng.normal(loc=0.8*np.pi, scale=0.05, size=n_per_class),
+        3: rng.normal(loc=1.5*np.pi, scale=0.05, size=n_per_class),
+        4: rng.normal(loc=1.2*np.pi, scale=0.05, size=n_per_class),
+        5: rng.normal(loc=0.65*np.pi, scale=0.05, size=n_per_class),
+    }
+
+    X = []
+    y = []
+    for label, angs in angles.items():
+        for a in angs:
+            x = np.array([np.cos(a), np.sin(a)])  # points on circle
+            x += 0.05 * rng.standard_normal(2)    # small noise
+            X.append(x)
+            y.append(label)
+    X = np.array(X)
+    y = np.array(y)
+
+    return kernel_ordinal_logistic_regression(X, y, rescale_std, PLOT=True)
+
+def formula_string_construct(var_response, variables, variables_is_cat, exclude_var_response=False):
+    """
+    For statsmodels
+    Create formula string for regression.
+    PARAMS:
+    - var_response, string
+    - variables, list of variable strings.
+    - variables_is_cat, list of bool, if each variable is categorical(True) or continuous.
+    - exclude_var_response, if True, then returns string like: 'motor_onsetx +  motor_onsety +  gap_from_prev_x +  gap_from_prev_y +  velmean_x +  velmean_y +  C(gridloc) +  C(DIFF_gridloc) +  C(chunk_rank) +  C(shape) +  C(chunk_within_rank_fromlast)'
+    Is like:
+    'frate ~ motor_onsetx +  motor_onsety +  gap_from_prev_x +  gap_from_prev_y +  velmean_x +  velmean_y +  C(gridloc) +  C(DIFF_gridloc) +  C(chunk_rank) +  C(shape) +  C(chunk_within_rank_fromlast)'
+    """
+    ### Construct formula string
+    # list_feature_names = []
+    if exclude_var_response:
+        func = ""
+    else:
+        func = f"{var_response} ~"
+        
+    for var, var_is_cat in zip(variables, variables_is_cat):
+        if var_is_cat == False:
+            func += f" {var} + "
+            # list_feature_names.append(var)
+    for var, var_is_cat in zip(variables, variables_is_cat):
+        if var_is_cat == True:
+            func += f" C({var}) + "
+            # list_feature_names.append(var)
+    
+    # remove the + at the end
+    func = func[:-3]
+    
+    # Remove empty space
+    if exclude_var_response:
+        func = func[1:]
+        
+    return func

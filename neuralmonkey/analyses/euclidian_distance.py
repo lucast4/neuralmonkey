@@ -92,9 +92,13 @@ def timevarying_compute_fast_to_scalar(PA, label_vars=("seqc_0_shape", "seqc_0_l
     - context_dict, dict with {"same":[], "diff":[]}, where each holds list of strings (variables).
 
     MS: checked
+
+    RETURNS:
+
     """
     from pythonlib.tools.distfunctools import distmat_construct_wrapper
     from pythonlib.cluster.clustclass import Clusters
+    from pythonlib.tools.pandastools import grouping_print_n_samples
 
     # Deprecated, beucase:
     # "Confirmed that if you set context_dict[same]=[var_context_same], this will work the same (better)"
@@ -189,11 +193,16 @@ def timevarying_compute_fast_to_scalar(PA, label_vars=("seqc_0_shape", "seqc_0_l
 
     # - Do slice
     PA = PA.slice_by_dim_indices_wrapper("trials", _indskeep, reset_trial_indices=True) 
-
+    if len(PA.X)==0:
+        return None, None
+    
     # - Save counts after prune
     if plot_conjunctions_savedir is not None:
         fig = grouping_plot_n_samples_conjunction_heatmap_helper(PA.Xlabels["trials"], label_vars_for_cldist)
         savefig(fig, f"{plot_conjunctions_savedir}/timevarying_compute_fast_to_scalar-counts_heatmap-final.pdf")
+
+        grouping_print_n_samples(PA.Xlabels["trials"], label_vars_for_cldist, savepath=f"{plot_conjunctions_savedir}/counts-{label_vars_for_cldist}.txt")
+
     plt.close("all")
 
     # Collect each trial.
@@ -289,6 +298,12 @@ def timevarying_compute_fast_to_scalar(PA, label_vars=("seqc_0_shape", "seqc_0_l
     else:
         dfdist = None
 
+    # Sanity check that all distances are normalized to the same DIST_98 value.
+    if len(dfdist["DIST_98"].unique())>1:
+    # if dfdist["DIST_98"].max() - dfdist["DIST_98"].min()>0.001:
+        print(dfdist["DIST_98"].unique())
+        assert False, "fix this bug.."
+
     return dfdist, Cldist
 
 
@@ -343,7 +358,7 @@ def dfdist_postprocess_condition_prune_to_var_pairs_exist(dfdist, var_effect, va
 
     return dfdist
 
-def dfdist_extract_label_vars_specific(dfdists, label_vars):
+def dfdist_extract_label_vars_specific(dfdists, label_vars, return_var_same=False):
     """
     Automatically populates new columns reflecting the relations between the columns in 
     label_vars (which can be any length), such as same_shape
@@ -384,13 +399,23 @@ def dfdist_extract_label_vars_specific(dfdists, label_vars):
         dfdists = append_col_with_grp_index(dfdists, [f"{var}_1", f"{var}_2"], f"{var}_12")
         dfdists[f"{var}_same"] = dfdists[f"{var}_1"] == dfdists[f"{var}_2"]
 
-    if len(label_vars)==2:
-        for i, var in enumerate(label_vars):
-            dfdists = append_col_with_grp_index(dfdists, [f"{label_vars[0]}_same", f"{label_vars[1]}_same"], f"same-{label_vars[0]}|{label_vars[1]}")
+    # Append a conjunctive column
+    colname_conj_same = "same-"
+    for v in label_vars:
+        colname_conj_same+=f"{v}|"
+    colname_conj_same = colname_conj_same[:-1] # remove the last |
+    dfdists = append_col_with_grp_index(dfdists, [f"{v}_same" for v in label_vars], colname_conj_same)
+    # if len(label_vars)==2:
+    #     dfdists = append_col_with_grp_index(dfdists, [f"{label_vars[0]}_same", f"{label_vars[1]}_same"], f"same-{label_vars[0]}|{label_vars[1]}")
+    # if len(label_vars)==3:
+    #     dfdists = append_col_with_grp_index(dfdists, [f"{label_vars[0]}_same", f"{label_vars[1]}_same", f"{label_vars[2]}_same"], f"same-{label_vars[0]}|{label_vars[1]}|{label_vars[2]}")
 
-    return dfdists
+    if return_var_same:
+        return dfdists, colname_conj_same
+    else:
+        return dfdists
 
-def dfdist_expand_convert_from_triangular_to_full(self, dfdists, label_vars=None, PLOT=False,
+def dfdist_expand_convert_from_triangular_to_full(dfdists, label_vars=None, PLOT=False,
                                                 repopulate_relations=True):
     """
     Given a dfdists that is triangular (inclues diagonmal usually), convert to 
@@ -423,7 +448,8 @@ def dfdist_expand_convert_from_triangular_to_full(self, dfdists, label_vars=None
         # label_vars = ["seqc_0_shape", var_other]
         # from pythonlib.cluster.clustclass import Clusters
         # cl = Clusters(None)
-        dfdists = self.rsa_distmat_population_columns_label_relations(dfdists, label_vars)
+        dfdists = dfdist_extract_label_vars_specific(dfdists, label_vars)
+        # dfdists = self.rsa_distmat_population_columns_label_relations(dfdists, label_vars)
 
     if PLOT:
         grouping_plot_n_samples_conjunction_heatmap(dfdists, "labels_1", "labels_2");
@@ -737,3 +763,138 @@ def dfdist_summary_plots_wrapper(DFDISTS, DFDISTS_AGG, var_effect, var_other, SA
                 plt.close("all")
 
     plt.close("all")
+
+
+
+def dfdist_variables_expand_indices_called_either(this_tuple):
+    """
+    Given a binary tuple (e.g., (0, 1, 0, -1)) where slots represent variables, and 
+    0 and 1 represent different/same, and -1 represents etiher, return list of all
+    the possible tuples after "expanding" the -1 to 0 or 1.
+    
+    Returns list of tuples. where items with -1 are expanded to return two tuples
+    with that item replaced with 0 and 1.
+
+    For example:
+    expand_indices_called_either([0, -1, -1, -1])
+    --> 
+        [[0, 0, 0, 0],
+        [0, 0, 0, 1],
+        [0, 0, 1, 0],
+        [0, 0, 1, 1],
+        [0, 1, 0, 0],
+        [0, 1, 0, 1],
+        [0, 1, 1, 0],
+        [0, 1, 1, 1]]
+    """
+
+    def _expand_indices_called_either(this_tuple):
+        """
+        Helper to expand this specific tuple.
+        Returns list of lists of ints.
+        """
+        if -1 in this_tuple:
+            ind_either = this_tuple.index(-1)    
+            
+            this_tuple_copy_1 = [x for x in this_tuple]
+            this_tuple_copy_2 = [x for x in this_tuple]
+
+            this_tuple_copy_1[ind_either] = 0
+            this_tuple_copy_2[ind_either] = 1
+            return [this_tuple_copy_1, this_tuple_copy_2], True
+        else:
+            return [this_tuple], False
+        
+    all_tuples = []
+
+    tmp, success = _expand_indices_called_either(this_tuple)
+    if not success:
+        all_tuples.extend(tmp)
+        return tmp
+    else:
+        # Try again
+        for _this_tuple in tmp:
+            tmp = dfdist_variables_expand_indices_called_either(_this_tuple)
+            all_tuples.extend(tmp)
+    return all_tuples
+
+def dfdist_variables_generate_constrast_strings(vars_in_order, contrasts_diff, contrasts_either, contrasts_same=None):
+    """
+    Generate list of contrast strings that satisfie these criteria of diffs, where a contrast string
+    is something like "0|1|1|0", each slot a vraible, and 0 and 1 are diff/same.
+
+    PARAMS:
+    - vars_in_order, list of variables, ie in order of contrasts.
+    - contrasts_diff, list of str, variables that should be differnet.
+    - contrasts_either, list of str, varialbes that can be etiher diff or same. Will return all strings after
+    "expanding" these variables to be 0 and 1 (in different returned stringes)
+    
+    RETURNS:
+    - list of contrast strings.
+    """
+    assert contrasts_same is None, "not coded yet"
+
+    if contrasts_same is None:
+        contrasts_same = [v for v in vars_in_order if v not in contrasts_diff + contrasts_either]
+    
+    for v in contrasts_diff:
+        assert v in vars_in_order, f"sanity check no typo - {v} -- {vars_in_order}"
+    for v in contrasts_either:
+        assert v in vars_in_order, f"sanity check no typo - {v} -- {vars_in_order}"
+    for v in contrasts_same:
+        assert v in vars_in_order, f"sanity check no typo - {v} -- {vars_in_order}"
+    this_tuple = []
+    for v in vars_in_order:
+        if v in contrasts_diff:
+            this_tuple.append(0)
+        elif v in contrasts_either:
+            this_tuple.append(-1)
+        elif v in contrasts_same:
+            this_tuple.append(1)
+        else:
+            assert False
+
+    # this_tuple = [-1, 1, 0, -1, -1, -1]
+    # print(this_tuple)
+    list_tuples = dfdist_variables_expand_indices_called_either(this_tuple)
+
+    # Finally, convert all tuples to strings
+    contrast_strings = []
+    for tup in list_tuples:
+        contrast_strings.append("|".join([str(x) for x in tup]))
+
+    return contrast_strings
+
+def dfdist_variables_effect_extract_helper(DFDIST, colname_conj_same, vars_in_order, contrasts_diff, 
+                                           contrasts_either, PRINT=False):
+    """
+    [Useful] Get slice of dfdist holding the desired effects, defined by their contrast values (e.g, 1|0|1, ..), 
+    and other parameters
+
+    This helps you extract all contrast values satistfying a set of varialbes that must be same/diff/either.
+
+    E.g., you want to only get rows that have same shape and different location.
+    
+    PARAMS:
+    - colname_conj_same, the column name (e.g., "same...") that holds the contrast string (e.g., "1|0|1").
+    - vars_in_order, list of variables, ie in order of contrasts.
+    - contrasts_diff, list of str, variables that should be differnet.
+    - contrasts_either, list of str, varialbes that can be etiher diff or same. Will return all strings after
+    "expanding" these variables to be 0 and 1 (in different returned stringes)
+
+    RETURNS:
+    - Slice of DFDIST.
+    """
+    assert len(DFDIST)>0
+    # Finally, get just the desired contrasts
+    contrast_strings = dfdist_variables_generate_constrast_strings(vars_in_order, contrasts_diff, contrasts_either)
+    if PRINT:
+        print("Getting these contrast_strings: ", contrast_strings)
+        print("Existing contrast strings: ", DFDIST[colname_conj_same].unique())
+    dfdist = DFDIST[(DFDIST[colname_conj_same].isin(contrast_strings))].reset_index(drop=True)
+
+    # also give a generic column name with contrast strings
+    dfdist["contrast_vars"] = [tuple(vars_in_order) for _ in range(len(dfdist))]
+    dfdist["contrast_string"] = dfdist[colname_conj_same]
+
+    return dfdist

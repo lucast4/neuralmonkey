@@ -152,7 +152,24 @@ class MultSessions(object):
 
             self.Datasetbeh = D
 
+        # Sanity check that trialcodes are unique across sessions
+        # - I wrote this when extracting final eye tracking and using tc to label.
+        trialcodes = []
+        for sn in self.SessionsList:
+            for trial in sn.get_trials_list(True, True):
+                tc = sn.datasetbeh_trial_to_trialcode(trial)
+                trialcodes.append(tc)
+        assert len(trialcodes)==len(set(trialcodes))        
+
         return self.Datasetbeh
+
+    def datasetbeh_input_update(self, D):
+        """
+        Replace Dataset with inputed D
+        """
+        self.Datasetbeh = D
+        for sn in self.SessionsList:
+            sn._datasetbeh_input_dataset(D)
 
     #################### UTILS
     def prune_remove_sessions_too_few_trials(self, min_n_trials):

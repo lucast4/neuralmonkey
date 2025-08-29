@@ -44,9 +44,10 @@ def load_handsaved_wrapper(animal=None, date=None, version=None, combine_areas=T
                 path = f"/lemur2/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-{animal}-{date}-{version}-kilosort_if_exists-norm={norm}-combine={combine_areas}-t1={t1}-t2={t2}.pkl"
             else:
                 path = f"/lemur2/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-{animal}-{date}-{version}-kilosort_if_exists-norm={norm}-combine={combine_areas}-t1={t1}-t2={t2}-quest={question}.pkl"
-                if not os.path.exists(path):
-                    # Older, without "question" label. You should be the one to decide if this is acceptable.
-                    path = f"/lemur2/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-{animal}-{date}-{version}-kilosort_if_exists-norm={norm}-combine={combine_areas}-t1={t1}-t2={t2}.pkl"
+                if False: # This is taken care of below. where it calls load_handsaved_wrapper() again, but without question.
+                    if not os.path.exists(path):
+                        # Older, without "question" label. You should be the one to decide if this is acceptable.
+                        path = f"/lemur2/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-{animal}-{date}-{version}-kilosort_if_exists-norm={norm}-combine={combine_areas}-t1={t1}-t2={t2}.pkl"
         else:
             path = f"/lemur2/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Xuan/DFallpa-{animal}-{date}-{version}-kilosort_if_exists-norm={norm}-combine={combine_areas}.pkl"
         
@@ -142,7 +143,15 @@ def load_handsaved_wrapper(animal=None, date=None, version=None, combine_areas=T
     #     assert False
 
     if not os.path.exists(path) and return_none_if_no_exist:
-        return None
+        if question is None:
+            return None
+        else:
+            # try without question
+            return load_handsaved_wrapper(animal, date, version, combine_areas, 
+                                    return_none_if_no_exist, use_time, None,
+                                    ignore_question, also_return_path, 
+                                    load_spike_counts_version, spike_counts_binsize, twind)
+
     else:
         print("Loading DFallpa from: ", path)
         DFallpa = pd.read_pickle(path)
@@ -551,6 +560,14 @@ def snippets_extract_popanals_split_bregion_twind(SP, list_time_windows, vars_ex
                         xlabels_trials = pa.Xlabels["trials"]
                         xlabels_times = pa.Xlabels["times"]
 
+                        # Finalyl, store the bregions and channels
+                        tmp = []
+                        for chan in pa.Chans:
+                            tmp.append(SP.session_sitegetter_map_site_to_region(chan))
+                        dftrials = pd.DataFrame(tmp)
+                        assert len(dftrials["bregion_combined"].unique())==1, "prob diff sessions in SP have different channels? dont expecet this.."
+                        pa.Xlabels["chans"] = pd.DataFrame(tmp)
+                            
                         # DictBregionTwindPA[(bregion, twind)] = pa
                         DictEvBrTw_to_PA[(SP.Params["which_level"], event, bregion, twind)] = pa
                         print(event, " -- ", bregion, " -- ", twind, " -- (data shape:)", pa.X.shape)
@@ -1717,9 +1734,15 @@ def dfallpa_preprocess_sitesdirty_check_if_preprocessed(DFallpa, animal, date):
         return False
 
     # (1b) Old version -- doesnt have bregion_combined
-    if "bregion_combined" not in dfres:
-        from neuralmonkey.classes.session import MAP_REGION_TO_COMBINED_REGION
-        dfres["bregion_combined"] = [MAP_REGION_TO_COMBINED_REGION[br] for br in dfres["bregion"]]
+    
+    s = DFallpa["bregion"].values[0]
+    if s.find("_") > 0:
+        var_bregion = "bregion"
+    else:
+        var_bregion = "bregion_combined"
+        if "bregion_combined" not in dfres:
+            from neuralmonkey.classes.session import MAP_REGION_TO_COMBINED_REGION
+            dfres["bregion_combined"] = [MAP_REGION_TO_COMBINED_REGION[br] for br in dfres["bregion"]]
 
     # (2) Check that all chans exist
     # chans_saved = dfres["chan"].tolist() 
@@ -1737,14 +1760,13 @@ def dfallpa_preprocess_sitesdirty_check_if_preprocessed(DFallpa, animal, date):
         pa = row["pa"]
 
         chans_in_pa = pa.Chans
-        chans_in_dfres = dfres[dfres["bregion_combined"] == bregion]["chan"].tolist()
+        chans_in_dfres = dfres[dfres[var_bregion] == bregion]["chan"].tolist()
 
         # Every chan in PA must be in dfres
         if not all([ch in chans_in_dfres for ch in chans_in_pa]):
             print("chans_in_pa:", chans_in_pa)
             print("chans_in_dfres:", chans_in_dfres)
             print("chans in pa, not in dfres:", [ch for ch in chans_in_pa if ch not in chans_in_dfres])
-            print("This means that probably ")
             print("Probably you need to re-extract Dfallpa (or sitesdirty, whichever was older)")
             return False
 
@@ -1804,7 +1826,130 @@ def dfallpa_preprocess_sitesdirty_check_if_preprocessed(DFallpa, animal, date):
         return False
     
     # OK, passed all tests
+    print("GOOD!! -- passed all tests, channels match (sitesdirty)")
     return True
+
+def dfpa_concat_merge_pa_along_trials(DFallpa1, DFallpa2, min_frac_chans_common=0.8):
+    """
+    GIven two Dfallpa, merge them by merging pairs of inner PA.
+    Will prune PA so that they have same channels and time bins, and 
+    concatenate them along the trials axis.
+
+    I used this to concatenate single-prims data to grammar data.
+    
+    PARAMS:
+    - min_frac_chans_common, throws error if has to throw out channels so that 
+    remaining frac chans is less than this
+    RETURNS:
+    - copied DFallpa, same length as inputs
+    """
+    from pythonlib.tools.nptools import isnear
+    from neuralmonkey.classes.population import concatenate_popanals_flexible
+
+    assert len(DFallpa1)==len(DFallpa2)
+
+    res = []
+    for i in range(len(DFallpa1)):
+
+        bregion = DFallpa1.iloc[i]["bregion"]
+        which_level = DFallpa1.iloc[i]["which_level"]
+        event = DFallpa1.iloc[i]["event"]
+
+        assert bregion == DFallpa2.iloc[i]["bregion"]
+        assert which_level == DFallpa2.iloc[i]["which_level"]
+        assert event == DFallpa2.iloc[i]["event"]
+
+        pa1 = DFallpa1.iloc[i]["pa"]
+        pa2 = DFallpa2.iloc[i]["pa"]
+
+        ### Prune to common channels
+        chans_common = [ch for ch in pa1.Chans if ch in pa2.Chans]
+        print(" ")
+        print("=== ", bregion)
+        print("chans (synt): ", pa1.Chans)
+        print("chans (sp  ): ", pa2.Chans)
+        print("chans (both): ", chans_common)
+        assert len(chans_common)/len(pa1.Chans) > min_frac_chans_common
+        assert len(chans_common)/len(pa2.Chans) > min_frac_chans_common
+        pa1 = pa1.slice_by_dim_values_wrapper("chans", chans_common)
+        pa2 = pa2.slice_by_dim_values_wrapper("chans", chans_common)
+
+        ### Prune their times
+        if False: # Not sure if this geneally works
+            from pythonlib.tools.nptools import isin_close
+            inds1 = isin_close(pa1.Times, pa2.Times, atol=0.001)[1]
+            inds2 = isin_close(pa2.Times, pa1.Times, atol=0.001)[1]
+            pa2.Times[inds1]
+            pa1.Times[inds2]
+        else: # This always works or fails
+            t1 = max([pa1.Times[0], pa2.Times[0]])
+            t2 = min([pa1.Times[-1], pa2.Times[-1]])
+
+            pa1 = pa1.slice_by_dim_values_wrapper("times", [t1, t2], time_keep_only_within_window=False)
+            pa2 = pa2.slice_by_dim_values_wrapper("times", [t1, t2], time_keep_only_within_window=False)
+            assert isnear(pa1.Times, pa2.Times)
+
+        # Merge
+        pa_new, _ = concatenate_popanals_flexible([pa1, pa2], "trials", "fail")
+
+        # Make sure dflab doesnt have any nan, which can happen if columns are mismatched
+        from pythonlib.tools.pandastools import replace_None_with_string
+        dflab = pa_new.Xlabels["trials"]
+        dflab = replace_None_with_string(dflab)
+        pa_new.Xlabels["trials"] = dflab
+
+        res.append({
+            "pa":pa_new,
+            "bregion":bregion,
+            "event":event,
+            "which_level":which_level,
+            "twind":"ignore"
+        })
+    
+    DFallpaOut = pd.DataFrame(res)
+
+    return DFallpaOut
+
+def dfpa_concat_bregion_to_combined_bregion(DFallpa):
+    """
+    If you have a Dfallpa holding data with single-array regions (e.g.,, M1m and M1l), combine each pair to get
+    combined bregions (e.g,, M1)
+    
+    Returns new DFallpa.
+
+    NOTE: fails if there are multiple "which_level" or "event" values
+
+    """
+    from neuralmonkey.classes.session import MAP_COMBINED_REGION_TO_REGION
+    from neuralmonkey.classes.population import concatenate_popanals_flexible
+
+    res = []
+    for regcomb, list_reg in MAP_COMBINED_REGION_TO_REGION.items():
+        dfpa = DFallpa[DFallpa["bregion"].isin(list_reg)]
+
+        assert len(dfpa)<=2, "assumes two bregions per combined bregion.."
+        
+        list_pa = dfpa["pa"].tolist()
+        pa, _ = concatenate_popanals_flexible(list_pa, "chans", "fail")
+
+        # Collect data into a dict
+        rowdict = {
+            "pa":pa,
+            "bregion":regcomb
+        }
+
+        # Take other params
+        for col in ["which_level", "event"]:
+            tmp = dfpa["which_level"].unique()
+            assert len(tmp)==1
+            rowdict[col] = tmp[0]
+        
+        rowdict["twind"] = "ignore"
+
+        # Collect across bregions
+        res.append(rowdict)
+
+    return pd.DataFrame(res)
 
 def dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, fr_mean_subtract_method = "across_time_bins",
         do_sitesdirty_extraction=False,  
@@ -1989,9 +2134,9 @@ def dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT = False):
     """
     from pythonlib.tools.plottools import savefig
 
-    if DFallpa["event"].unique().tolist() == ["00_stroke"]:
+    if (DFallpa["event"].unique().tolist() == ["00_stroke"]) or (DFallpa["event"].unique().tolist() == ["stroke"]):
         # THis is the only event
-        events_keep = ["00_stroke"]
+        events_keep = ["00_stroke", "stroke"]
     elif DFallpa["event"].unique().tolist() == ["fixon_preparation"]:
         # THis is the only event
         events_keep = ["fixon_preparation"]

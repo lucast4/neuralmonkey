@@ -1646,7 +1646,15 @@ def trajgood_plot_colorby_splotby_scalar_WRAPPER(X, dflab, var_color, savedir,
         # Color variables are same as grouping variables.
         colorby_ind_in_vars_mean = None
 
-    assert len(X.shape)==2
+    if len(X.shape)==1:
+        # Then is 1-d. hack solution by adding a fake column
+        X = np.stack([X, np.ones_like(X)], axis=1)
+
+    if not len(X.shape)==2:
+        print(X)
+        print(X.shape)
+        assert False, "prob catch this upstream and block."
+
     if not len(X)==len(dflab):
         print(X.shape)
         print(len(dflab))
@@ -2525,7 +2533,7 @@ def dimredgood_project_data_denoise_simple(X, basis_vectors, version="projection
         assert False
 
     if normalization=="orthonormal":
-        # Optionally, orthogonalize the vectors
+        # Optionally, orthonormalize the vectors
         basis_vectors_ortho, r = np.linalg.qr(basis_vectors)
         if plot_orthonormalization:
             from pythonlib.tools.snstools import heatmap_mat
@@ -2557,6 +2565,7 @@ def dimredgood_project_data_denoise_simple(X, basis_vectors, version="projection
         # print(stats)
         # assert False
     elif version=="denoise":
+        # Project to subspace, and then expand back out -- this is to "denoise" the activity
         D = basis_vectors @ basis_vectors.T # (nchans, nchans)
         Xnew = D @ X # (nchans, nfeatures)
         # print(D.shape)
