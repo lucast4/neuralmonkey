@@ -304,6 +304,8 @@ def timevarying_compute_fast_to_scalar(PA, label_vars=("seqc_0_shape", "seqc_0_l
         print(dfdist["DIST_98"].unique())
         assert False, "fix this bug.."
 
+    dfdist["data_dim"] = PA.X.shape[0]
+    
     return dfdist, Cldist
 
 
@@ -358,7 +360,37 @@ def dfdist_postprocess_condition_prune_to_var_pairs_exist(dfdist, var_effect, va
 
     return dfdist
 
-def dfdist_extract_label_vars_specific(dfdists, label_vars, return_var_same=False):
+def dfdist_extract_label_vars_specific_single(dfdists, label_vars, var1=None):
+    """
+    Helper to extract new columns to put in dfdists, expanding out the individual variables in label_vars.
+    
+    Is similar to dfdist_extract_label_vars_specific, but here is for anlayses not comparing pairs of trials, but
+    instead considering each trial-group on its own (e.g., decoding).
+
+    """
+    # from pythonlib.tools.pandastools import append_col_with_grp_index
+    
+    if var1 is None:
+        if "labels_1_datapt" in dfdists.columns:
+            var1 = "labels_1_datapt"
+        else:
+            var1 = "labels_1"
+    
+    dfdists = dfdists.copy()
+
+    assert isinstance(dfdists[var1].values[0], tuple)
+    # Replace columns which are now incorrect
+    # label_vars = ["seqc_0_shape", "seqc_0_loc"]
+    assert isinstance(label_vars[0], str)
+
+    # e..g, seqc_0_shape_1
+    for i, var in enumerate(label_vars):
+        dfdists[f"{var}"] = [x[i] for x in dfdists[var1]]
+
+    return dfdists
+
+def dfdist_extract_label_vars_specific(dfdists, label_vars, return_var_same=False,
+                                       var1=None, var2=None):
     """
     Automatically populates new columns reflecting the relations between the columns in 
     label_vars (which can be any length), such as same_shape
@@ -377,13 +409,16 @@ def dfdist_extract_label_vars_specific(dfdists, label_vars, return_var_same=Fals
     """
     from pythonlib.tools.pandastools import append_col_with_grp_index
 
-    if "labels_1_datapt" in dfdists.columns:
-        var1 = "labels_1_datapt"
-        var2 = "labels_2_grp"
-    else:
-        var1 = "labels_1"
-        var2 = "labels_2"
-
+    assert (var1 is None) == (var2 is None)
+    
+    if var1 is None:
+        if "labels_1_datapt" in dfdists.columns:
+            var1 = "labels_1_datapt"
+            var2 = "labels_2_grp"
+        else:
+            var1 = "labels_1"
+            var2 = "labels_2"
+    
     dfdists = dfdists.copy()
 
     assert isinstance(dfdists[var1].values[0], tuple)

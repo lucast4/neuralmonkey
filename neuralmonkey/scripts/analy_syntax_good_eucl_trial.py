@@ -38,39 +38,44 @@ def preprocess_dfallpa_basic_quick(DFallpa):
     """
     Quickly process the data, to add some columns that are useful for plotting.
     """
+    
     for PA in DFallpa["pa"]:
+        
+        from neuralmonkey.scripts.analy_syntax_good_eucl_state import preprocess_pa_syntax
+        preprocess_pa_syntax(PA)
+        
         dflab = PA.Xlabels["trials"]
 
         # dflab = append_col_with_grp_index(dflab, vars_others, "_var_other")
-        dflab = append_col_with_grp_index(dflab, ["epoch", "syntax_concrete"], "epch_sytxcncr")
+        # dflab = append_col_with_grp_index(dflab, ["epoch", "syntax_concrete"], "epch_sytxcncr")
         dflab = append_col_with_grp_index(dflab, ["epoch", "seqc_0_loc", "seqc_0_shape", "syntax_concrete"], "var_all_conditions")
 
-        # Add n items in each shape slot
-        nslots = len(dflab["syntax_concrete"].values[0])
-        list_slots = []
-        for i in range(3):
-            key = f"syntax_slot_{i}"
-            if i > nslots-1:
-                dflab[key] = 0
-            else:
-                dflab[key] = [x[i] for x in dflab["syntax_concrete"]]
-            list_slots.append(key)
-        print("Added these columns to dflab: ", list_slots)
+        # # Add n items in each shape slot
+        # nslots = len(dflab["syntax_concrete"].values[0])
+        # list_slots = []
+        # for i in range(3):
+        #     key = f"syntax_slot_{i}"
+        #     if i > nslots-1:
+        #         dflab[key] = 0
+        #     else:
+        #         dflab[key] = [x[i] for x in dflab["syntax_concrete"]]
+        #     list_slots.append(key)
+        # print("Added these columns to dflab: ", list_slots)
 
-        # Add ratio between slot 0 and 1
-        if ("syntax_slot_0" in dflab) & ("syntax_slot_1" in dflab):
-            # Add 0.01 so that doesnt devide by 0.
-            dflab["syntax_slot_ratio"] = (dflab["syntax_slot_1"]+0.01)/(dflab["syntax_slot_0"]+0.01 + dflab["syntax_slot_1"]+0.01)
+        # # Add ratio between slot 0 and 1
+        # if ("syntax_slot_0" in dflab) & ("syntax_slot_1" in dflab):
+        #     # Add 0.01 so that doesnt devide by 0.
+        #     dflab["syntax_slot_ratio"] = (dflab["syntax_slot_1"]+0.01)/(dflab["syntax_slot_0"]+0.01 + dflab["syntax_slot_1"]+0.01)
 
-            if np.any(np.isnan(dflab["syntax_slot_ratio"])):
-                print(dflab["syntax_slot_ratio"])
-                assert False
+        #     if np.any(np.isnan(dflab["syntax_slot_ratio"])):
+        #         print(dflab["syntax_slot_ratio"])
+        #         assert False
 
-        # count up how many unique shapes are shown
-        def _n_shapes(syntax_concrete):
-            # e.g., (1,3,0) --> 2
-            return sum([x>0 for x in syntax_concrete])
-        dflab["shapes_n_unique"] = [_n_shapes(sc) for sc in dflab["syntax_concrete"]]
+        # # count up how many unique shapes are shown
+        # def _n_shapes(syntax_concrete):
+        #     # e.g., (1,3,0) --> 2
+        #     return sum([x>0 for x in syntax_concrete])
+        # dflab["shapes_n_unique"] = [_n_shapes(sc) for sc in dflab["syntax_concrete"]]
 
         PA.Xlabels["trials"] = dflab
 
@@ -295,29 +300,147 @@ def state_space_targeted_pca_scalar_single_one_axis_per_var(PA, twind_scal, vari
     return dict_subspace_pa, dict_subspace_axes_orig, dict_subspace_axes_normed, dfcoeff, PA
 
 
-def state_space_targeted_pca_scalar_single_one_var_mult_axes(PA, twind_scal, variables, variables_is_cat, 
+# def state_space_targeted_pca_scalar_single_one_var_mult_axes(PA, twind_scal, variables, variables_is_cat, 
+#                                                              var_subspace, npcs_keep, 
+#                                                              LIST_VAR_VAROTHERS, LIST_DIMS, SAVEDIR, 
+#                                                              just_extract_paredu=False,
+#                                                              savedir_pca_subspaces=None, 
+#                                                              tbin_dur = 0.2, tbin_slide = 0.1,
+#                                                              inds_trials_pa_train=None, inds_trials_pa_test=None,
+#                                                              skip_dim_redu=False):
+#     """
+#     [GOOD], do targeted PCA for a single PA, along with state space plots.
+#     PARAMS:
+#     - variables: list of variables to regress out
+#     - variables_is_cat: list of bools, whether each variable is categorical. Note: if False, then will be treated as continuous variable
+#     list_subspaces: list of tuples, each tuple is a subspace to project onto. usually tuples are of length 2, holding strings 
+#     referring to the variable names.
+#     - LIST_VAR_VAROTHERS, LIST_DIMS, SAVEDIR, for plotting state space.
+#     """
+#     # from neuralmonkey.scripts.analy_euclidian_chars_sp import params_subspace_projection
+#     # from pythonlib.tools.pandastools import append_col_with_grp_index, grouping_plot_n_samples_heatmap_var_vs_grpvar
+#     # from neuralmonkey.analyses.state_space_good import _trajgood_plot_colorby_scalar_BASE_GOOD
+#     # from pythonlib.tools.plottools import share_axes_row_or_col_of_subplots
+#     # from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_scalar_2dgrid_bregion
+#     # from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_WRAPPER, trajgood_plot_colorby_splotby_scalar_WRAPPER
+#     from neuralmonkey.analyses.state_space_good import dimredgood_subspace_variance_accounted_for
+
+#     # tbin_dur = 0.2
+#     # tbin_slide = 0.1
+#     npcs_keep_force = 50
+#     normalization = "orthonormal"
+#     PLOT_COEFF_HEATMAP = SAVEDIR is not None
+    
+#     ### Convert to scalat
+#     if skip_dim_redu:
+#         # Assume you inputed it
+#         PAscal = PA.copy()
+#         assert PAscal.X.shape[2]==1
+#     else:
+        
+#         if False:
+#             # Get scalars
+#             PA = PA.slice_by_dim_values_wrapper("times", twind_scal).agg_wrapper("times")
+#         else:
+#             # Expand channels to (chans X time bins)
+#             if False: # old
+#                 pca_reduce = True
+#                 _, PAscal, _, _, _= PA.dataextract_state_space_decode_flex(twind_scal, tbin_dur, tbin_slide, "trials_x_chanstimes",
+#                                                                     pca_reduce=pca_reduce, npcs_keep_force=npcs_keep_force)
+#             else:
+#                 # Identical, and is cleaner code
+#                 savedir_pca = f"{SAVEDIR}/pca"
+#                 os.makedirs(savedir_pca, exist_ok=True)
+#                 _, PAscal = PA.dataextract_dimred_wrapper("scal", "pca", savedir_pca, twind_scal, tbin_dur, tbin_slide,
+#                                             npcs_keep_force)            
+
+#     ### Compute regression -- get coefficients
+#     savedir_coeff_heatmap = f"{SAVEDIR}"
+#     pa_subspace, subspace_axes_orig, subspace_axes_normed, dfcoeff, PAscalTest = PAscal.dataextract_subspace_targeted_pca_one_var_mult_axes(
+#                                                 variables, variables_is_cat, var_subspace, npcs_keep, 
+#                                                 demean=True, 
+#                                                 normalization=normalization, plot_orthonormalization=False, 
+#                                                 PLOT_COEFF_HEATMAP=PLOT_COEFF_HEATMAP, PRINT=False,
+#                                                 savedir_coeff_heatmap=savedir_coeff_heatmap,
+#                                                 savedir_pca_subspaces=savedir_pca_subspaces,
+#                                                 inds_trials_pa_train=inds_trials_pa_train, inds_trials_pa_test=inds_trials_pa_test)
+
+#     # Skip plots, just get data
+#     if just_extract_paredu:
+#         assert False
+#         return dict_subspace_pa, dict_subspace_axes_orig, dict_subspace_axes_normed, dfcoeff, PA
+    
+#     ### Compute subspace angles
+#     if False: # Might work, need to check that it works.
+#         for subspace in list_subspaces:
+
+#             savedir = f"/{SAVEDIR}/subspace={subspace}"
+#             os.makedirs(savedir, exist_ok=True)
+
+#             ### Get VAF between each axis of subspace
+#             # - first, get meaned data.
+#             # data_trials = x.T # (chans, trials)
+#             subspace_axes = dict_subspace_axes_orig[subspace]
+#             assert len(subspace)==subspace_axes.shape[1]
+#             min_n_trials_in_lev = 3
+#             pa_mean = PA.slice_and_agg_wrapper("trials", variables, min_n_trials_in_lev=min_n_trials_in_lev)
+#             data_mean = pa_mean.X.squeeze() # (nchans, nconditions)
+
+#             naxes = subspace_axes.shape[1]
+#             for i in range(naxes):
+#                 for j in range(naxes):
+#                     if j>i:
+#                         basis_vectors_1 = subspace_axes[:,i][:, None]
+#                         basis_vectors_2 = subspace_axes[:,j][:, None]
+#                         out = dimredgood_subspace_variance_accounted_for(data_mean, basis_vectors_1, basis_vectors_2)
+#                         from pythonlib.tools.expttools import writeDictToTxtFlattened
+#                         writeDictToTxtFlattened(out, f"{savedir}/VAF-subspace={subspace}.txt")
+        
+#     ### Plot all subspaces
+#     if SAVEDIR is not None:
+#         savedir = f"/{SAVEDIR}/subspace={var_subspace}"
+#         os.makedirs(savedir, exist_ok=True)
+
+#         if len(pa_subspace.X)>0:
+#             ### PLOT -- plot state space
+#             state_space_targeted_pca_scalar_single_plot_(pa_subspace, LIST_VAR_VAROTHERS, LIST_DIMS, savedir)
+#         else:
+#             fig, ax = plt.subplots()
+#             ax.set_title("pa_subspace.X is empty!!")
+#             savefig(fig, f"{savedir}/no_data.pdf")
+        
+#     return pa_subspace, subspace_axes_orig, subspace_axes_normed, dfcoeff, PAscalTest
+
+
+def state_space_targeted_pca_scalar_single_one_var_mult_axes(PA, twind_scal, variables_cont, variables_cat, 
                                                              var_subspace, npcs_keep, 
                                                              LIST_VAR_VAROTHERS, LIST_DIMS, SAVEDIR, 
                                                              just_extract_paredu=False,
                                                              savedir_pca_subspaces=None, 
-                                                             tbin_dur = 0.2, tbin_slide = 0.1):
+                                                             tbin_dur = 0.2, tbin_slide = 0.1,
+                                                             inds_trials_pa_train=None, inds_trials_pa_test=None,
+                                                             skip_dim_redu=False,
+                                                             do_vars_remove=False, vars_remove=None):
     """
     [GOOD], do targeted PCA for a single PA, along with state space plots.
     PARAMS:
     - variables: list of variables to regress out
-    - variables_is_cat: list of bools, whether each variable is categorical. This doesnt affect the regression, so your data
-    needs to be either cat or ordinal.
+    - variables_is_cat: list of bools, whether each variable is categorical. Note: if False, then will be treated as continuous variable
     list_subspaces: list of tuples, each tuple is a subspace to project onto. usually tuples are of length 2, holding strings 
     referring to the variable names.
+    - var_subspace, either str or list of str
     - LIST_VAR_VAROTHERS, LIST_DIMS, SAVEDIR, for plotting state space.
     """
-    from neuralmonkey.scripts.analy_euclidian_chars_sp import params_subspace_projection
-    from pythonlib.tools.pandastools import append_col_with_grp_index, grouping_plot_n_samples_heatmap_var_vs_grpvar
-    from neuralmonkey.analyses.state_space_good import _trajgood_plot_colorby_scalar_BASE_GOOD
-    from pythonlib.tools.plottools import share_axes_row_or_col_of_subplots
-    from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_scalar_2dgrid_bregion
-    from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_WRAPPER, trajgood_plot_colorby_splotby_scalar_WRAPPER
+    # from neuralmonkey.scripts.analy_euclidian_chars_sp import params_subspace_projection
+    # from pythonlib.tools.pandastools import append_col_with_grp_index, grouping_plot_n_samples_heatmap_var_vs_grpvar
+    # from neuralmonkey.analyses.state_space_good import _trajgood_plot_colorby_scalar_BASE_GOOD
+    # from pythonlib.tools.plottools import share_axes_row_or_col_of_subplots
+    # from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_scalar_2dgrid_bregion
+    # from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_WRAPPER, trajgood_plot_colorby_splotby_scalar_WRAPPER
     from neuralmonkey.analyses.state_space_good import dimredgood_subspace_variance_accounted_for
+
+    variables = variables_cont + variables_cat
+    variables_is_cat = [False for _ in range(len(variables_cont))] + [True for _ in range(len(variables_cat))]
 
     # tbin_dur = 0.2
     # tbin_slide = 0.1
@@ -326,35 +449,55 @@ def state_space_targeted_pca_scalar_single_one_var_mult_axes(PA, twind_scal, var
     PLOT_COEFF_HEATMAP = SAVEDIR is not None
     
     ### Convert to scalat
-    if False:
-        # Get scalars
-        PA = PA.slice_by_dim_values_wrapper("times", twind_scal).agg_wrapper("times")
+    if skip_dim_redu:
+        # Assume you inputed it
+        PAscal = PA.copy()
+        assert PAscal.X.shape[2]==1
     else:
-        # Expand channels to (chans X time bins)
-        if False: # old
-            pca_reduce = True
-            _, PAscal, _, _, _= PA.dataextract_state_space_decode_flex(twind_scal, tbin_dur, tbin_slide, "trials_x_chanstimes",
-                                                                pca_reduce=pca_reduce, npcs_keep_force=npcs_keep_force)
+        
+        if False:
+            # Get scalars
+            PA = PA.slice_by_dim_values_wrapper("times", twind_scal).agg_wrapper("times")
         else:
-            # Identical, and is cleaner code
-            savedir_pca = f"{SAVEDIR}/pca"
-            os.makedirs(savedir_pca, exist_ok=True)
-            _, PAscal = PA.dataextract_dimred_wrapper("scal", "pca", savedir_pca, twind_scal, tbin_dur, tbin_slide,
-                                        npcs_keep_force)            
+            # Expand channels to (chans X time bins)
+            if False: # old
+                pca_reduce = True
+                _, PAscal, _, _, _= PA.dataextract_state_space_decode_flex(twind_scal, tbin_dur, tbin_slide, "trials_x_chanstimes",
+                                                                    pca_reduce=pca_reduce, npcs_keep_force=npcs_keep_force)
+            else:
+                # Identical, and is cleaner code
+                savedir_pca = f"{SAVEDIR}/pca"
+                os.makedirs(savedir_pca, exist_ok=True)
+                _, PAscal = PA.dataextract_dimred_wrapper("scal", "pca", savedir_pca, twind_scal, tbin_dur, tbin_slide,
+                                            npcs_keep_force)            
 
     ### Compute regression -- get coefficients
     savedir_coeff_heatmap = f"{SAVEDIR}"
-    pa_subspace, subspace_axes_orig, subspace_axes_normed, dfcoeff, PAscal = PAscal.dataextract_subspace_targeted_pca_one_var_mult_axes(
-                                                variables, variables_is_cat, var_subspace, npcs_keep, 
-                                                demean=True, 
-                                                normalization=normalization, plot_orthonormalization=False, 
-                                                PLOT_COEFF_HEATMAP=PLOT_COEFF_HEATMAP, PRINT=False,
-                                                savedir_coeff_heatmap=savedir_coeff_heatmap,
-                                                savedir_pca_subspaces=savedir_pca_subspaces)
+    if True:
+        # This is the new version that works regardless of whether you want to subtract a variable
+        # then subtract a variable's coefficients
+        pa_subspace, subspace_axes_orig, subspace_axes_normed, dfcoeff, PAscalTest, _, _ = PAscal.dataextract_subspace_targeted_pca_wrapper(
+                                                    variables_cont, variables_cat, vars_remove,
+                                                    var_subspace, npcs_keep, normalization,
+                                                    PLOT_COEFF_HEATMAP, PRINT=False,
+                                                    savedir_coeff_heatmap=savedir_coeff_heatmap,
+                                                    savedir_pca_subspaces=savedir_pca_subspaces,
+                                                    inds_trials_pa_train=inds_trials_pa_train, inds_trials_pa_test=inds_trials_pa_test,
+                                                    demean=True)
+    else:
+        # Old version -- works, but does not regress out variables.
+        pa_subspace, subspace_axes_orig, subspace_axes_normed, dfcoeff, PAscalTest = PAscal.dataextract_subspace_targeted_pca_one_var_mult_axes(
+                                                    variables, variables_is_cat, var_subspace, npcs_keep, 
+                                                    demean=True, 
+                                                    normalization=normalization, plot_orthonormalization=False, 
+                                                    PLOT_COEFF_HEATMAP=PLOT_COEFF_HEATMAP, PRINT=False,
+                                                    savedir_coeff_heatmap=savedir_coeff_heatmap,
+                                                    savedir_pca_subspaces=savedir_pca_subspaces,
+                                                    inds_trials_pa_train=inds_trials_pa_train, inds_trials_pa_test=inds_trials_pa_test)
 
     # Skip plots, just get data
     if just_extract_paredu:
-        assert False
+        assert False, "not sure why I put this assertion here"
         return dict_subspace_pa, dict_subspace_axes_orig, dict_subspace_axes_normed, dfcoeff, PA
     
     ### Compute subspace angles
@@ -384,14 +527,20 @@ def state_space_targeted_pca_scalar_single_one_var_mult_axes(PA, twind_scal, var
                         writeDictToTxtFlattened(out, f"{savedir}/VAF-subspace={subspace}.txt")
         
     ### Plot all subspaces
-    if SAVEDIR is not None:
-        savedir = f"/{SAVEDIR}/subspace={var_subspace}"
-        os.makedirs(savedir, exist_ok=True)
+    if LIST_VAR_VAROTHERS is not None and len(LIST_VAR_VAROTHERS)>0:
+        if SAVEDIR is not None:
+            savedir = f"/{SAVEDIR}/subspace={var_subspace}"
+            os.makedirs(savedir, exist_ok=True)
 
-        ### PLOT -- plot state space
-        state_space_targeted_pca_scalar_single_plot_(pa_subspace, LIST_VAR_VAROTHERS, LIST_DIMS, savedir)
+            if len(pa_subspace.X)>0:
+                ### PLOT -- plot state space
+                state_space_targeted_pca_scalar_single_plot_(pa_subspace, LIST_VAR_VAROTHERS, LIST_DIMS, savedir)
+            else:
+                fig, ax = plt.subplots()
+                ax.set_title("pa_subspace.X is empty!!")
+                savefig(fig, f"{savedir}/no_data.pdf")
         
-    return pa_subspace, subspace_axes_orig, subspace_axes_normed, dfcoeff, PAscal
+    return pa_subspace, subspace_axes_orig, subspace_axes_normed, dfcoeff, PAscalTest
 
 
 def state_space_targeted_pca_scalar_single_plot_(pa_subspace, LIST_VAR_VAROTHERS, LIST_DIMS, savedir):

@@ -1336,6 +1336,29 @@ class PopAnal():
 
         return pa, vars_others
 
+    def slice_extract_with_levels_of_conjunction_vars(self, var, vars_others, n_min_per_lev=1,
+                                                   plot_counts_heatmap_savepath=None,
+                                                    lenient_allow_data_if_has_n_levels=None,
+                                                    levels_var=None, remove_extra_columns=False,
+                                                    plot_counts_also_before_prune_path=None):
+        """
+        Return slice of self (along trials dimension), satistfying criteria in 
+        extract_with_levels_of_conjunction_vars_helper(). See that for detials.
+        
+        RETURNS:
+        - copy of PA (sliced) or None (if removes all data)
+        """
+        from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper
+        dflab = self.Xlabels["trials"]
+        _dflab, _ = extract_with_levels_of_conjunction_vars_helper(dflab, var, vars_others, n_min_per_lev,
+                                                   plot_counts_heatmap_savepath, lenient_allow_data_if_has_n_levels,
+                                                   levels_var, remove_extra_columns, plot_counts_also_before_prune_path)
+        if len(_dflab)>0:
+            pa = self.slice_by_dim_indices_wrapper("trials", _dflab["_index"])
+            return pa
+        else:
+            return None
+
     def slice_extract_with_levels_of_var_good_prune(self, grp_vars, n_min_per_var):
         """
         Preprocess, pruning to keep onl levels of grouping var which have at least

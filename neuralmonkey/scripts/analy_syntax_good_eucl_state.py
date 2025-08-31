@@ -48,7 +48,6 @@ LIST_TWIND_POSSIBLE = [
     (0.05, 0.5)
     ]
 
-
 def params_seqsup_extract_and_process(DFDIST, animal, date, shape_or_loc_rule="shape", 
                                       print_existing_variables=False,
                                       remove_first_stroke = False):
@@ -311,20 +310,185 @@ def params_get_contrasts_of_interest(return_list_flat=True):
                 # print(dir_suffix, list_idx)
         return DICT_VVO_TO_LISTIDX
 
+def preprocess_dfallpa_motor_features(DFallpa, tmax=0.2, plot_motor_values=False, do_zscore=False):
+    """
+    Collect stroke-related features for each pa, doing it once (for the first pa in DFallpa) and then copying
+    to the other PA. THis is quicker than doing it for each PA (as they have identical behaviroal data). 
+    Thuis is useful for acting as motor controls later.
+
+    PARAMS:
+    - tmax, to define time window (rel stroke onset)
+    """
+
+    # assert len(DFallpa["bregion"].unique())==len(DFallpa), "assuming they are all the same trials, etc"
+    variables_cont = ("motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y")
+
+    # Extract all motor stuff
+    pa = DFallpa["pa"].values[0]
+    pa.behavior_strokes_kinematics_stats(twind=[0., tmax])
+    dflab = pa.Xlabels["trials"]
+
+    if do_zscore:
+        # Normalize all continuous variables.
+        dflab.loc[:, variables_cont] = (dflab.loc[:, variables_cont] - dflab.loc[:, variables_cont].mean()) / dflab.loc[:, variables_cont].std()
+
+    # Add this to every other pa
+    for pa in DFallpa["pa"].values:
+        dflab_this = pa.Xlabels["trials"]
+
+        # check they are identical rows
+        assert all(dflab.loc[:, ["trialcode", "stroke_index"]] == dflab_this.loc[:, ["trialcode", "stroke_index"]])
+
+        # cols
+        dflab_this.loc[:, variables_cont] = dflab.loc[:, variables_cont]
+
+    if plot_motor_values:
+        # Plots showing the continuous motor variables
+        from pythonlib.tools.pandastools import stringify_values
+        import seaborn as sns
+
+        dflab_str = stringify_values(dflab)
+        
+        if "DIFF_gridloc" not in dflab_str:
+            dflab_str["DIFF_gridloc"] = "dummy"
+
+        sns.catplot(data=dflab_str, y="DIFF_gridloc", x="gap_from_prev_x", hue="gap_from_prev_y", alpha=0.15)
+        sns.catplot(data=dflab_str, y="DIFF_gridloc", x="gap_from_prev_y", hue="gap_from_prev_x", alpha=0.15)
+
+        S = 6
+        for x, y in [
+            ("motor_onsetx", "motor_onsety"),
+            ("gap_from_prev_x", "gap_from_prev_y"),
+            ("velmean_x", "velmean_y")]:
+            fig, axes = plt.subplots(1, 3, figsize=(3*S, S), sharex=True, sharey=True)
+            for ax, hue in zip(axes.flatten(), ["gridloc", "DIFF_gridloc", "shape"]):
+                sns.scatterplot(data=dflab_str, x=x, y=y, hue=hue, marker="x", alpha=0.3, ax=ax)    
+
+def preprocess_pa_syntax(PA):
+    """
+    Preprocessing, extract variables related to syntax stuff.
+    
+    Should always run for syntax data, even if it trial or stroke
+
+    RETURNS:
+    - Modifies PA (nothing returned)
+    """
+
+    dflab = PA.Xlabels["trials"]
+
+    if False: # Actually, is fine
+        if any(dflab["epoch"].isin(["base", "baseline"])):
+            print(dflab["epoch"].unique())
+            assert False, "will fail below, so remove base"
+
+    # dflab = append_col_with_grp_index(dflab, vars_others, "_var_other")
+    dflab = append_col_with_grp_index(dflab, ["epoch", "syntax_concrete"], "epch_sytxcncr")
+    # dflab = append_col_with_grp_index(dflab, ["epoch", "seqc_0_loc", "seqc_0_shape", "syntax_concrete"], "var_all_conditions")
+
+    # Add n items in each shape slot
+    nslots = len(dflab["syntax_concrete"].values[0])
+    list_slots = []
+    for i in range(3):
+        key = f"syntax_slot_{i}"
+        if i > nslots-1:
+            # Then this slot doesnt exist
+            dflab[key] = 0
+        else:
+            # Assign how many in that slot 
+            tmp = []
+            for x in dflab["syntax_concrete"]:
+                if x==('IGNORE',):
+                    tmp.append(-1)
+                elif isinstance(x, str):
+                    # e.e.g, "none" if this is baseline data
+                    tmp.append(-1)
+                else:
+                    if i+1>len(x):
+                        # Then this slot doesnt exist. This happens for two-shape days, sometimes. 
+                        tmp.append(0)
+                    else:
+                        if isinstance(x[i], str):
+                            print(x)
+                            assert False
+                        tmp.append(x[i])
+            # print(set(tmp))
+            dflab[key] = tmp
+        list_slots.append(key)
+        # print(dflab[key])
+    print("Added these columns to dflab: ", list_slots)
+
+    # Add ratio between slot 0 and 1
+    if ("syntax_slot_0" in dflab) & ("syntax_slot_1" in dflab):
+        # Add 0.01 so that doesnt devide by 0.
+        # print(dflab["syntax_slot_0"].unique())
+        # print(dflab["syntax_slot_1"].unique())
+        # print(dflab["syntax_slot_2"].unique())
+
+        dflab["syntax_slot_ratio"] = (dflab["syntax_slot_1"]+0.01)/(dflab["syntax_slot_0"]+0.01 + dflab["syntax_slot_1"]+0.01)
+
+        if np.any(np.isnan(dflab["syntax_slot_ratio"])):
+            print(dflab["syntax_slot_ratio"])
+            assert False
+
+    # count up how many unique shapes are shown
+    def _n_shapes(syntax_concrete):
+        # e.g., (1,3,0) --> 2
+        if syntax_concrete==('IGNORE',):
+            tmp.append(-1)
+        elif isinstance(syntax_concrete, str):
+            return -1
+        else:
+            return sum([x>0 for x in syntax_concrete])
+    dflab["shapes_n_unique"] = [_n_shapes(sc) for sc in dflab["syntax_concrete"]]
+
+    ### For SHAPE vs. SUPERV
+    # Better variables that don't require using the specific name (e.g, llCV3)
+    # epoch_rand_exclsv: (llCV3, UL, seqsup, colorrank)
+    # epoch_kind: (shape, dir, seqsup, colorrank)
+    tmp = []
+    tmp2 = []
+    for i, row in dflab.iterrows():
+        if row["superv_is_seq_sup"]:
+            # Regardless of the "epoch" these are all random. The color cue will indicate random, etc.
+            tmp.append("seqsup")
+            tmp2.append("seqsup")
+            assert not row["superv_COLOR_METHOD"] == "rank"
+        elif row["superv_COLOR_METHOD"] == "rank":
+            tmp.append("colorrank")
+            tmp2.append("colorrank")
+            assert not row["superv_is_seq_sup"]
+        else:
+            # This this is nether colorrank nor seqsup
+            tmp.append(row["epoch"]) 
+            if row["epoch_is_AnBmCk"] and (not row["epoch_is_DIR"]):
+                tmp2.append("shape")
+            elif (not row["epoch_is_AnBmCk"]) and row["epoch_is_DIR"]:
+                tmp2.append("dir")
+            else:
+                assert False
+    dflab["epoch_rand_exclsv"] = tmp
+    dflab["epoch_kind"] = tmp2
+
+    # Store
+    PA.Xlabels["trials"] = dflab
+
 
 def preprocess_pa(PA, var_effect, vars_others, prune_min_n_trials, prune_min_n_levs, filtdict,
                   savedir, 
                 subspace_projection, subspace_projection_fitting_twind,
                 twind_analy, tbin_dur, tbin_slide, scalar_or_traj="traj",
-                use_strings_for_vars_others=True, is_seqsup_version=False):
+                use_strings_for_vars_others=True, is_seqsup_version=False,
+                skip_dimredu=False, prune_by_conj_var = True):
     """
     Preprocess, for strokes-level data
+    RETURNS:
+    - Modifies PA, but also returns...
+    
     """
     from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper, grouping_plot_n_samples_conjunction_heatmap
     from pythonlib.tools.pandastools import append_col_with_grp_index, grouping_print_n_samples
     from neuralmonkey.scripts.analy_shape_invariance_all_plots_SP import _preprocess_pa_dim_reduction
     from pythonlib.tools.plottools import savefig
-    
     PA = PA.copy()
     dflab = PA.Xlabels["trials"]
 
@@ -332,6 +496,40 @@ def preprocess_pa(PA, var_effect, vars_others, prune_min_n_trials, prune_min_n_l
     dflab = append_col_with_grp_index(dflab, ["epoch", "syntax_role"], "epch_sytxrol")
     dflab = append_col_with_grp_index(dflab, ["epoch", "syntax_role", "shape", "gridloc"], "sytx_all")
     dflab = append_col_with_grp_index(dflab, ["epoch_rand", "shape", "syntax_role", "superv_is_seq_sup"], "stxsuperv")
+    dflab = append_col_with_grp_index(dflab, ["chunk_rank", "shape"], "chunk_shape")
+
+    # Also add a conjunctive rank within
+    # This is the interaction between cr and chuk_within
+    from pythonlib.tools.pandastools import append_col_with_grp_index
+    dflab = append_col_with_grp_index(dflab, ["chunk_rank", "shape", "chunk_n_in_chunk", "chunk_within_rank"], "rank_conj")
+
+    # Also reach direction
+    tmp = []
+    for _, row in dflab.iterrows():
+        loc = row["gridloc"]
+        loc_prev = row["CTXT_loc_prev"]
+
+        if loc_prev[1] == "START":
+            loc_diff = (0, "START")
+        else:
+            loc_diff = (loc[0] - loc_prev[0], loc[1] - loc_prev[1])
+
+        tmp.append(loc_diff)
+    dflab["DIFF_gridloc"] = tmp
+
+    # Also shape change
+    tmp = []
+    for _, row in dflab.iterrows():
+        shape = row["shape"]
+        shape_prev = row["CTXT_shape_prev"]
+
+        if shape_prev == "START":
+            shape_diff = "START"
+        else:
+            shape_diff = (shape_prev, shape)
+
+        tmp.append(shape_diff)
+    dflab["DIFF_shape"] = tmp
 
     # Consolidate vars_others into a single variable
     # save text file holding the params
@@ -352,10 +550,15 @@ def preprocess_pa(PA, var_effect, vars_others, prune_min_n_trials, prune_min_n_l
     # Put back into PA
     PA.Xlabels["trials"] = dflab
 
-    # Prune n datapts
-    plot_counts_heatmap_savepath = f"{savedir}/counts_conj.pdf"
-    PA, _, _= PA.slice_extract_with_levels_of_conjunction_vars(var_effect, vars_others, prune_min_n_trials, prune_min_n_levs,
-                                                        plot_counts_heatmap_savepath=plot_counts_heatmap_savepath)
+    # Prune n datapts -- var_conj
+    if prune_by_conj_var:
+        plot_counts_heatmap_savepath = f"{savedir}/counts_conj.pdf"
+        PA, _, _= PA.slice_extract_with_levels_of_conjunction_vars(var_effect, vars_others, prune_min_n_trials, prune_min_n_levs,
+                                                            plot_counts_heatmap_savepath=plot_counts_heatmap_savepath)
+    
+    # Prune n datapts -- each level of flat grp vars
+    _grp_vars = [var_effect] + vars_others
+    PA = PA.slice_extract_with_levels_of_var_good_prune(_grp_vars, prune_min_n_trials)
     
     if PA is None:
         print("Pruned all data!!")
@@ -380,9 +583,10 @@ def preprocess_pa(PA, var_effect, vars_others, prune_min_n_trials, prune_min_n_l
         grouping_print_n_samples(dflab, ["_vars_others", var_effect], savepath=path)
 
     #### Prune to cases with decent n
-    PA = _preprocess_pa_dim_reduction(PA, subspace_projection, subspace_projection_fitting_twind,
-                                twind_analy, tbin_dur, tbin_slide, savedir, scalar_or_traj=scalar_or_traj)
-    
+    if not skip_dimredu:
+        PA = _preprocess_pa_dim_reduction(PA, subspace_projection, subspace_projection_fitting_twind,
+                                    twind_analy, tbin_dur, tbin_slide, savedir, scalar_or_traj=scalar_or_traj)
+        
     if is_seqsup_version:
         # Then is "good" seqsup version (newer code)
         # e.g, Shape vs. seqsup
@@ -400,9 +604,56 @@ def preprocess_pa(PA, var_effect, vars_others, prune_min_n_trials, prune_min_n_l
             print(vars_others)
             assert False, "for clean analyses here, I expect this..."
         PA = PA.slice_by_dim_indices_wrapper("trials", inds)
-
     plt.close("all")
+
+    # Get syntax-related columns
+    preprocess_pa_syntax(PA)
+
+    # Save (print) useful summaries of the syntaxes for this day
+    dflab = PA.Xlabels["trials"]
+    savepath = f"{savedir}/syntax_counts-1.txt"
+    grouping_print_n_samples(dflab, ["epoch", "FEAT_num_strokes_beh", "syntax_concrete", "behseq_shapes"], savepath=savepath)
+
+    savepath = f"{savedir}/syntax_counts-2.txt"
+    grouping_print_n_samples(dflab, ["epoch", "FEAT_num_strokes_beh", "syntax_concrete", "behseq_shapes", "behseq_locs_clust"], savepath=savepath)
+
+    savepath = f"{savedir}/syntax_counts-3.txt"
+    grouping_print_n_samples(dflab, ["epoch", "FEAT_num_strokes_beh", "syntax_concrete", "syntax_slot_0", 
+                                    "syntax_slot_1", "syntax_slot_2"], savepath=savepath)
+
+    savepath = f"{savedir}/syntax_counts-4.txt"
+    grouping_print_n_samples(dflab, ["epoch", "FEAT_num_strokes_beh", "chunk_rank", "shape"], savepath=savepath)
+
+    savepath = f"{savedir}/syntax_counts-5.txt"
+    grouping_print_n_samples(dflab, ["epoch", "FEAT_num_strokes_beh", "syntax_slot_0", "syntax_concrete"], savepath=savepath)
+
+    savepath = f"{savedir}/syntax_counts-6.txt"
+    grouping_print_n_samples(dflab, ["epoch", "FEAT_num_strokes_beh", "syntax_slot_1", "syntax_concrete"], savepath=savepath)
+
+    savepath = f"{savedir}/syntax_counts-7.txt"
+    grouping_print_n_samples(dflab, ["epoch", "FEAT_num_strokes_beh", "syntax_slot_2", "syntax_concrete"], savepath=savepath)
     
+    ### Print counts for shape vs. superv
+    # All the epoch-related params
+    savepath = f"{savedir}/syntax_counts-sh_vs_superv-epoch_related_vars.txt"
+    grouping_print_n_samples(dflab, ["superv_COLOR_METHOD", "epoch_rand_exclsv", "epoch_kind", "epoch_rand", "epoch", "epoch_is_DIR", "epoch_is_AnBmCk", "superv_is_seq_sup", "supervision_stage_concise"], savepath=savepath)
+    # using epochset_shape
+    savepath = f"{savedir}/syntax_counts-sh_vs_superv-1.txt"
+    grouping_print_n_samples(dflab, ["epochset_shape", "behseq_shapes", "behseq_locs_clust", "epoch_rand", "epoch_rand_exclsv", "epoch_kind", "superv_is_seq_sup"], savepath=savepath)
+    savepath = f"{savedir}/syntax_counts-sh_vs_superv-2.txt"
+    grouping_print_n_samples(dflab, ["epochset_dir", "behseq_shapes", "behseq_locs_clust", "epoch_rand", "epoch_rand_exclsv", "epoch_kind", "superv_is_seq_sup"], savepath=savepath)
+    # Ignoring epochset_shape, and just going by the (shape, loc) itself [better]
+    savepath = f"{savedir}/syntax_counts-sh_vs_superv-2.txt"
+    grouping_print_n_samples(dflab, ["behseq_shapes", "behseq_locs_clust", "epochset_shape", "epoch_rand", "epoch_rand_exclsv", "epoch_kind", "superv_is_seq_sup"], savepath=savepath)
+
+    ### Print counts for SP vs. PIG (syntax_shape)
+    savepath = f"{savedir}/syntax_counts-SP_vs_PIG-1.txt"
+    grouping_print_n_samples(dflab, ["epoch", "chunk_within_rank", "syntax_concrete", "chunk_rank", "shape", "gridloc", "task_kind"], savepath=savepath)
+    savepath = f"{savedir}/syntax_counts-SP_vs_PIG-2.txt"
+    grouping_print_n_samples(dflab, ["task_kind", "shape", "gridloc"], savepath=savepath)
+    savepath = f"{savedir}/syntax_counts-SP_vs_PIG-3.txt"
+    grouping_print_n_samples(dflab, ["shape", "gridloc", "task_kind", "stroke_index"], savepath=savepath)
+
     return PA
 
 def params_getter_euclidian_vars_grammar(question, version_seqsup_good, HACK=False):
@@ -1242,22 +1493,1515 @@ def mult_plot_grammar_vs_seqsup_new(DFDIST, SAVEDIR, contrast_version="shape_ind
         savepath = f"{savedir}/grouping-superv_is_seq_sup-{var_datapt}-vareffect12.txt"
         grouping_print_n_samples(DFDIST_THIS, ["date", var_datapt, "superv_is_seq_sup", f"{var_effect}_12"], savepath=savepath)
 
+# def _targeted_pca_clean_plots_and_dfdist_MULT_plot_single(DFDIST_THIS, colname_conj_same, question, SAVEDIR, order=None,
+#                                                           yvar="dist_yue_diff"):
+#     """
+#     """
+
+#     if len(DFDIST_THIS)>0:
+#         fig = sns.catplot(data=DFDIST_THIS, x="bregion", hue=colname_conj_same, y=yvar, hue_order=order,
+#                     col="subspace", kind="bar", errorbar="se")
+#         savefig(fig, f"{SAVEDIR}/q={question}-catplot-1.pdf")
+
+#         if False: # not usulaly checked
+#             fig = sns.catplot(data=DFDIST_THIS, x=colname_conj_same, hue="subspace", y=yvar, order=order,
+#                         col="bregion", kind="bar", errorbar="se")
+#             from pythonlib.tools.snstools import rotateLabel
+#             rotateLabel(fig)
+#             savefig(fig, f"{SAVEDIR}/q={question}-catplot-2.pdf")
+
+#         fig = sns.catplot(data=DFDIST_THIS, x="bregion", hue=colname_conj_same, y=yvar, hue_order=order,
+#                     col="subspace", kind="boxen")
+#         for ax in fig.axes.flatten():
+#             ax.axhline(0, color="k", alpha=0.2)
+#         savefig(fig, f"{SAVEDIR}/q={question}-catplot-3.pdf")
+
+#         plt.close("all")
+
+
+def targeted_pca_clean_plots_and_dfdist_params():
+    """
+    Stores "questions", which are specific sets of variables for computing euclidean dsitance between each conunctive level.
+    """
+
+    map_question_to_euclideanvars = {
+        # - To test chunk rank: allow chunk_within_rank_semantic_v2 free (ie 0011)
+        # - To test chunk_within_rank_semantic_v2: fix (chunk_rank", "shape", "gridloc) [0111]
+        # - Motor control: (shape", "gridloc) [1100]
+        # "1_rankwithin_vs_rank": ["chunk_within_rank_semantic_v2", "chunk_rank", "shape", "gridloc", "task_kind"],
+
+        # Does two things: (1) n in chunk, (2) chunk_within_rank (more stringently than above)
+        # - To test chunk_n_in_chunk: 01111
+        # chunk_within_rank: 10111 (note, this is stronger test than above, since above does nto control chunk_n_in_chunk, so could be due to #3 only occuring for caes with 3 strokes, for exmaple)
+        # - note: no reason to use chunk_within_rank_semantic_v2,  because once you condition on chunk_n_in_chunk, then chunk_within_rank is ideal
+        "2_ninchunk_vs_rankwithin":["chunk_n_in_chunk", "chunk_within_rank", "chunk_rank", "shape", "gridloc", "task_kind"],
+
+        # counting from onset or offset.
+        # 01111 or 10111
+        "3_onset_vs_offset":["chunk_within_rank", "chunk_within_rank_fromlast", "chunk_rank", "shape", "gridloc", "task_kind"],
+        "14_onset_vs_offset":["chunk_within_rank", "chunk_within_rank_fromlast", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev", "task_kind"],
+
+        "4_shape_vs_chunk":["shape", "gridloc", "task_kind"],
+        # "4b_shape_vs_chunk":["shape", "gridloc", "CTXT_loc_prev", "task_kind"], # This doesnt make sense, since SP are always first stroke...
+        "4c_shape_vs_chunk":["shape", "task_kind"],
+
+        # Like 1 and 2, but very strong control for motor
+        # "5_rankwithin_vs_rank": ["chunk_within_rank_semantic_v2", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev", "task_kind"],
+        "6_ninchunk_vs_rankwithin":["chunk_n_in_chunk", "chunk_within_rank", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev", "task_kind"],
+        
+        # # for triggering "subraction of confounds".
+        # "7_ninchunk_vs_rankwithin":["chunk_n_in_chunk", "chunk_within_rank", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev", "task_kind"],
+
+        # For "two shapes" analy (different levels of control)
+        "8_twoshapes":["epoch", "chunk_within_rank", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev", "syntax_concrete", "behseq_locs_clust", "task_kind"],
+        "13_twoshapes":["epoch", "chunk_within_rank", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev", "syntax_concrete", "CTXT_loc_next", "task_kind"],
+        "9_twoshapes":["epoch", "chunk_within_rank", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev", "syntax_concrete", "task_kind"],
+
+        "10_twoshapes":["epoch", "chunk_within_rank", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev", "CTXT_loc_next", "chunk_n_in_chunk", "task_kind"],
+        "11_twoshapes":["epoch", "chunk_within_rank", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev", "chunk_n_in_chunk", "task_kind"],
+
+        # "12_twoshapes":["epoch", "chunk_within_rank", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev", "CTXT_loc_next", "task_kind"], # Doesnt exists, no data.
+
+        ### SH VS SEQSUP
+        # IGNORE THIS -- it should be obsolete with 24 and 25
+        # # - Original method, using epochset_shape
+        # "20_sh_vs_superv":["stroke_index", "epochset_shape", "behseq_shapes", "epoch_rand", "superv_is_seq_sup", "behseq_locs_clust"],
+        # "21_sh_vs_superv":["stroke_index", "epochset_shape", "behseq_shapes", "epoch_rand", "superv_is_seq_sup"],
+        # "22_sh_vs_superv":["stroke_index", "epochset_shape", "behseq_shapes", "epoch_rand", "superv_is_seq_sup", "behseq_locs_clust"],
+        # "23_sh_vs_superv":["stroke_index", "epochset_shape", "behseq_shapes", "epoch_rand", "superv_is_seq_sup"],
+
+        # - New method, ignoring epochset-shape, and using the "ground-truth" based on defining each task by its behseq_shapes
+        # epoch_rand_exclsv: (llCV3, UL, rand)
+        # epoch_kind: (shape, dir, rand)
+        "24_sh_vs_superv":["stroke_index", "behseq_shapes", "epoch_rand_exclsv", "epoch_kind", "superv_is_seq_sup", "behseq_locs_clust", "FEAT_num_strokes_beh"],
+        "25_sh_vs_superv":["stroke_index", "behseq_shapes", "epoch_rand_exclsv", "epoch_kind", "superv_is_seq_sup", "FEAT_num_strokes_beh"],
+    }
+
+    # -- Decreasing levels of control (using n_in_chunk)
+    # "10_twoshapes":               ["epoch", "chunk_within_rank", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev", "CTXT_loc_next", "chunk_n_in_chunk", "task_kind"],
+    # "11_twoshapes":               ["epoch", "chunk_within_rank", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev", "chunk_n_in_chunk", "task_kind"],
+    # "6_ninchunk_vs_rankwithin":   ["chunk_within_rank", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev", "chunk_n_in_chunk", "task_kind"],
+    # "2_ninchunk_vs_rankwithin":   ["chunk_within_rank", "chunk_rank", "shape", "gridloc", "chunk_n_in_chunk", "task_kind"],
+    # (NOTE: 11 and 6 are identical)
+
+    # -- Decreasing levels of control (using syntax_concrete)
+    # "8_twoshapes":["epoch", "chunk_within_rank", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev", "syntax_concrete", "behseq_locs_clust", "task_kind"],
+    # "13_twoshapes":["epoch", "chunk_within_rank", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev", "syntax_concrete", "CTXT_loc_next", "task_kind"],
+    # "9_twoshapes":["epoch", "chunk_within_rank", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev", "syntax_concrete", "task_kind"],
+
+    params = {
+        "map_question_to_euclideanvars":map_question_to_euclideanvars,
+    }
+    
+    # Split dfdist for preprocessing
+    map_question_to_varsame = {}
+    for question, euclidean_label_vars in map_question_to_euclideanvars.items():
+        colname_conj_same = "same-"
+        for v in euclidean_label_vars:
+            colname_conj_same+=f"{v}|"
+        colname_conj_same = colname_conj_same[:-1] # remove the last |
+        map_question_to_varsame[question] = colname_conj_same
+    params["map_question_to_varsame"] = map_question_to_varsame
+    
+    return params
+
+def targeted_pca_clean_plots_and_dfdist(DFallpa, animal, date, SAVEDIR_ALL, DEBUG=False,
+                                        HACK_ONLY_PREPROCESS=False, run_number=None):
+    """
+    Main code for doing everything, including targeted PCA, and then state sapce and euclidean dsitance plots.
+    """
+    from pythonlib.tools.plottools import savefig
+    import matplotlib.pyplot as plt
+    import pandas as pd
+    from neuralmonkey.scripts.analy_syntax_good_eucl_trial import state_space_targeted_pca_scalar_single_one_var_mult_axes
+    from neuralmonkey.analyses.euclidian_distance import timevarying_compute_fast_to_scalar
+    from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good
+
+    assert run_number is not None
+
+    ### DEBUG -- quick testing
+    if DEBUG:
+        bregions_get = ["preSMA", "M1"]
+        n_splits = 1
+        do_subspaces_within_chunk = False
+    else:
+        # # GOOD - but slow
+        # bregions_get = None
+        # n_splits = 4 # make this high, since with splits you might lose certain low-n labels tuples.
+        # do_subspaces_within_chunk = False
+        # do_plot_rsa = False
+        # do_ordinal_regression = False
+        # do_state_space_plots = True
+
+        # QUICKER, for testing
+        bregions_get = None
+        n_splits = 2 # make this high, since with splits you might lose certain low-n labels tuples.
+        do_subspaces_within_chunk = False
+        do_plot_rsa = False
+        do_ordinal_regression = False
+        do_state_space_plots = True
+
+    # Stratified splits params
+    # Better, more careful, ensuring enough data for euclidian distance.
+    fraction_constrained_set=0.4
+    n_constrained=2 # Ideally have more than 1 pair
+    list_labels_need_n=None
+    min_frac_datapts_unconstrained=None
+    # min_n_datapts_unconstrained=len(PAscal.Xlabels["trials"][_var_effect].unique())
+    min_n_datapts_unconstrained=None
+    plot_train_test_counts=True
+    plot_indices=False
+
+    # Scalar preprocessing
+    from neuralmonkey.scripts.analy_euclidian_dist_pop_script import _get_list_twind_by_animal
+    _list_twind, _, _ = _get_list_twind_by_animal(animal, "00_stroke", "traj_to_scalar")
+    twind_scal = _list_twind[0]
+    npcs_keep_force = 50
+    
+    # tbin_dur = 0.2
+    # tbin_slide = 0.1
+    tbin_dur = 0.15
+    tbin_slide = 0.075
+
+    euclidean_npcs_keep = 8
+    restrict_questions_based_on_subspace = None
+    single_prims_exclude_from_training=True
+    HAS_SUPERVISION = False
+    force_dont_split_train_test = False
+    prune_min_n_trials = 3
+    DO_REGRESS_FIRST_STROKE = False
+
+    # Regression variables (and also, variables that are candidates for subspaces)
+    # Run 1 (7/31/25)
+    # variables = ['epoch', 'chunk_rank', 'shape', 'gridloc', 'CTXT_loc_prev', 'CTXT_shape_prev', 'chunk_within_rank', 'stroke_index_is_first']
+
+    # # Run 3 (8/1/25)
+    # # variables = ['epoch', 'gridloc', 'DIFF_gridloc', 'shape', 'chunk_rank', 'chunk_within_rank']
+    # # variables = ['epoch', 'gridloc', 'DIFF_gridloc', 'shape', 'DIFF_shape', 'chunk_rank', 'chunk_within_rank', 'chunk_within_rank_fromlast', 'chunk_n_in_chunk']
+    # variables_cont = []
+    # variables_cat = ['epoch', 'gridloc', 'DIFF_gridloc', 'shape', 'chunk_rank', 'chunk_within_rank', 'chunk_within_rank_fromlast', 'chunk_n_in_chunk'] # Removing diff shape, it is too correlated with chunk rank?
+    # do_vars_remove = False
+    # vars_remove = []
+    # # variables_is_cat = [True for _ in range(len(variables))]
+    # # Subspace params
+    # list_var_subspace = ["chunk_within_rank", "chunk_rank", "chunk_within_rank_fromlast", "chunk_n_in_chunk", "shape", "gridloc"]
+
+    # # Run 4 - 8/21/25 (First time doing both (i) subtract variables and (ii) include cont motor)
+    # variables_cont = ["motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y"]
+    # variables_cat = ["epoch", "gridloc", "DIFF_gridloc", "stroke_index_is_first", "chunk_rank", "shape", "rank_conj", "chunk_n_in_chunk"]
+    # do_vars_remove = True
+    # vars_remove = ["motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", 
+    #             "velmean_x", "velmean_y", "gridloc", "DIFF_gridloc", "stroke_index_is_first"]
+    # # Subspace params
+    # list_var_subspace = [
+    #     ("motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y"),
+    #     "chunk_rank", 
+    #     "rank_conj", 
+    #     "chunk_n_in_chunk", 
+    #     "shape", 
+    #     "gridloc"]
+
+    # # Run 5 - 8/22/25
+    # # - For initial global regression and subtraction of confounding variables
+    # do_remove_global_first_stroke = True
+    # variables_cont_global = ["motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y"]
+    # variables_cat_global = ["epoch", "gridloc", "DIFF_gridloc", "stroke_index_is_first", "chunk_rank", "shape", "rank_conj", "chunk_n_in_chunk"]
+    # vars_remove_global = ["stroke_index_is_first"]
+    # # - Then for subspace identification
+    # # (note: Same as above, but remove the variable that has been regressed out)
+    # variables_cont = ["motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y"]
+    # variables_cat = ["epoch", "gridloc", "DIFF_gridloc", "chunk_rank", "shape", "rank_conj", "chunk_n_in_chunk"]
+    # do_vars_remove = False
+    # vars_remove = None
+    # # Subspace params
+    # list_var_subspace = [
+    #     "rank_conj", 
+    #     "chunk_n_in_chunk", 
+    #     "shape",
+    #     # "chunk_rank", 
+    #     ("gridloc", "DIFF_gridloc", "motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y")]
+    
+    # # Run 6 - 8/23/25
+    # # - For initial global regression and subtraction of confounding variables
+    # do_remove_global_first_stroke = True
+    # variables_cont_global = ["motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y"]
+    # variables_cat_global = ["epoch", "gridloc", "DIFF_gridloc", "stroke_index_is_first", "chunk_rank", "shape", "rank_conj"]
+    # vars_remove_global = ["stroke_index_is_first"]
+    # # - Then for subspace identification
+    # # (note: Same as above, but remove the variable that has been regressed out)
+    # variables_cont = ["motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y"]
+    # variables_cat = ["epoch", "gridloc", "DIFF_gridloc", "chunk_rank", "shape", "rank_conj"]
+    # do_vars_remove = False
+    # vars_remove = None
+    # # Subspace params
+    # list_var_subspace = [
+    #     "rank_conj", 
+    #     ("gridloc", "DIFF_gridloc", "motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y")]
+
+    # # Run 7 - 8/23/25
+    # # - For initial global regression and subtraction of confounding variables
+    # do_remove_global_first_stroke = True
+    # variables_cont_global = ["motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y"]
+    # variables_cat_global = ["epoch", "gridloc", "DIFF_gridloc", "stroke_index_is_first", "chunk_rank", "shape", "rank_conj"]
+    # vars_remove_global = ["stroke_index_is_first"]
+    # # - Then for subspace identification
+    # # (note: Same as above, but remove the variable that has been regressed out)
+    # variables_cont = []
+    # variables_cat = ["epoch", "gridloc", "DIFF_gridloc", "chunk_rank", "shape", "rank_conj"]
+    # do_vars_remove = False
+    # vars_remove = None
+    # # Subspace params
+    # list_var_subspace = [
+    #     tuple(variables_cat),
+    #     ]
+
+    # # Run 8 - 
+    # # - For initial global regression and subtraction of confounding variables
+    # do_remove_global_first_stroke = True
+    # variables_cont_global = ["motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y"]
+    # variables_cat_global = ["epoch", "gridloc", "DIFF_gridloc", "stroke_index_is_first", "chunk_rank", "shape", "rank_conj"]
+    # vars_remove_global = ["stroke_index_is_first"]
+    # # - Then for subspace identification
+    # variables_cont = []
+    # variables_cat = ["epoch", "gridloc", "DIFF_gridloc", "chunk_rank", "shape", "rank_conj"]
+    # do_vars_remove = False
+    # vars_remove = []
+    # # Subspace params
+    # list_var_subspace = ["rank_conj"]
+
+    if run_number == 9:
+        # Run 9 - 8/24/25
+        # - For initial global regression and subtraction of confounding variables
+        do_remove_global_first_stroke = True
+        variables_cont_global = ["motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y"]
+        variables_cat_global = ["epoch", "gridloc", "DIFF_gridloc", "stroke_index_is_first", "chunk_rank", "shape", "rank_conj"]
+        vars_remove_global = ["stroke_index_is_first"]
+        # - Then for subspace identification
+        # (note: Same as above, but remove the variable that has been regressed out)
+        variables_cont = ["motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y"]
+        variables_cat = ["epoch", "gridloc", "DIFF_gridloc", "stroke_index_is_first", "chunk_rank", "shape", "rank_conj"]
+        do_vars_remove = False
+        vars_remove = None
+        # Subspace params
+        list_var_subspace = [
+            "rank_conj", 
+            tuple(["epoch", "gridloc", "DIFF_gridloc", "chunk_rank", "shape", "rank_conj"]), # global
+            ]
+
+    elif run_number == 10:
+        # Run 10 - 8/24/25
+        # - For initial global regression and subtraction of confounding variables
+        do_remove_global_first_stroke = True
+        variables_cont_global = ["motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y"]
+        variables_cat_global = ["epoch", "gridloc", "DIFF_gridloc", "stroke_index_is_first", "chunk_rank", "shape", "rank_conj"]
+        vars_remove_global = ["stroke_index_is_first"]
+        # - Then for subspace identification
+        # (note: Same as above, but remove the variable that has been regressed out)
+        variables_cont = []
+        variables_cat = ["epoch", "gridloc", "DIFF_gridloc", "chunk_rank", "shape", "rank_conj"]
+        do_vars_remove = False
+        vars_remove = None
+        # Subspace params
+        list_var_subspace = [
+            tuple(["epoch", "gridloc", "DIFF_gridloc", "chunk_rank", "shape", "rank_conj"]), # global
+            ]
+
+    elif run_number in [11, 12]:
+        # Run 11 and 12 - 8/24/25
+        # - For initial global regression and subtraction of confounding variables
+        do_remove_global_first_stroke = True
+        variables_cont_global = ["motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y"]
+        variables_cat_global = ["epoch", "gridloc", "DIFF_gridloc", "stroke_index_is_first", "chunk_rank", "shape", "rank_conj"]
+        vars_remove_global = ["stroke_index_is_first"]
+        # - Then for subspace identification
+        # (note: Same as above, but remove the variable that has been regressed out)
+        variables_cont = []
+        variables_cat = ["epoch", "gridloc", "DIFF_gridloc", "stroke_index_is_first", "chunk_rank", "shape", "rank_conj"]
+        do_vars_remove = False
+        vars_remove = None
+        # Subspace params
+        list_var_subspace = [
+            tuple(["epoch", "gridloc", "DIFF_gridloc", "chunk_rank", "shape", "rank_conj"]), # global
+            "shape", # Only run this for the question related to SP vs. grammar.
+            ]
+        restrict_questions_based_on_subspace = {
+            "shape":["4_shape_vs_chunk"],
+        }
+    elif run_number==13:
+        # Run 13 - 8/26/25 -- SHAPE VS. SUPERV
+        # - For initial global regression and subtraction of confounding variables
+        do_remove_global_first_stroke = True
+        variables_cont_global = ["motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y"]
+        variables_cat_global = ["epoch", "gridloc", "DIFF_gridloc", "stroke_index_is_first", "chunk_rank", "shape", "rank_conj"]
+        vars_remove_global = ["stroke_index_is_first"]
+        # - Then for subspace identification
+        # (note: Same as above, but remove the variable that has been regressed out)
+        variables_cont = []
+        variables_cat = ["epoch", "gridloc", "DIFF_gridloc", "stroke_index_is_first", "chunk_rank", "shape", "rank_conj", "superv_is_seq_sup"]
+        do_vars_remove = False
+        vars_remove = None
+        # Subspace params
+        list_var_subspace = [
+            tuple(["epoch", "chunk_rank", "shape", "rank_conj", "superv_is_seq_sup"]), # global
+            ]
+        HAS_SUPERVISION = True
+        restrict_questions_based_on_subspace = {
+            tuple(["epoch", "chunk_rank", "shape", "rank_conj", "superv_is_seq_sup"]):[
+                "20_sh_vs_superv", "21_sh_vs_superv", "22_sh_vs_superv", "23_sh_vs_superv", "24_sh_vs_superv", "25_sh_vs_superv"
+                ]}
+    elif run_number==14:
+        # Run 14 - 8/27/25
+        # - For initial global regression and subtraction of confounding variables
+        do_remove_global_first_stroke = True
+        variables_cont_global = ["motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y"]
+        variables_cat_global = ["epoch", "gridloc", "DIFF_gridloc", "stroke_index_is_first", "chunk_rank", "shape", "rank_conj"]
+        vars_remove_global = ["stroke_index_is_first"]
+        # - Then for subspace identification
+        # (note: Same as above, but remove the variable that has been regressed out)
+        variables_cont = []
+        variables_cat = ["epoch", "gridloc", "DIFF_gridloc", "stroke_index_is_first", "chunk_rank", "shape", "rank_conj"]
+        do_vars_remove = False
+        vars_remove = None
+        # Subspace params
+        list_var_subspace = [
+            "shape", # Only run this for the question related to SP vs. grammar.
+            ]
+        restrict_questions_based_on_subspace = {
+            "shape":["4_shape_vs_chunk"],
+        }
+        single_prims_exclude_from_training=False
+        force_dont_split_train_test = True # If single_prims_exclude_from_training is False, then you shouldn't do splits 
+    
+    elif run_number==15:
+        # Run 15 - 8/27/25 -- SP vs. PIG (using params based on the char-sp analysis in action symbols paper)
+        # - For initial global regression and subtraction of confounding variables
+        do_remove_global_first_stroke = True
+        variables_cont_global = []
+        variables_cat_global = ["stroke_index_is_first", "shape", "task_kind"]
+        vars_remove_global = ["stroke_index_is_first"]
+        # - Then for subspace identification
+        # (note: Same as above, but remove the variable that has been regressed out)
+        variables_cont = []
+        variables_cat = ["shape", "task_kind"]
+        do_vars_remove = False
+        vars_remove = None
+        # Subspace params
+        list_var_subspace = [
+            "shape", # Only run this for the question related to SP vs. grammar.
+            tuple(["shape", "task_kind"]),
+            ]
+        restrict_questions_based_on_subspace = {
+            "shape":["4_shape_vs_chunk", "4c_shape_vs_chunk", "11_twoshapes"],
+            tuple(["shape", "task_kind"]):["4_shape_vs_chunk", "4c_shape_vs_chunk", "11_twoshapes"],
+        }
+        single_prims_exclude_from_training=False
+        force_dont_split_train_test = True # If single_prims_exclude_from_training is False, then you shouldn't do splits 
+
+        # - Update the time window to match the action sybmols stuff
+        twind_scal = [-0.35, -0.05]
+        tbin_dur = 0.15
+        tbin_slide = 0.05
+
+    elif run_number==16:
+        # Run 16 - 8/27/25
+        # - For initial global regression and subtraction of confounding variables
+        do_remove_global_first_stroke = True
+        variables_cont_global = ["motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y"]
+        variables_cat_global = ["epoch", "gridloc", "DIFF_gridloc", "stroke_index_is_first", "chunk_rank", "shape", "rank_conj"]
+        vars_remove_global = ["stroke_index_is_first"]
+        # - Then for subspace identification
+        # (note: Same as above, but remove the variable that has been regressed out)
+        variables_cont = []
+        variables_cat = ["epoch", "gridloc", "DIFF_gridloc", "stroke_index_is_first", "chunk_rank", "shape", "rank_conj"]
+        do_vars_remove = False
+        vars_remove = None
+        # Subspace params
+        list_var_subspace = [
+            "shape", # Only run this for the question related to SP vs. grammar.
+            ]
+        restrict_questions_based_on_subspace = {
+            "shape":["4_shape_vs_chunk"],
+        }
+        single_prims_exclude_from_training=False
+        force_dont_split_train_test = True # If single_prims_exclude_from_training is False, then you shouldn't do splits 
+
+        # - Update the time window to match the action sybmols stuff
+        _list_twind, _, _ = _get_list_twind_by_animal(animal, "00_stroke", "traj_to_scalar")
+        twind_scal = [-0.35, _list_twind[0][1]]
+        tbin_dur = 0.15
+        tbin_slide = 0.05
+    
+    elif run_number==17:
+        # - For initial global regression and subtraction of confounding variables
+        do_remove_global_first_stroke = True
+        variables_cont_global = []
+        variables_cat_global = ["gridloc", "stroke_index_is_first", "shape", "task_kind"]
+        vars_remove_global = ["stroke_index_is_first", "task_kind"]
+        # - Then for subspace identification
+        # (note: Same as above, but remove the variable that has been regressed out)
+        variables_cont = []
+        variables_cat = ["epoch", "gridloc", "DIFF_gridloc", "stroke_index_is_first", "chunk_rank", "shape", "rank_conj", "task_kind"]
+        do_vars_remove = False
+        vars_remove = None
+        # Subspace params
+        list_var_subspace = [
+            "shape", # Only run this for the question related to SP vs. grammar.
+            ]
+        restrict_questions_based_on_subspace = {
+            "shape":["4_shape_vs_chunk"],
+        }
+        single_prims_exclude_from_training=False
+        force_dont_split_train_test = True # If single_prims_exclude_from_training is False, then you shouldn't do splits 
+    # elif run_number==asfasfsafsdf:
+    #     # Run 15 - 8/27/25 -- SP vs. PIG (using params based on the char-sp analysis in action symbols paper)
+    #     # - For initial global regression and subtraction of confounding variables
+    #     do_remove_global_first_stroke = True
+    #     variables_cont_global = []
+    #     variables_cat_global = ["stroke_index_is_first", "shape", "task_kind"]
+    #     vars_remove_global = ["stroke_index_is_first"]
+    #     # - Then for subspace identification
+    #     # (note: Same as above, but remove the variable that has been regressed out)
+    #     variables_cont = []
+    #     variables_cat = ["shape", "task_kind"]
+    #     do_vars_remove = False
+    #     vars_remove = None
+    #     # Subspace params
+    #     list_var_subspace = [
+    #         "shape", # Only run this for the question related to SP vs. grammar.
+    #         tuple(["shape", "task_kind"]),
+    #         ]
+    #     restrict_questions_based_on_subspace = {
+    #         "shape":["4_shape_vs_chunk", "11_twoshapes"],
+    #         tuple(["shape", "task_kind"]):["4_shape_vs_chunk", "11_twoshapes"],
+    #     }
+    #     single_prims_exclude_from_training=False
+    #     force_dont_split_train_test = True # If single_prims_exclude_from_training is False, then you shouldn't do splits 
+
+    #     # - Update the time window to match the action sybmols stuff
+    #     twind_scal = [-0.35, -0.05]
+    #     tbin_dur = 0.15
+    #     tbin_slide = 0.05
+
+    elif run_number==18:
+        # - For initial global regression and subtraction of confounding variables
+        do_remove_global_first_stroke = True
+        variables_cont_global = []
+        variables_cat_global = ["stroke_index_is_first", "shape", "task_kind"]
+        vars_remove_global = ["stroke_index_is_first"]
+        # - Then for subspace identification
+        # (note: Same as above, but remove the variable that has been regressed out)
+        variables_cont = []
+        variables_cat = ["gridloc", "DIFF_gridloc", "stroke_index_is_first", "chunk_rank", "shape", "rank_conj", "task_kind"]
+        do_vars_remove = False
+        vars_remove = None
+        # Subspace params
+        list_var_subspace = [
+            "shape", # Only run this for the question related to SP vs. grammar.
+            tuple(["shape", "task_kind"]),
+            ]
+        restrict_questions_based_on_subspace = {
+            "shape":["4_shape_vs_chunk", "4c_shape_vs_chunk", "11_twoshapes"],
+            tuple(["shape", "task_kind"]):["4_shape_vs_chunk", "4c_shape_vs_chunk", "11_twoshapes"],
+        }
+        single_prims_exclude_from_training=False
+        force_dont_split_train_test = True # If single_prims_exclude_from_training is False, then you shouldn't do splits 
+
+        # - Update the time window to match the action sybmols stuff
+        twind_scal = [-0.35, -0.05]
+        tbin_dur = 0.15
+        tbin_slide = 0.05
+        
+        # Using char-sp params.
+        DO_REGRESS_FIRST_STROKE = True
+
+    elif run_number==19:
+        # - For initial global regression and subtraction of confounding variables
+        do_remove_global_first_stroke = True
+        variables_cont_global = []
+        variables_cat_global = ["stroke_index_is_first", "shape", "task_kind"]
+        vars_remove_global = ["stroke_index_is_first"]
+        # - Then for subspace identification
+        # (note: Same as above, but remove the variable that has been regressed out)
+        variables_cont = []
+        variables_cat = ["shape", "task_kind"]
+        do_vars_remove = False
+        vars_remove = None
+        # Subspace params
+        list_var_subspace = [
+            "shape", # Only run this for the question related to SP vs. grammar.
+            # tuple(["shape", "task_kind"]),
+            ]
+        restrict_questions_based_on_subspace = {
+            "shape":["4_shape_vs_chunk", "4c_shape_vs_chunk", "11_twoshapes"],
+            # tuple(["shape", "task_kind"]):["4_shape_vs_chunk", "4c_shape_vs_chunk", "11_twoshapes"],
+        }
+        single_prims_exclude_from_training=False
+        force_dont_split_train_test = True # If single_prims_exclude_from_training is False, then you shouldn't do splits 
+
+        # - Update the time window to match the action sybmols stuff
+        twind_scal = [-0.35, 0.2]
+        tbin_dur = 0.15
+        tbin_slide = 0.05
+
+    elif run_number == 20:
+        # - For initial global regression and subtraction of confounding variables
+        do_remove_global_first_stroke = True
+        variables_cont_global = ["motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y"]
+        variables_cat_global = ["epoch", "gridloc", "DIFF_gridloc", "stroke_index_is_first", "chunk_rank", "shape", "rank_conj"]
+        vars_remove_global = ["stroke_index_is_first"]
+        # - Then for subspace identification
+        # (note: Same as above, but remove the variable that has been regressed out)
+        variables_cont = []
+        variables_cat = ["epoch", "gridloc", "DIFF_gridloc", "stroke_index_is_first", "chunk_rank", "shape", "rank_conj"]
+        do_vars_remove = False
+        vars_remove = None
+        # Subspace params
+        list_var_subspace = [
+            tuple(["epoch", "gridloc", "DIFF_gridloc", "chunk_rank", "shape", "rank_conj"]), # global
+            # "shape", # Only run this for the question related to SP vs. grammar.
+            ]
+        restrict_questions_based_on_subspace = {
+            "shape":["4_shape_vs_chunk"],
+        }
+        
+        # - Update the time window to match the action sybmols stuff
+        twind_scal = [-0.35, 0.2]
+        tbin_dur = 0.15
+        tbin_slide = 0.05
+        force_dont_split_train_test = True # If single_prims_exclude_from_training is False, then you shouldn't do splits 
+    elif run_number == 21:
+        # - For initial global regression and subtraction of confounding variables
+        do_remove_global_first_stroke = True
+        variables_cont_global = ["motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y"]
+        variables_cat_global = ["epoch", "gridloc", "DIFF_gridloc", "stroke_index_is_first", "chunk_rank", "shape", "rank_conj"]
+        vars_remove_global = ["stroke_index_is_first"]
+        # - Then for subspace identification
+        # (note: Same as above, but remove the variable that has been regressed out)
+        variables_cont = []
+        variables_cat = ["epoch", "gridloc", "DIFF_gridloc", "stroke_index_is_first", "chunk_rank", "shape", "rank_conj"]
+        do_vars_remove = False
+        vars_remove = None
+        # Subspace params
+        list_var_subspace = [
+            tuple(["epoch", "gridloc", "DIFF_gridloc", "chunk_rank", "shape", "rank_conj"]), # global
+            # "shape", # Only run this for the question related to SP vs. grammar.
+            ]
+        restrict_questions_based_on_subspace = {
+            "shape":["4_shape_vs_chunk"],
+        }
+        force_dont_split_train_test = True # If single_prims_exclude_from_training is False, then you shouldn't do splits 
+    else:
+        assert False
+
+    if single_prims_exclude_from_training==False:
+        assert force_dont_split_train_test == True, "If single_prims_exclude_from_training is False, then you shouldn't do splits. Comment this out if you have enough SP data that you actually want to do this"
+
+    if force_dont_split_train_test==True:
+        n_splits = 1 # since it uses all data
+        
+    ### State space plots params
+    # LIST_VAR_VAROTHERS = [
+    #     # ("chunk_within_rank", ['epoch', 'chunk_shape', 'loc_on_clust', 'CTXT_locoffclust_prev', 'CTXT_shape_prev', 'loc_off_clust']),
+    #     # ("chunk_within_rank", ['epoch', 'chunk_shape', 'loc_on_clust', 'CTXT_locoffclust_prev', 'CTXT_shape_prev']),
+    #     # ("chunk_shape", ['epoch', 'chunk_within_rank', 'loc_on_clust', 'CTXT_locoffclust_prev', 'CTXT_shape_prev', 'loc_off_clust']),
+    #     # ("chunk_shape", ['epoch', 'chunk_within_rank', 'loc_on_clust', 'CTXT_locoffclust_prev', 'CTXT_shape_prev']),
+
+    #     ## N in chunk
+    #     ("chunk_n_in_chunk", ['task_kind', 'epoch', 'chunk_shape', 'chunk_within_rank']),
+    #     ("chunk_n_in_chunk", ['task_kind', 'epoch', 'chunk_shape']),
+    #     ("chunk_n_in_chunk", ['task_kind', 'epoch']),
+
+    #     ## Rank within
+    #     ("chunk_within_rank", ['task_kind', 'epoch', 'chunk_shape', 'chunk_within_rank_fromlast']),
+    #     ("chunk_within_rank", ['task_kind', 'epoch', 'chunk_shape', 'chunk_n_in_chunk']),
+    #     ("chunk_within_rank", ['task_kind', 'epoch', 'chunk_shape']),
+    #     ("chunk_within_rank", ['task_kind', 'epoch']),
+
+    #     ("chunk_within_rank_fromlast", ['task_kind', 'epoch', 'chunk_shape', 'chunk_within_rank']),
+    #     ("chunk_within_rank_fromlast", ['task_kind', 'epoch', 'chunk_shape', 'chunk_n_in_chunk']),
+    #     ("chunk_within_rank_fromlast", ['task_kind', 'epoch', 'chunk_shape']),
+    #     ("chunk_within_rank_fromlast", ['task_kind', 'epoch']),
+
+    #     ## Stroke index (generic)
+    #     ("stroke_index", ['task_kind', 'epoch', 'syntax_concrete']),
+    #     # ("stroke_index", ['epoch', 'chunk_shape']),
+    #     ("stroke_index", ['task_kind', 'epoch']),
+
+    #     ## Location
+    #     ("gridloc_x", ['task_kind', 'epoch', 'chunk_shape', 'chunk_within_rank_v2']),
+    #     # ("gridloc_x", ['epoch', 'syntax_concrete']),
+    #     # ("gridloc_x", ['epoch', 'chunk_shape']),
+    #     ("gridloc_x", ['task_kind', 'epoch']),
+
+    #     ## Chunk rank and shape
+    #     # ("chunk_shape", ['epoch', 'chunk_within_rank', 'syntax_concrete']),
+    #     # ("chunk_shape", ['epoch', 'chunk_within_rank']),
+    #     # ("chunk_shape", ['epoch']),
+
+    #     # ("chunk_rank", ['epoch', 'shape', 'chunk_within_rank']),
+    #     ("chunk_rank", ['task_kind', 'epoch', 'shape']),
+    #     ("chunk_rank", ['task_kind', 'epoch']),
+
+    #     # ("shape", ['epoch', 'chunk_rank', 'chunk_within_rank']),
+    #     ("shape", ['epoch', 'task_kind', 'chunk_rank']),
+    #     ("shape", ['epoch', 'task_kind']),
+
+    #     ("task_kind", ["epoch", "shape"]),
+    # ]
+
+    if HAS_SUPERVISION:
+        LIST_VAR_VAROTHERS = [
+            # ("superv_is_seq_sup", ['task_kind', 'epoch', 'syntax_concrete', 'chunk_shape', 'chunk_within_rank']),
+            # ("chunk_within_rank", ['task_kind', 'epochset_shape', 'epoch_rand_exclsv", "epoch_kind', 'superv_is_seq_sup', 'behseq_shapes', 'chunk_shape']),
+            # ("stroke_index", ['task_kind', 'epoch_rand_exclsv", "epoch_kind', 'superv_is_seq_sup', 'behseq_shapes']),
+
+            # === Supervision stuff
+            # Original approach
+            ("stroke_index", ['task_kind', 'epochset_shape', 'syntax_concrete', 'epoch_rand', 'superv_is_seq_sup']),
+            ("stroke_index", ['task_kind', 'epochset_dir', 'syntax_concrete', 'epoch_rand', 'superv_is_seq_sup']),
+
+            # New approach, don't use epochset
+            ("stroke_index", ['task_kind', 'behseq_shapes', 'epoch_rand_exclsv', 'epoch_kind', 'superv_is_seq_sup']),
+            ("chunk_within_rank", ['task_kind', 'behseq_shapes', 'epoch_rand_exclsv', 'epoch_kind', 'chunk_shape', 'superv_is_seq_sup']),
+
+            # === Other stuff
+            ## Rank within
+            ("chunk_within_rank", ['task_kind', 'epochset_shape', 'chunk_shape', 'syntax_concrete']),
+            ("chunk_within_rank", ['task_kind', 'epochset_shape', 'chunk_shape', 'chunk_n_in_chunk']),
+            ("chunk_within_rank", ['task_kind', 'epochset_shape', 'chunk_shape']),
+            ("chunk_within_rank", ['task_kind', 'epochset_shape']),
+
+            ## Chunk rank and shape
+            ("chunk_rank", ['task_kind', 'epochset_shape', 'shape']),
+
+            ("shape", ['epochset_shape', 'task_kind']),
+        ]
+    else:
+        # Pruned, to be quicker
+        LIST_VAR_VAROTHERS = [
+            ## N in chunk
+            ("chunk_n_in_chunk", ['task_kind', 'epoch', 'chunk_shape', 'chunk_within_rank']),
+            ("chunk_n_in_chunk", ['task_kind', 'epoch', 'chunk_shape']),
+            ("chunk_n_in_chunk", ['task_kind', 'epoch']),
+
+            ## Rank within
+            ("chunk_within_rank", ['task_kind', 'epoch', 'chunk_shape', 'chunk_n_in_chunk']),
+            ("chunk_within_rank", ['task_kind', 'epoch', 'chunk_shape']),
+            ("chunk_within_rank", ['task_kind', 'epoch']),
+
+            ("chunk_within_rank_fromlast", ['task_kind', 'epoch', 'chunk_shape', 'chunk_n_in_chunk']),
+            ("chunk_within_rank_fromlast", ['task_kind', 'epoch', 'chunk_shape']),
+            ("chunk_within_rank_fromlast", ['task_kind', 'epoch']),
+
+            ## Location
+            ("gridloc_x", ['task_kind', 'epoch']),
+
+            ## Chunk rank and shape
+            ("chunk_rank", ['task_kind', 'epoch', 'shape']),
+
+            ("shape", ['epoch', 'task_kind']),
+        ]
+    LIST_DIMS = [(0,1), (2,3)]
+
+    ### Euclidean dist params (ie one set for each "question")
+    # 1: Two things: (1) rank within an dsimple within vs. chunk vs. motor (shape, gridloc)
+    # TODO: possibly also exclude gridloc. Note that this leads to larger effects of grammar stuff even in M1. Is cleaner this way.
+    # TODO: possibly also include DIFF_gridloc. But problem is that then there is not much data..
+    map_question_to_euclideanvars = targeted_pca_clean_plots_and_dfdist_params()["map_question_to_euclideanvars"]
+    # if HAS_SUPERVISION:
+    #     map_question_to_euclideanvars = 
+    
+
+    #     20_sh_vs_superv":["stroke_index", "epochset_shape", "behseq_shapes", "epoch_rand", "superv_is_seq_sup", "behseq_locs_clust"],
+    #     # "21_sh_vs_superv":["stroke_index", "epochset_shape", "behseq_shapes", "epoch_rand", "superv_is_seq_sup"],
+    #     # "22_sh_vs_superv":["stroke_index", "epochset_shape", "behseq_shapes", "epoch_rand", "superv_is_seq_sup", "behseq_locs_clust"],
+    #     # "23_sh_vs_superv":["stroke_index", "epochset_shape", "behseq_shapes", "epoch_rand", "superv_is_seq_sup"],
+
+    #     # - New method, ignoring epochset-shape, and using the "ground-truth" based on defining each task by its behseq_shapes
+    #     # epoch_rand_exclsv: (llCV3, UL, rand)
+    #     # epoch_kind: (shape, dir, rand)
+    #     "24_sh_vs_superv":["stroke_index", "behseq_shapes", "epoch_rand_exclsv", "epoch_kind", "superv_is_seq_sup", "behseq_locs_clust"],
+    #     "25_sh_vs_superv
+
+    # Use the same split folds for each bregion
+    folds_dflab = None
+    # - First, sanity check that all regions (PAs) have same rows
+    _trials = None
+    for pa in DFallpa["pa"].values:
+        if _trials is not None:
+            assert _trials == pa.Xlabels["trials"].loc[:, ["trialcode", "stroke_index"]].values.tolist(), "cannot use the same folds_dflab across all pa."
+        else:
+            _trials = pa.Xlabels["trials"].loc[:, ["trialcode", "stroke_index"]].values.tolist()       
+
+    for _, row in DFallpa.iterrows():
+        bregion = row["bregion"]
+        PA = row["pa"]
+
+        if (bregions_get is not None) and (bregion not in bregions_get):
+            continue
+        
+        # SAVEDIR_ALL = "/tmp"
+        SAVEDIR = f"{SAVEDIR_ALL}/bregion={bregion}"
+        os.makedirs(SAVEDIR, exist_ok=True)
+
+        filtdict = {}
+        # use these regardless of what subspace, as they are good for pruning
+        if False:
+            # Before run 11
+            prune_min_n_levs = None
+            _var_effect = "chunk_within_rank_semantic_v2"
+        else:
+            # Run 11
+            prune_min_n_levs = None
+            _var_effect = "chunk_within_rank"
+        _vars_others = ["epoch", "chunk_shape", "syntax_concrete", "task_kind"]
+        PA = preprocess_pa(PA, _var_effect, _vars_others, prune_min_n_trials, prune_min_n_levs, filtdict,
+                    SAVEDIR, 
+                    None, None, None, None, None, 
+                    skip_dimredu=True, prune_by_conj_var=False)
+
+        if HACK_ONLY_PREPROCESS:
+            # Just run this once
+            break
+
+        if DO_REGRESS_FIRST_STROKE:
+            PA = PA.regress_neuron_task_variables_subtract_from_activity(0.1, 0.02, twind_scal, "shape")
+
+        # Do dim reduction of PA up here, to be able to skip it below (quicker)
+        savedir_pca = f"{SAVEDIR}/pca"
+        os.makedirs(savedir_pca, exist_ok=True)
+        _, PAscal = PA.dataextract_dimred_wrapper("scal", "pca", savedir_pca, twind_scal, tbin_dur, tbin_slide,
+                                    npcs_keep_force)            
+
+        ### First, any controls you want to do, subtracting out activity after regression. Do it on all trials first.
+        if do_remove_global_first_stroke:
+            _savedir = f"{SAVEDIR}/remove_effect_first_stroke-coeff"
+            os.makedirs(_savedir, exist_ok=True)
+            _, _, _, _, _, PAscal, _ = PAscal.dataextract_subspace_targeted_pca_wrapper(
+                                                        variables_cont_global, variables_cat_global, vars_remove_global,
+                                                        None, None, None,
+                                                        True, False,
+                                                        savedir_coeff_heatmap=_savedir,
+                                                        savedir_pca_subspaces=_savedir)
+            
+        ### Method 1: Use entire data for fitting and projecting (with cross-validation)
+        # Now split into train (fitting targeted PCA) and testing (projection).
+        ### Get subsamples
+        if folds_dflab is None:
+            if False:
+                vars_stratification = ["epoch", "chunk_within_rank_semantic_v2", "chunk_shape", "syntax_concrete", "task_kind"]
+            else:
+                vars_stratification = ["epoch", "chunk_within_rank", "chunk_rank", "shape", "syntax_concrete", "task_kind", "gridloc"]
+            folds_dflab, fig_unc, fig_con = PAscal.split_stratified_constrained_grp_var(n_splits, vars_stratification, 
+                                                            fraction_constrained_set, n_constrained, 
+                                                            list_labels_need_n, min_frac_datapts_unconstrained,  
+                                                            min_n_datapts_unconstrained, plot_train_test_counts, plot_indices)
+            
+            if force_dont_split_train_test:
+                folds_dflab = [(train_inds+test_inds, train_inds+test_inds) for train_inds, test_inds in folds_dflab]
+                folds_dflab = [folds_dflab[0]] # just take one fold...
+
+            savefig(fig_con, f"{SAVEDIR}/after_split_constrained_fold_0.pdf") # TEST
+            savefig(fig_unc, f"{SAVEDIR}/after_split_unconstrained_fold_0.pdf") # TRIAN
+            plt.close("all")
+        else:
+            # Then use this folds_dflab...
+            pass
+        
+
+        # Save some params
+        from pythonlib.tools.expttools import writeDictToYaml, writeDictToTxtFlattened
+        writeDictToYaml({
+            "vars_stratification":vars_stratification,
+            "map_question_to_euclideanvars":map_question_to_euclideanvars,
+            "euclidean_npcs_keep":euclidean_npcs_keep,
+            "LIST_VAR_VAROTHERS":LIST_VAR_VAROTHERS,
+            "list_var_subspace":list_var_subspace,
+            "variables_cont":variables_cont,
+            "variables_cat":variables_cat,
+            "twind_scal":twind_scal,
+        }, f"{SAVEDIR}/params.yaml")
+        writeDictToTxtFlattened({
+            "vars_stratification":vars_stratification,
+            "map_question_to_euclideanvars":map_question_to_euclideanvars,
+            "euclidean_npcs_keep":euclidean_npcs_keep,
+            "LIST_VAR_VAROTHERS":LIST_VAR_VAROTHERS,
+            "list_var_subspace":list_var_subspace,
+            "variables_cont":variables_cont,
+            "variables_cat":variables_cat,
+            "twind_scal":twind_scal,
+        }, f"{SAVEDIR}/params.txt")
+
+        ### RUN!
+        for i_proj, (train_inds, test_inds) in enumerate(folds_dflab):
+            
+            # train_inds has FEWER inds than test_inds
+            train_inds = [int(i) for i in train_inds]
+            test_inds = [int(i) for i in test_inds]
+            print("n_train, n_test:", len(train_inds), len(test_inds))
+
+            if single_prims_exclude_from_training:
+                # HACK: Single prims trials should always be in test inds, not train inds.
+                dflab = PAscal.Xlabels["trials"]
+                inds_sp = dflab[dflab["task_kind"]=="prims_single"].index.tolist()
+                test_inds = test_inds + [i for i in train_inds if i in inds_sp]
+                train_inds = [i for i in train_inds if i not in inds_sp]
+
+            # Then run this: state_space_targeted_pca_scalar_single_one_var_mult_axes
+            # TODO: split the training and testing
+            for var_subspace in list_var_subspace:
+
+                savedir = f"{SAVEDIR}/FITTING_subspc={var_subspace}-iter={i_proj}"
+                os.makedirs(savedir, exist_ok=True)
+
+                if do_state_space_plots:
+                    _LIST_VAR_VAROTHERS = LIST_VAR_VAROTHERS
+                else:
+                    _LIST_VAR_VAROTHERS = None
+                pa_subspace, _, _, dfcoeff, _ = state_space_targeted_pca_scalar_single_one_var_mult_axes(
+                        PAscal, twind_scal, variables_cont, variables_cat, var_subspace, npcs_keep_force, 
+                        _LIST_VAR_VAROTHERS, LIST_DIMS, savedir, just_extract_paredu=False,
+                        savedir_pca_subspaces=savedir, tbin_dur=tbin_dur, tbin_slide=tbin_slide,
+                        inds_trials_pa_train=train_inds, inds_trials_pa_test=test_inds,
+                        skip_dim_redu=True,
+                        do_vars_remove=do_vars_remove, vars_remove=vars_remove)
+
+                ### Save neural data
+                import pickle
+                path = f"{savedir}/pa_subspace.pkl"
+                with open(path, "wb") as f:
+                    pickle.dump(pa_subspace, f)
+
+                ################################################
+                ### Compute euclidian distnace
+                _npcs_keep_euclidean = min([euclidean_npcs_keep, pa_subspace.X.shape[0]])
+                pa_subspace_this = pa_subspace.slice_by_dim_indices_wrapper("chans", list(range(_npcs_keep_euclidean)))
+                list_dfdist = []
+                for question, euclidean_label_vars in map_question_to_euclideanvars.items():
+
+                    if restrict_questions_based_on_subspace is not None:
+                        if var_subspace in restrict_questions_based_on_subspace:
+                            questions_allowed = restrict_questions_based_on_subspace[var_subspace]
+                            if question not in questions_allowed:
+                                print(f"Skipping question ({question}) for subspace ({var_subspace}).")
+                                continue
+
+                    ### [Optional] Things to do for each question
+                    if question == "7_ninchunk_vs_rankwithin":
+                        # Regress out motor covariates before computing eucldiean distance
+                        variables_cont = ["motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y"]
+                        variables_cat = ["epoch", "gridloc", "DIFF_gridloc", "stroke_index_is_first", "chunk_rank", "shape", "rank_conj"]
+                        vars_remove = ["motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y", "gridloc", "DIFF_gridloc", "chunk_rank", "shape"]
+                        var_subspace = None # Don't project
+                        _, _, _, _, _, pa_subspace_this_this, _ = pa_subspace_this.dataextract_subspace_targeted_pca_wrapper(variables_cont, variables_cat, vars_remove,
+                                                                                    None, None, 
+                                                                                    PLOT_COEFF_HEATMAP=False, 
+                                                                                    savedir_coeff_heatmap=None, demean=False)
+                    elif question == "4_shape_vs_chunk":
+                        # Prune to just those (shapes/loc) that exist in both task_kind.
+                        pa_subspace_this_this = pa_subspace_this.slice_extract_with_levels_of_conjunction_vars("task_kind", ["shape", "gridloc"], n_min_per_lev=1,
+                                                    levels_var=["prims_single", "prims_on_grid"])
+                    elif question == "4c_shape_vs_chunk":
+                        # Prune to just those (shapes) that exist in both task_kind.
+                        pa_subspace_this_this = pa_subspace_this.slice_extract_with_levels_of_conjunction_vars("task_kind", ["shape"], n_min_per_lev=1,
+                                                    levels_var=["prims_single", "prims_on_grid"])                    
+                    else:
+                        pa_subspace_this_this = pa_subspace_this
+
+                    if pa_subspace_this_this is not None:
+                        # Compute distance
+                        _savedir = f"{savedir}/eucldist-{question}"
+                        os.makedirs(_savedir, exist_ok=True)
+                        if do_plot_rsa:
+                            rsa_heatmap_savedir = _savedir
+                        else:
+                            rsa_heatmap_savedir = None
+                        dfdist, _ = timevarying_compute_fast_to_scalar(pa_subspace_this_this, label_vars=euclidean_label_vars, 
+                                                                rsa_heatmap_savedir=rsa_heatmap_savedir, plot_conjunctions_savedir=_savedir,
+                                                                prune_levs_min_n_trials=prune_min_n_trials)
+
+                        if len(dfdist)>0:
+                            # save it
+                            dfdist["i_proj"] = i_proj
+                            dfdist["var_subspace"] = [var_subspace for _ in range(len(dfdist))]
+                            dfdist["question"] = question
+                            dfdist["npcs_euclidean"] = _npcs_keep_euclidean
+                            list_dfdist.append(dfdist)
+
+                dfdist = pd.concat(list_dfdist).reset_index(drop=True)    
+
+                # SAVE                    
+                pd.to_pickle(dfdist, f"{savedir}/dfdist.pkl")
+
+                # Also save coefficients
+                pd.to_pickle(dfcoeff, f"{savedir}/dfcoeff.pkl")
+
+                ################################################
+                if do_ordinal_regression:
+                    from neuralmonkey.scripts.analy_syntax_good_eucl_state import kernel_ordinal_logistic_regression_wrapper
+                    yvar = "chunk_within_rank_fromlast"
+                    vars_grp = ["task_kind", "epoch", "chunk_shape", "chunk_n_in_chunk"]
+
+                    savedir_this = f"{savedir}/kernel_ordinal_regress-yvar={yvar}"
+                    os.makedirs(savedir_this, exist_ok=True)
+
+                    # Exclude single prims
+                    pa_subspace_this_PIG = pa_subspace_this.slice_by_labels_filtdict({"task_kind":["prims_on_grid"]})
+
+                    if pa_subspace_this_PIG.X.shape[1]>8:
+
+                        try:
+                            dfcross, dfwithin = kernel_ordinal_logistic_regression_wrapper(pa_subspace_this_PIG, yvar, vars_grp, 
+                                                                                        savedir_this, plot_test_data_projected=False)
+                            # Save                    
+                            pd.to_pickle(dfcross, f"{savedir_this}/dfcross.pkl")
+                            pd.to_pickle(dfwithin, f"{savedir_this}/dfwithin.pkl")
+                        except Exception as err:
+                            pass
+                            # print("Probably not enough data ... ")
+                            # print(pa_subspace_this_PIG.X.shape)
+                        
+                            # from pythonlib.tools.pandastools import filter_by_min_n, _check_index_reseted
+                            # dflab = pa_subspace_this_PIG.Xlabels["trials"]
+                            # _check_index_reseted(dflab)
+                            # dflab_pruned = filter_by_min_n(dflab, yvar, n_min_per_level=3)
+                            # inds_keep = dflab_pruned["_index"].tolist()
+                            # pa_subspace_this_PIG = pa_subspace_this_PIG.slice_by_dim_indices_wrapper("trials", inds_keep)
+                            
+                            # print(1, len(dflab), len(dflab_pruned))
+                            # print(2, dflab)
+                            # print(3, dflab_pruned)
+                            # print(4, dflab[yvar].value_counts())
+                            # print(5, dflab_pruned[yvar].value_counts())
+                            # print(6, pa_subspace_this_PIG.Xlabels["trials"][yvar].value_counts())
+                            # raise err
+                                        
+
+
+        if do_subspaces_within_chunk:
+            ### Method 2: Use one level of a vars group to fit subspace, and then project all data onto it.
+            # Imagine data like this, where var_grp is A, and var_subspace is 1,2,3,..
+            # A1 A1 A2 A2 A3 A3 B1 B1 B2 B2 B3 C1 C1 C2 C2 C3 C3
+
+            # Each sample, is something like this. Here is illustrating when 
+            # fitting using level-A, but this does all levels. 
+            # [A1 A2 A3] (A1 A2 A3 B1 B1 B2 B2 B3 C1 C1 C2 C2 C3 C3)
+            # where [] is training and () is testing.
+
+            assert False, "this is obsolete. Is not using interatction variable chunk_rank:rank_within"
+            ### Params
+            # Subspace fitting
+            var_subspace = "chunk_within_rank" # Inner var
+            tpca_splits_vars_other = ["chunk_shape"] # Outer var
+
+            # Store original indices
+            DFLAB = PAscal.Xlabels["trials"]
+            DFLAB["_index_orig_pa"] = list(range(len(DFLAB)))
+            PAscal.Xlabels["trials"] = DFLAB
+
+            list_grp_pa, list_grp_name = PAscal.split_by_label("trials", tpca_splits_vars_other)
+            for pa_grp, name_grp in zip(list_grp_pa, list_grp_name):
+
+                # Split pa to two sets, stratified by var_subspace
+                folds_dflab, fig_unc, fig_con = pa_grp.split_stratified_constrained_grp_var(n_splits, [var_subspace], 
+                                                                fraction_constrained_set, n_constrained, 
+                                                                list_labels_need_n, min_frac_datapts_unconstrained,  
+                                                                min_n_datapts_unconstrained, plot_train_test_counts, plot_indices)
+                
+
+                for i_proj, (inds_grp_train, inds_grp_test) in enumerate(folds_dflab): # Indices into pa_grp
+
+                    # Converting to original pa inds 
+                    dflab = pa_grp.Xlabels["trials"]
+                    # For the grp, split into two
+                    inds_grp_train_orig = dflab.iloc[inds_grp_train]["_index_orig_pa"].to_list() # To fit subspace
+                    inds_grp_test_orig = dflab.iloc[inds_grp_test]["_index_orig_pa"].to_list() # To plot
+                    # The remaining inds
+                    inds_notgrp_orig = [i for i in range(len(DFLAB)) if i not in inds_grp_train_orig+inds_grp_test_orig]
+
+                    savedir = f"{SAVEDIR}/FITTING_subspc={var_subspace}-conjvar={tpca_splits_vars_other}-conjlev={name_grp}-iter={i_proj}"
+                    os.makedirs(savedir, exist_ok=True)
+
+                    ### Compute and plot subspace
+                    _inds_train = inds_grp_train_orig
+                    _inds_test = inds_grp_test_orig + inds_notgrp_orig
+                    # outer var is not allowed in variables (it never varies within this training inds)
+                    _variables_cat = [v for v in variables if v not in tpca_splits_vars_other]
+                    _variables_cont = []
+                    pa_subspace, subspace_axes_orig, subspace_axes_normed, dfcoeff, _ = state_space_targeted_pca_scalar_single_one_var_mult_axes(
+                            PAscal, twind_scal, _variables_cont, _variables_cat, var_subspace, npcs_keep_force, 
+                            LIST_VAR_VAROTHERS, LIST_DIMS, savedir, just_extract_paredu=False,
+                            savedir_pca_subspaces=savedir, tbin_dur=tbin_dur, tbin_slide=tbin_slide,
+                            inds_trials_pa_train=_inds_train, inds_trials_pa_test=_inds_test,
+                            skip_dim_redu=True)
+
+                    ################################################
+                    ### Compute euclidian distnace
+                    list_dfdist = []
+                    for question, euclidean_label_vars in map_question_to_euclideanvars.items():
+                            
+                        ### Compute euclidian distnace
+                        # MAke RSA Plot
+                        _npcs_keep_euclidean = min([euclidean_npcs_keep, pa_subspace.X.shape[0]])
+                        pa_subspace_this = pa_subspace.slice_by_dim_indices_wrapper("chans", list(range(_npcs_keep_euclidean)))
+
+                        dfdist, _ = timevarying_compute_fast_to_scalar(pa_subspace_this, label_vars=euclidean_label_vars, 
+                                                                rsa_heatmap_savedir=savedir, plot_conjunctions_savedir=savedir)
+
+                        # save it
+                        dfdist["i_proj"] = i_proj
+                        dfdist["var_subspace"] = var_subspace
+                        dfdist["var_conj"] = [tuple(tpca_splits_vars_other) for _ in range(len(dfdist))]
+                        dfdist["var_conj_lev"] = [name_grp for _ in range(len(dfdist))]
+                        dfdist["question"] = question
+                        dfdist["npcs_euclidean"] = _npcs_keep_euclidean
+                        list_dfdist.append(dfdist)
+
+                    dfdist = pd.concat(list_dfdist).reset_index(drop=True)    
+
+                    # SAVE
+                    pd.to_pickle(dfdist, f"{savedir}/dfdist.pkl")
+
+                    # Also save coefficients
+                    pd.to_pickle(dfcoeff, f"{savedir}/dfcoeff.pkl")
+
+def kernel_ordinal_logistic_regression_wrapper(PA, yvar, vars_grp, savedir, plot_test_data_projected = False, 
+                                               nsplits = 4, do_rezero=True, PRINT=False, PLOT=False):
+    """
+    Perform logistc regression (e.g., predicting rank as a function of neural activity). 
+    Uses the kernel trick to account for nonlinearity (e.g., curved axes)
+
+    PARAMS:
+    - yvar, the predicted variable. Must be integer.
+        yvar = "chunk_within_rank_fromlast"
+    - vars_grp, regression performed wtihin each class of this list of var (conjunctive).
+        vars_grp = ["task_kind", "epoch", "chunk_shape", "chunk_n_in_chunk"]
+    """
+    from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good
+    from neuralmonkey.analyses.regression_good import kernel_ordinal_logistic_regression, _kernel_ordinal_logistic_regression_example
+    from pythonlib.tools.pandastools import filter_by_min_n, _check_index_reseted
+
+    n_min_per_level = 3
+    assert nsplits >= n_min_per_level
+
+    ### Preprocessing
+    # Exit, if PA has only one level, or is not enough data
+    if len(PA.Xlabels["trials"][yvar].unique())==1:
+        return None, None
+    
+    ### Make sure the data are ordinal, from 0, 1, ...
+    dflab = PA.Xlabels["trials"]
+    Y = dflab[yvar].values
+    if do_rezero:
+        Y = Y - min(Y) 
+    Y = Y.astype(np.int64)
+    dflab[f"{yvar}-ord"] = Y
+    yvar = f"{yvar}-ord"
+    PA.Xlabels["trials"] = dflab
+    
+    # Keep only classes with at least some min n data
+    dflab = PA.Xlabels["trials"]
+    _check_index_reseted(dflab)
+    if not isinstance(dflab[yvar].values[0], (int, np.integer)):
+        print(type(dflab[yvar].values[0]))
+        assert False, "must make this int. Usef dflab[yvar].astype(int)"
+    dflab_pruned = filter_by_min_n(dflab, yvar, n_min_per_level=n_min_per_level, must_not_fail=True)
+    if PRINT:
+        print("len dflab, before and after pruned to min n trials and leveld: ", len(dflab), len(dflab_pruned))
+    inds_keep = dflab_pruned["_index"].tolist()
+    PA = PA.slice_by_dim_indices_wrapper("trials", inds_keep)
+
+    ### 
+    assert PA.X.shape[2]==1 # must not be time-varying
+    dflab = PA.Xlabels["trials"]
+    Xall = PA.X.squeeze().T
+    Yall = dflab[yvar].values
+    assert min(Yall)==0
+    assert isinstance(Yall[0], np.integer)
+    assert len(set(Yall))>1
+    grpdict = grouping_append_and_return_inner_items_good(dflab, vars_grp)
+
+    from pythonlib.tools.pandastools import grouping_print_n_samples
+    savepath = f"{savedir}/counts.txt"
+    grouping_print_n_samples(dflab, vars_grp+[yvar], savepath=savepath)
+
+    # This seems most consistently the best.
+    list_rescale_std = [False]
+    do_grid_search = [True]
+
+    def clean_data(x, y):
+        """
+        """    
+        from pythonlib.tools.nptools import filter_array_to_include_minimum_n_items
+        _, _inds_keep = filter_array_to_include_minimum_n_items(y, n_min_per_level)
+        x = x[_inds_keep, :]
+        y = y[_inds_keep]
+        if len(y)==0:
+            # No data
+            return None, None
+        elif len(set(y))==1:
+            # Only one class. Can't use this.
+            return None, None
+        else:
+            # Good.
+            return x, y
+
+    def _score(model, x_test, y_test, y_train):
+        """
+        Helper to score these data using this model
+        """
+        from sklearn.metrics import balanced_accuracy_score, accuracy_score
+
+        # Only keep test labels that fall within training distribution
+        bools_test_keep = np.isin(y_test, y_train)
+        if sum(bools_test_keep)==0:
+            return None, None, None, None, None
+        
+        x_test = x_test[bools_test_keep, :]
+        y_test = y_test[bools_test_keep]
+
+        # Do prediction
+        y_test_pred = model.predict(x_test)
+
+        # It is possible for predictions to include classes not present in the y_test. If so,
+        # then you can't use balanced_accuracy
+        # Note that y_test_pred could hold values not in y_test
+        if PRINT:
+            print("here: ", np.isin(y_test_pred, y_test))
+            print("y_test_pred: ", y_test_pred)
+            print("y__test: ", y_test)
+        if np.any(np.isin(y_test_pred, y_test)==False):
+            balanced_accuracy = np.nan
+            balanced_accuracy_adjusted = np.nan
+        else:
+            balanced_accuracy = balanced_accuracy_score(y_test, y_test_pred)
+            if len(np.unique(y_test)) == 1:
+                # Then canot do this
+                balanced_accuracy_adjusted = np.nan
+            else:
+                balanced_accuracy_adjusted = balanced_accuracy_score(y_test, y_test_pred, adjusted=True)
+        accuracy = accuracy_score(y_test, y_test_pred)
+        if PRINT:
+            print("balanced_accuracy, balanced_accuracy_adjusted, accuracy --> ", balanced_accuracy, balanced_accuracy_adjusted, accuracy)
+        return balanced_accuracy, balanced_accuracy_adjusted, accuracy, x_test, y_test
+
+    ### RUN
+    RES_CROSS = []
+    RES_WITHIN = []
+    for rescale_std in list_rescale_std:
+        for do_grid_search in do_grid_search:
+            # list_res = []
+            for grp, inds in grpdict.items():
+
+                Xthis = Xall[inds, :]
+                Ythis = Yall[inds]
+
+                if len(set(Ythis))>1:
+
+                    ### 1. Generalization to different grps
+                    x_train = Xthis
+                    y_train = Ythis
+                    x_train, y_train = clean_data(x_train, y_train)
+                    if x_train is None:
+                        continue
+                    
+                    res, fig = kernel_ordinal_logistic_regression(x_train, y_train, rescale_std=rescale_std, 
+                                                                    PLOT=True, do_grid_search=do_grid_search)
+                    savefig(fig, f"{savedir}/ord_regr_scatter-grp={grp}-rescale_std={rescale_std}-grid={do_grid_search}.pdf")
+                    plt.close("all")
+
+                    if do_grid_search:
+                        res["best_n_components"] = res["cv_best_params"]["ker__n_components"]
+
+                    model = res["model"]
+                    assert np.all(model.predict(x_train) == res["y_pred"]), "sanity check"
+
+                    # Try predicting all other cases. 
+                    for grp_test, inds_test in grpdict.items():
+                        x_test = Xall[inds_test]
+                        y_test = Yall[inds_test]
+                        assert len(inds_test)>0
+                        print("Test shape: ", x_test.shape, y_test.shape, inds_test)
+
+                        print("Scoring ...:", len(y_train))
+                        balanced_accuracy, balanced_accuracy_adjusted, accuracy, x_test, y_test = _score(model, x_test, y_test, y_train)
+
+                        if accuracy is not None:
+                            # Could be None if all test data were exlcuded as they are not part of training.
+                                
+                            # Plot projection of held-out data onto this axis.
+                            if plot_test_data_projected:
+                                from neuralmonkey.analyses.regression_good import kernel_ordinal_logistic_regression_plot
+                                fig = kernel_ordinal_logistic_regression_plot(x_test, y_test, res)
+                                savefig(fig, f"{savedir}/ord_regr_scatter-grp={grp}-rescale_std={rescale_std}-grid={do_grid_search}-ACROSS-test_grp={grp_test}.pdf")
+                                # assert False
+                                plt.close("all")
+
+                            RES_CROSS.append({
+                                "grp_train":grp,
+                                "grp_test":grp_test,
+                                "y_train_unique":set(y_train),
+                                "y_test_unique":set(y_test),
+                                "balanced_accuracy":balanced_accuracy,
+                                "balanced_accuracy_adjusted":balanced_accuracy_adjusted,
+                                "accuracy":accuracy,
+                                "score_train":res["score"],
+                            })
+                    
+                    ### 2. Generaliztaion to held-out trials
+                    from pythonlib.tools.statstools import split_stratified_constrained_multiple
+                    fraction_constrained_set = 0.7
+                    n_constrained = 2
+
+                    # each fold (unconstrainted, constrainted), ie (test, train)
+                    folds = split_stratified_constrained_multiple(Ythis, nsplits, fraction_constrained_set, n_constrained, PLOT=False)
+
+                    for i_split, (inds_test, inds_train) in enumerate(folds):
+                        print("Running split #:", i_split)
+                        x_train = Xthis[inds_train, :]
+                        y_train = Ythis[inds_train]
+
+                        x_test = Xthis[inds_test, :]
+                        y_test = Ythis[inds_test]
+
+                        x_train, y_train = clean_data(x_train, y_train)
+                        if x_train is None:
+                            continue
+
+                        # Train model
+                        res = kernel_ordinal_logistic_regression(x_train, y_train, rescale_std=rescale_std, 
+                                                                        PLOT=False, do_grid_search=do_grid_search)
+                        model = res["model"]
+
+                        # Test on held-out trials.
+                        balanced_accuracy, balanced_accuracy_adjusted, accuracy, x_test, y_test = _score(model, x_test, y_test, y_train)
+
+                        if accuracy is not None:
+                            # Could be None if all test data were exlcuded as they are not part of training.
+
+                            RES_WITHIN.append({
+                                "grp":grp,
+                                "i_split":i_split,
+                                "y_train_unique":set(y_train),
+                                "y_test_unique":set(y_test),
+                                "balanced_accuracy":balanced_accuracy,
+                                "balanced_accuracy_adjusted":balanced_accuracy_adjusted,
+                                "accuracy":accuracy,
+                                "score_train":res["score"],
+                            })
+
+                            # Plot projection of held-out data onto this axis.
+                            if plot_test_data_projected:
+                                from neuralmonkey.analyses.regression_good import kernel_ordinal_logistic_regression_plot
+                                fig = kernel_ordinal_logistic_regression_plot(x_test, y_test, res)
+                                if i_split==0:
+                                    savefig(fig, f"{savedir}/ord_regr_scatter-grp={grp}-rescale_std={rescale_std}-grid={do_grid_search}-WITHIN-test_data.pdf")
+                                    plt.close("all")
+
+    from pythonlib.tools.pandastools import stringify_values
+    dfcross = pd.DataFrame(RES_CROSS)
+    dfwithin = pd.DataFrame(RES_WITHIN)
+    dfcross["n_labels_train"] = [len(x) for x in dfcross["y_train_unique"]]
+    dfwithin["n_labels_train"] = [len(x) for x in dfwithin["y_train_unique"]]
+
+    if PLOT:
+        # Remove cases with bad data, before stringifying
+        if False:
+            # Instead, you should use accuracy
+            # print(dfcross["balanced_accuracy_adjusted"].value_counts())
+            dfcross = dfcross[dfcross["balanced_accuracy_adjusted"]!=-np.inf].reset_index(drop=True)
+            dfcross = dfcross[~dfcross["balanced_accuracy_adjusted"].isna()].reset_index(drop=True)
+            # print(dfcross["balanced_accuracy_adjusted"].value_counts())
+        else:
+            dfcross_clean = dfcross[dfcross["balanced_accuracy_adjusted"]!=-np.inf].reset_index(drop=True)
+            dfcross_clean = dfcross_clean[~dfcross_clean["balanced_accuracy_adjusted"].isna()].reset_index(drop=True)
+
+        ### Plots
+        import seaborn as sns
+        from pythonlib.tools.snstools import rotateLabel
+        from pythonlib.tools.pandastools import plot_subplots_heatmap
+        dfcross_clean_str = stringify_values(dfcross_clean)
+        dfcross_clean_str = stringify_values(dfcross_clean)
+        
+        # dfcross_str = dfcross_str.fillna(0.0) # Becuase some will fail if they don't have matching levels.
+        
+        if False:
+            fig = sns.catplot(dfcross_str, x="grp_train", y="accuracy", hue="grp_test", col="n_labels_train", alpha=0.5)
+            rotateLabel(fig)
+
+        for y in ["accuracy"]:
+            fig, _ = plot_subplots_heatmap(dfcross, "grp_test", "grp_train", y, None, share_zlim=True, 
+                                diverge=False, annotate_heatmap=True, W=11, ncols=5)
+            savefig(fig, f"{savedir}/CROSS-heatmap-yvar={y}.pdf")
+
+            # Summary catplot        
+            fig = sns.catplot(data=dfwithin, x="grp", y=y, hue="n_labels_train", height=10)
+            for ax in fig.axes.flatten():
+                ax.set_ylim([-0.1, 1.1])
+            rotateLabel(fig)
+            savefig(fig, f"{savedir}/WITHIN-catplot-yvar={y}.pdf")
+
+            plt.close("all")
+
+        # These are pruned
+        for y in ["balanced_accuracy", "balanced_accuracy_adjusted"]:
+            fig, _ = plot_subplots_heatmap(dfcross_clean_str, "grp_test", "grp_train", y, None, share_zlim=True, 
+                                diverge=False, annotate_heatmap=True, W=11, ncols=5)
+            savefig(fig, f"{savedir}/CROSS-heatmap-yvar={y}.pdf")
+
+            # Summary catplot        
+            fig = sns.catplot(data=dfcross_clean_str, x="grp", y=y, hue="n_labels_train", height=10)
+            for ax in fig.axes.flatten():
+                ax.set_ylim([-0.1, 1.1])
+            rotateLabel(fig)
+            savefig(fig, f"{savedir}/WITHIN-catplot-yvar={y}.pdf")
+
+            plt.close("all")
+
+    return dfcross, dfwithin
+
+
+def kernel_ordinal_logistic_regression_plot(dfcross, dfwithin, vars_grp, savedir):
+    """
+    Plot results from kernel_ordinal_logistic_regression_wrapper
+    """
+    from pythonlib.tools.snstools import rotateLabel
+    from pythonlib.tools.pandastools import plot_subplots_heatmap, stringify_values, aggregGeneral
+    import seaborn as sns
+    from neuralmonkey.analyses.euclidian_distance import dfdist_extract_label_vars_specific, dfdist_extract_label_vars_specific_single
+    from pythonlib.tools.pandastools import append_col_with_grp_index
+    from neuralmonkey.analyses.euclidian_distance import dfdist_variables_generate_constrast_strings, dfdist_variables_effect_extract_helper
+
+    ### Preprocessing
+    # Get adjusted accuracy
+    dfcross["accuracy_chance"] = 1/dfcross["n_labels_train"]
+    dfcross["accuracy_adjusted"] = (dfcross["accuracy"] - dfcross["accuracy_chance"])/(1-dfcross["accuracy_chance"])
+
+    dfwithin["accuracy_chance"] = 1/dfwithin["n_labels_train"]
+    dfwithin["accuracy_adjusted"] = (dfwithin["accuracy"] - dfwithin["accuracy_chance"])/(1-dfwithin["accuracy_chance"])
+
+    # agg over splits
+    dfwithin = aggregGeneral(dfwithin, ["grp"], values=["balanced_accuracy", "balanced_accuracy_adjusted", "accuracy", "accuracy_adjusted"], nonnumercols="all")
+
+    # Get the individual variable classes as new columns in dfcross
+    dfcross, varsame = dfdist_extract_label_vars_specific(dfcross, vars_grp, return_var_same=True, var1="grp_train", var2="grp_test")
+    dfwithin = dfdist_extract_label_vars_specific_single(dfwithin, vars_grp, var1="grp")
+    
+    # Additional varialbes of interest
+    if "chunk_n_in_chunk_1" in dfcross:
+        dfcross = append_col_with_grp_index(dfcross, ["shape_1", "chunk_n_in_chunk_1"], "shape_n_1")
+        dfcross = append_col_with_grp_index(dfcross, ["shape_2", "chunk_n_in_chunk_2"], "shape_n_2")
+
+    # Stringify before plotting
+    dfcross_str = stringify_values(dfcross)
+    dfwithin_str = stringify_values(dfwithin)
+
+    ######################
+    ### Plots
+
+    ### Plot cross groups
+    for y in ["accuracy", "accuracy_adjusted", "balanced_accuracy", "balanced_accuracy_adjusted"]:
+        fig, _ = plot_subplots_heatmap(dfcross, "grp_test", "grp_train", y, None, share_zlim=True, 
+                            diverge=False, annotate_heatmap=False, W=12, ncols=5)
+        savefig(fig, f"{savedir}/CROSS-heatmap-yvar={y}.pdf")
+
+        # Summary catplot        
+        fig = sns.catplot(data=dfwithin_str, x="grp", y=y, hue="n_labels_train", height=10, jitter=True, alpha=0.5)
+        for ax in fig.axes.flatten():
+            ax.set_ylim([-0.1, 1.1])
+        rotateLabel(fig)
+        savefig(fig, f"{savedir}/WITHIN-catplot-x=grp-yvar={y}-1.pdf")
+
+        # Summary catplot        
+        fig = sns.catplot(data=dfwithin_str, x="grp", y=y, hue="n_labels_train", height=10, kind="bar")
+        for ax in fig.axes.flatten():
+            ax.set_ylim([-0.1, 1.1])
+        rotateLabel(fig)
+        savefig(fig, f"{savedir}/WITHIN-catplot-x=grp-yvar={y}-2.pdf")
+    plt.close("all")
+
+    ### Plot overviews
+    for yvar, diverge, ZLIMS in [
+        ("accuracy", False, [-0.1, 1.1]),
+        ("accuracy_adjusted", True, None),
+        ]:
+        fig, _ = plot_subplots_heatmap(dfcross_str, "shape_1", "shape_2", yvar, None, diverge, True, annotate_heatmap=True, ZLIMS=ZLIMS)
+        savefig(fig, f"{savedir}/CROSS-heatmap-shape-yvar={y}-1.pdf")
+
+        if "shape_n_1" in dfcross_str.columns:
+            fig, _ = plot_subplots_heatmap(dfcross_str, "shape_n_1", "shape_n_2", yvar, None, diverge, True, annotate_heatmap=True, ZLIMS=ZLIMS, W=10)
+            savefig(fig, f"{savedir}/CROSS-heatmap-shape-yvar={y}-2.pdf")
+        
+        fig = sns.catplot(data=dfwithin_str, x="shape", y=yvar, hue="n_labels_train", jitter=True, alpha=0.5)
+        savefig(fig, f"{savedir}/WITHIN-catplot-x=shape-yvar={y}-1.pdf")
+
+        fig = sns.catplot(data=dfwithin_str, x="shape", y=yvar, hue="n_labels_train", kind="bar")
+        savefig(fig, f"{savedir}/WITHIN-catplot-x=shape-yvar={y}-2.pdf")
+    plt.close("all")
+
+    ### Get effects to plot
+    list_dfeffect = []
+
+    # Genrealize across sahpe sets?
+    contrasts_diff = ["shape"]
+    if "chunk_n_in_chunk_1" in dfcross_str:
+        contrasts_either = ["chunk_rank", "chunk_n_in_chunk"]
+    else:
+        contrasts_either = ["chunk_rank"]
+    df = dfdist_variables_effect_extract_helper(dfcross_str, varsame, vars_grp, contrasts_diff, contrasts_either)
+    df["effect"] = "Xshape"
+    list_dfeffect.append(df)
+
+    # Genrealize across n (within shape set)?
+    if "chunk_n_in_chunk_1" in dfcross_str:
+        contrasts_diff = ["chunk_n_in_chunk"]
+        contrasts_either = []
+        df = dfdist_variables_effect_extract_helper(dfcross_str, varsame, vars_grp, contrasts_diff, contrasts_either)
+        df["effect"] = "Xn_Wshape"
+        list_dfeffect.append(df)
+
+    # Control: score within condition (cross-validated)
+    df = dfwithin_str.copy()
+    df["effect"] = "Wall"
+    df["shape_1"] = df["shape"]
+    list_dfeffect.append(df)
+
+    # from pythonlib.tools.pandastools import replace_None_with_string
+    DFEFFECT = pd.concat(list_dfeffect)
+    DFEFFECT = stringify_values(DFEFFECT)
+    assert sum(DFEFFECT["accuracy_adjusted"]=="none")==0
+
+    for y in ["accuracy", "accuracy_adjusted", "balanced_accuracy", "balanced_accuracy_adjusted"]:
+        dfeffect = DFEFFECT[~(DFEFFECT[y] == "none")]
+        fig = sns.catplot(data=dfeffect, x="effect", y=y, hue=varsame, col="shape_1", alpha=0.5, jitter=True)
+        savefig(fig, f"{savedir}/EFFECT-catplot-yvar={y}-1.pdf")
+
+        fig = sns.catplot(data=dfeffect, x="effect", y=y, col="shape_1", alpha=0.5, jitter=True)
+        savefig(fig, f"{savedir}/EFFECT-catplot-yvar={y}-2.pdf")
+        
+        fig = sns.catplot(data=dfeffect, x="effect", y=y, col="shape_1", kind="bar", errorbar="se")
+        savefig(fig, f"{savedir}/EFFECT-catplot-yvar={y}-3.pdf")
+    plt.close("all")
+                
+
 def targeted_pca_state_space_split_over(DFallpa, SAVEDIR_ANALYSIS, 
                                        variables, variables_is_cat, LIST_VAR_VAROTHERS_SS, # For dim reduction and plotting state space
                                        twind_scal_force):
     """
-    Quick, extract axes for each split, and plot state space.
+    Quick, extract axes for each split, concatenate those axes and then orthogonalize to form a single
+    subspace...
+    
+    And then plot state space over that.
+
+    Here, "data_splits" means that can compute regression axes using different splits of dataset, each a level of vars_others, and
+    then concatenate the results across all splits, to result in a single subspace
+
     Here, is hard codede for the "chunk_shape" and "chunk_within_rank" variables.
     """
-    from neuralmonkey.analyses.euclidian_distance import timevarying_compute_fast_to_scalar
     from pythonlib.tools.pandastools import append_col_with_grp_index
-    from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper
-    from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good
-    from pythonlib.tools.vectools import cart_to_polar
-    from pythonlib.tools.vectools import average_angle, get_vector_from_angle, average_vectors_wrapper
     from pythonlib.tools.pandastools import append_col_with_grp_index, grouping_plot_n_samples_heatmap_var_vs_grpvar
     from pythonlib.tools.plottools import savefig
-    from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_WRAPPER, trajgood_plot_colorby_splotby_scalar_WRAPPER
+    from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_scalar_WRAPPER
 
     for PA in DFallpa["pa"].values:      
         from pythonlib.tools.pandastools import append_col_with_grp_index
@@ -1372,15 +3116,18 @@ if __name__=="__main__":
     import os
     from neuralmonkey.classes.population_mult import extract_single_pa
     from neuralmonkey.analyses.state_space_good import euclidian_distance_compute_trajectories_single, euclidian_distance_compute_trajectories
+    from neuralmonkey.classes.population_mult import load_handsaved_wrapper, dfpa_concatbregion_preprocess_wrapper, dfpa_concat_bregion_to_combined_bregion
+    from neuralmonkey.classes.population_mult import dfpa_concat_merge_pa_along_trials
+
 
     SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/syntax_good"
 
     animal = sys.argv[1]
     date = int(sys.argv[2])
     question = sys.argv[3]
+    run_number = int(sys.argv[4])
 
     # question = "RULE_ANBMCK_STROKE"
-
     version = "stroke"
     combine = False
 
@@ -1389,10 +3136,38 @@ if __name__=="__main__":
     # PLOTS_DO = [6.1] # Good
     # PLOTS_DO = [6.2] # Good
     PLOTS_DO = [4.2] # Good
+    PLOTS_DO = [7.2] # Good
+    PLOTS_DO = [7.1] # Good
 
-    # Load a single DFallPA
-    DFallpa = load_handsaved_wrapper(animal, date, version=version, combine_areas=combine, 
-                                     question=question)
+    if any([(x>=7) and (x<8) for x in PLOTS_DO]) and (question == "RULE_ANBMCK_STROKE"):
+    # if 7.1 in PLOTS_DO:
+        # Then you want to also load SP
+        ### (1) load Grammar Dfallpa
+        DFallpa = load_handsaved_wrapper(animal, date, version=version, combine_areas=combine, 
+                                            question=question)
+        DFallpa = dfpa_concat_bregion_to_combined_bregion(DFallpa)
+
+        try:
+            ### (2) Load SP data
+            _question = "SP_BASE_stroke"
+            _twind = [-0.5, 2.1]
+            DFallpaSP = load_handsaved_wrapper(animal, date, version=version, combine_areas=combine, 
+                                                question=_question, twind=_twind)
+            DFallpaSP = dfpa_concat_bregion_to_combined_bregion(DFallpaSP)
+
+            # Merge SP and grammar along chan indices
+            DFallpa = dfpa_concat_merge_pa_along_trials(DFallpa, DFallpaSP)
+            del DFallpaSP
+
+        except Exception as err:
+            print(err)
+
+    else:
+        # Load a single DFallPA
+        DFallpa = load_handsaved_wrapper(animal, date, version=version, combine_areas=combine, 
+                                        question=question)
+        if combine == False:
+            DFallpa = dfpa_concat_bregion_to_combined_bregion(DFallpa)
 
     # Make a copy of all PA before normalization
     dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date)
@@ -1461,7 +3236,7 @@ if __name__=="__main__":
         #     statespace_traj_plot(DFallpa, animal, date, savedir, var_other)
 
         elif plotdo==6.1:
-            
+            ### Targeted dim reduction, where single axis for "chunk_within" is identified combining data across all chunks.
             SAVEDIR_ANALYSIS = f"{SAVEDIR}/targeted_dim_redu_angles/{animal}-{date}-comb={combine}-q={question}"            
             os.makedirs(SAVEDIR_ANALYSIS, exist_ok=True)
 
@@ -1566,7 +3341,28 @@ if __name__=="__main__":
             targeted_pca_state_space_split_over(DFallpa, SAVEDIR_ANALYSIS, 
                                                 variables, variables_is_cat, LIST_VAR_VAROTHERS, # For dim reduction and plotting state space
                                                 twind_scal)
+        elif plotdo in [7.1, 7.2]:
+            ### [Good] Targeted PCA, doing very carefully. This is similar to above, but many updates:
+            # Major:
+            # - using multiple axes for each subspace, instead of one axis per subspace.
+            # Minor:
+            # - Careful train-test splitting of data
 
+
+            # This plots state space, and also computes euclidean
+            SAVEDIR_ANALYSIS = f"{SAVEDIR}/targeted_dim_redu_v2/run{run_number}/{animal}-{date}-q={question}"            
+            os.makedirs(SAVEDIR_ANALYSIS, exist_ok=True)
+            
+            preprocess_dfallpa_motor_features(DFallpa, plot_motor_values=False, do_zscore=True)
+
+            # If is 7.2, then does nothing, except run the preprpcessing in order to extract and print useful information about syntax
+            HACK_ONLY_PREPROCESS = plotdo==7.2
+
+            # Run
+            targeted_pca_clean_plots_and_dfdist(DFallpa, animal, date, 
+                                                SAVEDIR_ANALYSIS, 
+                                                DEBUG=False, HACK_ONLY_PREPROCESS=HACK_ONLY_PREPROCESS,
+                                                run_number=run_number)
         else:
             print(PLOTS_DO)
             assert False
