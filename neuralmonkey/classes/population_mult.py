@@ -1829,7 +1829,7 @@ def dfallpa_preprocess_sitesdirty_check_if_preprocessed(DFallpa, animal, date):
     print("GOOD!! -- passed all tests, channels match (sitesdirty)")
     return True
 
-def dfpa_concat_merge_pa_along_trials(DFallpa1, DFallpa2, min_frac_chans_common=0.8):
+def dfpa_concat_merge_pa_along_trials(DFallpa1, DFallpa2, min_frac_chans_common=0.75):
     """
     GIven two Dfallpa, merge them by merging pairs of inner PA.
     Will prune PA so that they have same channels and time bins, and 
@@ -1869,8 +1869,15 @@ def dfpa_concat_merge_pa_along_trials(DFallpa1, DFallpa2, min_frac_chans_common=
         print("chans (synt): ", pa1.Chans)
         print("chans (sp  ): ", pa2.Chans)
         print("chans (both): ", chans_common)
-        assert len(chans_common)/len(pa1.Chans) > min_frac_chans_common
-        assert len(chans_common)/len(pa2.Chans) > min_frac_chans_common
+        print("Fraction chans kept: ", len(chans_common)/len(pa1.Chans), len(chans_common)/len(pa2.Chans))
+
+        if max([len(pa1.Chans), len(pa2.Chans)])<8:
+            min_frac_chans_common = 0.4
+
+        if (len(chans_common)/len(pa1.Chans) < min_frac_chans_common) or (len(chans_common)/len(pa2.Chans) < min_frac_chans_common):
+            from pythonlib.tools.exceptions import NotEnoughDataException
+            raise NotEnoughDataException
+
         pa1 = pa1.slice_by_dim_values_wrapper("chans", chans_common)
         pa2 = pa2.slice_by_dim_values_wrapper("chans", chans_common)
 
