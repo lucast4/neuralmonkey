@@ -590,7 +590,7 @@ def plot_question_overview(DFDIST, question, only_within_pig, SAVEDIR, yvar, ord
         '1|1|1|1|0|0|1',
         ]
     """
-    from neuralmonkey.scripts.analy_syntax_good_eucl_state import _targeted_pca_clean_plots_and_dfdist_MULT_plot_single
+    # from neuralmonkey.scripts.analy_syntax_good_eucl_state import _targeted_pca_clean_plots_and_dfdist_MULT_plot_single
     from neuralmonkey.scripts.analy_syntax_good_eucl_state import targeted_pca_clean_plots_and_dfdist_params
 
     params = targeted_pca_clean_plots_and_dfdist_params()
@@ -650,7 +650,7 @@ def get_list_effects():
         LIST_EFFECT_PAIRS.append((f"{idx}_motor", f"{idx}_rankwithin_up"))
         LIST_EFFECT_PAIRS.append((f"{idx}_motor", f"{idx}_rankwithin_dn"))
         LIST_EFFECT_PAIRS.append((f"{idx}_rankwithin_dn", f"{idx}_rankwithin_up"))
-    for idx in [9, 11]:
+    for idx in [8, 9, 10, 11, 13]:
         LIST_EFFECT_PAIRS.append((f"{idx}_2SH_epochshape", f"{idx}_2SH_rankwithin"))
         LIST_EFFECT_PAIRS.append((f"{idx}_2SH_epochshape", f"{idx}_2SH_syntax"))
     for idx in [4, "4c"]:
@@ -777,7 +777,7 @@ def targeted_pca_MULT_2_plot_single(animal, date, run, SKIP_PLOTS = False, OVERW
     """
     from neuralmonkey.scripts.analy_syntax_good_eucl_state import targeted_pca_clean_plots_and_dfdist_params
     import seaborn as sns
-    from neuralmonkey.scripts.analy_syntax_good_eucl_state import _targeted_pca_clean_plots_and_dfdist_MULT_plot_single
+    # from neuralmonkey.scripts.analy_syntax_good_eucl_state import _targeted_pca_clean_plots_and_dfdist_MULT_plot_single
     from pythonlib.tools.snstools import rotateLabel
 
     SAVEDIR = f"/tmp/SYNTAX_TARGETED_PCA_run{run}"
@@ -1232,19 +1232,21 @@ def targeted_pca_MULT_2_plot_single(animal, date, run, SKIP_PLOTS = False, OVERW
         effect_extract_helper_this_wrapper(DFDIST, question, subspaces, ["gridloc"], [], only_within_pig, "3_motor", list_dfeffect)
 
     ############## TWO SHAPES
-    question = "9_twoshapes"
-    only_within_pig = True
-    subspaces = ["global"]
-    effect_extract_helper_this_wrapper(DFDIST, question, subspaces, ["shape"], ["chunk_within_rank", "chunk_rank"], only_within_pig, "9_2SH_syntax", list_dfeffect)
-    effect_extract_helper_this_wrapper(DFDIST, question, subspaces, ["chunk_within_rank"], [], only_within_pig, "9_2SH_rankwithin", list_dfeffect)
-    effect_extract_helper_this_wrapper(DFDIST, question, subspaces, ["epoch", "shape"], [], only_within_pig, "9_2SH_epochshape", list_dfeffect)
+    # for idx in [9, 11]:
+    for idx in [8, 9, 10, 11, 13]:
+        question = f"{idx}_twoshapes"
+        only_within_pig = True
+        subspaces = ["global"]
+        effect_extract_helper_this_wrapper(DFDIST, question, subspaces, ["shape"], ["chunk_within_rank", "chunk_rank"], only_within_pig, f"{idx}_2SH_syntax", list_dfeffect)
+        effect_extract_helper_this_wrapper(DFDIST, question, subspaces, ["chunk_within_rank"], [], only_within_pig, f"{idx}_2SH_rankwithin", list_dfeffect)
+        effect_extract_helper_this_wrapper(DFDIST, question, subspaces, ["epoch", "shape"], [], only_within_pig, f"{idx}_2SH_epochshape", list_dfeffect)
 
-    question = "11_twoshapes"
-    only_within_pig = True
-    subspaces = ["global"]
-    effect_extract_helper_this_wrapper(DFDIST, question, subspaces, ["shape"], ["chunk_within_rank", "chunk_rank"], only_within_pig, "11_2SH_syntax", list_dfeffect)
-    effect_extract_helper_this_wrapper(DFDIST, question, subspaces, ["chunk_within_rank"], [], only_within_pig, "11_2SH_rankwithin", list_dfeffect)
-    effect_extract_helper_this_wrapper(DFDIST, question, subspaces, ["epoch", "shape"], [], only_within_pig, "11_2SH_epochshape", list_dfeffect)
+    # question = "11_twoshapes"
+    # only_within_pig = True
+    # subspaces = ["global"]
+    # effect_extract_helper_this_wrapper(DFDIST, question, subspaces, ["shape"], ["chunk_within_rank", "chunk_rank"], only_within_pig, "11_2SH_syntax", list_dfeffect)
+    # effect_extract_helper_this_wrapper(DFDIST, question, subspaces, ["chunk_within_rank"], [], only_within_pig, "11_2SH_rankwithin", list_dfeffect)
+    # effect_extract_helper_this_wrapper(DFDIST, question, subspaces, ["epoch", "shape"], [], only_within_pig, "11_2SH_epochshape", list_dfeffect)
 
     ############## SP vs. GRAMMAR
     for idx in ["4", "4c"]:
@@ -1664,6 +1666,7 @@ if __name__=="__main__":
     # RUN = 15
 
     PLOTS_DO = [2.0, 2.1, 2.2] # Good
+    # PLOTS_DO = [2.1, 2.2] # Good
     # PLOTS_DO = [2.2] # Good
     # expt_kind="RULE_ANBMCK_STROKE"
     # expt_kind="RULESW_ANY_SEQSUP_STROKE"
