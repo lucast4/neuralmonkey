@@ -705,12 +705,13 @@ def get_list_effects():
             LIST_EFFECT_PAIRS.append((f"{idx}_shapePIG_ss={ss}", f"{idx}_shapesyntax_ss={ss}"))
             LIST_EFFECT_PAIRS.append((f"{idx}_shapePIG_ss={ss}", f"{idx}_shapeSP_ss={ss}"))
     for idx in [24, 25]:
-        for keep_only_middle_strokes in [False, True]:
-            LIST_EFFECT_PAIRS.append((f"{idx}_shape_stkidx-inner={keep_only_middle_strokes}", f"{idx}_seqsup_stkidx-inner={keep_only_middle_strokes}"))
-            LIST_EFFECT_PAIRS.append((f"{idx}_dir_stkidx-inner={keep_only_middle_strokes}", f"{idx}_seqsup_stkidx-inner={keep_only_middle_strokes}"))
-            LIST_EFFECT_PAIRS.append((f"{idx}_shape_stkidx-inner={keep_only_middle_strokes}", f"{idx}_shape_vs_superv-inner={keep_only_middle_strokes}"))
-            LIST_EFFECT_PAIRS.append((f"{idx}_dir_stkidx-inner={keep_only_middle_strokes}", f"{idx}_dir_vs_superv-inner={keep_only_middle_strokes}"))
-    
+        for ss in ["shape|none|none", "global"]:
+            for keep_only_middle_strokes in [False, True]:
+                LIST_EFFECT_PAIRS.append((f"{idx}_shape_stkidx-inner={keep_only_middle_strokes}-ss={ss}", f"{idx}_seqsup_stkidx-inner={keep_only_middle_strokes}-ss={ss}"))
+                LIST_EFFECT_PAIRS.append((f"{idx}_dir_stkidx-inner={keep_only_middle_strokes}-ss={ss}", f"{idx}_seqsup_stkidx-inner={keep_only_middle_strokes}-ss={ss}"))
+                LIST_EFFECT_PAIRS.append((f"{idx}_shape_stkidx-inner={keep_only_middle_strokes}-ss={ss}", f"{idx}_shape_vs_superv-inner={keep_only_middle_strokes}-ss={ss}"))
+                LIST_EFFECT_PAIRS.append((f"{idx}_dir_stkidx-inner={keep_only_middle_strokes}-ss={ss}", f"{idx}_dir_vs_superv-inner={keep_only_middle_strokes}-ss={ss}"))
+        
     return LIST_EFFECT_PAIRS
 
 # def effect_extract_helper_this_wrapper(DFDIST, question, subspaces, contrasts_diff, contrasts_either, 
@@ -1309,29 +1310,31 @@ def targeted_pca_MULT_2_plot_single(animal, date, run, SKIP_PLOTS = False, OVERW
 
     # ############## SHAPE VS SEQSUP
     only_within_pig = True
-    subspaces = ["global"]
-    for idx in [24, 25]:
-        question = f"{idx}_sh_vs_superv"
-        if question in DFDIST["question"].unique().tolist():
-            for keep_only_middle_strokes in [False, True]:
-                if keep_only_middle_strokes:
-                    DFDIST_THIS = prune_keep_only_middle_strokes(DFDIST, question)
-                else:
-                    DFDIST_THIS = DFDIST
-                dfdist = DFDIST_THIS[(DFDIST_THIS["epoch_kind_12"] == "shape|shape")]
-                effect_extract_helper_this_wrapper(dfdist, question, subspaces, ["stroke_index"], ["behseq_shapes"], only_within_pig, f"{idx}_shape_stkidx-inner={keep_only_middle_strokes}", list_dfeffect)
+    for ss in ["shape|none|none", "global"]:
+        if ss in DFDIST["subspace"].unique().tolist():
+            subspaces = [ss]
+            for idx in [24, 25]:
+                question = f"{idx}_sh_vs_superv"
+                if question in DFDIST["question"].unique().tolist():
+                    for keep_only_middle_strokes in [False, True]:
+                        if keep_only_middle_strokes:
+                            DFDIST_THIS = prune_keep_only_middle_strokes(DFDIST, question)
+                        else:
+                            DFDIST_THIS = DFDIST
+                        dfdist = DFDIST_THIS[(DFDIST_THIS["epoch_kind_12"] == "shape|shape")]
+                        effect_extract_helper_this_wrapper(dfdist, question, subspaces, ["stroke_index"], ["behseq_shapes"], only_within_pig, f"{idx}_shape_stkidx-inner={keep_only_middle_strokes}-ss={ss}", list_dfeffect)
 
-                dfdist = DFDIST_THIS[(DFDIST_THIS["epoch_kind_12"] == "dir|dir")]
-                effect_extract_helper_this_wrapper(dfdist, question, subspaces, ["stroke_index"], ["behseq_shapes"], only_within_pig, f"{idx}_dir_stkidx-inner={keep_only_middle_strokes}", list_dfeffect)
+                        dfdist = DFDIST_THIS[(DFDIST_THIS["epoch_kind_12"] == "dir|dir")]
+                        effect_extract_helper_this_wrapper(dfdist, question, subspaces, ["stroke_index"], ["behseq_shapes"], only_within_pig, f"{idx}_dir_stkidx-inner={keep_only_middle_strokes}-ss={ss}", list_dfeffect)
 
-                dfdist = DFDIST_THIS[(DFDIST_THIS["epoch_kind_12"] == "seqsup|seqsup")]
-                effect_extract_helper_this_wrapper(dfdist, question, subspaces, ["stroke_index"], ["behseq_shapes"], only_within_pig, f"{idx}_seqsup_stkidx-inner={keep_only_middle_strokes}", list_dfeffect)
+                        dfdist = DFDIST_THIS[(DFDIST_THIS["epoch_kind_12"] == "seqsup|seqsup")]
+                        effect_extract_helper_this_wrapper(dfdist, question, subspaces, ["stroke_index"], ["behseq_shapes"], only_within_pig, f"{idx}_seqsup_stkidx-inner={keep_only_middle_strokes}-ss={ss}", list_dfeffect)
 
-                dfdist = DFDIST_THIS[(DFDIST_THIS["epoch_kind_12"].isin(["shape|seqsup", "seqsup|shape"]))]
-                effect_extract_helper_this_wrapper(dfdist, question, subspaces, ["superv_is_seq_sup", "epoch_rand_exclsv", "epoch_kind", "superv_is_seq_sup"], [], only_within_pig, f"{idx}_shape_vs_superv-inner={keep_only_middle_strokes}", list_dfeffect)
+                        dfdist = DFDIST_THIS[(DFDIST_THIS["epoch_kind_12"].isin(["shape|seqsup", "seqsup|shape"]))]
+                        effect_extract_helper_this_wrapper(dfdist, question, subspaces, ["superv_is_seq_sup", "epoch_rand_exclsv", "epoch_kind", "superv_is_seq_sup"], [], only_within_pig, f"{idx}_shape_vs_superv-inner={keep_only_middle_strokes}-ss={ss}", list_dfeffect)
 
-                dfdist = DFDIST_THIS[(DFDIST_THIS["epoch_kind_12"].isin(["dir|seqsup", "seqsup|dir"]))]
-                effect_extract_helper_this_wrapper(dfdist, question, subspaces, ["superv_is_seq_sup", "epoch_rand_exclsv", "epoch_kind", "superv_is_seq_sup"], [], only_within_pig, f"{idx}_dir_vs_superv-inner={keep_only_middle_strokes}", list_dfeffect)
+                        dfdist = DFDIST_THIS[(DFDIST_THIS["epoch_kind_12"].isin(["dir|seqsup", "seqsup|dir"]))]
+                        effect_extract_helper_this_wrapper(dfdist, question, subspaces, ["superv_is_seq_sup", "epoch_rand_exclsv", "epoch_kind", "superv_is_seq_sup"], [], only_within_pig, f"{idx}_dir_vs_superv-inner={keep_only_middle_strokes}-ss={ss}", list_dfeffect)
 
     ### Collect
     DFEFFECT = pd.concat(list_dfeffect).reset_index(drop=True)
@@ -1635,13 +1638,14 @@ def targeted_pca_MULT_2_plot_single(animal, date, run, SKIP_PLOTS = False, OVERW
         except Exception as err:
             return None
         
-def targeted_pca_MULT_3_combined_plots(animal, run, savesuff):
+def targeted_pca_MULT_3_combined_plots(animal, run, savesuff, SAVEDIR_MULT=None, return_dfeffect=False):
     """
     This plots results across all days for this animal.
     """
     
     yvar = "dist_yue_diff"
-    SAVEDIR_MULT = f"/lemur2/lucas/analyses/recordings/main/syntax_good/targeted_dim_redu_v2/run{run}/MULT"
+    if SAVEDIR_MULT is None:
+        SAVEDIR_MULT = f"/lemur2/lucas/analyses/recordings/main/syntax_good/targeted_dim_redu_v2/run{run}/MULT"
 
     from neuralmonkey.scripts.analy_euclidian_dist_pop_script_MULT import load_preprocess_get_dates
     list_dates, _, _, _ = load_preprocess_get_dates(animal, savesuff)
@@ -1667,40 +1671,71 @@ def targeted_pca_MULT_3_combined_plots(animal, run, savesuff):
     DFEFFECT_ALL = pd.concat(LIST_DFEFFECT_ALL).reset_index(drop=True)
     DFEFFECT_ALL["index"] = DFEFFECT_ALL.index.tolist()
 
-    SAVEDIR = f"{SAVEDIR_MULT}/COMBINED-{animal}"
-    os.makedirs(SAVEDIR, exist_ok=True)
-
     # For each effect pair....
     LIST_EFFECT_PAIRS = get_list_effects()
+
+    # Also, agg so that each datapt is a single date.
+    from pythonlib.tools.pandastools import aggregGeneral
+    DFEFFECT_ALL_AGG = aggregGeneral(DFEFFECT_ALL, ["effect", "animal", "date", "bregion", "question", "subspace"], ["dist_yue_diff"])
+
+
+    if return_dfeffect:
+        return DFEFFECT_ALL, LIST_EFFECT_PAIRS
+
+    SAVEDIR = f"{SAVEDIR_MULT}/COMBINED-{animal}"
+    os.makedirs(SAVEDIR, exist_ok=True)
     
     for eff1, eff2 in LIST_EFFECT_PAIRS:
         
-        # (1) Subplot = date
-        print(eff1, eff2)
-        print(DFEFFECT_ALL["effect"].unique())
-        _, fig = plot_45scatter_means_flexible_grouping(DFEFFECT_ALL, "effect", eff1, eff2, "date", yvar, "bregion", shareaxes=True);
-        if fig is not None:
-            savefig(fig, f"{SAVEDIR}/effects-scatter-{eff2}-vs-{eff1}-1.pdf")
+        if (eff1 in DFEFFECT_ALL["effect"].unique().tolist()) and (eff2 in DFEFFECT_ALL["effect"].unique().tolist()):
 
-        # (2) Subplot = bregion
-        _, fig = plot_45scatter_means_flexible_grouping(DFEFFECT_ALL, "effect", eff1, eff2, "bregion", yvar, "date", shareaxes=True);
-        if fig is not None:
-            savefig(fig, f"{SAVEDIR}/effects-scatter-{eff2}-vs-{eff1}-2.pdf")
+            # (1) Subplot = date
+            print(eff1, eff2)
+            print(DFEFFECT_ALL["effect"].unique())
+            _, fig = plot_45scatter_means_flexible_grouping(DFEFFECT_ALL, "effect", eff1, eff2, "date", yvar, "bregion", shareaxes=True);
+            if fig is not None:
+                savefig(fig, f"{SAVEDIR}/effects-scatter-{eff2}-vs-{eff1}-1.pdf")
 
-        # (3) Single summary plot
-        _, fig = plot_45scatter_means_flexible_grouping(DFEFFECT_ALL, "effect", eff1, eff2, None, yvar, "bregion", shareaxes=True);
-        if fig is not None:
-            savefig(fig, f"{SAVEDIR}/effects-scatter-{eff2}-vs-{eff1}-3.pdf")
+            # (2) Subplot = bregion
+            _, fig = plot_45scatter_means_flexible_grouping(DFEFFECT_ALL, "effect", eff1, eff2, "bregion", yvar, "date", shareaxes=True);
+            if fig is not None:
+                savefig(fig, f"{SAVEDIR}/effects-scatter-{eff2}-vs-{eff1}-2.pdf")
 
-        # Too slow:
-        # _, fig = plot_45scatter_means_flexible_grouping(DFEFFECT_ALL, "effect", eff1, eff2, "bregion", yvar, "index", plot_error_bars=False, shareaxes=True, plot_text=False);
-        # savefig(fig, f"{SAVEDIR}/effects-scatter-{eff2}-vs-{eff1}-4.pdf")
+            # (3) Single summary plot
+            _, fig = plot_45scatter_means_flexible_grouping(DFEFFECT_ALL, "effect", eff1, eff2, None, yvar, "bregion", shareaxes=True);
+            if fig is not None:
+                savefig(fig, f"{SAVEDIR}/effects-scatter-{eff2}-vs-{eff1}-3.pdf")
 
-        plt.close("all")
+            # Too slow:
+            # _, fig = plot_45scatter_means_flexible_grouping(DFEFFECT_ALL, "effect", eff1, eff2, "bregion", yvar, "index", plot_error_bars=False, shareaxes=True, plot_text=False);
+            # savefig(fig, f"{SAVEDIR}/effects-scatter-{eff2}-vs-{eff1}-4.pdf")
 
-    # Free up space
-    del LIST_DFEFFECT_ALL
-    del DFEFFECT_ALL
+            # (3) Single summary plot (dates)
+            _, fig = plot_45scatter_means_flexible_grouping(DFEFFECT_ALL_AGG, "effect", eff1, eff2, None, yvar, "bregion", shareaxes=True);
+            if fig is not None:
+                savefig(fig, f"{SAVEDIR}/effects-scatter-{eff2}-vs-{eff1}-3-datapt=date.pdf")
+        
+            # And a "difference metric"
+            from pythonlib.tools.pandastools import summarize_featurediff
+            dfsummary, _, _, _, COLNAMES_DIFF = summarize_featurediff(
+                    DFEFFECT_ALL_AGG, "effect", [eff2, eff1], FEATURE_NAMES=[yvar], 
+                    INDEX=["animal", "date", "bregion", "question", "subspace"], return_dfpivot=False) 
+
+            fig = sns.catplot(data=dfsummary, x="bregion", y=COLNAMES_DIFF[0], jitter=True, alpha=0.5)
+            for ax in fig.axes.flatten():
+                ax.axhline(0, color="k", alpha=0.5)
+            savefig(fig, f"{SAVEDIR}/effects-diff-{eff2}-vs-{eff1}-1-datapt=date.pdf")
+
+            fig = sns.catplot(data=dfsummary, x="bregion", y=COLNAMES_DIFF[0], kind="bar", errorbar="se")
+            for ax in fig.axes.flatten():
+                ax.axhline(0, color="k", alpha=0.5)
+            savefig(fig, f"{SAVEDIR}/effects-diff-{eff2}-vs-{eff1}-2-datapt=date.pdf")
+
+            plt.close("all")
+    
+    # # Free up space
+    # del LIST_DFEFFECT_ALL
+    # del DFEFFECT_ALL
 
 if __name__=="__main__":
     from neuralmonkey.scripts.analy_euclidian_dist_pop_script_MULT import load_preprocess_get_dates
@@ -1717,7 +1752,7 @@ if __name__=="__main__":
     # expt_kind="RULE_ANBMCK_STROKE"
     # expt_kind="RULESW_ANY_SEQSUP_STROKE"
 
-    if RUN==13:
+    if RUN in [13, 25, 26]:
         save_suffix = "sh_vs_seqsup"
     else:
         save_suffix = "AnBmCk_general"
