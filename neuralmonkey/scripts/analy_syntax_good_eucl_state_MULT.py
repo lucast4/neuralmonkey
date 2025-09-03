@@ -265,7 +265,7 @@ def _targeted_pca_clean_plots_and_dfdist_MULT_plot_single(DFDIST_THIS, colname_c
 
         plt.close("all")
 
-def targeted_pca_MULT_1_load_and_save(animal, date, run, expt_kind):
+def targeted_pca_MULT_1_load_and_save(animal, date, run, expt_kind, OVERWRITE=False):
     """
     First, run this to collect all results across bregions, subspaces, questions, etc (for a given animal-date) and
     then save a single DFDIST. Do this becuase it takes time to load and postprocess.
@@ -358,30 +358,71 @@ def targeted_pca_MULT_1_load_and_save(animal, date, run, expt_kind):
     SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/syntax_good/targeted_dim_redu_v2/run{run}/{animal}-{date}-q={expt_kind}"
         
     # check if done
-    if os.path.exists(f"{SAVEDIR_MULT}/DFDIST-{animal}-{date}.pkl"):
-        return None
+    if not OVERWRITE:
+        if os.path.exists(f"{SAVEDIR_MULT}/DFDIST-{animal}-{date}.pkl"):
+            return None
 
     try:
-        list_dfdist =[]
+        LIST_DFDIST =[]
         for bregion in _REGIONS_IN_ORDER_COMBINED:
             path_search = f"{SAVEDIR}/bregion={bregion}/FITTING_*"
             list_dir = glob(path_search)
             if len(list_dir)==0:
                 print("Found no directories matching: ", path_search)
-            for _i, savedir in enumerate(list_dir):
-                
-                print(f"{bregion} --- [{_i}]/[{len(list_dir)}],  --- {savedir}")
+
+            # Concatenate across iterations
+            map_subspaceiter_to_dfdist = {}
+            for _, savedir in enumerate(list_dir):                
+                # print(f"{bregion} --- [{_i}]/[{len(list_dir)}],  --- {savedir}")
                 path = f"{savedir}/dfdist.pkl"
                 dfdist = pd.read_pickle(path)
-
-                # Postprocessing        
-                dfdist["var_subspace"] = [tuple(x)  if isinstance(x, list) else x for x in dfdist["var_subspace"]]            
-                dfdist["bregion"] = bregion
+                dfdist["var_subspace"] = [tuple(x)  if isinstance(x, list) else x for x in dfdist["var_subspace"]]  
                 if "var_conj" not in dfdist:
                     dfdist["var_conj"] = "none"
                     dfdist["var_conj_lev"] = "none"
+                dfdist = append_col_with_grp_index(dfdist, ["var_subspace", "var_conj", "var_conj_lev"], "subspace")
                 dfdist["n1"] = [x[0] for x in dfdist["n_1_2"]]
                 dfdist["n2"] = [x[1] for x in dfdist["n_1_2"]]
+                dfdist["bregion"] = bregion
+
+                tmp = dfdist["i_proj"].unique().tolist()
+                assert len(tmp)==1
+                i_proj = tmp[0]
+
+                tmp = dfdist["subspace"].unique().tolist()
+                assert len(tmp)==1
+                subspace = tmp[0]
+
+                map_subspaceiter_to_dfdist[subspace, i_proj] = dfdist
+            
+            # Concatenate across iterations (ie subsamples)
+            list_subspace = set([x[0] for x in map_subspaceiter_to_dfdist.keys()])
+            map_subspace_to_dfdist = {}
+            for subspace in list_subspace:
+                _keys = [x for x in map_subspaceiter_to_dfdist.keys() if x[0]==subspace]
+                list_dfdist = [map_subspaceiter_to_dfdist[k] for k in _keys]
+                dfdist_concat = pd.concat(list_dfdist, axis=0)
+                dfdist_concat = aggregGeneral(dfdist_concat, ["bregion", "labels_1", "labels_2", "var_subspace", "var_conj", "var_conj_lev", "question", "subspace"], 
+                                            ["dist_mean", "DIST_98", "dist_norm", "dist_yue_diff", "n1", "n2", "data_dim", "npcs_euclidean"], nonnumercols=None)
+                assert all(dfdist_concat["subspace"]==subspace)
+                map_subspace_to_dfdist[subspace] = dfdist_concat
+
+            # Finally, append the correct columns, for each question.
+            for subspace, dfdist in map_subspace_to_dfdist.items():            
+            # for _i, savedir in enumerate(list_dir):
+                
+            #     print(f"{bregion} --- [{_i}]/[{len(list_dir)}],  --- {savedir}")
+            #     path = f"{savedir}/dfdist.pkl"
+            #     dfdist = pd.read_pickle(path)
+            
+                # Postprocessing        
+                # dfdist["var_subspace"] = [tuple(x)  if isinstance(x, list) else x for x in dfdist["var_subspace"]]            
+                # dfdist["bregion"] = bregion
+                # if "var_conj" not in dfdist:
+                #     dfdist["var_conj"] = "none"
+                #     dfdist["var_conj_lev"] = "none"
+                # dfdist["n1"] = [x[0] for x in dfdist["n_1_2"]]
+                # dfdist["n2"] = [x[1] for x in dfdist["n_1_2"]]
 
                 if False:
                     from pythonlib.tools.pandastools import replace_None_with_string
@@ -392,7 +433,7 @@ def targeted_pca_MULT_1_load_and_save(animal, date, run, expt_kind):
                     dfdist, colname_conj_same = dfdist_extract_label_vars_specific(dfdist, euclidean_label_vars, return_var_same=True)
                     # get metaparams
                     dfdist["question"] = "ignore"
-                    list_dfdist.append(dfdist)
+                    LIST_DFDIST.append(dfdist)
                 else:
                     # Now using map_question_to_euclideanvars
                     from neuralmonkey.scripts.analy_syntax_good_eucl_state import targeted_pca_clean_plots_and_dfdist_params
@@ -410,26 +451,31 @@ def targeted_pca_MULT_1_load_and_save(animal, date, run, expt_kind):
 
                             ### Preprocessing for each dfdistthis. is faster here before combining across questions
                             # for each question's dfdist, agg it and then re-extract useful columns
-                            assert len(dfdist_this["DIST_98"].unique())==1
-                            dfdist_this = aggregGeneral(dfdist_this, ["labels_1", "labels_2", "var_subspace", "var_conj", "var_conj_lev", "bregion", "question"], 
-                                                        ["dist_mean", "DIST_98", "dist_norm", "dist_yue_diff"], nonnumercols=["n1", "n2"])                                
+                            if False: 
+                                # This is not true anymore, beucase I agg across iters above, each may heave slightly different datasets
+                                assert len(dfdist_this["DIST_98"].unique())==1
+                            if False:
+                                # Already done above...
+                                dfdist_this = aggregGeneral(dfdist_this, ["labels_1", "labels_2", "var_subspace", "var_conj", "var_conj_lev", "bregion", "question"], 
+                                                            ["dist_mean", "DIST_98", "dist_norm", "dist_yue_diff"], nonnumercols=["n1", "n2"])                                
+                            # Need to repopulate, after agging, but need to do this within each question, beucase thye have their own label vars
                             dfdist_this, colname_conj_same = dfdist_extract_label_vars_specific(dfdist_this, euclidean_label_vars, return_var_same=True) # Repopulate the var columns
                             map_question_to_varsame[question] = colname_conj_same
 
-                            list_dfdist.append(dfdist_this)
+                            LIST_DFDIST.append(dfdist_this)
 
-        if len(list_dfdist)==0:
+        if len(LIST_DFDIST)==0:
             # Then always skip, this is just a missing day
             print("Skipping, as list_dfdist is empty")
             return None
 
         if False: # No need -- it will be obvious if something is missing
-            assert len(list_dfdist)==(expected_n_bregions * expected_n_questions * expected_n_subspaces * expected_n_iters), "this is to make sure that you arent saving partial results"
+            assert len(LIST_DFDIST)==(expected_n_bregions * expected_n_questions * expected_n_subspaces * expected_n_iters), "this is to make sure that you arent saving partial results"
 
-        DFDIST = pd.concat(list_dfdist).reset_index(drop=True)
+        DFDIST = pd.concat(LIST_DFDIST).reset_index(drop=True)
         DFDIST = replace_None_with_string(DFDIST)
         # DFDIST = stringify_values(DFDIST)
-        DFDIST = append_col_with_grp_index(DFDIST, ["var_subspace", "var_conj", "var_conj_lev"], "subspace")
+        # DFDIST = append_col_with_grp_index(DFDIST, ["var_subspace", "var_conj", "var_conj_lev"], "subspace")
 
         # Save it
         pd.to_pickle(DFDIST, f"{SAVEDIR_MULT}/DFDIST-{animal}-{date}.pkl")
