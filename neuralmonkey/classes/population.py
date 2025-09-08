@@ -5146,8 +5146,9 @@ class PopAnal():
             else:
                 plot_counts_heatmap_savepath = None
 
-            PA, _, _= PA.slice_extract_with_levels_of_conjunction_vars(var, var_others, prune_min_n_trials, prune_min_n_levs,
-                                                            plot_counts_heatmap_savepath=plot_counts_heatmap_savepath)
+            PA = PA.slice_extract_with_levels_of_conjunction_vars(var, var_others, prune_min_n_trials,
+                                                            plot_counts_heatmap_savepath=plot_counts_heatmap_savepath,
+                                                            lenient_allow_data_if_has_n_levels=prune_min_n_levs)
             if PA is None:
                 print("all data pruned!!")
                 continue
@@ -5740,6 +5741,8 @@ class PopAnal():
             if len(dflab[v].unique())>1:
                 _variables.append(v)
                 _variables_is_cat.append(vcat)
+            else:
+                print("Excluding this variable (only one level):", v)
         variables = _variables
         variables_is_cat = _variables_is_cat
         assert len(variables)>0

@@ -1641,9 +1641,9 @@ def targeted_pca_clean_plots_and_dfdist(DFallpa, animal, date, SAVEDIR_ALL, DEBU
         do_subspaces_within_chunk = False
         do_plot_rsa = False
         euclid_prune_min_n_trials = 3 # 3 is faster
-        DO_PLOT_STATE_SPACE = False
-        DO_EUCLIDEAN = False
-        DO_ORDINAL_REGRESSION = True
+        # DO_PLOT_STATE_SPACE = False
+        # DO_EUCLIDEAN = False
+        # DO_ORDINAL_REGRESSION = True
 
     # Stratified splits params
     # Better, more careful, ensuring enough data for euclidian distance.
@@ -2530,7 +2530,6 @@ def targeted_pca_clean_plots_and_dfdist(DFallpa, animal, date, SAVEDIR_ALL, DEBU
                             variables_cont = ["motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y"]
                             variables_cat = ["epoch", "gridloc", "DIFF_gridloc", "stroke_index_is_first", "chunk_rank", "shape", "rank_conj"]
                             vars_remove = ["motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y", "gridloc", "DIFF_gridloc", "chunk_rank", "shape"]
-                            var_subspace = None # Don't project
                             _, _, _, _, _, pa_subspace_this_this, _ = pa_subspace_this.dataextract_subspace_targeted_pca_wrapper(variables_cont, variables_cat, vars_remove,
                                                                                         None, None, 
                                                                                         PLOT_COEFF_HEATMAP=False, 
@@ -2574,62 +2573,79 @@ def targeted_pca_clean_plots_and_dfdist(DFallpa, animal, date, SAVEDIR_ALL, DEBU
                 ################################################
                 if DO_ORDINAL_REGRESSION:
                     from neuralmonkey.scripts.analy_syntax_good_eucl_state import kernel_ordinal_logistic_regression_wrapper
-                    from neuralmonkey.scripts.analy_syntax_good_eucl_state import kernel_ordinal_logistic_regression_plot
 
                     LIST_VAR_VAROTHERS_REGR = [
                         ("chunk_within_rank_fromlast", ["task_kind", "epoch", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev", "chunk_n_in_chunk"]),
                         ("chunk_within_rank", ["task_kind", "epoch", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev", "chunk_n_in_chunk"]),
                         ("chunk_within_rank_fromlast", ["task_kind", "epoch", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev"]),
                         ("chunk_within_rank", ["task_kind", "epoch", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev"]),
-
+                        ("chunk_within_rank_fromlast", ["task_kind", "epoch", "chunk_rank", "shape", "gridloc", "stroke_index_is_first"]),
+                        ("chunk_within_rank", ["task_kind", "epoch", "chunk_rank", "shape", "gridloc", "stroke_index_is_first"]),
+                        ("chunk_within_rank_fromlast", ["task_kind", "epoch", "chunk_rank", "shape", "gridloc", "stroke_index_is_first", "chunk_n_in_chunk"]),
+                        ("chunk_within_rank", ["task_kind", "epoch", "chunk_rank", "shape", "gridloc", "stroke_index_is_first", "chunk_n_in_chunk"]),
                     ]
-                    for yvar, vars_grp in LIST_VAR_VAROTHERS_REGR:
-                        # yvar = "chunk_within_rank_fromlast"
-                        # vars_grp = ["task_kind", "epoch", "chunk_shape", "chunk_n_in_chunk"]
+                    # Exclude single prims
+                    pa_subspace_this_PIG = pa_subspace_this.slice_by_labels_filtdict({"task_kind":["prims_on_grid"]})
+                    nsplits_ord_regr = 12
 
-                        savedir_this = f"{savedir}/kernel_ordinal_regress-yvar={yvar}-vars_grp={vars_grp}"
-                        os.makedirs(savedir_this, exist_ok=True)
+                    if pa_subspace_this_PIG.X.shape[1]>8: # n trials.
+                        
+                        if True:
+                            from  neuralmonkey.scripts.analy_syntax_good_eucl_trial import ordinalregress_1_compute
+                            dfcross, dfwithin = ordinalregress_1_compute(pa_subspace_this_PIG, LIST_VAR_VAROTHERS_REGR, savedir, 
+                                                                         nsplits=nsplits_ord_regr, apply_kernel = False, 
+                                                                         plot_indiv=False, plot_summary=True)     
 
-                        # Exclude single prims
-                        pa_subspace_this_PIG = pa_subspace_this.slice_by_labels_filtdict({"task_kind":["prims_on_grid"]})
+                            for _df in [dfcross, dfwithin]:
+                                _df["var_subspace"] = [var_subspace for _ in range(len(_df))]
+                                _df["i_proj"] = i_proj
 
-                        if pa_subspace_this_PIG.X.shape[1]>8:
+                            pd.to_pickle(dfcross, f"{savedir}/dfcross.pkl")
+                            pd.to_pickle(dfwithin, f"{savedir}/dfwithin.pkl")
+                        else:
+                            for yvar, vars_grp in LIST_VAR_VAROTHERS_REGR:
+                                # yvar = "chunk_within_rank_fromlast"
+                                # vars_grp = ["task_kind", "epoch", "chunk_shape", "chunk_n_in_chunk"]
 
-                            try:
-                                nsplits_ord_regr = 8
-                                dfcross, dfwithin = kernel_ordinal_logistic_regression_wrapper(pa_subspace_this_PIG, yvar, vars_grp, 
-                                                                                            savedir_this, plot_test_data_projected=False,
-                                                                                            nsplits=nsplits_ord_regr)
-                                # Save                    
-                                dfcross["var_effect"] = yvar
-                                dfcross["vars_others"] = [tuple(vars_grp) for _ in range(len(dfcross))]
-                                dfwithin["var_effect"] = yvar
-                                dfwithin["vars_others"] = [tuple(vars_grp) for _ in range(len(dfwithin))]
+                                savedir_this = f"{savedir}/kernel_ordinal_regress-yvar={yvar}-vars_grp={vars_grp}"
+                                os.makedirs(savedir_this, exist_ok=True)
 
-                                pd.to_pickle(dfcross, f"{savedir_this}/dfcross.pkl")
-                                pd.to_pickle(dfwithin, f"{savedir_this}/dfwithin.pkl")
+                                try:
 
-                                # Plot
-                                kernel_ordinal_logistic_regression_plot(dfcross, dfwithin, vars_grp, savedir_this)                            
-                            except Exception as err:
-                                pass
-                                # print("Probably not enough data ... ")
-                                # print(pa_subspace_this_PIG.X.shape)
-                            
-                                # from pythonlib.tools.pandastools import filter_by_min_n, _check_index_reseted
-                                # dflab = pa_subspace_this_PIG.Xlabels["trials"]
-                                # _check_index_reseted(dflab)
-                                # dflab_pruned = filter_by_min_n(dflab, yvar, n_min_per_level=3)
-                                # inds_keep = dflab_pruned["_index"].tolist()
-                                # pa_subspace_this_PIG = pa_subspace_this_PIG.slice_by_dim_indices_wrapper("trials", inds_keep)
+                                    dfcross, dfwithin = kernel_ordinal_logistic_regression_wrapper(pa_subspace_this_PIG, yvar, vars_grp, 
+                                                                                                savedir_this, plot_test_data_projected=False,
+                                                                                                nsplits=nsplits_ord_regr)
+                                    # Save                    
+                                    for _df in [dfcross, dfwithin]:
+                                        _df["var_effect"] = yvar
+                                        _df["vars_others"] = [tuple(vars_grp) for _ in range(len(_df))]
+                                        _df["i_proj"] = i_proj
+                                        _df["var_subspace"] = [var_subspace for _ in range(len(_df))]
+
+                                    pd.to_pickle(dfcross, f"{savedir_this}/dfcross.pkl")
+                                    pd.to_pickle(dfwithin, f"{savedir_this}/dfwithin.pkl")
+
+                                    # Plot
+                                    kernel_ordinal_logistic_regression_plot(dfcross, dfwithin, vars_grp, savedir_this)                            
+                                except Exception as err:
+                                    pass
+                                    # print("Probably not enough data ... ")
+                                    # print(pa_subspace_this_PIG.X.shape)
                                 
-                                # print(1, len(dflab), len(dflab_pruned))
-                                # print(2, dflab)
-                                # print(3, dflab_pruned)
-                                # print(4, dflab[yvar].value_counts())
-                                # print(5, dflab_pruned[yvar].value_counts())
-                                # print(6, pa_subspace_this_PIG.Xlabels["trials"][yvar].value_counts())
-                                # raise err
+                                    # from pythonlib.tools.pandastools import filter_by_min_n, _check_index_reseted
+                                    # dflab = pa_subspace_this_PIG.Xlabels["trials"]
+                                    # _check_index_reseted(dflab)
+                                    # dflab_pruned = filter_by_min_n(dflab, yvar, n_min_per_level=3)
+                                    # inds_keep = dflab_pruned["_index"].tolist()
+                                    # pa_subspace_this_PIG = pa_subspace_this_PIG.slice_by_dim_indices_wrapper("trials", inds_keep)
+                                    
+                                    # print(1, len(dflab), len(dflab_pruned))
+                                    # print(2, dflab)
+                                    # print(3, dflab_pruned)
+                                    # print(4, dflab[yvar].value_counts())
+                                    # print(5, dflab_pruned[yvar].value_counts())
+                                    # print(6, pa_subspace_this_PIG.Xlabels["trials"][yvar].value_counts())
+                                    # raise err
                                             
         if do_subspaces_within_chunk:
             ### Method 2: Use one level of a vars group to fit subspace, and then project all data onto it.
@@ -2719,7 +2735,9 @@ def targeted_pca_clean_plots_and_dfdist(DFallpa, animal, date, SAVEDIR_ALL, DEBU
                     pd.to_pickle(dfcoeff, f"{savedir}/dfcoeff.pkl")
 
 def kernel_ordinal_logistic_regression_wrapper(PA, yvar, vars_grp, savedir, plot_test_data_projected = False, 
-                                               nsplits = 4, do_rezero=True, PRINT=False, PLOT=False):
+                                               nsplits = 4, do_rezero=True, PRINT=False, PLOT=False, 
+                                               do_upsample=True, apply_kernel=True, list_do_grid_search=None,
+                                               n_min_per_level = 3):
     """
     Perform logistc regression (e.g., predicting rank as a function of neural activity). 
     Uses the kernel trick to account for nonlinearity (e.g., curved axes)
@@ -2734,8 +2752,16 @@ def kernel_ordinal_logistic_regression_wrapper(PA, yvar, vars_grp, savedir, plot
     from neuralmonkey.analyses.regression_good import kernel_ordinal_logistic_regression, _kernel_ordinal_logistic_regression_example
     from pythonlib.tools.pandastools import filter_by_min_n, _check_index_reseted
 
-    n_min_per_level = 3
-    assert nsplits >= n_min_per_level
+    # n_min_per_level = 3
+    if False:
+        assert nsplits >= n_min_per_level
+
+    # This seems most consistently the best.
+    list_rescale_std = [False]
+    if list_do_grid_search is None:
+        do_grid_search = [True]
+    else:
+        do_grid_search = list_do_grid_search
 
     ### Preprocessing
     # Exit, if PA has only one level, or is not enough data
@@ -2745,47 +2771,56 @@ def kernel_ordinal_logistic_regression_wrapper(PA, yvar, vars_grp, savedir, plot
     ### Make sure the data are ordinal, from 0, 1, ...
     dflab = PA.Xlabels["trials"]
     Y = dflab[yvar].values
+    Y = Y.astype(np.int64)
     if do_rezero:
         Y = Y - min(Y) 
-    Y = Y.astype(np.int64)
     dflab[f"{yvar}-ord"] = Y
     yvar = f"{yvar}-ord"
-    PA.Xlabels["trials"] = dflab
-    
-    # Keep only classes with at least some min n data
-    dflab = PA.Xlabels["trials"]
-    _check_index_reseted(dflab)
     if not isinstance(dflab[yvar].values[0], (int, np.integer)):
         print(type(dflab[yvar].values[0]))
         assert False, "must make this int. Usef dflab[yvar].astype(int)"
+    PA.Xlabels["trials"] = dflab
+
+    # Keep only classes with at least some min n data
+    dflab = PA.Xlabels["trials"]
+    _check_index_reseted(dflab)
     dflab_pruned = filter_by_min_n(dflab, yvar, n_min_per_level=n_min_per_level, must_not_fail=True)
     if PRINT:
         print("len dflab, before and after pruned to min n trials and leveld: ", len(dflab), len(dflab_pruned))
     inds_keep = dflab_pruned["_index"].tolist()
     PA = PA.slice_by_dim_indices_wrapper("trials", inds_keep)
 
+    if do_rezero:
+        # Must do again, beucase filter_by_min_n may have removed the 0.
+        dflab = PA.Xlabels["trials"]
+        dflab[yvar] = dflab[yvar] - min(dflab[yvar])
+        PA.Xlabels["trials"] = dflab
+
     ### 
     assert PA.X.shape[2]==1 # must not be time-varying
     dflab = PA.Xlabels["trials"]
     Xall = PA.X.squeeze().T
     Yall = dflab[yvar].values
-    assert min(Yall)==0
-    assert isinstance(Yall[0], np.integer)
-    assert len(set(Yall))>1
+    try:
+        # assert min(Yall)==0
+        assert isinstance(Yall[0], np.integer)
+        assert len(set(Yall))>1
+    except Exception as err:
+        print(Yall)
+        print(set(Yall))
+        raise err
     grpdict = grouping_append_and_return_inner_items_good(dflab, vars_grp)
 
     from pythonlib.tools.pandastools import grouping_print_n_samples
     savepath = f"{savedir}/counts.txt"
     grouping_print_n_samples(dflab, vars_grp+[yvar], savepath=savepath)
 
-    # This seems most consistently the best.
-    list_rescale_std = [False]
-    do_grid_search = [True]
-
-    def clean_data(x, y):
+    def clean_preprocess_data(x, y, savepath_upsample=None):
         """
+        Keeping only data with at least minimun n trials. And upsampling if high trial imbalance.
         """    
         from pythonlib.tools.nptools import filter_array_to_include_minimum_n_items
+        from pythonlib.tools.statstools import decode_resample_balance_dataset
         _, _inds_keep = filter_array_to_include_minimum_n_items(y, n_min_per_level)
         x = x[_inds_keep, :]
         y = y[_inds_keep]
@@ -2797,6 +2832,9 @@ def kernel_ordinal_logistic_regression_wrapper(PA, yvar, vars_grp, savedir, plot
             return None, None
         else:
             # Good.
+            if do_upsample:
+                # Optionally, upsample dataset
+                x, y = decode_resample_balance_dataset(x, y, "upsample", savepath_upsample)
             return x, y
 
     def _score(model, x_test, y_test, y_train):
@@ -2841,6 +2879,8 @@ def kernel_ordinal_logistic_regression_wrapper(PA, yvar, vars_grp, savedir, plot
     ### RUN
     RES_CROSS = []
     RES_WITHIN = []
+    n_skips = 0
+    n_tot = 0
     for rescale_std in list_rescale_std:
         for do_grid_search in do_grid_search:
             # list_res = []
@@ -2848,23 +2888,31 @@ def kernel_ordinal_logistic_regression_wrapper(PA, yvar, vars_grp, savedir, plot
 
                 Xthis = Xall[inds, :]
                 Ythis = Yall[inds]
+                # dflab_this = dflab.iloc[inds]
 
                 if len(set(Ythis))>1:
 
                     ### 1. Generalization to different grps
                     x_train = Xthis
                     y_train = Ythis
-                    x_train, y_train = clean_data(x_train, y_train)
+                    x_train, y_train = clean_preprocess_data(x_train, y_train)
                     if x_train is None:
                         continue
-                    
+                    if not np.all(np.diff(sorted(set(y_train)))==1):
+                        print("[SKIPPING], since have gap in y values: ", sorted(set(y_train)))
+                        n_skips+=1
+                        continue
+                    else:
+                        n_tot+=1
+
                     res, fig = kernel_ordinal_logistic_regression(x_train, y_train, rescale_std=rescale_std, 
-                                                                    PLOT=True, do_grid_search=do_grid_search)
+                                                                    PLOT=True, do_grid_search=do_grid_search, apply_kernel=apply_kernel)
                     savefig(fig, f"{savedir}/ord_regr_scatter-grp={grp}-rescale_std={rescale_std}-grid={do_grid_search}.pdf")
                     plt.close("all")
 
-                    if do_grid_search:
-                        res["best_n_components"] = res["cv_best_params"]["ker__n_components"]
+                    if False: # I dont use this.
+                        if do_grid_search:
+                            res["best_n_components"] = res["cv_best_params"]["ker__n_components"]
 
                     model = res["model"]
                     assert np.all(model.predict(x_train) == res["y_pred"]), "sanity check"
@@ -2876,7 +2924,7 @@ def kernel_ordinal_logistic_regression_wrapper(PA, yvar, vars_grp, savedir, plot
                         assert len(inds_test)>0
                         print("Test shape: ", x_test.shape, y_test.shape, inds_test)
 
-                        print("Scoring ...:", len(y_train))
+                        print("Scoring ...:", len(y_test))
                         balanced_accuracy, balanced_accuracy_adjusted, accuracy, x_test, y_test = _score(model, x_test, y_test, y_train)
 
                         if accuracy is not None:
@@ -2895,10 +2943,15 @@ def kernel_ordinal_logistic_regression_wrapper(PA, yvar, vars_grp, savedir, plot
                                 "grp_test":grp_test,
                                 "y_train_unique":set(y_train),
                                 "y_test_unique":set(y_test),
+                                "y_train":y_train,
+                                "y_test":y_test,
                                 "balanced_accuracy":balanced_accuracy,
                                 "balanced_accuracy_adjusted":balanced_accuracy_adjusted,
                                 "accuracy":accuracy,
                                 "score_train":res["score"],
+                                "res":res,
+                                "yvar":yvar, 
+                                "vars_grp":tuple(vars_grp),
                             })
                     
                     ### 2. Generaliztaion to held-out trials
@@ -2917,15 +2970,19 @@ def kernel_ordinal_logistic_regression_wrapper(PA, yvar, vars_grp, savedir, plot
                         x_test = Xthis[inds_test, :]
                         y_test = Ythis[inds_test]
 
-                        x_train, y_train = clean_data(x_train, y_train)
+                        x_train, y_train = clean_preprocess_data(x_train, y_train)
                         if x_train is None:
                             continue
 
                         # Train model
+                        if not np.all(np.diff(sorted(set(y_train)))==1):
+                            print("[SKIPPING], since have gap in y values: ", sorted(set(y_train)))
+                            continue
                         res = kernel_ordinal_logistic_regression(x_train, y_train, rescale_std=rescale_std, 
-                                                                        PLOT=False, do_grid_search=do_grid_search)
+                                                                        PLOT=False, do_grid_search=do_grid_search,
+                                                                        apply_kernel=apply_kernel)
                         model = res["model"]
-
+                        
                         # Test on held-out trials.
                         balanced_accuracy, balanced_accuracy_adjusted, accuracy, x_test, y_test = _score(model, x_test, y_test, y_train)
 
@@ -2937,10 +2994,15 @@ def kernel_ordinal_logistic_regression_wrapper(PA, yvar, vars_grp, savedir, plot
                                 "i_split":i_split,
                                 "y_train_unique":set(y_train),
                                 "y_test_unique":set(y_test),
+                                "y_train":y_train,
+                                "y_test":y_test,
                                 "balanced_accuracy":balanced_accuracy,
                                 "balanced_accuracy_adjusted":balanced_accuracy_adjusted,
                                 "accuracy":accuracy,
                                 "score_train":res["score"],
+                                "res":res,
+                                "yvar":yvar, 
+                                "vars_grp":tuple(vars_grp),
                             })
 
                             # Plot projection of held-out data onto this axis.
@@ -2954,76 +3016,189 @@ def kernel_ordinal_logistic_regression_wrapper(PA, yvar, vars_grp, savedir, plot
     from pythonlib.tools.pandastools import stringify_values
     dfcross = pd.DataFrame(RES_CROSS)
     dfwithin = pd.DataFrame(RES_WITHIN)
-    dfcross["n_labels_train"] = [len(x) for x in dfcross["y_train_unique"]]
+
+    if n_skips/n_tot > 0.1:
+        print(n_skips)
+        print(n_tot)
+        assert False, "wjhy skiped so many?"
+
+    if len(dfcross)==0 and len(dfwithin)==0:
+        return None, None
+    
+    if len(dfcross)>0:
+        dfcross["n_labels_train"] = [len(x) for x in dfcross["y_train_unique"]]
     dfwithin["n_labels_train"] = [len(x) for x in dfwithin["y_train_unique"]]
 
+
+    ### Some postprocessing
+    # To be able to compare the angles of the regression axes.
+    list_coeff = []
+    for _, row in dfwithin.iterrows():
+        coeff = row["res"]["coeff"]
+        list_coeff.append(coeff)
+    dfwithin["coeff"] = list_coeff
+
+    if False: # not actually needed
+        # This is important to match tuple legnths across yvar. otherwise downstream agg will fail.
+        from pythonlib.tools.pandastools import pad_tuple_values_to_same_length
+        for col in ["grp", "vars_grp"]:
+            pad_tuple_values_to_same_length(DFWITHIN, col, col)
+
+    if False:
+        # Older code, for plotting
+        coeff_mat = np.stack(DFWITHIN["coeff"])
+        labels_row = DFWITHIN["grp"].tolist()
+        labels_row = [tuple(x) for x in DFWITHIN.loc[:, ["yvar", "grp"]].values.tolist()]
+
+    # Agg across all splits (for within). Do this AFTER getting coefficients above
+    from pythonlib.tools.pandastools import aggregGeneral
+    def F(x):
+        X = np.stack(x)
+        return np.mean(X, axis=0)
+    aggdict = {
+        "coeff":[F],
+        "balanced_accuracy": ["mean"],
+        "balanced_accuracy_adjusted": ["mean"],
+        "accuracy": ["mean"],
+        "score_train": ["mean"],
+        "n_labels_train": ["mean"]
+    }
+    dfwithin = aggregGeneral(dfwithin, ["grp", "yvar", "vars_grp"], list(aggdict.keys()), aggmethod=aggdict)
+
+
     if PLOT:
-        # Remove cases with bad data, before stringifying
-        if False:
-            # Instead, you should use accuracy
-            # print(dfcross["balanced_accuracy_adjusted"].value_counts())
-            dfcross = dfcross[dfcross["balanced_accuracy_adjusted"]!=-np.inf].reset_index(drop=True)
-            dfcross = dfcross[~dfcross["balanced_accuracy_adjusted"].isna()].reset_index(drop=True)
-            # print(dfcross["balanced_accuracy_adjusted"].value_counts())
-        else:
-            dfcross_clean = dfcross[dfcross["balanced_accuracy_adjusted"]!=-np.inf].reset_index(drop=True)
-            dfcross_clean = dfcross_clean[~dfcross_clean["balanced_accuracy_adjusted"].isna()].reset_index(drop=True)
+        kernel_ordinal_logistic_regression_wrapper_plot(dfcross, dfwithin, vars_grp, savedir)
 
-        ### Plots
-        import seaborn as sns
-        from pythonlib.tools.snstools import rotateLabel
-        from pythonlib.tools.pandastools import plot_subplots_heatmap
-        dfcross_clean_str = stringify_values(dfcross_clean)
-        dfcross_clean_str = stringify_values(dfcross_clean)
-        
-        # dfcross_str = dfcross_str.fillna(0.0) # Becuase some will fail if they don't have matching levels.
-        
-        if False:
-            fig = sns.catplot(dfcross_str, x="grp_train", y="accuracy", hue="grp_test", col="n_labels_train", alpha=0.5)
-            rotateLabel(fig)
+        # # Remove cases with bad data, before stringifying
+        # if len(dfcross)>0:
+        #     if False:
+        #         # Instead, you should use accuracy
+        #         # print(dfcross["balanced_accuracy_adjusted"].value_counts())
+        #         dfcross = dfcross[dfcross["balanced_accuracy_adjusted"]!=-np.inf].reset_index(drop=True)
+        #         dfcross = dfcross[~dfcross["balanced_accuracy_adjusted"].isna()].reset_index(drop=True)
+        #         # print(dfcross["balanced_accuracy_adjusted"].value_counts())
+        #     else:
+        #         dfcross_clean = dfcross[dfcross["balanced_accuracy_adjusted"]!=-np.inf].reset_index(drop=True)
+        #         dfcross_clean = dfcross_clean[~dfcross_clean["balanced_accuracy_adjusted"].isna()].reset_index(drop=True)
 
-        for y in ["accuracy"]:
-            fig, _ = plot_subplots_heatmap(dfcross, "grp_test", "grp_train", y, None, share_zlim=True, 
-                                diverge=False, annotate_heatmap=True, W=11, ncols=5)
-            savefig(fig, f"{savedir}/CROSS-heatmap-yvar={y}.pdf")
+        # ### Plots
+        # import seaborn as sns
+        # from pythonlib.tools.snstools import rotateLabel
+        # from pythonlib.tools.pandastools import plot_subplots_heatmap
+        # dfwithin_str = stringify_values(dfwithin)
+        # if len(dfcross)>0:
+        #     dfcross_clean_str = stringify_values(dfcross_clean)
+        #     dfcross_str = stringify_values(dfcross)
+                
+        # if False:
+        #     fig = sns.catplot(dfcross_str, x="grp_train", y="accuracy", hue="grp_test", col="n_labels_train", alpha=0.5)
+        #     rotateLabel(fig)
 
-            # Summary catplot        
-            fig = sns.catplot(data=dfwithin, x="grp", y=y, hue="n_labels_train", height=10)
-            for ax in fig.axes.flatten():
-                ax.set_ylim([-0.1, 1.1])
-            rotateLabel(fig)
-            savefig(fig, f"{savedir}/WITHIN-catplot-yvar={y}.pdf")
+        # for y in ["accuracy", "accuracy_adjusted"]:
+        #     if len(dfcross)>0:
+        #         fig, _ = plot_subplots_heatmap(dfcross_str, "grp_test", "grp_train", y, None, share_zlim=True, 
+        #                             diverge=False, annotate_heatmap=True, W=11, ncols=5)
+        #         savefig(fig, f"{savedir}/CROSS-heatmap-yvar={y}.pdf")
 
-            plt.close("all")
+        #     # Summary catplot        
+        #     fig = sns.catplot(data=dfwithin_str, x="grp", y=y, hue="n_labels_train", height=10, jitter=True, alpha=0.5)
+        #     for ax in fig.axes.flatten():
+        #         ax.set_ylim([-0.1, 1.1])
+        #     rotateLabel(fig)
+        #     savefig(fig, f"{savedir}/WITHIN-catplot-x=grp-yvar={y}-1.pdf")
 
-        # These are pruned
-        for y in ["balanced_accuracy", "balanced_accuracy_adjusted"]:
-            fig, _ = plot_subplots_heatmap(dfcross_clean_str, "grp_test", "grp_train", y, None, share_zlim=True, 
-                                diverge=False, annotate_heatmap=True, W=11, ncols=5)
-            savefig(fig, f"{savedir}/CROSS-heatmap-yvar={y}.pdf")
+        #     # Summary catplot        
+        #     fig = sns.catplot(data=dfwithin_str, x="grp", y=y, hue="n_labels_train", height=10)
+        #     for ax in fig.axes.flatten():
+        #         ax.set_ylim([-0.1, 1.1])
+        #     rotateLabel(fig)
+        #     savefig(fig, f"{savedir}/WITHIN-catplot-yvar={y}.pdf")
 
-            # Summary catplot        
-            fig = sns.catplot(data=dfcross_clean_str, x="grp", y=y, hue="n_labels_train", height=10)
-            for ax in fig.axes.flatten():
-                ax.set_ylim([-0.1, 1.1])
-            rotateLabel(fig)
-            savefig(fig, f"{savedir}/WITHIN-catplot-yvar={y}.pdf")
+        #     plt.close("all")
 
-            plt.close("all")
+        # # These are pruned
+        # for y in ["balanced_accuracy", "balanced_accuracy_adjusted"]:
+        #     if len(dfcross)>0:
+        #         fig, _ = plot_subplots_heatmap(dfcross_clean_str, "grp_test", "grp_train", y, None, share_zlim=True, 
+        #                             diverge=False, annotate_heatmap=True, W=11, ncols=5)
+        #         savefig(fig, f"{savedir}/CROSS-heatmap-yvar={y}.pdf")
+
+        #     # Summary catplot        
+        #     fig = sns.catplot(data=dfwithin_str, x="grp", y=y, hue="n_labels_train", height=10, jitter=True, alpha=0.5)
+        #     for ax in fig.axes.flatten():
+        #         ax.set_ylim([-0.1, 1.1])
+        #     rotateLabel(fig)
+        #     savefig(fig, f"{savedir}/WITHIN-catplot-x=grp-yvar={y}-1.pdf")
+
+        #     # Summary catplot        
+        #     fig = sns.catplot(data=dfwithin_str, x="grp", y=y, hue="n_labels_train", height=10)
+        #     for ax in fig.axes.flatten():
+        #         ax.set_ylim([-0.1, 1.1])
+        #     rotateLabel(fig)
+        #     savefig(fig, f"{savedir}/WITHIN-catplot-yvar={y}.pdf")
+
+        #     plt.close("all")
 
     return dfcross, dfwithin
 
+def kernel_ordinal_logistic_regression_wrapper_postprocess_mult_varsgrp(DFCROSS, DFWITHIN):
+    """
+    Helper to run kernel_ordinal_logistic_regression_wrapper_postprocess, but for cases where 
+    If dfwithin/dfcross is concatenation of multiple (yvar, vars_grp) pairs, then this preproesses
+    each separately, then returns them concatnated.
+    """
+    
+    from pythonlib.tools.pandastools import append_col_with_grp_index
+    if "regr_yvar_grp" not in DFWITHIN:
+        DFWITHIN = append_col_with_grp_index(DFWITHIN, ["yvar", "vars_grp"], "regr_yvar_grp")
+        DFCROSS = append_col_with_grp_index(DFCROSS, ["yvar", "vars_grp"], "regr_yvar_grp")
 
-def kernel_ordinal_logistic_regression_plot(dfcross, dfwithin, vars_grp, savedir):
+    assert sorted(DFWITHIN["regr_yvar_grp"].unique()) == sorted(DFCROSS["regr_yvar_grp"].unique()), "or else this will throw out data or fail"
+
+    list_dfcross = []
+    list_dfwithin = []
+    for regr_yvar_grp in DFWITHIN["regr_yvar_grp"].unique():
+        
+        dfwithin = DFWITHIN[DFWITHIN["regr_yvar_grp"] == regr_yvar_grp].reset_index(drop=True)
+        dfcross = DFCROSS[DFCROSS["regr_yvar_grp"] == regr_yvar_grp].reset_index(drop=True)
+
+        vars_grp = dfwithin["vars_grp"].unique().tolist()[0]
+        dfcross, dfwithin, _, _, _, _ = kernel_ordinal_logistic_regression_wrapper_postprocess(
+            dfcross, dfwithin, vars_grp)
+        
+        list_dfcross.append(dfcross)
+        list_dfwithin.append(dfwithin)
+    DFCROSS = pd.concat(list_dfcross).reset_index(drop=True)
+    DFWITHIN = pd.concat(list_dfwithin).reset_index(drop=True)
+
+    return DFCROSS, DFWITHIN
+
+def kernel_ordinal_logistic_regression_wrapper_postprocess(dfcross, dfwithin, vars_grp):
     """
-    Plot results from kernel_ordinal_logistic_regression_wrapper
+    Postprocessing for a singel (var, varsother), many things.
     """
+
     from pythonlib.tools.snstools import rotateLabel
     from pythonlib.tools.pandastools import plot_subplots_heatmap, stringify_values, aggregGeneral
     import seaborn as sns
     from neuralmonkey.analyses.euclidian_distance import dfdist_extract_label_vars_specific, dfdist_extract_label_vars_specific_single
     from pythonlib.tools.pandastools import append_col_with_grp_index
     from neuralmonkey.analyses.euclidian_distance import dfdist_variables_generate_constrast_strings, dfdist_variables_effect_extract_helper
+
+    # print(dfwithin["vars_grp"].unique().tolist())
+    # print(vars_grp)
+    try:
+        assert [tuple(vars_grp)] == dfwithin["vars_grp"].unique().tolist(), "must be only one level of vars_grp, and that should be this."
+        assert len(dfwithin["yvar"].unique())==1
+    except Exception as err:
+        print([vars_grp])
+        print(dfwithin["vars_grp"].unique().tolist())
+        raise err
+
+    from pythonlib.tools.pandastools import append_col_with_grp_index
+    if "regr_yvar_grp" not in dfwithin:
+        dfwithin = append_col_with_grp_index(dfwithin, ["yvar", "vars_grp"], "regr_yvar_grp")
+        dfcross = append_col_with_grp_index(dfcross, ["yvar", "vars_grp"], "regr_yvar_grp")
 
     ### Preprocessing
     # Get adjusted accuracy
@@ -3034,108 +3209,518 @@ def kernel_ordinal_logistic_regression_plot(dfcross, dfwithin, vars_grp, savedir
     dfwithin["accuracy_adjusted"] = (dfwithin["accuracy"] - dfwithin["accuracy_chance"])/(1-dfwithin["accuracy_chance"])
 
     # agg over splits
-    dfwithin = aggregGeneral(dfwithin, ["grp"], values=["balanced_accuracy", "balanced_accuracy_adjusted", "accuracy", "accuracy_adjusted"], nonnumercols="all")
+    dfwithin = aggregGeneral(dfwithin, ["grp", "yvar", "vars_grp", "regr_yvar_grp"], 
+                             values=["balanced_accuracy", "balanced_accuracy_adjusted", "accuracy", "accuracy_adjusted", "score_train", "n_labels_train"], 
+                             nonnumercols="all")
 
     # Get the individual variable classes as new columns in dfcross
     dfcross, varsame = dfdist_extract_label_vars_specific(dfcross, vars_grp, return_var_same=True, var1="grp_train", var2="grp_test")
     dfwithin = dfdist_extract_label_vars_specific_single(dfwithin, vars_grp, var1="grp")
-    
+
     # Additional varialbes of interest
     if "chunk_n_in_chunk_1" in dfcross:
         dfcross = append_col_with_grp_index(dfcross, ["shape_1", "chunk_n_in_chunk_1"], "shape_n_1")
         dfcross = append_col_with_grp_index(dfcross, ["shape_2", "chunk_n_in_chunk_2"], "shape_n_2")
 
+    if False:
+        # Instead, you should use accuracy
+        # print(dfcross["balanced_accuracy_adjusted"].value_counts())
+        dfcross = dfcross[dfcross["balanced_accuracy_adjusted"]!=-np.inf].reset_index(drop=True)
+        dfcross = dfcross[~dfcross["balanced_accuracy_adjusted"].isna()].reset_index(drop=True)
+        # print(dfcross["balanced_accuracy_adjusted"].value_counts())
+    else:
+        dfcross_clean = dfcross[dfcross["balanced_accuracy_adjusted"]!=-np.inf].reset_index(drop=True)
+        dfcross_clean = dfcross_clean[~dfcross_clean["balanced_accuracy_adjusted"].isna()].reset_index(drop=True)
+
     # Stringify before plotting
+    dfcross_clean_str = stringify_values(dfcross_clean)
     dfcross_str = stringify_values(dfcross)
     dfwithin_str = stringify_values(dfwithin)
+
+    return dfcross, dfwithin, dfcross_str, dfwithin_str, dfcross_clean_str, varsame
+
+
+def kernel_ordinal_logistic_regression_wrapper_plot(dfcross, dfwithin, vars_grp, savedir):
+    """
+    Quick plots of results from kernel_ordinal_logistic_regression_wrapper (low-level, used during each run)
+    """
+    from pythonlib.tools.snstools import rotateLabel
+    from pythonlib.tools.pandastools import plot_subplots_heatmap, stringify_values
+    import seaborn as sns
+    from neuralmonkey.analyses.euclidian_distance import dfdist_variables_effect_extract_helper
+
+    dfcross, dfwithin, dfcross_str, dfwithin_str, dfcross_clean_str, varsame = kernel_ordinal_logistic_regression_wrapper_postprocess(
+        dfcross, dfwithin, vars_grp)
+    
+    # ### Preprocessing
+    # # Get adjusted accuracy
+    # dfcross["accuracy_chance"] = 1/dfcross["n_labels_train"]
+    # dfcross["accuracy_adjusted"] = (dfcross["accuracy"] - dfcross["accuracy_chance"])/(1-dfcross["accuracy_chance"])
+
+    # dfwithin["accuracy_chance"] = 1/dfwithin["n_labels_train"]
+    # dfwithin["accuracy_adjusted"] = (dfwithin["accuracy"] - dfwithin["accuracy_chance"])/(1-dfwithin["accuracy_chance"])
+
+    # # agg over splits
+    # dfwithin = aggregGeneral(dfwithin, ["grp"], values=["balanced_accuracy", "balanced_accuracy_adjusted", "accuracy", "accuracy_adjusted"], nonnumercols="all")
+
+    # # Get the individual variable classes as new columns in dfcross
+    # dfcross, varsame = dfdist_extract_label_vars_specific(dfcross, vars_grp, return_var_same=True, var1="grp_train", var2="grp_test")
+    # dfwithin = dfdist_extract_label_vars_specific_single(dfwithin, vars_grp, var1="grp")
+    
+    # # Additional varialbes of interest
+    # if "chunk_n_in_chunk_1" in dfcross:
+    #     dfcross = append_col_with_grp_index(dfcross, ["shape_1", "chunk_n_in_chunk_1"], "shape_n_1")
+    #     dfcross = append_col_with_grp_index(dfcross, ["shape_2", "chunk_n_in_chunk_2"], "shape_n_2")
+
+    # if False:
+    #     # Instead, you should use accuracy
+    #     # print(dfcross["balanced_accuracy_adjusted"].value_counts())
+    #     dfcross = dfcross[dfcross["balanced_accuracy_adjusted"]!=-np.inf].reset_index(drop=True)
+    #     dfcross = dfcross[~dfcross["balanced_accuracy_adjusted"].isna()].reset_index(drop=True)
+    #     # print(dfcross["balanced_accuracy_adjusted"].value_counts())
+    # else:
+    #     dfcross_clean = dfcross[dfcross["balanced_accuracy_adjusted"]!=-np.inf].reset_index(drop=True)
+    #     dfcross_clean = dfcross_clean[~dfcross_clean["balanced_accuracy_adjusted"].isna()].reset_index(drop=True)
+
+    # # Stringify before plotting
+    # dfcross_clean_str = stringify_values(dfcross_clean)
+    # dfcross_str = stringify_values(dfcross)
+    # dfwithin_str = stringify_values(dfwithin)
 
     ######################
     ### Plots
 
     ### Plot cross groups
-    for y in ["accuracy", "accuracy_adjusted", "balanced_accuracy", "balanced_accuracy_adjusted"]:
-        fig, _ = plot_subplots_heatmap(dfcross, "grp_test", "grp_train", y, None, share_zlim=True, 
-                            diverge=False, annotate_heatmap=False, W=12, ncols=5)
-        savefig(fig, f"{savedir}/CROSS-heatmap-yvar={y}.pdf")
+    if False: # This is done above, in kernel_ordinal_logistic_regression_wrapper (and better, as it uses dfcross_clean_str. The one here will fail becuase it doesnt.)
+        for y in ["accuracy", "accuracy_adjusted", "balanced_accuracy", "balanced_accuracy_adjusted"]:
+            fig, _ = plot_subplots_heatmap(dfcross, "grp_test", "grp_train", y, None, share_zlim=True, 
+                                diverge=False, annotate_heatmap=False, W=12, ncols=5)
+            savefig(fig, f"{savedir}/CROSS-heatmap-yvar={y}.pdf")
 
-        # Summary catplot        
-        fig = sns.catplot(data=dfwithin_str, x="grp", y=y, hue="n_labels_train", height=10, jitter=True, alpha=0.5)
-        for ax in fig.axes.flatten():
-            ax.set_ylim([-0.1, 1.1])
-        rotateLabel(fig)
-        savefig(fig, f"{savedir}/WITHIN-catplot-x=grp-yvar={y}-1.pdf")
+            # Summary catplot        
+            fig = sns.catplot(data=dfwithin_str, x="grp", y=y, hue="n_labels_train", height=10, jitter=True, alpha=0.5)
+            for ax in fig.axes.flatten():
+                ax.set_ylim([-0.1, 1.1])
+            rotateLabel(fig)
+            savefig(fig, f"{savedir}/WITHIN-catplot-x=grp-yvar={y}-1.pdf")
 
-        # Summary catplot        
-        fig = sns.catplot(data=dfwithin_str, x="grp", y=y, hue="n_labels_train", height=10, kind="bar")
-        for ax in fig.axes.flatten():
-            ax.set_ylim([-0.1, 1.1])
-        rotateLabel(fig)
-        savefig(fig, f"{savedir}/WITHIN-catplot-x=grp-yvar={y}-2.pdf")
-    plt.close("all")
+            # Summary catplot        
+            fig = sns.catplot(data=dfwithin_str, x="grp", y=y, hue="n_labels_train", height=10, kind="bar")
+            for ax in fig.axes.flatten():
+                ax.set_ylim([-0.1, 1.1])
+            rotateLabel(fig)
+            savefig(fig, f"{savedir}/WITHIN-catplot-x=grp-yvar={y}-2.pdf")
+        plt.close("all")
+    else:
+        for y in ["accuracy", "accuracy_adjusted"]:
+            if len(dfcross)>0:
+                fig, _ = plot_subplots_heatmap(dfcross_str, "grp_test", "grp_train", y, None, share_zlim=True, 
+                                    diverge=False, annotate_heatmap=False, W=11, ncols=5)
+                savefig(fig, f"{savedir}/CROSS-heatmap-yvar={y}.pdf")
+
+            # Summary catplot        
+            fig = sns.catplot(data=dfwithin_str, x="grp", y=y, hue="n_labels_train", height=10, jitter=True, alpha=0.5)
+            for ax in fig.axes.flatten():
+                ax.set_ylim([-0.1, 1.1])
+            rotateLabel(fig)
+            savefig(fig, f"{savedir}/WITHIN-catplot-x=grp-yvar={y}-1.pdf")
+
+            # Summary catplot        
+            fig = sns.catplot(data=dfwithin_str, x="grp", y=y, hue="n_labels_train", height=10)
+            for ax in fig.axes.flatten():
+                ax.set_ylim([-0.1, 1.1])
+            rotateLabel(fig)
+            savefig(fig, f"{savedir}/WITHIN-catplot-x=grp-yvar={y}-2.pdf")
+
+            plt.close("all")
+
+        # These are pruned
+        for y in ["balanced_accuracy", "balanced_accuracy_adjusted"]:
+            if len(dfcross)>0:
+                fig, _ = plot_subplots_heatmap(dfcross_clean_str, "grp_test", "grp_train", y, None, share_zlim=True, 
+                                    diverge=False, annotate_heatmap=False, W=11, ncols=5)
+                savefig(fig, f"{savedir}/CROSS-heatmap-yvar={y}.pdf")
+
+            # Summary catplot        
+            fig = sns.catplot(data=dfwithin_str, x="grp", y=y, hue="n_labels_train", height=10, jitter=True, alpha=0.5)
+            for ax in fig.axes.flatten():
+                ax.set_ylim([-0.1, 1.1])
+            rotateLabel(fig)
+            savefig(fig, f"{savedir}/WITHIN-catplot-x=grp-yvar={y}-1.pdf")
+
+            # Summary catplot        
+            fig = sns.catplot(data=dfwithin_str, x="grp", y=y, hue="n_labels_train", height=10)
+            for ax in fig.axes.flatten():
+                ax.set_ylim([-0.1, 1.1])
+            rotateLabel(fig)
+            savefig(fig, f"{savedir}/WITHIN-catplot-x=grp-yvar={y}-2.pdf")
+
+            plt.close("all")
 
     ### Plot overviews
-    for yvar, diverge, ZLIMS in [
-        ("accuracy", False, [-0.1, 1.1]),
-        ("accuracy_adjusted", True, None),
-        ]:
-        fig, _ = plot_subplots_heatmap(dfcross_str, "shape_1", "shape_2", yvar, None, diverge, True, annotate_heatmap=True, ZLIMS=ZLIMS)
-        savefig(fig, f"{savedir}/CROSS-heatmap-shape-yvar={y}-1.pdf")
+    if "shape_1" in dfcross.columns:
+        for y, diverge, ZLIMS in [
+            ("accuracy", False, [-0.1, 1.1]),
+            ("accuracy_adjusted", True, None),
+            ]:
 
-        if "shape_n_1" in dfcross_str.columns:
-            fig, _ = plot_subplots_heatmap(dfcross_str, "shape_n_1", "shape_n_2", yvar, None, diverge, True, annotate_heatmap=True, ZLIMS=ZLIMS, W=10)
-            savefig(fig, f"{savedir}/CROSS-heatmap-shape-yvar={y}-2.pdf")
-        
-        fig = sns.catplot(data=dfwithin_str, x="shape", y=yvar, hue="n_labels_train", jitter=True, alpha=0.5)
-        savefig(fig, f"{savedir}/WITHIN-catplot-x=shape-yvar={y}-1.pdf")
+            fig, _ = plot_subplots_heatmap(dfcross_clean_str, "shape_1", "shape_2", y, None, diverge, True, annotate_heatmap=True, ZLIMS=ZLIMS)
+            savefig(fig, f"{savedir}/CROSS-heatmap-shape-yvar={y}-1.pdf")
 
-        fig = sns.catplot(data=dfwithin_str, x="shape", y=yvar, hue="n_labels_train", kind="bar")
-        savefig(fig, f"{savedir}/WITHIN-catplot-x=shape-yvar={y}-2.pdf")
-    plt.close("all")
+            if "shape_n_1" in dfcross_clean_str.columns:
+                fig, _ = plot_subplots_heatmap(dfcross_clean_str, "shape_n_1", "shape_n_2", y, None, diverge, True, annotate_heatmap=True, ZLIMS=ZLIMS, W=10)
+                savefig(fig, f"{savedir}/CROSS-heatmap-shape-yvar={y}-2.pdf")
+            
+            fig = sns.catplot(data=dfwithin_str, x="shape", y=y, hue="n_labels_train", jitter=True, alpha=0.5)
+            savefig(fig, f"{savedir}/WITHIN-catplot-x=shape-yvar={y}-1.pdf")
 
-    ### Get effects to plot
-    list_dfeffect = []
+            fig = sns.catplot(data=dfwithin_str, x="shape", y=y, hue="n_labels_train", kind="bar")
+            savefig(fig, f"{savedir}/WITHIN-catplot-x=shape-yvar={y}-2.pdf")
+        plt.close("all")
 
-    # Genrealize across sahpe sets?
-    contrasts_diff = ["shape"]
-    if "chunk_n_in_chunk_1" in dfcross_str:
-        contrasts_either = ["chunk_rank", "chunk_n_in_chunk"]
-    else:
-        contrasts_either = ["chunk_rank"]
-    df = dfdist_variables_effect_extract_helper(dfcross_str, varsame, vars_grp, contrasts_diff, contrasts_either)
-    df["effect"] = "Xshape"
-    list_dfeffect.append(df)
+        ### Get effects to plot
+        list_dfeffect = []
 
-    # Genrealize across n (within shape set)?
-    if "chunk_n_in_chunk_1" in dfcross_str:
-        contrasts_diff = ["chunk_n_in_chunk"]
-        contrasts_either = []
+        # Genrealize across sahpe sets?
+        contrasts_diff = ["shape"]
+        if "chunk_n_in_chunk_1" in dfcross_str:
+            contrasts_either = ["chunk_rank", "chunk_n_in_chunk"]
+        else:
+            contrasts_either = ["chunk_rank"]
         df = dfdist_variables_effect_extract_helper(dfcross_str, varsame, vars_grp, contrasts_diff, contrasts_either)
-        df["effect"] = "Xn_Wshape"
+        df["effect"] = "Xshape"
         list_dfeffect.append(df)
 
-    # Control: score within condition (cross-validated)
-    df = dfwithin_str.copy()
-    df["effect"] = "Wall"
-    df["shape_1"] = df["shape"]
-    list_dfeffect.append(df)
+        # Genrealize across n (within shape set)?
+        if "chunk_n_in_chunk_1" in dfcross_str:
+            contrasts_diff = ["chunk_n_in_chunk"]
+            contrasts_either = []
+            df = dfdist_variables_effect_extract_helper(dfcross_str, varsame, vars_grp, contrasts_diff, contrasts_either)
+            df["effect"] = "Xn_Wshape"
+            list_dfeffect.append(df)
 
-    # from pythonlib.tools.pandastools import replace_None_with_string
-    DFEFFECT = pd.concat(list_dfeffect)
-    DFEFFECT = stringify_values(DFEFFECT)
-    assert sum(DFEFFECT["accuracy_adjusted"]=="none")==0
+        # Control: score within condition (cross-validated)
+        df = dfwithin_str.copy()
+        df["effect"] = "Wall"
+        df["shape_1"] = df["shape"]
+        list_dfeffect.append(df)
 
-    for y in ["accuracy", "accuracy_adjusted", "balanced_accuracy", "balanced_accuracy_adjusted"]:
-        dfeffect = DFEFFECT[~(DFEFFECT[y] == "none")]
-        fig = sns.catplot(data=dfeffect, x="effect", y=y, hue=varsame, col="shape_1", alpha=0.5, jitter=True)
-        savefig(fig, f"{savedir}/EFFECT-catplot-yvar={y}-1.pdf")
+        # from pythonlib.tools.pandastools import replace_None_with_string
+        DFEFFECT = pd.concat(list_dfeffect)
+        DFEFFECT = stringify_values(DFEFFECT)
+        assert sum(DFEFFECT["accuracy_adjusted"]=="none")==0
 
-        fig = sns.catplot(data=dfeffect, x="effect", y=y, col="shape_1", alpha=0.5, jitter=True)
-        savefig(fig, f"{savedir}/EFFECT-catplot-yvar={y}-2.pdf")
-        
-        fig = sns.catplot(data=dfeffect, x="effect", y=y, col="shape_1", kind="bar", errorbar="se")
-        savefig(fig, f"{savedir}/EFFECT-catplot-yvar={y}-3.pdf")
-    plt.close("all")
+        for y in ["accuracy", "accuracy_adjusted", "balanced_accuracy", "balanced_accuracy_adjusted"]:
+            dfeffect = DFEFFECT[~(DFEFFECT[y] == "none")]
+            fig = sns.catplot(data=dfeffect, x="effect", y=y, hue=varsame, col="shape_1", alpha=0.5, jitter=True)
+            savefig(fig, f"{savedir}/EFFECT-catplot-yvar={y}-1.pdf")
+
+            fig = sns.catplot(data=dfeffect, x="effect", y=y, col="shape_1", alpha=0.5, jitter=True)
+            savefig(fig, f"{savedir}/EFFECT-catplot-yvar={y}-2.pdf")
+            
+            fig = sns.catplot(data=dfeffect, x="effect", y=y, col="shape_1", kind="bar", errorbar="se")
+            savefig(fig, f"{savedir}/EFFECT-catplot-yvar={y}-3.pdf")
+        plt.close("all")
                 
+def kernel_ordinal_logistic_regression_wrapper_CONCATED_postprocess(DFCROSS, DFWITHIN, vars_datapt):
+    """
+    [MULT ANALY], another round of posprocessing...
+
+    PARAMS:
+    - DFCROSS, DFWITHIN, these are after concated across dates
+    - vars_datapt, list of str, defines unique daapts (will additionaly conjunct with dates)
+        # vars_datapt = ["epoch", "FEAT_num_strokes_beh", "syntax_slot_0", "syntax_slot_1", "seqc_0_loc", "seqc_0_shape"]
+        # vars_datapt = ["epoch", "chunk_rank", "shape"]
+    """
+    ### Get agged data
+    from pythonlib.tools.pandastools import aggregGeneral, replace_None_with_string
+    from neuralmonkey.neuralplots.brainschematic import datamod_reorder_by_bregion
+    from neuralmonkey.scripts.analy_syntax_good_eucl_state_MULT import targeted_pca_MULT_2_postprocess
+    from pythonlib.tools.pandastools import append_col_with_grp_index
+    
+    DFWITHIN, _ = targeted_pca_MULT_2_postprocess(DFWITHIN)
+    DFCROSS, _ = targeted_pca_MULT_2_postprocess(DFCROSS)
+    assert not any(DFWITHIN["balanced_accuracy"].isna())
+
+    DFWITHIN = append_col_with_grp_index(DFWITHIN, ["yvar", "vars_grp"], "regr_yvar_grp")
+    DFCROSS = append_col_with_grp_index(DFCROSS, ["yvar", "vars_grp"], "regr_yvar_grp")
+
+    DFCROSS["n_labels_test"] = [len(x) for x in DFCROSS["y_test_unique"]]
+    DFWITHIN["n_labels_test"] = DFWITHIN["n_labels_train"]
+
+    DFWITHIN = replace_None_with_string(DFWITHIN)
+    DFCROSS = replace_None_with_string(DFCROSS)
+
+    # Add index.
+    DFWITHIN = append_col_with_grp_index(DFWITHIN, ["date", "grp"], "date_grp")
+    DFCROSS = append_col_with_grp_index(DFCROSS, ["date", "grp_train"], "date_grp_train")
+
+    # This defines a "datapoint" unit
+
+    # Datapoints
+    DFWITHIN = append_col_with_grp_index(DFWITHIN, ["date"] + vars_datapt, "ep_cr_sh")
+    DFCROSS = append_col_with_grp_index(DFCROSS, ["date"] + [f"{v}_1" for v in vars_datapt], "ep_cr_sh_1")
+
+    # One datapt per (date, shape)
+    DFWITHIN_AGG_SHP = aggregGeneral(DFWITHIN, ["bregion", "subspace", "date", "yvar", "vars_grp", "regr_yvar_grp", "n_labels_train"] + vars_datapt, values=["balanced_accuracy", "balanced_accuracy_adjusted", "accuracy", "accuracy_adjusted", "score_train"])
+    # One datapt per (date)
+    DFWITHIN_AGG_DATE = aggregGeneral(DFWITHIN, ["bregion", "subspace", "date", "yvar", "vars_grp", "regr_yvar_grp", "n_labels_train"], values=["balanced_accuracy", "balanced_accuracy_adjusted", "accuracy", "accuracy_adjusted", "score_train"])
+    # - Reorder bregions.
+    DFWITHIN_AGG_SHP = datamod_reorder_by_bregion(DFWITHIN_AGG_SHP)
+    DFWITHIN_AGG_DATE = datamod_reorder_by_bregion(DFWITHIN_AGG_DATE)
+
+    return DFCROSS, DFWITHIN, DFWITHIN_AGG_SHP, DFWITHIN_AGG_DATE
+
+def kernel_ordinal_logistic_regression_wrapper_CONCATED_plot_all(DFCROSS, DFWITHIN, DFWITHIN_AGG_SHP, DFWITHIN_AGG_DATE, savedir,
+                                                                 only_essential=False):
+    """
+    
+    [MULT] FInal set of plots. Generic enough that it should work across different expreiments.
+
+    PARAMS:
+    - DFCROSS, DFWITHIN, these are after concated across dates
+    - vars_datapt, list of str, defines unique daapts (will additionaly conjunct with dates)
+        # vars_datapt = ["epoch", "FEAT_num_strokes_beh", "syntax_slot_0", "syntax_slot_1", "seqc_0_loc", "seqc_0_shape"]
+        # vars_datapt = ["epoch", "chunk_rank", "shape"]
+    - only_essential, if False, then also plots things like with individual datapts, which can take time.
+    """
+    ##############################################
+    ### PLOTS
+    from pythonlib.tools.pandastools import aggregGeneral, replace_None_with_string, stringify_values
+    from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good, plot_45scatter_means_flexible_grouping
+
+    ### Questions
+    from pythonlib.tools.plottools import savefig
+    import seaborn as sns
+    assert len(DFWITHIN["subspace"].unique())==1, "assumes this, otherwise will have to split by subspace in plots below"
+
+    # (1) Main effect
+    for yvar in ["accuracy_adjusted"]:
+        if not only_essential:
+            fig = sns.catplot(data=DFWITHIN, x="bregion", y=yvar, hue="n_labels_train", row="regr_yvar_grp", col="date", jitter=True, alpha=0.5, height=10)
+            for ax in fig.axes.flatten():
+                ax.axhline(0, color="k", alpha=0.5)
+            savefig(fig, f"{savedir}/1_maineffect-yvar={yvar}-1.pdf")
+
+        fig = sns.catplot(data=DFWITHIN, x="bregion", y=yvar, hue="n_labels_train", row="regr_yvar_grp", col="date", kind="point", errorbar="se", height=10)
+        for ax in fig.axes.flatten():
+            ax.axhline(0, color="k", alpha=0.5)
+        savefig(fig, f"{savedir}/1_maineffect-yvar={yvar}-2.pdf")
+
+        # Agg across dates
+        for df, suff in [
+            (DFWITHIN_AGG_SHP, "data=shp"), 
+            (DFWITHIN_AGG_DATE, "data=date")]:
+
+            if not only_essential:
+                fig = sns.catplot(data=df, x="bregion", y=yvar, row="n_labels_train", col="regr_yvar_grp", jitter=True, alpha=0.5, height=10)
+                for ax in fig.axes.flatten():
+                    ax.axhline(0, color="k", alpha=0.5)
+                savefig(fig, f"{savedir}/1_maineffect-yvar={yvar}-{suff}-1.pdf")
+
+            fig = sns.catplot(data=df, x="bregion", y=yvar, col="n_labels_train", hue="regr_yvar_grp", kind="bar", errorbar="se",  height=10)
+            for ax in fig.axes.flatten():
+                ax.axhline(0, color="k", alpha=0.5)
+            savefig(fig, f"{savedir}/1_maineffect-yvar={yvar}-{suff}-2.pdf")
+
+        plt.close("all")    
+
+    # (1b) Main effect, split by shapes
+    if "shape" in DFWITHIN:
+        list_date = DFWITHIN["date"].unique().tolist()
+        for date in list_date:
+            dfwithin = DFWITHIN[DFWITHIN["date"] == date].reset_index(drop=True)
+            for yvar in ["accuracy_adjusted"]:
+                if not only_essential:
+                    fig = sns.catplot(data=dfwithin, x="shape", y=yvar, hue="regr_yvar_grp", row="n_labels_train", col="bregion", 
+                                        jitter=True, alpha=0.5, errorbar="se", height=10)
+                    for ax in fig.axes.flatten():
+                        ax.axhline(0, color="k", alpha=0.5)
+                    savefig(fig, f"{savedir}/1b_maineffect_shape-date={date}-yvar={yvar}-1.pdf")
+
+                fig = sns.catplot(data=dfwithin, x="shape", y=yvar, hue="regr_yvar_grp", row="n_labels_train", col="bregion", 
+                                kind="bar", errorbar="se", height=10)
+                savefig(fig, f"{savedir}/1b_maineffect_shape-date={date}-yvar={yvar}-2.pdf")
+
+                if False: # save time
+                    fig = sns.catplot(data=dfwithin, x="bregion", y=yvar, hue="shape", row="regr_yvar_grp", col="n_labels_train", 
+                                    kind="bar", errorbar="se", height=10)
+                    savefig(fig, f"{savedir}/1b_maineffect_shape-date={date}-yvar={yvar}-3.pdf")
+                
+                plt.close("all")
+
+    if "chunk_within_rank_fromlast" in DFWITHIN["yvar"].unique().tolist():
+        # (2) Compare fwd vs. backward (for each shape).
+        # This is done in above (1b).
+        # Also: scatter
+        prune_to_only_cases_with_mult_n_in_chunk = True
+        grpdict = grouping_append_and_return_inner_items_good(DFWITHIN, ["vars_grp", "n_labels_train"])
+        for yvar in ["accuracy_adjusted"]:
+        # for yvar in ["accuracy_adjusted", "balanced_accuracy_adjusted"]:
+            for grp, inds in grpdict.items():
+                print(" ==== ", grp)
+                dfwithin = DFWITHIN.iloc[inds].reset_index(drop=True)
+
+                # This only makes sense if n_in_chunk varies. Otherwise all points will be along the diagonal
+                if prune_to_only_cases_with_mult_n_in_chunk:
+                    dfwithin = dfwithin[dfwithin["n_in_chunk_existing_n"]>1].reset_index(drop=True)
+
+                if len(dfwithin)>0:
+                    for var_datapt in ["date_grp", "ep_cr_sh"]:
+                        # Color each pt by chunk_rank
+                        map_datapt_lev_to_colorlev = {}
+                        for _, row in dfwithin.iterrows():
+                            if row[var_datapt] not in map_datapt_lev_to_colorlev:
+                                map_datapt_lev_to_colorlev[row[var_datapt]] = row["chunk_rank"]
+                            else:
+                                assert map_datapt_lev_to_colorlev[row[var_datapt]] == row["chunk_rank"]
+                        colorlevs_that_exist = sorted(dfwithin["chunk_rank"].unique())
+                        _, fig = plot_45scatter_means_flexible_grouping(dfwithin, "yvar", "chunk_within_rank_fromlast", "chunk_within_rank", 
+                                                            "bregion", yvar, var_datapt, False, shareaxes=True, 
+                                                            map_datapt_lev_to_colorlev=map_datapt_lev_to_colorlev,
+                                                            colorlevs_that_exist=colorlevs_that_exist)
+
+                        if fig is not None:
+                            savefig(fig, f"{savedir}/1b_scatter_up_vs_dn-{grp}-datapt={var_datapt}-y={yvar}-variable_n={prune_to_only_cases_with_mult_n_in_chunk}.pdf")
+                            plt.close("all")
+
+    # (3) Generalization across shapes
+    # (3b) Generalization to other "n in chunk"
+    from neuralmonkey.analyses.euclidian_distance import dfdist_variables_effect_extract_helper, dfdist_variables_generate_var_same
+
+    list_yvar_grp = DFCROSS["regr_yvar_grp"].unique().tolist()
+    list_n_labels_train = DFCROSS["n_labels_train"].unique().tolist()
+    for n_labels_train in list_n_labels_train:
+        for regr_yvar_grp in list_yvar_grp:
+            dfcross = DFCROSS[(DFCROSS["n_labels_train"]==n_labels_train) & (DFCROSS["regr_yvar_grp"] == regr_yvar_grp)].reset_index(drop=True)
+            dfwithin = DFWITHIN[(DFWITHIN["n_labels_train"]==n_labels_train) & (DFWITHIN["regr_yvar_grp"] == regr_yvar_grp)].reset_index(drop=True)
+
+            if len(dfcross)>0:
+                vars_grp = dfcross["vars_grp"].unique()[0]
+                varsame = dfdist_variables_generate_var_same(vars_grp)
+
+                ### Collect effects
+                list_dfeffect = []
+
+                if "shape_1" in dfcross:
+                    ### THen this is strokes data 
+
+                    # Genrealize across sahpe sets?
+                    contrasts_diff = ["shape"]
+                    if "chunk_n_in_chunk" in vars_grp:
+                        contrasts_either = ["chunk_rank", "chunk_n_in_chunk"]
+                    else:
+                        contrasts_either = ["chunk_rank"]
+                    df = dfdist_variables_effect_extract_helper(dfcross, varsame, vars_grp, contrasts_diff, contrasts_either)
+                    df["effect"] = "Xshape"
+                    list_dfeffect.append(df)
+
+                    # Genrealize across sahpe sets?
+                    contrasts_diff = ["shape"]
+                    contrasts_either = ["chunk_rank", "chunk_n_in_chunk", "gridloc", "CTXT_loc_prev"]
+                    df = dfdist_variables_effect_extract_helper(dfcross, varsame, vars_grp, contrasts_diff, contrasts_either)
+                    df["effect"] = "Xshape_lenient"
+                    list_dfeffect.append(df)
+
+                    # Genrealize across n (within shape set)?
+                    if "chunk_n_in_chunk" in vars_grp:
+                        contrasts_diff = ["chunk_n_in_chunk"]
+                        contrasts_either = []
+                        df = dfdist_variables_effect_extract_helper(dfcross, varsame, vars_grp, contrasts_diff, contrasts_either)
+                        df["effect"] = "Xn_Wshape"
+                        list_dfeffect.append(df)
+
+                        contrasts_diff = ["chunk_n_in_chunk"]
+                        contrasts_either = ["gridloc", "CTXT_loc_prev"]
+                        df = dfdist_variables_effect_extract_helper(dfcross, varsame, vars_grp, contrasts_diff, contrasts_either)
+                        df["effect"] = "Xn_Wshape_lenient"
+                        list_dfeffect.append(df)
+
+                    # Control: score within condition (cross-validated)
+                    df = dfwithin.copy()
+                    df["effect"] = "Wall"
+                    df["shape_1"] = df["shape"]
+                    df["date_grp_train"] = df["date_grp"]
+                    df["ep_cr_sh_1"] = df["ep_cr_sh"]
+                    df["n_labels_test"] = df["n_labels_train"]
+                elif "seqc_0_shape_1" in dfcross:
+                    ### THen this is trials data 
+
+                    if "syntax_slot_1" in vars_grp:
+                        contrasts_diff = ["syntax_slot_1"]
+                        contrasts_either = ["FEAT_num_strokes_beh", "seqc_0_loc", "seqc_0_shape"]
+                        df = dfdist_variables_effect_extract_helper(dfcross, varsame, vars_grp, contrasts_diff, contrasts_either)
+                        df["effect"] = "Xslot1"
+                        list_dfeffect.append(df)
+
+                    if "syntax_slot_0" in vars_grp:
+                        contrasts_diff = ["syntax_slot_0"]
+                        contrasts_either = ["FEAT_num_strokes_beh", "seqc_0_loc", "seqc_0_shape"]
+                        df = dfdist_variables_effect_extract_helper(dfcross, varsame, vars_grp, contrasts_diff, contrasts_either)
+                        df["effect"] = "Xslot0"
+                        list_dfeffect.append(df)
+
+                    # Control: score within condition (cross-validated)
+                    df = dfwithin.copy()
+                    df["effect"] = "Wall"
+                    # df["shape_1"] = df["shape"]
+                    df["date_grp_train"] = df["date_grp"]
+                    df["ep_cr_sh_1"] = df["ep_cr_sh"]
+                    df["n_labels_test"] = df["n_labels_train"]
+
+                list_dfeffect.append(df)
+
+                # from pythonlib.tools.pandastools import replace_None_with_string
+                DFEFFECT = pd.concat(list_dfeffect)
+                DFEFFECT = stringify_values(DFEFFECT)
+                assert sum(DFEFFECT["accuracy_adjusted"]=="none")==0
+
+                if len(DFEFFECT)>0:
+                    # for y in ["accuracy", "accuracy_adjusted", "balanced_accuracy", "balanced_accuracy_adjusted"]:
+                    for y in ["accuracy_adjusted"]:
+                        dfeffect = DFEFFECT[~(DFEFFECT[y] == "none")]
+
+                        # Combining shapes
+                        fig = sns.catplot(data=dfeffect, x="bregion", y=y, hue="effect", col="date", kind="bar", errorbar="se")
+                        savefig(fig, f"{savedir}/EFFECT-nlab={n_labels_train}-regr_yvar_grp={regr_yvar_grp}-yvar={y}-1.pdf")
+
+                        fig = sns.catplot(data=dfeffect, x="bregion", y=y, hue="effect", col="date", row="n_labels_test", kind="bar", errorbar="se")
+                        savefig(fig, f"{savedir}/EFFECT-nlab={n_labels_train}-regr_yvar_grp={regr_yvar_grp}-yvar={y}-1b.pdf")
+
+                        if not only_essential:
+                            fig = sns.catplot(data=dfeffect, x="bregion", y=y, hue="effect", col="date", jitter=True, alpha=0.5)
+                            savefig(fig, f"{savedir}/EFFECT-nlab={n_labels_train}-regr_yvar_grp={regr_yvar_grp}-yvar={y}-2.pdf")
+                            
+                            fig = sns.catplot(data=dfeffect, x="bregion", y=y, hue="effect", col="date", row="n_labels_test", jitter=True, alpha=0.5)
+                            savefig(fig, f"{savedir}/EFFECT-nlab={n_labels_train}-regr_yvar_grp={regr_yvar_grp}-yvar={y}-2b.pdf")
+
+
+                        if "shape_1" in dfeffect:
+                            # Split by shapes   
+                            fig = sns.catplot(data=dfeffect, x="bregion", y=y, hue="effect", col="shape_1", row="date", kind="bar", errorbar="se")
+                            savefig(fig, f"{savedir}/EFFECT-nlab={n_labels_train}-regr_yvar_grp={regr_yvar_grp}-yvar={y}-3.pdf")
+
+                            # Also split by n_lab_test
+                            for n_labels_test in dfeffect["n_labels_test"].unique():
+                                dfeffect_this = dfeffect[dfeffect["n_labels_test"] == n_labels_test]
+                                fig = sns.catplot(data=dfeffect_this, x="bregion", y=y, hue="effect", col="shape_1", row="date", kind="bar", errorbar="se")
+                                savefig(fig, f"{savedir}/EFFECT-nlab={n_labels_train}-regr_yvar_grp={regr_yvar_grp}-yvar={y}-3-nlabtest={n_labels_test}.pdf")
+
+                            if False: # save time
+                                fig = sns.catplot(data=dfeffect, x="bregion", y=y, hue="effect", col="shape_1", row="date", jitter=True, alpha=0.5)
+                                savefig(fig, f"{savedir}/EFFECT-nlab={n_labels_train}-regr_yvar_grp={regr_yvar_grp}-yvar={y}-4.pdf")
+
+                        plt.close("all")
+
+                        # Scatterplot
+                        for var_datapt in ["date_grp_train", "ep_cr_sh_1", "date"]:
+                            for y_lev_manip in ["Xshape", "Xn_Wshape"]:
+                                _, fig = plot_45scatter_means_flexible_grouping(dfeffect, "effect", "Wall", y_lev_manip, 
+                                                                                "bregion", y, var_datapt, False, 
+                                                                                shareaxes=True, alpha=0.5)
+                                if fig is not None:
+                                    savefig(fig, f"{savedir}/EFFECT_SCATTER-nlab={n_labels_train}-regr_yvar_grp={regr_yvar_grp}-ylev={y_lev_manip}-datapt={var_datapt}-value={y}.pdf")
+                                    plt.close("all")
 
 def targeted_pca_state_space_split_over(DFallpa, SAVEDIR_ANALYSIS, 
                                        variables, variables_is_cat, LIST_VAR_VAROTHERS_SS, # For dim reduction and plotting state space

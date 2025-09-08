@@ -1947,7 +1947,7 @@ def dfpa_concat_bregion_to_combined_bregion(DFallpa):
 
         # Take other params
         for col in ["which_level", "event"]:
-            tmp = dfpa["which_level"].unique()
+            tmp = dfpa[col].unique()
             assert len(tmp)==1
             rowdict[col] = tmp[0]
         
@@ -2207,6 +2207,7 @@ def dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT = False):
 
         if len(list_pa)==0:
             print(events_keep)
+            print(DFallpa["event"].unique())
             assert False, "probably need to update events_keep"
 
         # Smooth the fr

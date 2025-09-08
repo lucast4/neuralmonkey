@@ -740,6 +740,29 @@ def get_list_effects():
 #     else:
 #         print("Skipped this question (doesnt exist in dfdist): ", question)
 
+def targeted_pca_MULT_2_postprocess(DFDIST):
+    """
+    Another postprocessing step...
+    
+    PARAMS:
+    - dfdist, holds data for a single animal-date (across regions)
+    """
+
+    # Sometimes a global subspace is called something like "('epoch', 'gridloc', 'DIFF_gridloc', 'chunk_rank', 'shape', 'rank_conj')|none|none"
+    # Here, check if there is only one subspace with "(" and ")" in the name. If so, then assume this is "global", and rename
+    # it as "global". Note that the old name is saved in DFDIST["subspace_orig"]
+    map_subspace_to_shorthand = None
+    subspaces = DFDIST["subspace"].unique().tolist()
+    subspaces_potentially_global = [(s.find("(")>=0) and (s.find(")")>=0) for s in subspaces]
+    if sum(subspaces_potentially_global)==1:
+        # Then assume this is the global one
+        ind = [i for i, x in enumerate(subspaces_potentially_global) if x==True][0]
+        map_subspace_to_shorthand = {subspaces[ind]:"global"}
+        DFDIST["subspace_orig"] = DFDIST["subspace"]
+        DFDIST["subspace"] = [map_subspace_to_shorthand[s] if s in map_subspace_to_shorthand else s for s in DFDIST["subspace"]]
+    
+    return DFDIST, map_subspace_to_shorthand
+
 def targeted_pca_MULT_2_plot_single_load(animal, date, run):
     """
     Load results for a single (animal, date) after the initial run -- i.e. the dfdist.
@@ -783,17 +806,18 @@ def targeted_pca_MULT_2_plot_single_load(animal, date, run):
         # e.g., for shape vs. superv, I don't include this, as the other params do weed out SP.
         DFDIST["task_kind_12"] = "prims_on_grid|prims_on_grid"
 
-    # Sometimes a global subspace is called something like "('epoch', 'gridloc', 'DIFF_gridloc', 'chunk_rank', 'shape', 'rank_conj')|none|none"
-    # Here, check if there is only one subspace with "(" and ")" in the name. If so, then assume this is "global", and rename
-    # it as "global". Note that the old name is saved in DFDIST["subspace_orig"]
-    subspaces = DFDIST["subspace"].unique().tolist()
-    subspaces_potentially_global = [(s.find("(")>=0) and (s.find(")")>=0) for s in subspaces]
-    if sum(subspaces_potentially_global)==1:
-        # Then assume this is the global one
-        ind = [i for i, x in enumerate(subspaces_potentially_global) if x==True][0]
-        map_subspace_to_shorthand = {subspaces[ind]:"global"}
-        DFDIST["subspace_orig"] = DFDIST["subspace"]
-        DFDIST["subspace"] = [map_subspace_to_shorthand[s] if s in map_subspace_to_shorthand else s for s in DFDIST["subspace"]]
+    DFDIST, map_subspace_to_shorthand = targeted_pca_MULT_2_postprocess(DFDIST)
+    # # Sometimes a global subspace is called something like "('epoch', 'gridloc', 'DIFF_gridloc', 'chunk_rank', 'shape', 'rank_conj')|none|none"
+    # # Here, check if there is only one subspace with "(" and ")" in the name. If so, then assume this is "global", and rename
+    # # it as "global". Note that the old name is saved in DFDIST["subspace_orig"]
+    # subspaces = DFDIST["subspace"].unique().tolist()
+    # subspaces_potentially_global = [(s.find("(")>=0) and (s.find(")")>=0) for s in subspaces]
+    # if sum(subspaces_potentially_global)==1:
+    #     # Then assume this is the global one
+    #     ind = [i for i, x in enumerate(subspaces_potentially_global) if x==True][0]
+    #     map_subspace_to_shorthand = {subspaces[ind]:"global"}
+    #     DFDIST["subspace_orig"] = DFDIST["subspace"]
+    #     DFDIST["subspace"] = [map_subspace_to_shorthand[s] if s in map_subspace_to_shorthand else s for s in DFDIST["subspace"]]
 
     return DFDIST, map_question_to_euclideanvars, map_question_to_varsame
 

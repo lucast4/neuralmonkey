@@ -137,6 +137,48 @@ def preprocess_dfallpa(DFallpa, subspace_projection, tbin_slide, tbin_dur, saved
 
     return LIST_DIMS
     
+def preprocess_pa(PA, grp_vars_prune_enough_trials, prune_min_n_trials, savedir):
+    """
+    Preprocess PA before doing analysis, for trial-level data
+    RETURNS:
+    - Returns a copy of PA
+    """
+    from pythonlib.tools.pandastools import grouping_print_n_samples
+    
+    PA = PA.copy()
+    
+    # Prune n datapts -- each level of flat grp vars
+    PA = PA.slice_extract_with_levels_of_var_good_prune(grp_vars_prune_enough_trials, prune_min_n_trials)
+    
+    if PA is None:
+        print("Pruned all data!!")
+        return None
+    
+    # Save (print) useful summaries of the syntaxes for this day
+    dflab = PA.Xlabels["trials"]
+    path = f"{savedir}/counts-final.txt"
+    grouping_print_n_samples(dflab, grp_vars_prune_enough_trials, savepath=path)
+
+    savepath = f"{savedir}/syntax_counts-1.txt"
+    grouping_print_n_samples(dflab, ["epoch", "FEAT_num_strokes_beh", "syntax_concrete", "behseq_shapes"], savepath=savepath)
+
+    savepath = f"{savedir}/syntax_counts-2.txt"
+    grouping_print_n_samples(dflab, ["epoch", "FEAT_num_strokes_beh", "syntax_concrete", "behseq_shapes", "behseq_locs_clust"], savepath=savepath)
+
+    savepath = f"{savedir}/syntax_counts-3.txt"
+    grouping_print_n_samples(dflab, ["epoch", "FEAT_num_strokes_beh", "syntax_concrete", "syntax_slot_0", 
+                                    "syntax_slot_1", "syntax_slot_2"], savepath=savepath)
+
+    savepath = f"{savedir}/syntax_counts-5.txt"
+    grouping_print_n_samples(dflab, ["epoch", "FEAT_num_strokes_beh", "syntax_slot_0", "syntax_concrete"], savepath=savepath)
+
+    savepath = f"{savedir}/syntax_counts-6.txt"
+    grouping_print_n_samples(dflab, ["epoch", "FEAT_num_strokes_beh", "syntax_slot_1", "syntax_concrete"], savepath=savepath)
+
+    savepath = f"{savedir}/syntax_counts-7.txt"
+    grouping_print_n_samples(dflab, ["epoch", "FEAT_num_strokes_beh", "syntax_slot_2", "syntax_concrete"], savepath=savepath)
+    
+    return PA
 
 def state_space_targeted_pca_do_projection(DFallpa, variables, variables_is_cat, list_subspaces, SAVEDIR,
                                            tbin_dur = 0.2, tbin_slide = 0.1):
@@ -299,119 +341,6 @@ def state_space_targeted_pca_scalar_single_one_axis_per_var(PA, twind_scal, vari
         
     return dict_subspace_pa, dict_subspace_axes_orig, dict_subspace_axes_normed, dfcoeff, PA
 
-
-# def state_space_targeted_pca_scalar_single_one_var_mult_axes(PA, twind_scal, variables, variables_is_cat, 
-#                                                              var_subspace, npcs_keep, 
-#                                                              LIST_VAR_VAROTHERS, LIST_DIMS, SAVEDIR, 
-#                                                              just_extract_paredu=False,
-#                                                              savedir_pca_subspaces=None, 
-#                                                              tbin_dur = 0.2, tbin_slide = 0.1,
-#                                                              inds_trials_pa_train=None, inds_trials_pa_test=None,
-#                                                              skip_dim_redu=False):
-#     """
-#     [GOOD], do targeted PCA for a single PA, along with state space plots.
-#     PARAMS:
-#     - variables: list of variables to regress out
-#     - variables_is_cat: list of bools, whether each variable is categorical. Note: if False, then will be treated as continuous variable
-#     list_subspaces: list of tuples, each tuple is a subspace to project onto. usually tuples are of length 2, holding strings 
-#     referring to the variable names.
-#     - LIST_VAR_VAROTHERS, LIST_DIMS, SAVEDIR, for plotting state space.
-#     """
-#     # from neuralmonkey.scripts.analy_euclidian_chars_sp import params_subspace_projection
-#     # from pythonlib.tools.pandastools import append_col_with_grp_index, grouping_plot_n_samples_heatmap_var_vs_grpvar
-#     # from neuralmonkey.analyses.state_space_good import _trajgood_plot_colorby_scalar_BASE_GOOD
-#     # from pythonlib.tools.plottools import share_axes_row_or_col_of_subplots
-#     # from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_scalar_2dgrid_bregion
-#     # from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_WRAPPER, trajgood_plot_colorby_splotby_scalar_WRAPPER
-#     from neuralmonkey.analyses.state_space_good import dimredgood_subspace_variance_accounted_for
-
-#     # tbin_dur = 0.2
-#     # tbin_slide = 0.1
-#     npcs_keep_force = 50
-#     normalization = "orthonormal"
-#     PLOT_COEFF_HEATMAP = SAVEDIR is not None
-    
-#     ### Convert to scalat
-#     if skip_dim_redu:
-#         # Assume you inputed it
-#         PAscal = PA.copy()
-#         assert PAscal.X.shape[2]==1
-#     else:
-        
-#         if False:
-#             # Get scalars
-#             PA = PA.slice_by_dim_values_wrapper("times", twind_scal).agg_wrapper("times")
-#         else:
-#             # Expand channels to (chans X time bins)
-#             if False: # old
-#                 pca_reduce = True
-#                 _, PAscal, _, _, _= PA.dataextract_state_space_decode_flex(twind_scal, tbin_dur, tbin_slide, "trials_x_chanstimes",
-#                                                                     pca_reduce=pca_reduce, npcs_keep_force=npcs_keep_force)
-#             else:
-#                 # Identical, and is cleaner code
-#                 savedir_pca = f"{SAVEDIR}/pca"
-#                 os.makedirs(savedir_pca, exist_ok=True)
-#                 _, PAscal = PA.dataextract_dimred_wrapper("scal", "pca", savedir_pca, twind_scal, tbin_dur, tbin_slide,
-#                                             npcs_keep_force)            
-
-#     ### Compute regression -- get coefficients
-#     savedir_coeff_heatmap = f"{SAVEDIR}"
-#     pa_subspace, subspace_axes_orig, subspace_axes_normed, dfcoeff, PAscalTest = PAscal.dataextract_subspace_targeted_pca_one_var_mult_axes(
-#                                                 variables, variables_is_cat, var_subspace, npcs_keep, 
-#                                                 demean=True, 
-#                                                 normalization=normalization, plot_orthonormalization=False, 
-#                                                 PLOT_COEFF_HEATMAP=PLOT_COEFF_HEATMAP, PRINT=False,
-#                                                 savedir_coeff_heatmap=savedir_coeff_heatmap,
-#                                                 savedir_pca_subspaces=savedir_pca_subspaces,
-#                                                 inds_trials_pa_train=inds_trials_pa_train, inds_trials_pa_test=inds_trials_pa_test)
-
-#     # Skip plots, just get data
-#     if just_extract_paredu:
-#         assert False
-#         return dict_subspace_pa, dict_subspace_axes_orig, dict_subspace_axes_normed, dfcoeff, PA
-    
-#     ### Compute subspace angles
-#     if False: # Might work, need to check that it works.
-#         for subspace in list_subspaces:
-
-#             savedir = f"/{SAVEDIR}/subspace={subspace}"
-#             os.makedirs(savedir, exist_ok=True)
-
-#             ### Get VAF between each axis of subspace
-#             # - first, get meaned data.
-#             # data_trials = x.T # (chans, trials)
-#             subspace_axes = dict_subspace_axes_orig[subspace]
-#             assert len(subspace)==subspace_axes.shape[1]
-#             min_n_trials_in_lev = 3
-#             pa_mean = PA.slice_and_agg_wrapper("trials", variables, min_n_trials_in_lev=min_n_trials_in_lev)
-#             data_mean = pa_mean.X.squeeze() # (nchans, nconditions)
-
-#             naxes = subspace_axes.shape[1]
-#             for i in range(naxes):
-#                 for j in range(naxes):
-#                     if j>i:
-#                         basis_vectors_1 = subspace_axes[:,i][:, None]
-#                         basis_vectors_2 = subspace_axes[:,j][:, None]
-#                         out = dimredgood_subspace_variance_accounted_for(data_mean, basis_vectors_1, basis_vectors_2)
-#                         from pythonlib.tools.expttools import writeDictToTxtFlattened
-#                         writeDictToTxtFlattened(out, f"{savedir}/VAF-subspace={subspace}.txt")
-        
-#     ### Plot all subspaces
-#     if SAVEDIR is not None:
-#         savedir = f"/{SAVEDIR}/subspace={var_subspace}"
-#         os.makedirs(savedir, exist_ok=True)
-
-#         if len(pa_subspace.X)>0:
-#             ### PLOT -- plot state space
-#             state_space_targeted_pca_scalar_single_plot_(pa_subspace, LIST_VAR_VAROTHERS, LIST_DIMS, savedir)
-#         else:
-#             fig, ax = plt.subplots()
-#             ax.set_title("pa_subspace.X is empty!!")
-#             savefig(fig, f"{savedir}/no_data.pdf")
-        
-#     return pa_subspace, subspace_axes_orig, subspace_axes_normed, dfcoeff, PAscalTest
-
-
 def state_space_targeted_pca_scalar_single_one_var_mult_axes(PA, twind_scal, variables_cont, variables_cat, 
                                                              var_subspace, npcs_keep, 
                                                              LIST_VAR_VAROTHERS, LIST_DIMS, SAVEDIR, 
@@ -420,7 +349,8 @@ def state_space_targeted_pca_scalar_single_one_var_mult_axes(PA, twind_scal, var
                                                              tbin_dur = 0.2, tbin_slide = 0.1,
                                                              inds_trials_pa_train=None, inds_trials_pa_test=None,
                                                              skip_dim_redu=False,
-                                                             do_vars_remove=False, vars_remove=None):
+                                                             do_vars_remove=False, vars_remove=None,
+                                                             npcs_keep_force=50):
     """
     [GOOD], do targeted PCA for a single PA, along with state space plots.
     PARAMS:
@@ -444,7 +374,7 @@ def state_space_targeted_pca_scalar_single_one_var_mult_axes(PA, twind_scal, var
 
     # tbin_dur = 0.2
     # tbin_slide = 0.1
-    npcs_keep_force = 50
+    # npcs_keep_force = 50
     normalization = "orthonormal"
     PLOT_COEFF_HEATMAP = SAVEDIR is not None
     
@@ -497,8 +427,7 @@ def state_space_targeted_pca_scalar_single_one_var_mult_axes(PA, twind_scal, var
 
     # Skip plots, just get data
     if just_extract_paredu:
-        assert False, "not sure why I put this assertion here"
-        return dict_subspace_pa, dict_subspace_axes_orig, dict_subspace_axes_normed, dfcoeff, PA
+        return pa_subspace, subspace_axes_orig, subspace_axes_normed, dfcoeff, PAscalTest
     
     ### Compute subspace angles
     if False: # Might work, need to check that it works.
@@ -580,7 +509,165 @@ def state_space_targeted_pca_scalar_single_plot_(pa_subspace, LIST_VAR_VAROTHERS
                                                             vars_subplot=vars_others, list_dims=LIST_DIMS,
                                                             overlay_mean_orig=True)
             plt.close("all")
+
+def targeted_pca_combined_v2_good(DFallpa, SAVEDIR_ANALYSIS, LIST_VAR_VAROTHERS_SS, twind_scal_force=None,
+                                  DEBUG=False): 
+    """
+    [GOOD wrapper] Pipeline to do this:
+    - project to targeted PCA
+    - Make state space (scalar) plots
+    - Good computation of angles and effects, using euclidian distnace and averaged vectors, not regression.
+    PARAMS:
+    - var_effect, MUST be ordinal
+    """
+    from neuralmonkey.analyses.euclidian_distance import timevarying_compute_fast_to_scalar
+
+    if DEBUG:
+        only_bregions = ["M1", "vlPFC"]
+        nsplits_ord_regr = 2
+        LIST_DIMS = [(0,1)]
+        # plot_regr = False
+    else:
+        only_bregions = None
+        nsplits_ord_regr = 10
+        LIST_DIMS = [(0,1), (2,3)]
+        # plot_regr = False
+
+    min_levs_per_levother = 2
+    prune_levs_min_n_trials = 3
+    npcs_keep_force = 60
+
+    # TODO: Determine this for each expt (based on whether skips any shape, and whether varies in num strokes.)
+    LIST_VAR_VAROTHERS_REGR = [
+        ("syntax_slot_0", ["seqc_0_loc", "seqc_0_shape", "syntax_slot_1", "epoch", "FEAT_num_strokes_beh"]),
+        ("syntax_slot_1", ["seqc_0_loc", "seqc_0_shape", "syntax_slot_0", "epoch", "FEAT_num_strokes_beh"]),
+        # ("FEAT_num_strokes_beh", ["epoch", "seqc_0_loc", "seqc_0_shape"]),
+    ]
+
+    for _, row in DFallpa.iterrows():
+        PA = row["pa"].copy()
+        bregion = row["bregion"]
+        event = row["event"]
         
+        if (only_bregions is not None) and (bregion not in only_bregions):
+            continue
+
+        SAVEDIR = f"{SAVEDIR_ANALYSIS}/{event}-{bregion}"
+        os.makedirs(SAVEDIR, exist_ok=True)
+
+        if twind_scal_force is None:
+            twind_scal = map_event_to_twind[event]
+        else:
+            twind_scal = twind_scal_force
+
+        ### General preprocessing
+        grp_vars_prune_enough_trials = ["seqc_0_loc", "seqc_0_shape", "syntax_slot_0", "syntax_slot_1", "syntax_slot_2", 
+                                        "epoch", "FEAT_num_strokes_beh", "task_kind"]
+        savedir = f"{SAVEDIR}/preprocess"
+        os.makedirs(savedir, exist_ok=True)
+        PA = preprocess_pa(PA, grp_vars_prune_enough_trials, prune_levs_min_n_trials, savedir)
+
+        ### Dim reductions, AND scalar state space plots
+        variables_cont = []
+        variables_cat = ["epoch", "FEAT_num_strokes_beh", "seqc_0_loc", "seqc_0_shape", "syntax_slot_0", "syntax_slot_1", "syntax_slot_2"]
+        # var_subspace = "syntax_slot_0"
+        var_subspace = variables_cat
+        # variables_cat = ["epoch", "FEAT_num_strokes_beh", "seqc_0_loc", "seqc_0_shape"]
+        # var_subspace = "seqc_0_loc"
+        npcs_keep = 6
+        tbin_dur = 0.2
+        tbin_slide = 0.1
+        pa_subspace, _, _, _, _ = state_space_targeted_pca_scalar_single_one_var_mult_axes(
+                                PA, twind_scal, variables_cont, variables_cat, 
+                                var_subspace, npcs_keep, 
+                                LIST_VAR_VAROTHERS_SS, LIST_DIMS, SAVEDIR, 
+                                savedir_pca_subspaces=SAVEDIR, 
+                                tbin_dur = tbin_dur, tbin_slide = tbin_slide,
+                                npcs_keep_force=npcs_keep_force)
+        ### Save neural data
+        import pickle
+        path = f"{SAVEDIR}/pa_subspace.pkl"
+        with open(path, "wb") as f:
+            pickle.dump(pa_subspace, f)
+
+        ### Ordinal regression (including generalization)
+        savedir = f"{SAVEDIR}/ordinal_regression"
+        os.makedirs(savedir, exist_ok=True)
+        from neuralmonkey.scripts.analy_syntax_good_eucl_trial import ordinalregress_1_compute
+        from neuralmonkey.scripts.analy_syntax_good_eucl_trial import ordinalregress_2_regr_coeff_pairs
+        # Extract
+        DFCROSS, DFWITHIN = ordinalregress_1_compute(pa_subspace, LIST_VAR_VAROTHERS_REGR, savedir, nsplits=nsplits_ord_regr,
+                                apply_kernel = False,  plot_indiv=False, plot_summary=True)
+        for _df in [DFCROSS, DFWITHIN]:
+            _df["bregion"] = bregion
+            _df["event"] = event
+            _df["var_subspace"] = [var_subspace for _ in range(len(_df))]
+
+        ### Save
+        pd.to_pickle(DFCROSS, f"{SAVEDIR}/DFCROSS.pkl")
+        pd.to_pickle(DFWITHIN, f"{SAVEDIR}/DFWITHIN.pkl")
+
+        # Compare angles of regression coefficients across all conditions.
+        ordinalregress_2_regr_coeff_pairs(DFWITHIN, savedir=savedir)
+
+        ### EUCLIDEAN + ANGLES
+        list_dfangle = []
+        list_dfdist = []
+        for i_var, (var_effect, vars_others) in enumerate(LIST_VAR_VAROTHERS_REGR):
+            # var_effect = LIST_VAR_VAROTHERS_REGR[1][0]
+            # vars_others = LIST_VAR_VAROTHERS_REGR[1][1]
+
+            ### (1) Prune data and vars_others
+            # from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper
+            # extract_with_levels_of_conjunction_vars_helper(dflab, var=var_effect, vars_others=vars_others, 
+            #                                        n_min_per_lev=prune_levs_min_n_trials, lenient_allow_data_if_has_n_levels=3)        
+            pa_subspace_this, vars_others = pa_subspace.slice_prune_dflab_and_vars_others(var_effect, vars_others, 
+                                                        prune_levs_min_n_trials, min_levs_per_levother)
+
+
+            ### (2) Compute euclidian distances
+            from neuralmonkey.analyses.euclidian_distance import timevarying_compute_fast_to_scalar
+            savedir = f"{SAVEDIR}/euclid-{i_var}-var={var_effect}-varothers={vars_others}"
+            os.makedirs(savedir, exist_ok=True)
+            dfdist, _ = timevarying_compute_fast_to_scalar(pa_subspace_this, [var_effect] + vars_others, 
+                                                            plot_conjunctions_savedir=savedir,
+                                                            prune_levs_min_n_trials=2,
+                                                            get_only_one_direction=False)
+
+            ### (3) Get angles between all conditions
+            from neuralmonkey.analyses.euclidian_distance import compute_angle_between_conditions
+            dfangle = compute_angle_between_conditions(pa_subspace_this, dfdist, var_effect, vars_others)
+            # Merge with dfdist
+            assert np.all(dfangle["labels_1"] == dfdist["labels_1"])
+            assert np.all(dfangle["labels_2"] == dfdist["labels_2"])
+            dfdist["theta"] = dfangle["theta"]
+            dfdist["norm"] = dfangle["norm"]
+            # dfdist["vector"] = dfangle["vector"]  
+
+            from neuralmonkey.analyses.euclidian_distance import dfdist_variables_generate_constrast_strings, dfdist_variables_generate_var_same
+            # var_same = dfdist_variables_generate_var_same([var_effect] + vars_others)
+            # var_same_val = dfdist_variables_generate_constrast_strings([var_effect] + vars_others, contrasts_diff=[var_effect], contrasts_either=[])[0]
+            from neuralmonkey.analyses.euclidian_distance import compute_average_angle_between_pairs_of_levels_of_vareffect
+            dfanglemean = compute_average_angle_between_pairs_of_levels_of_vareffect(dfdist, var_effect)
+
+            ### COLLECT
+            for _df in [dfdist, dfanglemean]:
+                _df["bregion"] = bregion
+                _df["event"] = event
+                _df["var_subspace"] = [var_subspace for _ in range(len(_df))]
+                _df["var_idx"] = i_var
+                _df["var_effect"] = var_effect
+                _df["vars_others"] = [tuple(vars_others) for _ in range(len(_df))]
+            list_dfdist.append(dfdist)
+            list_dfangle.append(dfanglemean)    
+
+        DFANGLE = pd.concat(list_dfangle).reset_index(drop=True)
+        DFDIST = pd.concat(list_dfdist).reset_index(drop=True)
+        
+        # save
+        DFDIST.to_pickle(f"{SAVEDIR}/DFDIST.pkl")
+        DFANGLE.to_pickle(f"{SAVEDIR}/DFANGLE.pkl")
+
 def targeted_pca_euclidian_dist_angles(DFallpa, SAVEDIR_ANALYSIS, 
                                        variables, variables_is_cat, list_subspaces, LIST_VAR_VAROTHERS_SS, # For dim reduction and plotting state space
                                        subspace_tuple, LIST_VAR_VAROTHERS_ANGLES,
@@ -624,10 +711,12 @@ def targeted_pca_euclidian_dist_angles(DFallpa, SAVEDIR_ANALYSIS,
         #     # Then take subset of data for computing the state space 
         just_extract_paredu = False
         LIST_DIMS = [(0,1)]
-        dict_subspace_pa, _, _, _, _ = state_space_targeted_pca_scalar_single(
+        # dict_subspace_pa, _, _, _, _ = state_space_targeted_pca_scalar_single(
+        #                         PA, twind_scal, variables, variables_is_cat, list_subspaces, 
+        #                         LIST_VAR_VAROTHERS_SS, LIST_DIMS, SAVEDIR, just_extract_paredu=just_extract_paredu)
+        dict_subspace_pa, _, _, _, _ = state_space_targeted_pca_scalar_single_one_axis_per_var(
                                 PA, twind_scal, variables, variables_is_cat, list_subspaces, 
                                 LIST_VAR_VAROTHERS_SS, LIST_DIMS, SAVEDIR, just_extract_paredu=just_extract_paredu)
-
 
         ### Esing euclidian distance to score axes -- angles, etc
         # subspace = ('syntax_slot_0', 'syntax_slot_1')
@@ -644,6 +733,8 @@ def targeted_pca_euclidian_dist_angles(DFallpa, SAVEDIR_ANALYSIS,
             pa, vars_others = PAredu.slice_prune_dflab_and_vars_others(var_effect, vars_others, 
                                                         prune_levs_min_n_trials, min_levs_per_levother)
 
+
+
             ### (2) Compute euclidian distances
             #  make a conjunctive variable.
             pa.Xlabels["trials"] = append_col_with_grp_index(pa.Xlabels["trials"], vars_others, "_var_other")
@@ -655,87 +746,96 @@ def targeted_pca_euclidian_dist_angles(DFallpa, SAVEDIR_ANALYSIS,
                                                             get_only_one_direction=False)
 
             ### (3) Get angles between all conditions
-            dflab = pa.Xlabels["trials"]
-            res = []
-            for _, row in dfdist.iterrows():
-                if row["labels_1"] == row["labels_2"]:
-                    theta = 0.
-                    norm = 0.
-                else:
-                    inds1 = dflab[(dflab[var_effect] == row["labels_1"][0]) & (dflab["_var_other"] == row["labels_1"][1])].index.tolist()
-                    inds2 = dflab[(dflab[var_effect] == row["labels_2"][0]) & (dflab["_var_other"] == row["labels_2"][1])].index.tolist()
-
-                    x1 = pa.X[:, inds1].squeeze()
-                    x2 = pa.X[:, inds2].squeeze()
-
-                    x1_mean = np.mean(x1, axis=1)            
-                    x2_mean = np.mean(x2, axis=1)            
-
-                    vec = x2_mean - x1_mean
-                    theta, norm = cart_to_polar(vec[0], vec[1])
-
-                # Append
-                res.append({
-                    "labels_1":row["labels_1"],
-                    "labels_2":row["labels_2"],
-                    "theta":theta,
-                    "norm":norm,
-                    # "vector":vec,
-                })
-            # Merge this with dfdist
-            dfangle = pd.DataFrame(res)
+            from neuralmonkey.analyses.euclidian_distance import compute_angle_between_conditions
+            dfangle = compute_angle_between_conditions(pa, dfdist, var_effect, vars_others)
             assert np.all(dfangle["labels_1"] == dfdist["labels_1"])
             assert np.all(dfangle["labels_2"] == dfdist["labels_2"])
             dfdist["theta"] = dfangle["theta"]
             dfdist["norm"] = dfangle["norm"]
-            # dfdist["vector"] = dfangle["vector"]
+
+            # dflab = pa.Xlabels["trials"]
+            # res = []
+            # for _, row in dfdist.iterrows():
+            #     if row["labels_1"] == row["labels_2"]:
+            #         theta = 0.
+            #         norm = 0.
+            #     else:
+            #         inds1 = dflab[(dflab[var_effect] == row["labels_1"][0]) & (dflab["_var_other"] == row["labels_1"][1])].index.tolist()
+            #         inds2 = dflab[(dflab[var_effect] == row["labels_2"][0]) & (dflab["_var_other"] == row["labels_2"][1])].index.tolist()
+
+            #         x1 = pa.X[:, inds1].squeeze()
+            #         x2 = pa.X[:, inds2].squeeze()
+
+            #         x1_mean = np.mean(x1, axis=1)            
+            #         x2_mean = np.mean(x2, axis=1)            
+
+            #         vec = x2_mean - x1_mean
+            #         theta, norm = cart_to_polar(vec[0], vec[1])
+
+            #     # Append
+            #     res.append({
+            #         "labels_1":row["labels_1"],
+            #         "labels_2":row["labels_2"],
+            #         "theta":theta,
+            #         "norm":norm,
+            #         # "vector":vec,
+            #     })
+            # # Merge this with dfdist
+            # dfangle = pd.DataFrame(res)
+            # assert np.all(dfangle["labels_1"] == dfdist["labels_1"])
+            # assert np.all(dfangle["labels_2"] == dfdist["labels_2"])
+            # dfdist["theta"] = dfangle["theta"]
+            # dfdist["norm"] = dfangle["norm"]
+            # # dfdist["vector"] = dfangle["vector"]
 
             ### (4) For each var_other, get vector average
-            # # first, only consider "same var other" (i/e. get angles within a var_iother)
-            dfdist_same = dfdist[dfdist["_var_other_same"]].reset_index(drop=True)
-            grpdict = grouping_append_and_return_inner_items_good(dfdist_same, ["_var_other_1"])
-            res = []
-            for grp, inds in grpdict.items():
-                print(grp, inds)
+            from neuralmonkey.analyses.euclidian_distance import compute_average_angle_between_pairs_of_levels_of_vareffect
+            dfangle = compute_average_angle_between_pairs_of_levels_of_vareffect(dfdist, var_effect)
 
-                # Collect all the angles between adjacent values of var_effect
-                dftmp = dfdist_same.iloc[inds]
-                levs_exist = dftmp[f"{var_effect}_1"].unique()
+            # # # first, only consider "same var other" (i/e. get angles within a var_iother)
+            # dfdist_same = dfdist[dfdist["_var_other_same"]].reset_index(drop=True)
+            # grpdict = grouping_append_and_return_inner_items_good(dfdist_same, ["_var_other_1"])
+            # res = []
+            # for grp, inds in grpdict.items():
+            #     print(grp, inds)
 
-                if len(levs_exist)>=min_levs_per_levother:
-                    print("levs_exist:", levs_exist)
-                    assert len(levs_exist)>1
+            #     # Collect all the angles between adjacent values of var_effect
+            #     dftmp = dfdist_same.iloc[inds]
+            #     levs_exist = dftmp[f"{var_effect}_1"].unique()
 
-                    # Get adjacent values of var_effect
-                    tmp = []
-                    for lev1, lev2 in zip(levs_exist[:-1], levs_exist[1:]):
-                        this = dftmp[(dftmp[f"{var_effect}_1"] == lev1) & (dftmp[f"{var_effect}_2"] == lev2)]
-                        assert len(this)==1
-                        tmp.append(this)
-                    dftmp = pd.concat(tmp)
+            #     if len(levs_exist)>=min_levs_per_levother:
+            #         print("levs_exist:", levs_exist)
+            #         assert len(levs_exist)>1
+
+            #         # Get adjacent values of var_effect
+            #         tmp = []
+            #         for lev1, lev2 in zip(levs_exist[:-1], levs_exist[1:]):
+            #             this = dftmp[(dftmp[f"{var_effect}_1"] == lev1) & (dftmp[f"{var_effect}_2"] == lev2)]
+            #             assert len(this)==1
+            #             tmp.append(this)
+            #         dftmp = pd.concat(tmp)
                     
-                    # Compute average vector, different possible methods
-                    for var_vector_length in ["dist_norm", "dist_yue_diff"]:
-                        angles = dftmp["theta"].values
-                        weights = dftmp[var_vector_length].values
-                        vectors_arr = np.stack([w * get_vector_from_angle(a) for a, w in zip(angles, weights)])
+            #         # Compute average vector, different possible methods
+            #         for var_vector_length in ["dist_norm", "dist_yue_diff"]:
+            #             angles = dftmp["theta"].values
+            #             weights = dftmp[var_vector_length].values
+            #             vectors_arr = np.stack([w * get_vector_from_angle(a) for a, w in zip(angles, weights)])
                         
-                        for length_method in ["sum", "dot"]:
-                            # More general
-                            angle_mean, norm_mean = average_vectors_wrapper(vectors_arr, length_method=length_method)
+            #             for length_method in ["sum", "dot"]:
+            #                 # More general
+            #                 angle_mean, norm_mean = average_vectors_wrapper(vectors_arr, length_method=length_method)
 
-                            res.append({
-                                "var_other":grp[0],
-                                "levs_exist":levs_exist,
-                                "angles":angles,
-                                "weights":weights,
-                                "angle_mean":angle_mean,
-                                "norm_mean":norm_mean,
-                                "var_vector_length":var_vector_length,
-                                "length_method":length_method
-                            })
-                            
-            dfangle = pd.DataFrame(res)
+            #                 res.append({
+            #                     "var_other":grp[0],
+            #                     "levs_exist":levs_exist,
+            #                     "angles":angles,
+            #                     "weights":weights,
+            #                     "angle_mean":angle_mean,
+            #                     "norm_mean":norm_mean,
+            #                     "var_vector_length":var_vector_length,
+            #                     "length_method":length_method
+            #                 })
+            # dfangle = pd.DataFrame(res)
 
             ### COLLECT
             dfangle["var_idx"] = i_var
@@ -754,9 +854,112 @@ def targeted_pca_euclidian_dist_angles(DFallpa, SAVEDIR_ANALYSIS,
     
     return DFANGLE
 
+def targeted_pca_euclidian_dist_angles_compute_dfdot(DFANGLE_ALL, var_vector_length, length_method, min_levs_exist, 
+                                                     SAVEDIR=None):
+    """
+    A metric to summarize extent to which angle encoding var_effect is aligned across vars_others. 
+
+    Get consistency of vector across vars_others, where consistency is using pairwise dot product and where the 
+    vector encodes the average efect of <var_effect>, where the "average" is defined by (var_vector_length, length_method). 
+    
+    # var_vector_length = "dist_norm"
+    var_vector_length = "dist_yue_diff"
+    # length_method = "dot"
+    length_method = "sum"
+    """
+    from pythonlib.tools.snstools import rotateLabel
+    from pythonlib.tools.pandastools import plot_subplots_heatmap
+
+    if "date" in DFANGLE_ALL:
+        assert len(DFANGLE_ALL["date"].unique())==1, "this is meant for a single (animal, date)"
+    
+    # Prune to what will plot here
+    DFANGLE_ALL["levs_exist_n"] = [len(levs_exist) for levs_exist in DFANGLE_ALL["levs_exist"]]
+
+    DFANGLE = DFANGLE_ALL[
+        (DFANGLE_ALL["var_vector_length"] == var_vector_length) & 
+        (DFANGLE_ALL["length_method"] == length_method) &
+        (DFANGLE_ALL["levs_exist_n"] >= min_levs_exist)].reset_index(drop=True)
+
+    if len(DFANGLE)==0:
+        # DFANGLE["levs_exist_n"].hist()
+        return None
+    
+    assert len(DFANGLE)>0
+
+    ### (4) Summarize consistency of angle across levels of ovar (dot product of vectors)
+    from pythonlib.tools.vectools import get_vector_from_angle
+
+    # Compute dot project between all (othervars), including both within and across var_effect
+    # Get dot product between all pairs of vectors
+    assert not np.any(DFANGLE["norm_mean"].isna())
+    DFANGLE["vector_mean"] = [l * get_vector_from_angle(a) for a, l in zip(DFANGLE["angle_mean"], DFANGLE["norm_mean"])]
+    res_dot = []
+    grpdict = grouping_append_and_return_inner_items_good(DFANGLE, ["bregion", "event", "var_effect", "var_other"])
+    for i, (grp1, inds1) in enumerate(grpdict.items()):
+        for j, (grp2, inds2) in enumerate(grpdict.items()):
+            if grp1[0]==grp2[0]: # same bregion
+                bregion =grp1[0]
+                if grp1[1]==grp2[1]: # same event
+                    event = grp1[1]
+                    if j>i:
+                        # The vector average vector (x,y) encoding <var_effect> for this <var_other>
+                        tmp1 = DFANGLE.iloc[inds1]
+                        tmp2 = DFANGLE.iloc[inds2]
+                        assert len(tmp1)==1
+                        assert len(tmp2)==1
+                        vec1 = tmp1["vector_mean"].values[0]
+                        vec2 = tmp2["vector_mean"].values[0]
+
+                        # Get dot product
+                        res_dot.append({
+                            # "dot_product_mean":np.mean(dot_products),
+                            "var_effect_1":grp1[2],
+                            "var_effect_2":grp2[2],
+                            "var_other_1":grp1[3],
+                            "var_other_2":grp2[3],
+                            "dot_product":np.dot(vec1, vec2),
+                            "bregion":bregion,
+                            "event":event,
+                            "var_vector_length":var_vector_length,
+                            "length_method":length_method,
+                            "min_levs_exist":min_levs_exist})
+    if len(res_dot)>0:
+        DF_DOT = pd.DataFrame(res_dot)
+        DF_DOT = append_col_with_grp_index(DF_DOT, ["var_effect_1", "var_effect_2"], "var_effect_12")
+
+        if SAVEDIR is not None:
+            DF_DOT.to_csv(f"{SAVEDIR}/DF_DOT.csv")
+
+            # Plots
+            fig = sns.catplot(data=DF_DOT, x="bregion", y="dot_product", hue="var_effect_12", jitter=True, alpha=0.25, aspect=1.5)
+            rotateLabel(fig)
+            for ax in fig.axes.flatten():
+                ax.axhline(0, color="k", alpha=0.5)
+            savefig(fig, f"{SAVEDIR}/dot_across_ovar-catplot-1.pdf")
+
+            fig = sns.catplot(data=DF_DOT, x="bregion", y="dot_product", hue="var_effect_12", kind="bar", aspect=1.5)
+            rotateLabel(fig)
+            for ax in fig.axes.flatten():
+                ax.axhline(0, color="k", alpha=0.5)
+            savefig(fig, f"{SAVEDIR}/dot_across_ovar-catplot-2.pdf")
+
+            ### 
+            for var_effect_12 in DF_DOT["var_effect_12"].unique():
+                dfdot = DF_DOT[DF_DOT["var_effect_12"] == var_effect_12].reset_index(drop=True)
+                fig, _ = plot_subplots_heatmap(dfdot, "var_other_1", "var_other_2", "dot_product", "bregion", True, 
+                                            share_zlim=True, annotate_heatmap=False)
+                savefig(fig, f"{SAVEDIR}/dot_across_ovar-heatmap-vareffect12={var_effect_12}.pdf")
+    else:
+        DF_DOT = None
+        
+    plt.close("all")
+
+    return DF_DOT
+
 def targeted_pca_euclidian_dist_angles_plots(DFANGLE_ALL, var_vector_length, length_method, min_levs_exist, SAVEDIR):
     """
-    Plot results from targeted_pca_euclidian_dist_angles
+    Plot results from targeted_pca_euclidian_dist_angles, for a single (animal, date)
     # var_vector_length = "dist_norm"
     var_vector_length = "dist_yue_diff"
     # length_method = "dot"
@@ -764,6 +967,9 @@ def targeted_pca_euclidian_dist_angles_plots(DFANGLE_ALL, var_vector_length, len
     """
     from pythonlib.tools.snstools import rotateLabel
 
+    if "date" in DFANGLE_ALL:
+        assert len(DFANGLE_ALL["date"].unique())==1, "this is meant for a single (animal, date)"
+    
     # Prune to what will plot here
     DFANGLE_ALL["levs_exist_n"] = [len(levs_exist) for levs_exist in DFANGLE_ALL["levs_exist"]]
 
@@ -914,6 +1120,93 @@ def targeted_pca_euclidian_dist_angles_plots(DFANGLE_ALL, var_vector_length, len
             savefig(fig, f"{SAVEDIR}/dot_across_ovar-heatmap-vareffect12={var_effect_12}.pdf")
 
     plt.close("all")
+
+def ordinalregress_1_compute(pa_subspace, LIST_VAR_VAROTHERS_REGR, SAVEDIR, nsplits=10,
+                             apply_kernel = False, plot_indiv=False, plot_summary=True):
+    """
+    Helper to do regression for multiple varialbes (one by one).
+    This is helper that does multiple (var, vars_others) and concatenates the results.
+
+    Also, does both within- and across- methods for train-test split.
+    """
+    from neuralmonkey.scripts.analy_syntax_good_eucl_state import kernel_ordinal_logistic_regression_wrapper
+
+    n_min_per_level = 3
+    list_do_grid_search = [True]
+
+    list_dfcross = []
+    list_dfwithin = []
+    for i_var, (yvar, vars_grp) in enumerate(LIST_VAR_VAROTHERS_REGR):
+
+        ### Prune the variables, based on what exists for this expt
+        pa_subspace_this, vars_grp = pa_subspace.slice_prune_dflab_and_vars_others(yvar, vars_grp, 
+                                            n_min_per_level, 2)
+
+        savedir = f"{SAVEDIR}/ordinal_regress-yvar={yvar}=varsgrp={vars_grp}"
+        os.makedirs(savedir, exist_ok=True)
+        dfcross, dfwithin = kernel_ordinal_logistic_regression_wrapper(pa_subspace_this, yvar, vars_grp, savedir, 
+                                                plot_test_data_projected=plot_indiv, nsplits=nsplits, PLOT=plot_summary, 
+                                                do_rezero=False, apply_kernel=apply_kernel, list_do_grid_search=list_do_grid_search,
+                                                n_min_per_level=n_min_per_level)
+
+        if dfcross is None:
+            assert dfwithin is None
+            continue
+            
+        for _df in [dfcross, dfwithin]:
+            _df["var_idx"] = i_var
+            _df["yvar"] = yvar
+            _df["var_effect"] = yvar
+            _df["vars_grp"] = [tuple(vars_grp) for _ in range(len(_df))]
+            _df["vars_others"] = [tuple(vars_grp) for _ in range(len(_df))]
+
+        list_dfcross.append(dfcross)
+        list_dfwithin.append(dfwithin)
+
+        # Also plot?
+        # if plot_summary:
+        #     kernel_ordinal_logistic_regression_wrapper_plot(dfcross, dfwithin, vars_grp, savedir)
+
+    DFCROSS = pd.concat(list_dfcross).reset_index(drop=True)
+    DFWITHIN = pd.concat(list_dfwithin).reset_index(drop=True)
+
+    if False: # This is now done within kernel_ordinal_logistic_regression_wrapper (becuase it can fail here)
+        ### Some postprocessing
+        # Compare the angles of the regression axes.
+        list_coeff = []
+        for _, row in DFWITHIN.iterrows():
+            coeff = row["res"]["coeff"]
+            list_coeff.append(coeff)
+        DFWITHIN["coeff"] = list_coeff
+
+        # This is important to match tuple legnths across yvar. otherwise downstream agg will fail.
+        from pythonlib.tools.pandastools import pad_tuple_values_to_same_length
+        for col in ["grp", "vars_grp"]:
+            pad_tuple_values_to_same_length(DFWITHIN, col, col)
+
+        if False:
+            # Older code, for plotting
+            coeff_mat = np.stack(DFWITHIN["coeff"])
+            labels_row = DFWITHIN["grp"].tolist()
+            labels_row = [tuple(x) for x in DFWITHIN.loc[:, ["yvar", "grp"]].values.tolist()]
+
+        # Agg across all splits (for within). Do this AFTER getting coefficients above
+        from pythonlib.tools.pandastools import aggregGeneral
+        def F(x):
+            X = np.stack(x)
+            return np.mean(X, axis=0)
+        aggdict = {
+            "coeff":[F],
+            "balanced_accuracy": ["mean"],
+            "balanced_accuracy_adjusted": ["mean"],
+            "accuracy": ["mean"],
+            "score_train": ["mean"],
+            "n_labels_train": ["mean"]
+        }
+        DFWITHIN = aggregGeneral(DFWITHIN, ["grp", "yvar", "vars_grp"], list(aggdict.keys()), aggmethod=aggdict)
+
+    return DFCROSS, DFWITHIN
+
 
 def state_space_plot_scalar_wrapper(DFallpa, SAVEDIR, LIST_VAR_VAROTHERS, LIST_DIMS):
     """

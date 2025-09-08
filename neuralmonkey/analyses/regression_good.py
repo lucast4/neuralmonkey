@@ -311,7 +311,7 @@ def ordinal_fit_and_score_train_test_splits(X, y_ordinal, max_nsplits=None, expe
 
 
 def kernel_ordinal_logistic_regression(X, y, rescale_std=True, PLOT=False, do_grid_search=True,
-                                       grid_n_splits=3):
+                                       grid_n_splits=3, apply_kernel=True):
     """
     Ordinal logistic regressino, with option (defualt) to use kernel transformation, which is
     useful if you have non-linear relationship between X and y. 
@@ -322,6 +322,7 @@ def kernel_ordinal_logistic_regression(X, y, rescale_std=True, PLOT=False, do_gr
     - X, (ntrials, ndims)
     - y, (ntrials), ordered labels, must be integers. They must be 0, 1, 2..., (ie no negative, no gaps)
     - rescale_std, if True, then z-scores. If False, then just demeans.
+    - apply_kernel, bool, whether to apply kernel to allow nonlinear mapping
 
     NOTE:
     - Given returned model, res["model"], can score any new data in same space as input X by running
@@ -341,7 +342,9 @@ def kernel_ordinal_logistic_regression(X, y, rescale_std=True, PLOT=False, do_gr
     import mord  # ordered logit
 
     assert all([isinstance(yy, (int, np.integer)) for yy in y])
-    assert np.all(np.diff(sorted(set(y)))==1)
+    if True:
+        # Yes, this must pass or else will fail
+        assert np.all(np.diff(sorted(set(y)))==1)
     # assert min(y)==0
     assert len(set(y))>1
 
@@ -360,11 +363,17 @@ def kernel_ordinal_logistic_regression(X, y, rescale_std=True, PLOT=False, do_gr
     n_components0 = max([x for x in [2, 4, 8, 16, 32, 64] if x<0.8*n_samples])
 
     ### Pipeline
-    steps = [
-        ('sc', StandardScaler(with_std=rescale_std)),
-        ('ker', Nystroem(kernel='rbf', gamma=gamma0, n_components=n_components0, random_state=None)),
-        ('ord', mord.LogisticIT(alpha=1.0))  # proportional odds (ordered logit)
-    ]
+    if apply_kernel:
+        steps = [
+            ('sc', StandardScaler(with_std=rescale_std)),
+            ('ker', Nystroem(kernel='rbf', gamma=gamma0, n_components=n_components0, random_state=None)),
+            ('ord', mord.LogisticIT(alpha=1.0))  # proportional odds (ordered logit)
+        ]
+    else:
+        steps = [
+            ('sc', StandardScaler(with_std=rescale_std)),
+            ('ord', mord.LogisticIT(alpha=1.0))  # proportional odds (ordered logit)
+        ]
     pipe = Pipeline(steps)
 
     if do_grid_search:
@@ -372,13 +381,18 @@ def kernel_ordinal_logistic_regression(X, y, rescale_std=True, PLOT=False, do_gr
         if False:
             print("Median heuristic gamma:", gamma0)
             print("Gamma grid:", gammas)
-
-        param_grid = {
-            # 'ker__gamma': [0.1, 0.3, 1.0, 3.0],
-            'ker__gamma': gammas,
-            'ker__n_components': ker__n_components,
-            'ord__alpha': [0.05, 0.2, 1.0, 5.0],
-        }
+        
+        if apply_kernel:
+            param_grid = {
+                # 'ker__gamma': [0.1, 0.3, 1.0, 3.0],
+                'ker__gamma': gammas,
+                'ker__n_components': ker__n_components,
+                'ord__alpha': [0.05, 0.2, 1.0, 5.0],
+            }
+        else:
+            param_grid = {
+                'ord__alpha': [0.05, 0.2, 1.0, 5.0],
+            }
         # print(param_grid)
 
         ### Do grid-search
@@ -411,6 +425,8 @@ def kernel_ordinal_logistic_regression(X, y, rescale_std=True, PLOT=False, do_gr
         "y_pred":y_pred,
         "s":s, # latent state
         "score":score,
+        "coeff":model[-1].coef_, # The coef_ attribute contains the weight vector for the features. It has a shape of (n_features,).
+        "theta":model[-1].theta_, # The theta_ attribute contains the thresholds for the class boundaries. For K classes, there will be K-1 thresholds.
     }
 
     if PLOT:

@@ -308,6 +308,178 @@ def timevarying_compute_fast_to_scalar(PA, label_vars=("seqc_0_shape", "seqc_0_l
     
     return dfdist, Cldist
 
+def compute_angle_between_conditions(PA, dfdist, var_effect, vars_grp):
+    """
+    Get angles between each pair of conditions, one for each row of dfdist. 
+    
+    Note that these rows should be individual levels of [var_effect] + vars_group, but that
+    is assumed to be true in this code.
+
+    PA is the dataset used to get dfdist.
+
+    See dfdist = timevarying_compute_fast_to_scalar(PA)
+
+    In all cases is the angle from labels_1 to labels_2
+
+    RETURNS:
+    - dfangle, should be same length as dfdist.
+    """
+    from pythonlib.tools.vectools import cart_to_polar
+    from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good
+
+    assert PA.X.shape[2]==1, "only coded for scalar"
+    assert PA.X.shape[0]==2, "assumes 2d space to get polar coordinates"
+
+    ### (3) Get angles between all conditions
+    dflab = PA.Xlabels["trials"]
+    dflab = append_col_with_grp_index(dflab, vars_grp, "_var_other", use_strings=False)
+
+    # Collect data for each row of dfdist
+    res = []
+    for _, row in dfdist.iterrows():
+        if row["labels_1"] == row["labels_2"]:
+            # By definition. 
+            theta = 0.
+            norm = 0.
+        else:
+            try:
+                inds1 = dflab[(dflab[var_effect] == row["labels_1"][0]) & (dflab["_var_other"] == row["labels_1"][1:])].index.tolist()
+                inds2 = dflab[(dflab[var_effect] == row["labels_2"][0]) & (dflab["_var_other"] == row["labels_2"][1:])].index.tolist()
+                assert len(inds1)>0
+                assert len(inds2)>0
+            except Exception as err:
+                print(dflab[var_effect])
+                print(dflab["_var_other"])
+                print(sum((dflab[var_effect] == row["labels_1"][0])))
+                print(sum((dflab["_var_other"] == row["labels_1"][1])))
+                print("---")
+                print(dflab["_var_other"].unique())
+                print(row["labels_1"][1:])
+                print("---")
+                raise err
+            
+            # Get the neural data
+            x1 = PA.X[:, inds1].squeeze()
+            x2 = PA.X[:, inds2].squeeze()
+
+            x1_mean = np.mean(x1, axis=1)            
+            x2_mean = np.mean(x2, axis=1)            
+
+            vec = x2_mean - x1_mean
+            assert len(vec)==2, "you need to input a 2d subspace"
+
+            theta, norm = cart_to_polar(vec[0], vec[1])
+            if np.isnan(theta):
+                print(x1_mean, x2_mean, vec, inds1, inds2)
+                assert False
+
+        # Append
+        res.append({
+            "labels_1":row["labels_1"],
+            "labels_2":row["labels_2"],
+            "theta":theta,
+            "norm":norm,
+            # "vector":vec,
+        })
+    dfangle = pd.DataFrame(res)
+
+    return dfangle
+
+def compute_average_angle_between_pairs_of_levels_of_vareffect(dfdist, var_effect, min_levs_per_levother = 2, PRINT=False):
+    """
+    Get sum of vectors connecting levels of <var_effect>, within each level of vars_others. E.g, you have two vectors 
+    connectings var_effect pairs (0,1) and (1,2) within some value of vars_others. Get the sum of those vectors (does two ways) 
+    and store as a single mean angle for this level of vars_others. 
+
+    THink of this as asking how aligned the vectors are.
+
+    DEtermines the ordering of levels of <var_effect> based on sorted().
+
+    Older notes:
+    E.g., within each level <var_other>, get average of (vector between var_effect==0 and var_effect==1) and
+    (vector between var_effect==1 and var_effect==2), if there are three levesl of var_effect: 0, 1, 2.
+
+    RETURNS:
+    - dfanglemean, one row for each level of vars_others. 
+    """
+    from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good
+    from pythonlib.tools.vectools import get_vector_from_angle, average_vectors_wrapper
+
+    assert len(dfdist["var_effect"].unique())==1
+    assert len(dfdist["vars_others"].unique())==1
+    dfdist_variables_append_vars_others(dfdist)
+
+    # First, concat the reverese version, beucase this assumes var_effect counts up from labels_1 to labels_2.
+    from math import pi
+    dfdist_copy = dfdist.copy()
+    dfdist_copy["theta"] = (dfdist_copy["theta"] + pi) % (2*pi)
+    dfdist_copy["labels_1"] = dfdist["labels_2"]
+    dfdist_copy["labels_2"] = dfdist["labels_1"]
+    dfdist = pd.concat([dfdist, dfdist_copy]).reset_index(drop=True)    
+    
+    assert "theta" in dfdist.columns, "first run compute_angle_between_conditions"
+    list_vars_others = sorted(set(dfdist["vars_others_1"].unique().tolist() + dfdist["vars_others_2"].unique().tolist()))
+
+    res = []
+    for var_other_grp in list_vars_others:
+
+        DFTMP = dfdist[(dfdist["vars_others_same"] == True) & (dfdist["vars_others_1"] == var_other_grp)]
+        
+        if len(DFTMP)>0:
+            levs_exist = sorted(DFTMP[f"{var_effect}_1"].unique())
+
+            if len(levs_exist)>=min_levs_per_levother:
+                if PRINT:
+                    print("levs_exist:", levs_exist)
+                assert len(levs_exist)>1
+
+                # Get adjacent values of var_effect
+                tmp = []
+                for lev1, lev2 in zip(levs_exist[:-1], levs_exist[1:]):
+                    this = DFTMP[(DFTMP[f"{var_effect}_1"] == lev1) & (DFTMP[f"{var_effect}_2"] == lev2)]
+                    
+                    if len(this)==2:
+                        # This is possible if you've added the mirror data. Check this to allow pass
+                        assert len(this["norm"].unique())==1 # rows are identical, just with flipped theta.
+                        this = this.iloc[:1, :] # Take the top row
+                    
+                    if len(this)!=1:
+                        print(len(this))
+                        print(this)
+                        print("-----------------")
+                        print(DFTMP[f"{var_effect}_1"] == lev1)
+                        print(DFTMP[f"{var_effect}_2"] == lev1)
+                        print(DFTMP[f"{var_effect}_1"] == lev2)
+                        print(DFTMP[f"{var_effect}_2"] == lev2)
+                        print(lev1, lev2)
+                        assert False, "this should not be possible"
+
+                    tmp.append(this)
+                dftmp = pd.concat(tmp) # should have just this in order
+                
+                # Compute average vector, different possible methods
+                for var_vector_length in ["dist_norm", "dist_yue_diff"]:
+                    angles = dftmp["theta"].values
+                    weights = dftmp[var_vector_length].values
+                    vectors_arr = np.stack([w * get_vector_from_angle(a) for a, w in zip(angles, weights)])
+                    
+                    for length_method in ["sum", "dot"]:
+                        # More general
+                        angle_mean, norm_mean = average_vectors_wrapper(vectors_arr, length_method=length_method)
+
+                        res.append({
+                            "var_other":var_other_grp,
+                            "levs_exist":levs_exist,
+                            "angles":angles,
+                            "weights":weights,
+                            "angle_mean":angle_mean,
+                            "norm_mean":norm_mean,
+                            "var_vector_length":var_vector_length,
+                            "length_method":length_method
+                        })
+    dfanglemean = pd.DataFrame(res)
+    
+    return dfanglemean
 
 def dfdist_postprocess_condition_prune_to_var_pairs_exist(dfdist, var_effect, var_context,
                                                           plot_counts_savedir=None):
@@ -435,10 +607,11 @@ def dfdist_extract_label_vars_specific(dfdists, label_vars, return_var_same=Fals
         dfdists[f"{var}_same"] = dfdists[f"{var}_1"] == dfdists[f"{var}_2"]
 
     # Append a conjunctive column
-    colname_conj_same = "same-"
-    for v in label_vars:
-        colname_conj_same+=f"{v}|"
-    colname_conj_same = colname_conj_same[:-1] # remove the last |
+    colname_conj_same = dfdist_variables_generate_var_same(label_vars)
+    # colname_conj_same = "same-"
+    # for v in label_vars:
+    #     colname_conj_same+=f"{v}|"
+    # colname_conj_same = colname_conj_same[:-1] # remove the last |
     dfdists = append_col_with_grp_index(dfdists, [f"{v}_same" for v in label_vars], colname_conj_same)
     # if len(label_vars)==2:
     #     dfdists = append_col_with_grp_index(dfdists, [f"{label_vars[0]}_same", f"{label_vars[1]}_same"], f"same-{label_vars[0]}|{label_vars[1]}")
@@ -450,8 +623,34 @@ def dfdist_extract_label_vars_specific(dfdists, label_vars, return_var_same=Fals
     else:
         return dfdists
 
+def dfdist_variables_append_vars_others(dfdist):
+    """
+    Helper to append columns: "vars_others_1", "vars_others_2", "vars_others_same".
+    These are the levels (tuple) of the cunjucntive var_other
+
+    RETURNS:
+    - (Nothing) Modifies dfdist.
+    """
+    assert isinstance(dfdist["labels_1"].values[0], tuple)
+    assert isinstance(dfdist["labels_2"].values[0], tuple)
+
+    dfdist["vars_others_1"] = [x[1:] for x in dfdist["labels_1"]]
+    dfdist["vars_others_2"] = [x[1:] for x in dfdist["labels_2"]]
+    dfdist["vars_others_same"] = dfdist["vars_others_1"] == dfdist["vars_others_2"]
+
+def dfdist_variables_generate_var_same(label_vars):
+    """
+    Genreate the name of the column that holds contrast strings for these label vars.
+    """
+    colname_conj_same = "same-"
+    for v in label_vars:
+        colname_conj_same+=f"{v}|"
+    colname_conj_same = colname_conj_same[:-1] # remove the last |
+    return colname_conj_same
+
 def dfdist_expand_convert_from_triangular_to_full(dfdists, label_vars=None, PLOT=False,
-                                                repopulate_relations=True):
+                                                repopulate_relations=True,
+                                                var1=None, var2=None, remove_diagonal=True):
     """
     Given a dfdists that is triangular (inclues diagonmal usually), convert to 
     full matrix by copying and swapping labels 1 and 2, assuming that
@@ -462,17 +661,26 @@ def dfdist_expand_convert_from_triangular_to_full(dfdists, label_vars=None, PLOT
     """
     from pythonlib.tools.pandastools import grouping_plot_n_samples_conjunction_heatmap
 
+    if var1 is None:
+        if "labels_1_datapt" in dfdists.columns:
+            var1 = "labels_1_datapt"
+            var2 = "labels_2_grp"
+        else:
+            var1 = "labels_1"
+            var2 = "labels_2"
+
     if PLOT:
-        grouping_plot_n_samples_conjunction_heatmap(dfdists, "labels_1", "labels_2");
+        grouping_plot_n_samples_conjunction_heatmap(dfdists, var1, var2);
 
     dftmp = dfdists.copy()
 
     # Flip labels
-    dftmp["labels_1"] = dfdists["labels_2"]
-    dftmp["labels_2"] = dfdists["labels_1"]
+    dftmp[var1] = dfdists[var2]
+    dftmp[var2] = dfdists[var1]
     
     # Remove diagonal
-    dftmp = dftmp[dftmp["labels_1"]!=dftmp["labels_2"]]
+    if remove_diagonal:
+        dftmp = dftmp[dftmp[var1]!=dftmp[var2]]
     
     # concat
     dfdists = pd.concat([dfdists, dftmp]).reset_index(drop=True)
@@ -483,11 +691,11 @@ def dfdist_expand_convert_from_triangular_to_full(dfdists, label_vars=None, PLOT
         # label_vars = ["seqc_0_shape", var_other]
         # from pythonlib.cluster.clustclass import Clusters
         # cl = Clusters(None)
-        dfdists = dfdist_extract_label_vars_specific(dfdists, label_vars)
+        dfdists = dfdist_extract_label_vars_specific(dfdists, label_vars, var1=var1, var2=var2)
         # dfdists = self.rsa_distmat_population_columns_label_relations(dfdists, label_vars)
 
     if PLOT:
-        grouping_plot_n_samples_conjunction_heatmap(dfdists, "labels_1", "labels_2");
+        grouping_plot_n_samples_conjunction_heatmap(dfdists, var1, var2);
 
     # Sanity check that populated all cells in distance matrix
     if False: # I know this code works, so no need for this.
@@ -871,11 +1079,14 @@ def dfdist_variables_generate_constrast_strings(vars_in_order, contrasts_diff, c
 
     if contrasts_same is None:
         contrasts_same = [v for v in vars_in_order if v not in contrasts_diff + contrasts_either]
-    
+
     for v in contrasts_diff:
         assert v in vars_in_order, f"sanity check no typo - {v} -- {vars_in_order}"
-    for v in contrasts_either:
-        assert v in vars_in_order, f"sanity check no typo - {v} -- {vars_in_order}"
+
+    # For "either" is ok if it is not in the variables.
+    contrasts_either = [v for v in contrasts_either if v in vars_in_order]
+    # for v in contrasts_either:
+    #     assert v in vars_in_order, f"sanity check no typo - {v} -- {vars_in_order}"
     for v in contrasts_same:
         assert v in vars_in_order, f"sanity check no typo - {v} -- {vars_in_order}"
     this_tuple = []
