@@ -16,7 +16,7 @@ if [[ $animal == Diego ]]; then
   # # # datelist=(250319 250321) # added 4/4/25
   # # datelist=(250319) # added 4/4/25
   # datelist=(230914 231116) # AnBmCk, 7/31/25, best days, for testing
-  datelist=(240822) # AnBmCk, 7/31/25, best days, for testing
+  datelist=(250416 250417) # AnBmCk, 7/31/25, best days, for testing
   question=RULE_ANBMCK_STROKE
   combine=0
 

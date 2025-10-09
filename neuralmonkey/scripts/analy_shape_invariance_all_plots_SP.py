@@ -2581,21 +2581,28 @@ def _euclidianshuff_stats_linear_vs0_compute(DFDISTS, var_same_same, plot_coeff=
     return DFSTATS
 
 
-def _euclidianshuff_stats_linear_2br_compute(DFDISTS, var_same_same, var_datapt):
+def _euclidianshuff_stats_linear_2br_compute(DFDISTS, var_same_same, var_datapt, var_same_same_levels=None):
     """
     Compute pairwise stats (each pair is two brain regions) 
     for effect, across each pair of brain regions.
     PARAMS:
     - DFDISTS, one datapt for each (label1, label2), ie already agged over trials, but keeping all conditions present.
     RETURNS:
-    - DFSTATS_2BR, each row is a bregion pair
+    - DFSTATS_2BR, each row one value per (bregion1, bregion2, effect[ie var_same_same_levels])
+
     MS: checked
     """
     from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good
     import statsmodels.formula.api as smf
 
+    if var_same_same_levels is None:
+        var_same_same_levels = ["1|0", "0|1"]
+    else: 
+        assert len(var_same_same_levels)==2
+
     if var_datapt is None:
         var_datapt = "shapeloc12"
+        assert var_datapt in DFDISTS
 
     yvar = "dist_yue_diff"
     list_bregion = ORDER_BREGION
@@ -2604,7 +2611,7 @@ def _euclidianshuff_stats_linear_2br_compute(DFDISTS, var_same_same, var_datapt)
     res = []
     for grp, inds in grpdict.items():
         dfthis = DFDISTS.iloc[inds].reset_index(drop=True)
-        for contrast_lev  in ["1|0", "0|1"]: 
+        for contrast_lev  in var_same_same_levels: 
             for i in range(len(list_bregion)):
                 for j in range(len(list_bregion)):
                     if j>i:
@@ -2717,13 +2724,15 @@ def _euclidianshuff_stats_linear_2br_compute_nsigs(DFSTATS_2BR, var_same_same, p
 def _euclidianshuff_stats_linear_2br_scatter_wrapper(DFDISTS, var_same_same, var_datapt, SAVEDIR_PLOTS, 
                                                      plot_heatmap_counts=True,
                                                      plot_catplots=True,
-                                                     plot_results_scatter=True):
+                                                     plot_results_scatter=True,
+                                                     var_same_same_levels=None):
     """
     Wrapper for computing pairwise stats and plotting as scatterplots.
     PARAMS:
     - DFDISTS, what you have as the rows will define the datapts that go into 
     stats.
     
+
     ###############################################################
     ### Compare areas
     # Note, here each datapt is conjunction of variables + (animal, date), where variables could be, for instance, (shape, loc).
@@ -2738,6 +2747,12 @@ def _euclidianshuff_stats_linear_2br_scatter_wrapper(DFDISTS, var_same_same, var
     from math import comb
     import os
     from pythonlib.tools.pandastools import grouping_print_n_samples, grouping_plot_n_samples_conjunction_heatmap
+
+    # Append any missing columns
+    vars_needed = ["subspace|twind", "event", "metaparams"]
+    for var in vars_needed:
+        if var not in DFDISTS:
+            DFDISTS[var] = "none"
 
     if plot_heatmap_counts or plot_catplots or plot_results_scatter:
         savedir = f"{SAVEDIR_PLOTS}/linear_model_region_vs_region"
@@ -2763,7 +2778,7 @@ def _euclidianshuff_stats_linear_2br_scatter_wrapper(DFDISTS, var_same_same, var
             break
 
     ### Compute stats
-    DFSTATS_2BR = _euclidianshuff_stats_linear_2br_compute(DFDISTS, var_same_same, var_datapt)
+    DFSTATS_2BR = _euclidianshuff_stats_linear_2br_compute(DFDISTS, var_same_same, var_datapt, var_same_same_levels=var_same_same_levels)
 
     ### Plot
     order_bregion = _REGIONS_IN_ORDER_COMBINED
@@ -2827,14 +2842,13 @@ def _euclidianshuff_stats_linear_2br_scatter_wrapper(DFDISTS, var_same_same, var
 
     ################################# PLOTS
     if plot_results_scatter:
-        from neuralmonkey.scripts.analy_shape_invariance_all_plots_SP import _euclidianshuff_stats_linear_2br_compute, _euclidianshuff_stats_linear_2br_scatter, _euclidianshuff_stats_linear_2br_compute
         _euclidianshuff_stats_linear_2br_scatter(DFDISTS, DFSTATS_2BR, var_same_same, [alpha_bonf_easy, alpha_bonf_hard], savedir,
-                                                plot_heatmap_counts=plot_heatmap_counts)
+                                                plot_heatmap_counts=plot_heatmap_counts, var_same_same_levels=var_same_same_levels)
     
     return DFSTATS_2BR
 
 def _euclidianshuff_stats_linear_2br_scatter(DFDISTS, DFSTATS_2BR, var_same_same, list_alpha_bonf, savedir,
-                                             plot_heatmap_counts=True):
+                                             plot_heatmap_counts=True, var_same_same_levels=None):
     """
     Low-level stuff: All things related to plotting results from comparing 2 bregions.
     """
@@ -2858,7 +2872,7 @@ def _euclidianshuff_stats_linear_2br_scatter(DFDISTS, DFSTATS_2BR, var_same_same
     for pval_thresh in [0.05, 0.005, 0.0005] + list_alpha_bonf:
         DFSTATS_2BR_NSIGS = _euclidianshuff_stats_linear_2br_compute_nsigs(DFSTATS_2BR, var_same_same, pval_thresh)
         _euclidianshuff_stats_linear_2br_scatter_plot(DFDISTS, DFSTATS_2BR_NSIGS, var_same_same, pval_thresh, savedir,
-                                                    plot_heatmap_counts=plot_heatmap_counts)
+                                                    plot_heatmap_counts=plot_heatmap_counts, var_same_same_levels=var_same_same_levels)
 
 def _euclidianshuff_stats_linear_2br_scatter_wrapper_SUBSAMPLE(DFDISTS, var_effect, var_same_same, var_datapt, 
                                                                SAVEDIR_PLOTS, plot_each_iter_stats=False):
@@ -2990,7 +3004,7 @@ def _euclidianshuff_stats_linear_2br_scatter_wrapper_SUBSAMPLE(DFDISTS, var_effe
                                                     plot_heatmap_counts=False)
 
 def _euclidianshuff_stats_linear_2br_scatter_plot(DFDISTS, DFSTATS_2BR_NSIGS, var_same_same, pval_thresh, savedir,
-                                             plot_heatmap_counts=True):
+                                             plot_heatmap_counts=True, var_same_same_levels=None):
     """
     Low-level code for plotting results, scatterplots of stats results. Makes scatterplot with colors corresponding to
     signficance.
@@ -3001,6 +3015,13 @@ def _euclidianshuff_stats_linear_2br_scatter_plot(DFDISTS, DFSTATS_2BR_NSIGS, va
     from pythonlib.tools.pandastools import plot_45scatter_means_flexible_grouping
     from pythonlib.tools.expttools import writeDictToTxt
     from pythonlib.tools.pandastools import plot_subplots_heatmap, stringify_values
+
+    if var_same_same_levels is None:
+        var_same_same_levels = ["1|0", "0|1"]
+    else:
+        assert len(var_same_same_levels)==2
+        eff1 = var_same_same_levels[0]
+        eff2 = var_same_same_levels[1]
 
     n_bregions = 8
 
@@ -3047,11 +3068,11 @@ def _euclidianshuff_stats_linear_2br_scatter_plot(DFDISTS, DFSTATS_2BR_NSIGS, va
         map_bregion_pval_status = {}
         for bregion in ORDER_BREGION:
             
-            tmp = dfthis_pval[(dfthis_pval["bregion"]==bregion) & (dfthis_pval[var_same_same]=="0|1")]["n_sig"]
+            tmp = dfthis_pval[(dfthis_pval["bregion"]==bregion) & (dfthis_pval[var_same_same]==eff2)]["n_sig"]
             assert len(tmp)==1
             n_shape = tmp.values[0]
 
-            tmp = dfthis_pval[(dfthis_pval["bregion"]==bregion) & (dfthis_pval[var_same_same]=="1|0")]["n_sig"]
+            tmp = dfthis_pval[(dfthis_pval["bregion"]==bregion) & (dfthis_pval[var_same_same]==eff1)]["n_sig"]
             assert len(tmp)==1
             n_loc = tmp.values[0]
 
@@ -3085,7 +3106,7 @@ def _euclidianshuff_stats_linear_2br_scatter_plot(DFDISTS, DFSTATS_2BR_NSIGS, va
                 savefig(fig, f"{savedir}/COUNTS_USED_IN_SCATTER_MEANS-grp={grp}.pdf")
 
         ### Plot it
-        _, fig = plot_45scatter_means_flexible_grouping(dfthis, var_same_same, "1|0", "0|1", "event", 
+        _, fig = plot_45scatter_means_flexible_grouping(dfthis, var_same_same, eff1, eff2, "event", 
                                             var_value, "bregion", True, shareaxes=True,
                                             map_dataptlev_to_color=map_bregion_to_color, alpha=1,
                                             edgecolor="k", SIZE=3)

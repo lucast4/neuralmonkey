@@ -27,6 +27,448 @@ from pythonlib.tools.pandastools import grouping_plot_n_samples_conjunction_heat
 from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good
 from pythonlib.tools.plottools import savefig
 
+
+def final_dfeffect_load_dfgaps(dfeffect, animal, savedir):
+    """
+    Load dfgaps for analysis that is...
+    
+    Relating stregnth of encoding of "chunk_within_rank" to speed of gaps
+    (positive correlation).
+    """
+    # Load pre-saved gap durations
+    # Collect across dates
+    from glob import glob
+
+    list_date = dfeffect["date"].unique().tolist()
+    list_dfgaps = []
+    for _date in list_date:
+
+        searchstr = f"/lemur2/lucas/analyses/main/syntax_gap_durations/{animal}_{_date}_*/dfgaps.pkl"
+        # path = f"/lemur2/lucas/analyses/main/syntax_gap_durations/{animal}_{_date}_dirgrammardiego3b/dfgaps.pkl"
+        list_path = glob(searchstr)
+        assert len(list_path)==1
+        path = list_path[0]
+        dfgaps = pd.read_pickle(path)
+        dfgaps["date"] = _date
+        dfgaps["animal"] = animal
+
+        list_dfgaps.append(dfgaps)
+    DFGAPS = pd.concat(list_dfgaps).reset_index(drop=True)    
+
+    ### Preprocess
+    # - first get cr and shape for prev and next stroke.
+    DFGAPS["shape_prev"] = [x[0] for x in DFGAPS["gap_shape"]]
+    DFGAPS["shape_next"] = [x[1] for x in DFGAPS["gap_shape"]]
+
+    DFGAPS["chunk_rank_prev"] = [x[0] for x in DFGAPS["gap_chunk_rank"]]
+    DFGAPS["chunk_rank_next"] = [x[1] for x in DFGAPS["gap_chunk_rank"]]
+
+    # convert cr to ints where -1 means prev stroke was start, and 99 means next stroke is "done"
+    DFGAPS["chunk_rank_prev"] = [int(x) if not np.isnan(x) else int(-1) for x in DFGAPS["chunk_rank_prev"]]
+    DFGAPS["chunk_rank_next"] = [int(x) if not np.isnan(x) else int(99) for x in DFGAPS["chunk_rank_next"]]
+
+    # Eclude gaps from onset and offset
+    DFGAPS = DFGAPS[(DFGAPS["chunk_rank_prev"]>-1) & (DFGAPS["chunk_rank_next"]<99)].reset_index(drop=True)
+
+    # Relabel gaps by ("gap_semantic_vs_prev_stroke")
+    def F(diff_chunk_rank_global):
+        if diff_chunk_rank_global!=0:
+            gap_semantic_vs_prev_stroke = "new_chk"
+        else:
+            assert diff_chunk_rank_global == 0
+            gap_semantic_vs_prev_stroke = "within_chk"
+        return gap_semantic_vs_prev_stroke
+    DFGAPS["gap_semantic_vs_prev_stroke"] = DFGAPS["diff_chunk_rank_global"].apply(F)
+
+    # Sanity check that new variables make sense.
+    from pythonlib.tools.pandastools import grouping_print_n_samples
+    # grouping_print_n_samples(DFGAPS, ["animal", "date", "gap_semantic_vs_prev_stroke", "diff_chunk_rank_global", "gap_shape","gap_chunk_rank", "gap_chunk_within_rank"])
+    savepath = f"{savedir}/counts_gap_semantic-1.txt"
+    grouping_print_n_samples(DFGAPS, 
+                             ["gap_semantic_vs_prev_stroke", "diff_chunk_rank_global", "gap_shape","gap_chunk_rank", "gap_chunk_within_rank"],
+                             savepath=savepath)
+    savepath = f"{savedir}/counts_gap_semantic-2.txt"
+    grouping_print_n_samples(DFGAPS, 
+                             ["date", "gap_semantic_vs_prev_stroke", "diff_chunk_rank_global", "gap_shape","gap_chunk_rank", "gap_chunk_within_rank"],
+                             savepath=savepath)
+
+    # Restrict to cases that are "canonical" transitions (ie not skipping a gap)
+    n1 = len(DFGAPS)
+    DFGAPS = DFGAPS[DFGAPS["diff_chunk_rank_global"].isin([0, 1])].reset_index(drop=True)
+    n2 = len(DFGAPS)
+    assert n2/n1 > 0.8, "why throw out so many? is this due to weird labels on 2-shape days?"
+
+    ### Also get final agged (ie one datapt per chunk)
+    # Aggregate so that each (cr, shape) gets two gap timings: (i) within and (ii) transition to next.
+    from pythonlib.tools.pandastools import aggregGeneral
+    map_gapsemantic_to_dfgaps = {}
+    for which_gap_semantic_higher in ["within_chk", "to_next_chk", "from_prev_chk"]:
+
+        if which_gap_semantic_higher == "within_chk":
+            # Get gaps within the chunk
+            which_gap_semantic = "within_chk" # gaps within chunk
+            var_chunk_rank = "chunk_rank_prev"
+            var_shape = "shape_prev"
+        elif which_gap_semantic_higher == "to_next_chk":
+            # Get gaps after this chunk finishes
+            which_gap_semantic = "new_chk" # gaps within chunk
+            var_chunk_rank = "chunk_rank_prev"
+            var_shape = "shape_prev"
+        elif which_gap_semantic_higher == "from_prev_chk":
+            # Get gap that led into this chunk
+            # (agg so that the following chunk is relevant)
+            which_gap_semantic = "new_chk" # gaps within chunk
+            var_chunk_rank = "chunk_rank_next"
+            var_shape = "shape_next"
+        else:
+            assert False
+
+        DFGAPS_AGG = aggregGeneral(DFGAPS, ["animal", "date", var_chunk_rank, var_shape, "gap_semantic_vs_prev_stroke"], ["gap_dur"])
+
+        # Give a label for dfgaps that will be used for aligning to neural data
+        assert len(DFGAPS_AGG["animal"].unique()) == 1, "assuming I can ignore animal, below"
+        assert len(dfeffect["animal"].unique()) == 1
+
+        if False: # Not anymore, since I ensure is all ints in neural data
+            DFGAPS_AGG[var_chunk_rank] = DFGAPS_AGG[var_chunk_rank].astype(float)
+        DFGAPS_AGG = append_col_with_grp_index(DFGAPS_AGG, ["date", var_chunk_rank, var_chunk_rank, var_shape, var_shape], "da_cr_sh_12")
+
+        # Finally, merge gaps and neural data.
+        # - Create a new column in neurel data: gap duration
+        dfgaps_agg = DFGAPS_AGG[DFGAPS_AGG["gap_semantic_vs_prev_stroke"] == which_gap_semantic].reset_index(drop=True)
+
+        map_gapsemantic_to_dfgaps[which_gap_semantic_higher] = dfgaps_agg
+
+        savepath = f"{savedir}/counts_gap_semantic-which_gap_semantic_higher={which_gap_semantic_higher}.txt"
+        grouping_print_n_samples(dfgaps_agg, 
+                                ["animal", "date", var_chunk_rank, var_shape, "gap_semantic_vs_prev_stroke"],
+                                savepath=savepath)
+
+    return DFGAPS, map_gapsemantic_to_dfgaps
+
+def final_dfeffect_postprocess(DFEFFECT_ALL, animal, analysis, savedir, n_min_trials_per_label=2, 
+                               HACK_dates=None, two_shapes_remove_probe_trials=True):
+    """
+    Helper to clean up DFEFFECT_ALL, which holds data for all dates
+    """
+    from neuralmonkey.analyses.euclidian_distance import dfdist_postprocess_condition_prune_to_var_pairs_exist
+    from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good, append_col_with_grp_index
+    from neuralmonkey.analyses.euclidian_distance import dfdist_convert_merge_pair_to_get_all_levels
+    from pythonlib.tools.pandastools import grouping_print_n_samples
+    from pythonlib.tools.pandastools import grouping_plot_n_samples_conjunction_heatmap
+
+    assert not isinstance(savedir, int)
+
+    ### [Optional] if you want to merge questions (e.g, diff dates have diff questions)
+    if analysis == "pig_vs_sp":
+        if animal=="Pancho":
+            if HACK_dates is None:
+                _dates = [230810, 230811, 230829, 240830, 250322]
+            elif HACK_dates == 0:
+                _dates = [230810, 230811, 230829]
+            elif HACK_dates == 1:
+                _dates = [230810, 230811, 230829, 240830]
+            elif HACK_dates == 2:
+                _dates = [230810, 230811, 230829, 250322]
+            else:
+                assert False         
+
+            map_question_to_dates = {
+                "4c":[231114, 231116],
+                "4":_dates,
+            }
+        elif animal=="Diego":
+            map_question_to_dates = {
+                "4c":[230816, 230817, 231116, 240822, 250319],
+                "4":[230723, 230724, 230726, 230727, 230728, 230730, 230815, 230913, 230914, 230915, 231118, 240827, 250321],
+            }
+        else:
+            assert False
+    elif analysis in ["two_shapes", "rank_within", "rank_up_vs_down", "n_in_chunk"]:
+        # Don't try to merge questions
+        map_question_to_dates = None
+    else:
+        print(analysis)
+        assert False
+
+    ### Optionally, rename effects that are across questions (but whihc you belioeve should be the sanme name)
+    if analysis == "pig_vs_sp":
+        list_df = []
+        for q, list_dates in map_question_to_dates.items():
+            eff1 = f"{q}_shapePIG_ss=shape|none|none"
+            eff2 = f"{q}_shapeSP_ss=shape|none|none"
+            list_effect = [eff1, eff2]
+            map_effect_to_neweffect = {
+                eff1:"shapePIG",
+                eff2:"shapeSP",
+            }
+            for date in list_dates:
+                df = DFEFFECT_ALL[(DFEFFECT_ALL["date"] == date) & (DFEFFECT_ALL["effect"].isin(list_effect))].reset_index(drop=True)
+                df["effect"] = [map_effect_to_neweffect[eff] for eff in df["effect"]]    
+                assert len(df)>0
+                list_df.append(df)    
+        DFEFFECT = pd.concat(list_df).reset_index(drop=True)
+        eff1 = "shapePIG"
+        eff2 = "shapeSP"
+        DFEFFECT = DFEFFECT[DFEFFECT["effect"].isin([eff1, eff2])].reset_index(drop=True)
+    elif analysis == "two_shapes":
+        eff1 = "11_2SH_syntax" # x
+        eff2 = "11_2SH_epochshape"
+        # Keep just those dates with both effects existing
+        from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper
+        DFEFFECT, _ = extract_with_levels_of_conjunction_vars_helper(DFEFFECT_ALL, "effect", ["date", "bregion"], levels_var=[eff1, eff2])
+        # Keep only those desired effects
+        DFEFFECT = DFEFFECT[DFEFFECT["effect"].isin([eff1, eff2])].reset_index(drop=True)
+    elif analysis == "rank_within":
+        eff1 = "11_shape_ss=global"
+        eff2 = "11_rankwithin_ss=global" 
+        # Keep just those dates with both effects existing
+        from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper
+        DFEFFECT, _ = extract_with_levels_of_conjunction_vars_helper(DFEFFECT_ALL, "effect", ["date", "bregion"], levels_var=[eff1, eff2])
+        # Keep only those desired effects
+        DFEFFECT = DFEFFECT[DFEFFECT["effect"].isin([eff1, eff2])].reset_index(drop=True)
+    elif analysis == "rank_up_vs_down":
+        eff1 = "14_rankwithin_dn"
+        eff2 = "14_rankwithin_up"
+        # Keep just those dates with both effects existing
+        from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper
+        DFEFFECT, _ = extract_with_levels_of_conjunction_vars_helper(DFEFFECT_ALL, "effect", ["date", "bregion"], levels_var=[eff1, eff2])
+        # Keep only those desired effects
+        DFEFFECT = DFEFFECT[DFEFFECT["effect"].isin([eff1, eff2])].reset_index(drop=True)
+    elif analysis == "n_in_chunk":
+        eff1 = "11_motor_ss=global"
+        eff2 = "11_ninchunk_ss=global"
+        # Keep just those dates with both effects existing
+        from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper
+        DFEFFECT, _ = extract_with_levels_of_conjunction_vars_helper(DFEFFECT_ALL, "effect", ["date", "bregion"], levels_var=[eff1, eff2])
+        # Keep only those desired effects
+        DFEFFECT = DFEFFECT[DFEFFECT["effect"].isin([eff1, eff2])].reset_index(drop=True)
+    else:
+        assert False
+
+    ### Dates 
+    if animal=="Diego":
+        dates_remove = [250319, 250321]
+    elif animal=="Pancho":
+        dates_remove = [250322]
+        if analysis=="rank_up_vs_down":
+            dates_remove.append(230811) # this is low N tasks and low variability
+    else:
+        assert False
+    DFEFFECT = DFEFFECT[~(DFEFFECT["date"].isin(dates_remove))].reset_index(drop=True)
+
+    ### Make sure these are ints.
+    from pythonlib.tools.pandastools import integerify_values
+    for col in ["chunk_rank", "chunk_within_rank"]:
+        integerify_values(DFEFFECT, f"{col}_1")
+        integerify_values(DFEFFECT, f"{col}_2")
+        DFEFFECT = append_col_with_grp_index(DFEFFECT, [f"{col}_1", f"{col}_2"], f"{col}_12")                
+
+    ### For "two shapes" extra thigs to do.
+    if analysis == "two_shapes":
+        print("Two shapes, before removing cross-AB probes and aligning to chunk_rank_global: ", len(DFEFFECT))
+        # (1) First, get the "pure" cr and shape info (not 1, 2)
+        list_vars = ["epoch", "chunk_rank", "shape"]
+        vars_others = ["date", "bregion"]
+        dfmerged = dfdist_convert_merge_pair_to_get_all_levels(DFEFFECT, list_vars, vars_others)
+        
+        # Print how it looks before realigning.
+        savepath = f"{savedir}/two_shapes-counts-before_prune_and_align_cr_global.txt"
+        grouping_print_n_samples(dfmerged, ["date", "epoch", "chunk_rank", "shape"], savepath=savepath)
+        if False:
+            # grouping_plot_n_samples_conjunction_heatmap(dfmerged, "chunk_rank", "shape", ["date", "epoch"])
+            grouping_plot_n_samples_conjunction_heatmap(dfmerged, "chunk_rank", "shape", ["date"])
+
+        # (2) Remove probe trials that are cross-AB.
+        if two_shapes_remove_probe_trials:
+            # For each date with x, decide whether to keep or throw out x
+            if animal == "Diego":
+                days_with_x_keep = [240822] # not probes, but epoch name happens to be this.
+                days_with_x_remove = [250319] # these are probes
+            elif animal == "Pancho":
+                days_with_x_keep = []
+                days_with_x_remove = [250322] # these are probes
+            else:
+                assert False
+            
+            # Confirm that you inputed all dates
+            dates_with_x = dfmerged[["|x" in epoch for epoch in dfmerged["epoch"]]]["date"].unique()
+            for d in dates_with_x:
+                assert (d in days_with_x_keep) or (d in days_with_x_remove), "no biggi -just add this date to the list. figure out if x epochs are probes. Do this by running : grouping_print_n_samples(dfmerged, [date, epoch, chunk_rank, shape]). if few trials then the yare probes"
+            
+            # Remove the epochs
+            epochs_crossed = [ep for ep in dfmerged["epoch"].unique() if "|x" in ep]
+            a = (DFEFFECT["date"].isin(days_with_x_remove))
+            b = (DFEFFECT["epoch_1"].isin(epochs_crossed))
+            c = (DFEFFECT["epoch_2"].isin(epochs_crossed))
+            bools_remove = a & (b | c)
+            DFEFFECT = DFEFFECT[~bools_remove].reset_index(drop=True)
+
+        # (3) Keep only shapes whose chunk_rank matches their chunk_rank_global
+        from pythonlib.dataset.dataset_analy.grammar import chunk_rank_global_extract
+        dfchunkrankmap = chunk_rank_global_extract(dfmerged, check_low_freq_second_shape=False)
+
+        # First, Assign a new column to dfeffect with chunk_rank_global
+        map_DaEpSh_to_crglob = {}
+        for _, row in dfchunkrankmap.iterrows():
+            k = (row["date"], row["epoch"], row["shape"])
+            v = row["chunk_rank_global"]
+            map_DaEpSh_to_crglob[k] = v
+        for i in [1, 2]:
+            DFEFFECT[f"chunk_rank_global_{i}"] = [map_DaEpSh_to_crglob[(row["date"], row[f"epoch_{i}"], row[f"shape_{i}"])] for _, row in DFEFFECT.iterrows()]
+
+        # Second, only keep rows in which crg is equal to cr.
+        DFEFFECT = DFEFFECT[(DFEFFECT["chunk_rank_global_1"] == DFEFFECT["chunk_rank_1"])].reset_index(drop=True)
+        DFEFFECT = DFEFFECT[(DFEFFECT["chunk_rank_global_2"] == DFEFFECT["chunk_rank_2"])].reset_index(drop=True)
+
+        # (4) Finally, sanity checks. Check that each shape exists in only one chunk_rank
+        assert sum((DFEFFECT["epoch_same"] == True) & (DFEFFECT["shape_same"] == True) & (DFEFFECT["chunk_rank_same"] == False))==0
+        assert sum((DFEFFECT["epoch_same"] == True) & (DFEFFECT["shape_same"] == False) & (DFEFFECT["chunk_rank_same"] == True))==0
+        print("... after: ", len(DFEFFECT))
+
+        # (5) Print the final results
+        list_vars = ["epoch", "chunk_rank", "shape"]
+        vars_others = ["date", "bregion"]
+        dfmerged = dfdist_convert_merge_pair_to_get_all_levels(DFEFFECT, list_vars, vars_others)
+        savepath = f"{savedir}/two_shapes-counts-after_prune_and_align_cr_global.txt"
+        grouping_print_n_samples(dfmerged, ["date", "epoch", "chunk_rank", "shape"], savepath=savepath)
+
+    ### Sanity check that all have same dimensionality within a date
+    for date in DFEFFECT["date"].unique():
+        assert len(set(DFEFFECT[(DFEFFECT["date"] == date)]["data_dim"]))==1
+        assert len(set(DFEFFECT[(DFEFFECT["date"] == date)]["npcs_euclidean"]))==1
+
+    ### Restrict to just those <var_must_exist_across_context> which exist across <var_context>
+    if analysis == "pig_vs_sp":
+        var_must_exist_across_context = "shapeloc"
+        var_context = "task_kind"
+        for _i in [1, 2]:
+            DFEFFECT = append_col_with_grp_index(DFEFFECT, [f"shape_{_i}", f"gridloc_{_i}"], f"shapeloc_{_i}")
+        DFEFFECT = append_col_with_grp_index(DFEFFECT, ["shapeloc_1", "shapeloc_2"], "shapeloc_12")
+    elif analysis == "two_shapes":
+        var_must_exist_across_context = "cr_and_w"
+        var_context = "epoch"
+        for _i in [1, 2]:
+            DFEFFECT = append_col_with_grp_index(DFEFFECT, [f"chunk_rank_{_i}", f"chunk_within_rank_{_i}"], f"cr_and_w_{_i}")
+        DFEFFECT = append_col_with_grp_index(DFEFFECT, ["cr_and_w_1", "cr_and_w_2"], "cr_and_w_12")
+    elif analysis in ["rank_within", "rank_up_vs_down", "n_in_chunk"]:
+        # Dont do this, not required
+        var_must_exist_across_context = None
+        var_context = None
+    else:
+        assert False
+    
+    if var_must_exist_across_context is not None:
+        print(f"Before prune just those {var_must_exist_across_context} which exist across {var_context}:: ", len(DFEFFECT))
+        vars_conj = ["date"]
+        grpdict = grouping_append_and_return_inner_items_good(DFEFFECT, vars_conj)
+        list_df =[]
+        for _grp, inds in grpdict.items():
+            df = DFEFFECT.iloc[inds]
+            savedir_this = f"{savedir}/prune-{_grp}"
+            os.makedirs(savedir_this, exist_ok=True)
+            _df = dfdist_postprocess_condition_prune_to_var_pairs_exist(df, var_must_exist_across_context, var_context, 
+                                                                        plot_counts_savedir=savedir_this)
+            plt.close("all")
+            if len(df)!=len(_df):
+                print("pruned from: ", len(df), " to ", len(_df))
+
+            list_df.append(_df)
+        DFEFFECT = pd.concat(list_df).reset_index(drop=True)
+        savepath = f"{savedir}/prune_var_must_exist-AFTER.txt"
+        print("... after: ", len(DFEFFECT))
+
+    ### Prune to min n
+    print("Before prune based on min n: ", len(DFEFFECT))
+    DFEFFECT = DFEFFECT[(DFEFFECT["n1"]>=n_min_trials_per_label ) & (DFEFFECT["n2"]>=n_min_trials_per_label)].reset_index(drop=True)
+    print("... after: ", len(DFEFFECT))
+
+    # (5) Print the final results
+    list_vars = ["epoch", "chunk_rank", "shape"]
+    vars_others = ["date", "bregion"]
+    dfmerged = dfdist_convert_merge_pair_to_get_all_levels(DFEFFECT, list_vars, vars_others)
+    savepath = f"{savedir}/two_shapes-counts-FINAL.txt"
+    grouping_print_n_samples(dfmerged, ["date", "epoch", "chunk_rank", "shape"], savepath=savepath)
+    # savepath = f"{savedir}/two_shapes-counts-FINAL-2.txt"
+    # grouping_print_n_samples(dfmerged, ["date", "epoch", "chunk_rank", "chunk_within_rank_fromlast", "shape"], savepath=savepath)
+
+    return DFEFFECT, eff1, eff2
+
+def final_dfeffect_mean_simple_PIGvsSP(dfeffect, eff1, eff2, doplot=False):
+    """
+    Simple -- return so that there is one row per bregion
+    """
+    ###### GOOD
+    from pythonlib.tools.pandastools import summarize_featurediff
+    from pythonlib.tools.pandastools import pivot_table
+    from pythonlib.tools.pandastools import aggregGeneral
+    from pythonlib.tools.pandastools import plot_45scatter_means_flexible_grouping
+    from neuralmonkey.analyses.euclidian_distance import dfdist_compute_effects_diff_wideform
+    yvar = "dist_yue_diff"
+
+    assert len(dfeffect["animal"].unique())==1
+    # assert len(dfeffect["question"].unique())==1 # is fine to be >1, sometimes I combine questions...
+    assert len(dfeffect["subspace"].unique())==1
+
+    # (1) Agg so that datapt = date
+    dfeffect = aggregGeneral(dfeffect, ["effect", "date", "bregion"], [yvar])
+
+    # (2) For each bregion, get mean value for each effect
+    dfeffect_agg = aggregGeneral(dfeffect, ["bregion", "effect"], [yvar])
+
+    # (3) For each bregion, get mean difference between effects
+    var_effect = "effect"
+    vars_grp = ["bregion"]
+    dfsummary, dfpivot, effect_div_name, eff1_name, eff2_name = dfdist_compute_effects_diff_wideform(dfeffect, var_effect, 
+                                                                            eff1, eff2, vars_grp, 
+                                                                            diff_func="div")
+
+    # (4) Merge each effect with difference of effects.
+    dfsummary["effect"] = effect_div_name # rename, for easy comparison
+    dfsummary[yvar] = dfsummary[effect_div_name]
+    dfmerge_long = pd.concat([dfsummary.loc[:, dfeffect_agg.columns], dfeffect_agg], axis=0)
+
+    # (5) Also get version with one row per bregion
+    dfmerge_wide = pd.merge(dfpivot, dfsummary, on="bregion")
+
+    if doplot:
+        _, fig = plot_45scatter_means_flexible_grouping(dfmerge_long, "effect", eff1, effect_div_name, 
+                                                        None, yvar, "bregion", shareaxes=True)
+        _, fig = plot_45scatter_means_flexible_grouping(dfmerge_long, "effect", eff1, eff2, 
+                                                        None, yvar, "bregion", shareaxes=True)
+    return dfmerge_long, dfmerge_wide, effect_div_name, eff1_name, eff2_name
+
+def final_dfeffect_mean_simple_PIGvsSP_bootstrap(DFEFFECT, eff1, eff2, vars_conj=None, nboot = 50):
+    """
+    On each run, gets score, which is one value for each (bregion, effect). 
+
+    On each bootstrap iteration, resamples within each level of vars_conj.
+
+    Returns concated df holding concated bootstrapped data.
+    """
+    from pythonlib.tools.statstools import bootstramp_resample
+
+    if vars_conj is None:
+        vars_conj = ["bregion", "date", "effect"] # Will sample within each level of this.
+    
+    list_df = []
+    for _i in range(nboot):
+        if _i%20==0:
+            print(_i)
+        dfeffect_boot = bootstramp_resample(DFEFFECT, vars_conj)
+        dfmerge_long, _, effect_div_name, eff1_name, eff2_name = final_dfeffect_mean_simple_PIGvsSP(dfeffect_boot, eff1, eff2, doplot=False)
+        dfmerge_long["i_boot"] = _i
+        # print(dfmerge_long)
+        # print(effect_div_name)
+        # assert False
+        list_df.append(dfmerge_long)
+
+    DFSCORE_BOOT = pd.concat(list_df).reset_index(drop=True)
+    DFSCORE_BOOT = append_col_with_grp_index(DFSCORE_BOOT, ["bregion", "i_boot"], "br_i")
+    DFSCORE_BOOT["index"] = DFSCORE_BOOT.index
+
+    return DFSCORE_BOOT, effect_div_name, eff1_name, eff2_name
+
 def get_params_this_save_suffix(animal, save_suffix):
     """
     Helper to get contrast idx pairs that you wish to plot, for this save_suffix.
@@ -402,10 +844,12 @@ def targeted_pca_MULT_1_load_and_save(animal, date, run, expt_kind, OVERWRITE=Fa
                 _keys = [x for x in map_subspaceiter_to_dfdist.keys() if x[0]==subspace]
                 list_dfdist = [map_subspaceiter_to_dfdist[k] for k in _keys]
                 dfdist_concat = pd.concat(list_dfdist, axis=0)
+                assert "i_proj" in dfdist_concat, "sanity check..."
                 dfdist_concat = aggregGeneral(dfdist_concat, ["bregion", "labels_1", "labels_2", "var_subspace", "var_conj", "var_conj_lev", "question", "subspace"], 
                                             ["dist_mean", "DIST_98", "dist_norm", "dist_yue_diff", "n1", "n2", "data_dim", "npcs_euclidean"], nonnumercols=None)
                 assert all(dfdist_concat["subspace"]==subspace)
                 map_subspace_to_dfdist[subspace] = dfdist_concat
+            del map_subspaceiter_to_dfdist
 
             # Finally, append the correct columns, for each question.
             for subspace, dfdist in map_subspace_to_dfdist.items():            
@@ -463,6 +907,7 @@ def targeted_pca_MULT_1_load_and_save(animal, date, run, expt_kind, OVERWRITE=Fa
                             map_question_to_varsame[question] = colname_conj_same
 
                             LIST_DFDIST.append(dfdist_this)
+            del map_subspace_to_dfdist
 
         if len(LIST_DFDIST)==0:
             # Then always skip, this is just a missing day
@@ -473,6 +918,7 @@ def targeted_pca_MULT_1_load_and_save(animal, date, run, expt_kind, OVERWRITE=Fa
             assert len(LIST_DFDIST)==(expected_n_bregions * expected_n_questions * expected_n_subspaces * expected_n_iters), "this is to make sure that you arent saving partial results"
 
         DFDIST = pd.concat(LIST_DFDIST).reset_index(drop=True)
+        del LIST_DFDIST
         DFDIST = replace_None_with_string(DFDIST)
         # DFDIST = stringify_values(DFDIST)
         # DFDIST = append_col_with_grp_index(DFDIST, ["var_subspace", "var_conj", "var_conj_lev"], "subspace")
@@ -1661,7 +2107,6 @@ def targeted_pca_MULT_2_plot_single(animal, date, run, SKIP_PLOTS = False, OVERW
 
         except Exception as err:
             return None
-        
 def targeted_pca_MULT_3_combined_plots(animal, run, savesuff, SAVEDIR_MULT=None, return_dfeffect=False):
     """
     This plots results across all days for this animal.
@@ -1684,6 +2129,14 @@ def targeted_pca_MULT_3_combined_plots(animal, run, savesuff, SAVEDIR_MULT=None,
             dfeffect = pd.read_pickle(f"/{SAVEDIR}/DFEFFECT.pkl")
             dfeffect["animal"] = animal
             dfeffect["date"] = date
+            
+            # Preprocessing at the individula level
+            for i in [1, 2]:
+                for col in ["chunk_rank", "chunk_within_rank", "chunk_within_rank_fromlast", "chunk_n_in_chunk"]:
+                    colnum = f"{col}_{i}"
+                    if colnum in dfeffect.columns:
+                        dfeffect[colnum] = [int(x) if not isinstance(x, str) else x for x in dfeffect[colnum]] #dfeffect[colnum].astype(int)          
+
             LIST_DFEFFECT_ALL.append(dfeffect)
             print("Loaded: ", SAVEDIR)
         except FileNotFoundError as err:
@@ -1702,31 +2155,34 @@ def targeted_pca_MULT_3_combined_plots(animal, run, savesuff, SAVEDIR_MULT=None,
     from pythonlib.tools.pandastools import aggregGeneral
     DFEFFECT_ALL_AGG = aggregGeneral(DFEFFECT_ALL, ["effect", "animal", "date", "bregion", "question", "subspace"], ["dist_yue_diff"])
 
-
     if return_dfeffect:
         return DFEFFECT_ALL, LIST_EFFECT_PAIRS
 
     SAVEDIR = f"{SAVEDIR_MULT}/COMBINED-{animal}"
     os.makedirs(SAVEDIR, exist_ok=True)
-    
     for eff1, eff2 in LIST_EFFECT_PAIRS:
         
         if (eff1 in DFEFFECT_ALL["effect"].unique().tolist()) and (eff2 in DFEFFECT_ALL["effect"].unique().tolist()):
 
+            # Only keep dates that have both effects
+            from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper
+            dfeffect_clean, _ = extract_with_levels_of_conjunction_vars_helper(DFEFFECT_ALL, "effect", ["date", "bregion", "animal", "subspace"], levels_var=[eff1, eff2])
+            dfeffect_agg_clean, _ = extract_with_levels_of_conjunction_vars_helper(DFEFFECT_ALL_AGG, "effect", ["date", "bregion", "animal", "subspace"], levels_var=[eff1, eff2])
+
             # (1) Subplot = date
             print(eff1, eff2)
-            print(DFEFFECT_ALL["effect"].unique())
-            _, fig = plot_45scatter_means_flexible_grouping(DFEFFECT_ALL, "effect", eff1, eff2, "date", yvar, "bregion", shareaxes=True);
+            print(dfeffect_clean["effect"].unique())
+            _, fig = plot_45scatter_means_flexible_grouping(dfeffect_clean, "effect", eff1, eff2, "date", yvar, "bregion", shareaxes=True);
             if fig is not None:
                 savefig(fig, f"{SAVEDIR}/effects-scatter-{eff2}-vs-{eff1}-1.pdf")
 
             # (2) Subplot = bregion
-            _, fig = plot_45scatter_means_flexible_grouping(DFEFFECT_ALL, "effect", eff1, eff2, "bregion", yvar, "date", shareaxes=True);
+            _, fig = plot_45scatter_means_flexible_grouping(dfeffect_clean, "effect", eff1, eff2, "bregion", yvar, "date", shareaxes=True);
             if fig is not None:
                 savefig(fig, f"{SAVEDIR}/effects-scatter-{eff2}-vs-{eff1}-2.pdf")
 
             # (3) Single summary plot
-            _, fig = plot_45scatter_means_flexible_grouping(DFEFFECT_ALL, "effect", eff1, eff2, None, yvar, "bregion", shareaxes=True);
+            _, fig = plot_45scatter_means_flexible_grouping(dfeffect_clean, "effect", eff1, eff2, None, yvar, "bregion", shareaxes=True);
             if fig is not None:
                 savefig(fig, f"{SAVEDIR}/effects-scatter-{eff2}-vs-{eff1}-3.pdf")
 
@@ -1735,14 +2191,22 @@ def targeted_pca_MULT_3_combined_plots(animal, run, savesuff, SAVEDIR_MULT=None,
             # savefig(fig, f"{SAVEDIR}/effects-scatter-{eff2}-vs-{eff1}-4.pdf")
 
             # (3) Single summary plot (dates)
-            _, fig = plot_45scatter_means_flexible_grouping(DFEFFECT_ALL_AGG, "effect", eff1, eff2, None, yvar, "bregion", shareaxes=True);
+            _, fig = plot_45scatter_means_flexible_grouping(dfeffect_agg_clean, "effect", eff1, eff2, None, yvar, "bregion", shareaxes=True);
             if fig is not None:
                 savefig(fig, f"{SAVEDIR}/effects-scatter-{eff2}-vs-{eff1}-3-datapt=date.pdf")
-        
-            # And a "difference metric"
+
+            ### Catplot summary
+            if False:
+                sns.catplot(data=dfeffect_clean, x="bregion", y=yvar, hue="effect", col="date", jitter=True, alpha=0.1)
+                sns.catplot(data=dfeffect_clean, x="bregion", y=yvar, hue="effect", jitter=True, alpha=0.1)
+            # sns.catplot(data=dfeffect_clean, x="bregion", y=yvar, hue="effect", kind="boxen")
+            fig = sns.catplot(data=dfeffect_clean, x="bregion", y=yvar, hue="effect", col="date", kind="bar")
+            savefig(fig, f"{SAVEDIR}/effects-catplot-{eff2}-vs-{eff1}-1.pdf")
+
+            ### And a "difference metric"
             from pythonlib.tools.pandastools import summarize_featurediff
             dfsummary, _, _, _, COLNAMES_DIFF = summarize_featurediff(
-                    DFEFFECT_ALL_AGG, "effect", [eff2, eff1], FEATURE_NAMES=[yvar], 
+                    dfeffect_agg_clean, "effect", [eff2, eff1], FEATURE_NAMES=[yvar], 
                     INDEX=["animal", "date", "bregion", "question", "subspace"], return_dfpivot=False) 
 
             fig = sns.catplot(data=dfsummary, x="bregion", y=COLNAMES_DIFF[0], jitter=True, alpha=0.5)
@@ -1757,10 +2221,6 @@ def targeted_pca_MULT_3_combined_plots(animal, run, savesuff, SAVEDIR_MULT=None,
 
             plt.close("all")
     
-    # # Free up space
-    # del LIST_DFEFFECT_ALL
-    # del DFEFFECT_ALL
-
 if __name__=="__main__":
     from neuralmonkey.scripts.analy_euclidian_dist_pop_script_MULT import load_preprocess_get_dates
 
@@ -1790,27 +2250,39 @@ if __name__=="__main__":
         elif plotdo==2.0:
             """ Step 1: Save a single DFDIST"""
             ### Collect all the animal-date pairs
-            LIST_ANIMAL = []
-            LIST_DATE = []
-            for animal in ["Diego", "Pancho"]:
-                list_dates, question, _, _ = load_preprocess_get_dates(animal, save_suffix)
-                list_dates = list(set(list_dates))
+            from multiprocessing import Pool
+            MULTIPROCESS_N_CORES = 24
+            if False: # Parallel across all dates/animals
+                LIST_ANIMAL = []
+                LIST_DATE = []
+                for animal in ["Diego", "Pancho"]:
+                    list_dates, question, _, _ = load_preprocess_get_dates(animal, save_suffix)
+                    list_dates = list(set(list_dates))
 
-                for date in list_dates:
-                    LIST_ANIMAL.append(animal)
-                    LIST_DATE.append(date)
-            
-            ### Run
-            if True:
-                from multiprocessing import Pool
-                MULTIPROCESS_N_CORES = 24
-                list_run = [RUN for _ in range(len(LIST_ANIMAL))]
-                list_expt_kind = [question for _ in range(len(LIST_ANIMAL))]
-                with Pool(MULTIPROCESS_N_CORES) as pool:
-                    pool.starmap(targeted_pca_MULT_1_load_and_save, zip(LIST_ANIMAL, LIST_DATE, list_run, list_expt_kind))
+                    for date in list_dates:
+                        LIST_ANIMAL.append(animal)
+                        LIST_DATE.append(date)
+                
+                ### Run
+                if True:
+                    MULTIPROCESS_N_CORES = 24
+                    list_run = [RUN for _ in range(len(LIST_ANIMAL))]
+                    list_expt_kind = [question for _ in range(len(LIST_ANIMAL))]
+                    with Pool(MULTIPROCESS_N_CORES) as pool:
+                        pool.starmap(targeted_pca_MULT_1_load_and_save, zip(LIST_ANIMAL, LIST_DATE, list_run, list_expt_kind))
+                else:
+                    for animal, date in zip(LIST_ANIMAL, LIST_DATE):
+                        targeted_pca_MULT_1_load_and_save(animal, date, run=RUN, expt_kind=question)
             else:
-                for animal, date in zip(LIST_ANIMAL, LIST_DATE):
-                    targeted_pca_MULT_1_load_and_save(animal, date, run=RUN, expt_kind=question)
+                # Each animal in turn
+                for animal in ["Diego", "Pancho"]:
+                    LIST_DATE, question, _, _ = load_preprocess_get_dates(animal, save_suffix)
+                    LIST_DATE = list(set(LIST_DATE))
+                    LIST_ANIMAL = [animal for _ in range(len(LIST_DATE))]
+                    list_run = [RUN for _ in range(len(LIST_ANIMAL))]
+                    list_expt_kind = [question for _ in range(len(LIST_ANIMAL))]
+                    with Pool(MULTIPROCESS_N_CORES) as pool:
+                        pool.starmap(targeted_pca_MULT_1_load_and_save, zip(LIST_ANIMAL, LIST_DATE, list_run, list_expt_kind))
 
             print("-------------------")
         elif plotdo==2.1:

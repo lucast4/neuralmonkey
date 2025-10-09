@@ -915,7 +915,8 @@ def params_getter_extraction(animal, DATE, which_level, ANALY_VER):
 #     return Dall, dataset_pruned_for_trial_analysis, TRIALCODES_KEEP, params, params_extraction
 
 
-def dataset_apply_params(D, DS, ANALY_VER, animal, DATE, save_substroke_preprocess_figures=True):
+def dataset_apply_params(D, DS, ANALY_VER, animal, DATE, save_substroke_preprocess_figures=True,
+                         SKIP_PLOTS=False):
     """Preprocess dataset in all ways, including pruning, appending/modifying columns, etc.
     PARAMS:
     - ANALY_VER, str, params to use.
@@ -1148,13 +1149,14 @@ def dataset_apply_params(D, DS, ANALY_VER, animal, DATE, save_substroke_preproce
             D.grammarparses_syntax_concrete_append_column()
 
             # For each sequence kind (e.g. shapes) split into concrete variations (classes).
-            savedir_preprocess = D.make_savedir_for_analysis_figures_BETTER("preprocess_general")
-            sdir = f"{savedir_preprocess}/seqcontext_behorder_cluster_concrete_variation"
-            os.makedirs(sdir, exist_ok=True)
-            D.seqcontext_behseq_cluster_concrete_variation(SAVEDIR=sdir,
-                                                           LIST_VAR_BEHORDER=["behseq_shapes", "behseq_locs",
-                                                                    "behseq_locs_x", "behseq_locs_diff", "behseq_locs_diff_x"])
-
+            if not SKIP_PLOTS:
+                savedir_preprocess = D.make_savedir_for_analysis_figures_BETTER("preprocess_general")
+                sdir = f"{savedir_preprocess}/seqcontext_behorder_cluster_concrete_variation"
+                os.makedirs(sdir, exist_ok=True)
+                D.seqcontext_behseq_cluster_concrete_variation(SAVEDIR=sdir,
+                                                            LIST_VAR_BEHORDER=["behseq_shapes", "behseq_locs",
+                                                                        "behseq_locs_x", "behseq_locs_diff", "behseq_locs_diff_x"])
+            
             if True:
                 # Wrapper to get all info about epochs
                 D.grammarparses_rules_epochs_superv_summarize_wrapper(PRINT=True)
@@ -1193,9 +1195,15 @@ def dataset_apply_params(D, DS, ANALY_VER, animal, DATE, save_substroke_preproce
                     D.Dat["syntax_concrete"] = list_syntax_concrete
 
             # Further bin trials based on variation in gap duration --> longer gaps means difference in preSMA state space?
-            sdir = f"{savedir_preprocess}/grammarparses_chunk_transitions_gaps_extract_batch"
-            os.makedirs(sdir, exist_ok=True)
-            D.grammarparses_chunk_transitions_gaps_extract_batch(plot_savedir=sdir)
+            if SKIP_PLOTS:
+                PLOT = False
+                sdir = None
+            else:
+                PLOT = True
+                sdir = f"{savedir_preprocess}/grammarparses_chunk_transitions_gaps_extract_batch"
+                os.makedirs(sdir, exist_ok=True)
+            D.grammarparses_chunk_transitions_gaps_extract_batch(plot_savedir=sdir, PLOT=PLOT)
+            plt.close("all")
 
             # For each token, assign a new key called "syntax role" -- good.
             D.grammarparses_syntax_role_append_to_tokens()

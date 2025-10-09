@@ -3503,7 +3503,7 @@ class PopAnal():
                 Xredu, _, _ = dimredgood_pca(Xredu, how_decide_npcs_keep = "keep_all",
                                 plot_pca_explained_var_path=plot_pca_explained_var_path_this,
                             plot_loadings_path=plot_loadings_path_this)
-
+                plt.close("all")
             # Get a PA holding final projected data
             PAredu = PAfinal_before_redu.copy_replacing_X(Xredu_in_orig_shape)
 
@@ -3530,7 +3530,7 @@ class PopAnal():
                 Xredu, _, _ = dimredgood_pca(Xredu, how_decide_npcs_keep = "keep_all",
                                 plot_pca_explained_var_path=plot_pca_explained_var_path_this,
                             plot_loadings_path=plot_loadings_path_this)
-
+                plt.close("all")
             # Get a PA holding final projected data
             assert len(PAfinal_before_redu.Xlabels["trials"]) == Xredu.shape[0]
             PAredu = PopAnal(Xredu.T[:, :, None].copy(), [0])  # (ndimskeep, ntrials, 1)
@@ -3658,6 +3658,7 @@ class PopAnal():
                                            plot_loadings_feature_labels=col_labels,
                                            method=pca_method,
                                            npcs_keep_force=npcs_keep_force) # (ntrials, nchans) --> (ntrials, ndims)
+                plt.close("all")
 
                 # Represent X in PopAnal
                 # PAfinal = PopAnal(X.T[:, :, None].copy(), [0])  # (ndimskeep, ntrials, 1)
@@ -3737,6 +3738,8 @@ class PopAnal():
                                            plot_loadings_feature_labels=col_labels,
                                            method=pca_method,
                                            npcs_keep_force=npcs_keep_force) # (ntrials, nchans) --> (ntrials, ndims)
+            plt.close("all")
+
             # Extra dimreduction step?
             if extra_dimred_method in ["umap", "mds"]:
                 from neuralmonkey.analyses.state_space_good import dimredgood_nonlinear_embed_data
@@ -5555,6 +5558,7 @@ class PopAnal():
         _, Xpca, _, explained_variance_ratio_, components_ = dimredgood_pca(data, method="sklearn", 
                                         plot_pca_explained_var_path=plot_pca_explained_var_path, 
                                         plot_loadings_path=plot_loadings_path, return_stats=True)
+        plt.close("all")
 
         if convert_to_dfbasis:
             res = []
@@ -5649,6 +5653,7 @@ class PopAnal():
                                                         #  plot_pca_explained_var_path="/tmp/test1.pdf", plot_loadings_path="/tmp/test2.pdf")
                     # print("Shapes: ", Xpcakeep.shape, data.shape)
                     dfcoeff[var_subspace] = Xpcakeep[:, 0]
+                    plt.close("all")
 
                     # Also, optionally, get not just first PC
 
@@ -5704,7 +5709,8 @@ class PopAnal():
                     _, Xpca, _, explained_variance_ratio_, components_ = dimredgood_pca(data, method="sklearn", 
                                                     plot_pca_explained_var_path=plot_pca_explained_var_path, 
                                                     plot_loadings_path=plot_loadings_path, return_stats=True)
-
+                    plt.close("all")
+                    
                 # store everything
                 res.append({
                     "var_subspace":var_subspace,

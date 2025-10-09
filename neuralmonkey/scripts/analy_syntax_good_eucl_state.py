@@ -1522,8 +1522,64 @@ def mult_plot_grammar_vs_seqsup_new(DFDIST, SAVEDIR, contrast_version="shape_ind
 def targeted_pca_clean_plots_and_dfdist_params():
     """
     Stores "questions", which are specific sets of variables for computing euclidean dsitance between each conunctive level.
-    """
+    """ 
 
+    ### Older ones, which are fine, but unnecesary, slows things down.
+    # map_question_to_euclideanvars = {
+    #     # - To test chunk rank: allow chunk_within_rank_semantic_v2 free (ie 0011)
+    #     # - To test chunk_within_rank_semantic_v2: fix (chunk_rank", "shape", "gridloc) [0111]
+    #     # - Motor control: (shape", "gridloc) [1100]
+    #     # "1_rankwithin_vs_rank": ["chunk_within_rank_semantic_v2", "chunk_rank", "shape", "gridloc", "task_kind"],
+
+    #     # Does two things: (1) n in chunk, (2) chunk_within_rank (more stringently than above)
+    #     # - To test chunk_n_in_chunk: 01111
+    #     # chunk_within_rank: 10111 (note, this is stronger test than above, since above does nto control chunk_n_in_chunk, so could be due to #3 only occuring for caes with 3 strokes, for exmaple)
+    #     # - note: no reason to use chunk_within_rank_semantic_v2,  because once you condition on chunk_n_in_chunk, then chunk_within_rank is ideal
+    #     "2_ninchunk_vs_rankwithin":["chunk_n_in_chunk", "chunk_within_rank", "chunk_rank", "shape", "gridloc", "task_kind"],
+
+    #     # counting from onset or offset.
+    #     # 01111 or 10111
+    #     "3_onset_vs_offset":["chunk_within_rank", "chunk_within_rank_fromlast", "chunk_rank", "shape", "gridloc", "task_kind"],
+    #     "14_onset_vs_offset":["chunk_within_rank", "chunk_within_rank_fromlast", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev", "task_kind"],
+
+    #     "4_shape_vs_chunk":["shape", "gridloc", "task_kind"],
+    #     # "4b_shape_vs_chunk":["shape", "gridloc", "CTXT_loc_prev", "task_kind"], # This doesnt make sense, since SP are always first stroke...
+    #     "4c_shape_vs_chunk":["shape", "task_kind"],
+
+    #     # Like 1 and 2, but very strong control for motor
+    #     # "5_rankwithin_vs_rank": ["chunk_within_rank_semantic_v2", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev", "task_kind"],
+    #     # -- Exclude, as it is identical to 11
+    #     # "6_ninchunk_vs_rankwithin":["chunk_n_in_chunk", "chunk_within_rank", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev", "task_kind"],
+        
+    #     # # for triggering "subraction of confounds".
+    #     # "7_ninchunk_vs_rankwithin":["chunk_n_in_chunk", "chunk_within_rank", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev", "task_kind"],
+
+    #     # For "two shapes" analy (different levels of control)
+    #     "8_twoshapes":["epoch", "chunk_within_rank", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev", "syntax_concrete", "behseq_locs_clust", "task_kind"],
+    #     "13_twoshapes":["epoch", "chunk_within_rank", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev", "syntax_concrete", "CTXT_loc_next", "task_kind"],
+    #     "9_twoshapes":["epoch", "chunk_within_rank", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev", "syntax_concrete", "task_kind"],
+
+    #     "10_twoshapes":["epoch", "chunk_within_rank", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev", "CTXT_loc_next", "chunk_n_in_chunk", "task_kind"],
+    #     "11_twoshapes":["epoch", "chunk_within_rank", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev", "chunk_n_in_chunk", "task_kind"],
+
+    #     # "12_twoshapes":["epoch", "chunk_within_rank", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev", "CTXT_loc_next", "task_kind"], # Doesnt exists, no data.
+
+    #     ### SH VS SEQSUP
+    #     # IGNORE THIS -- it should be obsolete with 24 and 25
+    #     # # - Original method, using epochset_shape
+    #     # "20_sh_vs_superv":["stroke_index", "epochset_shape", "behseq_shapes", "epoch_rand", "superv_is_seq_sup", "behseq_locs_clust"],
+    #     # "21_sh_vs_superv":["stroke_index", "epochset_shape", "behseq_shapes", "epoch_rand", "superv_is_seq_sup"],
+    #     # "22_sh_vs_superv":["stroke_index", "epochset_shape", "behseq_shapes", "epoch_rand", "superv_is_seq_sup", "behseq_locs_clust"],
+    #     # "23_sh_vs_superv":["stroke_index", "epochset_shape", "behseq_shapes", "epoch_rand", "superv_is_seq_sup"],
+
+    #     # - New method, ignoring epochset-shape, and using the "ground-truth" based on defining each task by its behseq_shapes
+    #     # epoch_rand_exclsv: (llCV3, UL, rand)
+    #     # epoch_kind: (shape, dir, rand)
+    #     "24_sh_vs_superv":["stroke_index", "behseq_shapes", "epoch_rand_exclsv", "epoch_kind", "superv_is_seq_sup", "behseq_locs_clust", "FEAT_num_strokes_beh"],
+    #     "25_sh_vs_superv":["stroke_index", "behseq_shapes", "epoch_rand_exclsv", "epoch_kind", "superv_is_seq_sup", "FEAT_num_strokes_beh"],
+    # }
+
+    ### The essential ones -- for quicker running
     map_question_to_euclideanvars = {
         # - To test chunk rank: allow chunk_within_rank_semantic_v2 free (ie 0011)
         # - To test chunk_within_rank_semantic_v2: fix (chunk_rank", "shape", "gridloc) [0111]
@@ -1534,7 +1590,7 @@ def targeted_pca_clean_plots_and_dfdist_params():
         # - To test chunk_n_in_chunk: 01111
         # chunk_within_rank: 10111 (note, this is stronger test than above, since above does nto control chunk_n_in_chunk, so could be due to #3 only occuring for caes with 3 strokes, for exmaple)
         # - note: no reason to use chunk_within_rank_semantic_v2,  because once you condition on chunk_n_in_chunk, then chunk_within_rank is ideal
-        "2_ninchunk_vs_rankwithin":["chunk_n_in_chunk", "chunk_within_rank", "chunk_rank", "shape", "gridloc", "task_kind"],
+        # "2_ninchunk_vs_rankwithin":["chunk_n_in_chunk", "chunk_within_rank", "chunk_rank", "shape", "gridloc", "task_kind"],
 
         # counting from onset or offset.
         # 01111 or 10111
@@ -1547,7 +1603,8 @@ def targeted_pca_clean_plots_and_dfdist_params():
 
         # Like 1 and 2, but very strong control for motor
         # "5_rankwithin_vs_rank": ["chunk_within_rank_semantic_v2", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev", "task_kind"],
-        "6_ninchunk_vs_rankwithin":["chunk_n_in_chunk", "chunk_within_rank", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev", "task_kind"],
+        # -- Exclude, as it is identical to 11
+        # "6_ninchunk_vs_rankwithin":["chunk_n_in_chunk", "chunk_within_rank", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev", "task_kind"],
         
         # # for triggering "subraction of confounds".
         # "7_ninchunk_vs_rankwithin":["chunk_n_in_chunk", "chunk_within_rank", "chunk_rank", "shape", "gridloc", "CTXT_loc_prev", "task_kind"],
@@ -1573,8 +1630,8 @@ def targeted_pca_clean_plots_and_dfdist_params():
         # - New method, ignoring epochset-shape, and using the "ground-truth" based on defining each task by its behseq_shapes
         # epoch_rand_exclsv: (llCV3, UL, rand)
         # epoch_kind: (shape, dir, rand)
-        "24_sh_vs_superv":["stroke_index", "behseq_shapes", "epoch_rand_exclsv", "epoch_kind", "superv_is_seq_sup", "behseq_locs_clust", "FEAT_num_strokes_beh"],
-        "25_sh_vs_superv":["stroke_index", "behseq_shapes", "epoch_rand_exclsv", "epoch_kind", "superv_is_seq_sup", "FEAT_num_strokes_beh"],
+        # "24_sh_vs_superv":["stroke_index", "behseq_shapes", "epoch_rand_exclsv", "epoch_kind", "superv_is_seq_sup", "behseq_locs_clust", "FEAT_num_strokes_beh"],
+        # "25_sh_vs_superv":["stroke_index", "behseq_shapes", "epoch_rand_exclsv", "epoch_kind", "superv_is_seq_sup", "FEAT_num_strokes_beh"],
     }
 
     # -- Decreasing levels of control (using n_in_chunk)
@@ -1637,18 +1694,18 @@ def targeted_pca_clean_plots_and_dfdist(DFallpa, animal, date, SAVEDIR_ALL, DEBU
 
         # QUICKER, for testing
         bregions_get = None
-        n_splits = 2 # make this high, since with splits you might lose certain low-n labels tuples.
+        n_splits = 8 # make this high, since with splits you might lose certain low-n labels tuples.
         do_subspaces_within_chunk = False
         do_plot_rsa = False
-        euclid_prune_min_n_trials = 3 # 3 is faster
         # DO_PLOT_STATE_SPACE = False
         # DO_EUCLIDEAN = False
         # DO_ORDINAL_REGRESSION = True
 
     # Stratified splits params
-    # Better, more careful, ensuring enough data for euclidian distance.
-    fraction_constrained_set=0.4
-    n_constrained=2 # Ideally have more than 1 pair
+    # Constrained = test (i.e, computing euclidean dist). Make this higher so can get enough data for eucldiean.
+    # THis is more important than having data for fitting subspace (since I generalyl use global subspace anyway)
+    fraction_constrained_set=0.7 # Was 0.4, but decided better to have more data for computing distance, or else you lose data.
+    n_constrained=2 
     list_labels_need_n=None
     min_frac_datapts_unconstrained=None
     # min_n_datapts_unconstrained=len(PAscal.Xlabels["trials"][_var_effect].unique())
@@ -1674,6 +1731,9 @@ def targeted_pca_clean_plots_and_dfdist(DFallpa, animal, date, SAVEDIR_ALL, DEBU
     force_dont_split_train_test = False
     DO_REGRESS_FIRST_STROKE = False
     prune_min_n_trials = 3
+
+    # DONT MODIFIY
+    force_allow_split_train_test = False
 
     # Regression variables (and also, variables that are candidates for subspaces)
     # Run 1 (7/31/25)
@@ -2220,11 +2280,129 @@ def targeted_pca_clean_plots_and_dfdist(DFallpa, animal, date, SAVEDIR_ALL, DEBU
         twind_scal = [-0.35, 0.2]
         tbin_dur = 0.15
         tbin_slide = 0.05
+
+    elif run_number == 27:
+        # - For initial global regression and subtraction of confounding variables
+        do_remove_global_first_stroke = True
+        variables_cont_global = ["motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y"]
+        variables_cat_global = ["epoch", "gridloc", "DIFF_gridloc", "stroke_index_is_first", "chunk_rank", "shape", "rank_conj"]
+        vars_remove_global = ["stroke_index_is_first"]
+        # - Then for subspace identification
+        # (note: Same as above, but remove the variable that has been regressed out)
+        variables_cont = []
+        variables_cat = ["epoch", "gridloc", "DIFF_gridloc", "stroke_index_is_first", "chunk_rank", "shape", "rank_conj"]
+        do_vars_remove = False
+        vars_remove = None
+        # Subspace params
+        list_var_subspace = [
+            tuple(["epoch", "gridloc", "DIFF_gridloc", "chunk_rank", "shape", "rank_conj"]), # global
+            # "shape", # Only run this for the question related to SP vs. grammar.
+            ]
+        restrict_questions_based_on_subspace = {
+            "shape":["4_shape_vs_chunk"],
+        }
+        
+        # - Update the time window to match the action sybmols stuff
+        twind_scal = [-0.35, 0.2]
+        tbin_dur = 0.15
+        tbin_slide = 0.05
+
+    elif run_number == 28:
+        # - For initial global regression and subtraction of confounding variables
+        do_remove_global_first_stroke = True
+        variables_cont_global = []
+        variables_cat_global = ["stroke_index_is_first", "shape", "task_kind"]
+        vars_remove_global = ["stroke_index_is_first"]
+        # - Then for subspace identification
+        # (note: Same as above, but remove the variable that has been regressed out)
+        variables_cont = []
+        variables_cat = ["shape", "task_kind"]
+        do_vars_remove = False
+        vars_remove = None
+        # Subspace params
+        list_var_subspace = [
+            "shape", # Only run this for the question related to SP vs. grammar.
+            # tuple(["shape", "task_kind"]),
+            ]
+        restrict_questions_based_on_subspace = {
+            "shape":["4_shape_vs_chunk", "4c_shape_vs_chunk", "11_twoshapes"],
+            # tuple(["shape", "task_kind"]):["4_shape_vs_chunk", "4c_shape_vs_chunk", "11_twoshapes"],
+        }
+        single_prims_exclude_from_training=False
+        force_dont_split_train_test = True # If single_prims_exclude_from_training is False, then you shouldn't do splits 
+
+        # - Update the time window to match the action sybmols stuff
+        twind_scal = [-0.35, 0.2]
+        tbin_dur = 0.15
+        tbin_slide = 0.05
+
+    elif run_number == 29:
+        # - For initial global regression and subtraction of confounding variables
+        do_remove_global_first_stroke = True
+        variables_cont_global = []
+        variables_cat_global = ["stroke_index_is_first", "shape", "task_kind"]
+        vars_remove_global = ["stroke_index_is_first"]
+        # - Then for subspace identification
+        # (note: Same as above, but remove the variable that has been regressed out)
+        variables_cont = []
+        variables_cat = ["shape", "task_kind"]
+        do_vars_remove = False
+        vars_remove = None
+        # Subspace params
+        list_var_subspace = [
+            "shape", # Only run this for the question related to SP vs. grammar.
+            # tuple(["shape", "task_kind"]),
+            ]
+        restrict_questions_based_on_subspace = {
+            "shape":["4_shape_vs_chunk", "4c_shape_vs_chunk", "11_twoshapes"],
+            # tuple(["shape", "task_kind"]):["4_shape_vs_chunk", "4c_shape_vs_chunk", "11_twoshapes"],
+        }
+        single_prims_exclude_from_training=False
+        force_allow_split_train_test = True
+        fraction_constrained_set=0.75 # make this higher, to include more data in euclidean (for SP).
+
+        # - Update the time window to match the action sybmols stuff
+        twind_scal = [-0.35, 0.2]
+        tbin_dur = 0.15
+        tbin_slide = 0.05
+
+    elif run_number == 30:
+        # - For initial global regression and subtraction of confounding variables
+        do_remove_global_first_stroke = True
+        variables_cont_global = ["motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y"]
+        variables_cat_global = ["epoch", "gridloc", "DIFF_gridloc", "stroke_index_is_first", "chunk_rank", "shape", "rank_conj"]
+        vars_remove_global = ["stroke_index_is_first"]
+        # - Then for subspace identification
+        # (note: Same as above, but remove the variable that has been regressed out)
+        variables_cont = []
+        variables_cat = ["epoch", "gridloc", "DIFF_gridloc", "stroke_index_is_first", "chunk_rank", "shape", "rank_conj"]
+        do_vars_remove = False
+        vars_remove = None
+        # Subspace params
+        list_var_subspace = [
+            tuple(["epoch", "gridloc", "DIFF_gridloc", "chunk_rank", "shape", "rank_conj"]), # global
+            # "shape", # Only run this for the question related to SP vs. grammar.
+            ]
+        restrict_questions_based_on_subspace = {
+            "shape":["4_shape_vs_chunk"],
+        }
+        
+        # - Update the time window to match the action sybmols stuff
+        twind_scal = [-0.35, 0.2]
+        tbin_dur = 0.15
+        tbin_slide = 0.05
+
+        # run 30 means this:
+        DO_PLOT_STATE_SPACE = False
+        DO_EUCLIDEAN = False
+        DO_ORDINAL_REGRESSION = True
+        euclidean_npcs_keep = 6
+        n_splits = 4
     else:
         assert False
 
-    if single_prims_exclude_from_training==False:
-        assert force_dont_split_train_test == True, "If single_prims_exclude_from_training is False, then you shouldn't do splits. Comment this out if you have enough SP data that you actually want to do this"
+    if single_prims_exclude_from_training==False and force_allow_split_train_test==False:
+        assert force_dont_split_train_test == True, "If single_prims_exclude_from_training is False, then you shouldn't do splits. The reason is lack of much SP data. Comment this out if you have enough SP data that you actually want to do this"
 
     if force_dont_split_train_test==True:
         n_splits = 1 # since it uses all data
@@ -2353,8 +2531,6 @@ def targeted_pca_clean_plots_and_dfdist(DFallpa, animal, date, SAVEDIR_ALL, DEBU
     #     "24_sh_vs_superv":["stroke_index", "behseq_shapes", "epoch_rand_exclsv", "epoch_kind", "superv_is_seq_sup", "behseq_locs_clust"],
     #     "25_sh_vs_superv
 
-    # Use the same split folds for each bregion
-    folds_dflab = None
     # - First, sanity check that all regions (PAs) have same rows
     _trials = None
     for pa in DFallpa["pa"].values:
@@ -2363,6 +2539,8 @@ def targeted_pca_clean_plots_and_dfdist(DFallpa, animal, date, SAVEDIR_ALL, DEBU
         else:
             _trials = pa.Xlabels["trials"].loc[:, ["trialcode", "stroke_index"]].values.tolist()       
 
+    # Use the same split folds for each bregion
+    folds_dflab = None
     for _, row in DFallpa.iterrows():
         bregion = row["bregion"]
         PA = row["pa"]
@@ -2426,13 +2604,14 @@ def targeted_pca_clean_plots_and_dfdist(DFallpa, animal, date, SAVEDIR_ALL, DEBU
                                                             fraction_constrained_set, n_constrained, 
                                                             list_labels_need_n, min_frac_datapts_unconstrained,  
                                                             min_n_datapts_unconstrained, plot_train_test_counts, plot_indices)
-            
+            # folds_dflab --> (unc, cons) (train_inds, test_inds)
+
             if force_dont_split_train_test:
                 folds_dflab = [(train_inds+test_inds, train_inds+test_inds) for train_inds, test_inds in folds_dflab]
                 folds_dflab = [folds_dflab[0]] # just take one fold...
 
-            savefig(fig_con, f"{SAVEDIR}/after_split_constrained_fold_0.pdf") # TEST
-            savefig(fig_unc, f"{SAVEDIR}/after_split_unconstrained_fold_0.pdf") # TRIAN
+            savefig(fig_con, f"{SAVEDIR}/after_split_constrained_test_fold_0.pdf") # TEST
+            savefig(fig_unc, f"{SAVEDIR}/after_split_unconstrained_train_fold_0.pdf") # TRIAN
             plt.close("all")
         else:
             # Then use this folds_dflab...
@@ -2463,11 +2642,17 @@ def targeted_pca_clean_plots_and_dfdist(DFallpa, animal, date, SAVEDIR_ALL, DEBU
         }, f"{SAVEDIR}/params.txt")
 
         ### RUN!
+        did_state_space = {} # only do this once out of all splits (projections).
+        for var_subspace in list_var_subspace:
+            did_state_space[var_subspace] = False
+                
         for i_proj, (train_inds, test_inds) in enumerate(folds_dflab):
             
-            # train_inds has FEWER inds than test_inds
             train_inds = [int(i) for i in train_inds]
             test_inds = [int(i) for i in test_inds]
+            if len(test_inds)<len(train_inds):
+                print(len(train_inds), len(test_inds))
+                assert False, "sanity chcek that I understand my code.."
             print("n_train, n_test:", len(train_inds), len(test_inds))
 
             if single_prims_exclude_from_training:
@@ -2477,15 +2662,14 @@ def targeted_pca_clean_plots_and_dfdist(DFallpa, animal, date, SAVEDIR_ALL, DEBU
                 test_inds = test_inds + [i for i in train_inds if i in inds_sp]
                 train_inds = [i for i in train_inds if i not in inds_sp]
 
-            # Then run this: state_space_targeted_pca_scalar_single_one_var_mult_axes
-            # TODO: split the training and testing
             for var_subspace in list_var_subspace:
 
                 savedir = f"{SAVEDIR}/FITTING_subspc={var_subspace}-iter={i_proj}"
                 os.makedirs(savedir, exist_ok=True)
 
-                if DO_PLOT_STATE_SPACE:
+                if DO_PLOT_STATE_SPACE and not did_state_space[var_subspace]:
                     _LIST_VAR_VAROTHERS = LIST_VAR_VAROTHERS
+                    did_state_space[var_subspace] = True
                 else:
                     _LIST_VAR_VAROTHERS = None
 
@@ -2493,7 +2677,7 @@ def targeted_pca_clean_plots_and_dfdist(DFallpa, animal, date, SAVEDIR_ALL, DEBU
                 pa_subspace, _, _, dfcoeff, _ = state_space_targeted_pca_scalar_single_one_var_mult_axes(
                         PAscal, twind_scal, variables_cont, variables_cat, var_subspace, npcs_keep_force, 
                         _LIST_VAR_VAROTHERS, LIST_DIMS, savedir, just_extract_paredu=False,
-                        savedir_pca_subspaces=savedir, tbin_dur=tbin_dur, tbin_slide=tbin_slide,
+                        savedir_pca_subspaces=savedir,
                         inds_trials_pa_train=train_inds, inds_trials_pa_test=test_inds,
                         skip_dim_redu=True,
                         do_vars_remove=do_vars_remove, vars_remove=vars_remove)
@@ -3017,10 +3201,14 @@ def kernel_ordinal_logistic_regression_wrapper(PA, yvar, vars_grp, savedir, plot
     dfcross = pd.DataFrame(RES_CROSS)
     dfwithin = pd.DataFrame(RES_WITHIN)
 
-    if n_skips/n_tot > 0.1:
-        print(n_skips)
-        print(n_tot)
-        assert False, "wjhy skiped so many?"
+    if len(dfwithin)==0 and len(dfcross)==0:
+        return None, None
+    
+    if False:
+        if (n_tot > 10) and (n_skips/n_tot) > 0.4:
+            print(n_skips)
+            print(n_tot)
+            assert False, "wjhy skiped so many?"
 
     if len(dfcross)==0 and len(dfwithin)==0:
         return None, None
@@ -3412,10 +3600,12 @@ def kernel_ordinal_logistic_regression_wrapper_plot(dfcross, dfwithin, vars_grp,
 
         for y in ["accuracy", "accuracy_adjusted", "balanced_accuracy", "balanced_accuracy_adjusted"]:
             dfeffect = DFEFFECT[~(DFEFFECT[y] == "none")]
-            fig = sns.catplot(data=dfeffect, x="effect", y=y, hue=varsame, col="shape_1", alpha=0.5, jitter=True)
+            # fig = sns.catplot(data=dfeffect, x="effect", y=y, hue=varsame, col="shape_1", alpha=0.5, jitter=True)
+            fig = sns.catplot(data=dfeffect, x="effect", y=y, hue=varsame, col="shape_1", alpha=0.5)
             savefig(fig, f"{savedir}/EFFECT-catplot-yvar={y}-1.pdf")
 
-            fig = sns.catplot(data=dfeffect, x="effect", y=y, col="shape_1", alpha=0.5, jitter=True)
+            # fig = sns.catplot(data=dfeffect, x="effect", y=y, col="shape_1", alpha=0.5, jitter=True)
+            fig = sns.catplot(data=dfeffect, x="effect", y=y, col="shape_1", alpha=0.5)
             savefig(fig, f"{savedir}/EFFECT-catplot-yvar={y}-2.pdf")
             
             fig = sns.catplot(data=dfeffect, x="effect", y=y, col="shape_1", kind="bar", errorbar="se")
@@ -3445,9 +3635,19 @@ def kernel_ordinal_logistic_regression_wrapper_CONCATED_postprocess(DFCROSS, DFW
     DFWITHIN = append_col_with_grp_index(DFWITHIN, ["yvar", "vars_grp"], "regr_yvar_grp")
     DFCROSS = append_col_with_grp_index(DFCROSS, ["yvar", "vars_grp"], "regr_yvar_grp")
 
-    DFCROSS["n_labels_test"] = [len(x) for x in DFCROSS["y_test_unique"]]
+    if "y_test_unique" in DFCROSS:
+        DFCROSS["n_labels_test"] = [len(x) for x in DFCROSS["y_test_unique"]]
     DFWITHIN["n_labels_test"] = DFWITHIN["n_labels_train"]
 
+    # Finally, round up the value for "n_train" and "n_test" (cant have fractions)
+    for col in ["n_labels_train", "n_labels_test"]:
+        DFCROSS[col] = np.ceil(DFCROSS[col]).astype(int)
+        DFWITHIN[col] = np.ceil(DFWITHIN[col]).astype(int)
+
+        # And replace >3 with one number
+        DFCROSS.loc[DFCROSS[col]>2, col] = 99
+        DFWITHIN.loc[DFWITHIN[col]>2, col] = 99
+        
     DFWITHIN = replace_None_with_string(DFWITHIN)
     DFCROSS = replace_None_with_string(DFCROSS)
 
@@ -3590,6 +3790,8 @@ def kernel_ordinal_logistic_regression_wrapper_CONCATED_plot_all(DFCROSS, DFWITH
 
     list_yvar_grp = DFCROSS["regr_yvar_grp"].unique().tolist()
     list_n_labels_train = DFCROSS["n_labels_train"].unique().tolist()
+    # list_n_labels_train = [99]
+    # list_yvar_grp = ["chunk_within_rank_fromlast|('task_kind', 'epoch', 'chunk_rank', 'shape', 'gridloc', 'stroke_index_is_first', 'chunk_n_in_chunk')"]    
     for n_labels_train in list_n_labels_train:
         for regr_yvar_grp in list_yvar_grp:
             dfcross = DFCROSS[(DFCROSS["n_labels_train"]==n_labels_train) & (DFCROSS["regr_yvar_grp"] == regr_yvar_grp)].reset_index(drop=True)
@@ -3712,15 +3914,129 @@ def kernel_ordinal_logistic_regression_wrapper_CONCATED_plot_all(DFCROSS, DFWITH
 
                         plt.close("all")
 
-                        # Scatterplot
+                        # Scatterplot (x = Wall)
                         for var_datapt in ["date_grp_train", "ep_cr_sh_1", "date"]:
-                            for y_lev_manip in ["Xshape", "Xn_Wshape"]:
-                                _, fig = plot_45scatter_means_flexible_grouping(dfeffect, "effect", "Wall", y_lev_manip, 
+                            for _y_lev_manip in ["Xshape", "Xn_Wshape"]:
+                                for lenient_suff in ["", "_lenient"]:
+                                    y_lev_manip = f"{_y_lev_manip}{lenient_suff}"
+                                    _, fig = plot_45scatter_means_flexible_grouping(dfeffect, "effect", "Wall", y_lev_manip, 
+                                                                                    "bregion", y, var_datapt, False, 
+                                                                                    shareaxes=True, alpha=0.5)
+                                    if fig is not None:
+                                        savefig(fig, f"{savedir}/EFFECT_SCATTER-nlab={n_labels_train}-regr_yvar_grp={regr_yvar_grp}-ylev={y_lev_manip}-datapt={var_datapt}-value={y}.pdf")
+                                        plt.close("all")
+
+                        # Scatterplot (comapre generalization scores)
+                        for lenient_suff in ["", "_lenient"]:
+                            y_lev_manip = f"Xshape{lenient_suff}"
+                            x_lev_manip = f"Xn_Wshape{lenient_suff}"
+                            for var_datapt in ["date_grp_train", "ep_cr_sh_1", "date"]:                            
+                                _, fig = plot_45scatter_means_flexible_grouping(dfeffect, "effect", x_lev_manip, y_lev_manip, 
                                                                                 "bregion", y, var_datapt, False, 
                                                                                 shareaxes=True, alpha=0.5)
                                 if fig is not None:
-                                    savefig(fig, f"{savedir}/EFFECT_SCATTER-nlab={n_labels_train}-regr_yvar_grp={regr_yvar_grp}-ylev={y_lev_manip}-datapt={var_datapt}-value={y}.pdf")
+                                    savefig(fig, f"{savedir}/EFFSCATGEN-n={n_labels_train}-yvar={regr_yvar_grp}-x={x_lev_manip}-y={y_lev_manip}-dat={var_datapt}-val={y}.pdf")
                                     plt.close("all")
+
+                        # Scatterplot, overlaying generlatiion to (diff shape) and (same shape, diff n) on same plot.
+                        from pythonlib.tools.pandastools import pivot_table
+                        from pythonlib.tools.plottools import set_axis_lims_square_bounding_data_45line
+                        if "Xn_Wshape" in dfeffect["effect"].unique().tolist():
+                            for var_datapt in ["date_grp_train", "ep_cr_sh_1", "date"]:                            
+                                    
+                                dfeffect_wide = pivot_table(dfeffect, ["bregion", var_datapt], ["effect"], [y], flatten_col_names=True)
+                                list_bregion = dfeffect_wide["bregion"].unique().tolist()
+
+                                SIZE = 3
+                                alpha = 0.5
+                                ncols = 3
+                                nrows = int(np.ceil(len(list_bregion)/ncols))
+                                xvar = f"{y}-Wall"
+                                for do_lenient in [False, True]: 
+                                    
+                                    list_yvar = [f"{y}-Xshape", f"{y}-Xn_Wshape"]
+                                    if do_lenient:
+                                        list_yvar = [f"{y}_lenient" for y in list_yvar]
+
+                                    for do_paired_pts in [False, True]: # if True, then keeps only datapts with both x and y
+
+                                        dfeffect_wide_this = dfeffect_wide.copy()
+                                        if do_paired_pts:
+                                            # then only keep cases with both kinds of generalization    
+                                            # for _y in list_yvar:
+                                            #     dfeffect_wide_this = dfeffect_wide_this[~(dfeffect_wide_this[_y].isna())]
+                                            dfeffect_wide_this = dfeffect_wide_this[~(dfeffect_wide_this.loc[:, list_yvar].isna().any(axis=1))] # only keep rows without any nan
+
+                                        ### (1) Scatterplots
+                                        fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*SIZE, nrows*SIZE), sharex=True, sharey=True)
+                                        xs = []
+                                        ys = []
+                                        for bregion, ax in zip(list_bregion, axes.flatten()):
+                                            dfeffect_wide_bregion = dfeffect_wide_this[dfeffect_wide_this["bregion"] == bregion]
+                                            for yvar in list_yvar:
+
+                                                dfeffect_wide_this_this = dfeffect_wide_bregion[~(dfeffect_wide_bregion[yvar].isna())]
+
+                                                if len(dfeffect_wide_this_this)>0:
+                                                    sns.scatterplot(dfeffect_wide_this_this, x=xvar, y=yvar, ax=ax, alpha=alpha)
+                                                    xs.extend(dfeffect_wide_this_this[xvar].tolist())
+                                                    ys.extend(dfeffect_wide_this_this[yvar].tolist())
+                                            ax.set_title(bregion)
+
+                                        # Square axes.
+                                        for ax in axes.flatten():
+                                            set_axis_lims_square_bounding_data_45line(ax, xs, ys, dotted_lines="unity")
+                                            set_axis_lims_square_bounding_data_45line(ax, xs, ys, dotted_lines="plus")        
+
+                                        savefig(fig, f"{savedir}/EFFSCATMERG-n={n_labels_train}-yvar={regr_yvar_grp}-lent={do_lenient}-paired={do_paired_pts}-dat={var_datapt}-val={y}.pdf")
+                                        
+                                        plt.close("all")
+
+
+                                        ### Plot barplots
+                                        from pythonlib.tools.pandastools import convert_wide_to_long
+                                        from pythonlib.tools.snstools import rotateLabel
+                                        xvars = ["accuracy_adjusted-Wall", "accuracy_adjusted-Xn_Wshape", "accuracy_adjusted-Xshape"]
+                                        dfeffect_wide_this_long = convert_wide_to_long(dfeffect_wide_this, xvars, ["bregion", var_datapt])
+
+                                        fig = sns.catplot(data=dfeffect_wide_this_long, x="col_from_wide", y="col_from_wide_value", col="bregion", col_wrap=6,
+                                                        order=xvars)
+                                        rotateLabel(fig)
+                                        for ax in fig.axes.flatten():
+                                            ax.axhline(0, color="k", alpha=0.5)
+                                        savefig(fig, f"{savedir}/EFFBARS-n={n_labels_train}-yvar={regr_yvar_grp}-paired={do_paired_pts}-dat={var_datapt}-val={y}-1.pdf")
+
+                                        fig = sns.catplot(data=dfeffect_wide_this_long, x="col_from_wide", y="col_from_wide_value", col="bregion", col_wrap=6,
+                                                        kind="bar", errorbar="se", order=xvars)
+                                        rotateLabel(fig)                                        
+                                        savefig(fig, f"{savedir}/EFFBARS-n={n_labels_train}-yvar={regr_yvar_grp}-paired={do_paired_pts}-dat={var_datapt}-val={y}-2.pdf")
+
+                                        # - lines connecting each. Actually is not needed.
+                                        # fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*SIZE, nrows*SIZE), sharex=True, sharey=True)
+                                        # for bregion, ax in zip(list_bregion, axes.flatten()):    
+                                        #     dfeffect_wide_bregion = dfeffect_wide_this[dfeffect_wide_this["bregion"] == bregion]
+                                        #     dfeffect_wide_this_this = dfeffect_wide_bregion[~(dfeffect_wide_bregion.loc[:, xvars].isna().any(axis=1))] # only keep rows without any nan
+
+                                        #     xs = np.arange(len(xvars))
+                                        #     for _, ys in enumerate(dfeffect_wide_this_this.loc[:, xvars].values):
+                                        #         ax.plot(xs, ys, "-ok", alpha=0.5)
+
+                                        #### Plot stats (comapre each effect to each other efect)
+                                        if do_paired_pts:
+                                            from pythonlib.tools.statstools import compute_all_pairwise_signrank_wrapper
+                                            from pythonlib.tools.pandastools import convert_wide_to_long
+                                            for bregion, ax in zip(list_bregion, axes.flatten()):    
+                                                dfeffect_wide_bregion = dfeffect_wide_this[dfeffect_wide_this["bregion"] == bregion]
+                                                # dfeffect_wide_this_this = dfeffect_wide_bregion[~(dfeffect_wide_bregion.loc[:, xvars].isna().any(axis=1))] # only keep rows without any nan
+
+                                                savedir_this = f"{savedir}/EFFSTATS-n={n_labels_train}-yvar={regr_yvar_grp}-dat={var_datapt}-val={y}-br={bregion}"
+                                                os.makedirs(savedir_this, exist_ok=True)
+                                                dfeffect_wide_bregion_long = convert_wide_to_long(dfeffect_wide_bregion, xvars, ["bregion", var_datapt])
+                                                compute_all_pairwise_signrank_wrapper(dfeffect_wide_bregion_long, [var_datapt], 
+                                                                                    "col_from_wide", "col_from_wide_value", True, savedir=savedir_this, 
+                                                                                    plot_contrast_vars=xvars)
+
+
 
 def targeted_pca_state_space_split_over(DFallpa, SAVEDIR_ANALYSIS, 
                                        variables, variables_is_cat, LIST_VAR_VAROTHERS_SS, # For dim reduction and plotting state space
@@ -4097,9 +4413,13 @@ if __name__=="__main__":
             HACK_ONLY_PREPROCESS = plotdo==7.2
 
             # Run
-            DO_PLOT_STATE_SPACE = False
-            DO_EUCLIDEAN = False
-            DO_ORDINAL_REGRESSION = True
+            # DO_PLOT_STATE_SPACE = False
+            # DO_EUCLIDEAN = False
+            # DO_ORDINAL_REGRESSION = True
+
+            DO_PLOT_STATE_SPACE = True
+            DO_EUCLIDEAN = True
+            DO_ORDINAL_REGRESSION = False
             targeted_pca_clean_plots_and_dfdist(DFallpa, animal, date, 
                                                 SAVEDIR_ANALYSIS, 
                                                 DEBUG=False, HACK_ONLY_PREPROCESS=HACK_ONLY_PREPROCESS,

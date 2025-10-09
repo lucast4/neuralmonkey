@@ -1207,6 +1207,102 @@ def ordinalregress_1_compute(pa_subspace, LIST_VAR_VAROTHERS_REGR, SAVEDIR, nspl
 
     return DFCROSS, DFWITHIN
 
+def ordinalregress_2_regr_coeff_pairs(DFWITHIN, savedir):
+    """
+    Compute pairwise comparison of regression coefficients, across all conditions
+    """
+    from pythonlib.tools.vectools import cosine_similarity
+
+    ### (1) Get all pairwise correlations of regression coefficients
+    res = []
+    for i1, row1 in DFWITHIN.iterrows():
+        for i2, row2 in DFWITHIN.iterrows():
+            if i2>i1:
+                coeff1 = row1["coeff"]
+                coeff2 = row2["coeff"]
+                
+                # Cosine similarity
+                sim_cos = cosine_similarity(coeff1, coeff2)
+
+                # Dot product
+                dot_prod = coeff1 @ coeff2
+
+                # Correlation coefficient
+                corr = np.corrcoef(coeff1, coeff2)[0, 1]
+
+                res.append({
+                    "labels_1":row1["grp"],
+                    "yvar_1":row1["yvar"],
+                    "vars_grp_1":row1["vars_grp"],
+
+                    "labels_2":row2["grp"],
+                    "yvar_2":row2["yvar"],
+                    "vars_grp_2":row2["vars_grp"],
+                    
+                    "cosine_sim":sim_cos,
+                    "dot_prod":dot_prod,
+                    "corr_coeff":corr,
+                })
+    DF_REGR_PAIRS = pd.DataFrame(res)
+
+    ### Postprocessing
+    # Create a new label that is a higher-level label (label, yvar, grp), where label itself is a tuple
+    from pythonlib.tools.pandastools import append_col_with_grp_index
+    from neuralmonkey.analyses.euclidian_distance import dfdist_extract_label_vars_specific, dfdist_summary_plots_wrapper
+    vars_grp_meta = ["labels", "yvar", "vars_grp"]
+    DF_REGR_PAIRS = append_col_with_grp_index(DF_REGR_PAIRS, [f"{v}_1" for v in vars_grp_meta], "metalabels_1", use_strings=False)
+    DF_REGR_PAIRS = append_col_with_grp_index(DF_REGR_PAIRS, [f"{v}_2" for v in vars_grp_meta], "metalabels_2", use_strings=False)
+    # Add the columns
+    DF_REGR_PAIRS, colname_conj_same = dfdist_extract_label_vars_specific(DF_REGR_PAIRS, vars_grp_meta, True, 
+                                                                        var1="metalabels_1", var2="metalabels_2")
+    
+    ### Plots
+    for y in ["cosine_sim", "dot_prod", "corr_coeff"]:
+
+        # Catplots
+        fig = sns.catplot(data=DF_REGR_PAIRS, x=colname_conj_same, y=y, jitter=True, alpha=0.5)
+        for ax in fig.axes.flatten():
+            ax.axhline(0)
+        savefig(fig, f"{savedir}/catplot-y={y}-1.pdf")
+
+        fig = sns.catplot(data=DF_REGR_PAIRS, x=colname_conj_same, y=y, kind="boxen")
+        for ax in fig.axes.flatten():
+            ax.axhline(0)    
+        savefig(fig, f"{savedir}/catplot-y={y}-2.pdf")
+
+        fig = sns.catplot(data=DF_REGR_PAIRS, x=colname_conj_same, y=y, kind="bar")
+        for ax in fig.axes.flatten():
+            ax.axhline(0)        
+        savefig(fig, f"{savedir}/catplot-y={y}-3.pdf")
+
+        # Heatmap
+        from neuralmonkey.analyses.euclidian_distance import dfdist_expand_convert_from_triangular_to_full
+        from pythonlib.cluster.clustclass import generate_clustclass_from_flat_df
+        DF_REGR_PAIRS_FULL = dfdist_expand_convert_from_triangular_to_full(DF_REGR_PAIRS, vars_grp_meta, 
+                                                    var1="metalabels_1", var2="metalabels_2", PLOT=False, remove_diagonal=False)
+        
+        # Make heatmap plot
+        Cl = generate_clustclass_from_flat_df(DF_REGR_PAIRS_FULL, "metalabels_1", "metalabels_2", 
+                                            var_value=y, var_labels=vars_grp_meta,
+                                            fake_the_diagonal=0)
+        fig, ax = Cl.rsa_plot_heatmap(diverge=True, sort_order=(2, 1, 0))
+        savefig(fig, f"{savedir}/heatmap-y={y}.pdf")
+
+        if False: # Replaced by above
+            ##### Older approach to get heatmap
+            dat = np.stack(DFWITHIN["coeff"])
+            corr_mat = np.corrcoef(dat)
+
+            dat.shape
+            dot_mat = dat@dat.T
+            labels = [tuple(x) for x in DFWITHIN.loc[:, ["yvar", "grp"]].values.tolist()]
+
+            from pythonlib.tools.snstools import heatmap_mat
+
+            fig, ax = plt.subplots(figsize=(10, 10))
+            heatmap_mat(dot_mat, ax, False, zlims=None, diverge=True, labels_row=labels, labels_col=labels)
+        
+        plt.close("all")
 
 def state_space_plot_scalar_wrapper(DFallpa, SAVEDIR, LIST_VAR_VAROTHERS, LIST_DIMS):
     """
@@ -1577,6 +1673,141 @@ def regression_wrapper_plot_cosine_sim(DFDISTCOS_ALL, savedir):
         ax.axhline(0, color="k", alpha=0.5)        
     savefig(fig, f"{savedir}/cosine_sim-catplot-2.pdf")
 
+def regression_fit_and_score_single_ordinal(DFallpa, bregion, event, var_effect, vars_others, ndims, n_min_trials=N_MIN_TRIALS, 
+                                    plot_savedir=None):
+    """
+
+    For trials version -- do regression for a single var_effect and vars_others. 
+    See regression_wrapper_wrapper for more details.
+
+    """
+    from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper
+
+    tmp = DFallpa[(DFallpa["event"] == event) & (DFallpa["bregion"] == bregion)]["pa_redu"].values[0]
+    if tmp is None:
+        # This is usually because dim reduction failed, variables desired for targeted PCA did not exist.
+        return None, None, None, None, None
+    PAredu = tmp.copy()
+
+    # First, prune to cases with enough data 
+    dflab = PAredu.Xlabels["trials"]
+    savepath_pre = "/tmp/counts_pre.pdf"
+    savepath_post = "/tmp/counts_post.pdf"
+    dfout, dict_dfthis = extract_with_levels_of_conjunction_vars_helper(dflab, var_effect, vars_others, n_min_trials, savepath_post, 2,
+                                                                        plot_counts_also_before_prune_path=savepath_pre)
+    if len(dfout)==0:
+        # No data after pruning -- skip
+        return None, None, None, None, None
+    # assert len(dfout)>0, "all data pruned!!"
+    
+    # Only keep the indices in dfout
+    PAredu = PAredu.slice_by_dim_indices_wrapper("trials", dfout["_index"].tolist(), True)
+
+    ### Extract final data
+    dflab = PAredu.Xlabels["trials"]
+    Xredu = PAredu.X
+    X = Xredu.squeeze().T[:, :ndims]
+    Y = dflab[var_effect].values
+    
+    ##### Get pairwise socres between all groups
+    from pythonlib.tools.pandastools import grouping_append_and_return_inner_items
+    from neuralmonkey.analyses.regression_good import fit_and_score_regression, ordinal_fit_and_score_train_test_splits
+    from pythonlib.tools.listtools import tabulate_list
+    # do_upsample=True
+    # Iterate over all levels of conditioned grp vars
+    groupdict = grouping_append_and_return_inner_items(dflab, vars_others)
+    RES = []
+    for grp_train, inds_train in groupdict.items():
+        # Test decoder on all other levels of grouping var
+        for grp_test, inds_test in groupdict.items():
+            
+            # Gather test data
+            X_train = X[inds_train, :] # (ntrials, nchans)
+            labels_train = [Y[i] for i in inds_train]
+
+            X_test = X[inds_test, :] # (ntrials, nchans)
+            labels_test = [Y[i] for i in inds_test]
+
+            train_labels_counts = tabulate_list(labels_train)
+            test_labels_counts = tabulate_list(labels_test)
+
+            if grp_train == grp_test:
+                # Then these are same group -- compute using train-test split of held-out trials.
+                assert inds_train == inds_test
+                dfres, r2_test = ordinal_fit_and_score_train_test_splits(X_train, labels_train, max_nsplits=None)
+
+                # also save training on itself
+                reg, r2_train, _ = fit_and_score_regression(X_train, labels_train)
+            else:
+                if False:
+                    # Only keep test inds that are labels which exist in training
+                    # - find inds in labels_all that are labels that exist in train.
+                    indstmp = np.argwhere(np.isin(labels_all, labels_train)).squeeze().tolist() # (n,) array of int indices
+                    inds_test = [i for i in inds_test if i in indstmp]
+
+                if False:
+                    # check the distribution of var_decode labels.
+                    test_labels_counts = tabulate_list(labels_test)
+
+                    # Each test label  must exist in training data
+                    for lab in test_labels_counts.keys():
+                        if lab not in train_labels_counts.keys():
+                            print(train_labels_counts)
+                            print(test_labels_counts)
+                            assert False, "add clause to skip test cases that have labels that dont exist in training data?"
+
+                # score it
+                reg, r2_train, r2_test = fit_and_score_regression(X_train, labels_train, X_test, labels_test)
+
+            # print(r2_train, " -- ", r2_test)
+
+            ### Save results
+            RES.append({
+                "var_effect":var_effect,
+                "vars_others":tuple(vars_others),
+                "grp_train":grp_train,
+                "grp_test":grp_test,
+                "r2_train":r2_train,
+                "r2_test":r2_test,
+                "train_labels_counts":train_labels_counts,
+                "test_labels_counts":test_labels_counts,
+                "inds_train":inds_train, # Store things for each of making plots later 
+                "inds_test":inds_test,
+                "reg":reg,
+            })
+
+    if len(RES)==0:
+        return None, None, None, None, None
+    
+    DFRES = pd.DataFrame(RES)
+    DFRES["same_grp"] = DFRES["grp_train"] == DFRES["grp_test"]
+
+    ### Plot?
+    if plot_savedir is not None:
+        from pythonlib.cluster.clustclass import generate_clustclass_from_flat_df
+
+        Cl = generate_clustclass_from_flat_df(DFRES, "grp_train", "grp_test", var_value="r2_test", var_labels=vars_others)
+        fig, _ = Cl.rsa_plot_heatmap()
+        savefig(fig, f"{plot_savedir}/heatmap-r2_test.pdf")
+
+        Cl2 = Cl.copy_with_slicing()
+        Cl2._Xinput[Cl._Xinput<0] = 0.
+        fig, _  = Cl2.rsa_plot_heatmap()
+        savefig(fig, f"{plot_savedir}/heatmap-r2_test-abovezero.pdf")
+
+        # Plot regression r2 within each grp
+        dftmp = DFRES[DFRES["same_grp"]]
+
+        fig = sns.catplot(data=dftmp, x="r2_train", y="grp_train", kind="bar")
+        savefig(fig, f"{plot_savedir}/catplot-r2_train.pdf")
+
+        fig = sns.catplot(data=dftmp, x="r2_test", y="grp_train", kind="bar")
+        savefig(fig, f"{plot_savedir}/catplot-r2_test.pdf")
+
+        plt.close("all")
+
+    return DFRES, PAredu, X, Y, Cl
+
 def regression_fit_and_score_single(DFallpa, bregion, event, var_effect, vars_others, ndims, n_min_trials=N_MIN_TRIALS, 
                                     plot_savedir=None):
     """
@@ -1860,7 +2091,7 @@ def regression_cosine_distance_compute(DFRES, X, Y, savedir):
 if __name__=="__main__":
 
     from neuralmonkey.scripts.analy_dfallpa_extract import extract_dfallpa_helper
-    from neuralmonkey.classes.population_mult import load_handsaved_wrapper, dfpa_match_chans_across_pa_each_bregion
+    from neuralmonkey.classes.population_mult import load_handsaved_wrapper, dfpa_match_chans_across_pa_each_bregion, dfpa_concat_bregion_to_combined_bregion
     from neuralmonkey.classes.population_mult import extract_single_pa
     from neuralmonkey.metadat.analy.anova_params import params_getter_euclidian_vars
     from neuralmonkey.classes.population_mult import dfpa_concatbregion_preprocess_clean_bad_channels, dfpa_concatbregion_preprocess_wrapper
@@ -1886,17 +2117,23 @@ if __name__=="__main__":
     # PLOTS_DO = [1.1, 1.2] 
     # PLOTS_DO = [1.1, 1.2] 
     # PLOTS_DO = [1.1] 
-    PLOTS_DO = [2.2] 
+    # PLOTS_DO = [2.2] 
+    # PLOTS_DO = [3.1] 
+    PLOTS_DO = [4.0] 
 
     # Load a single DFallPA
     DFallpa = load_handsaved_wrapper(animal, date, version=version, combine_areas=combine, 
                                      question=question)
     
-    # Make a copy of all PA before normalization
-    dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date)
-
     ### Preprocessing
     DFallpa = DFallpa[DFallpa["event"].isin(events_keep)].reset_index(drop=True)
+
+    if combine == False and 4.0 in PLOTS_DO:
+        # Then combine it
+        DFallpa = dfpa_concat_bregion_to_combined_bregion(DFallpa)
+
+    # Make a copy of all PA before normalization
+    dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date)
 
     # Some preprocessing
     preprocess_dfallpa_basic_quick(DFallpa)
@@ -1988,172 +2225,232 @@ if __name__=="__main__":
     grouping_print_n_samples(dflab, ["FEAT_num_strokes_beh", "epoch", "syntax_concrete", "behseq_shapes", "behseq_locs"], savepath=savepath)
 
     ################################### PLOTS
-    if (1.1 in PLOTS_DO) or (1.2 in PLOTS_DO):
-        list_subspace_projection = ["syntax_slot_0", "epch_sytxcncr", "syntax_slot_1", "pca_umap"]
-        tbin_dur = "default"
-        tbin_slide = None
+    for plotdo in PLOTS_DO:
+        if plotdo in [1.1, 1.2]:
+            list_subspace_projection = ["syntax_slot_0", "epch_sytxcncr", "syntax_slot_1", "pca_umap"]
+            tbin_dur = "default"
+            tbin_slide = None
 
-        for subspace_projection in list_subspace_projection:
-            
-            # dflab = DFallpa["pa"].values[0].Xlabels["trials"]
-            # if su
-
-            SAVEDIR_ANALYSIS = f"{SAVEDIR}/statespace_and_regression/{animal}-{date}-comb={combine}-q={question}-ssproj={subspace_projection}"            
-            os.makedirs(SAVEDIR_ANALYSIS, exist_ok=True)
-
-            ### Preprocessing
-            LIST_DIMS = preprocess_dfallpa(DFallpa, subspace_projection, tbin_slide, tbin_dur, SAVEDIR_ANALYSIS, HACK=False)
-
-            if 1.1 in PLOTS_DO:
-                ### State space scalar plots.
-                savedir = f"{SAVEDIR_ANALYSIS}/state_space_scalar"
-                os.makedirs(savedir, exist_ok=True)
-                state_space_plot_scalar_wrapper(DFallpa, savedir, LIST_VAR_VAROTHERS_SS, LIST_DIMS)
-
-            if 1.2 in PLOTS_DO:
+            for subspace_projection in list_subspace_projection:
                 
-                ### Regression plots
-                ndims = 4
+                # dflab = DFallpa["pa"].values[0].Xlabels["trials"]
+                # if su
+
+                SAVEDIR_ANALYSIS = f"{SAVEDIR}/statespace_and_regression/{animal}-{date}-comb={combine}-q={question}-ssproj={subspace_projection}"            
+                os.makedirs(SAVEDIR_ANALYSIS, exist_ok=True)
+
+                ### Preprocessing
+                LIST_DIMS = preprocess_dfallpa(DFallpa, subspace_projection, tbin_slide, tbin_dur, SAVEDIR_ANALYSIS, HACK=False)
+
+                if 1.1 in PLOTS_DO:
+                    ### State space scalar plots.
+                    savedir = f"{SAVEDIR_ANALYSIS}/state_space_scalar"
+                    os.makedirs(savedir, exist_ok=True)
+                    state_space_plot_scalar_wrapper(DFallpa, savedir, LIST_VAR_VAROTHERS_SS, LIST_DIMS)
+
+                if 1.2 in PLOTS_DO:
+                    
+                    ### Regression plots
+                    ndims = 4
+                    regression_wrapper_wrapper(DFallpa, LIST_VAR_VAROTHERS_REGR, SAVEDIR_ANALYSIS, ndims)
+
+        elif plotdo == 2.1:
+            # [MAYBE this:] state space plots, using targeted PCA
+            variables = ["epoch", "FEAT_num_strokes_beh", "seqc_0_loc", "seqc_0_shape", "syntax_slot_0", "syntax_slot_1", "syntax_slot_2"]
+            variables_is_cat = [True, True, True, True, False, False, False]
+
+            # Which subspaces to plot and compare between
+            list_subspaces = [
+                ("syntax_slot_0", "syntax_slot_1"),
+                ("syntax_slot_1", "syntax_slot_2"),   
+                ("syntax_slot_0", "syntax_slot_2"),   
+            ]
+
+            #################### STATE SPACE PLOTS
+            LIST_DIMS = [(0,1)]
+            # prune to just 03_samp, for now.
+            # map_event_to_twind = {
+            #     "03_samp":[0.2, 1.0],
+            #     "05_first_raise":[-0.5, -0.05],
+            #     "06_on_strokeidx_0":[-0.5, -0.05],
+            # }
+
+            for _, row in DFallpa.iterrows():
+                PA = row["pa"]
+                bregion = row["bregion"]
+                event = row["event"]        
+
+                twind_scal = map_event_to_twind[event]
+
+                SAVEDIR_ANALYSIS = f"{SAVEDIR}/targeted_dim_reduction/{animal}-{date}-comb={combine}-q={question}/{event}-{bregion}"            
+                os.makedirs(SAVEDIR_ANALYSIS, exist_ok=True)
+                state_space_targeted_pca_scalar_single(PA, twind_scal, variables, variables_is_cat, list_subspaces, 
+                                                        LIST_VAR_VAROTHERS_SS, LIST_DIMS, SAVEDIR_ANALYSIS)
+
+            #################### REGRESSION (using targeted PCs)
+            list_subspaces = [
+                ("syntax_slot_0", "syntax_slot_1"),
+                # ("syntax_slot_1", "syntax_slot_2"),   
+                # ("syntax_slot_0", "syntax_slot_2"),   
+            ]
+
+            # Do regression to score strength of encoding in this space
+            map_BrEvSs_to_Paredu = state_space_targeted_pca_do_projection(DFallpa, variables, variables_is_cat, 
+                                                                        list_subspaces, None)
+            
+            ### Regression plots
+            for subspace in list_subspaces:
+
+                SAVEDIR_ANALYSIS = f"{SAVEDIR}/targeted_dim_reduction_regr/{animal}-{date}-comb={combine}-q={question}/subspace={subspace}"            
+                os.makedirs(SAVEDIR_ANALYSIS, exist_ok=True)
+                
+                ndims = len(subspace)
+
+                list_paredu = []
+                for _, row in DFallpa.iterrows():
+                    key = (row["bregion"], row["event"], subspace)
+                    paredu = map_BrEvSs_to_Paredu[key]
+                    list_paredu.append(paredu)
+                DFallpa["pa_redu"] = list_paredu
+
                 regression_wrapper_wrapper(DFallpa, LIST_VAR_VAROTHERS_REGR, SAVEDIR_ANALYSIS, ndims)
 
-    elif 2.1 in PLOTS_DO:
-        # [MAYBE this:] state space plots, using targeted PCA
-        variables = ["epoch", "FEAT_num_strokes_beh", "seqc_0_loc", "seqc_0_shape", "syntax_slot_0", "syntax_slot_1", "syntax_slot_2"]
-        variables_is_cat = [True, True, True, True, False, False, False]
-
-        # Which subspaces to plot and compare between
-        list_subspaces = [
-            ("syntax_slot_0", "syntax_slot_1"),
-            ("syntax_slot_1", "syntax_slot_2"),   
-            ("syntax_slot_0", "syntax_slot_2"),   
-        ]
-
-        #################### STATE SPACE PLOTS
-        LIST_DIMS = [(0,1)]
-        # prune to just 03_samp, for now.
-        # map_event_to_twind = {
-        #     "03_samp":[0.2, 1.0],
-        #     "05_first_raise":[-0.5, -0.05],
-        #     "06_on_strokeidx_0":[-0.5, -0.05],
-        # }
-
-        for _, row in DFallpa.iterrows():
-            PA = row["pa"]
-            bregion = row["bregion"]
-            event = row["event"]        
-
-            twind_scal = map_event_to_twind[event]
-
-            SAVEDIR_ANALYSIS = f"{SAVEDIR}/targeted_dim_reduction/{animal}-{date}-comb={combine}-q={question}/{event}-{bregion}"            
+        elif plotdo == 2.2:
+            """ Good, projec to targeted PCA space, and then ask about consistency of angle for trajectory along slot 0 and slot 1.
+            Uses method based on dot products of euclidean distance, which is less noisy than regression. 
+            Goals:
+            (1) Clear effect of slot num
+            (2) Factorized of slot 0 vs. slot 1.
+            """
+            SAVEDIR_ANALYSIS = f"{SAVEDIR}/targeted_dim_redu_angles/{animal}-{date}-comb={combine}-q={question}"            
             os.makedirs(SAVEDIR_ANALYSIS, exist_ok=True)
-            state_space_targeted_pca_scalar_single(PA, twind_scal, variables, variables_is_cat, list_subspaces, 
-                                                    LIST_VAR_VAROTHERS_SS, LIST_DIMS, SAVEDIR_ANALYSIS)
 
-        #################### REGRESSION (using targeted PCs)
-        list_subspaces = [
-            ("syntax_slot_0", "syntax_slot_1"),
-            # ("syntax_slot_1", "syntax_slot_2"),   
-            # ("syntax_slot_0", "syntax_slot_2"),   
-        ]
+            # During samp
+            from neuralmonkey.scripts.analy_syntax_good_eucl_trial import state_space_targeted_pca_scalar_single, targeted_pca_euclidian_dist_angles
 
-        # Do regression to score strength of encoding in this space
-        map_BrEvSs_to_Paredu = state_space_targeted_pca_do_projection(DFallpa, variables, variables_is_cat, 
-                                                                    list_subspaces, None)
-        
-        ### Regression plots
-        for subspace in list_subspaces:
+            # variables = ["epoch", "seqc_0_loc", "seqc_0_shape", "FEAT_num_strokes_beh", "syntax_slot_0", "syntax_slot_1"]
+            variables = ["epoch", "seqc_0_loc", "seqc_0_shape", "syntax_slot_0", "syntax_slot_1"] # exclude FEAT_num_strokes_beh, because it is always correlated with (slot0, slot1) in my dataset
+            variables_is_cat = [True, True, True, False, False, False]
 
-            SAVEDIR_ANALYSIS = f"{SAVEDIR}/targeted_dim_reduction_regr/{animal}-{date}-comb={combine}-q={question}/subspace={subspace}"            
+            list_subspaces = [
+                ("syntax_slot_0", "syntax_slot_1"),
+                # ("syntax_slot_1", "syntax_slot_2"),   
+                # ("syntax_slot_0", "syntax_slot_2"),   
+            ]
+
+            LIST_VAR_VAROTHERS_SS = [
+                # ("syntax_slot_ratio", ["FEAT_num_strokes_beh", "epoch", "seqc_0_loc", "seqc_0_shape"]),
+                # ("syntax_slot_ratio", ["FEAT_num_strokes_beh", "epoch", "seqc_0_loc"]),
+                # ("syntax_slot_ratio", ["FEAT_num_strokes_beh", "epoch"]),
+
+                # ("shapes_n_unique", ["FEAT_num_strokes_beh", "epoch", "seqc_0_loc", "seqc_0_shape"]),
+
+                ("syntax_slot_0", ["seqc_0_loc", "seqc_0_shape", "syntax_slot_1", "epoch", "FEAT_num_strokes_beh"]),
+                ("syntax_slot_0", ["seqc_0_loc", "seqc_0_shape", "syntax_slot_1", "epoch"]),
+                ("syntax_slot_0", ["seqc_0_loc", "seqc_0_shape", "syntax_slot_1"]),
+                ("syntax_slot_0", ["seqc_0_loc", "seqc_0_shape"]),
+                ("syntax_slot_0", ["FEAT_num_strokes_beh", "epoch"]),
+
+                ("syntax_slot_1", ["seqc_0_loc", "seqc_0_shape", "syntax_slot_0", "epoch", "FEAT_num_strokes_beh"]),
+                ("syntax_slot_1", ["seqc_0_loc", "seqc_0_shape", "syntax_slot_0", "epoch"]),
+                ("syntax_slot_1", ["seqc_0_loc", "seqc_0_shape", "syntax_slot_0"]),
+                ("syntax_slot_1", ["seqc_0_loc", "seqc_0_shape"]),
+                ("syntax_slot_1", ["FEAT_num_strokes_beh", "epoch"]),
+
+                # ("syntax_slot_2", ["FEAT_num_strokes_beh", "epoch", "seqc_0_loc", "seqc_0_shape", "syntax_slot_0", "syntax_slot_1"]),
+                # ("syntax_slot_2", ["FEAT_num_strokes_beh", "epoch", "seqc_0_loc", "seqc_0_shape", "syntax_slot_0"]),
+                # ("syntax_slot_2", ["FEAT_num_strokes_beh", "epoch", "seqc_0_loc", "seqc_0_shape", "syntax_slot_1"]),
+                # ("syntax_slot_2", ["FEAT_num_strokes_beh", "epoch"]),
+
+                # ("syntax_concrete", ["FEAT_num_strokes_beh", "epoch", "seqc_0_loc", "seqc_0_shape"]),
+                ("syntax_concrete", ["FEAT_num_strokes_beh", "epoch"]),
+
+                ("FEAT_num_strokes_beh", ["epoch", "seqc_0_loc", "seqc_0_shape"]),
+                # ("epoch", ["FEAT_num_strokes_beh", "seqc_0_loc", "seqc_0_shape"]),
+                ("seqc_0_shape", ["FEAT_num_strokes_beh", "epoch", "seqc_0_loc"]),
+            ]
+
+            LIST_DIMS = [(0,1), (1,2)]
+
+            LIST_VAR_VAROTHERS_REGR = [
+                ("syntax_slot_0", ["seqc_0_loc", "seqc_0_shape", "syntax_slot_1", "epoch", "FEAT_num_strokes_beh"]),
+                ("syntax_slot_1", ["seqc_0_loc", "seqc_0_shape", "syntax_slot_0", "epoch", "FEAT_num_strokes_beh"]),
+                # ("FEAT_num_strokes_beh", ["epoch", "seqc_0_loc", "seqc_0_shape"]),
+            ]
+
+            ### (1) Compute all angles, etc (and make state space plots)
+            subspace_tuple = ('syntax_slot_0', 'syntax_slot_1')
+            DFANGLE = targeted_pca_euclidian_dist_angles(DFallpa, SAVEDIR_ANALYSIS, 
+                                                variables, variables_is_cat, list_subspaces, LIST_VAR_VAROTHERS_SS, # For dim reduction and plotting state space
+                                                subspace_tuple, LIST_VAR_VAROTHERS_REGR)
+
+            ### (2) Make all plots
+            for var_vector_length in ["dist_yue_diff", "dist_norm"]:
+                for length_method in ["sum", "dot"]:
+                    for min_levs_exist in [3, 2]:
+                        savedir = f"{SAVEDIR_ANALYSIS}/PLOTS/varlength={var_vector_length}-lengthmeth={length_method}-minlevs={min_levs_exist}"
+                        os.makedirs(savedir, exist_ok=True)
+                        targeted_pca_euclidian_dist_angles_plots(DFANGLE, var_vector_length, length_method, min_levs_exist, savedir)
+        elif plotdo==3.1:
+            # Just to try loading DFallpa
+            SAVEDIR_ANALYSIS = f"{SAVEDIR}/dates_with_success_loading_dfallpa/{animal}-{date}-comb={combine}-q={question}"            
             os.makedirs(SAVEDIR_ANALYSIS, exist_ok=True)
-            
-            ndims = len(subspace)
 
-            list_paredu = []
-            for _, row in DFallpa.iterrows():
-                key = (row["bregion"], row["event"], subspace)
-                paredu = map_BrEvSs_to_Paredu[key]
-                list_paredu.append(paredu)
-            DFallpa["pa_redu"] = list_paredu
+        elif plotdo == 4.0:
+            """ 
+            New, came back to this after syntax state. Does many things, including euclidean, angles, regression, and comapring
+            alginmetn of regression axes.
 
-            regression_wrapper_wrapper(DFallpa, LIST_VAR_VAROTHERS_REGR, SAVEDIR_ANALYSIS, ndims)
+            MULT: see notebook.
+            """
 
-    elif 2.2 in PLOTS_DO:
-        """ Good, projec to targeted PCA space, and then ask about consistency of angle for trajectory along slot 0 and slot 1.
-        Uses method based on dot products of euclidean distance, which is less noisy than regression. 
-        Goals:
-        (1) Clear effect of slot num
-        (2) Factorized of slot 0 vs. slot 1.
-        """
-        SAVEDIR_ANALYSIS = f"{SAVEDIR}/targeted_dim_redu_angles/{animal}-{date}-comb={combine}-q={question}"            
-        os.makedirs(SAVEDIR_ANALYSIS, exist_ok=True)
+            SAVEDIR_ANALYSIS = f"{SAVEDIR}/targeted_pca_v2/{animal}-{date}-q={question}"            
+            os.makedirs(SAVEDIR_ANALYSIS, exist_ok=True)
 
-        # During samp
-        from neuralmonkey.scripts.analy_syntax_good_eucl_trial import state_space_targeted_pca_scalar_single, targeted_pca_euclidian_dist_angles
+            LIST_VAR_VAROTHERS_SS = [
+                # ("syntax_slot_ratio", ["FEAT_num_strokes_beh", "epoch", "seqc_0_loc", "seqc_0_shape"]),
+                # ("syntax_slot_ratio", ["FEAT_num_strokes_beh", "epoch", "seqc_0_loc"]),
+                # ("syntax_slot_ratio", ["FEAT_num_strokes_beh", "epoch"]),
 
-        # variables = ["epoch", "seqc_0_loc", "seqc_0_shape", "FEAT_num_strokes_beh", "syntax_slot_0", "syntax_slot_1"]
-        variables = ["epoch", "seqc_0_loc", "seqc_0_shape", "syntax_slot_0", "syntax_slot_1"] # exclude FEAT_num_strokes_beh, because it is always correlated with (slot0, slot1) in my dataset
-        variables_is_cat = [True, True, True, False, False, False]
+                # ("shapes_n_unique", ["FEAT_num_strokes_beh", "epoch", "seqc_0_loc", "seqc_0_shape"]),
 
-        list_subspaces = [
-            ("syntax_slot_0", "syntax_slot_1"),
-            # ("syntax_slot_1", "syntax_slot_2"),   
-            # ("syntax_slot_0", "syntax_slot_2"),   
-        ]
+                ("syntax_slot_0", ["seqc_0_loc", "seqc_0_shape", "syntax_slot_1", "epoch", "FEAT_num_strokes_beh"]),
+                ("syntax_slot_0", ["seqc_0_loc", "seqc_0_shape", "syntax_slot_1", "epoch"]),
+                ("syntax_slot_0", ["seqc_0_loc", "seqc_0_shape", "syntax_slot_1"]),
+                ("syntax_slot_0", ["seqc_0_loc", "seqc_0_shape"]),
+                ("syntax_slot_0", ["FEAT_num_strokes_beh", "epoch"]),
 
-        LIST_VAR_VAROTHERS_SS = [
-            # ("syntax_slot_ratio", ["FEAT_num_strokes_beh", "epoch", "seqc_0_loc", "seqc_0_shape"]),
-            # ("syntax_slot_ratio", ["FEAT_num_strokes_beh", "epoch", "seqc_0_loc"]),
-            # ("syntax_slot_ratio", ["FEAT_num_strokes_beh", "epoch"]),
+                ("syntax_slot_1", ["seqc_0_loc", "seqc_0_shape", "syntax_slot_0", "epoch", "FEAT_num_strokes_beh"]),
+                ("syntax_slot_1", ["seqc_0_loc", "seqc_0_shape", "syntax_slot_0", "epoch"]),
+                ("syntax_slot_1", ["seqc_0_loc", "seqc_0_shape", "syntax_slot_0"]),
+                ("syntax_slot_1", ["seqc_0_loc", "seqc_0_shape"]),
+                ("syntax_slot_1", ["FEAT_num_strokes_beh", "epoch"]),
 
-            # ("shapes_n_unique", ["FEAT_num_strokes_beh", "epoch", "seqc_0_loc", "seqc_0_shape"]),
+                # ("syntax_slot_2", ["FEAT_num_strokes_beh", "epoch", "seqc_0_loc", "seqc_0_shape", "syntax_slot_0", "syntax_slot_1"]),
+                # ("syntax_slot_2", ["FEAT_num_strokes_beh", "epoch", "seqc_0_loc", "seqc_0_shape", "syntax_slot_0"]),
+                # ("syntax_slot_2", ["FEAT_num_strokes_beh", "epoch", "seqc_0_loc", "seqc_0_shape", "syntax_slot_1"]),
+                # ("syntax_slot_2", ["FEAT_num_strokes_beh", "epoch"]),
 
-            ("syntax_slot_0", ["seqc_0_loc", "seqc_0_shape", "syntax_slot_1", "epoch", "FEAT_num_strokes_beh"]),
-            ("syntax_slot_0", ["seqc_0_loc", "seqc_0_shape", "syntax_slot_1", "epoch"]),
-            ("syntax_slot_0", ["seqc_0_loc", "seqc_0_shape", "syntax_slot_1"]),
-            ("syntax_slot_0", ["seqc_0_loc", "seqc_0_shape"]),
-            ("syntax_slot_0", ["FEAT_num_strokes_beh", "epoch"]),
+                # ("syntax_concrete", ["FEAT_num_strokes_beh", "epoch", "seqc_0_loc", "seqc_0_shape"]),
+                ("syntax_concrete", ["FEAT_num_strokes_beh", "epoch"]),
 
-            ("syntax_slot_1", ["seqc_0_loc", "seqc_0_shape", "syntax_slot_0", "epoch", "FEAT_num_strokes_beh"]),
-            ("syntax_slot_1", ["seqc_0_loc", "seqc_0_shape", "syntax_slot_0", "epoch"]),
-            ("syntax_slot_1", ["seqc_0_loc", "seqc_0_shape", "syntax_slot_0"]),
-            ("syntax_slot_1", ["seqc_0_loc", "seqc_0_shape"]),
-            ("syntax_slot_1", ["FEAT_num_strokes_beh", "epoch"]),
+                ("FEAT_num_strokes_beh", ["epoch", "seqc_0_loc", "seqc_0_shape"]),
+                # ("epoch", ["FEAT_num_strokes_beh", "seqc_0_loc", "seqc_0_shape"]),
+                ("seqc_0_shape", ["FEAT_num_strokes_beh", "epoch", "seqc_0_loc"]),
+            ]
 
-            # ("syntax_slot_2", ["FEAT_num_strokes_beh", "epoch", "seqc_0_loc", "seqc_0_shape", "syntax_slot_0", "syntax_slot_1"]),
-            # ("syntax_slot_2", ["FEAT_num_strokes_beh", "epoch", "seqc_0_loc", "seqc_0_shape", "syntax_slot_0"]),
-            # ("syntax_slot_2", ["FEAT_num_strokes_beh", "epoch", "seqc_0_loc", "seqc_0_shape", "syntax_slot_1"]),
-            # ("syntax_slot_2", ["FEAT_num_strokes_beh", "epoch"]),
+            targeted_pca_combined_v2_good(DFallpa, SAVEDIR_ANALYSIS, LIST_VAR_VAROTHERS_SS, 
+                                          twind_scal_force=None)
 
-            # ("syntax_concrete", ["FEAT_num_strokes_beh", "epoch", "seqc_0_loc", "seqc_0_shape"]),
-            ("syntax_concrete", ["FEAT_num_strokes_beh", "epoch"]),
+            # TODO: summary plot here: 
+            # ### (2) Make all plots
+            # for var_vector_length in ["dist_yue_diff", "dist_norm"]:
+            #     for length_method in ["sum", "dot"]:
+            #         for min_levs_exist in [3, 2]:
+            #             savedir = f"{SAVEDIR_ANALYSIS}/PLOTS/varlength={var_vector_length}-lengthmeth={length_method}-minlevs={min_levs_exist}"
+            #             os.makedirs(savedir, exist_ok=True)
+            #             targeted_pca_euclidian_dist_angles_plots(DFANGLE, var_vector_length, length_method, min_levs_exist, savedir)
 
-            ("FEAT_num_strokes_beh", ["epoch", "seqc_0_loc", "seqc_0_shape"]),
-            # ("epoch", ["FEAT_num_strokes_beh", "seqc_0_loc", "seqc_0_shape"]),
-            ("seqc_0_shape", ["FEAT_num_strokes_beh", "epoch", "seqc_0_loc"]),
-        ]
-
-        LIST_DIMS = [(0,1), (1,2)]
-
-        LIST_VAR_VAROTHERS_REGR = [
-            ("syntax_slot_0", ["seqc_0_loc", "seqc_0_shape", "syntax_slot_1", "epoch", "FEAT_num_strokes_beh"]),
-            ("syntax_slot_1", ["seqc_0_loc", "seqc_0_shape", "syntax_slot_0", "epoch", "FEAT_num_strokes_beh"]),
-            # ("FEAT_num_strokes_beh", ["epoch", "seqc_0_loc", "seqc_0_shape"]),
-        ]
-
-        ### (1) Compute all angles, etc (and make state space plots)
-        subspace_tuple = ('syntax_slot_0', 'syntax_slot_1')
-        DFANGLE = targeted_pca_euclidian_dist_angles(DFallpa, SAVEDIR_ANALYSIS, 
-                                            variables, variables_is_cat, list_subspaces, LIST_VAR_VAROTHERS_SS, # For dim reduction and plotting state space
-                                            subspace_tuple, LIST_VAR_VAROTHERS_REGR)
-
-        ### (2) Make all plots
-        for var_vector_length in ["dist_yue_diff", "dist_norm"]:
-            for length_method in ["sum", "dot"]:
-                for min_levs_exist in [3, 2]:
-                    savedir = f"{SAVEDIR_ANALYSIS}/PLOTS/varlength={var_vector_length}-lengthmeth={length_method}-minlevs={min_levs_exist}"
-                    os.makedirs(savedir, exist_ok=True)
-                    targeted_pca_euclidian_dist_angles_plots(DFANGLE, var_vector_length, length_method, min_levs_exist, savedir)
-
-    else:
-        print(PLOTS_DO)
-        assert False
+        else:
+            print(plotdo)
+            assert False

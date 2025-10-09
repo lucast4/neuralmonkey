@@ -482,9 +482,14 @@ def compute_average_angle_between_pairs_of_levels_of_vareffect(dfdist, var_effec
     return dfanglemean
 
 def dfdist_postprocess_condition_prune_to_var_pairs_exist(dfdist, var_effect, var_context,
-                                                          plot_counts_savedir=None):
+                                                          plot_counts_savedir=None, lenient_allow_data_if_has_n_levels=2):
     """
-    Keep only var_effect levels that exist across all levels of context.
+    Keep only var_effect levels that exist across <lenient_allow_data_if_has_n_levels> levels of context.
+
+    if want to force to be across ALL contexts, then use lenient_allow_data_if_has_n_levels=="all"
+    NOTE: beucase this is ALL, you can run into paradoxical cases where you actually throw out data
+    beucase there are additional levels of var_context.
+    
     This is used for postprocessing, generally, for cleaning dfdist.
     
     Note this is assymetric, var_effect vs. var_context
@@ -512,12 +517,19 @@ def dfdist_postprocess_condition_prune_to_var_pairs_exist(dfdist, var_effect, va
     #     plot_counts_heatmap_savepath = f"{plot_counts_savedir}/counts.pdf"
     # else:
     #     plot_counts_heatmap_savepath = None
-    plot_counts_heatmap_savepath = None # redundant with the final plot below
-    n_levs_context = len(dftmp[var_context].unique())
-    dfout, _ = extract_with_levels_of_conjunction_vars_helper(dftmp, var_context, 
-                                                [var_effect], 1, plot_counts_heatmap_savepath=plot_counts_heatmap_savepath,
-                                                lenient_allow_data_if_has_n_levels=n_levs_context)
-    
+    if True:
+        plot_counts_heatmap_savepath = None # redundant with the final plot below
+        if lenient_allow_data_if_has_n_levels=="all":
+            n_levs_context = len(dftmp[var_context].unique())
+        else:
+            n_levs_context = lenient_allow_data_if_has_n_levels
+        dfout, _ = extract_with_levels_of_conjunction_vars_helper(dftmp, var_context, 
+                                                    [var_effect], 1, plot_counts_heatmap_savepath=plot_counts_heatmap_savepath,
+                                                    lenient_allow_data_if_has_n_levels=n_levs_context)
+    else:    
+        from pythonlib.tools.pandastools import conjunction_vars_prune_to_balance
+        dfout, _ = conjunction_vars_prune_to_balance(dftmp, var_context, var_effect, prefer_to_drop_which=None)
+
     if len(dfout)>0:
         shapes_keep = dfout[var_effect].unique().tolist()
     else:
@@ -576,6 +588,7 @@ def dfdist_extract_label_vars_specific(dfdists, label_vars, return_var_same=Fals
     e.g., label_vars = [shape, loc], means that labels_1 is a column with items like (circle, (0,1)), and
     will populate new columns called shape_1, shape_2, loc_1, loc_2, etc....
 
+    NOTE: any variables that are not in label_vars will be INCORRECT since they don't flip correctly.
     RETURNS:
     - copy of dfdists
     """
@@ -622,6 +635,34 @@ def dfdist_extract_label_vars_specific(dfdists, label_vars, return_var_same=Fals
         return dfdists, colname_conj_same
     else:
         return dfdists
+
+def dfdist_convert_merge_pair_to_get_all_levels(dfdist, list_vars, vars_others):
+    """
+    Given dfdist that has paired data, each row pairing (labels_1, labels_2),
+    return a dfdist that is twice as long, holding all the labels (ignoring 
+    whether they were on 1 or 2). Useful to get all the unique levels, esp when 
+    labels_1 -- labels_2 are assymetric.
+
+    Eg.
+    if columns are (shape_1, gridloc_1, shape_2, gridloc_2) return a new dataframe 
+    with columns (shape, gridloc).
+
+    PARAMS:
+    - list_vars, the variables to merge. list of str, where each str has 
+    <str>_1 and <str>_2 columns.
+    - vars_others, other variables to take. each should exist in dfdist 
+    (no 1 and 2 extension)
+    """
+
+    list_df = []
+    for i in [1, 2]:
+        rename_mapper = {f"{v}_{i}":v for v in list_vars}
+        df = dfdist.loc[:, vars_others + [f"{v}_{i}" for v in list_vars]]
+        df = df.rename(rename_mapper, axis=1)
+        list_df.append(df)
+
+    dfmerged = pd.concat(list_df, axis=0).reset_index(drop=True)
+    return dfmerged
 
 def dfdist_variables_append_vars_others(dfdist):
     """
@@ -1144,3 +1185,123 @@ def dfdist_variables_effect_extract_helper(DFDIST, colname_conj_same, vars_in_or
     dfdist["contrast_string"] = dfdist[colname_conj_same]
 
     return dfdist
+
+def dfdist_compute_regions_diff(dfdist, vars_datapt, var_value, bregion_2, do_plot=False):
+    """
+    Helper to compare all other areas to one area (bregion_2), getting a difference (bregion 2 minus 1)
+    for each level of vars_datapt. 
+
+    Then returns the same data in both long and wide (one col for each bregion) format.
+
+    Get values <bregion_1> minus each of the other brain regions.
+
+    PARAMS:
+    - vars_datapt, list of str, each level will be one datapt (which will be one row, with one value(column) for eahc region)
+    - var_value, str, the scalar value
+    - bregion_2, the single region who will be in bregion 2 minus 1.
+    RETURNS:
+    - dfdifference_long, dfdifference_wide
+
+    """
+    from pythonlib.tools.pandastools import pivot_table, aggregGeneral, convert_wide_to_long
+
+    # Agg, to get one datapt per var_datapt
+    DFEFFECT_AGG = aggregGeneral(dfdist, vars_datapt + ["bregion"], [var_value])
+    
+    # Expand all the bregions
+    DFEFFECT_AGG_WIDE = pivot_table(DFEFFECT_AGG, vars_datapt, ["bregion"], [var_value])
+    
+    # For each <other bregion> get its value subtracted from bregion_1
+    list_bregion = DFEFFECT_AGG["bregion"].unique().tolist()
+    res = {}
+    bregions_other = []
+    for bregion_1 in list_bregion:
+        if bregion_1!=bregion_2:
+            vals_diff = DFEFFECT_AGG_WIDE[var_value][bregion_2] - DFEFFECT_AGG_WIDE[var_value][bregion_1]
+            res[bregion_1] = vals_diff
+            bregions_other.append(bregion_1)
+    for col in vars_datapt:
+        res[col] = DFEFFECT_AGG_WIDE[col]
+        # res["date"] = DFEFFECT_AGG_WIDE["date"]
+        # res["effect"] = DFEFFECT_AGG_WIDE["effect"]
+    dfdifference_wide = pd.DataFrame(res)
+    dfdifference_long = convert_wide_to_long(dfdifference_wide, bregions_other, vars_datapt, "bregion_1", f"{var_value}")
+
+    if do_plot:
+        import seaborn as sns
+        fig = sns.catplot(data=dfdifference_long, y="bregion_1", x=var_value, col="effect", jitter=True, alpha=0.5)
+        for ax in fig.axes.flatten():
+            ax.axvline(0, color="k", alpha=0.5)
+
+        fig = sns.catplot(data=dfdifference_long, y="bregion_1", x=var_value, col="effect", kind="boxen")
+        for ax in fig.axes.flatten():
+            ax.axvline(0, color="k", alpha=0.5)
+
+        # Also plot histograms
+        ncols = 6
+        size=4
+        aspect=1.5
+        list_effects = dfdifference_wide["effect"].unique().tolist()
+        nrows = int(np.ceil(len(list_effects)/ncols))
+        fig, axes = plt.subplots(nrows, ncols, figsize=(size*ncols*aspect, size*nrows), sharex=True, sharey=True)
+        list_bregions = dfdist["bregion"].unique().tolist()
+        for ax, effect in zip(axes.flatten(), list_effects):
+            df = dfdifference_wide[dfdifference_wide["effect"]==effect].reset_index(drop=True)
+
+            for br in list_bregions:
+                if br!=bregion_2:
+                    # col = map_bregion_to_color[br]
+                    sns.histplot(df, x=br, ax=ax, element="step", alpha=0.2)
+            ax.axvline(0, color="k", alpha=0.5)
+            ax.set_xlabel(var_value)
+            ax.set_title(effect)
+            
+    return dfdifference_long, dfdifference_wide
+
+
+def dfdist_compute_effects_diff_wideform(dfdist, var_effect, eff1, eff2, vars_grp, diff_func="minus"):
+    """
+    Return df where each row is a level of vars_grp, and there are two columns, one for each of the two effects.  
+    Also return df where you subtract those two effects 
+
+    PARAMS:
+    - diff_func, "minus", "div", .. 
+    """
+    ###### GOOD
+    from pythonlib.tools.pandastools import summarize_featurediff
+    from pythonlib.tools.pandastools import pivot_table
+    from pythonlib.tools.pandastools import aggregGeneral
+    from pythonlib.tools.pandastools import plot_45scatter_means_flexible_grouping
+    
+    yvar = "dist_yue_diff"
+
+    # (2) For each (date, bregion) get ratio of eff1 to eff2
+    FEATURE_NAMES = [yvar]
+    dfsummary, _, _, _, COLNAMES_DIFF, dfpivot = summarize_featurediff(
+        dfdist, var_effect, [eff1, eff2], FEATURE_NAMES, vars_grp, 
+        return_dfpivot=True, diff_func=diff_func, diff_col_name_include_feature=False)
+
+    new_cols = []
+    for col in dfpivot.columns.values:
+        if col[1]=="":
+            new_cols.append(col[0])
+        else:
+            new_cols.append("-".join(col))
+    dfpivot.columns = new_cols
+    # effect_div_name = f"{yvar}-{COLNAMES_DIFF[0]}"
+    effect_div_name = f"{COLNAMES_DIFF[0]}"
+    if effect_div_name not in dfsummary:
+        print(effect_div_name)
+        print(dfpivot)
+        print(dfsummary)
+        assert False
+
+    # display(dfsummary)
+    # display(dfpivot)
+    # print(effect_div_name)
+
+    eff1_name = f"{yvar}-{eff1}"
+    eff2_name = f"{yvar}-{eff2}"
+
+    ### Merge
+    return dfsummary, dfpivot, effect_div_name, eff1_name, eff2_name
