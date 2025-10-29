@@ -1604,7 +1604,8 @@ def trajgood_plot_colorby_splotby_scalar_WRAPPER(X, dflab, var_color, savedir,
                                                  SIZE=7, alpha=0.5,
                                                  skip_subplots_lack_mult_colors=True, save_suffix=None,
                                                  plot_3D = False,
-                                                 overlay_mean_orig = False):
+                                                 overlay_mean_orig = False,
+                                                 plot_kde=False):
     """
     Final wrapper to make many plots, each figure showing supblots one for each levv of otehr var, colored
     by levels of var. Across figures, show different projections to dim pairs. And plot sepraerpte figuers for
@@ -1738,7 +1739,8 @@ def trajgood_plot_colorby_splotby_scalar_WRAPPER(X, dflab, var_color, savedir,
                                                                                            n_min_per_levo=n_min_per_levo,
                                                                                            connect_means_with_line=connect_means_with_line,
                                                                                            connect_means_with_line_levels=connect_means_with_line_levels,
-                                                                                           plot_3D=plot_3D, zs=zs)
+                                                                                           plot_3D=plot_3D, zs=zs,
+                                                                                           plot_kde=plot_kde)
 
         # Overlay means, including option to use one set of variables for grouping, and a subset of those variables for coloring.
         if overlay_mean and colorby_ind_in_vars_mean is not None:
@@ -1779,6 +1781,81 @@ def trajgood_plot_colorby_splotby_scalar_WRAPPER(X, dflab, var_color, savedir,
         plt.close("all")
 
 
+def _trajgood_construct_df_from_PAscal(PA, var_effect, vars_others):
+    """
+    Given array/list inputs, each same length, constructs df useful for 
+    downstream plots, where each row is a single scalar value (x, y, and potentially z).
+    """
+    Xredu = PA.X # (chans, trials, 1)
+    dflab = PA.Xlabels["trials"]
+    assert Xredu.shape[2]==1
+    x = Xredu.squeeze().T # (trials, chans)
+    xs = x[:, 0]
+    ys = x[:, 1]
+    labels_color = dflab[var_effect].tolist()
+    labels_subplot = [tuple(x) for x in dflab[vars_others].values.tolist()]
+    dfthis = _trajgood_construct_df(xs, ys, labels_color, labels_subplot)
+    return dfthis
+
+def _trajgood_construct_df(xs, ys, labels_color, labels_subplot,
+                           color_var="color", subplot_var="subplot", 
+                           plot_3D=False,  zs=None):
+    """
+    Given array/list inputs, each same length, constructs df useful for 
+    downstream plots, where each row is a single scalar value (x, y, and potentially z).
+
+    """
+
+    if False: 
+        # I had this code previously, but doesnt seem like I need it.
+        # Make this True if plotting fails.
+        if len(xs.shape)==1:
+            xs = xs[:, None]
+        if len(ys.shape)==1:
+            ys = ys[:, None]
+        if zs is not None and len(zs.shape)==1:
+            zs = zs[:, None]
+            assert zs.shape[1]==1
+
+        assert xs.shape[1]==1
+        assert ys.shape[1]==1
+
+    if labels_subplot is None:
+        # subplot_var = None
+        tmp = {
+            color_var:labels_color,
+            # "x":xs.tolist(),
+            # "y":ys.tolist(),
+            "x":xs,
+            "y":ys,
+        }
+    else:
+        tmp = {
+            color_var:labels_color,
+            subplot_var:labels_subplot,
+            # "x":xs.tolist(),
+            # "y":ys.tolist(),
+            "x":xs,
+            "y":ys,
+        }
+
+    if plot_3D:
+        tmp["z"] = zs
+        # tmp["z"] = zs.tolist()
+
+    # print(tmp["x"][0].shape)
+    # print(tmp["y"][0].shape)
+    # print(tmp["z"][0].shape)
+    # print(tmp["x"][:2])
+    # # print(tmp["y"][0].shape)
+    # print(tmp["z"][:2])
+    # assert False
+
+    dfthis = pd.DataFrame(tmp)
+
+    return dfthis
+
+
 def trajgood_plot_colorby_splotby_scalar(xs, ys, labels_color, labels_subplot,
                                          color_var, subplot_var,
                                          overlay_mean=False,
@@ -1792,7 +1869,8 @@ def trajgood_plot_colorby_splotby_scalar(xs, ys, labels_color, labels_subplot,
                                          n_min_per_levo=None,
                                        connect_means_with_line=False,
                                        connect_means_with_line_levels=None,
-                                         plot_3D=False, zs=None
+                                         plot_3D=False, zs=None,
+                                         plot_kde=False,
                                          ):
     """
     Like trajgood_plot_colorby_splotby_scalar, but passing in the raw data directly, instead
@@ -1811,42 +1889,46 @@ def trajgood_plot_colorby_splotby_scalar(xs, ys, labels_color, labels_subplot,
     """
     from pythonlib.drawmodel.strokePlots import overlay_stroke_on_plot_mult_rand
 
-    if len(xs.shape)==1:
-        xs = xs[:, None]
-    if len(ys.shape)==1:
-        ys = ys[:, None]
-    if zs is not None and len(zs.shape)==1:
-        zs = zs[:, None]
-        assert zs.shape[1]==1
-
-    assert xs.shape[1]==1
-    assert ys.shape[1]==1
-
-    if labels_subplot is None:
-        subplot_var = None
-        tmp = {
-            color_var:labels_color,
-            "x":xs.tolist(),
-            "y":ys.tolist()
-        }
+    if True:
+        dfthis = _trajgood_construct_df(xs, ys, labels_color, labels_subplot,
+                            color_var, subplot_var, plot_3D, zs)
     else:
-        tmp = {
-            color_var:labels_color,
-            subplot_var:labels_subplot,
-            "x":xs.tolist(),
-            "y":ys.tolist()
-        }
-    if plot_3D:
-        tmp["z"] = zs.tolist()
-    # print(tmp["x"][0].shape)
-    # print(tmp["y"][0].shape)
-    # print(tmp["z"][0].shape)
-    # print(tmp["x"][:2])
-    # # print(tmp["y"][0].shape)
-    # print(tmp["z"][:2])
-    # assert False
-    dfthis = pd.DataFrame(tmp)
+        if len(xs.shape)==1:
+            xs = xs[:, None]
+        if len(ys.shape)==1:
+            ys = ys[:, None]
+        if zs is not None and len(zs.shape)==1:
+            zs = zs[:, None]
+            assert zs.shape[1]==1
 
+        assert xs.shape[1]==1
+        assert ys.shape[1]==1
+
+        if labels_subplot is None:
+            subplot_var = None
+            tmp = {
+                color_var:labels_color,
+                "x":xs.tolist(),
+                "y":ys.tolist()
+            }
+        else:
+            tmp = {
+                color_var:labels_color,
+                subplot_var:labels_subplot,
+                "x":xs.tolist(),
+                "y":ys.tolist()
+            }
+        if plot_3D:
+            tmp["z"] = zs.tolist()
+        # print(tmp["x"][0].shape)
+        # print(tmp["y"][0].shape)
+        # print(tmp["z"][0].shape)
+        # print(tmp["x"][:2])
+        # # print(tmp["y"][0].shape)
+        # print(tmp["z"][:2])
+        # assert False
+        dfthis = pd.DataFrame(tmp)
+    
     fig, axes, map_levo_to_ax, map_levo_to_inds = _trajgood_plot_colorby_splotby_scalar(dfthis, color_var, subplot_var,
                                          overlay_mean, plot_text_over_examples,
                                                 text_to_plot, alpha, SIZE,
@@ -1854,7 +1936,7 @@ def trajgood_plot_colorby_splotby_scalar(xs, ys, labels_color, labels_subplot,
                                                 n_min_per_levo=n_min_per_levo,
                                   connect_means_with_line=connect_means_with_line,
                                                 connect_means_with_line_levels=connect_means_with_line_levels,
-                                                plot_3D=plot_3D)
+                                                plot_3D=plot_3D, plot_kde=plot_kde)
 
     if fig is None:
         return None, None, None, None
@@ -1910,7 +1992,8 @@ def _trajgood_plot_colorby_splotby_scalar(df, var_color_by, var_subplots,
                                           n_min_per_levo=None,
                                           connect_means_with_line=False,
                                           connect_means_with_line_levels=None,
-                                          plot_3D=False):
+                                          plot_3D=False,
+                                          plot_kde=False, kde_plot_scatter=True, kde_ellipses=True, kde_text_labels=False, kde_plot_contours=True, kde_levels=6):
     """ [GOOD], to plot scatter of pts, colored by one variable, and split across
     subplots by another variable.
     PARAMS:
@@ -1993,10 +2076,13 @@ def _trajgood_plot_colorby_splotby_scalar(df, var_color_by, var_subplots,
 
     if plot_3D:
         subplot_kw = dict(projection='3d')
-        sharex, sharey = False, False
+        # sharex, sharey = False, False
+        share_axes = False
     else:
         subplot_kw = None
-        sharex, sharey = True, True
+        share_axes = True
+        # sharex, sharey = True, True
+    sharex, sharey = False, False
     fig, axes = plt.subplots(nrows, ncols, sharex=sharex, sharey=sharey,
                              figsize=(ncols*SIZE, nrows*SIZE), subplot_kw=subplot_kw)
 
@@ -2020,13 +2106,24 @@ def _trajgood_plot_colorby_splotby_scalar(df, var_color_by, var_subplots,
         else:
             zs = None
         labels_color = dfthis[var_color_by].values
-        _trajgood_plot_colorby_scalar_BASE_GOOD(xs, ys, labels_color, ax,
-                                                map_lev_to_color, color_type,
-                                                overlay_mean, plot_text_over_examples,
-                                                text_to_plot_this, alpha, SIZE,
-                                                connect_means_with_line=connect_means_with_line,
-                                                connect_means_with_line_levels=connect_means_with_line_levels,
-                                                plot_3D=plot_3D, zs=zs)
+
+        if plot_kde:
+            from pythonlib.tools.pandastools import plot_class_kde
+            plot_class_kde(dfthis, "x", "y", var_color_by, levels=kde_levels, ax=ax, 
+                           text_labels=kde_text_labels, scatter=kde_plot_scatter,
+                           ellipses=kde_ellipses, cmap_per_class=map_lev_to_color,
+                           plot_contours=kde_plot_contours)
+        else:
+            _trajgood_plot_colorby_scalar_BASE_GOOD(xs, ys, labels_color, ax,
+                                                    map_lev_to_color, color_type,
+                                                    overlay_mean, plot_text_over_examples,
+                                                    text_to_plot_this, alpha, SIZE,
+                                                    connect_means_with_line=connect_means_with_line,
+                                                    connect_means_with_line_levels=connect_means_with_line_levels,
+                                                    plot_3D=plot_3D, zs=zs)
+    if share_axes:
+        from pythonlib.tools.plottools import share_axes
+        share_axes(fig.axes, "both")
 
     if plot_3D:
         xs = np.stack(df["x"])
