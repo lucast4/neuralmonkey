@@ -1978,7 +1978,7 @@ def dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, fr_mean_subtrac
     Note that DFallpa output CAN be diff length from input, if sitedirty processessing throws out all chans for a PA, it is removed.
     """
 
-    assert fr_mean_subtract_method in [None, "across_time_bins", "each_time_bin"]
+    assert fr_mean_subtract_method in [None, "raw_fr", "across_time_bins", "each_time_bin"]
 
     def _remove_rows_with_pa_none(DFallpa):
         """
@@ -2107,7 +2107,20 @@ def dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, fr_mean_subtrac
         pa.X = pa.X**0.5
 
     # (6) Normalize FR    
-    if fr_mean_subtract_method is not None:
+    if fr_mean_subtract_method is None:
+        # Then don't do anything
+        pass
+    elif fr_mean_subtract_method == "raw_fr":
+        # Square the Fr, becuase when saving, I saved sqare-root transformed fr.
+        for pa in DFallpa["pa"]:
+            pa.X **= 2 
+
+        ### If you want to then normalize as usual, do this:
+        # for pa in DFallpa["pa"]:
+        #     pa.X **= 0.5
+        # dfpa_concat_normalize_fr_split_multbregion_flex(DFallpa)
+    else: 
+        # Do normalization
         print(" == (6) Normalize FR")
         PLOT=False
         dfpa_concat_normalize_fr_split_multbregion_flex(DFallpa, fr_mean_subtract_method, PLOT)

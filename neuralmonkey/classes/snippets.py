@@ -228,18 +228,19 @@ def load_and_concat_mult_snippets(MS, which_level, events_keep, SITES_COMBINE_ME
     - SAVEDIR_ALL, a newly genreated path
     """ 
 
-    assert DEBUG==False, "Not yet coded..."
 
     if REGENERATE_SNIPPETS:
         from neuralmonkey.scripts.analy_snippets_extract import extract_snippets_all_sessions
         # EVENTS_KEEP = None
         # which_level = "trial"
         # EVENTS_KEEP = ["03_samp", "go_cue"]
-        list_sp = extract_snippets_all_sessions(MS, which_level, events_keep, 1, False, PRE_DUR=PRE_DUR, POST_DUR=POST_DUR)
+        list_sp = extract_snippets_all_sessions(MS, which_level, events_keep, 1, False, PRE_DUR=PRE_DUR, POST_DUR=POST_DUR,
+                                                prune_low_fr_sites=prune_low_fr_sites, DEBUG=DEBUG)
         SAVEDIR_ALL = None
     else:
         import os
 
+        assert DEBUG==False, "Not yet coded..."
         SAVEDIR = f"/gorilla1/analyses/recordings/main/anova/by{which_level}"
 
         # Genreate the seave dir.
@@ -1598,7 +1599,6 @@ class Snippets(object):
             assert False, "cannot use both..."
         
         assert (var_level==None) == (var==None)
-            
         if dfthis is None:
             dfthis = self.DfScalar
 
@@ -5866,10 +5866,6 @@ class Snippets(object):
             axes = plot_on_these_axes
             assert len(axes)>=len(dict_lev_pa), "not enough axes"
 
-        # joint he axes
-        if len(axes.flatten())>0:
-            from pythonlib.tools.plottools import share_axes
-            share_axes(axes, "y")
 
         # Make plots
         _legend_added = False
@@ -5888,6 +5884,11 @@ class Snippets(object):
                 ax.set_title(lev_other, fontsize=6, wrap=True)
                 # ax.set_ylim([0, 1.2*YMAX])
                 ax.axvline(0, color="m")
+
+        # joint he axes
+        if len(axes.flatten())>0:
+            from pythonlib.tools.plottools import share_axes
+            share_axes(axes, "y")
 
         return fig, axes
 
@@ -6060,6 +6061,7 @@ class Snippets(object):
         if levels_var is None:
             # levels_var = sorted(dfthis[var].unique().tolist())
             levels_var = sort_mixed_type(dfthis[var].unique().tolist())
+        levels_var = [lev for lev in levels_var if lev in dfthis[var].unique().tolist()]
 
         # extract
         list_list_st = []
@@ -6519,7 +6521,9 @@ class Snippets(object):
                                                          plot_on_these_axes=axes,
                                                            OVERWRITE_n_min=OVERWRITE_n_min, OVERWRITE_lenient_n=OVERWRITE_lenient_n,
                                                                                 balance_same_levels_across_ovar=balance_same_levels_across_ovar)
-
+                # for ax in axes.flatten():
+                #     ax.set_ylim([0, 100])
+                # assert False
             # make sure x axes is same for raster and sm fr
             for i in range(ncols):
                 ax1 = axesall[0][i]
@@ -6553,11 +6557,15 @@ class Snippets(object):
         from pythonlib.tools.listtools import sort_mixed_type
         from pythonlib.tools.plottools import share_axes
 
+        if var is None:
+            self.DfScalar["_dummy"] = "dummy"
+            var = "dummy"
+
         # PREPARE plot
         # Extract data, just to see many subplots to make.
         vars_others = [var_other_1, var_other_2]
         _, levdat, levels_var = self.dataextract_as_df_conjunction_vars(var,
-                vars_others, site, event=event)
+                vars_others, site, event=event, OVERWRITE_lenient_n=1)
         levels_othervar = list(levdat.keys())
         levels_othervar_1 = sort_mixed_type(set([x[0] for x in levels_othervar]))
         levels_othervar_2 = sort_mixed_type(set([x[1] for x in levels_othervar]))
@@ -6620,9 +6628,9 @@ class Snippets(object):
                     assert False
 
             # all axes shared
-            share_axes(axesall, which="x")
+            share_axes(axesall.flatten(), which="x")
             if sharey:
-                share_axes(axesall, which="y")
+                share_axes(axesall.flatten(), which="y")
         else:
             fig, axesall = plt.subplots(2,1)
             axesall.flatten()[0].set_title("Not enough data!")
@@ -7562,24 +7570,35 @@ class Snippets(object):
 
         if params["datasetstrokes_extract_chunks_variables"] and self.Params["which_level"] == "stroke":
             # Then dataset_strokes lloaded chunk variables, e.g,
-            list_features_extraction = (list_features_extraction + ["chunk_rank", "chunk_within_rank", "chunk_within_rank_semantic",
-                                                                    "chunk_within_rank_semantic_v2", "chunk_within_rank_semantic_v3",
-                                                        "chunk_within_rank_fromlast", "chunk_n_in_chunk", "epoch_rand",
-                                                        "chunk_diff_from_prev"] + ["taskcat_by_rule", "behseq_shapes", "behseq_locs"] +
-                                        ["syntax_concrete", "syntax_role"] + ["epoch_orig_rand_seq", "epoch_is_AnBmCk", "epoch_is_DIR",
-                                                                              "superv_is_seq_sup", "INSTRUCTION_COLOR"]
-                                        + ["epochset_diff_motor", "epochset_shape", "epochset_dir"]
-                                        )
+            list_features_extraction = list_features_extraction + ["chunk_rank_global", "crg_shape", "chunk_rank", "chunk_within_rank", "chunk_within_rank_semantic", 
+                "chunk_within_rank_semantic_v2", "chunk_within_rank_semantic_v3", "chunk_within_rank_fromlast", 
+                "chunk_n_in_chunk", "epoch_rand", "chunk_diff_from_prev", "taskcat_by_rule", "syntax_concrete", "syntax_role", 
+                "epoch_orig_rand_seq", "epoch_is_AnBmCk", "epoch_is_DIR", "superv_is_seq_sup", "INSTRUCTION_COLOR", 
+                "epochset_diff_motor", "epochset_shape", "epochset_dir"]
+                                            
 
-            # Add concrete variations within each taskcat_by_rule
-            LIST_VAR_BEHORDER=["behseq_shapes", "behseq_locs", "behseq_locs_x", "behseq_locs_diff", "behseq_locs_diff_x"]
-            list_features_extraction.extend([f"{var_behorder}_clust" for var_behorder in LIST_VAR_BEHORDER])
+            # Get other variables into DS if not arleady there
+            from pythonlib.dataset.dataset_analy.grammar import chunk_rank_global_extract
+            if "date" not in DS_for_feature_extraction.Dat.columns:
+                DS_for_feature_extraction.Dat["date"] = "dummy"
+            chunk_rank_global_extract(DS_for_feature_extraction.Dat, shape_ratio_max=1.0)
+            # a new column
+            from pythonlib.tools.pandastools import append_col_with_grp_index
+            DS_for_feature_extraction.Dat = append_col_with_grp_index(DS_for_feature_extraction.Dat, 
+                ["chunk_rank_global", "shape"], "crg_shape")
 
             # Add bin indicating wheterh chunk gap is short or long duration
             tmp = ["chunkgap_(0, 1)_durbin", "chunkgap_(1, 2)_durbin"]
             for t in tmp:
                 if t in self.Datasetbeh.Dat.columns:
                     list_features_extraction.append(t)
+
+        if params["datasetstrokes_extract_chunks_behseq_clusts"] and self.Params["which_level"] == "stroke":
+            # Add concrete variations within each taskcat_by_rule
+            LIST_VAR_BEHORDER=["behseq_shapes", "behseq_locs", "behseq_locs_x", "behseq_locs_diff", "behseq_locs_diff_x"]
+            list_features_extraction.extend([f"{var_behorder}_clust" for var_behorder in LIST_VAR_BEHORDER])
+
+            list_features_extraction.extend(["behseq_shapes", "behseq_locs"])
 
         if params["datasetstrokes_extract_chunks_variables"] and self.Params["which_level"] == "trial":
             # Then dataset_strokes lloaded chunk variables, e.g,

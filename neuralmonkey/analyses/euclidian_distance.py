@@ -100,6 +100,7 @@ def timevarying_compute_fast_to_scalar(PA, label_vars=("seqc_0_shape", "seqc_0_l
     from pythonlib.cluster.clustclass import Clusters
     from pythonlib.tools.pandastools import grouping_print_n_samples
 
+    assert PA is not None
     # Deprecated, beucase:
     # "Confirmed that if you set context_dict[same]=[var_context_same], this will work the same (better)"
     assert var_context_same is None, "deprecated. Instead, use context_dict[same]=..., as this is hacky and not general."
@@ -747,7 +748,8 @@ def dfdist_expand_convert_from_triangular_to_full(dfdists, label_vars=None, PLOT
 def dfdist_postprocess_wrapper(DFDISTS, var_effect, var_other, savedir, 
                                do_pruning_cleaning=True, prune_min_n_trials=None):
     """
-    Wrapper for all usual postprocessing steps.
+    Wrapper for all usual postprocessing steps, ONLY if var_other is a single variable.
+
     DFDISTS can be across animals and dates and metaparams (those need to be columns, regardless)
     
     There is assymetry in var_effect vs var_other, but this works just fine for expts where you care about loking at both
@@ -857,6 +859,7 @@ def dfdist_summary_plots_wrapper(DFDISTS, DFDISTS_AGG, var_effect, var_other, SA
                                  PLOT_EACH_PAIR=False, list_metaparams_plot_each_pair=None,
                                  do_catplots=True, do_quick=False):
     """
+    ONLY for cases where var_other is a single variable.
     Wrapper for all summary plots related to pairwise euclidean distances stored in DFDISTS.
     Including catplots, scatterplots, and plots of all pairwise comparisons
     
@@ -1164,7 +1167,7 @@ def dfdist_variables_effect_extract_helper(DFDIST, colname_conj_same, vars_in_or
     
     PARAMS:
     - colname_conj_same, the column name (e.g., "same...") that holds the contrast string (e.g., "1|0|1").
-    - vars_in_order, list of variables, ie in order of contrasts.
+    - vars_in_order, list of variables, ie in order of contrasts, all variables, which were used for genreating dfdist.
     - contrasts_diff, list of str, variables that should be differnet.
     - contrasts_either, list of str, varialbes that can be etiher diff or same. Will return all strings after
     "expanding" these variables to be 0 and 1 (in different returned stringes)

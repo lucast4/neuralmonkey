@@ -8,7 +8,7 @@ from pythonlib.tools.expttools import writeStringsToFile
 ONLY_ESSENTIAL_VARS = False # then just the first var, assuemd to be most important, for quick analys
 
 ##################
-LIST_ANALYSES = ["rulesw", "rulesingle", "ruleswALLDATA", "ruleswERROR", "singleprimvar", "seqcontextvar",
+LIST_ANALYSES = ["rulesw", "rulesingle", "rulesingleALLDATA", "ruleswALLDATA", "ruleswERROR", "singleprimvar", "seqcontextvar",
                  "seqcontext", "singleprim", "charstrokes", "chartrial", "substrokes_sp", "PIG_BASE", "singleprim_psycho"] # repo of possible analses,
 
 # - rulesw, rule switching
@@ -26,7 +26,7 @@ LIST_ANALYSES = ["rulesw", "rulesingle", "ruleswALLDATA", "ruleswERROR", "single
 def _params_score_sequence_ver(animal, DATE, ANALY_VER):
     """ Decide how to score each trial's sequence success, either
     comparing beh to matlab task seuqence or to parses"""
-    if ANALY_VER in ["rulesw", "ruleswERROR", "ruleswALLDATA", "rulesingle"]:
+    if ANALY_VER in ["rulesw", "ruleswERROR", "ruleswALLDATA", "rulesingle", "rulesingleALLDATA"]:
         if animal=="Pancho" and DATE in [220913]:
             DO_SCORE_SEQUENCE_VER = "parses"
         elif animal=="Pancho" and DATE in [220812, 220814, 220815, 220816, 220827,
@@ -1148,15 +1148,16 @@ def dataset_apply_params(D, DS, ANALY_VER, animal, DATE, save_substroke_preproce
             # And extract syntax_concrete column
             D.grammarparses_syntax_concrete_append_column()
 
-            # For each sequence kind (e.g. shapes) split into concrete variations (classes).
-            if not SKIP_PLOTS:
-                savedir_preprocess = D.make_savedir_for_analysis_figures_BETTER("preprocess_general")
-                sdir = f"{savedir_preprocess}/seqcontext_behorder_cluster_concrete_variation"
-                os.makedirs(sdir, exist_ok=True)
-                D.seqcontext_behseq_cluster_concrete_variation(SAVEDIR=sdir,
-                                                            LIST_VAR_BEHORDER=["behseq_shapes", "behseq_locs",
-                                                                        "behseq_locs_x", "behseq_locs_diff", "behseq_locs_diff_x"])
-            
+            savedir_preprocess = D.make_savedir_for_analysis_figures_BETTER("preprocess_general")
+            if params["datasetstrokes_extract_chunks_behseq_clusts"]:
+                # For each sequence kind (e.g. shapes) split into concrete variations (classes).
+                if not SKIP_PLOTS:
+                    sdir = f"{savedir_preprocess}/seqcontext_behorder_cluster_concrete_variation"
+                    os.makedirs(sdir, exist_ok=True)
+                    D.seqcontext_behseq_cluster_concrete_variation(SAVEDIR=sdir,
+                                                                LIST_VAR_BEHORDER=["behseq_shapes", "behseq_locs",
+                                                                            "behseq_locs_x", "behseq_locs_diff", "behseq_locs_diff_x"])
+                
             if True:
                 # Wrapper to get all info about epochs
                 D.grammarparses_rules_epochs_superv_summarize_wrapper(PRINT=True)
@@ -1421,7 +1422,7 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
     # for grid sequence tasks with different probes, want to merge them for larger N.
     if ANALY_VER in ["ruleswERROR", "rulesw", "ruleswALLDATA"]:
         taskgroup_reassign_simple_neural = True
-    elif ANALY_VER in ["rulesingle"]:
+    elif ANALY_VER in ["rulesingle", "rulesingleALLDATA"]:
         # Skip for now, since it takes long time and not necessary, but in future maybe move to True
         taskgroup_reassign_simple_neural = False
     else:
@@ -1435,6 +1436,8 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
     elif ANALY_VER in ["rulesingle"]:
         preprocess_steps_append = ["correct_sequencing_binary_score",
             "one_to_one_beh_task_strokes_allow_unfinished"]
+    elif ANALY_VER in ["rulesingleALLDATA"]:
+        preprocess_steps_append = ["one_to_one_beh_task_strokes_allow_unfinished"]
     elif ANALY_VER in ["ruleswALLDATA"]:
         # keep all trials
         preprocess_steps_append = []
@@ -1618,7 +1621,7 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
         substrokes_features_do_extraction = True
     elif ANALY_VER in ["singleprim", "singleprimvar", "seqcontext",
                        "charstrokes", "chartrial", "PIG_BASE",
-                       "rulesingle", "rulesw", "singleprim_psycho"]:
+                       "rulesingle", "rulesingleALLDATA", "rulesw", "singleprim_psycho"]:
         substrokes_features_do_extraction = False
     else:
         print(ANALY_VER)
@@ -1626,12 +1629,19 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
 
     ######## CHUNKS, e.g., AnBm, wherther to extract state, e.g.,, n in chunk, and so on.
     if "rule" in ANALY_VER:
-        # This operates on DS only.
-        datasetstrokes_extract_chunks_variables = True
+        if "ALLDATA" in ANALY_VER or "ERROR" in ANALY_VER:
+            # An exception, if you are collecting all data, then avoid things that will fail, because not correct number
+            # of strokes.
+            datasetstrokes_extract_chunks_variables = True
+            datasetstrokes_extract_chunks_behseq_clusts = False
+        else:
+            # This operates on DS only.
+            datasetstrokes_extract_chunks_variables = True
+            datasetstrokes_extract_chunks_behseq_clusts = True
     else:
         datasetstrokes_extract_chunks_variables = False
-
-
+        datasetstrokes_extract_chunks_behseq_clusts = False
+    
     params = {
         "DO_CHARSEQ_VER":DO_CHARSEQ_VER,
         # "EXTRACT_EPOCHSETS":EXTRACT_EPOCHSETS,
@@ -1651,7 +1661,8 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
         "datasetstrokes_extract_to_prune_stroke_and_get_features":datasetstrokes_extract_to_prune_stroke_and_get_features,
         "substrokes_features_do_extraction":substrokes_features_do_extraction,
         "charclust_dataset_extract_shapes":charclust_dataset_extract_shapes,
-        "datasetstrokes_extract_chunks_variables":datasetstrokes_extract_chunks_variables
+        "datasetstrokes_extract_chunks_variables":datasetstrokes_extract_chunks_variables,
+        "datasetstrokes_extract_chunks_behseq_clusts":datasetstrokes_extract_chunks_behseq_clusts,
     }
 
     return params

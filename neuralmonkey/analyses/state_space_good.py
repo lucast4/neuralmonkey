@@ -1703,7 +1703,7 @@ def trajgood_plot_colorby_splotby_scalar_WRAPPER(X, dflab, var_color, savedir,
 
     if vars_subplot is None:
         labels_subplot = None
-        vars_subplot_string = ""
+        vars_subplot_string = None
     else:
         # is a conjunctive var
         dflab = append_col_with_grp_index(dflab, vars_subplot, "_tmp", strings_compact=True)
