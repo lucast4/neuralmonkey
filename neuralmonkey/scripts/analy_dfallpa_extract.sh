@@ -13,11 +13,17 @@ if [[ $animal == Diego ]]; then
   # datelist=(230817 230914) # AnBmCk, ALL
   # datelist=(230728 230817) # NEED TO FIX
 
-  # # # datelist=(250319 250321) # added 4/4/25
-  # # datelist=(250319) # added 4/4/25
-  # datelist=(230914 231116) # AnBmCk, 7/31/25, best days, for testing
-  datelist=(250416 250417) # AnBmCk, 7/31/25, best days, for testing
-  question=RULE_ANBMCK_STROKE
+  # # # # datelist=(250319 250321) # added 4/4/25
+  # # # datelist=(250319) # added 4/4/25
+  # # datelist=(230914 231116) # AnBmCk, 7/31/25, best days, for testing
+  # # datelist=(250416 250417) # AnBmCk, 7/31/25, best days, for testing
+  # datelist=(240827) # AnBmCk, 7/31/25, best days, for testing
+  # question=RULE_ANBMCK_STROKE
+  # combine=0
+
+  # datelist=(230913) # AnBmCk, 7/31/25, best days, for testing
+  datelist=(230726 230815 230816 230817 230915 231118)
+  question=RULE_ANBMCK_STROKE_ALLDATA
   combine=0
 
   # ## AnBmCk -- getting also the single prim trials
@@ -92,18 +98,23 @@ elif [[ $animal == Pancho ]]; then
   
   # datelist=(240619 240808 240809) # Syntax TI
 
-  ## AnBmCk and AnBmCk(Two shape sets)
-  # datelist1=(230810 230811 230824 230826 230829 231114 231116 240830 220831 220901 220902 220906 220907 220908 220909 250321 250322) # AnBmCk, ALL
-  # datelist1=(230811 230824 230826 230829 231114 231116) # AnBmCk, SUBSET
-  # datelist1=(220831 220901) # NEED TO FIX BUG
-  # datelist1=(250322) # added 4/4/25
-  # datelist1=(230908 230909 231114 231116) # AnBmCk, Good ones, for testing, 7/31/25
-  datelist1=(230810 230811 230826) # Missed ones
-  datelist2=() # SUBSET
-  datelist=(${datelist1[@]} ${datelist2[@]})
-  echo ${datelist[@]}
+  # ## AnBmCk and AnBmCk(Two shape sets)
+  # # datelist1=(230810 230811 230824 230826 230829 231114 231116 240830 220831 220901 220902 220906 220907 220908 220909 250321 250322) # AnBmCk, ALL
+  # # datelist1=(230811 230824 230826 230829 231114 231116) # AnBmCk, SUBSET
+  # # datelist1=(220831 220901) # NEED TO FIX BUG
+  # # datelist1=(250322) # added 4/4/25
+  # # datelist1=(230908 230909 231114 231116) # AnBmCk, Good ones, for testing, 7/31/25
+  # datelist1=(230810 230811 230826) # Missed ones
+  # datelist2=() # SUBSET
+  # datelist=(${datelist1[@]} ${datelist2[@]})
+  # echo ${datelist[@]}
+  # combine=0
+  # question=RULE_ANBMCK_STROKE
+
+  # datelist=(220909 230824 230829 231114 231116)
+  datelist=(220909 231114)
+  question=RULE_ANBMCK_STROKE_ALLDATA
   combine=0
-  question=RULE_ANBMCK_STROKE
 
   # ## AnBmCk -- getting also the single prim trials
   # # datelist1=(230908 230909 231114 231116) # AnBmCk, Good ones, for testing, 7/31/25

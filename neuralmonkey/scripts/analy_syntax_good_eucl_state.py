@@ -321,7 +321,7 @@ def preprocess_dfallpa_motor_features(DFallpa, tmax=0.2, plot_motor_values=False
     """
 
     # assert len(DFallpa["bregion"].unique())==len(DFallpa), "assuming they are all the same trials, etc"
-    variables_cont = ("motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y")
+    variables_cont = ("motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "gap_to_next_x", "gap_to_next_y", "velmean_x", "velmean_y")
 
     # Extract all motor stuff
     pa = DFallpa["pa"].values[0]
@@ -611,6 +611,12 @@ def preprocess_pa(PA, var_effect, vars_others, prune_min_n_trials, prune_min_n_l
 
     # Save (print) useful summaries of the syntaxes for this day
     dflab = PA.Xlabels["trials"]
+    
+    if "behseq_shapes" not in dflab:
+        dflab["behseq_shapes"] = "ignore" # Just so below printing is possible.
+    if "behseq_locs_clust" not in dflab:
+        dflab["behseq_locs_clust"] = "ignore" # Just so below printing is possible.
+
     savepath = f"{savedir}/syntax_counts-1.txt"
     grouping_print_n_samples(dflab, ["epoch", "FEAT_num_strokes_beh", "syntax_concrete", "behseq_shapes"], savepath=savepath)
 
@@ -2720,11 +2726,11 @@ def targeted_pca_clean_plots_and_dfdist(DFallpa, animal, date, SAVEDIR_ALL, DEBU
                                                                                         savedir_coeff_heatmap=None, demean=False)
                         elif question == "4_shape_vs_chunk":
                             # Prune to just those (shapes/loc) that exist in both task_kind.
-                            pa_subspace_this_this = pa_subspace_this.slice_extract_with_levels_of_conjunction_vars("task_kind", ["shape", "gridloc"], n_min_per_lev=1,
+                            pa_subspace_this_this, _, _ = pa_subspace_this.slice_extract_with_levels_of_conjunction_vars("task_kind", ["shape", "gridloc"], 1,
                                                         levels_var=["prims_single", "prims_on_grid"])
                         elif question == "4c_shape_vs_chunk":
                             # Prune to just those (shapes) that exist in both task_kind.
-                            pa_subspace_this_this = pa_subspace_this.slice_extract_with_levels_of_conjunction_vars("task_kind", ["shape"], n_min_per_lev=1,
+                            pa_subspace_this_this, _, _ = pa_subspace_this.slice_extract_with_levels_of_conjunction_vars("task_kind", ["shape"], 1,
                                                         levels_var=["prims_single", "prims_on_grid"])                    
                         else:
                             pa_subspace_this_this = pa_subspace_this
@@ -4402,6 +4408,8 @@ if __name__=="__main__":
             # Minor:
             # - Careful train-test splitting of data
 
+            # MULT ANALY: notebooks_tutorials/250510_syntax_good_state.ipynb
+            # --> [MULT, Euclidean, ALL ANALYSES] Load DFEFFECT and plot. Final figures for paper.
 
             # This plots state space, and also computes euclidean
             SAVEDIR_ANALYSIS = f"{SAVEDIR}/targeted_dim_redu_v2/run{run_number}/{animal}-{date}-q={question}"            

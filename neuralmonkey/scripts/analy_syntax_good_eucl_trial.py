@@ -360,6 +360,10 @@ def state_space_targeted_pca_scalar_single_one_var_mult_axes(PA, twind_scal, var
     referring to the variable names.
     - var_subspace, either str or list of str
     - LIST_VAR_VAROTHERS, LIST_DIMS, SAVEDIR, for plotting state space.
+
+    RETURNS:
+    - pa_subspace, subspace_axes_orig, subspace_axes_normed, dfcoeff, PAscalTest
+    (Note, could be None if there isn't enough data or variaiotn in data to get targeted PCs)
     """
     # from neuralmonkey.scripts.analy_euclidian_chars_sp import params_subspace_projection
     # from pythonlib.tools.pandastools import append_col_with_grp_index, grouping_plot_n_samples_heatmap_var_vs_grpvar
@@ -456,7 +460,7 @@ def state_space_targeted_pca_scalar_single_one_var_mult_axes(PA, twind_scal, var
                         writeDictToTxtFlattened(out, f"{savedir}/VAF-subspace={subspace}.txt")
         
     ### Plot all subspaces
-    if LIST_VAR_VAROTHERS is not None and len(LIST_VAR_VAROTHERS)>0:
+    if LIST_VAR_VAROTHERS is not None and len(LIST_VAR_VAROTHERS)>0 and pa_subspace is not None:
         if SAVEDIR is not None:
             savedir = f"/{SAVEDIR}/subspace={var_subspace}"
             os.makedirs(savedir, exist_ok=True)

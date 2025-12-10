@@ -15,8 +15,10 @@ from pythonlib.tools.plottools import savefig
 
 # def heatmapwrapper_many_useful_plots():
 def heatmapwrapper_many_useful_plots(PA, savedir, var_effect="seqc_0_shape", var_conj="seqc_0_loc", var_is_blocks=True,
-                                  mean_over_trials=False, zlims=None,flip_rowcol=False, plot_fancy=False, n_rand_trials=10,
-                                  diverge=False):
+                                  mean_over_trials=False, zlims=None, flip_rowcol=False, plot_fancy=False, n_rand_trials=10,
+                                  diverge=False,
+                                  plot_group_y_by_neuron=True, plot_group_y_by_var_effect=True, plot_each_neuron_no_grouping_y=True,
+                                  overlay_stroke_times=False, save_suff=None):
     """
     Many plots of heatmaps, different methods fo splitting into subplots and grouping along y axis.
     In general, to look at neural data in PA (e.g., "raw"), plotting heatmaps (trial vs time), a few different kinds
@@ -54,128 +56,144 @@ def heatmapwrapper_many_useful_plots(PA, savedir, var_effect="seqc_0_shape", var
     # Get a global zlim
     if zlims is None:
         zlims = np.percentile(PA.X.flatten(), [1, 99]).tolist()
+    elif zlims == "none_local_to_each_plot":
+        zlims = None
 
     if diverge:
         max_z_abs = np.max(np.abs(zlims))
         zlims = [-max_z_abs, max_z_abs]
 
     #########################################################
-    ############################# (1) 
-    dflab = PA.Xlabels["trials"]
-    
-    var_row = var_conj
-    var_col = var_effect
+    if plot_group_y_by_neuron:
+        ############################# (1) 
+        dflab = PA.Xlabels["trials"]
+        
+        var_row = var_conj
+        var_col = var_effect
 
-    row_levels = dflab[var_row].unique().tolist()
-    col_levels = dflab[var_col].unique().tolist()
+        row_levels = dflab[var_row].unique().tolist()
+        col_levels = dflab[var_col].unique().tolist()
 
-    grpdict = grouping_append_and_return_inner_items_good(dflab, [var_row, var_col])
+        grpdict = grouping_append_and_return_inner_items_good(dflab, [var_row, var_col])
 
-    nticks = 5
+        # nticks = 5
 
-    SIZE = 3
-    ncols = len(col_levels)
-    nrows = len(row_levels)
-    fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*SIZE, nrows*SIZE), squeeze=False)
+        SIZE = 3
+        ncols = len(col_levels)
+        nrows = len(row_levels)
+        fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*SIZE, nrows*SIZE), squeeze=False)
 
-    for i, row in enumerate(row_levels):
-        for j, col in enumerate(col_levels):
-            ax = axes[i][j]
-            if (row, col) in grpdict.keys():
-                inds = grpdict[(row, col)]
+        for i, row in enumerate(row_levels):
+            for j, col in enumerate(col_levels):
+                ax = axes[i][j]
+                if (row, col) in grpdict.keys():
+                    inds = grpdict[(row, col)]
 
-                if mean_over_trials:
-                    heatmap_stratified_trials_grouped_by_neuron_meantrial(PA, inds, ax, zlims=zlims)
+                    if mean_over_trials:
+                        heatmap_stratified_trials_grouped_by_neuron_meantrial(PA, inds, ax, zlims=zlims)
+                    else:
+                        heatmap_stratified_trials_grouped_by_neuron(PA, inds, ax, n_rand_trials=n_rand_trials, zlims=zlims)
+
+                    ax.set_title((row, col), fontsize=8)
                 else:
-                    heatmap_stratified_trials_grouped_by_neuron(PA, inds, ax, n_rand_trials=n_rand_trials, zlims=zlims)
+                    ax.set_title("missing data")
 
-                ax.set_title((row, col), fontsize=8)
-            else:
-                ax.set_title("missing data")
-
-    savefig(fig, f"{savedir}/grouped_by_neuron.pdf")
-    plt.close("all")
+        savefig(fig, f"{savedir}/grouped_by_neuron.pdf")
+        plt.close("all")
 
 
     #########################################################
-    ### (2)  Same thing, but each plot is a single (PC, task_kind), split by shape
-    var_col = var_conj
-    var_y_group = var_effect
-    levels_y = sorted(PA.Xlabels["trials"][var_y_group].unique().tolist())
-    levels_col = sorted(PA.Xlabels["trials"][var_col].unique().tolist())
+    if plot_group_y_by_var_effect:
+        ### (2)  Same thing, but each plot is a single (PC, task_kind), split by shape
+        var_col = var_conj
+        var_y_group = var_effect
+        levels_y = sorted(PA.Xlabels["trials"][var_y_group].unique().tolist())
+        levels_col = sorted(PA.Xlabels["trials"][var_col].unique().tolist())
 
-    list_ind_neur = list(range(len(PA.Chans)))
+        list_ind_neur = list(range(len(PA.Chans)))
+        ncols = len(list_ind_neur)
+        nrows = len(levels_col)
 
-    # Check if figure will be too large.
-    # max_n_subplots = 140
-    max_n_subplots = 100
-    if len(list_ind_neur)*len(levels_col)>max_n_subplots:
-        # take random subset of neurons, the most strongly modulated
-        PAplot, _ = PA.sort_chans_by_modulation_over_time()
-        n_neur_take = int(np.round(max_n_subplots/nrows))
-        _inds = list(range(n_neur_take))
-        PAplot = PAplot.slice_by_dim_indices_wrapper("chans", _inds, True) # Take the top n neurons
-        subsampled_neurons = True
-    else:
-        PAplot = PA.copy()
-        subsampled_neurons = False
+        # Check if figure will be too large.
+        # max_n_subplots = 140
+        max_n_subplots = 100
+        if len(list_ind_neur)*len(levels_col)>max_n_subplots:
+            # take random subset of neurons, the most strongly modulated
+            PAplot, _ = PA.sort_chans_by_modulation_over_time()
+            n_neur_take = int(np.round(max_n_subplots/nrows))
+            _inds = list(range(n_neur_take))
+            PAplot = PAplot.slice_by_dim_indices_wrapper("chans", _inds, True) # Take the top n neurons
+            subsampled_neurons = True
+        else:
+            PAplot = PA.copy()
+            subsampled_neurons = False
 
-    add_hline_separator = True
-    if mean_over_trials:
-        PAplot = PAplot.slice_and_agg_wrapper("trials", [var_effect, var_conj])
-        add_hline_separator = False
+        list_ind_neur = list(range(len(PAplot.Chans)))
+        ncols = len(list_ind_neur)
+        nrows = len(levels_col)
 
-    list_ind_neur = list(range(len(PAplot.Chans)))
-    ncols = len(list_ind_neur)
-    nrows = len(levels_col)
+        add_hline_separator = True
+        if mean_over_trials:
+            PAplot = PAplot.slice_and_agg_wrapper("trials", [var_effect, var_conj])
+            add_hline_separator = False
 
-    SIZE = 3.5
-    if flip_rowcol:
-        fig, axes = plt.subplots(ncols, nrows, figsize=(nrows*SIZE, ncols*SIZE), squeeze=False)
-    else:
-        fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*SIZE, nrows*SIZE), squeeze=False)
+        SIZE = 3.5
+        if flip_rowcol:
+            fig, axes = plt.subplots(ncols, nrows, figsize=(nrows*SIZE, ncols*SIZE), squeeze=False, sharex=True)
+        else:
+            fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*SIZE, nrows*SIZE), squeeze=False, sharex=True)
 
 
-    for j, tk in enumerate(levels_col): # row
-        pa_this = PAplot.slice_by_labels_filtdict({var_col:[tk]})
-        for i, ind_neur in enumerate(list_ind_neur): # columns
-            
-            if flip_rowcol:
-                ax = axes[i][j]
-            else:
-                ax = axes[j][i]
+        for j, tk in enumerate(levels_col): # row
+            pa_this = PAplot.slice_by_labels_filtdict({var_col:[tk]})
 
-            assert pa_this.X.shape[1]>0, "why?"
+            for i, ind_neur in enumerate(list_ind_neur): # columns
+                
+                if flip_rowcol:
+                    ax = axes[i][j]
+                else:
+                    ax = axes[j][i]
 
-            if plot_fancy:
-                plot_text_y_group = i==0 and j==0
-            else:
-                plot_text_y_group = True
+                assert pa_this.X.shape[1]>0, "why?"
 
-            heatmap_stratified_neuron_grouped_by_var(pa_this, ind_neur, ax, n_rand_trials=n_rand_trials, zlims=zlims, 
-                                            y_group_var=var_y_group, y_group_var_levels=levels_y, plot_text_y_group=plot_text_y_group,
-                                            add_hline_separator=add_hline_separator)
+                if plot_fancy:
+                    plot_text_y_group = i==0 and j==0
+                else:
+                    plot_text_y_group = True
 
-            from pythonlib.tools.plottools import naked_erase_axes
+                heatmap_stratified_neuron_grouped_by_var(pa_this, ind_neur, ax, n_rand_trials=n_rand_trials, zlims=zlims, 
+                                                y_group_var=var_y_group, y_group_var_levels=levels_y, plot_text_y_group=plot_text_y_group,
+                                                add_hline_separator=add_hline_separator,
+                                                diverge=diverge)
 
-            if plot_fancy and (i>0 or j>0):
-                naked_erase_axes(ax)
+                from pythonlib.tools.plottools import naked_erase_axes
 
-            if i==0 or j==0:
-                ax.set_title(f"neur={i}-{PAplot.Chans[i]}|{var_col}={tk}", fontsize=8)
+                if plot_fancy and (i>0 or j>0):
+                    naked_erase_axes(ax)
 
-    savefig(fig, f"{savedir}/grouped_by_var-subsampledneur={subsampled_neurons}.pdf")
+                if i==0 or j==0:
+                    ax.set_title(f"neur={i}-{PAplot.Chans[i]}|{var_col}={tk}", fontsize=8)
+
+                # Overlay stroke times
+                if overlay_stroke_times:
+                    pa_this.plotmod_overlay_stroke_times(ax)
+        if save_suff is None:
+            savefig(fig, f"{savedir}/grouped_by_var-subsampledneur={subsampled_neurons}.pdf")
+        else:
+            savefig(fig, f"{savedir}/grouped_by_var-subsampledneur={subsampled_neurons}-{save_suff}.pdf")
 
     #######################################################
-    # (3)  Loop over all bregions
-    if var_is_blocks:
-        y_group_var = var_effect
-    else:
-        y_group_var = None
-    from neuralmonkey.neuralplots.population import heatmap_stratified_each_neuron_alltrials
-    fig = heatmap_stratified_each_neuron_alltrials(PA, y_group_var, add_hline_separator=add_hline_separator)
-    savefig(fig, f"{savedir}/each_neuron_over_time.pdf")
-    plt.close("all")    
+    if plot_each_neuron_no_grouping_y:
+
+        # (3)  Loop over all bregions
+        if var_is_blocks:
+            y_group_var = var_effect
+        else:
+            y_group_var = None
+        from neuralmonkey.neuralplots.population import heatmap_stratified_each_neuron_alltrials
+        fig = heatmap_stratified_each_neuron_alltrials(PA, y_group_var, add_hline_separator=add_hline_separator)
+        savefig(fig, f"{savedir}/each_neuron_over_time.pdf")
+        plt.close("all")    
 
 
 def heatmap_stratified_each_neuron_alltrials(PA, y_group_var=None, add_hline_separator=True):
@@ -286,7 +304,8 @@ def heatmap_stratified_trials_grouped_by_neuron(PA, inds, ax, n_rand_trials=10, 
     _heatmap_stratified_y_axis(Xarr, times, ax, neurons_row_starts, chans, zlims=zlims, add_hline_separator=add_hline_separator)
 
 def heatmap_stratified_neuron_grouped_by_var(PA, ind_neur, ax, n_rand_trials, zlims, y_group_var, y_group_var_levels=None,
-                                             plot_text_y_group=True, add_hline_separator=True):
+                                             plot_text_y_group=True, add_hline_separator=True,
+                                             diverge=True):
     """
     Plot this neuron, each plot:
     - y, trials grouped by levels of y_group_var. For each group, plot a random subsample, 
@@ -327,14 +346,19 @@ def heatmap_stratified_neuron_grouped_by_var(PA, ind_neur, ax, n_rand_trials, zl
         on+=len(inds)
 
     Xarr = np.concatenate(list_x, axis=0)
+
+    if zlims is None:
+        zlims = np.percentile(PA.X.flatten(), [1, 99]).tolist()
+
     if plot_text_y_group:
-        _heatmap_stratified_y_axis(Xarr, times, ax, list_onset, list(grpdict.keys()), zlims=zlims, add_hline_separator=add_hline_separator)
+        _heatmap_stratified_y_axis(Xarr, times, ax, list_onset, list(grpdict.keys()), zlims=zlims, add_hline_separator=add_hline_separator, diverge=diverge)
     else:
-        _heatmap_stratified_y_axis(Xarr, times, ax, list_onset, None, zlims=zlims, add_hline_separator=add_hline_separator)
+        _heatmap_stratified_y_axis(Xarr, times, ax, list_onset, None, zlims=zlims, add_hline_separator=add_hline_separator, diverge=diverge)
 
 def _heatmap_stratified_y_axis(Xarr, times, ax, 
                                list_y_group_onsets=None, list_group_labels=None, 
-                               zlims=None, add_hline_separator=True):
+                               zlims=None, add_hline_separator=True,
+                               diverge=True):
     """
     PARAMS:
     - Xarr, (nrows, ntimes), where rows represent stratified features (e..g, neuron--trial), but this function doesnt  need to know.
@@ -345,11 +369,11 @@ def _heatmap_stratified_y_axis(Xarr, times, ax,
     if False:
         # slower, and also cannot plot things over it as x values are just superficial labels
         times_str = [f"{t:.2f}" for t in times]
-        heatmap_mat(Xarr, ax, annotate_heatmap=False, labels_col=times_str, diverge=True, robust=True, zlims=zlims)
+        heatmap_mat(Xarr, ax, annotate_heatmap=False, labels_col=times_str, diverge=diverge, robust=True, zlims=zlims)
     else:
         # Better, x values are real
         # print(Xarr.shape)
-        heatmap_mat(Xarr, ax, annotate_heatmap=False, labels_col=times, diverge=True, robust=True, zlims=zlims, 
+        heatmap_mat(Xarr, ax, annotate_heatmap=False, labels_col=times, diverge=diverge, robust=True, zlims=zlims, 
                 continuous_axes=True)
     # ax.set_xlabel("times")
     # ax.axhline(1)
@@ -361,9 +385,13 @@ def _heatmap_stratified_y_axis(Xarr, times, ax,
     # print(Xarr.shape)
     if add_hline_separator:
         if list_y_group_onsets is not None:
-            for i, row in enumerate(list_y_group_onsets):
+            for _, row in enumerate(list_y_group_onsets):
                 # ax.axhline(row, color="k", linestyle="--", alpha=0.5, linewidth=1)
-                ax.axhline(row, color="k", linestyle="-", alpha=0.5, linewidth=0.5)
+                if diverge:
+                    ax.axhline(row, color="k", linestyle="-", alpha=0.5, linewidth=0.5)
+                else:
+                    # Then is reddish blackish heatmap, need to be more visible
+                    ax.axhline(row, color="c", linestyle="-", alpha=0.9, linewidth=1)
     
     # First, remove the current ticks
     # ax.tick_params(axis='y', label1On=False)

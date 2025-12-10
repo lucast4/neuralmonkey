@@ -1257,22 +1257,46 @@ class PopAnal():
         See slice_extract_with_levels_of_conjunction_vars, here does same, but returns as dict, 
         grp:pa
         """
-
         _, _, dict_dfthis = self.slice_extract_with_levels_of_conjunction_vars(var, vars_others, 
-                                                                               prune_min_n_trials=prune_min_n_trials, 
-                                                                               prune_min_n_levs=prune_min_n_levs,
-                                                                               plot_counts_heatmap_savepath=plot_counts_heatmap_savepath)
+                                                                               prune_min_n_trials, prune_min_n_levs, 
+                                                                               plot_counts_heatmap_savepath)
+
         dict_pa = {}
-        for grp, _df in dict_dfthis.items():
-            # print(grp, _df["_index"].tolist())
-            dict_pa[grp] = self.slice_by_dim_indices_wrapper("trials", _df["_index"].tolist(), True)
+        if dict_dfthis is not None:                                                                        
+            for grp, _df in dict_dfthis.items():
+                # print(grp, _df["_index"].tolist())
+                dict_pa[grp] = self.slice_by_dim_indices_wrapper("trials", _df["_index"].tolist(), True)
             
         return dict_pa
         
     
+    # def slice_extract_with_levels_of_conjunction_vars(self, var, vars_others, n_min_per_lev=1,
+    #                                                plot_counts_heatmap_savepath=None,
+    #                                                 lenient_allow_data_if_has_n_levels=None,
+    #                                                 levels_var=None, remove_extra_columns=False,
+    #                                                 plot_counts_also_before_prune_path=None):
+    #     """
+    #     Return slice of self (along trials dimension), satistfying criteria in 
+    #     extract_with_levels_of_conjunction_vars_helper(). See that for detials.
+        
+    #     RETURNS:
+    #     - copy of PA (sliced) or None (if removes all data)
+    #     """
+    #     from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper
+    #     dflab = self.Xlabels["trials"]
+    #     _dflab, _ = extract_with_levels_of_conjunction_vars_helper(dflab, var, vars_others, n_min_per_lev,
+    #                                                plot_counts_heatmap_savepath, lenient_allow_data_if_has_n_levels,
+    #                                                levels_var, remove_extra_columns, plot_counts_also_before_prune_path)
+    #     if len(_dflab)>0:
+    #         pa = self.slice_by_dim_indices_wrapper("trials", _dflab["_index"])
+    #         return pa
+    #     else:
+    #         return None
+
     def slice_extract_with_levels_of_conjunction_vars(self, var, vars_others,
                                                       prune_min_n_trials=5, prune_min_n_levs=2,
-                                                      plot_counts_heatmap_savepath=None):
+                                                      plot_counts_heatmap_savepath=None,
+                                                      levels_var=None):
         """
         Keep only levels of vars_others, which have at least <prune_min_n_trials> across
         <prune_min_n_levs> many levels of var. Remove all levels of var and vars_others which
@@ -1284,12 +1308,14 @@ class PopAnal():
         dflab = pa.Xlabels["trials"]
         # from pythonlib.tools.pandastools import _check_index_reseted
         # _check_index_reseted(dflab)
+
         dfout, dict_dfthis = extract_with_levels_of_conjunction_vars(dflab, var, vars_others,
                                                                  n_min_across_all_levs_var=prune_min_n_trials,
                                                                  lenient_allow_data_if_has_n_levels=prune_min_n_levs,
                                                                  prune_levels_with_low_n=True,
                                                                  ignore_values_called_ignore=True,
-                                                                 plot_counts_heatmap_savepath=plot_counts_heatmap_savepath)
+                                                                 plot_counts_heatmap_savepath=plot_counts_heatmap_savepath,
+                                                                 levels_var=levels_var)
         # print(len(dflab), len(dfout))
         # print(dflab.index)
         # print(dfout.index)
@@ -1336,28 +1362,6 @@ class PopAnal():
 
         return pa, vars_others
 
-    def slice_extract_with_levels_of_conjunction_vars(self, var, vars_others, n_min_per_lev=1,
-                                                   plot_counts_heatmap_savepath=None,
-                                                    lenient_allow_data_if_has_n_levels=None,
-                                                    levels_var=None, remove_extra_columns=False,
-                                                    plot_counts_also_before_prune_path=None):
-        """
-        Return slice of self (along trials dimension), satistfying criteria in 
-        extract_with_levels_of_conjunction_vars_helper(). See that for detials.
-        
-        RETURNS:
-        - copy of PA (sliced) or None (if removes all data)
-        """
-        from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper
-        dflab = self.Xlabels["trials"]
-        _dflab, _ = extract_with_levels_of_conjunction_vars_helper(dflab, var, vars_others, n_min_per_lev,
-                                                   plot_counts_heatmap_savepath, lenient_allow_data_if_has_n_levels,
-                                                   levels_var, remove_extra_columns, plot_counts_also_before_prune_path)
-        if len(_dflab)>0:
-            pa = self.slice_by_dim_indices_wrapper("trials", _dflab["_index"])
-            return pa
-        else:
-            return None
 
     def slice_extract_with_levels_of_var_good_prune(self, grp_vars, n_min_per_var):
         """
@@ -3341,8 +3345,12 @@ class PopAnal():
             #             "velmean_x", "velmean_y", "gridloc", "DIFF_gridloc")
             dfbases = PAresid.regress_neuron_task_variables_convert_coeff_to_basis(dfcoeff, 
                                                                 var_subspace, original_feature_mapping, savedir_pca_subspaces)
-            pa_subspace, subspace_axes_orig, subspace_axes_normed, _ = PAresid.dataextract_subspace_targeted_pca_project_helper(
-                    dfbases, "this", npcs_keep, normalization, plot_orthonormalization)
+            if dfbases is None:
+                # Then not enough variatoin to do regression
+                pa_subspace, subspace_axes_orig, subspace_axes_normed = None, None, None
+            else:
+                pa_subspace, subspace_axes_orig, subspace_axes_normed, _ = PAresid.dataextract_subspace_targeted_pca_project_helper(
+                        dfbases, "this", npcs_keep, normalization, plot_orthonormalization)
 
         else:
             assert False
@@ -3848,6 +3856,18 @@ class PopAnal():
         return df
 
 
+    ##################### APPEND THINGS
+    def datamod_append_col_with_grp_index(self, grp, new_col_name):
+        """
+        Append a column that is conjunction of values across variables in grp.
+        RETURNS:
+        - (nothing, modifies self.Xlabels["trials"])
+        """
+        from pythonlib.tools.pandastools import append_col_with_grp_index
+        dflab = self.Xlabels["trials"]
+        dflab = append_col_with_grp_index(dflab, grp, new_col_name)
+        self.Xlabels["trials"] = dflab
+
     ###################### EUCLIDIAN DISTNACE
         
     #######################
@@ -4320,6 +4340,13 @@ class PopAnal():
         dflab["gap_from_prev_x"] = dflab["gap_from_prev_dist"] * np.cos(dflab["gap_from_prev_angle"])
         dflab["gap_from_prev_y"] = dflab["gap_from_prev_dist"] * np.sin(dflab["gap_from_prev_angle"])
 
+        try:
+            dflab["gap_to_next_x"] = dflab["gap_to_next_dist"] * np.cos(dflab["gap_to_next_angle"])
+            dflab["gap_to_next_y"] = dflab["gap_to_next_dist"] * np.sin(dflab["gap_to_next_angle"])
+        except Exception as err:
+            print(np)
+            raise err
+        
         dflab["motor_norm"] = norms
 
         dflab["motor_circ"] = circularities
@@ -4329,6 +4356,29 @@ class PopAnal():
         dflab["motor_onsety"] = onsets_y
 
         self.Xlabels["trials"] = dflab
+
+    def behavior_extract_strokes_times_to_dflab(self, trial_take_first_stroke=True):
+        """
+        Append new columns: strok_on_time, strok_off_time
+        These hold strok on and off time.
+        
+        Also return (on_times, off_times), each an array.
+
+        """
+        assert trial_take_first_stroke == True, "becuase assuming only one stroke, below"
+        self.behavior_extract_strokes_to_dflab(trial_take_first_stroke=trial_take_first_stroke)
+        dflab = self.Xlabels["trials"]
+        dflab["strok_on_time"] = [strok[0, 2] for strok in dflab["strok_beh"]]
+        dflab["strok_off_time"] = [strok[-1, 2] for strok in dflab["strok_beh"]]
+
+        # Convert from time in trial to time rel event.
+        dflab["strok_on_time"] = dflab["strok_on_time"] - dflab["event_time"]
+        dflab["strok_off_time"] = dflab["strok_off_time"] - dflab["event_time"] 
+
+        on_times = dflab["strok_on_time"].values
+        off_times = dflab["strok_off_time"].values
+
+        return on_times, off_times
 
     def behavior_extract_strokes_to_dflab(self, trial_take_first_stroke=False):
         """
@@ -4534,6 +4584,19 @@ class PopAnal():
         legend_add_manual(ax, map_event_to_color.keys(), map_event_to_color.values())
 
         return fig
+
+    def bregion_extract_by_chan(self, chan, get_bregion_combined=True):
+        """
+        Get bregion string for this chan (value in self.Chans)
+        """
+
+        dflabchans = self.Xlabels["chans"]
+        dftmp = dflabchans[dflabchans["chan"] == chan]
+        assert len(dftmp)==1
+        if get_bregion_combined:
+            return dftmp["bregion_combined"].values[0]
+        else:
+            return dftmp["bregion"].values[0]
 
     ################ INDICES
     def index_find_this_chan(self, chan):
@@ -4845,8 +4908,18 @@ class PopAnal():
             # then use the levels within here
             legend_levels = list_levels_matching_pa
 
-        if dict_lev_color is None:
-            from pythonlib.tools.plottools import color_make_map_discrete_labels
+        # Two ways to specify global colors mapping from levels to colors. If they both fail,
+        # then use the levels that exist here
+        from pythonlib.tools.plottools import color_make_map_discrete_labels
+        if legend_levels is not None:
+            # Then use this
+            assert dict_lev_color is None, "speciy one or the other."
+            dict_lev_color, _, _ = color_make_map_discrete_labels(legend_levels)
+        elif dict_lev_color is not None:
+            # Then use this
+            pass
+        else:
+            # Then use the local levels in this function call.
             dict_lev_color, _, _ = color_make_map_discrete_labels(list_levels_matching_pa)
 
         # dict_lev_color = {}
@@ -4866,9 +4939,67 @@ class PopAnal():
 
         return dict_lev_color.values()
 
+    def plotwrappergrid_smoothed_fr_splot_var_colored(self, var_row, var_col, var_color,
+                                                      chan, 
+                                                      do_sort=True, add_x_zero_line=False):
+        """
+        Smoothed FR, in a 
+        Grid of subplots:
+        Subplot = (var_row, var_col); Colors = var_color
+
+        EXAMPLE:
+        var_col = "seqc_0_shape", or list of col
+        var_row = "seqc_0_loc"
+        var_color = "epoch"
+        """
+        
+        if isinstance(var_col, (list, tuple)):
+            from pythonlib.tools.pandastools import append_col_with_grp_index
+            self.Xlabels["trials"] = append_col_with_grp_index(self.Xlabels["trials"], var_col, "_var_col")
+            var_col = "_var_col"
+
+        grpvars = [var_col, var_row]
+        pa_dict = self.slice_by_label_grouping(grpvars)
+
+        levels_col = list(set([x[0] for x in pa_dict.keys()]))
+        levels_row = list(set([x[1] for x in pa_dict.keys()]))
+        if do_sort:
+            levels_col = sort_mixed_type(levels_col)
+            levels_row = sort_mixed_type(levels_row)
+
+        ncols = len(levels_col)
+        nrows = len(levels_row)
+
+        # Get the levels for the colors, so that they are consistent across subplots.
+        dflab = self.Xlabels["trials"]
+        var_levels = sort_mixed_type(dflab[var_color].unique().tolist())
+
+        fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*3, nrows*3), sharex=True, sharey=True, squeeze=False)
+        legend_added = False
+        for i, levcol in enumerate(levels_col):
+            for j, levrow in enumerate(levels_row):
+                ax = axes[j][i]
+                
+                if (levcol, levrow) in pa_dict.keys():
+                    pa = pa_dict[(levcol, levrow)]
+                    
+                    add_legend = legend_added == False
+                    pa.plotwrapper_smoothed_fr_split_by_label("trials", var_color, ax, chan=chan, add_legend=add_legend, legend_levels=var_levels)
+
+                    legend_added = True
+                    ax.set_title((levrow, levcol))
+                else:
+                    ax.set_title("missing data")
+
+                if add_x_zero_line:
+                    ax.axvline(0, color="k", alpha=0.5)
+
+        return fig
+
+
     def plotwrappergrid_smoothed_fr_splot_var(self, var_row, var_col, chans, 
                                               plot_indiv=False, do_sort=True,
-                                              plot_indiv_n_rand=10):
+                                              plot_indiv_n_rand=10, add_x_zero_line=False):
         """
         Smoothed FR, in a 
         Grid of subplots:
@@ -4922,6 +5053,10 @@ class PopAnal():
                 if i==len(levels_col)-1 and j==len(levels_row)-1:
                     from pythonlib.tools.plottools import legend_add_manual
                     legend_add_manual(ax, map_chan_to_color.keys(), map_chan_to_color.values(), 0.2)
+                    
+                if add_x_zero_line:
+                    ax.axvline(0, color="k", alpha=0.5)
+
         return fig
 
     def plotwrappergrid_smoothed_fr_splot_neuron(self, var_effect, vars_others, chans, plot_indiv=False,
@@ -4971,7 +5106,7 @@ class PopAnal():
 
         return fig
 
-    def plotwrapper_smoothed_fr_split_by_label_and_subplots(self, chan, var, vars_subplots):
+    def plotwrapper_smoothed_fr_split_by_label_and_subplots(self, chan, var, vars_subplots, add_x_zero_line=False):
         """
         Helper to plot smoothed fr, multkiple supblots, each varying by var
         :param var: str, to splot and color within subplot
@@ -4982,11 +5117,18 @@ class PopAnal():
         list_pa, levels = self.split_by_label("trials", vars_subplots)
         ncols = min([len(list_pa), 8])
         nrows = int(np.ceil(len(levels)/ncols))
-        fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*3, nrows*3), sharex=True, sharey=True)
+        from pythonlib.tools.listtools import sort_mixed_type
+        dflab = self.Xlabels["trials"]
+        var_levels = sort_mixed_type(dflab[var].unique().tolist())
+        fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*3, nrows*3), sharex=True, sharey=True, squeeze=False)
         for ax, lev, pa in zip(axes.flatten(), levels, list_pa):
-            pa.plotwrapper_smoothed_fr_split_by_label("trials", var, ax, chan=chan)
+            pa.plotwrapper_smoothed_fr_split_by_label("trials", var, ax, chan=chan, legend_levels=var_levels)
             ax.set_title(lev)
 
+            if add_x_zero_line:
+                ax.axvline(0, color="k", alpha=0.5)
+        return fig
+    
     ############################
     def convert_to_dataframe_long(self):
         """ Convert to dataframe, where each trial*chan is a row. each row
@@ -5149,9 +5291,8 @@ class PopAnal():
             else:
                 plot_counts_heatmap_savepath = None
 
-            PA = PA.slice_extract_with_levels_of_conjunction_vars(var, var_others, prune_min_n_trials,
-                                                            plot_counts_heatmap_savepath=plot_counts_heatmap_savepath,
-                                                            lenient_allow_data_if_has_n_levels=prune_min_n_levs)
+            PA, _, _ = PA.slice_extract_with_levels_of_conjunction_vars(var, var_others, prune_min_n_trials, prune_min_n_levs,
+                                                            plot_counts_heatmap_savepath=plot_counts_heatmap_savepath)
             if PA is None:
                 print("all data pruned!!")
                 continue
@@ -5435,6 +5576,17 @@ class PopAnal():
         return list_dfdist
 
 ##########################
+    def plotmod_overlay_stroke_times(self, ax):
+        """
+        For a plot where x axis is time, and self is holding storkes, plot the mean and std of stroke off times
+        """
+        from pythonlib.tools.plottools import rugplot_scatter_hist_on_axis
+        _, off_times = self.behavior_extract_strokes_times_to_dflab()
+
+        # edach trial
+        rugplot_scatter_hist_on_axis(ax, off_times, "c", False, True)
+
+##########################
     def regress_neuron_task_variables_all_chans_plot_coeffs(self, dfcoeff, savedir_coeff_heatmap=None, suffix=None):
         """
         Helper to plot dfcoeff, which holds the the coefficients of the regression for each chan, where the coefficients are
@@ -5527,6 +5679,7 @@ class PopAnal():
                         "velmean_x", "velmean_y", "gridloc", "DIFF_gridloc")
         RETURNS:
         - dfbases, one, row, this subspace's basis
+        OR None, if not enough variation to fit regression model.
         """
         from neuralmonkey.analyses.state_space_good import dimredgood_pca
 
@@ -5542,7 +5695,10 @@ class PopAnal():
             #     print(k, v)
             # print("Failed to find this var: ", var_subspace)
             # assert False
-            return None, None, None
+            if convert_to_dfbasis:
+                return None
+            else:
+                return None, None, None
 
         # Do PCA to get the first PC
         data = dfcoeff.loc[:, list_var_inner].values

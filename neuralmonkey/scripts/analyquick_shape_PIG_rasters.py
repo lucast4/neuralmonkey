@@ -2,6 +2,8 @@
 2/3/24 - quick plotting of rasters and sm fr for shape vs. (gridloc, strokeindex)
 for PIG dates. Related to RSA analysis. Aligned to strokes (uses Snippets).
 Can be made flexible to work with other variables too.
+
+OBSOLETE: use scripts/analy_rasters_script_wrapper.py instead
 """
 
 from neuralmonkey.classes.session import load_mult_session_helper
