@@ -9,7 +9,11 @@ import matplotlib.pyplot as plt
 from pythonlib.tools.plottools import savefig
 from pythonlib.tools.listtools import sort_mixed_type
 from pythonlib.tools.pandastools import append_col_with_grp_index
-
+import itertools
+import re
+import patsy
+from itertools import combinations
+from statsmodels.stats.multitest import multipletests
 
 def fit_and_score_regression_with_categorical_predictor(data_train, y_var, x_vars, x_vars_is_cat, data_test, 
                                                         PRINT=False, demean_y = True):
@@ -26,7 +30,7 @@ def fit_and_score_regression_with_categorical_predictor(data_train, y_var, x_var
     predicted values are allowed to have different intercepts per dimension. In other words, this is like applying 
     the model that takes the mean y.
     """
-    import statsmodels.api as sm
+    # import statsmodels.api as sm
     import statsmodels.formula.api as smf
     from pythonlib.tools.statstools import coeff_determination_R2
 
@@ -567,3 +571,370 @@ def formula_string_construct(var_response, variables, variables_is_cat, exclude_
         func = func[1:]
         
     return func
+
+def design_matrix_build_balanced_all_conjunctions(model):
+    """
+    Given result of fit_and_score_regression_with_categorical_predictor()
+    Helper to build a balanced design matrix, where each possible combinatios of values is
+    given a row. This doesnt care about the actual combinations of values present
+    in data, but instead makes a perfectly balanced dataset.
+
+    This is useful for subsequent stats tests (see other functions)
+
+    Categorical variables are crossed to get all combinations.
+    Continuous variables are dealt with by using the mean value.
+
+    PARAMS:
+    - model, statsmodel model object
+
+    RETURNS:
+    - X, grid, cat_vars, cont_vars
+    """
+    data = model.model.data 
+    frame = data.frame.copy()
+    design_info = data.design_info
+
+    # 1) Find categorical variables used via C(...)
+    cat_vars = sorted({
+        m
+        for term in design_info.term_names
+        for m in re.findall(r"C\(([^)]+)\)", term)
+    })
+
+    # 2) All levels for each categorical variable
+    levels = {v: sorted(frame[v].dropna().unique()) for v in cat_vars}
+
+    # 3) Build full factorial grid of categorical predictors
+    combos = list(itertools.product(*[levels[v] for v in cat_vars]))
+    grid = pd.DataFrame(combos, columns=cat_vars) # grid of balanced values
+
+    # 4) Add non-categorical predictors, fixed to representative values (solely used for continuous variables)
+    endog_name = data.ynames if isinstance(data.ynames, str) else data.ynames[0]
+    # other_cols = [c for c in frame.columns if c not in cat_vars + [endog_name]]
+    other_cols = [c for c in design_info.term_names if c not in cat_vars + [endog_name] and c in frame.columns]
+    from pandas.api.types import is_scalar
+
+    for c in other_cols:
+        col = frame[c]
+        if pd.api.types.is_numeric_dtype(col):
+            # Then use the mean value for this
+            grid[c] = col.mean()
+        else:
+            assert False, "Im not sure why need this. inspect it. should it just be categorical and continous vars, aobve?"
+            first_valid = col[col.notna()].iloc[0]
+            if is_scalar(first_valid):
+                grid[c] = first_valid
+            else:
+                grid[c] = [first_valid] * len(grid)
+    cont_vars = other_cols
+
+    # 5) Build design matrix for this balanced grid
+    X_design = patsy.build_design_matrices([design_info], grid)[0]
+    X = np.asarray(X_design)
+
+    assert len(X) == len(grid), "sanity check"
+
+    return X, grid, cat_vars, cont_vars, levels
+
+def compute_condition_estimates(model, alpha=0.05):
+    """
+    Given results of fit_and_score_regression_with_categorical_predictor(),
+    Compute predicted means (and SE / CI) for:
+      - all conjunctive combinations of categorical predictors
+      - marginals for each level of each categorical predictor
+
+    Useful for going from model results, which is in effects relative to intercept,
+    to estimates.
+
+    Assumes the model was fit with a formula using C(...) for categorical vars,
+    e.g. y ~ C(A)*C(B) + covariate.
+    """
+    import itertools
+    import re
+
+    import numpy as np
+    import pandas as pd
+    import patsy
+    from scipy import stats
+    import matplotlib.pyplot as plt
+
+    X, conj_df, cat_vars, cont_vars, levels = design_matrix_build_balanced_all_conjunctions(model)
+
+    params = model.params.values # coefficients.
+    cov = model.cov_params().values # covariances.
+    df_resid = model.df_resid # scalar DOF
+
+    # 5. Conjunctive condition predictions: ŷ = Xβ, var(ŷ) = X Σ Xᵀ
+    mean = X @ params # (n,)
+    var = np.einsum("ij,jk,ik->i", X, cov, X)  # diagonal of X Σ Xᵀ. Identical to np.diag(X@cov@np.transpose(X))
+    se = np.sqrt(var)
+
+    tcrit = stats.t.ppf(1 - alpha / 2, df_resid) # 1.98 if alpha is 0.05.
+    ci_lower = mean - tcrit * se
+    ci_upper = mean + tcrit * se
+    pval = 2 * (1 - stats.t.cdf(np.abs(mean / se), df_resid))
+
+    rows = []
+
+    # Conjunctive rows
+    for i, row in conj_df.iterrows():
+        label = ", ".join(f"{k}={row[k]}" for k in cat_vars)
+        rows.append(
+            {
+                "label": label,
+                "type": "conjunctive",
+                "estimate": mean[i],
+                "se": se[i],
+                "ci_lower": ci_lower[i],
+                "ci_upper": ci_upper[i],
+                "pval": pval[i],
+            }
+        )
+    DF_CONJ = pd.DataFrame(rows)
+    for k in cat_vars:
+        DF_CONJ[k] = conj_df[k]       
+
+    # 6. Marginals: for each factor level,
+    #    use L = mean of X rows for combos with that level
+    rows = []
+    for v in cat_vars:
+        for level in levels[v]:
+            idx = conj_df[v] == level
+            L = X[idx].mean(axis=0)  # 1×k vector (average design row)
+
+            m = L @ params
+            var_m = L @ cov @ L
+            se_m = np.sqrt(var_m)
+            ci_l = m - tcrit * se_m
+            ci_u = m + tcrit * se_m
+            p_m = 2 * (1 - stats.t.cdf(np.abs(m / se_m), df_resid))
+
+            rows.append(
+                {
+                    "label": f"{v}={level} (marginal)",
+                    "type": "marginal",
+                    "estimate": m,
+                    "se": se_m,
+                    "ci_lower": ci_l,
+                    "ci_upper": ci_u,
+                    "pval": p_m,
+                    "category":v,
+                    "level":level,
+                    
+                }
+            )
+    DF_MARG = pd.DataFrame(rows)
+
+    return DF_CONJ, DF_MARG, cat_vars
+
+
+def plot_condition_estimates(model, ci=True, alpha=0.05, figsize=(8, 5), versions=None):
+    """
+    Given results from fit_and_score_regression_with_categorical_predictor(),
+    plot useful things.
+
+    Plot predicted means for:
+      - marginal conditions (each factor level)
+      - conjunctive conditions (all level combinations)
+
+    Parameters
+    ----------
+    model : fitted statsmodels OLS model (formula, with C(...) for factors)
+    ci : bool
+        If True, plot CIs. If False, plot ±1 SE.
+    alpha : float
+        Significance level for CIs and for coloring p-values.
+    figsize : tuple
+        Figure size.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+    """
+    if versions is None:
+        versions = ["marginals", "conjunctions"]
+
+    # est = compute_condition_estimates(model, alpha=alpha)
+    DF_CONJ, DF_MARG, cat_vars = compute_condition_estimates(model, alpha=alpha)
+
+    DF_CONJ = DF_CONJ.drop(cat_vars, axis=1)
+    DF_MARG = DF_MARG.drop(["category", "level"], axis=1)
+
+    if "marginals" in versions and "conjunctions" in versions:
+        est = pd.concat([DF_CONJ, DF_MARG], axis=0).reset_index(drop=True)
+    elif "marginals" in versions:
+        est = pd.concat([DF_MARG], axis=0).reset_index(drop=True)
+    elif "conjunctions" in versions:
+        est = pd.concat([DF_CONJ], axis=0).reset_index(drop=True)
+    else:
+        assert False
+
+    # Put marginals on top, then conjunctives
+    type_order = {"marginal": 0, "conjunctive": 1}
+    est = (
+        est.assign(_type_order=est["type"].map(type_order))
+        .sort_values(["_type_order", "label"])
+        .drop(columns="_type_order")
+        .reset_index(drop=True)
+    )
+
+    if ci:
+        error_lower = est["estimate"] - est["ci_lower"]
+        error_upper = est["ci_upper"] - est["estimate"]
+    else:
+        error_lower = est["se"]
+        error_upper = est["se"]
+
+    fig, ax = plt.subplots(figsize=figsize)
+    y_pos = np.arange(len(est))
+
+    ax.errorbar(
+        est["estimate"],
+        y_pos,
+        xerr=[error_lower, error_upper],
+        fmt="o",
+        capsize=5,
+    )
+
+    ax.axvline(0, linestyle="--")
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(est["label"])
+    ax.set_xlabel("Estimated mean response")
+    ax.invert_yaxis()  # top to bottom
+
+    # Annotate with p-values for each linear contrast
+    for i, row in est.iterrows():
+        color = "r" if row["pval"] < alpha else "b"
+        ha = "left" if row["estimate"] >= 0 else "right"
+        ax.text(
+            row["estimate"],
+            i,
+            f"p={row['pval']:.3g}",
+            va="center",
+            ha=ha,
+            fontsize=9,
+            color=color,
+            alpha=0.6,
+        )
+
+    return fig
+
+
+def sm_test_balanced_marginal_difference(model, factor, level1, level2):
+    """
+    Given results from fit_and_score_regression_with_categorical_predictor(),
+    do statistics.
+
+    Test whether the *balanced marginal mean* of `factor == level1`
+    differs from that of `factor == level2`, using statsmodels' t_test.
+
+    Balanced marginal = average over a full factorial grid of all
+    categorical predictors in the model, with non-categorical predictors
+    held fixed (e.g., at their mean).
+
+    Parameters
+    ----------
+    model : statsmodels OLS (fitted via formula)
+    factor : str
+        Name of the categorical predictor (as in the original DataFrame).
+    level1, level2 :
+        Two levels of `factor` to compare.
+
+    Returns
+    -------
+    res : statsmodels.stats.contrast.ContrastResults
+        Has .summary(), .pvalue, .tvalue, .conf_int(), etc.
+    """
+    from neuralmonkey.analyses.regression_good import design_matrix_build_balanced_all_conjunctions
+    X, grid, cat_vars, cont_vars, levels = design_matrix_build_balanced_all_conjunctions(model)
+
+    if factor not in cat_vars:
+        raise ValueError(
+            f"{factor!r} is not one of the categorical vars inferred from the formula: {cat_vars}"
+        )
+
+    # 6) Average design rows for factor==level1 and factor==level2
+    mask1 = grid[factor] == level1
+    mask2 = grid[factor] == level2
+
+    if not mask1.any() or not mask2.any():
+        raise ValueError("One of the requested levels does not appear in the balanced grid.")
+
+    Xbar1 = X[mask1].mean(axis=0)
+    Xbar2 = X[mask2].mean(axis=0)
+
+    # 7) Contrast: μ(level1) - μ(level2)
+    L = Xbar1 - Xbar2  # shape (k,)
+
+    # 8) Use statsmodels' built-in t_test
+    res = model.t_test(L)
+
+    return res
+
+def all_pairwise_balanced_marginal_tests(model, factor, alpha=0.05,
+                                         do_mult_comparisons=True, p_adjust="holm",
+                                         list_pairs=None):
+    """
+    Given results from fit_and_score_regression_with_categorical_predictor()
+
+    All pairwise tests between balanced marginals of 'factor'.
+
+    Returns a DataFrame with:
+      - level1, level2
+      - diff (level1 - level2)
+      - se, t, p_uncorrected
+      - p_adjusted, reject (after multiple-comparison correction)
+    """
+
+    from neuralmonkey.analyses.regression_good import design_matrix_build_balanced_all_conjunctions
+    X, grid, _, _, _ = design_matrix_build_balanced_all_conjunctions(model)
+    # grid, X = _balanced_grid_and_design(model)
+    
+    df = model.model.data.frame
+    if factor not in grid.columns:
+        raise ValueError(f"{factor!r} not found among categorical predictors.")
+
+    levels = sorted(df[factor].dropna().unique())
+
+    if list_pairs is None:
+        list_pairs = combinations(levels, 2)
+    rows = []
+    for l1, l2 in list_pairs:
+
+        m1 = grid[factor] == l1
+        m2 = grid[factor] == l2
+        Xbar1 = X[m1].mean(axis=0)
+        Xbar2 = X[m2].mean(axis=0)
+        L = Xbar1 - Xbar2
+
+        res = model.t_test(L)   # statsmodels ContrastResults
+        diff = float(res.effect)              # estimated difference
+        se = float(res.sd)
+        tval = float(res.tvalue)
+        pval = float(res.pvalue)
+
+
+        res2 = sm_test_balanced_marginal_difference(model, factor, l1, l2)
+
+        rows.append({
+            "level1": l1,
+            "level2": l2,
+            "diff": diff,
+            "se": se,
+            "t": tval,
+            "p_uncorrected": pval,
+        })
+
+    out = pd.DataFrame(rows)
+
+    if do_mult_comparisons:
+        # Multiple-comparison correction (Bonferroni/Holm/FDR etc.)
+        reject, p_corr, _, _ = multipletests(
+            out["p_uncorrected"].values,
+            alpha=alpha,
+            method=p_adjust,       # 'holm', 'bonferroni', 'fdr_bh', etc.
+        )
+        out["p_adjusted"] = p_corr
+        out["reject"] = reject
+
+    return out
