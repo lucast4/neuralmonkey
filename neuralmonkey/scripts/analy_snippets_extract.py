@@ -26,7 +26,8 @@ SAVEDIR_BASE = "/gorilla1/analyses/recordings/main/anova"
 
 
 def extract_snippets_all_sessions(MS, which_level, EVENTS_KEEP=None, FORCE_EXTRACT=0, do_save=True,
-                                  LIST_SESSIONS=None, DEBUG=False, PRE_DUR = None, POST_DUR = None):
+                                  LIST_SESSIONS=None, DEBUG=False, PRE_DUR = None, POST_DUR = None,
+                                  prune_low_fr_sites=True):
     """ To extract SP for each sn in MS, optioanlly loading or extracting from
     scratch
     PARAMS:
@@ -113,7 +114,7 @@ def extract_snippets_all_sessions(MS, which_level, EVENTS_KEEP=None, FORCE_EXTRA
 
         ######### DO EXTRACTION
         SP = extraction_helper(sn, which_level, PRE_DUR=PRE_DUR, POST_DUR=POST_DUR,
-                               EVENTS_KEEP=EVENTS_KEEP) 
+                               remove_low_fr_sites=prune_low_fr_sites, EVENTS_KEEP=EVENTS_KEEP) 
 
         ##############################
         if do_save:
