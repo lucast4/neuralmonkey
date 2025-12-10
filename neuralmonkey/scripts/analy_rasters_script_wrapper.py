@@ -55,7 +55,8 @@ def get_events_keep(which_level):
         assert False
     return EVENTS_KEEP
 
-def plotter(SP, var, vars_others, event, SAVEDIR, OVERWRITE_n_min, OVERWRITE_lenient_n, clean=False):
+def plotter(SP, var, vars_others, event, SAVEDIR, OVERWRITE_n_min, OVERWRITE_lenient_n, clean=False,
+        save_ext = "pdf"):
     savedir = f"{SAVEDIR}/var={var}-others={'|'.join(vars_others)}/{event}"
     os.makedirs(savedir, exist_ok=True)
 
@@ -75,8 +76,9 @@ def plotter(SP, var, vars_others, event, SAVEDIR, OVERWRITE_n_min, OVERWRITE_len
     # Rasters
     for chan in SP.Sites:
         chan_text = SP.session_sitegetter_summarytext(chan)
+        print("Plotting rasters for chan: ", chan_text)
 
-        # # IGNORE - just holding repo of other plot kinds.
+        # # IGNORE but don't delete - just holding repo of other plot kinds
         # if False:
         #     # SKIP THESE - becuase shape can be very different across index_within_shape (even for PMv)
         #     # and so these are not informative. Also to speed things up.
@@ -106,7 +108,7 @@ def plotter(SP, var, vars_others, event, SAVEDIR, OVERWRITE_n_min, OVERWRITE_len
         plotvers = ("raster", "smfr")
         # Var vs. Vars_others (rasters and smoothed).
         # path = f"{savedir}/{chan_text}.png"
-        path = f"{savedir}/{chan_text}.pdf"
+        path = f"{savedir}/{chan_text}.{save_ext}"
         if not os.path.exists(path):
             fig, axesall = SP.plotgood_rasters_smfr_each_level_combined(chan, var, vars_others,
                                                                         event=event,
