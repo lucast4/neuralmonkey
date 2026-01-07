@@ -721,11 +721,30 @@ class Session(object):
             self.SMFR_SIGMA = _SMFR_SIGMA
 
     ####################### PREPROCESS THINGS
+    def _datasetbeh_input_dataset(self, D):
+        """
+        Update self.Datasetbeh with a new dataset D
+
+        Doesn't do sanity check that every nerual trial (in self) exists in D.
+        
+        But does constrain that will only sample neural traisl that exist in D,
+        if you previously had _FORCE_GET_TRIALS_ONLY_IN_DATASET==True
+
+        """
+        self.Datasetbeh = D        
+
+        # Update the trials in neuarl to match beh
+        if self._FORCE_GET_TRIALS_ONLY_IN_DATASET==True:
+            self._datasetbeh_remove_neural_trials_missing_beh()
+
     def _datasetbeh_remove_neural_trials_missing_beh(self):
-        """ Does ONE THING --> removes neural trials which dont exist in dataset.
+        """ 
+        Does ONE THING --> removes neural trials which dont exist in dataset.
         This is useful since dataset beh might prune trials which have bad strokes, etc.
-        ACTUALLY - this now doesnt do anything. Istead,  just turns on flag to always only return trials that
+        ACTUALLY this is very simple -- just turns on flag to always only return trials that
         are in Dataset.
+
+        NOTE: Run this if you ever input a new datsaetbeh.
         """
 
         if True:
@@ -6204,7 +6223,7 @@ class Session(object):
     def hack_adjust_touch_times_touchscreen_lag(self, times):
         """
         ########### HACKY: the touchscreen has a slight lag of ~1.5-2 videocam frames (50hz).
-        # This means that if stroke onset is here T, then it actualyl was T-delta.
+        # This means that if stroke onset is here T, then it actualyl was earlier, T-delta.
         PARAMS:
         - times, list of scalar times.
         RETURNS:
@@ -6894,9 +6913,94 @@ class Session(object):
 
         return dict_events
 
+    def events_get_clusterfix_fixation_times_and_centroids_simple(self, trial, PLOT=False, PRINT=False):
+        """
+        Quick, clean extraction of data only, without any additional stuff, other than raw plots to verify
+        extraction. Extracts:
+        - raw eye position.
+        - fixation times and locations
+        - saccade times and locations (aligned to each fixation, the saccade leading into the fixation)
+        """
+    
+        trialcode = self.datasetbeh_trial_to_trialcode(trial)
+
+        ### (1) Load all fixation times and centroids
+        # load the .csv file for this trialcode, containing fixation times
+        fname_times = f"{PATH_SAVE_CLUSTERFIX}/{self.Animal}-{self.Date}-{self.RecSession}/clusterfix_result_csvs/{trialcode}-fixation-onsets.csv"
+        data_times_fix = pd.read_csv(fname_times, sep=',').values
+        data_times_fix = [item[0] for item in data_times_fix]
+
+        fname_times = f"{PATH_SAVE_CLUSTERFIX}/{self.Animal}-{self.Date}-{self.RecSession}/clusterfix_result_csvs/{trialcode}-saccade-onsets.csv"
+        data_times_sacc = pd.read_csv(fname_times, sep=',').values
+        data_times_sacc = [item[0] for item in data_times_sacc]
+
+        # load the .csv file for this trialcode, containing fixation centroids
+        fname_centroids = f"{PATH_SAVE_CLUSTERFIX}/{self.Animal}-{self.Date}-{self.RecSession}/clusterfix_result_csvs/{trialcode}-fixation-centroids.csv"
+        data_centroids = pd.read_csv(fname_centroids, sep=',').values
+        data_centroids = [item for item in data_centroids]
+
+        assert len(data_centroids) == len(data_times_fix), "the below assumes they are alinged"
+
+        # Prune, so that each fixation is aligned to the saccade that led up to it.
+        # - chose this, isntaed of the saccade leading away from fixaton, beucase, 
+        # in the extracted data, it is more ofetn the case that that the first saccade is before
+        # the first fixation, rather than after.
+        
+        if data_times_sacc[0] > data_times_fix[0]:
+            data_times_fix = data_times_fix[1:] # throw out the first fixation
+            data_centroids = data_centroids[1:] # centroids are always aligned to fixations
+
+        # prune the end so they match
+        if len(data_times_sacc) == len(data_times_fix) + 1:
+            data_times_sacc = data_times_sacc[:-1] # Good
+        elif len(data_times_sacc) == len(data_times_fix) - 1:
+            data_times_fix = data_times_fix[:-1]
+            data_centroids = data_centroids[:-1]
+        else:
+            assert len(data_times_fix)==len(data_times_sacc)
+
+        assert len(data_times_fix)==len(data_times_sacc)==len(data_centroids)
+
+        # sanity check that saccades are close in time to fixations
+        if PRINT:
+            print([(i, f - s) for i, (f, s) in enumerate(zip(data_times_fix, data_times_sacc))])
+
+        tmp = np.median([f - s for i, (f, s) in enumerate(zip(data_times_fix, data_times_sacc))])
+        assert 0.02 < tmp < 0.08, "something wrong -- misaligned saccade and fixation"    
+        assert all([(f - s)>0 for f, s in zip(data_times_fix, data_times_sacc)]), "all should be positive..."
+
+        ### (2) Extract raw data
+        times_tdt, vals_tdt_calibrated, _, _ = self.beh_extract_eye_good(trial, CHECK_TDT_ML2_MATCH=True, return_all=True,
+                                                                                                PLOT=PLOT)
+        if PLOT:
+            # Overlay onto timecourse of eye tracking.
+
+            fig1d, axes1d = plt.subplots(4,1, figsize=(40,10), squeeze=False, sharex=True)
+
+            ax = axes1d.flatten()[2]
+            ax.plot(times_tdt, vals_tdt_calibrated[:,0], label="tdt_x", color="b")
+            ax.plot(times_tdt, vals_tdt_calibrated[:,1], label="tdt_y", color="r")
+            ax.legend()
+
+
+            ax.plot(data_times_fix, np.stack(data_centroids)[:,0],  "ob")
+            ax.plot(data_times_fix, np.stack(data_centroids)[:,1],  "or")
+            for _i, t in enumerate(data_times_sacc):
+                ax.axvline(t, linestyle="-", alpha=0.5, color="k")
+                ax.text(t, -500, _i)
+            ax.set_title("fixation events overlaid on raw voltage (calibrated)")
+            # - overlay trial events
+            self.plotmod_overlay_trial_events(ax, trial)
+        else:
+            fig1d = None
+
+        return times_tdt, vals_tdt_calibrated, data_times_fix, data_times_sacc, data_centroids, fig1d
+
+
     # load fixation onset times (231027_eyetracking_neural_exploration.ipynb)
     def events_get_clusterfix_fixation_times_and_centroids(self, trial, on_or_off=True, event_endpoints=None,
-                                                           plot_overlay_on_raw=False):
+                                                           plot_overlay_on_raw=False,
+                                                           plot_var="assigned_task_shape"):
         """
         Load fixation times and locations, as derived using clusterfix.
         """
@@ -6918,17 +7022,17 @@ class Session(object):
         data_centroids = pd.read_csv(fname_centroids, sep=',').values
         data_centroids = [item for item in data_centroids]
 
+        assert len(data_times)==len(data_centroids)
+
         if event_endpoints is not None:
-            if event_endpoints==["stim_onset", "go"]:
-                # get start, end indices
-                start_time, end_time = self.get_time_window_of_events(trial, event_endpoints[0], event_endpoints[1])
-                valid_inds = [i for i, t in enumerate(data_times) if end_time >= t >= start_time]
-                data_times = [data_times[i] for i in valid_inds]
-                data_centroids = [data_centroids[i] for i in valid_inds]
-
-
-            else:
-                assert False, "code this"
+            # if event_endpoints==["stim_onset", "go"]:
+            # get start, end indices
+            start_time, end_time = self.get_time_window_of_events(trial, event_endpoints[0], event_endpoints[1])
+            valid_inds = [i for i, t in enumerate(data_times) if end_time >= t >= start_time]
+            data_times = [data_times[i] for i in valid_inds]
+            data_centroids = [data_centroids[i] for i in valid_inds]
+            # else:
+            #     assert False, "code this"
 
         if plot_overlay_on_raw:
             times_tdt, vals_tdt_calibrated, fs_tdt, vals_tdt_calibrated_sm = self.beh_extract_eye_good(trial, CHECK_TDT_ML2_MATCH=True, return_all=True,
@@ -6979,7 +7083,7 @@ class Session(object):
 
             # Also put line underneath coloring the shapes
             ax = axes1d.flatten()[3]
-            self.beh_eye_fixation_task_shape_overlay_plot(trial, ax)
+            self.beh_eye_fixation_task_shape_overlay_plot(trial, ax, plot_var=plot_var)
             
             # overlay on task image
             fig2d, axes2d = plt.subplots(2, 2, figsize=(10,10))
@@ -7444,7 +7548,7 @@ class Session(object):
 
 
     def eventsdataframe_extract_timings(self, list_events=None, trials=None,
-            DEBUG=False):
+            DEBUG=False, include_events_from_dict=False):
         """
         Get a dataframe across all trials holding information about key timing of events.
         I used this for sanity checks (e.g., plotting events rasters across trials).
@@ -7464,7 +7568,7 @@ class Session(object):
             trials = trials[:20]
             
         if list_events is None:
-            list_events = self.events_default_list_events()
+            list_events = self.events_default_list_events(include_events_from_dict=include_events_from_dict)
 
         for trialthis in trials:
             if trialthis%50==0:
@@ -8779,8 +8883,8 @@ class Session(object):
         if self._FORCE_GET_TRIALS_ONLY_IN_DATASET:
             only_if_in_dataset = True
             if self._FORCE_GET_TRIALS_ONLY_IN_DATASET_NTRIALS > 1.1*len(self.Datasetbeh.Dat):
-                print(self._FORCE_GET_TRIALS_ONLY_IN_DATASET_NTRIALS)
-                print(len(self.Datasetbeh.Dat))
+                print("Num trials expected: ", self._FORCE_GET_TRIALS_ONLY_IN_DATASET_NTRIALS)
+                print("Num trials actually in dataset: ", len(self.Datasetbeh.Dat))
                 print("You have pruned self.Dataset, which means turning on only_if_in_dataset may inadvertently reduce n trials more than you expect")
                 print("Figure out why self.Dataset has been pruned.")
                 assert False
@@ -10099,32 +10203,24 @@ class Session(object):
 
         return self._BehEyeAlignOffset
 
-    def beh_eye_fixation_extract_and_assign_task_shape(self, trial, PLOT=False, event_endpoints=None, 
-                                                       return_fig=False, fig_savedir=None):
+    def _beh_eye_fixation_assign_task_shape(self, trial, data_times, data_centroids, PLOT=False):
         """
-        Good helper to extract fixations for a trial, optionally within a range of events, and assigning the shape he is looking at, with
-        constraints on closeness in distance, and in time from onset of first event (i.e, in getting clean fixations).
-        
-        """
-        import pandas as pd
-        from pythonlib.tools.distfunctools import closest_pt_twotrajs
+        Given array of points, which are usually fixation coordinates, assign each to the cloests shape
+        in the image.
 
-        if fig_savedir is not None:
-            return_fig = True
+        PARAMS:
+        - trial, 
+        - data_times,
+        - data_centroids, (n, 2) array of positions or list-like
+        """
+
+        from pythonlib.tools.distfunctools import closest_pt_twotrajs
 
         # Params - criteria for assigining a shape to fiaation, based on distance
         MIN_DIST_TASK_TO_FIX = 70 # radius (from closest point along stroke stroke task image), fixation must be within this to assign to this shape (L2)
 
-        # Get data for this trial
-        tmp = self.events_get_clusterfix_fixation_times_and_centroids(trial, plot_overlay_on_raw=PLOT,
-                                                                                                    event_endpoints =event_endpoints)
         ind = self.datasetbeh_trial_to_datidx(trial)
         Tk = self.Datasetbeh.taskclass_tokens_extract_wrapper(ind, "task", return_as_tokensclass=True)
-
-        if PLOT:
-            data_times, data_centroids, fig1d, axes1d, fig2d, axes2d = tmp
-        else:
-            data_times, data_centroids = tmp
 
         if PLOT:
             # overlay locations of each shape
@@ -10144,10 +10240,6 @@ class Session(object):
                     ax.axhline(cen[1]-MIN_DIST_TASK_TO_FIX, color="r", linestyle="--")
                     ax.axhline(cen[1]+MIN_DIST_TASK_TO_FIX, color="r", linestyle="--")
 
-        if fig_savedir is not None:
-            savefig(fig1d, f"{fig_savedir}/timecourse.pdf")
-            savefig(fig2d, f"{fig_savedir}/overlaid_image.pdf")
-            
         # For each fixation, get its distance to task shapes.
         list_dist_to_closest_token = []
         list_idx_closest_token = []
@@ -10173,52 +10265,188 @@ class Session(object):
             list_idx_closest_token.append(idx_min)
             list_distance_to_each_token.append(dist_to_each_token_gridloc)
         
-        if PLOT:
-            # Overlay results
-            fig, ax = plt.subplots()
-            self.plot_taskimage(ax=ax, trialtdt=trial)
-
-            # ax.plot(np.stack(data_centroids)[:, 0], np.stack(data_centroids)[:, 1], "-k", alpha=0.4)
-            ax.plot(np.stack(data_centroids)[:, 0], np.stack(data_centroids)[:, 1], "-k", alpha=0.4)
-            ax.scatter(np.stack(data_centroids)[:, 0], np.stack(data_centroids)[:, 1], c=list_idx_closest_token)
-            for i, (fix_cen, idx_closest, dist_closest) in enumerate(zip(data_centroids, list_idx_closest_token, list_dist_to_closest_token)):
-                ax.text(fix_cen[0], fix_cen[1], f"#{i}-dist={dist_closest:.1f}")
-                if dist_closest>MIN_DIST_TASK_TO_FIX:
-                    ax.plot(fix_cen[0], fix_cen[1], "xr")
-
-            if fig_savedir:
-                savefig(fig, f"{fig_savedir}/overlaid_image_clean.pdf")
-            
         # Get final list of good fixations
         res = []
         for i in range(len(data_centroids)):
             if (list_dist_to_closest_token[i]<MIN_DIST_TASK_TO_FIX):
                 # then assign the shape it was lookinga t
-                tk = Tk.Tokens[list_idx_closest_token[i]]
+                idx_token = list_idx_closest_token[i]
+                tk = Tk.Tokens[idx_token]
                 # - pull out useful things
                 shape = tk["shape"]
                 gridloc = tk["gridloc"]
                 idx_task_orig = tk["ind_taskstroke_orig"]
+                closer_than_threshold=True
             else:
+                idx_token = "FAR_FROM_ALL_SHAPES"
                 shape = "FAR_FROM_ALL_SHAPES"
                 gridloc = "FAR_FROM_ALL_SHAPES"
                 idx_task_orig = "FAR_FROM_ALL_SHAPES"
+                closer_than_threshold=False
             
+            assert idx_task_orig == idx_token
+
             res.append({
                 "idx_fixation":i,
                 "time_global":data_times[i],
                 "fix_cen":data_centroids[i],
+                "closer_than_threshold":closer_than_threshold,
                 "closest_task_token_dist":list_dist_to_closest_token[i],
                 "closest_task_token_idx":list_idx_closest_token[i],
+                "assigned_token_idx":idx_token,
                 "assigned_task_shape":shape,
                 "assigned_task_gridloc":gridloc,
-                "assigned_task_idx_task_orig":idx_task_orig,
+                # "assigned_task_idx_task_orig":idx_task_orig,
                 "assigned_task_token":tk,
                 "distance_to_each_token":list_distance_to_each_token[i],
             })
 
         dffix = pd.DataFrame(res)
 
+        return dffix
+
+
+    def beh_eye_fixation_extract_and_assign_task_shape(self, trial, PLOT=False, event_endpoints=None, 
+                                                       return_fig=False, fig_savedir=None,
+                                                       plot_var = "assigned_task_shape"):
+        """
+        Good helper to extract fixations for a trial, optionally within a range of events, and assigning the shape he is looking at, with
+        constraints on closeness in distance, and in time from onset of first event (i.e, in getting clean fixations).
+        
+        """
+        # import pandas as pd
+        # from pythonlib.tools.distfunctools import closest_pt_twotrajs
+
+        if fig_savedir is not None:
+            return_fig = True
+
+        # Params - criteria for assigining a shape to fiaation, based on distance
+        # MIN_DIST_TASK_TO_FIX = 70 # radius (from closest point along stroke stroke task image), fixation must be within this to assign to this shape (L2)
+
+        # Get data for this trial
+        tmp = self.events_get_clusterfix_fixation_times_and_centroids(trial, plot_overlay_on_raw=PLOT,
+                                                                      event_endpoints =event_endpoints,
+                                                                      plot_var = plot_var)
+        
+
+        if PLOT:
+            data_times, data_centroids, fig1d, axes1d, fig2d, axes2d = tmp
+            if fig_savedir is not None:
+                savefig(fig1d, f"{fig_savedir}/timecourse.pdf")
+                savefig(fig2d, f"{fig_savedir}/overlaid_image.pdf")
+        else:
+            data_times, data_centroids = tmp
+
+
+        dffix = self._beh_eye_fixation_assign_task_shape(trial, data_times, data_centroids)
+
+                # ind = self.datasetbeh_trial_to_datidx(trial)
+                # Tk = self.Datasetbeh.taskclass_tokens_extract_wrapper(ind, "task", return_as_tokensclass=True)
+
+                # if PLOT:
+                #     # overlay locations of each shape
+                #     ax = axes1d.flatten()[0]
+                #     centers = [tk["center"] for tk in Tk.Tokens]
+                #     if False: # This is not accurate anymore, since useing al;l pts, not just centroid
+                #         for cen in centers:
+                #             ax.axhline(cen[0], color="b")
+                #             ax.axhline(cen[0]-MIN_DIST_TASK_TO_FIX, color="b", linestyle="--")
+                #             ax.axhline(cen[0]+MIN_DIST_TASK_TO_FIX, color="b", linestyle="--")
+                        
+                #     ax = axes1d.flatten()[1]
+                #     centers = [tk["center"] for tk in Tk.Tokens]
+                #     if False:
+                #         for cen in centers:
+                #             ax.axhline(cen[1], color="r")
+                #             ax.axhline(cen[1]-MIN_DIST_TASK_TO_FIX, color="r", linestyle="--")
+                #             ax.axhline(cen[1]+MIN_DIST_TASK_TO_FIX, color="r", linestyle="--")
+
+                # if fig_savedir is not None:
+                #     savefig(fig1d, f"{fig_savedir}/timecourse.pdf")
+                #     savefig(fig2d, f"{fig_savedir}/overlaid_image.pdf")
+                
+                # # For each fixation, get its distance to task shapes.
+                # list_dist_to_closest_token = []
+                # list_idx_closest_token = []
+                # list_distance_to_each_token = []
+                # for fix_cen in data_centroids:
+
+                #     # get distance to each token
+                #     dist_to_each_token = []
+                #     dist_to_each_token_gridloc = {}
+                #     for tk in Tk.Tokens:
+                #         pts = tk["Prim"].Stroke()[:,:2]
+                #         #  - also inclue to centroid, since he may be looking in center of circle...
+                #         pts = np.concatenate([pts, np.array(tk["center"])[None, :]],axis=0)
+                #         mindist, _, _ = closest_pt_twotrajs(pts, fix_cen[None, :])
+                #         dist_to_each_token.append(mindist)
+                #         dist_to_each_token_gridloc[tk["gridloc"]] = mindist
+
+                #     # find the closest token
+                #     idx_min = np.argmin(dist_to_each_token)
+                #     val_min = np.min(dist_to_each_token)
+
+                #     list_dist_to_closest_token.append(val_min)
+                #     list_idx_closest_token.append(idx_min)
+                #     list_distance_to_each_token.append(dist_to_each_token_gridloc)
+                
+                # # Get final list of good fixations
+                # res = []
+                # for i in range(len(data_centroids)):
+                #     if (list_dist_to_closest_token[i]<MIN_DIST_TASK_TO_FIX):
+                #         # then assign the shape it was lookinga t
+                #         idx_token = list_idx_closest_token[i]
+                #         tk = Tk.Tokens[idx_token]
+                #         # - pull out useful things
+                #         shape = tk["shape"]
+                #         gridloc = tk["gridloc"]
+                #         idx_task_orig = tk["ind_taskstroke_orig"]
+                #         closer_than_threshold=True
+                #     else:
+                #         idx_token = "FAR_FROM_ALL_SHAPES"
+                #         shape = "FAR_FROM_ALL_SHAPES"
+                #         gridloc = "FAR_FROM_ALL_SHAPES"
+                #         idx_task_orig = "FAR_FROM_ALL_SHAPES"
+                #         closer_than_threshold=False
+                    
+                #     assert idx_task_orig == idx_token
+
+                #     res.append({
+                #         "idx_fixation":i,
+                #         "time_global":data_times[i],
+                #         "fix_cen":data_centroids[i],
+                #         "closer_than_threshold":closer_than_threshold,
+                #         "closest_task_token_dist":list_dist_to_closest_token[i],
+                #         "closest_task_token_idx":list_idx_closest_token[i],
+                #         "assigned_token_idx":idx_token,
+                #         "assigned_task_shape":shape,
+                #         "assigned_task_gridloc":gridloc,
+                #         # "assigned_task_idx_task_orig":idx_task_orig,
+                #         "assigned_task_token":tk,
+                #         "distance_to_each_token":list_distance_to_each_token[i],
+                #     })
+
+                # dffix = pd.DataFrame(res)
+
+
+        if PLOT:
+            # Plot task image and overlay gaze
+            fig, ax = plt.subplots()
+            self._beh_eye_fixation_overlay_plot(ax, dffix, trial, twind=None, var_color = plot_var, alpha = 0.8)
+
+            # self.plot_taskimage(ax=ax, trialtdt=trial)
+
+            # # ax.plot(np.stack(data_centroids)[:, 0], np.stack(data_centroids)[:, 1], "-k", alpha=0.4)
+            # ax.plot(np.stack(data_centroids)[:, 0], np.stack(data_centroids)[:, 1], "-k", alpha=0.4)
+            # ax.scatter(np.stack(data_centroids)[:, 0], np.stack(data_centroids)[:, 1], c=list_idx_closest_token)
+            # for i, (fix_cen, idx_closest, dist_closest) in enumerate(zip(data_centroids, list_idx_closest_token, list_dist_to_closest_token)):
+            #     ax.text(fix_cen[0], fix_cen[1], f"#{i}-dist={dist_closest:.1f}")
+            #     if dist_closest>MIN_DIST_TASK_TO_FIX:
+            #         ax.plot(fix_cen[0], fix_cen[1], "xr")
+
+            if fig_savedir:
+                savefig(fig, f"{fig_savedir}/overlaid_image_clean.pdf")
+        
         if return_fig:
             return dffix, fig, ax
         else:
@@ -10347,11 +10575,130 @@ class Session(object):
 
     #     return dffix
 
+    def _beh_eye_fixation_overlay_plot(self, ax, dffix, trial, twind, var_color = "assigned_task_shape", alpha = 0.8):
+        """
+        Helper to plot overlaid fixations on top of image, coloring and texting with 
+        properties.
+
+        PARAMS:
+        - dffix, dataframe holding fixations
+        - twind, window to slice out data, by time in trial, e.g, twind = [8, 10.5]
+        - var_color = "assigned_token_idx", how to color the shapes.
+        --- e.g, "assigned_token_idx"
+        """
+        from pythonlib.tools.plottools import color_make_map_discrete_labels
+
+        # Slice out data
+        if twind is None:
+            dffix_this = dffix
+        else:
+            inds = (twind[0] < dffix["time_global"].values) & (dffix["time_global"].values < twind[1])
+            dffix_this = dffix[inds]
+
+        # how to color the fixations
+        fixes = np.stack(dffix_this["fix_cen"])
+        
+        levels_color = dffix_this[var_color].tolist()
+        list_idx_closest_token = dffix_this["closest_task_token_idx"].tolist()
+        list_dist_to_closest_token = dffix_this["closest_task_token_dist"].tolist()
+        closer_than_threshold_list = dffix_this["closer_than_threshold"].tolist()
+        map_lev_to_color, _, colors = color_make_map_discrete_labels(levels_color)
+
+        # First, plot image
+        self.plot_taskimage(ax, trial)
+        
+        # Second, plot fixations
+        ax.plot(np.stack(fixes)[:, 0], np.stack(fixes)[:, 1], "-k", alpha=0.4)
+        ax.scatter(np.stack(fixes)[:, 0], np.stack(fixes)[:, 1], c=colors, alpha=alpha)
+
+        # Third, Number and other text labels
+        for i, (fix_cen, idx_closest, dist_closest, closer) in enumerate(zip(fixes, list_idx_closest_token, list_dist_to_closest_token, closer_than_threshold_list)):
+            ax.text(fix_cen[0], fix_cen[1], f"#{i}-dist={dist_closest:.1f}")
+            if not closer:
+                ax.plot(fix_cen[0], fix_cen[1], "xr")
+
+    def beh_eye_fixation_grammar_summary_plot(self, trial):
+        """
+        """
+        # import pandas as pd
+        from pythonlib.tools.plottools import color_make_map_discrete_labels
+        import matplotlib.pyplot as plt
+
+        # Get fixtaion data
+        # event_endpoints = ["samp", "doneb"] # some fail, lack doneb
+        event_endpoints = ["samp", "post"]
+        dffix = self.beh_eye_fixation_extract_and_assign_task_shape(trial, 
+                                                                        event_endpoints= event_endpoints,
+                                                                        PLOT=False, fig_savedir=None);
+
+        # Get the correct sequence
+        trialcode = self.datasetbeh_trial_to_trialcode(trial)
+        D = self.Datasetbeh
+        tmp = D.Dat[D.Dat["trialcode"] == trialcode]
+        assert len(tmp)==1
+        ind_dat = tmp.index[0]
+        tokens_correct_order = D.grammarparses_task_tokens_correct_order_sequence(ind_dat, PLOT=False)
+
+        # map from token index, to its rank (in correct sequence)
+        map_taskidx_to_rank = {}
+        for rank, tok in enumerate(tokens_correct_order):
+            idx_orig = tok["ind_taskstroke_orig"]
+            map_taskidx_to_rank[idx_orig] = rank
+        dffix["assigned_tok_rank_correct"] = [map_taskidx_to_rank[i] if i!="FAR_FROM_ALL_SHAPES" else -1 for i in dffix["assigned_token_idx"]]
+
+        # To make sure plotted line stays on the fixated shape until right before next fixation (i.e,, before saccade), fake a dataframe.
+        dffixtmp = dffix.iloc[1:].copy()
+        dffixtmp["time_global"] -= 0.03
+        dffixtmp["assigned_tok_rank_correct"] = dffix.iloc[:-1]["assigned_tok_rank_correct"].tolist()
+        dffix_fake = pd.concat([dffix, dffixtmp], axis=0)
+        dffix_fake = dffix_fake.sort_values("time_global", axis=0)
+
+        # To plot strokes
+        ons, offs = D.strokes_onsets_offsets(ind_dat)
+        ranks = list(range(len(ons)))
+
+        # To color stroke by chunk
+        map_shape_to_color, _, _ = color_make_map_discrete_labels(D.taskclass_shapes_extract_unique_alltrials())
+        shapes = [tok["shape"] for tok in tokens_correct_order]
+        colors_strokes = [map_shape_to_color[sh] for sh in shapes]
+
+        # TODO: For each fixation, label it something useful
+        # same chunk
+        # next 
+        # Mark events
+
+        # Make plot where shapes are ordered by the drawing order, and the fixations and drawings are plotted overlaid on that
+        fig, axes = plt.subplots(1, 1, figsize=(10, 3), squeeze=False)
+        ax = axes.flatten()[0]
+        ax.grid(axis='y')
+
+        # Overlay strokes
+        assert len(ons)==len(offs)==len(ranks)
+        for _on, _off, _rank, _col in zip(ons, offs, ranks, colors_strokes):
+            # ax.plot([_on, _off], [_rank-0.2, _rank-0.2], "k-", linewidth=8, alpha=0.5)
+            ax.plot([_on, _off], [_rank, _rank], "-", color=_col, linewidth=8, alpha=0.7)
+            # ax.axvline(_on)
+            # ax.axvline(_off)
+
+        # Overlay fixations
+        ax.plot(dffix_fake["time_global"], dffix_fake["assigned_tok_rank_correct"], "-k", alpha=0.4)
+        # ax.scatter(dffix["time_global"], dffix["assigned_tok_rank_correct"], c=dffix["assigned_tok_rank_correct"])
+        colors = [map_shape_to_color[sh] if sh !="FAR_FROM_ALL_SHAPES" else "w" for sh in dffix["assigned_task_shape"]]
+        ax.scatter(dffix["time_global"], dffix["assigned_tok_rank_correct"], c=colors)
+
+        self.plotmod_overlay_trial_events(ax, trial, only_on_edge="bottom")
+
+        # legend
+        from pythonlib.tools.plottools import legend_add_manual
+        legend_add_manual(ax, map_shape_to_color.keys(), map_shape_to_color.values())
+
+        return fig
 
     def beh_eye_fixation_task_shape_overlay_plot(self, trial, ax, event_endpoints=None, 
                                                  map_shape_to_y=None, 
                                                  map_shape_to_col=None,
-                                                 yplot=0, plot_vlines=True, vlines_alpha=0.5):
+                                                 yplot=0, plot_vlines=True, vlines_alpha=0.5,
+                                                 plot_var="assigned_task_shape"):
         """
         Extract each fixation's assigned shape, and overlay this on any plot (ax) as horiz lines at bottom of
         plot, whos y-coord and color indicates the matched shape, and where x marks fixations, and lines mark the times 
@@ -10364,7 +10711,7 @@ class Session(object):
 
         # Extract fixation data
         dffix = self.beh_eye_fixation_extract_and_assign_task_shape(trial, PLOT=False, event_endpoints=event_endpoints)
-        shapes_exist = dffix["assigned_task_shape"].unique().tolist()
+        shapes_exist = dffix[plot_var].unique().tolist()
 
         # Decode how to map shape labels to y and to color
         if map_shape_to_y is None:
@@ -10384,7 +10731,7 @@ class Session(object):
         for i in range(len(dffix)):
             if i+1<len(dffix):    
                 t1 = dffix.iloc[i]["time_global"]
-                shape = dffix.iloc[i]["assigned_task_shape"]
+                shape = dffix.iloc[i][plot_var]
                 t2 = dffix.iloc[i+1]["time_global"]
                 y = map_shape_to_y[shape]
                 col = map_shape_to_col[shape]
@@ -10392,6 +10739,7 @@ class Session(object):
 
                 if plot_vlines:
                     ax.axvline(t1, color=col, alpha=vlines_alpha, linestyle=":")
+
         from pythonlib.tools.plottools import legend_add_manual
         legend_add_manual(ax, map_shape_to_col.keys(), map_shape_to_col.values())
         
@@ -10467,21 +10815,21 @@ class Session(object):
             fig, axes = plt.subplots(4,1, figsize=(15,20))
 
             ax = axes.flatten()[0]
-            ax.plot(times_ml2, vals_ml2, label="ml2")
-            ax.plot(times_tdt, vals_tdt, label="tdt")
-            ax.plot(times_tdt, vals_tdt_calibrated, label="tdt_calib")
+            ax.plot(times_ml2, vals_ml2, "--", label="ml2")
+            ax.plot(times_tdt, vals_tdt, "--", label="tdt")
+            ax.plot(times_tdt, vals_tdt_calibrated, "--",  label="tdt_calib")
             ax.legend()
 
             ax = axes.flatten()[1]
-            ax.plot(times_ml2, vals_ml2, label="ml2")
+            ax.plot(times_ml2, vals_ml2, "--",  label="ml2")
             # ax.plot(times_tdt, vals_tdt, label="tdt")
-            ax.plot(times_tdt, vals_tdt_calibrated, label="tdt_calib")
+            ax.plot(times_tdt, vals_tdt_calibrated, "--",  label="tdt_calib")
             ax.legend()
 
             ax = axes.flatten()[2]
             # ax.plot(times_ml2, vals_ml2, label="ml2")
-            ax.plot(times_tdt, vals_tdt, label="tdt")
-            ax.plot(times_tdt, vals_tdt_calibrated, label="tdt_calib")
+            ax.plot(times_tdt, vals_tdt, "--",  label="tdt")
+            ax.plot(times_tdt, vals_tdt_calibrated, "--",  label="tdt_calib")
             ax.legend()
 
         if CHECK_TDT_ML2_MATCH: 
@@ -10522,25 +10870,26 @@ class Session(object):
                 fig, axes = plt.subplots(4,1, figsize=(20,12))
 
                 ax = axes.flatten()[0]
-                ax.plot(times_ml2, vals_ml2_sm, label="ml2")
-                ax.plot(times_ml2, vals_tdt_calibrated_atml2times_sm, label="tdt_calib_interp_to_ml2_times")
+                ax.plot(times_ml2, vals_ml2_sm, "--",  label="ml2")
+                ax.plot(times_ml2, vals_tdt_calibrated_atml2times_sm, "--",  label="tdt_calib_interp_to_ml2_times")
                 ax.legend()
 
 
                 ax = axes.flatten()[1]
-                ax.plot(times_ml2, diff_ml2_tdt_rms, label="diff_ml2_tdt_rms")
+                ax.plot(times_ml2, diff_ml2_tdt_rms, "--",  label="diff_ml2_tdt_rms")
                 ax.legend()
 
                 # ZOOM IN
                 ax = axes.flatten()[2]
                 inds_ = range(1800, 2000)
-                ax.plot(times_ml2[inds_], vals_ml2_sm[inds_], label="ml2")
-                ax.plot(times_ml2[inds_], vals_tdt_calibrated_atml2times_sm[inds_], label="tdt_calib_interp_to_ml2_times")
+                ax.plot(times_ml2[inds_], vals_ml2_sm[inds_], "--",  label="ml2")
+                ax.plot(times_ml2[inds_], vals_tdt_calibrated_atml2times_sm[inds_], "--",  label="tdt_calib_interp_to_ml2_times")
                 ax.legend()
+                ax.set_title("zooming in")
 
                 ax = axes.flatten()[3]
-                ax.plot(times_ml2, vals_ml2, label="ml2_nosm")
-                ax.plot(times_tdt_raw, vals_tdt_calibrated, label="tdt_calib_nosm_nointerp")
+                ax.plot(times_ml2, vals_ml2, "--",  label="ml2_nosm")
+                ax.plot(times_tdt_raw, vals_tdt_calibrated, "--",  label="tdt_calib_nosm_nointerp")
                 ax.legend()
 
             if diff_floor>THRESH:
@@ -10562,6 +10911,60 @@ class Session(object):
         else:
             return times_tdt, vals_tdt_calibrated
 
+    def beh_eye_fixation_export_final_clean(self):
+        """
+        Export data that is "final clean":
+        - Raw data, times (sec) and position (pix), ensured aligned to ml2.
+        - clusterfix fixations and saccades (that lead into those fixations): times and pos.
+        - assigned image tokens (e..g, shapes).
+
+        RETURNS:
+        - Saves data to server.
+        """
+        from pythonlib.globals import PATH_SAVE_CLUSTERFIX
+        import pickle
+
+        animal = self.Animal 
+        date = self.Date 
+        SAVEDIR = f"{PATH_SAVE_CLUSTERFIX}/FINAL_CLEAN/{animal}-{date}"
+        os.makedirs(SAVEDIR, exist_ok=True)
+
+        list_events = self.events_default_list_events(include_events_from_dict=True)
+
+        for trial in self.get_trials_list(True, True):
+            trialcode = self.datasetbeh_trial_to_trialcode(trial)
+
+            doplot = trial%30==0
+                
+            times_tdt, vals_tdt_calibrated, data_times_fix, data_times_sacc, data_centroids, fig1d = \
+                self.events_get_clusterfix_fixation_times_and_centroids_simple(trial, PLOT=doplot)
+            dffix = self._beh_eye_fixation_assign_task_shape(trial, data_times_fix, data_centroids)
+
+            data = {
+                "times_tdt":times_tdt,
+                "vals_tdt_calibrated":vals_tdt_calibrated,
+                "data_times_fix":data_times_fix, 
+                "data_times_sacc_pre_fix":data_times_sacc, 
+                "data_centroids":data_centroids
+            }
+
+            ### Save
+            with open(f"{SAVEDIR}/{trialcode}-data.pkl", "wb") as f:
+                pickle.dump(data, f)
+
+            pd.to_pickle(dffix, f"{SAVEDIR}/{trialcode}-dffix.pkl")
+            
+            dict_events = self.events_get_time_using_photodiode(trial, list_events=list_events)
+            with open(f"{SAVEDIR}/{trialcode}-dict_events.pkl", "wb") as f:
+                pickle.dump(dict_events, f)
+
+            ### Plot
+            if doplot:
+                savefig(fig1d, f"{SAVEDIR}/{trialcode}-sacc_and_fixes.pdf")
+
+                plt.close("all")
+
+            
 
     def strokes_task_extract(self, trial):
         """ Extract the strokes for this task
@@ -12300,17 +12703,17 @@ class Session(object):
         print("running clusterfix in matlab...")
         self.extract_and_save_clusterfix_results_mat()
         print("exporting fixation/saccade csvs...")
-        self.extract_and_save_clusterfix_trial_fixsacc_csvs()
+        self.extract_and_save_clusterfix_trial_fixsacc_csvs()                        
 
     def clusterfix_check_if_preprocessing_complete(self):
         """
         Return True if clusterfix has been done on this day, to extract
         fixation events.
         """
+        from neuralmonkey.utils.directory import clusterfix_check_if_preprocessing_complete
         animal = self.Animal 
         date = self.Date 
         session_no = self.RecSession
-        from neuralmonkey.utils.directory import clusterfix_check_if_preprocessing_complete
         return clusterfix_check_if_preprocessing_complete(animal, date, session_no)
 
         # SAVEDIR = f"{PATH_SAVE_CLUSTERFIX}/{animal}-{date}-{session_no}/clusterfix_result_csvs"
