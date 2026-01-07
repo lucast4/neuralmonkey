@@ -743,6 +743,14 @@ def decode_categorical_pairwise_plots(DFSCORES, SAVEDIR_PLOTS):
 
     plt.close("all")
 
+    # Also save counts
+    from pythonlib.tools.pandastools import grouping_count_n_samples, grouping_print_n_samples
+    from pythonlib.tools.pandastools import grouping_count_n_samples, grouping_print_n_samples
+    savepath = f"{SAVEDIR_PLOTS}/catplot_datapt=shape_pair-COUNTS_before_agg.txt"
+    grouping_print_n_samples(DFSCORES, ["animal", "bregion", "date"], savepath=savepath)    
+
+    savepath = f"{SAVEDIR_PLOTS}/catplot_datapt=shape_pair-COUNTS.txt"
+    grouping_print_n_samples(DFSCORES_AGG, ["animal", "bregion"], savepath=savepath)    
 
 def decode_categorical(X, labels, expected_n_min_across_classes,
                        plot_resampled_data_path_nosuff=None, max_nsplits=None,
