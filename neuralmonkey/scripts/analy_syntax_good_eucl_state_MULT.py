@@ -35,11 +35,139 @@ def final_dfeffect_load_dfgaps(dfeffect, animal, savedir):
     Relating stregnth of encoding of "chunk_within_rank" to speed of gaps
     (positive correlation).
     """
+
+    assert len(dfeffect["animal"].unique()) == 1
+    list_date = dfeffect["date"].unique().tolist()
+
+    DFGAPS, map_gapsemantic_to_dfgaps = final_dfeffect_load_dfgaps_inner(list_date, animal, savedir)
+
+    return DFGAPS, map_gapsemantic_to_dfgaps
+
+    # # Load pre-saved gap durations
+    # # Collect across dates
+    # from glob import glob
+
+    # list_dfgaps = []
+    # for _date in list_date:
+
+    #     searchstr = f"/lemur2/lucas/analyses/main/syntax_gap_durations/{animal}_{_date}_*/dfgaps.pkl"
+    #     # path = f"/lemur2/lucas/analyses/main/syntax_gap_durations/{animal}_{_date}_dirgrammardiego3b/dfgaps.pkl"
+    #     list_path = glob(searchstr)
+    #     assert len(list_path)==1
+    #     path = list_path[0]
+    #     dfgaps = pd.read_pickle(path)
+    #     dfgaps["date"] = _date
+    #     dfgaps["animal"] = animal
+
+    #     list_dfgaps.append(dfgaps)
+    # DFGAPS = pd.concat(list_dfgaps).reset_index(drop=True)    
+
+    # ### Preprocess
+    # # - first get cr and shape for prev and next stroke.
+    # DFGAPS["shape_prev"] = [x[0] for x in DFGAPS["gap_shape"]]
+    # DFGAPS["shape_next"] = [x[1] for x in DFGAPS["gap_shape"]]
+
+    # DFGAPS["chunk_rank_prev"] = [x[0] for x in DFGAPS["gap_chunk_rank"]]
+    # DFGAPS["chunk_rank_next"] = [x[1] for x in DFGAPS["gap_chunk_rank"]]
+
+    # # convert cr to ints where -1 means prev stroke was start, and 99 means next stroke is "done"
+    # DFGAPS["chunk_rank_prev"] = [int(x) if not np.isnan(x) else int(-1) for x in DFGAPS["chunk_rank_prev"]]
+    # DFGAPS["chunk_rank_next"] = [int(x) if not np.isnan(x) else int(99) for x in DFGAPS["chunk_rank_next"]]
+
+    # # Eclude gaps from onset and offset
+    # DFGAPS = DFGAPS[(DFGAPS["chunk_rank_prev"]>-1) & (DFGAPS["chunk_rank_next"]<99)].reset_index(drop=True)
+
+    # # Relabel gaps by ("gap_semantic_vs_prev_stroke")
+    # def F(diff_chunk_rank_global):
+    #     if diff_chunk_rank_global!=0:
+    #         gap_semantic_vs_prev_stroke = "new_chk"
+    #     else:
+    #         assert diff_chunk_rank_global == 0
+    #         gap_semantic_vs_prev_stroke = "within_chk"
+    #     return gap_semantic_vs_prev_stroke
+    # DFGAPS["gap_semantic_vs_prev_stroke"] = DFGAPS["diff_chunk_rank_global"].apply(F)
+
+    # # Sanity check that new variables make sense.
+    # from pythonlib.tools.pandastools import grouping_print_n_samples
+    # # grouping_print_n_samples(DFGAPS, ["animal", "date", "gap_semantic_vs_prev_stroke", "diff_chunk_rank_global", "gap_shape","gap_chunk_rank", "gap_chunk_within_rank"])
+    # savepath = f"{savedir}/counts_gap_semantic-1.txt"
+    # grouping_print_n_samples(DFGAPS, 
+    #                          ["gap_semantic_vs_prev_stroke", "diff_chunk_rank_global", "gap_shape","gap_chunk_rank", "gap_chunk_within_rank"],
+    #                          savepath=savepath)
+    # savepath = f"{savedir}/counts_gap_semantic-2.txt"
+    # grouping_print_n_samples(DFGAPS, 
+    #                          ["date", "gap_semantic_vs_prev_stroke", "diff_chunk_rank_global", "gap_shape","gap_chunk_rank", "gap_chunk_within_rank"],
+    #                          savepath=savepath)
+
+    # # Restrict to cases that are "canonical" transitions (ie not skipping a gap)
+    # n1 = len(DFGAPS)
+    # DFGAPS = DFGAPS[DFGAPS["diff_chunk_rank_global"].isin([0, 1])].reset_index(drop=True)
+    # n2 = len(DFGAPS)
+    # assert n2/n1 > 0.8, "why throw out so many? is this due to weird labels on 2-shape days?"
+
+    # ### Also get final agged (ie one datapt per chunk)
+    # # Aggregate so that each (cr, shape) gets two gap timings: (i) within and (ii) transition to next.
+    # from pythonlib.tools.pandastools import aggregGeneral
+    # map_gapsemantic_to_dfgaps = {}
+    # for which_gap_semantic_higher in ["within_chk", "to_next_chk", "from_prev_chk"]:
+
+    #     if which_gap_semantic_higher == "within_chk":
+    #         # Get gaps within the chunk
+    #         which_gap_semantic = "within_chk" # gaps within chunk
+    #         var_chunk_rank = "chunk_rank_prev"
+    #         var_shape = "shape_prev"
+    #     elif which_gap_semantic_higher == "to_next_chk":
+    #         # Get gaps after this chunk finishes
+    #         which_gap_semantic = "new_chk" # gaps within chunk
+    #         var_chunk_rank = "chunk_rank_prev"
+    #         var_shape = "shape_prev"
+    #     elif which_gap_semantic_higher == "from_prev_chk":
+    #         # Get gap that led into this chunk
+    #         # (agg so that the following chunk is relevant)
+    #         which_gap_semantic = "new_chk" # gaps within chunk
+    #         var_chunk_rank = "chunk_rank_next"
+    #         var_shape = "shape_next"
+    #     else:
+    #         assert False
+
+    #     DFGAPS_AGG = aggregGeneral(DFGAPS, ["animal", "date", var_chunk_rank, var_shape, "gap_semantic_vs_prev_stroke"], ["gap_dur"])
+
+    #     # Give a label for dfgaps that will be used for aligning to neural data
+    #     assert len(DFGAPS_AGG["animal"].unique()) == 1, "assuming I can ignore animal, below"
+    #     assert len(dfeffect["animal"].unique()) == 1
+
+    #     if False: # Not anymore, since I ensure is all ints in neural data
+    #         DFGAPS_AGG[var_chunk_rank] = DFGAPS_AGG[var_chunk_rank].astype(float)
+    #     DFGAPS_AGG = append_col_with_grp_index(DFGAPS_AGG, ["date", var_chunk_rank, var_chunk_rank, var_shape, var_shape], "da_cr_sh_12")
+
+    #     # Finally, merge gaps and neural data.
+    #     # - Create a new column in neurel data: gap duration
+    #     dfgaps_agg = DFGAPS_AGG[DFGAPS_AGG["gap_semantic_vs_prev_stroke"] == which_gap_semantic].reset_index(drop=True)
+
+    #     map_gapsemantic_to_dfgaps[which_gap_semantic_higher] = dfgaps_agg
+
+    #     savepath = f"{savedir}/counts_gap_semantic-which_gap_semantic_higher={which_gap_semantic_higher}.txt"
+    #     grouping_print_n_samples(dfgaps_agg, 
+    #                             ["animal", "date", var_chunk_rank, var_shape, "gap_semantic_vs_prev_stroke"],
+    #                             savepath=savepath)
+
+    # return DFGAPS, map_gapsemantic_to_dfgaps
+
+def final_dfeffect_load_dfgaps_inner(list_date, animal, savedir):
+    """
+    Load dfgaps for analysis that is...
+    
+    Relating stregnth of encoding of "chunk_within_rank" to speed of gaps
+    (positive correlation).
+
+    RETURNS:
+    - DFGAPS, one datapt per trial (ie gap)
+    - map_gapsemantic_to_dfgaps, after agging, one datapt per chunk_rank
+    """
     # Load pre-saved gap durations
     # Collect across dates
     from glob import glob
 
-    list_date = dfeffect["date"].unique().tolist()
     list_dfgaps = []
     for _date in list_date:
 
@@ -127,7 +255,6 @@ def final_dfeffect_load_dfgaps(dfeffect, animal, savedir):
 
         # Give a label for dfgaps that will be used for aligning to neural data
         assert len(DFGAPS_AGG["animal"].unique()) == 1, "assuming I can ignore animal, below"
-        assert len(dfeffect["animal"].unique()) == 1
 
         if False: # Not anymore, since I ensure is all ints in neural data
             DFGAPS_AGG[var_chunk_rank] = DFGAPS_AGG[var_chunk_rank].astype(float)
@@ -144,7 +271,7 @@ def final_dfeffect_load_dfgaps(dfeffect, animal, savedir):
                                 ["animal", "date", var_chunk_rank, var_shape, "gap_semantic_vs_prev_stroke"],
                                 savepath=savepath)
 
-    return DFGAPS, map_gapsemantic_to_dfgaps
+    return DFGAPS, map_gapsemantic_to_dfgaps 
 
 def final_dfeffect_postprocess(DFEFFECT_ALL, animal, analysis, savedir, n_min_trials_per_label=2, 
                                HACK_dates=None, two_shapes_remove_probe_trials=True):
