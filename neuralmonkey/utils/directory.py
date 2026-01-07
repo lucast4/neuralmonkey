@@ -286,7 +286,9 @@ def rec_session_durations_extract_kilosort(animal, date):
     # - kiloosrt spike times are correct relative to onset of each sessions neural data (RS4).
     # - total duration of file used in KS will be same duration as sum of raw RS4 durations.
     # - data tank (e.g., all behavior and events) are at most 0.2 sec offset, from neural data, and I am checking with
-    # Myles whether this is guaranteed to be at the offset.
+    # Myles whether this is guaranteed to be at the offset. Yes, confirmed with MYles. Although best practice would be to 
+    # compare that RS4 neural is identical to dupl (which is neural data collected in Tank) and 
+    
     # Sanity check, ks similar to tdt, e.g, find M1 channel and do crosscor.
 
     :param animal:
