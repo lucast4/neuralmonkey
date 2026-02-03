@@ -1039,7 +1039,8 @@ def plot_variance_explained_timecourse(SP, animal, DATE, pca_trial_agg_grouping,
         plt.close("all")
 
 
-def _trajgood_make_colors_discrete_var(labels, which_dim_of_labels_to_use=None):
+def _trajgood_make_colors_discrete_var(labels, which_dim_of_labels_to_use=None,
+                                       force_continuous=False):
     """
     Helper to make colors for plotting, mapping from unque item
     in labels to rgba color. Can be continuous or discrete (and will
@@ -1055,7 +1056,7 @@ def _trajgood_make_colors_discrete_var(labels, which_dim_of_labels_to_use=None):
     - colors, list of colors, matching input labels.
     """
     from pythonlib.tools.plottools import color_make_map_discrete_labels
-    return color_make_map_discrete_labels(labels, which_dim_of_labels_to_use)
+    return color_make_map_discrete_labels(labels, which_dim_of_labels_to_use, force_continuous=force_continuous)
         
     # if which_dim_of_labels_to_use is None:
     #     labels_for_color = labels
@@ -1605,7 +1606,7 @@ def trajgood_plot_colorby_splotby_scalar_WRAPPER(X, dflab, var_color, savedir,
                                                  skip_subplots_lack_mult_colors=True, save_suffix=None,
                                                  plot_3D = False,
                                                  overlay_mean_orig = False,
-                                                 plot_kde=False):
+                                                 plot_kde=False, force_continuous=False):
     """
     Final wrapper to make many plots, each figure showing supblots one for each levv of otehr var, colored
     by levels of var. Across figures, show different projections to dim pairs. And plot sepraerpte figuers for
@@ -1740,7 +1741,8 @@ def trajgood_plot_colorby_splotby_scalar_WRAPPER(X, dflab, var_color, savedir,
                                                                                            connect_means_with_line=connect_means_with_line,
                                                                                            connect_means_with_line_levels=connect_means_with_line_levels,
                                                                                            plot_3D=plot_3D, zs=zs,
-                                                                                           plot_kde=plot_kde)
+                                                                                           plot_kde=plot_kde,
+                                                                                           force_continuous=force_continuous)
 
         # Overlay means, including option to use one set of variables for grouping, and a subset of those variables for coloring.
         if overlay_mean and colorby_ind_in_vars_mean is not None:
@@ -1870,7 +1872,7 @@ def trajgood_plot_colorby_splotby_scalar(xs, ys, labels_color, labels_subplot,
                                        connect_means_with_line=False,
                                        connect_means_with_line_levels=None,
                                          plot_3D=False, zs=None,
-                                         plot_kde=False,
+                                         plot_kde=False, force_continuous=False
                                          ):
     """
     Like trajgood_plot_colorby_splotby_scalar, but passing in the raw data directly, instead
@@ -1930,13 +1932,14 @@ def trajgood_plot_colorby_splotby_scalar(xs, ys, labels_color, labels_subplot,
         dfthis = pd.DataFrame(tmp)
     
     fig, axes, map_levo_to_ax, map_levo_to_inds = _trajgood_plot_colorby_splotby_scalar(dfthis, color_var, subplot_var,
-                                         overlay_mean, plot_text_over_examples,
+                                                overlay_mean, plot_text_over_examples,
                                                 text_to_plot, alpha, SIZE,
                                                 skip_subplots_lack_mult_colors=skip_subplots_lack_mult_colors,
                                                 n_min_per_levo=n_min_per_levo,
-                                  connect_means_with_line=connect_means_with_line,
+                                                connect_means_with_line=connect_means_with_line,
                                                 connect_means_with_line_levels=connect_means_with_line_levels,
-                                                plot_3D=plot_3D, plot_kde=plot_kde)
+                                                plot_3D=plot_3D, plot_kde=plot_kde,
+                                                force_continuous=force_continuous)
 
     if fig is None:
         return None, None, None, None
@@ -1993,7 +1996,8 @@ def _trajgood_plot_colorby_splotby_scalar(df, var_color_by, var_subplots,
                                           connect_means_with_line=False,
                                           connect_means_with_line_levels=None,
                                           plot_3D=False,
-                                          plot_kde=False, kde_plot_scatter=True, kde_ellipses=True, kde_text_labels=False, kde_plot_contours=True, kde_levels=6):
+                                          plot_kde=False, kde_plot_scatter=True, kde_ellipses=True, kde_text_labels=False, kde_plot_contours=True, kde_levels=6,
+                                          force_continuous=False):
     """ [GOOD], to plot scatter of pts, colored by one variable, and split across
     subplots by another variable.
     PARAMS:
@@ -2013,8 +2017,8 @@ def _trajgood_plot_colorby_splotby_scalar(df, var_color_by, var_subplots,
     # Color the labels
     # One color for each level of effect var
 
-    labellist = df[var_color_by].tolist()
-    map_lev_to_color, color_type, _ = _trajgood_make_colors_discrete_var(labellist)
+    labellist = df[var_color_by].unique().tolist()
+    map_lev_to_color, color_type, _ = _trajgood_make_colors_discrete_var(labellist, force_continuous=force_continuous)
 
     # If you pass in continuous variable as othervar, then overwrite that and just plot a single plot.
     if var_subplots is not None:

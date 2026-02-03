@@ -4882,8 +4882,8 @@ class PopAnal():
         PARAMS:
         - dim_str, str, in {times, chans}
         - dim_variable, column in dataframe in self.Xlabels, to look for levels of
-        - event_bounds, [num, num, num] to plot pre, alignemnt, and post times. any that
-        are None will be skipped.
+        - event_bounds, [num, num, num] to plot vertical lines at given times, specifically
+        pre, alignemnt, and post times. any that are None will be skipped.
         - legend_levels, list of values that will be used for legend, where the order
         defines a globally true mapping between level and color, useful if you want to 
         dictate the colors for levels that are not in this partiucla plot.
@@ -4921,7 +4921,6 @@ class PopAnal():
         else:
             # Then use the local levels in this function call.
             dict_lev_color, _, _ = color_make_map_discrete_labels(list_levels_matching_pa)
-
         # dict_lev_color = {}
         # pcols = makeColors(len(legend_levels))
         # for pc, lev in zip(pcols, legend_levels):

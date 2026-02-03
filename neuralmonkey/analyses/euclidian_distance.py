@@ -703,6 +703,9 @@ def dfdist_expand_convert_from_triangular_to_full(dfdists, label_vars=None, PLOT
     """
     from pythonlib.tools.pandastools import grouping_plot_n_samples_conjunction_heatmap
 
+    if len(dfdists)==0:
+        return dfdists    
+
     if var1 is None:
         if "labels_1_datapt" in dfdists.columns:
             var1 = "labels_1_datapt"
@@ -1116,6 +1119,8 @@ def dfdist_variables_generate_constrast_strings(vars_in_order, contrasts_diff, c
     - contrasts_either, list of str, varialbes that can be etiher diff or same. Will return all strings after
     "expanding" these variables to be 0 and 1 (in different returned stringes)
     
+    NOTE: assumes that any variables not included in "diff" or "either" the user wants them to be "same"
+
     RETURNS:
     - list of contrast strings.
     """
@@ -1129,6 +1134,14 @@ def dfdist_variables_generate_constrast_strings(vars_in_order, contrasts_diff, c
 
     # For "either" is ok if it is not in the variables.
     contrasts_either = [v for v in contrasts_either if v in vars_in_order]
+
+    if not set(contrasts_diff + contrasts_same + contrasts_either) == set(vars_in_order):
+        print(contrasts_diff)
+        print(contrasts_same)
+        print(contrasts_either)
+        print(vars_in_order)
+        assert False
+
     # for v in contrasts_either:
     #     assert v in vars_in_order, f"sanity check no typo - {v} -- {vars_in_order}"
     for v in contrasts_same:
@@ -1171,6 +1184,8 @@ def dfdist_variables_effect_extract_helper(DFDIST, colname_conj_same, vars_in_or
     - contrasts_diff, list of str, variables that should be differnet.
     - contrasts_either, list of str, varialbes that can be etiher diff or same. Will return all strings after
     "expanding" these variables to be 0 and 1 (in different returned stringes)
+
+    NOTE: assumes that any variables not included in "diff" or "either" the user wants them to be "same"
 
     RETURNS:
     - Slice of DFDIST.
