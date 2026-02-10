@@ -8453,7 +8453,7 @@ def extraction_helper(SN, which_level="trial", list_features_modulation_append=N
     if which_level=="trial":
         # Events
         do_prune_by_inter_event_times = False
-        dict_events_bounds, dict_int_bounds = SN.eventsanaly_helper_pre_postdur_for_analysis(
+        dict_events_bounds, _ = SN.eventsanaly_helper_pre_postdur_for_analysis(
             do_prune_by_inter_event_times=do_prune_by_inter_event_times,
             just_get_list_events=True)
 

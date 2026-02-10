@@ -507,6 +507,7 @@ class Decoder():
                                  labels_in_order_keep=None, tbin_dur=None, tbin_slide=None):
         """
         Retrun all activations across these trials, in a matrix of probabilties.
+        - labels_in_order_keep, keeps only these lables, and reetursn in this order.
         RETURNS:
         - probs_mat_all, (labels, trials, times)
         - times
@@ -761,7 +762,41 @@ class Decoder():
 
         if ylims is not None:
             ax.set_ylim(ylims)
-        
+    
+    def timeseries_plot_flex_split_columns(self, PAtest, vars_columns, twind_test):
+        """
+        Helper to plot timecourses in multiple subplots, split by columns (vars_columns) 
+        and within each, coloring by the differnet decoders.
+        PARAMS:
+        - vars_columns, list of str, each conjunctive level a new subplot.
+        """
+        from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good
+
+        # Split into columns (subplots)
+        dflab = PAtest.Xlabels["trials"]
+        grpdict = grouping_append_and_return_inner_items_good(dflab, vars_columns)
+
+        # Separate plots
+        ncols = 6
+        nrows = int(np.ceil(len(grpdict)/ncols))
+        SIZE = 3
+        fig, axes = plt.subplots(nrows, ncols, figsize=(SIZE*ncols, SIZE*nrows), sharex=True, sharey=True)
+        for i, (grp, indtrials) in enumerate(grpdict.items()):
+            
+            # Extract decoder probs for each trial
+            _, probs_mat_all, times, labels = self.timeseries_score_wrapper(PAtest, twind_test, indtrials, 
+                                                                        labels_in_order_keep=self.LabelsDecoderGood)
+
+            # Plot 
+            ax = axes.flatten()[i]
+            plot_legend = i==0
+            self._timeseries_plot_flex(probs_mat_all, times, labels, MAP_INDEX_TO_COL=None, ax=ax, 
+                                       plot_legend=plot_legend)
+            ax.set_title(grp, fontsize=6)
+            ax.set_ylim([0, 1])
+
+        return fig
+
     def timeseries_plot_wrapper(self, PAprobs, list_title_filtdict, list_n_strokes=None,
                                 SIZE=4, ylims=None, filter_n_strokes_using="both"):
         """

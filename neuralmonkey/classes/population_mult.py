@@ -1917,6 +1917,22 @@ def dfpa_concat_merge_pa_along_trials(DFallpa1, DFallpa2, min_frac_chans_common=
 
     return DFallpaOut
 
+def dfpa_concat_bregion_to_combined_bregion_wrapper(DFallpa):
+    """Same as dfpa_concat_bregion_to_combined_bregion, but works even if multuiple "event" exist in this DFallpa
+    RETURNS:
+    - DFallpa, copy
+    """
+
+    res = []
+    for event in DFallpa["event"].unique():
+        DFallpa_event = DFallpa[DFallpa["event"]==event]
+        DFallpa_event = dfpa_concat_bregion_to_combined_bregion(DFallpa_event)
+        res.append(DFallpa_event)
+
+    DFallpaOut = pd.concat(res).reset_index(drop=True)
+
+    return DFallpaOut
+
 def dfpa_concat_bregion_to_combined_bregion(DFallpa):
     """
     If you have a Dfallpa holding data with single-array regions (e.g.,, M1m and M1l), combine each pair to get
