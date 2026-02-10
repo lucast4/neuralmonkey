@@ -1963,7 +1963,8 @@ def dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, fr_mean_subtrac
         plot_clean_lowfr_chans = False, plot_low_fr_better_method=False,
         replace_bad_trials=True,
         spikes_version="kilosort_if_exists",
-        skip_sitesdirty=False):
+        skip_sitesdirty=False,
+        remove_bad_fr_chans=True):
     """
     Apply seuqence of preprocessing steps to cases where multkiple events' PA were combined in DFallpa.
     I used this for decode moment stuff (around Jul 2024).
@@ -1996,25 +1997,26 @@ def dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, fr_mean_subtrac
     
     ############### (2) Remove bad chans based on sitedirty preprocessing (e.g., drift)
     print(" == (2) Remove bad chans based on drift")
-    # First, check that preprocess data exist
-    DRIFT_DATA_EXISTS = dfallpa_preprocess_sitesdirty_check_if_preprocessed(DFallpa, animal, date)
-    # DRIFT_DATA_EXISTS = True
-    # from neuralmonkey.metrics.goodsite import load_firingrate_drift
-    # dfres, _, _, _ = load_firingrate_drift(animal, date)
+    if not skip_sitesdirty:
+        # First, check that preprocess data exist
+        DRIFT_DATA_EXISTS = dfallpa_preprocess_sitesdirty_check_if_preprocessed(DFallpa, animal, date)
+        # DRIFT_DATA_EXISTS = True
+        # from neuralmonkey.metrics.goodsite import load_firingrate_drift
+        # dfres, _, _, _ = load_firingrate_drift(animal, date)
 
-    # if isinstance(dfres, str) and dfres == "NODATA":
-    #     DRIFT_DATA_EXISTS = False
-    
-    # ### Sanity checks (clean site info matches PA)
-    # tmp = dfres["chan"].tolist() 
-    # for pa in DFallpa["pa"].tolist():
-    #     chans_included = [ch for ch in pa.Chans if ch in tmp]
-    #     chans_excluded = [ch for ch in pa.Chans if ch not in tmp]
-    #     if len(chans_excluded)>0:
-    #         print("Problem, you have not prprocessed dirty channels matching this neural data")
-    #         print("chans found:", chans_included)
-    #         print("chans missing:", chans_excluded)
-    #         DRIFT_DATA_EXISTS = False
+        # if isinstance(dfres, str) and dfres == "NODATA":
+        #     DRIFT_DATA_EXISTS = False
+        
+        # ### Sanity checks (clean site info matches PA)
+        # tmp = dfres["chan"].tolist() 
+        # for pa in DFallpa["pa"].tolist():
+        #     chans_included = [ch for ch in pa.Chans if ch in tmp]
+        #     chans_excluded = [ch for ch in pa.Chans if ch not in tmp]
+        #     if len(chans_excluded)>0:
+        #         print("Problem, you have not prprocessed dirty channels matching this neural data")
+        #         print("chans found:", chans_included)
+        #         print("chans missing:", chans_excluded)
+        #         DRIFT_DATA_EXISTS = False
 
     if not skip_sitesdirty:
         if DRIFT_DATA_EXISTS==True:
@@ -2090,16 +2092,17 @@ def dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, fr_mean_subtrac
     # DFallpa.reset_index(drop=True,inplace=True)
 
     # (3) Remove low FR chans
-    print(" == (3) Remove low FR chans")
-    from neuralmonkey.classes.population_mult import prune_chans_with_low_firing_rate
-    _, _ = prune_chans_with_low_firing_rate(DFallpa, plot_low_fr_better_method)
-    _remove_rows_with_pa_none(DFallpa)
+    if remove_bad_fr_chans:
+        print(" == (3) Remove low FR chans")
+        from neuralmonkey.classes.population_mult import prune_chans_with_low_firing_rate
+        _, _ = prune_chans_with_low_firing_rate(DFallpa, plot_low_fr_better_method)
+        _remove_rows_with_pa_none(DFallpa)
 
-    # (4) Remove bad chans that are noisy, low FR, low signal, etc [based on fr modulation]
-    # Removes chans that have no modulation, noisy, etc.
-    print(" == (4) Remove bad chans, low FR, low signal")
-    dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT=plot_clean_lowfr_chans)
-    _remove_rows_with_pa_none(DFallpa)
+        # (4) Remove bad chans that are noisy, low FR, low signal, etc [based on fr modulation]
+        # Removes chans that have no modulation, noisy, etc.
+        print(" == (4) Remove bad chans, low FR, low signal")
+        dfpa_concatbregion_preprocess_clean_bad_channels(DFallpa, PLOT=plot_clean_lowfr_chans)
+        _remove_rows_with_pa_none(DFallpa)
 
     # (5) Sqrt transform
     print(" == (5) Sqrt transform")

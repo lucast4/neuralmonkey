@@ -1030,6 +1030,9 @@ class Snippets(object):
             "bregion_combined": sn.sitegetterKS_map_site_to_region(chan, region_combined=True),
             "bregion":sn.sitegetterKS_map_site_to_region(chan, region_combined=False),
             "chan":chan,
+            "chan_tdt":sn.sitegetterKS_thissite_info(chan)["site_tdt"],
+            "rs_tdt":sn.sitegetterKS_thissite_info(chan)["rs"],
+            "chanwithinrs_tdt":sn.sitegetterKS_thissite_info(chan)["chan"],
             }
         return dat
     

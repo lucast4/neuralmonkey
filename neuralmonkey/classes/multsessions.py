@@ -589,7 +589,8 @@ class MultSessions(object):
             res.append(
                 {"bregion_combined": self.sitegetterKS_map_site_to_region(site, region_combined=True),
                 "bregion":self.sitegetterKS_map_site_to_region(site, region_combined=False),
-                "chan":site
+                "chan":site,
+                "chan_tdt":self.sitegetterKS_thissite_info(site)["site_tdt"],
             })
 
 
