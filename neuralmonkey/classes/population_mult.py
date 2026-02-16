@@ -1374,6 +1374,7 @@ def dfallpa_extraction_load_wrapper(animal, date, question, list_time_windows, w
     from neuralmonkey.analyses.rsa import rsagood_questions_dict
     from neuralmonkey.classes.population_mult import snippets_extract_popanals_split_bregion_twind
 
+
     if LOAD_FROM_RSA_ANALY:
         # Saved in analy_rsa_script.py
         from neuralmonkey.analyses.rsa import rsagood_pa_vs_theor_wrapper_loadresults, rsagood_pa_vs_theor_single

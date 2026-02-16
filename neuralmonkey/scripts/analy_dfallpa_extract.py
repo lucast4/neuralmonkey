@@ -19,7 +19,7 @@ from neuralmonkey.classes.population_mult import load_handsaved_wrapper, dfpa_ma
 
 ############### PARAMS
 exclude_bad_areas = True
-SPIKES_VERSION = "kilosort_if_exists" # since Snippets not yet extracted for ks
+SPIKES_VERSION = "kilosort" # since Snippets not yet extracted for ks
 # SPIKES_VERSION = "tdt" # since Snippets not yet extracted for ks
 # combine_into_larger_areas = False
 # Diego_use_main_21 = False # For char clust, which set of labels to use
@@ -218,7 +218,7 @@ if __name__=="__main__":
                                         return_none_if_no_exist=True)
     if DFallpa is None:
         DFallpa = extract_dfallpa_helper(animal, date, question, combine_into_larger_areas, events_keep=events_keep,
-                                         do_save=True,
+                                         do_save=False,
                                          replace_fr_sm_with_spike_counts=replace_fr_sm_with_spike_counts,
                                          spike_counts_bin_size=spike_counts_bin_size)
 
@@ -230,6 +230,9 @@ if __name__=="__main__":
     # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Dolnik/DFallpa_4.pkl" # (tdt)
     # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Dolnik/DFallpa_KS.pkl" # (kilosort)
     # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Dolnik/DFallpa_KS_nonorm.pkl" # (kilosort)
+    path = f"/home/danhan/code/emre/pkl_jar/DFallpa-{animal}-{date}.pkl"
+
+    pd.to_pickle(DFallpa, path)
 
     # Dan: tough decoding, syntax stuff.
     # path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Dolnik/DFallpa-{animal}-{date}-{which_level}-tdt_nonorm.pkl"

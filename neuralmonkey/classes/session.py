@@ -269,6 +269,7 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
     #     print(beh_sess_list)
     #     print(sessdict[DATE])
     #     assert False
+
     try:
         SN = Session(DATE, beh_expt_list, beh_sess_list, beh_trial_map_list,
             animal =animal,  
@@ -488,6 +489,8 @@ class Session(object):
                     spikes_version = "kilosort"
                 else:
                     spikes_version = "tdt"
+                    print('here')
+                    assert False
                 print("USING THIS SPIKES VERSION: ", spikes_version)
 
         # spikes versino (initialize as tdt always)
@@ -2352,9 +2355,10 @@ class Session(object):
         the num neural rec sessions -- ie can find alignment times.
         """
         from os.path import isfile
+        from pythonlib.globals import PATH_KS_POSTPROCESS
 
         # Check that files exust
-        BASEDIR = "/mnt/Freiwald/kgupta/neural_data/postprocess/final_clusters/"
+        BASEDIR = PATH_KS_POSTPROCESSED 
         clusters_final = f"{BASEDIR}/{self.Animal}/{self.Date}/DATSTRUCT_CLEAN_MERGED.mat"
         A = isfile(clusters_final)
 
@@ -2436,7 +2440,8 @@ class Session(object):
         # import scipy.io as sio
         # import scipy
         # import zlib
-        BASEDIR = "/mnt/Freiwald/kgupta/neural_data/postprocess/final_clusters/"
+        from pythonlib.globals import PATH_KS_POSTPROCESSED
+        BASEDIR = PATH_KS_POSTPROCESSED
         clusters_final = f"{BASEDIR}/{self.Animal}/{self.Date}/DATSTRUCT_CLEAN_MERGED.mat"
 
         ## Load all data
