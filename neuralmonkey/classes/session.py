@@ -252,12 +252,12 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
         # since you want to be able to fail, since to debug this.
         ALLOW_RETRY=False
 
-    # # Hard code sessions where multiple sec sessions to a single beh session, this leads to
-    # # error where the rec sessions doesnt know which beh trial to start at.
-    # if animal=="Pancho" and int(DATE)==221024 and rec_session==1:
-    #     # two rec sessions, one beh session
-    #     beh_trial_map_list = [(667, 0)]
-    #     ALLOW_RETRY=False
+    # Hard code sessions where multiple sec sessions to a single beh session, this leads to
+    # error where the rec sessions doesnt know which beh trial to start at.
+    if animal=="Pancho" and int(DATE)==221024 and rec_session==1:
+        # two rec sessions, one beh session
+        beh_trial_map_list = [(667, 0)]
+        ALLOW_RETRY=False
     # elif animal=="Pancho" and int(DATE)==220719:
     #     # one rec session, two beh sessions
     #     beh_trial_map_list = [(1,0), (1,45)]
@@ -269,6 +269,7 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
     #     print(beh_sess_list)
     #     print(sessdict[DATE])
     #     assert False
+
     try:
         SN = Session(DATE, beh_expt_list, beh_sess_list, beh_trial_map_list,
             animal =animal,  
@@ -2139,8 +2140,15 @@ class Session(object):
             go1 = self.events_get_time_helper("go", trial, assert_one=True)[0]
             go2 = self.Datasetbeh.Dat.iloc[idx]["motorevents"]["go_cue"]
 
-            assert go1-go2<1 # emprically, go1 tends to be ~0.15 earlier than go2. There is such high variance in gos across
-            # trials, that a threshold of 1 will surely catch misalignment between neural and beh data.
+            if go1-go2>=1:
+                print(trial)
+                print(self.datasetbeh_trial_to_trialcode(trial))
+                print(go1)
+                print(go2)
+                print(self.Datasetbeh.Dat.iloc[idx]["motorevents"])
+                assert False, "see note below"
+                # assert go1-go2<1 # emprically, go1 tends to be ~0.15 earlier than go2. There is such high variance in gos across
+                # # trials, that a threshold of 1 will surely catch misalignment between neural and beh data.
 
             gos1.append(go1)
             gos2.append(go2)
@@ -2152,9 +2160,17 @@ class Session(object):
                 idx = self.datasetbeh_trial_to_datidx(t)
                 strokes_task_1 = self._CachedStrokesTask_SANITY[t]
                 strokes_task_2 = self.Datasetbeh.Dat.iloc[idx]["strokes_task"]
-                assert len(strokes_task_1)==len(strokes_task_2)
-                for s1, s2 in zip(strokes_task_1, strokes_task_2):
-                    assert np.all(s1==s2)
+                try:
+                    assert len(strokes_task_1)==len(strokes_task_2)
+                    for s1, s2 in zip(strokes_task_1, strokes_task_2):
+                        assert np.all(s1==s2)
+                except AssertionError as err:
+                    print(len(strokes_task_1), len(strokes_task_2))
+                    print(strokes_task_1)
+                    print(strokes_task_2)
+                    print(t)
+                    raise err
+
             # Now can delete..
             del self._CachedStrokesTask_SANITY
 
@@ -2506,7 +2522,7 @@ class Session(object):
         self.DatSpikesSessByClust = {}
 
         # keys_extract = [k for k in DATSTRUCT.keys() if k not in ["chan_global", "clust"]]
-        keys_extract = DATSTRUCT.keys()
+        # keys_extract = DATSTRUCT.keys()
         keys_exclude = ["GOOD", "clust", "clust_before_merge", "clust_group_id", "clust_group_name",
             'index', 'index_before_merge', 'times_sec_all_BEFORE_REMOVE_DOUBLE', 'waveforms']
         keys_convert_to_int = ["RSn", "batch", "chan", "chan_global", "label_final_int"]
@@ -3510,9 +3526,11 @@ class Session(object):
         time_to_add = time_to_add - TIME_ML2_TRIALON
 
         if len(times)>0:
-            times, vals, time_dur, time_on, time_off = self._extract_windowed_data(times, [t1, t2], vals, recompute_time_rel_onset, time_to_add = time_to_add)
+            times, vals, time_dur, time_on, time_off = self._extract_windowed_data(times, [t1, t2], vals, 
+                                                                                   recompute_time_rel_onset, time_to_add = time_to_add)
         else:
-            time_dur, time_on, time_off = self._extract_windowed_data_get_time_bounds([t1, t2], recompute_time_rel_onset, time_to_add = time_to_add)
+            time_dur, time_on, time_off = self._extract_windowed_data_get_time_bounds([t1, t2], recompute_time_rel_onset, 
+                                                                                      time_to_add = time_to_add)
 
         return times, vals, time_dur, time_on, time_off
 
@@ -5022,7 +5040,7 @@ class Session(object):
     #     # trialml = convert_trialnum(trialtdt=trial0)
 
     def behcode_extract_times_semantic(self, codename, trial, 
-        skip_constraints_that_call_self=False):
+        skip_constraints_that_call_self=False, exclude_times_before_trial_onset=True):
         """ [ALL BEHCODE EXTRACTION GOES THRU THIS]
         To extract behcode for semantically labeled event. This wraps methods
         that try to ensure this is the correct code, espeically in cases
@@ -5038,7 +5056,7 @@ class Session(object):
 
         # 1) convert from string name to code and get times
         times =self._behcode_extract_times(codename, trial, shorthand=True,
-            refrac_period = 0.01)        
+            refrac_period = 0.01, exclude_times_before_trial_onset=exclude_times_before_trial_onset)        
         info = self._behcode_expectations()
 
         # 3b) if multiple times found, resolve it.
@@ -5497,7 +5515,9 @@ class Session(object):
             "DAsamp1_visible_change":"seqon",  # previuslyt "sampseq"
             "DoneButtonTouched":"doneb", # previsouljy "done"
             "DAstimoff_fini":"post", # preivusly "fb_vis"
-            "reward":"rew"} # previously rew
+            "reward":"rew", # previously rew
+            "end":"off",
+            } 
         return dict_full2short
 
     def _behcode_shorthand(self, full=None, short=None):
@@ -5661,7 +5681,8 @@ class Session(object):
                     misses += 1
                 else: 
                     gottens += 1
-            if (gottens==0) or (misses>3):
+            # if (gottens==0) or (misses>3):
+            if (gottens==0) or (misses>10):
                 print("misses: ", misses)
                 print("gottens: ", gottens)
                 # assert False, "why so many neural trials are missing from dataset? "
@@ -5676,7 +5697,7 @@ class Session(object):
                 print("--> Why are neural trialcodes missing from beh data?")
                 print("--> Sometimes, it is because many of the neural trials are actually not passing fixation. In that case, is fine to remove them")
                 print("--> Check that the trialcodes missing are legit misses in beh dataset (often: single stroke that was aborted)")
-
+                # NOTE: This is often becuase the beh trial wasn't even started!!
                 raise DataMisalignError
 
             # If got this far, then is fine to just take trials that exist in datasetbeh, as doing so will not throw out much
@@ -5876,6 +5897,7 @@ class Session(object):
             "doneb":[-0.6, 0.6], # image response    
             "post":[-0.6, 0.6], # image response    
             "reward_all":[-0.6, 0.6], # image response    
+            "reward_first_post":[-0.6, 0.6], # image response    
         }
 
         if just_get_list_events:
@@ -6002,6 +6024,17 @@ class Session(object):
         ax.set_ylabel('predur (left) and postdur (right)') 
 
         return dict_events_bounds, dict_int_bounds
+
+    def events_get_times_as_array_global(self, trial, list_events):
+        """
+        Return array of times (first time in tiral) for these events, 
+        as global times,
+        relative to onset of this recording session.
+        """
+        times = self.events_get_times_as_array(trial, list_events)
+        time_trial_onset_global = self.TrialsOnset[trial]
+        times_global = times + time_trial_onset_global
+        return times_global
 
     def events_get_times_as_array(self, trial, list_events):
         """ 
@@ -6269,14 +6302,14 @@ class Session(object):
             allcrossings = [t for o in out for t in o["timecrosses"]]
             return allcrossings
 
-        def _resort_to_behcode_time(event, padding):
+        def _resort_to_behcode_time(event, padding, exclude_times_before_trial_onset=True):
             """ If truly fail pd, then resort to behcode time, plus
             padding
             PARAMS;
             - event, str, semantic
             """                        
 
-            times = self.behcode_extract_times_semantic(event, trial)
+            times = self.behcode_extract_times_semantic(event, trial, exclude_times_before_trial_onset=exclude_times_before_trial_onset)
             times = [t+padding for t in times]
             return times
  
@@ -6293,25 +6326,31 @@ class Session(object):
             if not self.beh_fixation_success(trial) and event in list_events_skip_if_no_fixation:
                 times = []
             else:
-                if event=="on":
+                if event in ["trialon", "on"]:
                     # start of the trial. use the pd crossing, whihc reflect screen color chanigng.
                     # but not that crucuail to get a precise value for trail onset.
                     # NOTE: this sometimes fails for trial 0 (photodiode is in diff state?)
 
-                    try:
-                        # assert False, "this doesnt work that well for the first trial of the day... fix that before use"
-                        out = self.behcode_get_stream_crossings_in_window(trial, 9, t_pre=0, t_post = 0.15, whichstream="pd2", 
-                                                ploton=plot_beh_code_stream, cross_dir_to_take="up", assert_single_crossing_per_behcode_instance=True,
-                                                assert_single_crossing_this_trial = True,
-                                                assert_expected_direction_first_crossing = "up")
-                        times = _extract_times(out)
-                    except AssertionError as err:
-                        if trial<20:
-                            # then is early trial, when I know this sometimes fails.
-                            times = _resort_to_behcode_time(event, 0.)
-                        else:
-                            raise err
-
+                    if False:
+                        try:
+                            # assert False, "this doesnt work that well for the first trial of the day... fix that before use"
+                            out = self.behcode_get_stream_crossings_in_window(trial, 9, t_pre=0, t_post = 0.15, whichstream="pd2", 
+                                                    ploton=plot_beh_code_stream, cross_dir_to_take="up", assert_single_crossing_per_behcode_instance=True,
+                                                    assert_single_crossing_this_trial = True,
+                                                    assert_expected_direction_first_crossing = "up")
+                            times = _extract_times(out)
+                        except AssertionError as err:
+                            if trial<20:
+                                # then is early trial, when I know this sometimes fails.
+                                exclude_times_before_trial_onset = False # beucase can be very small value negative (around 0)
+                                times = _resort_to_behcode_time(event, 0., exclude_times_before_trial_onset=exclude_times_before_trial_onset)
+                            else:
+                                raise err
+                    else:
+                        # Just always use PD, as "on" is not precise.
+                        # then is early trial, when I know this sometimes fails.
+                        exclude_times_before_trial_onset = False # beucase can be very small value negative (around 0)
+                        times = _resort_to_behcode_time(event, 0., exclude_times_before_trial_onset=exclude_times_before_trial_onset)
                 elif event=="fixcue":
                     # fixation cue visible.
                     try:
@@ -6867,6 +6906,10 @@ class Session(object):
 
                     if len(times)>1:
                         times = [min(times)]
+
+                elif event in ["off"]:
+                    # Rnd of trial, using the event code (18). Not that precise? but is ok. Did this for Emre Kurtoglu.
+                    times = _resort_to_behcode_time(event, 0.)
                 else:
                     print(event, "This event doesnt exist!!")
                     raise NotEnoughDataException
