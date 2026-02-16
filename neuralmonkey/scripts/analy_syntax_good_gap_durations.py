@@ -352,6 +352,10 @@ def preprocess_dataset_behavior(D, ANALY_VER, SAVEDIR):
 
     PARAMS:
     - ANALY_VER, string, either "rulesingle" or "rulesw"
+
+    RETURNS:
+    - D, dfgaps, dfgaps_nojumps
+    Note that dfgaps_nojumps means no jumping from chunk 0 to chunk 2, for example.
     """
 
     if False:
@@ -700,6 +704,8 @@ def gapdur_plots_hypothesis_2(dfgaps, dfgaps_nojumps, SAVEDIR):
     if False:
         sns.catplot(data=dfgaps_nojumps_str, x="index_gap", y="gap_dur", hue="gap_chunk_rank_global", kind="boxen", col="post_chunk_rank_global")
 
+    return dfgaps_str, dfgaps_nojumps_str, dfgaps_nojumps_str_clean
+
 def gapdur_plots_hypothesis_3(dfgaps, SAVEDIR):
     """
     """
@@ -728,6 +734,100 @@ def gapdur_plots_hypothesis_3(dfgaps, SAVEDIR):
                 row="nremain", hue="index_gap", errorbar="se")
     savefig(fig, f"{savedir}/catplot-3.pdf")    
 
+def gapdur_plots_controlling_for_dist_angle(DFGAPS_THIS, effect, savedir, also_control_angle=False):
+    """
+    Additional summary plots that make sure effect on gap dur are not due to dist or angle.
+    NOTE: Confirmed this uses same data structures as for the main analyses.
+    """
+    from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good
+    import seaborn as sns
+    from pythonlib.tools.plottools import savefig
+    import matplotlib.pyplot as plt
+
+    from pythonlib.tools.pandastools import append_col_with_grp_index
+    DFGAPS_THIS = append_col_with_grp_index(DFGAPS_THIS, ["pre_chunk_rank_global", "index_gap"], "pre_crg_idx")
+    DFGAPS_THIS["gap_dist_z"] = (DFGAPS_THIS["gap_dist"] - DFGAPS_THIS["gap_dist"].mean())/DFGAPS_THIS["gap_dist"].std()
+    grpdict = grouping_append_and_return_inner_items_good(DFGAPS_THIS, ["animal", "date", "epoch"])
+
+    res_regress = []
+    for grp, inds in grpdict.items():
+        df = DFGAPS_THIS.iloc[inds]
+
+        if True:
+            # Each xvar    
+            for xvar in ["gap_dist", "gap_angle"]:
+                
+                fig = sns.relplot(data=df, x=xvar, y="gap_dur", hue="diff_chunk_rank_global", 
+                            row="pre_chunk_rank_global", col="index_gap", marker="o", alpha=0.4)
+                savefig(fig, f"{savedir}/relplot-x={xvar}-{grp}.pdf")
+
+            # A comnbined plot (dist and angle)
+            fig = sns.relplot(data=df, x="gap_dist", y="gap_dur", hue="diff_chunk_rank_global", 
+                        col="pre_crg_idx", row="gap_angle_binned", marker="o", alpha=0.4)
+            savefig(fig, f"{savedir}/relplot-combined_dist_angle-{grp}.pdf")
+            
+        # Linear model 
+        from pythonlib.tools.regressiontools import fit_and_score_regression_with_categorical_predictor, plot_condition_estimates, plot_ols_results
+
+        y_var = "gap_dur"
+        if also_control_angle:
+            x_vars = ["diff_chunk_rank_global", "gap_dist_z", "gap_angle_binned", "pre_crg_idx"]
+            x_vars_is_cat = [True, False, True, True]
+        else:
+            x_vars = ["diff_chunk_rank_global", "gap_dist_z", "pre_crg_idx"]
+            x_vars_is_cat = [True, False, True]
+        # y_var = "gap_dur"
+        dict_coeff, model, original_feature_mapping, results = fit_and_score_regression_with_categorical_predictor(df, 
+                                                                                        y_var, x_vars, x_vars_is_cat, None, PRINT=False)
+        fig = plot_ols_results(model)
+        savefig(fig, f"{savedir}/regression-combined-{grp}.pdf")
+
+        plt.close("all")
+
+        from pythonlib.tools.regressiontools import summarize_ols_results
+        summary_df = summarize_ols_results(model)
+
+        # Collect regression results
+        res_regress.append({
+            "grp":grp,
+            "animal":grp[0],
+            "date":grp[1],
+            "epoch":grp[2],
+            "coef":summary_df.loc[effect]["coef"],
+            "ci_lower":summary_df.loc[effect]["ci_lower"],
+            "ci_upper":summary_df.loc[effect]["ci_upper"],
+        })
+
+    dfres_regress = pd.DataFrame(res_regress)
+    dfres_regress["error_lower"] = dfres_regress["coef"] - dfres_regress["ci_lower"]
+    dfres_regress["error_upper"] = dfres_regress["ci_upper"] - dfres_regress["coef"]
+    fig, ax = plt.subplots()
+    y_pos = range(len(dfres_regress))
+    ax.errorbar(dfres_regress["coef"], y_pos, xerr=[dfres_regress["error_lower"], dfres_regress["error_upper"]], fmt='o', capsize=5, color='black')
+    ax.axvline(0, color='gray', linestyle='--')
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(dfres_regress["grp"].tolist())
+    ax.set_xlabel('Coefficient Estimate')
+    # ax.invert_yaxis()  # Highest term on top
+
+    savefig(fig, f"{savedir}/summary-regression-coeff.pdf")
+
+    ### Also regression, but combining all data for a given animal.
+    res_regress = []
+    y_var = "gap_dur"
+    if also_control_angle:
+        x_vars = ["diff_chunk_rank_global", "gap_dist_z", "gap_angle_binned", "pre_crg_idx", "animal", "date", "epoch"]
+        x_vars_is_cat = [True, False, True, True, True, True, True]
+    else:
+        x_vars = ["diff_chunk_rank_global", "gap_dist_z", "pre_crg_idx", "animal", "date", "epoch"]
+        x_vars_is_cat = [True, False, True, True, True, True]
+    dict_coeff, model, original_feature_mapping, results = fit_and_score_regression_with_categorical_predictor(DFGAPS_THIS, 
+                                                                                    y_var, x_vars, x_vars_is_cat, None, PRINT=False)
+    fig = plot_ols_results(model)
+    savefig(fig, f"{savedir}/regression-combined-ALL.pdf")
+    summary_df = summarize_ols_results(model)
+    summary_df.to_csv(f"{savedir}/regression-combined-ALL.csv")
+    plt.close("all")
 
 def gapdur_mult_load_dates(animal):
     """
@@ -945,7 +1045,7 @@ def gapdur_mult_plotsummary_3_slower_if_upcoming_chunk_longer(DFGAPS, savedir, e
     dfgaps = aggregGeneral(dfgaps, ["date", "animal", "index_gap", "gap_chunk_within_rank", 
                         "gap_shape", "syntax_concrete", "epoch", "nremain", "nremain_in_chunk", "vars_others", 
                         "idx_nrem", "gap_chunk_within_rank", "gap_chunk_rank", "behseq_locs"], 
-                        ["gap_dur"],
+                        ["gap_dur", "gap_dist"],
                         nonnumercols=["gap_chunk_rank_global", "ep_sy_gcr", "epoch_syntax", "ntot", 
                                         "pre_chunk_rank_global", "post_chunk_rank_global", 
                                         "diff_chunk_rank_global", "is_chunk_transition", "date_epoch"])
@@ -989,6 +1089,10 @@ def gapdur_mult_plotsummary_3_slower_if_upcoming_chunk_longer(DFGAPS, savedir, e
     fig = sns.catplot(data=dfgaps, x="nremain_in_chunk", y="gap_dur", hue="datapt", 
                     col="is_chunk_transition", kind="point", errorbar="se")
     savefig(fig, f"{savedir}/catplot-final_before_regress.pdf")
+    # - also show that the effect isnt there for distance
+    fig = sns.catplot(data=dfgaps, x="nremain_in_chunk", y="gap_dist", hue="datapt", 
+                    col="is_chunk_transition", kind="point", errorbar="se")
+    savefig(fig, f"{savedir}/catplot-final_before_regress-GAP_DIST.pdf")
 
     # Plot again the split plots, this time the final data before goes into regression
     # for hue in ["idx_nrem", "nremain"]:
@@ -996,6 +1100,12 @@ def gapdur_mult_plotsummary_3_slower_if_upcoming_chunk_longer(DFGAPS, savedir, e
         fig = sns.catplot(data=dfgaps, x="nremain_in_chunk", y="gap_dur", row="gap_chunk_rank_global", kind="point", 
                     hue=hue, col="date_epoch", errorbar="se")
         savefig(fig, f"{savedir}/catplot-all-hue={hue}-final_before_regress.pdf")
+        plt.close("all")
+
+    for hue in ["idx_nrem"]:
+        fig = sns.catplot(data=dfgaps, x="nremain_in_chunk", y="gap_dist", row="gap_chunk_rank_global", kind="point", 
+                    hue=hue, col="date_epoch", errorbar="se")
+        savefig(fig, f"{savedir}/catplot-all-hue={hue}-final_before_regress-GAP_DIST.pdf")
         plt.close("all")
 
     ### (3) Linear mixed effects
@@ -1068,7 +1178,6 @@ if __name__=="__main__":
     import os    
 
     ### Preprocess
-    from neuralmonkey.scripts.analy_syntax_good_gap_durations import preprocess_dataset_behavior
     # Preprocess
     ANALY_VER = "rulesingle"
     D, dfgaps, dfgaps_nojumps = preprocess_dataset_behavior(D, ANALY_VER, SAVEDIR)
