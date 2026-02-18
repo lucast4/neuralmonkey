@@ -438,3 +438,16 @@ class PopTrials():
         PA.Xlabels["trials"] = df
 
         return PA
+
+    def save(self, savedir, suffix=None):
+        """
+        """
+        import pickle
+        
+        if suffix:
+            path = f"{savedir}/PT-{suffix}.pkl"
+        else:
+            path = f"{savedir}/PT.pkl"
+
+        with open(path, "wb") as f:
+            pickle.dump(self, f)

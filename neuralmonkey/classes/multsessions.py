@@ -964,7 +964,7 @@ class MultSessions(object):
             print(f"Sess {sessnum} == extracting these trials: {trials}")
 
             for t in trials:
-
+                
                 if t%50==0:
                     print("trial: ", t)
 

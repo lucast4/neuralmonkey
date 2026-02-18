@@ -3570,7 +3570,6 @@ class Session(object):
     #         return True
 
 
-
     def datall_TDT_KS_slice_single_bysite(self, site_or_clust, trial0, return_index=False,
                                           IGNORE_SANITY_CHECKS = False):
         """ [KILOSORT OR TDT WORKS] 
@@ -4575,10 +4574,11 @@ class Session(object):
                 "rs":rs,
                 "chan":chan}
 
-            if ks_get_extra_info:
-
+            if ks_get_extra_info and self.SPIKES_VERSION=="kilosort":
                 # tmp = self.datall_TDT_KS_slice_single_bysite(site, self.get_trials_list()[0])
-                tmp = self.datall_TDT_KS_slice_single_bysite(site, 0) # This is much faster
+                trial_dummy = list(self.DatSpikesSliceClustTrial.keys())[0][1]
+                tmp = self.datall_TDT_KS_slice_single_bysite(site, trial_dummy)
+                # tmp = self.datall_TDT_KS_slice_single_bysite(site, 0) # This is much faster
                 info["label_final"] = tmp["label_final"]
         else:
             assert False
