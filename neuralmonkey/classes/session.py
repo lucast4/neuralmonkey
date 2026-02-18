@@ -489,8 +489,6 @@ class Session(object):
                     spikes_version = "kilosort"
                 else:
                     spikes_version = "tdt"
-                    print('here')
-                    assert False
                 print("USING THIS SPIKES VERSION: ", spikes_version)
 
         # spikes versino (initialize as tdt always)
@@ -2370,7 +2368,7 @@ class Session(object):
         the num neural rec sessions -- ie can find alignment times.
         """
         from os.path import isfile
-        from pythonlib.globals import PATH_KS_POSTPROCESS
+        from pythonlib.globals import PATH_KS_POSTPROCESSED
 
         # Check that files exust
         BASEDIR = PATH_KS_POSTPROCESSED 

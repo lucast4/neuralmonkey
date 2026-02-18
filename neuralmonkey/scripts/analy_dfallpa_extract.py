@@ -19,7 +19,7 @@ from neuralmonkey.classes.population_mult import load_handsaved_wrapper, dfpa_ma
 
 ############### PARAMS
 exclude_bad_areas = True
-SPIKES_VERSION = "kilosort" # since Snippets not yet extracted for ks
+SPIKES_VERSION = "kilosort_if_exists" # since Snippets not yet extracted for ks
 # SPIKES_VERSION = "tdt" # since Snippets not yet extracted for ks
 # combine_into_larger_areas = False
 # Diego_use_main_21 = False # For char clust, which set of labels to use
