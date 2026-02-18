@@ -1,7 +1,7 @@
 
 clear all; close all; 
-ANIMAL = 'Diego';
-DATE = 231206;
+ANIMAL = 'Pancho';
+DATE = 221020;
 SKIP_RAW_PLOTS_EACH_CLUST = true;
 SKIP_LOADING_DATSTRUCT=true;
 

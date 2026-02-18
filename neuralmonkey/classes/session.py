@@ -489,6 +489,8 @@ class Session(object):
                     spikes_version = "kilosort"
                 else:
                     spikes_version = "tdt"
+                    print('here')
+                    assert False
                 print("USING THIS SPIKES VERSION: ", spikes_version)
 
         # spikes versino (initialize as tdt always)
@@ -2368,9 +2370,10 @@ class Session(object):
         the num neural rec sessions -- ie can find alignment times.
         """
         from os.path import isfile
+        from pythonlib.globals import PATH_KS_POSTPROCESS
 
         # Check that files exust
-        BASEDIR = "/mnt/Freiwald/kgupta/neural_data/postprocess/final_clusters/"
+        BASEDIR = PATH_KS_POSTPROCESSED 
         clusters_final = f"{BASEDIR}/{self.Animal}/{self.Date}/DATSTRUCT_CLEAN_MERGED.mat"
         A = isfile(clusters_final)
 
@@ -2452,7 +2455,8 @@ class Session(object):
         # import scipy.io as sio
         # import scipy
         # import zlib
-        BASEDIR = "/mnt/Freiwald/kgupta/neural_data/postprocess/final_clusters/"
+        from pythonlib.globals import PATH_KS_POSTPROCESSED
+        BASEDIR = PATH_KS_POSTPROCESSED
         clusters_final = f"{BASEDIR}/{self.Animal}/{self.Date}/DATSTRUCT_CLEAN_MERGED.mat"
 
         ## Load all data
