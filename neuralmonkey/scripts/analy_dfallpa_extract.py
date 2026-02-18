@@ -57,6 +57,11 @@ def extract_dfallpa_helper(animal, date, question, combine_into_larger_areas,
         # list_time_windows = [(-0.8, 1.25)]
         # list_time_windows = [(-1., 1.6)]
 
+    if "reward_first_post" in events_keep:
+        # Then you need to reduce the time window since reward is close to end of trial
+        assert len(list_time_windows)==1, "assuming this, not neceasry"
+        twind = list_time_windows[0]
+        list_time_windows = [(twind[0], 0.9)]
 
     ### Hard coded params
     do_combine = False
@@ -198,6 +203,11 @@ if __name__=="__main__":
     else:
         replace_fr_sm_with_spike_counts = False
 
+    if len(sys.argv)>=8:
+        get_all_events_all = bool(int(sys.argv[7]))
+    else:
+        get_all_events_all = False
+
     # - To get fixations.
     # question = "PIG_BASE_saccade_fix_on" # holds variety of prepropoessing steps to clean data, specificalyl for PIG data.
     # which_level = "saccade_fix_on"
@@ -210,6 +220,12 @@ if __name__=="__main__":
     else:
         events_keep = None
 
+    if get_all_events_all:
+        # Then I did this for frontal pole (Katie) to be able to analyze relative to done and post and reward
+        events_keep = ["03_samp", "go_cue", "06_on_strokeidx_0", "doneb", "post", "reward_first_post"] # reward_all
+    else:
+        events_keep = None
+        
     if FORCE_REEXTRACT:
         DFallpa = None
     else:

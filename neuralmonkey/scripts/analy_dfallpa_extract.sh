@@ -2,9 +2,18 @@
 
 animal=$1
 get_all_events=0
+get_all_events_all=0
 use_spike_counts=0
 
 if [[ $animal == Diego ]]; then
+
+  ### All rule switching (RULESW_BASE_trial)
+  # datelist=(230804 230823 230824 230827 230911 230922 230925 231017 231024 230917 230705 230719) # Good subset
+  datelist=(230823) # Just testing
+  question=RULESW_BASE_trial
+  combine=0
+  get_all_events_all=1
+
   # datelist=(240625 240808 240809) # Syntax TI
   # question=RULE_ANBMCK_STROKE
   
@@ -21,10 +30,10 @@ if [[ $animal == Diego ]]; then
   # question=RULE_ANBMCK_STROKE
   # combine=0
 
-  # datelist=(230913) # AnBmCk, 7/31/25, best days, for testing
-  datelist=(230726 230815 230816 230817 230915 231118)
-  question=RULE_ANBMCK_STROKE_ALLDATA
-  combine=0
+  # # datelist=(230913) # AnBmCk, 7/31/25, best days, for testing
+  # datelist=(230726 230815 230816 230817 230915 231118)
+  # question=RULE_ANBMCK_STROKE_ALLDATA
+  # combine=0
 
   # ## AnBmCk -- getting also the single prim trials
   # # datelist=(230726 230913 231118 240827) # AnBmCk, 7/31/25, best days, for testing
@@ -96,6 +105,13 @@ elif [[ $animal == Diego_seqsup ]]; then
 
 elif [[ $animal == Pancho ]]; then
   
+  ### All rule switching (RULESW_BASE_trial)
+  # datelist=(221125 221020 221014 220827 220816 220929 221102 221031 221107 221113 221114) # Good subset
+  datelist=(221031) # Just testing
+  question=RULESW_BASE_trial
+  combine=0
+  get_all_events_all=1
+
   # datelist=(240619 240808 240809) # Syntax TI
 
   # ## AnBmCk and AnBmCk(Two shape sets)
@@ -111,10 +127,10 @@ elif [[ $animal == Pancho ]]; then
   # combine=0
   # question=RULE_ANBMCK_STROKE
 
-  # datelist=(220909 230824 230829 231114 231116)
-  datelist=(220909 231114)
-  question=RULE_ANBMCK_STROKE_ALLDATA
-  combine=0
+  # # datelist=(220909 230824 230829 231114 231116)
+  # datelist=(220909 231114)
+  # question=RULE_ANBMCK_STROKE_ALLDATA
+  # combine=0
 
   # ## AnBmCk -- getting also the single prim trials
   # # datelist1=(230908 230909 231114 231116) # AnBmCk, Good ones, for testing, 7/31/25
@@ -260,7 +276,7 @@ do
   touch ${logfile}  
   echo ${logfile}
   # taskset --cpu-list 0,1,2,3,4,5,6 python analy_snippets_extract.py ${animal} ${date1} ${question} ${combine} 2>&1 | tee ${logfile} &
-  python analy_dfallpa_extract.py ${animal} ${date1} ${question} ${combine} ${get_all_events} ${use_spike_counts} 2>&1 | tee ${logfile} &
+  python analy_dfallpa_extract.py ${animal} ${date1} ${question} ${combine} ${get_all_events} ${use_spike_counts} ${get_all_events_all} 2>&1 | tee ${logfile} &
   sleep 2m
 done
 # sleep 1m
