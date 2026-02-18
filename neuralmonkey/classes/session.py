@@ -4574,7 +4574,9 @@ class Session(object):
                 "chan":chan}
 
             if ks_get_extra_info:
-                tmp = self.datall_TDT_KS_slice_single_bysite(site, self.get_trials_list()[0])
+
+                # tmp = self.datall_TDT_KS_slice_single_bysite(site, self.get_trials_list()[0])
+                tmp = self.datall_TDT_KS_slice_single_bysite(site, 0) # This is much faster
                 info["label_final"] = tmp["label_final"]
         else:
             assert False
@@ -8370,7 +8372,7 @@ class Session(object):
         if gaussian_sigma is None:
             gaussian_sigma = self.SMFR_SIGMA
 
-        if trial not in self.PopAnalDict.keys() or overwrite==True:
+        if (self.PopAnalDict is None) or (trial not in self.PopAnalDict.keys()) or overwrite==True:
             # Get all spike trains for a trial
             list_sites = self.sitegetterKS_map_region_to_sites_MULTREG(clean=clean_chans)
             list_spiketrain = []
@@ -9322,18 +9324,19 @@ class Session(object):
         return list_list_trials, list_labels, 
 
     def plot_raster_spiketimes_blocked(self, ax, list_list_spiketimes, list_labels=None,
-                                    list_list_trials = None, list_list_evtimes = None,
+                                    list_list_trials = None, list_list_evtimes_just_for_eventsplot = None,
                                     overlay_trial_events=True,                                
                                    xmin = None, xmax = None, alpha_raster=0.8):
         """
         Plot rasters, hierarhcially inputted, giving the spiketimes directly.
         Is simialr to plot_raster_trials_blocked, but there pass in trials.
         PARAMS;
-        - list_list_spiketimes, list of list of spike times
+        - list_list_spiketimes, list of list of spike times. AFTER you have already realigned to 
+        events of interest
         - list_labels, list of str labels, matching len(list_list_spiketimes)
         - list_list_trials, list of lsit of ints, matching each datapt in list_list_spiketimes,
         for overlayign events.
-        - list_list_evtimes, list of list of scalar times, in the original time in trial,
+        - list_list_evtimes_just_for_eventsplot, list of list of scalar times, in the original time in trial,
         that is now defined as 0 for the matching spiektime. for overlayign events.
         """
 
@@ -9360,7 +9363,7 @@ class Session(object):
         if overlay_trial_events:
             # Flatten
             list_trials_flat = [t for X in list_list_trials for t in X]
-            list_evtimes_flat = [t for X in list_list_evtimes for t in X]
+            list_evtimes_flat = [t for X in list_list_evtimes_just_for_eventsplot for t in X]
             self.plotmod_overlay_trial_events_mult(ax, list_trials_flat, list_evtimes_flat, 
                 xmin=xmin, xmax=xmax) 
 
@@ -9561,16 +9564,17 @@ class Session(object):
         if aspect>1.5:
             aspect = 1.5
 
-        height_cell = n_raster_lines * 0.025
+        # height_cell = n_raster_lines * 0.025
+        height_cell = n_raster_lines * 0.125
         if reduce_height_for_sm_fr:
             # make it wider
             height_cell = 0.9*height_cell
             aspect = 1.1 * aspect
-
+        
         if height_cell < 3.5:
             height_cell = 3.5
-        if height_cell > 10:
-            height_cell = 10
+        if height_cell > 15:
+            height_cell = 15
 
         width_cell = aspect * height_cell
 

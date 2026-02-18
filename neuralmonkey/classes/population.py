@@ -606,7 +606,9 @@ class PopAnal():
             return XdataframeAgg
 
     ####################### SLICING
-    def slice_by_dim_values_wrapper(self, dim, values, time_keep_only_within_window=True):
+    def slice_by_dim_values_wrapper(self, dim, values, 
+                                    time_keep_only_within_window=True,
+                                    fail_if_times_outside_existing=True):
         """ Slice based on values (not indices), works for dim =
         times, trials, or chans.
         PARAMS:
@@ -614,6 +616,8 @@ class PopAnal():
         - values, list of values into self.Trials or Chans (depending on dim).
         Asserts that self.Trials or Chans doesnt contain any Nones
         -- if dim=="times", then values are the min and max of the window
+        - fail_if_times_outside_existing, True ensure that enough time bins
+        exist in dataset to span entire range of times you
         """
         if dim in ["site", "sites", "chans", "trials"]:
             # 1) Map the values to indices
@@ -633,7 +637,7 @@ class PopAnal():
             assert False, "not correct dim"
 
         # 2) Call indices version
-        return self.slice_by_dim_indices_wrapper(dim, indices)
+        return self.slice_by_dim_indices_wrapper(dim, indices, fail_if_times_outside_existing=fail_if_times_outside_existing)
 
     # def slice_time_by_indices(self, ind1, ind2):
     #     """ This is actually doing what slice_by_dim_indices_wrapper is supposed to do
@@ -650,7 +654,8 @@ class PopAnal():
     # def bin_time(self):
 
 
-    def slice_by_dim_indices_wrapper(self, dim, inds, reset_trial_indices=False):
+    def slice_by_dim_indices_wrapper(self, dim, inds, reset_trial_indices=False,
+                                     fail_if_times_outside_existing=True):
         """ Helper that is standard across the three dims (trials, times, chans),
         to use indices (i.e., not chans, but indices into chans)
         PARAMS:
@@ -680,21 +685,29 @@ class PopAnal():
             t1 = self.Times[inds[0]]
             t2 = self.Times[inds[1]]
 
+            # print(t1, t2)
             # make times slgitly wider, to ensure get inclusive indices. This solves
             # problems if numerical imprecision leading to variable output sizes.
-            if inds[0]==0:
-                t1 = t1-1
+            
+            if True:
+                # Better
+                t_delta = (self.Times[1] - self.Times[0])/2
+                t1 = t1-t_delta
+                t2 = t2+t_delta
             else:
-                t1_prev = self.Times[inds[0]-1]
-                t1 -= (t1-t1_prev)/2
+                if inds[0]==0:
+                    t1 = t1-1
+                else:
+                    t1_prev = self.Times[inds[0]-1]
+                    t1 -= (t1-t1_prev)/2
 
-            if inds[1]==-1 or inds[1]==len(self.Times)-1:
-                t2 = t2+1
-            else:
-                t2_next = self.Times[inds[1]+1]
-                t2 += (t2_next - t2)/2
+                if inds[1]==-1 or inds[1]==len(self.Times)-1:
+                    t2 = t2+1
+                else:
+                    t2_next = self.Times[inds[1]+1]
+                    t2 += (t2_next - t2)/2
 
-            pa = self._slice_by_time_window(t1, t2, True, False)
+            pa = self._slice_by_time_window(t1, t2, True, fail_if_times_outside_existing)
 
             if len(self.Xlabels["times"])>0:
                 # then slice it
@@ -755,8 +768,14 @@ class PopAnal():
             fail_if_times_outside_existing=True, version="raw", 
             subtract_this_from_times = None,
             method_if_not_enough_time="keep_and_prune_time"):
-        """ Slice population by time window, where
+        """ 
+        LOW-LEVEL CODE -- 
+        Slice population by time window, where
         time is based on self.Times
+
+        NOTE: It is correct for there to be this as well as self.slice_by_dim_values_wrapper(), as the
+        latter calls this current code.
+
         PARAMS;
         - t1, t2, start and end time for slicing, inclusive
         - fail_if_times_outside_existing, bool, if True, then self.Times must have times
