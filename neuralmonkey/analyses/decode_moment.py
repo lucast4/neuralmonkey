@@ -763,7 +763,7 @@ class Decoder():
         if ylims is not None:
             ax.set_ylim(ylims)
     
-    def timeseries_plot_flex_split_columns(self, PAtest, vars_columns, twind_test):
+    def timeseries_plot_flex_split_columns(self, PAtest, vars_columns, twind_test, labels_in_order_keep=None):
         """
         Helper to plot timecourses in multiple subplots, split by columns (vars_columns) 
         and within each, coloring by the differnet decoders.
@@ -776,6 +776,9 @@ class Decoder():
         dflab = PAtest.Xlabels["trials"]
         grpdict = grouping_append_and_return_inner_items_good(dflab, vars_columns)
 
+        if labels_in_order_keep is None:
+            labels_in_order_keep = self.LabelsDecoderGood
+
         # Separate plots
         ncols = 6
         nrows = int(np.ceil(len(grpdict)/ncols))
@@ -785,7 +788,7 @@ class Decoder():
             
             # Extract decoder probs for each trial
             _, probs_mat_all, times, labels = self.timeseries_score_wrapper(PAtest, twind_test, indtrials, 
-                                                                        labels_in_order_keep=self.LabelsDecoderGood)
+                                                                        labels_in_order_keep=labels_in_order_keep)
 
             # Plot 
             ax = axes.flatten()[i]
@@ -3094,10 +3097,6 @@ def pipeline_train_test_scalar_score(DFallpa, bregion,
     - dfscores, Dc, PAtrain, PAtest
     - allow_multiple_twind_test, bool, as a switch so that doesnt accidentally forget that is multkpel twind.
     """
-    from neuralmonkey.classes.population_mult import extract_single_pa
-    import seaborn as sns
-    from pythonlib.tools.pandastools import plot_subplots_heatmap
-    from pythonlib.tools.snstools import rotateLabel
 
     twind_train = tuple(twind_train)
     list_twind_test = [tuple(twind) for twind in list_twind_test]
@@ -3155,7 +3154,9 @@ def pipeline_train_test_scalar_score(DFallpa, bregion,
         # Also plot, for normed score
         sdir = f"{savedir}/test-var_score=score_norm_minmax"
         os.makedirs(sdir, exist_ok=True)
-        Dc.scalar_score_df_plot_summary(dfscores, sdir, var_score="score_norm_minmax")
+        # Exclude "null" decoder, as it has nan for score_norm_minmax, since it doesnt have any cases of decoder==pa_class
+        dfscores_this = dfscores[~(dfscores["decoder_class"]=="null")].reset_index(drop=True)
+        Dc.scalar_score_df_plot_summary(dfscores_this, sdir, var_score="score_norm_minmax")
 
     dflab = PAtest.Xlabels["trials"]
     assert dfscores["trialcode"].tolist() == [dflab.iloc[pa_idx]["trialcode"] for pa_idx in dfscores["pa_idx"]]
