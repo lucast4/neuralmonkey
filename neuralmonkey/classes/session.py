@@ -8406,6 +8406,7 @@ class Session(object):
 
             # Convert to popanal
             PA = self._popanal_generate_from_raw(frate.T.magnitude, frate.times, list_sites, df_label_trials=None)
+            assert PA.Chans == list_sites
             # PA = PopAnal(frate.T.magnitude, frate.times, chans = list_sites,
             #     spike_trains = [list_spiketrain], print_shape_confirmation=print_shape_confirmation)
             # PA.Params["frate_sampling_period"] = sampling_period

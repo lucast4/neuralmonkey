@@ -978,6 +978,9 @@ class MultSessions(object):
                 if True:
                     # Just get the entire trial
                     pa = sn.popanal_generate_save_trial(t)
+                    # Slice to the desired sites
+                    pa = pa.slice_by_dim_values_wrapper("chans", sites)
+                    # Slice to time
                     pa.Times = np.array(pa.Times)
                     pa = pa.slice_by_dim_values_wrapper("times", (time_start_incl_flank, time_off_incl_flank))
                     # pa = pa._slice_by_time_window(time_start_incl_flank, time_off_incl_flank, return_as_popanal=True)
@@ -985,7 +988,10 @@ class MultSessions(object):
                     # Problem, this always realigns to start at 0.
                     pa, trials_all, times_all, idx_trialtime_all = sn.smoothedfr_extract_timewindow_bytimes([t], [time_on], sites, 
                         pre_dur=pre_dur, post_dur=_post_dur, realign_to_time=False)
-                assert pa.Chans == sites
+                if not pa.Chans == sites:
+                    print(pa.Chans, "[pa.Chans]")
+                    print(sites, "[sites]")
+                    assert False, "why they don't match?"
                 
                 # Also get spike times
                 map_site_to_spiketimes = {}

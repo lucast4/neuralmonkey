@@ -86,7 +86,46 @@ class PopTrials():
         """        
         event_times = self.Dat.iloc[idxtrial]["event_times"] # dict[event:times]
         return event_times
-    
+
+    def extract_stroke_times(self, idxtrial, onset_or_offset):
+        """
+        Get lsit of stroke time for this trial, either alinged to "onset" or "offset",
+        determined by onset_or_offset
+
+        RETURNS;
+        - list of scalar times (sec)
+        """
+
+        if onset_or_offset in ["on", "onset"]:
+            return self.Dat.iloc[idxtrial]["stroke_ons"]
+        elif onset_or_offset in ["off", "offset"]:
+            return self.Dat.iloc[idxtrial]["stroke_offs"]
+        else:
+            assert False, "input was wrong"
+
+    def extract_stroke_peanut_times(self, idxtrial):
+        """
+        Get times of peanuts during stroke. "Peanuts" are ink dots that 
+        compose the line that is drawn by monkey. They are all contained within 
+        stroke.
+
+        RETURNS;
+        - List of array of times where list if len n strokes
+        """
+
+        sn, trialsn = self.extract_sn(idxtrial)
+        peanut_times = sn._behcode_extract_times(75, trialsn, refrac_period=0)
+
+        # get peanut times within each stroke
+        stroke_ons = self.extract_stroke_times(idxtrial, "on")
+        stroke_offs = self.extract_stroke_times(idxtrial, "off")
+        strokes_peanut_times = []
+        for _, (s_on, s_off) in enumerate(zip(stroke_ons, stroke_offs)):
+            pnuts = peanut_times[(peanut_times>=s_on) & (peanut_times<=s_off)]
+            strokes_peanut_times.append(np.array(pnuts))
+
+        return strokes_peanut_times
+
     def datasetbeh_extract_D(self):
         """
         Get Dataset() class, holding data across all self.Dat
@@ -104,7 +143,10 @@ class PopTrials():
             list_D = list(set(list_D))
 
             from pythonlib.dataset.analy_dlist import concatDatasets
-            D = concatDatasets(list_D)
+            if len(list_D)>1:
+                D = concatDatasets(list_D)
+            else:
+                D = list_D[0]
 
             # Make sure dataset matches self
             # Slice beh to match self.Dat
@@ -124,6 +166,98 @@ class PopTrials():
 
         D = self.datasetbeh_extract_D()
         return D.Dat
+    
+    def datasetbeh_abort_stroke_times_extract(self):
+        """
+        THis determines whether abort happend on the last stroke, using method based on 
+        the stored kind of abort. 
+        
+        More accurate would be to use the errorcode, WN, and other features to compute it directly.
+        But this is quick and works arlgiht. It is conservative.
+
+        RETURNS:
+        - dfabort, one row per trial
+        """
+
+        dfbeh = self.datasetbeh_extract_df_trialaligned()
+
+        # good_stroke_durations = []
+        # aborted_stroke_durations = []
+
+        # times_peanut_good = []
+        # times_peanut_aborted = []
+
+        res = []
+        for idxtrial, row in dfbeh.iterrows():
+            
+            stroke_peanut_times = self.extract_stroke_peanut_times(idxtrial)
+            # stroke_ons = self.extract_stroke_times(idxtrial, "on")
+            stroke_offs = self.extract_stroke_times(idxtrial, "off")
+            
+            time_last_peanut = stroke_peanut_times[-1][-1]
+            dur_last_stroke_using_peanut = stroke_peanut_times[-1][-1] - stroke_peanut_times[-1][0]
+
+            if row["trial_end_method"] == "pressed_done_button":
+                # Success
+                assert row["online_abort"] == None
+                aborted_during_last_stroke = False
+
+                # dur_aborted_stroke = stroke_offs[-1] - stroke_ons[-1]
+                # good_stroke_durations.append(dur_aborted_stroke)
+                # times_peanut_good.append(dur_last_stroke_using_peanut)
+
+                abort_kind_semantic = "none"
+
+            elif row["trial_end_method"] == "postscene_hotkey_abort":
+                # Success
+                aborted_during_last_stroke = False
+                abort_kind_semantic = "postscene_hotkey"
+
+            elif row["trial_end_method"] == "online_abort" and row["online_abort"] == "hotkey_x":
+                # Failed him within trial. Need to look more closely to determine when.
+                # Don't assume it was last stroke.
+                aborted_during_last_stroke = False
+                abort_kind_semantic = "hotkey_x_unsure_when"
+
+            elif row["trial_end_method"] == "online_abort" and row["online_abort"] == "too_far_from_ink":
+                # Abort during stroke, stroke-level quality error
+                aborted_during_last_stroke = True
+                abort_kind_semantic = "duringstroke_too_far_from_ink"
+
+            elif row["trial_end_method"] == "online_abort" and row["online_abort"] == "failed_rule_objectclass":
+                # Abort during stroke, due to rule.
+                
+                if False:
+                    print("------------")
+                    for pnut_times, off in zip(stroke_peanut_times, stroke_offs):
+                        print(off - pnut_times[-1])
+
+                # dur_aborted_stroke = stroke_offs[-1] - stroke_ons[-1]
+                # aborted_stroke_durations.append(dur_aborted_stroke)
+                # times_peanut_aborted.append(dur_last_stroke_using_peanut)
+
+                # If this failed, save things about it
+                aborted_during_last_stroke = True
+                abort_kind_semantic = "duringstroke_failedrule"
+
+            else:
+                assert False
+            
+            res.append({
+                "idxtrial":idxtrial,
+                "trialcode":row["trialcode"],
+                "aborted_during_last_stroke":aborted_during_last_stroke,
+                "time_of_abort_using_peanuts":time_last_peanut,
+                "dur_last_stroke_using_peanut":dur_last_stroke_using_peanut,
+                "abort_kind_semantic":abort_kind_semantic,
+            })
+
+        dfabort = pd.DataFrame(res)
+
+        if False:
+            import seaborn as sns
+            sns.displot(data=dfabort, x="dur_last_stroke_using_peanut", hue="abort_kind_semantic", kind="kde")
+        return dfabort
 
     def plot_timecourse_onetrial(self, idx, ax):
         """
@@ -436,6 +570,112 @@ class PopTrials():
         df = self.datasetbeh_extract_df_trialaligned()
         assert len(df) == len(PA.Trials)
         PA.Xlabels["trials"] = df
+
+        return PA
+
+    def pa_extract_align_to_stroke(self, time_pre, time_post, onset_or_offset = "onset"):
+        """
+        Helper to extract a PA, holding all chans and trials, where each returned row
+        is aligned to a different stroke, and choice of either onset or offset of 
+        stroke. 
+        
+        (time_pre, time_post are both positive.)
+
+        """
+        from neuralmonkey.classes.population import concatenate_popanals
+        from pythonlib.dataset.dataset_strokes import preprocess_dataset_to_datstrokes
+        assert time_pre>0
+        assert time_post>0
+
+        # The features to extract for each stroke.
+        feature_columns_take = ["trialcode", "stroke_index", "shape", "gridloc",  "gridsize", "loc_on", "CTXT_loc_prev", "CTXT_shape_prev", 
+                                "CTXT_loc_next", "CTXT_shape_next", "shape_semantic", "shape_semantic_grp", 
+                                "time_duration", "gap_from_prev_dur", "gap_from_prev_dist", "gap_from_prev_angle",
+                                "gap_to_next_dist", "gap_to_next_angle", "epoch"]
+
+        ### Extract stroke-level features    
+        D = self.datasetbeh_extract_D()
+
+        # If want to get grammar/syntax chunk data for each stroke:
+        if False:
+            D.grammarparses_successbinary_score_wrapper()
+            for ind in range(len(D.Dat)):
+                D.grammarparses_taskclass_tokens_assign_chunk_state_each_stroke(ind)
+            # TODO: incorproate these varibles. They are not included in DS, so it is a bit of work.
+        DS = preprocess_dataset_to_datstrokes(D, "all_no_clean")
+
+        ### For each trial determine whether it is abort (and if so, whether aborted on last stroke)
+        dfabort = self.datasetbeh_abort_stroke_times_extract()
+        assert len(dfabort) == len(self.Dat)
+
+        ### Get PA across trials, aligned to this event
+        list_pa = []
+        list_feat = []
+        list_abort_value = []
+        list_abort_reason = []
+
+        for idxtrial in range(len(self.Dat)):
+            pa = self.extract_pa(idxtrial)
+            tc = self.Dat.iloc[idxtrial]["trialcode"]
+
+            stroke_times = self.extract_stroke_times(idxtrial, onset_or_offset)
+            
+            assert len(stroke_times)>0, "missing strokes, shuldnt happen"
+
+            # Was this abort?
+            assert dfabort.iloc[idxtrial]["trialcode"] == tc
+            stroke_abort_values = [False for _ in range(len(stroke_times))]
+            stroke_abort_reason = ["ignore" for _ in range(len(stroke_times))]
+            if dfabort.iloc[idxtrial]["aborted_during_last_stroke"]:
+                stroke_abort_values[-1] = True
+                stroke_abort_reason[-1] = dfabort.iloc[idxtrial]["abort_kind_semantic"]
+            
+            for idxstroke, (time, abort_value, abort_reason) in enumerate(zip(stroke_times, stroke_abort_values, stroke_abort_reason)):    
+                
+                ### Get single pa
+                twind = (time-time_pre, time+time_post)
+                pathis = pa.slice_by_dim_values_wrapper("times", twind)
+                list_pa.append(pathis)
+
+                ### Get stroke-level features
+                # Find this stroke in DS.Dat
+                _ind = (DS.Dat["trialcode"] == tc) & (DS.Dat["stroke_index"] == idxstroke).tolist()
+                # Sanity check you got the correct row (DS times equal self times)
+                if onset_or_offset == "onset":
+                    assert DS.Dat[_ind]["time_onset"].values[0] == time
+                elif onset_or_offset == "offset":
+                    assert DS.Dat[_ind]["time_offset"].values[0] == time
+                else:
+                    assert False
+
+                # Store features
+                list_feat.append(DS.Dat.loc[_ind, feature_columns_take])
+
+                # Store abort features for this stroke
+                list_abort_value.append(abort_value)
+                list_abort_reason.append(abort_reason)
+
+        ### Reset all times, and round them
+        sampling_period = np.round(np.mean(np.diff(pathis.Times))*1000)/1000
+        # - Replace all times with this time relative to alignement.
+        for pa in list_pa:
+            # sampling period, to acocunt for random variation in alignment across snips.
+            TIMES = (pa.Times - pa.Times[0]) - time_pre + sampling_period/2 # times all as [-predur, ..., postdur]
+            pa.Times = TIMES
+
+        assert len(set([len(pa.Times) for pa in list_pa]))==1, "times not aligned?"
+
+        PA = concatenate_popanals(list_pa, "trials", 
+                                assert_otherdims_have_same_values=True, 
+                                assert_otherdims_restrict_to_these=("chans", "times"),
+                                all_pa_inherit_times_of_pa_at_this_index=0)
+
+        # Assign stroke-level features
+        dflab = pd.concat(list_feat, axis=0).reset_index(drop=True)
+        dflab["abort_value"] = list_abort_value
+        dflab["abort_reason"] = list_abort_reason
+
+        PA.Xlabels["trials"] = dflab
 
         return PA
 
