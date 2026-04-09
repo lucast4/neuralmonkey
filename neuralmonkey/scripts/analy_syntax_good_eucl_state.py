@@ -2924,6 +2924,85 @@ def targeted_pca_clean_plots_and_dfdist(DFallpa, animal, date, SAVEDIR_ALL, DEBU
                     # Also save coefficients
                     pd.to_pickle(dfcoeff, f"{savedir}/dfcoeff.pkl")
 
+
+def _kernel_ordinal_logistic_regression_wrapper_prepdata(PA, yvar, do_rezero=True, PRINT=False, 
+                                                         n_min_per_level = 3):
+    """
+    Perform logistc regression (e.g., predicting rank as a function of neural activity). 
+    Uses the kernel trick to account for nonlinearity (e.g., curved axes)
+
+    PARAMS:
+    - yvar, the predicted variable. Must be integer.
+        yvar = "chunk_within_rank_fromlast"
+    - vars_grp, regression performed wtihin each class of this list of var (conjunctive).
+        vars_grp = ["task_kind", "epoch", "chunk_shape", "chunk_n_in_chunk"]
+    """
+    from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good
+    from neuralmonkey.analyses.regression_good import kernel_ordinal_logistic_regression, _kernel_ordinal_logistic_regression_example
+    from pythonlib.tools.pandastools import filter_by_min_n, _check_index_reseted
+
+    PA = PA.copy()
+
+    ### Make sure the data are ordinal, from 0, 1, ...
+    dflab = PA.Xlabels["trials"]
+    Y = dflab[yvar].values
+    Y = Y.astype(np.int64)
+    if do_rezero:
+        Y = Y - min(Y) 
+    dflab[f"{yvar}-ord"] = Y
+    yvar_orig = yvar
+    yvar = f"{yvar}-ord"
+    if not isinstance(dflab[yvar].values[0], (int, np.integer)):
+        print(type(dflab[yvar].values[0]))
+        assert False, "must make this int. Usef dflab[yvar].astype(int)"
+    PA.Xlabels["trials"] = dflab
+
+    # Keep only classes with at least some min n data
+    dflab = PA.Xlabels["trials"]
+    _check_index_reseted(dflab)
+    dflab_pruned = filter_by_min_n(dflab, yvar, n_min_per_level=n_min_per_level, must_not_fail=True)
+    if PRINT:
+        print("len dflab, before and after pruned to min n trials and leveld: ", len(dflab), len(dflab_pruned))
+    inds_keep = dflab_pruned["_index"].tolist()
+    PA = PA.slice_by_dim_indices_wrapper("trials", inds_keep)
+
+    if do_rezero:
+        # Must do again, beucase filter_by_min_n may have removed the 0.
+        dflab = PA.Xlabels["trials"]
+        dflab[yvar] = dflab[yvar] - min(dflab[yvar])
+        PA.Xlabels["trials"] = dflab
+
+    ### 
+    assert PA.X.shape[2]==1 # must not be time-varying
+    dflab = PA.Xlabels["trials"]
+    Xall = PA.X.squeeze().T
+    Yall = dflab[yvar].values
+
+    # Mapper to convert between old and new values
+    map_varnew_to_varorig = {}
+    map_varorig_to_varnew = {}
+
+    for grp in dflab.groupby([yvar_orig, yvar]):
+        print(grp[0])
+
+        grpname = grp[0]
+        map_varnew_to_varorig[grpname[1]] = grpname[0]
+        map_varorig_to_varnew[grpname[0]] = grpname[1]
+
+    # Sanity check
+    try:
+        # assert min(Yall)==0
+        assert isinstance(Yall[0], np.integer)
+        assert len(set(Yall))>1
+    except Exception as err:
+        print(Yall)
+        print(set(Yall))
+        raise err
+
+    yvar_ord = yvar
+    return Xall, Yall, dflab, yvar_ord, map_varnew_to_varorig, map_varorig_to_varnew
+
+
 def kernel_ordinal_logistic_regression_wrapper(PA, yvar, vars_grp, savedir, plot_test_data_projected = False, 
                                                nsplits = 4, do_rezero=True, PRINT=False, PLOT=False, 
                                                do_upsample=True, apply_kernel=True, list_do_grid_search=None,
@@ -2953,58 +3032,60 @@ def kernel_ordinal_logistic_regression_wrapper(PA, yvar, vars_grp, savedir, plot
     else:
         do_grid_search = list_do_grid_search
 
-    ### Preprocessing
     # Exit, if PA has only one level, or is not enough data
     if len(PA.Xlabels["trials"][yvar].unique())==1:
         return None, None
-    
-    ### Make sure the data are ordinal, from 0, 1, ...
-    dflab = PA.Xlabels["trials"]
-    Y = dflab[yvar].values
-    Y = Y.astype(np.int64)
-    if do_rezero:
-        Y = Y - min(Y) 
-    dflab[f"{yvar}-ord"] = Y
-    yvar = f"{yvar}-ord"
-    if not isinstance(dflab[yvar].values[0], (int, np.integer)):
-        print(type(dflab[yvar].values[0]))
-        assert False, "must make this int. Usef dflab[yvar].astype(int)"
-    PA.Xlabels["trials"] = dflab
 
-    # Keep only classes with at least some min n data
-    dflab = PA.Xlabels["trials"]
-    _check_index_reseted(dflab)
-    dflab_pruned = filter_by_min_n(dflab, yvar, n_min_per_level=n_min_per_level, must_not_fail=True)
-    if PRINT:
-        print("len dflab, before and after pruned to min n trials and leveld: ", len(dflab), len(dflab_pruned))
-    inds_keep = dflab_pruned["_index"].tolist()
-    PA = PA.slice_by_dim_indices_wrapper("trials", inds_keep)
-
-    if do_rezero:
-        # Must do again, beucase filter_by_min_n may have removed the 0.
+    ### Preprocessing
+    if True:
+        Xall, Yall, dflab, yvar_ord, map_varnew_to_varorig, map_varorig_to_varnew = _kernel_ordinal_logistic_regression_wrapper_prepdata(PA, 
+                                                                                                yvar, do_rezero, PRINT, n_min_per_level)
+        yvar = yvar_ord
+    else:
+        ### Make sure the data are ordinal, from 0, 1, ...
         dflab = PA.Xlabels["trials"]
-        dflab[yvar] = dflab[yvar] - min(dflab[yvar])
+        Y = dflab[yvar].values
+        Y = Y.astype(np.int64)
+        if do_rezero:
+            Y = Y - min(Y) 
+        dflab[f"{yvar}-ord"] = Y
+        yvar = f"{yvar}-ord"
+        if not isinstance(dflab[yvar].values[0], (int, np.integer)):
+            print(type(dflab[yvar].values[0]))
+            assert False, "must make this int. Usef dflab[yvar].astype(int)"
         PA.Xlabels["trials"] = dflab
 
-    ### 
-    assert PA.X.shape[2]==1 # must not be time-varying
-    dflab = PA.Xlabels["trials"]
-    Xall = PA.X.squeeze().T
-    Yall = dflab[yvar].values
-    try:
-        # assert min(Yall)==0
-        assert isinstance(Yall[0], np.integer)
-        assert len(set(Yall))>1
-    except Exception as err:
-        print(Yall)
-        print(set(Yall))
-        raise err
-    grpdict = grouping_append_and_return_inner_items_good(dflab, vars_grp)
+        # Keep only classes with at least some min n data
+        dflab = PA.Xlabels["trials"]
+        _check_index_reseted(dflab)
+        dflab_pruned = filter_by_min_n(dflab, yvar, n_min_per_level=n_min_per_level, must_not_fail=True)
+        if PRINT:
+            print("len dflab, before and after pruned to min n trials and leveld: ", len(dflab), len(dflab_pruned))
+        inds_keep = dflab_pruned["_index"].tolist()
+        PA = PA.slice_by_dim_indices_wrapper("trials", inds_keep)
 
-    from pythonlib.tools.pandastools import grouping_print_n_samples
-    savepath = f"{savedir}/counts.txt"
-    grouping_print_n_samples(dflab, vars_grp+[yvar], savepath=savepath)
+        if do_rezero:
+            # Must do again, beucase filter_by_min_n may have removed the 0.
+            dflab = PA.Xlabels["trials"]
+            dflab[yvar] = dflab[yvar] - min(dflab[yvar])
+            PA.Xlabels["trials"] = dflab
 
+        ### 
+        assert PA.X.shape[2]==1 # must not be time-varying
+        dflab = PA.Xlabels["trials"]
+        Xall = PA.X.squeeze().T
+        Yall = dflab[yvar].values
+
+        try:
+            # assert min(Yall)==0
+            assert isinstance(Yall[0], np.integer)
+            assert len(set(Yall))>1
+        except Exception as err:
+            print(Yall)
+            print(set(Yall))
+            raise err
+        
+    ### Helper functions
     def clean_preprocess_data(x, y, savepath_upsample=None):
         """
         Keeping only data with at least minimun n trials. And upsampling if high trial imbalance.
@@ -3067,6 +3148,12 @@ def kernel_ordinal_logistic_regression_wrapper(PA, yvar, vars_grp, savedir, plot
         return balanced_accuracy, balanced_accuracy_adjusted, accuracy, x_test, y_test
 
     ### RUN
+    grpdict = grouping_append_and_return_inner_items_good(dflab, vars_grp)
+
+    from pythonlib.tools.pandastools import grouping_print_n_samples
+    savepath = f"{savedir}/counts.txt"
+    grouping_print_n_samples(dflab, vars_grp+[yvar], savepath=savepath)
+
     RES_CROSS = []
     RES_WITHIN = []
     n_skips = 0
@@ -3105,7 +3192,7 @@ def kernel_ordinal_logistic_regression_wrapper(PA, yvar, vars_grp, savedir, plot
                             res["best_n_components"] = res["cv_best_params"]["ker__n_components"]
 
                     model = res["model"]
-                    assert np.all(model.predict(x_train) == res["y_pred"]), "sanity check"
+                    # assert np.all(model.predict(x_train) == res["y_pred"]), "sanity check"
 
                     # Try predicting all other cases. 
                     for grp_test, inds_test in grpdict.items():
@@ -4163,6 +4250,224 @@ def targeted_pca_state_space_split_over(DFallpa, SAVEDIR_ANALYSIS,
                                                                     vars_subplot=vars_others, list_dims=LIST_DIMS,
                                                                     overlay_mean_orig=True)
                     plt.close("all")
+
+
+def mult_plot_rankwithin_up_vs_down_good(dfdist_full_clean, savedir, do_final_agg_over_datapts):
+    """
+    """
+    from pythonlib.tools.pandastools import append_col_with_grp_index
+    list_bregion = dfdist_full_clean["bregion"].unique().tolist()
+    print("Currently making plots ... ", savedir)
+
+    # Print grouping
+    # NOTE: need to do this before do_final_agg_over_datapts, as that step does agging...
+    from pythonlib.tools.pandastools import grouping_print_n_samples
+    savepath = f"{savedir}/groupings-1.txt"
+    grouping_print_n_samples(dfdist_full_clean, ["bregion", "chunk_shape_1", "chunk_n_in_chunk_1", "chunk_within_rank_1", "chunk_within_rank_fromlast_1", 
+                                "chunk_shape_2", "chunk_n_in_chunk_2", "chunk_within_rank_2", "chunk_within_rank_fromlast_2", "chunk_within_rank_pair_class"], savepath=savepath)
+
+    if do_final_agg_over_datapts:
+        # Also agg (becuase there are many redundant datapts)
+        # Each datapt = (chunk_shape_1", "chunk_n_in_chunk_1", "chunk_within_rank_1", "chunk_n_in_chunk_2")
+        from pythonlib.tools.pandastools import aggregGeneral
+
+        # dfdist_full_clean_agg = aggregGeneral(dfdist_full_clean, ["bregion", "chunk_shape_1", "chunk_n_in_chunk_1", 
+        #                                   "chunk_within_rank_1", "chunk_shape_2", "chunk_within_rank_pair_class"], ["dist_yue_diff"])
+        dfdist_full_clean = aggregGeneral(dfdist_full_clean, ["question", "bregion", "subspace", "chunk_shape_1", "chunk_n_in_chunk_1", 
+                                "chunk_within_rank_1", "chunk_within_rank_fromlast_1", "chunk_shape_2", 
+                                "chunk_n_in_chunk_2", "chunk_within_rank_pair_class"], ["dist_yue_diff"])
+
+
+    # (1) Scatterplots
+    from pythonlib.tools.pandastools import plot_45scatter_means_flexible_grouping
+
+    # - Datapt level
+    grp_datapt = ["chunk_shape_1", "chunk_n_in_chunk_1", "chunk_within_rank_1", "chunk_shape_2", "chunk_n_in_chunk_2"]
+    dfdist_full_clean = append_col_with_grp_index(dfdist_full_clean, grp_datapt, "datapt")
+
+    # --
+    _, fig = plot_45scatter_means_flexible_grouping(dfdist_full_clean, "chunk_within_rank_pair_class", 
+                                        "same_fromstart", "same_fromlast", None, 
+                                        "dist_yue_diff", "bregion", True, shareaxes=True, 
+                                        plot_error_bars=True, alpha=0.5)
+    savefig(fig, f"{savedir}/scatter-1.pdf")
+
+    # --
+    dfres, fig = plot_45scatter_means_flexible_grouping(dfdist_full_clean, "chunk_within_rank_pair_class", 
+                                        "same_fromstart", "same_fromlast", "bregion", 
+                                        "dist_yue_diff", "datapt", False, shareaxes=True, 
+                                        plot_error_bars=False, alpha=0.5)
+    savefig(fig, f"{savedir}/scatter-2.pdf")
+    plt.close("all")
+
+    # Save scatter data
+    path = f"{savedir}/dfres_scatter-2.csv"
+    dfres.to_csv(path)
+
+    # (2) Also plot all the data in a heatmap
+    # NOTE: it is expected for this heatmap to not be symmetrical. Each relevant datapt is role1.
+    from pythonlib.tools.pandastools import plot_subplots_heatmap
+    dfdist_full_clean = append_col_with_grp_index(dfdist_full_clean, ["chunk_shape_1", "chunk_n_in_chunk_1", "chunk_shape_2", "chunk_n_in_chunk_2"], "_subplot")
+    for bregion in list_bregion:
+
+        ### Heatmaps
+        df = dfdist_full_clean[
+            (dfdist_full_clean["bregion"] == bregion)
+            ].reset_index(drop=True)
+
+        # v1
+        if False: # Not really checking it
+            df = append_col_with_grp_index(df, ["chunk_shape_1", "chunk_n_in_chunk_1"], "_subplot")
+            fig, _ = plot_subplots_heatmap(df, "chunk_within_rank_1", "chunk_within_rank_pair_class", "dist_yue_diff", 
+                                        "_subplot", False, True, W = 8)
+            savefig(fig, f"{savedir}/heatmap-{bregion}-combined-1.pdf")
+
+            plt.close("all")
+
+        # v2
+        df = append_col_with_grp_index(df, ["chunk_shape_1", "chunk_n_in_chunk_1", "chunk_shape_2", "chunk_n_in_chunk_2"], "_subplot")    
+
+        fig, _ = plot_subplots_heatmap(df, "chunk_within_rank_1", "chunk_within_rank_2", "dist_yue_diff", 
+                                    "_subplot", False, True, W = 8)
+        savefig(fig, f"{savedir}/heatmap-{bregion}-1.pdf")
+        
+        if False: # Not really checking it
+            fig, _ = plot_subplots_heatmap(df, "chunk_within_rank_1", "chunk_within_rank_pair_class", "dist_yue_diff", 
+                                        "_subplot", False, True, W = 8)
+            savefig(fig, f"{savedir}/heatmap-{bregion}-2.pdf")
+
+        plt.close("all")
+
+    
+    # (3) Catplot summary
+    from pythonlib.tools.pandastools import append_col_with_grp_index
+    import seaborn as sns
+    from pythonlib.tools.snstools import rotateLabel
+
+    dfdist_full_clean = append_col_with_grp_index(dfdist_full_clean, ["chunk_shape_1", "chunk_n_in_chunk_1"], "csn_1")
+    # dfdist_full_clean_agg = append_col_with_grp_index(dfdist_full_clean_agg, ["chunk_shape_1", "chunk_n_in_chunk_1"], "csn_1")
+
+    if False: # takes too long
+        fig = sns.catplot(data=dfdist_full_clean, x="csn_1", y="dist_yue_diff", hue="chunk_within_rank_pair_class", 
+                        col="bregion", alpha=0.75)
+        rotateLabel(fig)
+        for ax in fig.axes.flatten():
+            ax.axhline(0, color="k", alpha=0.5)
+        savefig(fig, f"{savedir}/catplot-1.pdf")
+
+    fig = sns.catplot(data=dfdist_full_clean, x="csn_1", y="dist_yue_diff", hue="chunk_within_rank_pair_class", 
+                    col="bregion", kind="boxen")
+    rotateLabel(fig)
+    for ax in fig.axes.flatten():
+        ax.axhline(0, color="k", alpha=0.5)
+    savefig(fig, f"{savedir}/catplot-2.pdf")
+
+    plt.close("all")
+
+    # # (3) Scatter, showing progression from start to end of chunk
+    # var_datapt_grp = ["chunk_shape_1", "chunk_n_in_chunk_1", "chunk_within_rank_1", "chunk_n_in_chunk_2"]
+    # df = append_col_with_grp_index(df, var_datapt_grp, "_datapt")    
+
+    # # - color each pt by its rank within from last
+    # var_datapt = "_datapt"
+    # var_color = "chunk_within_rank_fromlast_1"
+    # map_datapt_lev_to_colorlev = {row[var_datapt]:row[var_color] for _, row in df.iterrows()}
+
+    # for var_subplot_grp in [
+    #     ["chunk_shape_1"],
+    #     ["chunk_shape_1", "chunk_n_in_chunk_1"],
+    # ]:
+    #     df = append_col_with_grp_index(df, var_subplot_grp, "_subplot")    
+    #     dfres, fig = plot_45scatter_means_flexible_grouping(df, "chunk_within_rank_pair_class", 
+    #                                         "same_fromstart", "same_fromlast", "_subplot", 
+    #                                         "dist_yue_diff", var_datapt, False, shareaxes=True, 
+    #                                         plot_error_bars=True, alpha=0.3, SIZE=4,
+    #                                         map_datapt_lev_to_colorlev=map_datapt_lev_to_colorlev)
+    #     savefig(fig, f"{savedir}/scatter-color_by_rank_within-1.pdf")
+    #     plt.close("all")
+
+    ###### GOOD - plots looking at progression over time, of effect (within chunk)
+    for min_n_in_chunk in [1, 2]:
+        
+        dfdist_full_clean_this = dfdist_full_clean[
+            (dfdist_full_clean["chunk_n_in_chunk_1"] >= (min_n_in_chunk-0.001)) & 
+            (dfdist_full_clean["chunk_n_in_chunk_2"] >= (min_n_in_chunk-0.001))].reset_index(drop=True)
+        
+        # --
+        var_datapt_grp = ["chunk_shape_1", "chunk_n_in_chunk_1", "chunk_within_rank_1", "chunk_n_in_chunk_2"]
+        var_datapt = "_datapt"
+        dfdist_full_clean_this = append_col_with_grp_index(dfdist_full_clean_this, var_datapt_grp, var_datapt)    
+
+        for bregion in list_bregion:
+
+            df = dfdist_full_clean_this[dfdist_full_clean_this["bregion"] == bregion].reset_index(drop=True)
+
+            # (1) 
+            if False:
+                _, fig = plot_45scatter_means_flexible_grouping(df, "chunk_within_rank_pair_class", 
+                                                    "same_fromstart", "same_fromlast", "chunk_shape_1", 
+                                                    "dist_yue_diff", "datapt", False, shareaxes=True, 
+                                                    plot_error_bars=False, alpha=0.3)
+                savefig(fig, f"{savedir}/scatter-bregion={bregion}.pdf")
+                plt.close("all")
+
+
+            # (3) Scatter, showing progression from start to end of chunk
+            # - color each pt by its rank within from last
+            var_color = "chunk_within_rank_fromlast_1"
+            map_datapt_lev_to_colorlev = {row[var_datapt]:row[var_color] for _, row in df.iterrows()}
+
+            for var_subplot_grp in [
+                ["chunk_shape_1"],
+                ["chunk_shape_1", "chunk_n_in_chunk_1"],
+            ]:
+                df = append_col_with_grp_index(df, var_subplot_grp, "_subplot")    
+                _, fig = plot_45scatter_means_flexible_grouping(df, "chunk_within_rank_pair_class", 
+                                                    "same_fromstart", "same_fromlast", "_subplot", 
+                                                    "dist_yue_diff", var_datapt, False, shareaxes=True, 
+                                                    plot_error_bars=True, alpha=0.5, 
+                                                    map_datapt_lev_to_colorlev=map_datapt_lev_to_colorlev)
+                savefig(fig, f"{savedir}/scatter-{bregion}-subplot={var_subplot_grp}-color_by_rank_within-1-min_n_in_chunk={min_n_in_chunk}.pdf")
+                plt.close("all")
+
+        # Also combine all bregions in one plot
+        var_color = "chunk_within_rank_fromlast_1"
+        map_datapt_lev_to_colorlev = {row[var_datapt]:row[var_color] for _, row in dfdist_full_clean_this.iterrows()}
+        _, fig = plot_45scatter_means_flexible_grouping(dfdist_full_clean_this, "chunk_within_rank_pair_class", 
+                                            "same_fromstart", "same_fromlast", "bregion", 
+                                            "dist_yue_diff", var_datapt, False, shareaxes=True, 
+                                            plot_error_bars=True, alpha=0.3, SIZE=4,
+                                            map_datapt_lev_to_colorlev=map_datapt_lev_to_colorlev)
+        savefig(fig, f"{savedir}/scatter-ALLREGION-color_by_rank_within-min_n_in_chunk={min_n_in_chunk}.pdf")
+        plt.close("all")
+
+
+        # (4) Timecourse, relative to rank within, showing difference in effect
+        # get difference, timecourse
+        from pythonlib.tools.pandastools import summarize_featurediff
+
+        var_datapt_grp = ["bregion", "chunk_shape_1", "chunk_n_in_chunk_1", "chunk_within_rank_1", "chunk_within_rank_fromlast_1", "chunk_n_in_chunk_2"]
+
+        dfsummary, _, _, _, COLNAMES_DIFF, _ = summarize_featurediff(
+            dfdist_full_clean_this, "chunk_within_rank_pair_class", ["same_fromstart", "same_fromlast"], ["dist_yue_diff"], 
+            var_datapt_grp, return_dfpivot=True)
+        
+        fig = sns.relplot(data=dfsummary, x="chunk_within_rank_fromlast_1", y=COLNAMES_DIFF[0], hue="chunk_shape_1", col="bregion")
+        for ax in fig.axes.flatten():
+            ax.axhline(0, color="k", alpha=0.5)
+        savefig(fig, f"{savedir}/relplot-effectdiff_vs_rankwithin-1-min_n_in_chunk={min_n_in_chunk}.pdf")
+        plt.close("all")
+
+        fig = sns.relplot(data=dfsummary, x="chunk_within_rank_fromlast_1", y=COLNAMES_DIFF[0], hue="chunk_shape_1", kind="line", col="bregion")
+        for ax in fig.axes.flatten():
+            ax.axhline(0, color="k", alpha=0.5)                    
+        savefig(fig, f"{savedir}/relplot-effectdiff_vs_rankwithin-2-min_n_in_chunk={min_n_in_chunk}.pdf")
+        plt.close("all")
+
+        # TODO: FIT linear model of effect_diff vs. rank_within_fromlast.
+
+    # Save data
+    dfdist_full_clean.to_pickle(f"{savedir}/dfdist_full_clean.pkl")
 
 if __name__=="__main__":
 

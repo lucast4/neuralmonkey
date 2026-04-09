@@ -28,6 +28,556 @@ from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_g
 from pythonlib.tools.plottools import savefig
 
 
+def final_dfeffect_plots_WRAPPER(RUN, save_suffix, yvar, analysis, return_debug=False):
+    """
+    Wrapper for all final plots of euclidean distance analysis of syntax.
+
+    # ### MAIN ONES
+    # RUN = 29
+    # save_suffix = "AnBmCk_general"
+    # yvar = "dist_yue_diff"
+    # analysis = "pig_vs_sp"
+
+    # # RUN = 27
+    # # save_suffix = "AnBmCk_general"
+    # # yvar = "dist_yue_diff"
+    # # analysis = "two_shapes"
+
+    # # RUN = 27 
+    # # save_suffix = "AnBmCk_general"
+    # # yvar = "dist_yue_diff"
+    # # analysis = "rank_within"
+
+    # ### OTHER ONES (not part of paper)
+    # # RUN = 27 
+    # # save_suffix = "AnBmCk_general"
+    # # yvar = "dist_yue_diff"
+    # # analysis = "rank_up_vs_down"
+
+    # # RUN = 27 
+    # # save_suffix = "AnBmCk_general"
+    # # yvar = "dist_yue_diff"
+    # # analysis = "n_in_chunk"
+
+    """
+
+    from neuralmonkey.scripts.analy_syntax_good_eucl_state_MULT import targeted_pca_MULT_3_combined_plots
+    from pythonlib.tools.pandastools import plot_45scatter_means_flexible_grouping, aggregGeneral
+    from neuralmonkey.scripts.analy_syntax_good_eucl_state_MULT import final_dfeffect_postprocess
+    from pythonlib.tools.pandastools import append_col_with_grp_index, aggregGeneral
+    from pythonlib.tools.pandastools import pivot_table
+    import os
+    from pythonlib.tools.pandastools import savefig
+
+    if analysis=="two_shapes":
+        # True/False gives very similar results, so just stick with False
+        # list_remove_probe = [False, True]
+        list_remove_probe = [False]
+    else:
+        # Then doesnt matter whats in list_remove_probe, it doesnt do anything.
+        # list_remove_probe = [True]
+        list_remove_probe = ["ignore"]
+
+    if False:
+        # During testing
+        list_n_min_trials = [2,3,4]
+    else:
+        # This is the final param
+        list_n_min_trials = [2]
+
+    # for animal in ["Diego", "Pancho"]:
+    for animal in ["Pancho", "Diego"]:
+    # for animal in ["Diego"]:
+        DFEFFECT_ALL, _ = targeted_pca_MULT_3_combined_plots(animal, RUN, save_suffix, return_dfeffect=True)
+        SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/syntax_good/targeted_dim_redu_v2/run{RUN}/MULT/final-{animal}-ss={save_suffix}-analy={analysis}"
+        os.makedirs(SAVEDIR, exist_ok=True)
+
+        for n_min_trials_per_label in list_n_min_trials:
+
+            if animal == "Pancho":
+                if analysis == "pig_vs_sp":
+                    list_h_dates = [None, 0, 1, 2]
+                else:
+                    list_h_dates = [None]
+            else:
+                list_h_dates = [None]
+
+            for HACK_dates in list_h_dates:
+                for remove_probe in list_remove_probe:
+                    savedir = f"{SAVEDIR}/nmintrials={n_min_trials_per_label}-H={HACK_dates}-remove_prb={remove_probe}"
+                    os.makedirs(savedir, exist_ok=True)
+
+                    ### POSTPROCESS
+                    DFEFFECT, eff1, eff2 = final_dfeffect_postprocess(DFEFFECT_ALL, animal, analysis, savedir, 
+                                                                    n_min_trials_per_label=n_min_trials_per_label, 
+                                                                    HACK_dates=HACK_dates,
+                                                                    two_shapes_remove_probe_trials=remove_probe)
+                    from pythonlib.tools.pandastools import integerify_values
+                    integerify_values(DFEFFECT, "chunk_rank_1")
+                    integerify_values(DFEFFECT, "chunk_rank_2")
+                    DFEFFECT = append_col_with_grp_index(DFEFFECT, ["chunk_rank_1", "chunk_rank_2"], "chunk_rank_12")                
+                    DFEFFECT = append_col_with_grp_index(DFEFFECT, ["date", "chunk_rank_1", "chunk_rank_2", "shape_1", "shape_2"], "da_cr_sh_12")
+
+                    # if return_debug:
+                    #     return DFEFFECT, eff1, eff2, savedir
+
+                    # Agg. Datapt = date
+                    DFEFFECT_AGG = aggregGeneral(DFEFFECT, ["effect", "animal", "date", "bregion", "question", "subspace"], ["dist_yue_diff"])
+
+                    ############################# COMPARE y/x ratios
+                    if analysis == "two_shapes":
+                        from neuralmonkey.scripts.analy_syntax_good_eucl_state_MULT import final_dfeffect_compute_plot_ratio_stats
+                        dfres, savedir_this = final_dfeffect_compute_plot_ratio_stats(DFEFFECT, eff1, eff2, savedir, n_shuff=1000)
+                        dfres.to_pickle(f"{savedir_this}/dfres.pkl")
+                        del dfres
+
+                    ########################################
+                    ### Classic plots
+                    if False:
+                        fig = sns.catplot(data=DFEFFECT, x="bregion", y="dist_yue_diff", hue="effect", col="date", jitter=True, alpha=0.5)
+                        for ax in fig.axes.flatten():
+                            ax.axhline(0, color="k", alpha=0.5)
+
+                    yvar = "dist_yue_diff"
+
+                    # == Bar plots
+                    # fig = sns.catplot(data=DFEFFECT, x="bregion", y=yvar, hue="effect", col="date", col_wrap=6, kind="bar", errorbar="se")
+                    # savefig(fig, f"{savedir}/catplot-data=label-1.pdf")
+
+                    # First, get both directions, in case you want to over labels_1
+                    dftmp = DFEFFECT.copy()
+                    dftmp["labels_1"] = DFEFFECT["labels_2"]
+                    dftmp["labels_2"] = DFEFFECT["labels_1"]
+                    dfeffect_full = pd.concat([dftmp, DFEFFECT], axis=0)
+                    for var_datapt in ["labels_1", "da_cr_sh_12"]:
+                        _vars = ["effect", "animal", "date", "bregion", "question", "subspace"] + [var_datapt]
+                        dfeffect_agg = aggregGeneral(dfeffect_full, _vars, [yvar])
+
+                        fig = sns.catplot(data=dfeffect_agg, x="bregion", y=yvar, hue="effect", col="date", col_wrap=6, kind="bar", errorbar="se")
+                        savefig(fig, f"{savedir}/catplot-data={var_datapt}-1.pdf")
+                        
+                        fig = sns.catplot(data=dfeffect_agg, x="effect", y=yvar, col="bregion", jitter=True, alpha=0.25)
+                        for ax in fig.axes.flatten():
+                            ax.axhline(0, color="k")
+                        savefig(fig, f"{savedir}/catplot-data={var_datapt}-2.pdf")
+
+                        fig = sns.catplot(data=dfeffect_agg, x="effect", y=yvar, col="bregion", kind="bar", errorbar="se")
+                        savefig(fig, f"{savedir}/catplot-data={var_datapt}-3.pdf")
+
+                    # == Scatterplots
+                    _, fig = plot_45scatter_means_flexible_grouping(DFEFFECT, "effect", eff1, eff2, "date", yvar, "bregion", shareaxes=True);
+                    savefig(fig, f"{savedir}/scatter-data=label-1.pdf")
+
+                    _, fig = plot_45scatter_means_flexible_grouping(DFEFFECT, "effect", eff1, eff2, None, yvar, "bregion", shareaxes=True);
+                    savefig(fig, f"{savedir}/scatter-data=label-2.pdf")
+
+                    _, fig = plot_45scatter_means_flexible_grouping(DFEFFECT_AGG, "effect", eff1, eff2, None, yvar, "bregion", shareaxes=True);
+                    savefig(fig, f"{savedir}/scatter-data=date-2.pdf")
+
+                    plt.close("all")
+                    
+                    ##########
+                    if analysis == "rank_up_vs_down": # Scatter, each datapt a (date, cr, shape) and color by things (e.g, cr)
+                        from pythonlib.dataset.dataset_analy.grammar import chunk_rank_global_extract
+                        from pythonlib.tools.pandastools import plot_45scatter_means_flexible_grouping_color_mapper
+                        _HACK = True # Untru this after fix the epoch naems for cross-AB dates.
+
+                        # Will assume these, so verify
+                        assert all(DFEFFECT["chunk_rank_same"] == True)
+                        assert all(DFEFFECT["shape_same"] == True)
+                        assert all(DFEFFECT["epoch_1"] == "none")
+                        assert all(DFEFFECT["epoch_2"] == "none")
+                        DFEFFECT["shape"] = DFEFFECT["shape_1"]
+                        DFEFFECT["chunk_rank"] = DFEFFECT["chunk_rank_1"]
+                        DFEFFECT["epoch"] = DFEFFECT["epoch_1"]
+
+                        # This date epochs not set well, will fail
+                        if _HACK:
+                            dfeffect = DFEFFECT[~(DFEFFECT["date"].isin([240822, 240827]))].reset_index(drop=True)
+                        else:
+                            dfeffect = DFEFFECT.reset_index(drop=True)
+
+                        # Get chunk rank global
+                        try:
+                            _ = chunk_rank_global_extract(dfeffect, shape_ratio_max= 0.99)
+                            list_var_to_color = [None, "chunk_rank_12", "chunk_rank_global"]
+                        except Exception as err:
+                            list_var_to_color = [None, "chunk_rank_12"]
+
+                        #################################################################
+                        # (1) Scatterplot
+                        var_datapt = "da_cr_sh_12"
+                        for var_to_color in list_var_to_color:
+                            
+                            if var_to_color is not None:
+                                map_datapt_lev_to_colorlev, colorlevs_that_exist = plot_45scatter_means_flexible_grouping_color_mapper(
+                                    dfeffect, var_datapt, var_to_color)
+                            else:
+                                map_datapt_lev_to_colorlev, colorlevs_that_exist = None, None
+                            _, fig = plot_45scatter_means_flexible_grouping(dfeffect, "effect", eff1, eff2, "bregion", yvar, var_datapt, 
+                                                                            plot_text=False, shareaxes=True, alpha=0.3,
+                                                                            map_datapt_lev_to_colorlev=map_datapt_lev_to_colorlev,
+                                                                            colorlevs_that_exist=colorlevs_that_exist);
+                            savefig(fig, f"{savedir}/scatter-data={var_datapt}-colorby={var_to_color}.pdf")            
+
+                        
+                        #################################################################
+                        # (2) Scatterplot, coloring by gap durations.
+                        from neuralmonkey.scripts.analy_syntax_good_eucl_state_MULT import final_dfeffect_load_dfgaps
+
+                        ### (1) Load gaps data
+                        DFGAPS, map_gapsemantic_to_dfgaps = final_dfeffect_load_dfgaps(dfeffect, animal, savedir)
+
+                        ### (2) Plot scatter, overlaying gaps durations
+                        from pythonlib.tools.pandastools import pivot_table
+                        from pythonlib.tools.pandastools import slice_by_row_label
+                        from pythonlib.tools.plottools import set_axis_lims_square_bounding_data_45line
+
+                        var_datapt = "da_cr_sh_12"
+                        # _xvar = "dist_yue_diff-14_rankwithin_dn"
+                        # _yvar = "dist_yue_diff-14_rankwithin_up"
+                        for which_gap_semantic_higher, dfgaps_agg in map_gapsemantic_to_dfgaps.items():
+
+                            # Assign gap duration values to dfeffect
+                            if which_gap_semantic_higher == "within_chk":
+                                dfeffect_this = dfeffect.copy()
+                            else:
+                                # Then have to prune neural data to just those neural chunks that trans from or to (depending on analysis)
+                                dfeffect_this = dfeffect[dfeffect["da_cr_sh_12"].isin(dfgaps_agg["da_cr_sh_12"].unique().tolist())].reset_index(drop=True)
+                            row_values = dfeffect_this["da_cr_sh_12"].tolist()
+                            dftmp = slice_by_row_label(dfgaps_agg, "da_cr_sh_12", row_values, assert_exactly_one_each=True)
+                            dfeffect_this["gap_dur"] = dftmp["gap_dur"]
+
+                            # Plot!
+                            from pythonlib.tools.pandastools import plot_45scatter_color_by_var
+                            var_subplot = "bregion"
+                            var_manip = "effect"
+                            x_lev_manip = "14_rankwithin_dn"
+                            y_lev_manip = "14_rankwithin_up"
+                            var_color = "gap_dur"
+                            fig1, fig2, fig3, dfeffect_pivot = plot_45scatter_color_by_var(dfeffect_this, var_manip, x_lev_manip, y_lev_manip,
+                                                                    var_subplot, yvar, var_datapt, var_color, return_dfpivot=True)
+                            savefig(fig1, f"{savedir}/scatter-data={var_datapt}-colorby=gap_dur-{which_gap_semantic_higher}.pdf")            
+                            savefig(fig2, f"{savedir}/scatter-data={var_datapt}-x={x_lev_manip}_MIN_{y_lev_manip}-{which_gap_semantic_higher}-1.pdf")            
+                            savefig(fig3, f"{savedir}/scatter-data={var_datapt}-x={x_lev_manip}_MIN_{y_lev_manip}-{which_gap_semantic_higher}-2.pdf")            
+                            plt.close("all")
+
+                            ### Also do regression to get p-values
+                            from pythonlib.tools.statstools import statsmodel_linregress_ols_each_conj_grp
+                            _dfres = statsmodel_linregress_ols_each_conj_grp(dfeffect_pivot, "var_color", "x_min_y", var_subplot)                            
+                            _dfres.to_csv(f"{savedir}/scatter-data={var_datapt}-x={x_lev_manip}_MIN_{y_lev_manip}-{which_gap_semantic_higher}-stats.csv")
+
+                            if return_debug:
+                                return dfeffect_this, var_manip, x_lev_manip, y_lev_manip, var_subplot, yvar, var_datapt, var_color
+
+                            # Also plot versus controls:
+                            # TODO: Also plot vs. n in chunk. Prob best to use dfgaps to infer this, similar to how I did for gap_dur
+
+                    ########################################
+                    ### Bootstrapped plot
+                    from neuralmonkey.scripts.analy_syntax_good_eucl_state_MULT import final_dfeffect_mean_simple_PIGvsSP_bootstrap
+                    vars_conj = ["bregion", "date", "effect"]
+                    nboot = 100
+                    DFSCORE_BOOT, effect_div_name, eff1_name, eff2_name = final_dfeffect_mean_simple_PIGvsSP_bootstrap(DFEFFECT, eff1, eff2, vars_conj, nboot)
+                    DFSCORE_BOOT_WIDE = pivot_table(DFSCORE_BOOT, ["bregion", "i_boot"], ["effect"], [yvar], flatten_col_names=True)
+                    effect_div_name = f"{yvar}-{effect_div_name}"
+                    assert effect_div_name in DFSCORE_BOOT_WIDE
+
+                    # Plot scatter using actual data, not bootstrap
+                    if False:
+                        DFSCORE_WIDE = pivot_table(DFSCORE, ["bregion", "i_boot"], ["effect"], ["dist_yue_diff"], flatten_col_names=True)
+                        DFSCORE_WIDE_ORIG = pivot_table(DFEFFECT, ["bregion", "shapeloc12"], ["effect"], ["dist_yue_diff"], flatten_col_names=True)
+                        fig, ax = plot_class_kde(
+                            DFSCORE_WIDE,
+                            x="dist_yue_diff-shapePIG",
+                            y="dist_yue_diff-dist_yue_diff-shapeSPdivshapePIG",
+                            label="bregion",
+                            levels=12,
+                            # levels=(0.05, 0.5, 0.95),
+                            normalize="per_class",
+                            scatter=True
+                        )
+                        fig, ax = plot_class_kde(
+                            DFSCORE_WIDE,
+                            x="dist_yue_diff-shapePIG",
+                            y="dist_yue_diff-shapeSP",
+                            label="bregion",
+                            levels=12,
+                            # levels=(0.05, 0.5, 0.95),
+                            normalize="per_class",
+                            scatter=True
+                        )
+
+                    map_bregion_to_color = {
+                        "M1":"#587467eb",
+                        "PMd":"#077026ec",
+                        "PMv":"#397721ed",
+                        "SMA":"#98be3eec",
+                        "preSMA":"#f80f0f",
+                        "dlPFC":"#8675AF",
+                        "vlPFC":"#414994",
+                        "FP":"#287AC7",
+                    }
+                    try:
+                        from pythonlib.tools.pandastools import plot_class_kde
+                        from pythonlib.tools.plottools import set_axis_lims_square_bounding_data_45line
+
+                        DFSCORE_BOOT_WIDE_AGG = aggregGeneral(DFSCORE_BOOT_WIDE, ["bregion"], [eff1_name, eff2_name, effect_div_name])
+
+                        # --- 
+                        fig, ax = plot_class_kde(DFSCORE_BOOT_WIDE, x=eff1_name, y=eff2_name, label="bregion", levels=10, scatter=False,
+                                    cmap_per_class=map_bregion_to_color, ellipses=True)
+                        savefig(fig, f"{savedir}/kdescatter-1.pdf")
+                        
+                        # - also plot with 45 deg axis
+                        xs = DFSCORE_BOOT_WIDE_AGG[eff1_name].values
+                        ys = DFSCORE_BOOT_WIDE_AGG[eff2_name].values
+                        set_axis_lims_square_bounding_data_45line(ax, xs, ys, dotted_lines="unity")
+                        savefig(fig, f"{savedir}/kdescatter-1-box.pdf")
+
+                        # --- 
+                        fig, ax = plot_class_kde(DFSCORE_BOOT_WIDE, x=eff1_name, y=effect_div_name, label="bregion", levels=10, scatter=False,
+                                    cmap_per_class=map_bregion_to_color, ellipses=True)
+                        savefig(fig, f"{savedir}/kdescatter-2.pdf")
+
+                        # --- 
+                        df = DFSCORE_BOOT_WIDE[~(DFSCORE_BOOT_WIDE["bregion"]=="FP")]
+                        fig, ax = plot_class_kde(df, x=eff1_name, y=effect_div_name, label="bregion", levels=10, scatter=False,
+                                    cmap_per_class=map_bregion_to_color, ellipses=True)
+                        savefig(fig, f"{savedir}/kdescatter-2-noFP.pdf")
+
+                    except Exception as err:
+                        pass
+
+                    if False:
+                        # sns.jointplot(DFSCORE_WIDE_ORIG, x="dist_yue_diff-shapePIG", y="dist_yue_diff-dist_yue_diff-shapeSPdivshapePIG", hue="bregion", kind="kde")
+                        sns.jointplot(DFSCORE_WIDE_ORIG, x="dist_yue_diff-shapePIG", y="dist_yue_diff-shapeSP", hue="bregion", kind="kde", fill=True)
+                        sns.jointplot(DFSCORE_WIDE, x="dist_yue_diff-shapePIG", y="dist_yue_diff-dist_yue_diff-shapeSPdivshapePIG", hue="bregion", kind="kde")
+                        sns.jointplot(DFSCORE_WIDE, x="dist_yue_diff-shapePIG", y="dist_yue_diff-shapeSP", hue="bregion", kind="kde", fill=True)
+
+                    ########################################
+                    #### Stats -- compare preSMA to the others 
+                    from neuralmonkey.scripts.analy_shape_invariance_all_plots_SP import _euclidianshuff_stats_linear_2br_scatter_wrapper, euclidianshuff_stats_linear_plot_wrapper
+                    import os
+                    var_same_same = "effect"
+                    if analysis == "pig_vs_sp":
+                        var_datapt = "shapeloc_12"
+                    elif analysis == "two_shapes":
+                        var_datapt = "cr_and_w_12"
+                    elif analysis == "rank_within":
+                        var_datapt = "shape_12"
+                    elif analysis == "rank_up_vs_down":
+                        var_datapt = "shape_12"
+                    elif analysis == "n_in_chunk":
+                        var_datapt = "shape_12"
+                    else:
+                        assert False
+                    savedir_this = f"{savedir}/stats"
+                    os.makedirs(savedir_this, exist_ok=True)
+                    plot_heatmap_counts=False
+                    plot_catplots=True
+                    plot_results_scatter=True
+                    var_same_same_levels = [eff1, eff2]
+                    vars_needed = ["subspace|twind", "event", "metaparams"]
+                    for var in vars_needed:
+                        if var not in DFEFFECT:
+                            DFEFFECT[var] = "none"
+                    DFSTATS_2BR = _euclidianshuff_stats_linear_2br_scatter_wrapper(DFEFFECT, var_same_same, var_datapt, savedir_this, 
+                                                                        plot_heatmap_counts, plot_catplots,
+                                                                        plot_results_scatter, var_same_same_levels)
+                    
+                    ########################################
+                    ### Plots comparing bregions directly (now datapt is usllay date or other thing)
+                    # (1) Plot each expt, showing effect
+                    # Single-effect plots.
+                    DFEFFECT["date_str"] = DFEFFECT["date"].astype("str")
+                    DFEFFECT_AGG["date_str"] = DFEFFECT_AGG["date"].astype("str")
+
+                    # Example color mapping (replace with your dict)
+                    g = sns.catplot(
+                        data=DFEFFECT,
+                        y="date_str",
+                        x="dist_yue_diff",
+                        hue="bregion",
+                        col="effect",
+                        kind="point",
+                        errorbar="se",          # show SEM
+                        join=False,             # no connecting lines
+                        dodge=True,             # separate groups
+                        palette=map_bregion_to_color,  # use your dict
+                        markers="o",            # circle markers
+                        linestyles="none",       # extra safety
+                    )
+                    for ax in g.axes.flatten():
+                        ax.axvline(0, color="k", alpha=0.5)
+                        
+                    # # Make markers hollow (no fill, only edgecolor)
+                    # for ax in g.axes.flat:
+                    #     for coll in ax.collections:
+                    #         if hasattr(coll, "get_facecolors"):
+                    #             facecolors = coll.get_facecolors()
+                    #             if len(facecolors) > 0:
+                    #                 coll.set_facecolors("none")  # hollow
+                    #                 # keep edgecolors (already set by palette)
+
+                    # # Fix legend markers to also be hollow
+                    # for lh in g._legend.legendHandles:
+                    #     lh.set_facecolor("none")
+                    #     lh.set_edgecolor(map_bregion_to_color.get(lh.get_label(), "black"))
+                    savefig(g, f"{savedir}/compare_regions-sessions-catplot-1.pdf")
+
+                    # (2) Scatterplot -- Given preSMA, compare it to every other region.
+                    # TODO, write a versoin above that plots all bregions.
+                    from pythonlib.tools.pandastools import plot_45scatter_means_flexible_grouping
+                    plot_45scatter_means_flexible_grouping(DFEFFECT, "bregion", "SMA", "preSMA", "effect", yvar, "date", plot_text=True, shareaxes=True);
+
+                    if False:
+                        # These methods dont work. they get diff between variables, not diff between regions.
+                        from neuralmonkey.scripts.analy_syntax_good_eucl_state_MULT import final_dfeffect_mean_simple_PIGvsSP
+                        dfmerge_long, dfmerge_wide, effect_div_name, eff1_name, eff2_name = final_dfeffect_mean_simple_PIGvsSP(DFEFFECT_AGG, eff1, eff2, doplot=True);
+                        from neuralmonkey.analyses.euclidian_distance import dfdist_compute_effects_diff_wideform
+                        dfsummary, dfpivot, effect_div_name, eff1_name, eff2_name = dfdist_compute_effects_diff_wideform(DFEFFECT_AGG, "effect", eff1, eff2, ["bregion", "date"])
+                        dfsummary, dfpivot, effect_div_name, eff1_name, eff2_name = dfdist_compute_effects_diff_wideform(
+                            DFEFFECT_AGG, "effect", eff1, eff2, ["bregion", "date"])    
+
+                    from neuralmonkey.analyses.euclidian_distance import dfdist_compute_regions_diff
+                    # vars_datapt = ["effect", "animal", "date", "bregion", "question", "subspace", "chunk_rank_12", "shape_12"]
+                    # vars_datapt = ["effect", "animal", "date", "bregion", "question", "subspace"]
+                    vars_datapt = ["effect", "animal", "date", "question", "subspace"]
+                    var_value = yvar
+                    bregion_1 = "preSMA"
+                    do_plot = False
+                    dfdifference_long, _ = dfdist_compute_regions_diff(DFEFFECT, vars_datapt, 
+                                                                                    var_value, bregion_1, do_plot)
+
+                    fig = sns.catplot(data=dfdifference_long, y="bregion_1", x=var_value, col="effect", jitter=True, alpha=0.5)
+                    for ax in fig.axes.flatten():
+                        ax.axvline(0, color="k", alpha=0.5)
+                    savefig(fig, f"{savedir}/compare_regions-vs={bregion_1}-catplot_1.pdf")
+
+                    fig = sns.catplot(data=dfdifference_long, y="bregion_1", x=var_value, col="effect", kind="boxen")
+                    for ax in fig.axes.flatten():
+                        ax.axvline(0, color="k", alpha=0.5)
+                    savefig(fig, f"{savedir}/compare_regions-vs={bregion_1}-catplot_2.pdf")
+
+                    fig = sns.catplot(data=dfdifference_long, y="bregion_1", x=var_value, col="effect", kind="bar", errorbar="se")
+                    for ax in fig.axes.flatten():
+                        ax.axvline(0, color="k", alpha=0.5)
+                    savefig(fig, f"{savedir}/compare_regions-vs={bregion_1}-catplot_3.pdf")
+
+                    plt.close("all")
+
+
+def final_dfeffect_compute_plot_ratio_stats(DFEFFECT, eff1, eff2, savedir, n_shuff=10000):
+    """
+    Finally summary stats for two shapes, compare pairwise bregions, each bregion one value, which is
+    its ratio (y/x axis)
+
+    PARAMS:
+    - eff1, eff2, the values in the "effect" column which each contributes one value to make the ratio
+    eff2/eff1
+    """
+
+    from pythonlib.tools.pandastools import replace_None_with_string
+    from neuralmonkey.scripts.analy_syntax_good_eucl_state_MULT import final_dfeffect_mean_simple_PIGvsSP
+
+    savedir_this = f"{savedir}/stats_compare_ratios"
+    os.makedirs(savedir_this, exist_ok=True)
+
+    ### First, prep dataste
+    DFEFFECT = replace_None_with_string(DFEFFECT)
+
+    # - What grouping for shuffling? Idea is that you flip the labels for the two brain regions
+    # within each level of grouping. Choose a grouping that gives many levels but still reasonable
+    # to consider independnet comparisons
+    # vars_datapt = ["animal", "date", "question", "subspace", "labels_1", "labels_2", "effect"] # _index
+    # vars_datapt = ["animal", "date", "question", "subspace", "effect", "labels_1"] # ok
+
+    # # This is probably most reasonable, each (chunk, shape, gridloc_1)
+    # vars_datapt = ["animal", "date", "question", "subspace", "effect", 
+    #             "epoch_1", "chunk_within_rank_1", "chunk_rank_1", "shape_1", "gridloc_1"] # _index
+    
+    # This gets stronger stats.
+    vars_datapt = ["animal", "date", "question", "subspace", "effect", 
+                "epoch_1", "chunk_within_rank_1", "chunk_rank_1", "shape_1", "gridloc_1", "CTXT_loc_prev_1"] # _index
+
+    # This is alternative, not great.
+    # vars_datapt = ["animal", "date", "question", "subspace", "effect", 
+    #             "epoch_1", "chunk_within_rank_1", "shape_1", "gridloc_1"] # _index
+    
+    DFEFFECT = append_col_with_grp_index(DFEFFECT, vars_datapt, "_grp")
+    
+    # get preSMA against every other area
+    list_bregion_1 = ["preSMA"]
+    list_bregion_2 = ["M1", "PMd", "PMv", "SMA", "vlPFC", "dlPFC"] 
+
+    # list_bregion = ["preSMA", "PMd", "PMv", "M1", "SMA"] # The areas in contention with preSMA (not blowing up ratio)
+    # list_bregion = ["preSMA", "M1"] # The areas in contention with preSMA (not blowing up ratio)
+
+    # Permutation test functions
+    def funshuff(df):
+        from pythonlib.tools.pandastools import shuffle_dataset_hierarchical_remap, append_col_with_grp_index
+        df_shuff = shuffle_dataset_hierarchical_remap(df, "bregion", "_grp", col_name_shuffed="bregion")
+        return df_shuff
+
+    res = []
+    for i, bregion1 in enumerate(list_bregion_1):
+        for j, bregion2 in enumerate(list_bregion_2):
+            # if j>i:
+            print(bregion1, bregion2)
+            # Slice to just these, for doing shuffle between them
+            dfeffect = DFEFFECT[DFEFFECT["bregion"].isin([bregion1, bregion2])].reset_index(drop=True)
+
+            # Get actual value
+            if False:
+                dfmerge_long, dfmerge_wide, effect_div_name, eff1_name, eff2_name = final_dfeffect_mean_simple_PIGvsSP(dfeffect, 
+                                                                                                            eff1, eff2, doplot=False)
+
+            # # Iterate and shuffle
+            # nshuff = 10
+            # list_df = []
+            # for i_shuff in range(nshuff):
+            #     if i_shuff%20==0:
+            #         print(i_shuff)
+            #     # Shuffle
+            #     # dfeffect_shuff = shuffle_dataset_hierarchical(dfeffect, ["bregion"], vars_datapt)
+
+            #     from pythonlib.tools.pandastools import shuffle_dataset_hierarchical_remap, append_col_with_grp_index
+            #     dfeffect_shuff = shuffle_dataset_hierarchical_remap(dfeffect, "bregion", "_grp", col_name_shuffed="bregion")
+
+            #     # Compute effect using shuff
+            #     dfmerge_long, dfmerge_wide, effect_div_name, eff1_name, eff2_name = final_dfeffect_mean_simple_PIGvsSP(dfeffect_shuff, 
+            #                                                                                                 eff1, eff2, doplot=False)
+            #     dfmerge_long["i_shuff"] = i_shuff
+            #     list_df.append(dfmerge_long)
+
+            # Permutation test functions
+            def funstat(df):
+                _, dfmerge_wide, effect_div_name, _, _ = final_dfeffect_mean_simple_PIGvsSP(df, eff1, eff2, doplot=False)
+                val_bregion2 = dfmerge_wide[dfmerge_wide["bregion"] == bregion2][effect_div_name].values[0]
+                val_bregion1 = dfmerge_wide[dfmerge_wide["bregion"] == bregion1][effect_div_name].values[0]
+                return val_bregion2 - val_bregion1
+
+            # Plot shuff and overlay actual
+            from pythonlib.tools.statstools import permutationTest
+            p, stat_actual, stats_shuff, fig = permutationTest(dfeffect, funstat, funshuff, 
+                                                                                n_shuff, force_return_stats=True)
+                                                                                
+            # Save things
+            savefig(fig, f"{savedir_this}/{bregion2}-minus-{bregion1}.pdf")
+            plt.close("all")
+            
+            res.append({
+                "p":p,
+                "stat_actual_2_min_1":stat_actual,
+                "stats_shuff":stats_shuff,
+                "bregion1":bregion1,
+                "bregion2":bregion2
+            })
+
+    dfres = pd.DataFrame(res)
+    return dfres, savedir_this
+
 def final_dfeffect_load_dfgaps(dfeffect, animal, savedir):
     """
     Load dfgaps for analysis that is...
@@ -273,6 +823,36 @@ def final_dfeffect_load_dfgaps_inner(list_date, animal, savedir):
 
     return DFGAPS, map_gapsemantic_to_dfgaps 
 
+def _final_dfeffect_postprocess_clean(dfgeneric, analysis, animal):
+    """
+    """
+
+    ### Dates 
+    if animal=="Diego":
+        dates_remove = [250319, 250321]
+        if analysis == "pig_vs_sp":
+            # Testing, the above makes more sense.
+            dates_remove = []
+    elif animal=="Pancho":
+        dates_remove = [250322]
+        if analysis=="rank_up_vs_down":
+            dates_remove.append(230811) # this is low N tasks and low variability
+        # if analysis == "pig_vs_sp":
+        #     # Testing, the above makes more sense.
+        #     dates_remove = []
+    else:
+        assert False
+    dfgeneric = dfgeneric[~(dfgeneric["date"].isin(dates_remove))].reset_index(drop=True)
+
+    ### Make sure these are ints.
+    from pythonlib.tools.pandastools import integerify_values
+    for col in ["chunk_rank", "chunk_within_rank"]:
+        integerify_values(dfgeneric, f"{col}_1")
+        integerify_values(dfgeneric, f"{col}_2")
+        dfgeneric = append_col_with_grp_index(dfgeneric, [f"{col}_1", f"{col}_2"], f"{col}_12")                
+
+    return dfgeneric
+
 def final_dfeffect_postprocess(DFEFFECT_ALL, animal, analysis, savedir, n_min_trials_per_label=2, 
                                HACK_dates=None, two_shapes_remove_probe_trials=True):
     """
@@ -374,22 +954,23 @@ def final_dfeffect_postprocess(DFEFFECT_ALL, animal, analysis, savedir, n_min_tr
         assert False
 
     ### Dates 
-    if animal=="Diego":
-        dates_remove = [250319, 250321]
-    elif animal=="Pancho":
-        dates_remove = [250322]
-        if analysis=="rank_up_vs_down":
-            dates_remove.append(230811) # this is low N tasks and low variability
-    else:
-        assert False
-    DFEFFECT = DFEFFECT[~(DFEFFECT["date"].isin(dates_remove))].reset_index(drop=True)
+    DFEFFECT = _final_dfeffect_postprocess_clean(DFEFFECT, analysis, animal)
+    # if animal=="Diego":
+    #     dates_remove = [250319, 250321]
+    # elif animal=="Pancho":
+    #     dates_remove = [250322]
+    #     if analysis=="rank_up_vs_down":
+    #         dates_remove.append(230811) # this is low N tasks and low variability
+    # else:
+    #     assert False
+    # DFEFFECT = DFEFFECT[~(DFEFFECT["date"].isin(dates_remove))].reset_index(drop=True)
 
-    ### Make sure these are ints.
-    from pythonlib.tools.pandastools import integerify_values
-    for col in ["chunk_rank", "chunk_within_rank"]:
-        integerify_values(DFEFFECT, f"{col}_1")
-        integerify_values(DFEFFECT, f"{col}_2")
-        DFEFFECT = append_col_with_grp_index(DFEFFECT, [f"{col}_1", f"{col}_2"], f"{col}_12")                
+    # ### Make sure these are ints.
+    # from pythonlib.tools.pandastools import integerify_values
+    # for col in ["chunk_rank", "chunk_within_rank"]:
+    #     integerify_values(DFEFFECT, f"{col}_1")
+    #     integerify_values(DFEFFECT, f"{col}_2")
+    #     DFEFFECT = append_col_with_grp_index(DFEFFECT, [f"{col}_1", f"{col}_2"], f"{col}_12")                
 
     ### For "two shapes" extra thigs to do.
     if analysis == "two_shapes":
@@ -407,6 +988,7 @@ def final_dfeffect_postprocess(DFEFFECT_ALL, animal, analysis, savedir, n_min_tr
             grouping_plot_n_samples_conjunction_heatmap(dfmerged, "chunk_rank", "shape", ["date"])
 
         # (2) Remove probe trials that are cross-AB.
+        assert two_shapes_remove_probe_trials in [False, True], "need to give bool"
         if two_shapes_remove_probe_trials:
             # For each date with x, decide whether to keep or throw out x
             if animal == "Diego":
@@ -1420,7 +2002,6 @@ def targeted_pca_MULT_2_plot_single(animal, date, run, SKIP_PLOTS = False, OVERW
     This plots results for a single day, as well as extracting effects for that day and saving.
     """
     from neuralmonkey.scripts.analy_syntax_good_eucl_state import targeted_pca_clean_plots_and_dfdist_params
-    import seaborn as sns
     # from neuralmonkey.scripts.analy_syntax_good_eucl_state import _targeted_pca_clean_plots_and_dfdist_MULT_plot_single
     from pythonlib.tools.snstools import rotateLabel
 
@@ -2347,7 +2928,557 @@ def targeted_pca_MULT_3_combined_plots(animal, run, savesuff, SAVEDIR_MULT=None,
             savefig(fig, f"{SAVEDIR}/effects-diff-{eff2}-vs-{eff1}-2-datapt=date.pdf")
 
             plt.close("all")
+
+def mult_rankwithin_rsa_up_down_good(plot_version, return_for_debug=False):
+    """
+    Does two possible anlayses 
+    """
+    from neuralmonkey.scripts.analy_euclidian_dist_pop_script_MULT import load_preprocess_get_dates
+    import os
+    import pandas as pd
+    from pythonlib.tools.plottools import savefig
+
+    RUN = 27 
+    save_suffix = "AnBmCk_general"
+    yvar = "dist_yue_diff"
+    # analysis = "n_in_chunk"
+    question = "11_twoshapes"
+    bregions_only = None
+    # bregions_only = ["preSMA"]
+
+    # _list_dates = [240830]
+    _list_dates = None
+
+    if plot_version=="rankwithin_up_down_good":
+        # Better, maintain careful control of location.
+        do_agg_over_location = False 
+        prune_enough_data = True
+        do_final_agg_over_datapts = False # Not needed, can be False (original). Keep False, or else stuff breaks
+    elif plot_version=="rsa_heatmaps_sloppy":
+        # First run, making the single pairwise heatmaps across all data.
+        do_agg_over_location = True
+        prune_enough_data = False
+        do_final_agg_over_datapts = False
+    else:
+        assert False
+
+    for animal in ["Diego", "Pancho"]:
+    # for animal in ["Pancho"]:
+        list_dates, _, _, _ = load_preprocess_get_dates(animal, save_suffix)
+        list_dates = list(set(list_dates))
+
+        # Overwrite
+        if _list_dates is not None:
+            list_dates = _list_dates
+
+        for allow_diff_loc_pre in [False, True]:
+        # for allow_diff_loc_pre in [False, True]:
+
+            for date in list_dates:
+                
+                ### Load data
+                path = f"/lemur2/lucas/analyses/recordings/main/syntax_good/targeted_dim_redu_v2/run{RUN}/MULT/DFDIST-{animal}-{date}.pkl"
+                if not os.path.exists(path):
+                    continue
+                DFDIST = pd.read_pickle(path)
+                DFDIST = DFDIST[DFDIST["question"] == question].reset_index(drop=True)
+
+                ### Preprocess, etc.
+                from pythonlib.tools.pandastools import append_col_with_grp_index
+                for i in [1, 2]:
+                    DFDIST = append_col_with_grp_index(DFDIST, [f"chunk_rank_{i}", f"shape_{i}", f"chunk_n_in_chunk_{i}", f"chunk_within_rank_{i}"], f"role_{i}")
+                    DFDIST = append_col_with_grp_index(DFDIST, [f"chunk_rank_{i}", f"shape_{i}"], f"chunk_shape_{i}")
+                
+                # PRune to the relevant data
+                from neuralmonkey.analyses.euclidian_distance import dfdist_expand_convert_from_triangular_to_full, dfdist_convert_merge_pair_to_get_all_levels, dfdist_variables_effect_extract_helper, dfdist_variables_generate_var_same
+                from neuralmonkey.scripts.analy_syntax_good_eucl_state import targeted_pca_clean_plots_and_dfdist_params
+                label_vars = targeted_pca_clean_plots_and_dfdist_params()["map_question_to_euclideanvars"][question]
+                contrasts_diff = ["chunk_n_in_chunk"]
+                # contrasts_either = ["chunk_within_rank", "chunk_rank", "shape", "chunk_n_in_chunk"]
+                if allow_diff_loc_pre:
+                    contrasts_either = ["chunk_within_rank", "CTXT_loc_prev"] # Lenient - allow different "loc pre".
+                    n_min_trials = 3 # more data exists, since it's lenient
+                else:
+                    contrasts_either = ["chunk_within_rank"] # Most strict
+                    n_min_trials = 2
+                var_same = dfdist_variables_generate_var_same(label_vars)
+                dfdist = dfdist_variables_effect_extract_helper(DFDIST, var_same, label_vars, contrasts_diff, contrasts_either)
+                del DFDIST
+                dfdist = dfdist[dfdist["task_kind_12"] == "prims_on_grid|prims_on_grid"].reset_index(drop=True)
+                # aggregGeneral(DFDIST, ["question", "bregion", "subspace"], ["dist_yue_diff"])
+                # Expand, so that all pairs are represnted
+                
+                dfdist_full = dfdist_expand_convert_from_triangular_to_full(dfdist, label_vars, False)
+                del dfdist
+
+                if len(dfdist_full)==0:
+                    continue
+
+                if do_agg_over_location:
+                    # Agg over location etc (datapt = relevant variables)
+                    from pythonlib.tools.pandastools import aggregGeneral
+                    dfdist_full = aggregGeneral(dfdist_full, ["question", "bregion", "subspace", 
+                                        "chunk_within_rank_1", "chunk_within_rank_2", 
+                                        "chunk_within_rank_fromlast_1", "chunk_within_rank_fromlast_2",
+                                        "chunk_rank_1", "chunk_rank_2",
+                                        "chunk_n_in_chunk_1", "chunk_n_in_chunk_2", 
+                                        "shape_1", "shape_2",
+                                        ], ["dist_yue_diff"])
+
+                # Recommpute chunk withi nrank from last if it doesnt exist
+                import numpy as np
+                for i in [1, 2]:
+                    tmp = []
+                    for _, row in dfdist_full.iterrows():
+                        if row[f"chunk_within_rank_fromlast_{i}"] == "none":
+                            # Then recompute
+                            assert row[f"chunk_within_rank_{i}"] != "none"
+                            assert row[f"chunk_within_rank_{i}"]>=0
+                            this = row[f"chunk_within_rank_{i}"] - row[f"chunk_n_in_chunk_{i}"]
+                            # print(row[f"chunk_n_in_chunk_{i}"], row[f"chunk_within_rank_{i}"], this)
+                        else:
+                            this = row[f"chunk_within_rank_fromlast_{i}"]
+                        tmp.append(this)
+                        assert -this <= row[f"chunk_n_in_chunk_{i}"]
+                        if this == -3:
+                            assert row[f"chunk_n_in_chunk_{i}"]>2
+                            # print(row[f"chunk_n_in_chunk_{i}"])
+                        # assert np.abs(tmp[-1])<=row[f"chunk_n_in_chunk_{i}"]
+                    dfdist_full[f"chunk_within_rank_fromlast_{i}"] = tmp
+                # Sanity checks:
+                # dfdist[dfdist["chunk_n_in_chunk_1"] < -dfdist["chunk_within_rank_fromlast_1"]]
+                # dfdist.loc[:, ["chunk_n_in_chunk_1", "chunk_within_rank_1", "chunk_within_rank_fromlast_1"]]
+                # dfdist_full[dfdist_full["chunk_n_in_chunk_2"] < -dfdist_full["chunk_within_rank_fromlast_2"]].loc[:, ["labels_1", "chunk_n_in_chunk_1", "chunk_within_rank_1", "chunk_within_rank_fromlast_1"]]
+
+                for i in [1, 2]:
+                    dfdist_full[f"chunk_within_rank_{i}"] = dfdist_full[f"chunk_within_rank_{i}"].astype(int)
+                    dfdist_full[f"chunk_within_rank_fromlast_{i}"] = dfdist_full[f"chunk_within_rank_fromlast_{i}"].astype(int)
+
+                # A new conjunctive "role" variable.
+                for i in [1, 2]:
+                    dfdist_full = append_col_with_grp_index(dfdist_full, [f"shape_{i}", f"chunk_n_in_chunk_{i}", f"chunk_within_rank_{i}"], f"role_{i}")
+                    # dfdist_full = append_col_with_grp_index(dfdist_full, [f"shape_{i}", f"chunk_n_in_chunk_{i}", f"chunk_within_rank_fromlast_{i}"], f"role_{i}")
+                    dfdist_full = append_col_with_grp_index(dfdist_full, [f"chunk_n_in_chunk_{i}", f"chunk_within_rank_{i}"], f"n_rank_{i}")
+                    dfdist_full = append_col_with_grp_index(dfdist_full, [f"chunk_n_in_chunk_{i}", f"chunk_within_rank_fromlast_{i}"], f"n_ranklast_{i}")
+                    dfdist_full = append_col_with_grp_index(dfdist_full, [f"shape_{i}", f"chunk_n_in_chunk_{i}"], f"shape_n_{i}")
+                dfdist_full["chunk_within_rank_1min2"] = dfdist_full["chunk_within_rank_1"] - dfdist_full["chunk_within_rank_2"]
+                dfdist_full["chunk_within_rank_fromlast_1min2"] = dfdist_full["chunk_within_rank_fromlast_1"] - dfdist_full["chunk_within_rank_fromlast_2"]
+
+                ### For each pair, determine whether it is (i) same rank_up, (ii) same rank_dn, or (iii) neither
+                assert all(dfdist_full["chunk_shape_1"] == dfdist_full["chunk_shape_2"]), "sanity, for latest approach assumes this below."
+                dfdist_full["chunk_within_rank_fromlast_same"] = dfdist_full["chunk_within_rank_fromlast_1"] == dfdist_full["chunk_within_rank_fromlast_2"]
+                dfdist_full["chunk_within_rank_same"] = dfdist_full["chunk_within_rank_1"] == dfdist_full["chunk_within_rank_2"]
+                def f(x):   
+                    if x["chunk_within_rank_same"] and x["chunk_within_rank_fromlast_same"]:
+                        return "same_both"
+                    elif x["chunk_within_rank_same"] and not x["chunk_within_rank_fromlast_same"]:
+                        return "same_fromstart"
+                    elif not x["chunk_within_rank_same"] and x["chunk_within_rank_fromlast_same"]:
+                        return "same_fromlast"
+                    else:
+                        return "neither"
+                dfdist_full["chunk_within_rank_pair_class"] = dfdist_full.apply(f, axis=1)
+
+                if prune_enough_data:
+                    # Prune to just those pairs that have enough data
+                    from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper
+                    dfdist_full_clean, dict_dfthis = extract_with_levels_of_conjunction_vars_helper(dfdist_full, "chunk_within_rank_pair_class", 
+                                                                ["bregion", "chunk_shape_1", "chunk_n_in_chunk_1", "chunk_within_rank_1", "chunk_shape_2", "chunk_n_in_chunk_2"], 
+                                                                n_min_trials, levels_var=["same_fromstart", "same_fromlast"])
+                    del dfdist_full
+                else:
+                    dfdist_full_clean = dfdist_full
+
+                if return_for_debug:
+                    return dfdist_full_clean
+                
+                ### PLOTS (v1) - pairwise, combining across locations, and directions. This is sloppy, but gets a holistic picture.
+                if plot_version=="rsa_heatmaps_sloppy": 
+                    SAVEDIR_PLOTS = f"/lemur2/lucas/analyses/recordings/main/syntax_good/targeted_dim_redu_v2/run{RUN}/MULT/compare_ranks_within/allow_diff_loc_pre={allow_diff_loc_pre}/{animal}-{date}"
+                    os.makedirs(SAVEDIR_PLOTS, exist_ok=True)
+
+                    from pythonlib.tools.pandastools import plot_subplots_heatmap
+                    list_bregion = dfdist_full["bregion"].unique().tolist()
+                    for bregion in list_bregion:
+
+                        if (bregions_only is not None) and (bregion not in bregions_only):
+                            continue
+                        
+                        ### Heatmaps
+                        df = dfdist_full[
+                            (dfdist_full["bregion"] == bregion) &  
+                            (dfdist_full["chunk_rank_1"] == dfdist_full["chunk_rank_2"]) & 
+                            (dfdist_full["shape_1"] == dfdist_full["shape_2"])
+                            ].reset_index(drop=True)
+
+                        # plot_subplots_heatmap(df, "role_1", "role_2", "dist_yue_diff", "shape_12", False, False, W = 8)
+                        # plot_subplots_heatmap(df, "role_1", "role_2", "dist_yue_diff", None, False, False, W = 8)
+                        fig, _ = plot_subplots_heatmap(df, "role_1", "role_2", "dist_yue_diff", "shape_1", False, False, W = 8)
+                        savefig(fig, f"{SAVEDIR_PLOTS}/{bregion}-heatmap-same_shape-1.pdf")
+                        plt.close("all")
+
+                        
+                        ### Catplots
+                        for only_if_diff_n in [False, True]:
+                            if only_if_diff_n:
+                                df = dfdist_full[
+                                    (dfdist_full["bregion"] == bregion) &  
+                                    (dfdist_full["chunk_rank_1"] == dfdist_full["chunk_rank_2"]) & 
+                                    (dfdist_full["shape_1"] == dfdist_full["shape_2"]) & 
+                                    (dfdist_full["chunk_n_in_chunk_1"] != dfdist_full["chunk_n_in_chunk_2"])
+                                    ].reset_index(drop=True)
+                            else:
+                                df = dfdist_full[
+                                    (dfdist_full["bregion"] == bregion) &  
+                                    (dfdist_full["chunk_rank_1"] == dfdist_full["chunk_rank_2"]) & 
+                                    (dfdist_full["shape_1"] == dfdist_full["shape_2"])
+                                    ].reset_index(drop=True)
+
+                            savedir = f"{SAVEDIR_PLOTS}/only_if_diff_n={only_if_diff_n}"
+                            os.makedirs(savedir, exist_ok=True)
+
+                            # Good plot
+                            # Plot aligned from end
+                            col_order = sorted(df["n_ranklast_2"].unique())
+                            fig = sns.catplot(data=df, x="chunk_within_rank_fromlast_1", y = yvar, hue="chunk_n_in_chunk_1", 
+                                row="shape_2", col="n_ranklast_2", kind="point", errorbar="se", col_order=col_order)
+                            savefig(fig, f"{savedir}/{bregion}-catplot-1a.pdf")
+
+                            # Plot aligned from onset
+                            col_order = sorted(df["n_rank_2"].unique())
+                            fig = sns.catplot(data=df, x="chunk_within_rank_1", y = yvar, hue="chunk_n_in_chunk_1", 
+                                row="shape_2", col="n_rank_2", kind="point", errorbar="se", col_order=col_order)
+                            savefig(fig, f"{savedir}/{bregion}-catplot-1b.pdf")
+
+                            # Good plot
+                            # col_order = sorted(df["n_ranklast_2"].unique())
+                            # fig = sns.catplot(data=df, x="chunk_within_rank_fromlast_1min2", y = yvar, hue="chunk_n_in_chunk_1", 
+                            #     row="shape_2", col="n_ranklast_2", kind="point", errorbar="se", col_order=col_order)
+                            # savefig(fig, f"{savedir}/{bregion}-catplot-3.pdf")
+
+                            # Good plot
+                            col_order = sorted(df["chunk_within_rank_fromlast_2"].unique())
+                            fig = sns.catplot(data=df, x="chunk_within_rank_fromlast_1", y = yvar, hue="chunk_n_in_chunk_1", 
+                                row="shape_2", col="chunk_within_rank_fromlast_2", kind="point", errorbar="se", col_order=col_order)
+                            savefig(fig, f"{savedir}/{bregion}-catplot-2a.pdf")
+
+                            col_order = sorted(df["chunk_within_rank_2"].unique())
+                            fig = sns.catplot(data=df, x="chunk_within_rank_1", y = yvar, hue="chunk_n_in_chunk_1", 
+                                row="shape_2", col="chunk_within_rank_2", kind="point", errorbar="se", col_order=col_order)
+                            savefig(fig, f"{savedir}/{bregion}-catplot-2b.pdf")
+
+                            # Summary good.
+                            # for hue in ["n_ranklast_2", "chunk_within_rank_fromlast_2"]:
+                            for hue in ["chunk_within_rank_fromlast_2"]:
+                                fig = sns.catplot(data=df, x="chunk_within_rank_fromlast_1", y = yvar, hue=hue, 
+                                                col="shape_2", col_wrap=10, kind="point", errorbar="se")
+                                savefig(fig, f"{savedir}/{bregion}-catplot-3a-{hue}.pdf")
+
+                            # for hue in ["n_rank_2", "chunk_within_rank_2"]:
+                            for hue in ["chunk_within_rank_2"]:
+                                fig = sns.catplot(data=df, x="chunk_within_rank_1", y = yvar, hue=hue, 
+                                                col="shape_2", col_wrap=10, kind="point", errorbar="se")
+                                savefig(fig, f"{savedir}/{bregion}-catplot-3b-{hue}.pdf")
+
+                            # Summary combining shapes
+                            for this in ["chunk_within_rank_fromlast", "chunk_within_rank"]:
+                                fig = sns.catplot(data=df, x=f"{this}_1", y = yvar, hue=f"{this}_2",
+                                                kind="point", errorbar="se")
+                                savefig(fig, f"{savedir}/{bregion}-catplot-4-{this}.pdf")
+
+                                # Finaly summary all aligned to 0 (combine shapes and n chunk)
+                                fig = sns.catplot(data=df, x=f"{this}_1min2", y = yvar, hue=f"{this}_2",
+                                                kind="point", errorbar="se")
+                                savefig(fig, f"{savedir}/{bregion}-catplot-5-{this}.pdf")
+
+
+                            plt.close("all")
+
+                ### PLOTS (v2) - Good, replacing the old analysis of rank encoding (up vs. down), but carefully controlling so that
+                # the effect is controlling for differences in length (each datapt is a pair of lengths)
+                elif plot_version=="rankwithin_up_down_good":
+                    # for min_n_in_chunk in [1, 2]:
+                        
+                    #     dfdist_full_clean_this = dfdist_full_clean[
+                    #         (dfdist_full_clean["chunk_n_in_chunk_1"] >= (min_n_in_chunk-0.001)) & 
+                    #         (dfdist_full_clean["chunk_n_in_chunk_2"] >= (min_n_in_chunk-0.001))].reset_index(drop=True)
+                        
+                    #     SAVEDIR_PLOTS = f"/lemur2/lucas/analyses/recordings/main/syntax_good/targeted_dim_redu_v2/run{RUN}/MULT/compare_ranks_within_v2_clean_up_vs_dn/allow_diff_loc_pre={allow_diff_loc_pre}-min_n_in_chunk={min_n_in_chunk}/{animal}-{date}"
+                    #     os.makedirs(SAVEDIR_PLOTS, exist_ok=True)
+
+                    #     from neuralmonkey.scripts.analy_syntax_good_eucl_state import mult_plot_rankwithin_up_vs_down_good
+                    #     mult_plot_rankwithin_up_vs_down_good(dfdist_full_clean_this, SAVEDIR_PLOTS, do_final_agg_over_datapts)
+                    
+                    SAVEDIR_PLOTS = f"/lemur2/lucas/analyses/recordings/main/syntax_good/targeted_dim_redu_v2/run{RUN}/MULT/compare_ranks_within_v2_clean_up_vs_dn/allow_diff_loc_pre={allow_diff_loc_pre}/{animal}-{date}"
+                    os.makedirs(SAVEDIR_PLOTS, exist_ok=True)
+
+                    from neuralmonkey.scripts.analy_syntax_good_eucl_state import mult_plot_rankwithin_up_vs_down_good
+                    mult_plot_rankwithin_up_vs_down_good(dfdist_full_clean, SAVEDIR_PLOTS, do_final_agg_over_datapts)                    
+                else:
+                    assert False
+
+
+def mult_rankwithin_rsa_up_down_good_v2(allow_diff_loc_pre = False, n_min_in_chunk=2, n_min=2, do_agg = True):
+    """
+
+        n_min = 2 # NOTE: if 3, then throws out too much.
+
+    """
+    ### Load all the dates
+    from neuralmonkey.scripts.analy_euclidian_dist_pop_script_MULT import load_preprocess_get_dates
+    save_suffix = "AnBmCk_general"
+    RUN = 27
+    SAVEDIR_PLOTS_ALL = f"/lemur2/lucas/analyses/recordings/main/syntax_good/targeted_dim_redu_v2/run{RUN}/MULT/compare_ranks_within_v2_clean_up_vs_dn/allow_diff_loc_pre={allow_diff_loc_pre}"
+
+    list_dfdist = []
+    for animal in ["Diego", "Pancho"]:
+        list_dates, _, _, _ = load_preprocess_get_dates(animal, save_suffix)
+        list_dates = list(set(list_dates))
+
+        for date in list_dates:
+            
+            if animal=="Diego" and date in [230730]:
+                continue
+            
+            if animal=="Pancho" and date in [220831, 250321]:
+                continue
+            
+            ### Load data
+            path = f"{SAVEDIR_PLOTS_ALL}/{animal}-{date}/dfdist_full_clean.pkl"
+
+            dfdist_full_clean = pd.read_pickle(path)
+            dfdist_full_clean["animal"] = animal
+            dfdist_full_clean["date"] = date
+
+            list_dfdist.append(dfdist_full_clean)
+    DFDIST = pd.concat(list_dfdist).reset_index(drop=True)
     
+    savedir = f"{SAVEDIR_PLOTS_ALL}/dynamic_align_on_off/allow_diff_loc_pre={allow_diff_loc_pre}-n_min_in_chunk={n_min_in_chunk}-n_min={n_min}-do_agg={do_agg}"
+    os.makedirs(savedir, exist_ok=True)
+
+    # Further cleaning
+    analysis = "rank_within"
+    tmp = []
+    for animal in DFDIST["animal"].unique().tolist():
+        dftmp = DFDIST[DFDIST["animal"] == animal].reset_index(drop=True)
+        dftmp = _final_dfeffect_postprocess_clean(dftmp, analysis, animal)
+        tmp.append(dftmp)
+    DFDIST = pd.concat(tmp).reset_index(drop=True)
+    print(len(DFDIST))
+
+    ### ADD NEW VARIABLES
+    # A new variable, to allow combining across different length sequences
+    def f(x):
+        if x["chunk_within_rank_1"]>1:
+            rank1 = 2
+        else:
+            rank1 = x["chunk_within_rank_1"]
+
+        if x["chunk_within_rank_fromlast_1"]<-2:
+            rank2 = -3
+        else:
+            rank2 = x["chunk_within_rank_fromlast_1"]
+
+        return (rank1, rank2)
+    DFDIST["chunk_within_rank_1_both"] = DFDIST.apply(f, axis=1)
+    order_cwrboth = ['0|-3', '0|-2', '1|-3', '2|-3', '1|-2', '2|-2', '0|-1', '1|-1', '2|-1']
+
+    # Further simplify, based on what looks good by eye.
+    # - ie count from end dominates.
+    # A new variable, to allow combining across different length sequences
+    def f(x):
+        if x["chunk_within_rank_fromlast_1"] == -1:
+            return 99
+        elif (x["chunk_within_rank_1"]==0):
+            return 0
+        elif x["chunk_within_rank_fromlast_1"] == -2:
+            return 98
+        elif (x["chunk_within_rank_1"]==1) & (x["chunk_within_rank_fromlast_1"] < -2):
+            return 1
+        elif (x["chunk_within_rank_1"]>1) & (x["chunk_within_rank_fromlast_1"] < -2):
+            return 50
+        else:
+            print(x["chunk_within_rank_1"])
+            print(x["chunk_within_rank_fromlast_1"])
+            assert False
+    DFDIST["chunk_within_rank_1_both_clean"] = DFDIST.apply(f, axis=1)
+    order_cwrbothclean = sorted(DFDIST["chunk_within_rank_1_both_clean"].unique())
+    
+    ### PLOTS
+    from pythonlib.tools.pandastools import grouping_print_n_samples
+    grouping_print_n_samples(DFDIST, ["chunk_within_rank_1_both_clean", "chunk_within_rank_1_both"])
+    
+    ### CLeanup
+    _dfdist = DFDIST.copy()
+    print(len(_dfdist))
+
+    # (1) clean up 
+    _dfdist = _dfdist[
+        (_dfdist["chunk_n_in_chunk_1"]>=(n_min_in_chunk-0.001)) & 
+        (_dfdist["chunk_n_in_chunk_2"]>=(n_min_in_chunk-0.001))
+        ].reset_index(drop=True)
+    print(len(_dfdist))
+
+    _dfdist = _dfdist[
+        (_dfdist["n1"]>=(n_min-0.001)) & 
+        (_dfdist["n2"]>=(n_min-0.001))
+        ].reset_index(drop=True)
+    print(len(_dfdist))
+
+    # (2) Agg
+    if do_agg:
+        from pythonlib.tools.pandastools import aggregGeneral
+        var_datapt_grp = ["animal", "date", "bregion", "chunk_shape_1", "chunk_n_in_chunk_1", "chunk_within_rank_1", "chunk_within_rank_fromlast_1", "chunk_within_rank_1_both", "chunk_within_rank_1_both_clean", "chunk_n_in_chunk_2"]
+        # var_datapt_grp = ["animal", "date", "bregion", "chunk_shape_1", "chunk_n_in_chunk_1", "chunk_within_rank_1", "chunk_within_rank_fromlast_1", "chunk_within_rank_1_both"]
+        var_grp = var_datapt_grp + ["chunk_within_rank_pair_class", "chunk_rank_1"]
+        DFDIST_AGG = aggregGeneral(_dfdist, var_grp, ["dist_yue_diff"])
+    else:
+        DFDIST_AGG = _dfdist
+    from pythonlib.tools.pandastools import append_col_with_grp_index
+    DFDIST_AGG = append_col_with_grp_index(DFDIST_AGG, ["chunk_rank_1", "chunk_n_in_chunk_1"], "chunk_rank_n_1")
+
+    ### PLOTS
+    from pythonlib.tools.plottools import savefig
+
+    # Plot
+    for x in ["chunk_within_rank_1", "chunk_within_rank_fromlast_1"]:
+        fig = sns.relplot(data=DFDIST_AGG, x=x, y="dist_yue_diff", 
+                hue="chunk_within_rank_pair_class", col="bregion", kind="line",
+                row="animal")
+        for ax in fig.axes.flatten():
+            ax.axhline(0, color="k", alpha=0.5)                    
+        savefig(fig, f"{savedir}/relplot_overview-1-x={x}.pdf")
+
+        fig = sns.relplot(data=DFDIST_AGG, x=x, y="dist_yue_diff", 
+                hue="chunk_within_rank_pair_class", col="bregion", alpha=0.5,
+                row="animal")
+        for ax in fig.axes.flatten():
+            ax.axhline(0, color="k", alpha=0.5)                    
+        savefig(fig, f"{savedir}/relplot_overview-2-x={x}.pdf")
+        
+        plt.close("all")
+
+    for animal in DFDIST_AGG["animal"].unique().tolist():
+        dfdist = DFDIST_AGG[DFDIST_AGG["animal"] == animal]
+        for row in ["chunk_n_in_chunk_1", "chunk_rank_1", "chunk_rank_n_1"]:
+            fig = sns.relplot(data=dfdist, x="chunk_within_rank_fromlast_1", y="dist_yue_diff", 
+                    hue="chunk_within_rank_pair_class", col="bregion", kind="line",
+                    row=row)
+            for ax in fig.axes.flatten():
+                ax.axhline(0, color="k", alpha=0.5)              
+
+            savefig(fig, f"{savedir}/relplot_row={row}-ani={animal}.pdf")
+            plt.close("all")
+
+    ### As function of chunk_within "both"
+    from pythonlib.tools.pandastools import stringify_values
+    DFDIST_AGG_STR = stringify_values(DFDIST_AGG)
+    for x in ["chunk_within_rank_1_both", "chunk_within_rank_1_both_clean"]:
+
+        if x=="chunk_within_rank_1_both":
+            order = order_cwrboth
+        else:
+            order = order_cwrbothclean
+
+        fig = sns.catplot(data=DFDIST_AGG_STR, x=x, y="dist_yue_diff", 
+                hue="chunk_within_rank_pair_class", col="bregion", kind="point",
+                row="animal", order=order)
+        for ax in fig.axes.flatten():
+            ax.axhline(0, color="k", alpha=0.5)              
+        savefig(fig, f"{savedir}/catplot_good-x={x}-1.pdf")
+
+        fig = sns.catplot(data=DFDIST_AGG_STR, x=x, y="dist_yue_diff", 
+                hue="chunk_within_rank_pair_class", col="bregion", kind="point", order=order, errorbar="se")
+        for ax in fig.axes.flatten():
+            ax.axhline(0, color="k", alpha=0.5)              
+        savefig(fig, f"{savedir}/catplot_good-x={x}-2.pdf")
+
+        fig = sns.catplot(data=DFDIST_AGG_STR, x=x, y="dist_yue_diff", 
+                hue="chunk_within_rank_pair_class", col="bregion", kind="bar", order=order, errorbar="se")
+        for ax in fig.axes.flatten():
+            ax.axhline(0, color="k", alpha=0.5)              
+        savefig(fig, f"{savedir}/catplot_good-x={x}-3.pdf")
+
+        plt.close("all")
+
+        # Compare each experiment (date)
+        for animal in DFDIST_AGG_STR["animal"].unique().tolist():
+            dftmp_this = DFDIST_AGG_STR[DFDIST_AGG_STR["animal"] == animal].reset_index(drop=True)
+
+            fig = sns.catplot(data=dftmp_this, x=x, y="dist_yue_diff", 
+                    hue="chunk_within_rank_pair_class", col="bregion", kind="point",
+                    row="date", order=order)
+            for ax in fig.axes.flatten():
+                ax.axhline(0, color="k", alpha=0.5)              
+            
+            savefig(fig, f"{savedir}/catplot_good-x={x}-4-ani={animal}.pdf")
+            plt.close("all")
+
+    ## Heatmap
+    from pythonlib.tools.pandastools import plot_subplots_heatmap
+    for bregion in DFDIST_AGG["bregion"].unique().tolist():
+        df = DFDIST_AGG[DFDIST_AGG["bregion"]==bregion].reset_index(drop=True)
+        fig, _ = plot_subplots_heatmap(df, "chunk_within_rank_1", "chunk_within_rank_fromlast_1", 
+                                          "dist_yue_diff", "chunk_within_rank_pair_class", False, True)
+        savefig(fig, f"{savedir}/heatmap-1-{bregion}.pdf")
+        plt.close("all")
+
+    ### SCATTER
+    from pythonlib.tools.plottools import map_continuous_var_to_color_range
+
+    for var_datapt in ["chunk_within_rank_1_both", "chunk_within_rank_1_both_clean"]:
+        if var_datapt=="chunk_within_rank_1_both":
+            order = order_cwrboth
+        else:
+            order = sorted(DFDIST_AGG_STR[var_datapt].unique())
+
+        pcols = map_continuous_var_to_color_range(np.linspace(0, 1, len(order)), 0, 1)
+        assert len(pcols)==len(order)
+
+        map_order_to_col = {o:col for o, col in zip(order, pcols)}
+        # Plot in 2d dynamics space
+        from pythonlib.tools.pandastools import plot_45scatter_means_flexible_grouping
+
+        _, fig = plot_45scatter_means_flexible_grouping(DFDIST_AGG_STR, "chunk_within_rank_pair_class", 
+                                            "same_fromstart", "same_fromlast", "bregion", 
+                                            "dist_yue_diff", var_datapt, False, shareaxes=True, 
+                                            plot_error_bars=True, alpha=0.5, 
+                                            map_dataptlev_to_color=map_order_to_col)
+        from pythonlib.tools.plottools import legend_add_manual
+        legend_add_manual(fig.axes[-1], map_order_to_col.keys(), map_order_to_col.values())
+        savefig(fig, f"{savedir}/scatter_good-datapt={var_datapt}-1.pdf")
+        plt.close("all")
+
+        # Also one for each animal
+        for animal in DFDIST_AGG_STR["animal"].unique().tolist():
+            dftmp_this = DFDIST_AGG_STR[DFDIST_AGG_STR["animal"]==animal].reset_index(drop=True)
+            
+            _, fig = plot_45scatter_means_flexible_grouping(dftmp_this, "chunk_within_rank_pair_class", 
+                                                "same_fromstart", "same_fromlast", "bregion", 
+                                                "dist_yue_diff", var_datapt, False, shareaxes=True, 
+                                                plot_error_bars=True, alpha=0.5, 
+                                                map_dataptlev_to_color=map_order_to_col)
+            from pythonlib.tools.plottools import legend_add_manual
+            legend_add_manual(fig.axes[-1], map_order_to_col.keys(), map_order_to_col.values())
+            savefig(fig, f"{savedir}/scatter_good-datapt={var_datapt}-ani={animal}.pdf")
+            plt.close("all")
+
+    if False: # sns.replot my not be ideal...
+        # Overlay on the same scatterplot
+        from pythonlib.tools.pandastools import pivot_table
+
+        var_datapt_grp = ["bregion", "chunk_shape_1", "chunk_n_in_chunk_1", "chunk_within_rank_1", "chunk_within_rank_fromlast_1", "chunk_n_in_chunk_2", "chunk_within_rank_1_both", "chunk_within_rank_1_both_clean"]
+        dfpivot = pivot_table(DFDIST_AGG, index=var_datapt_grp, 
+                            columns=["chunk_within_rank_pair_class"], values=["dist_yue_diff"], flatten_col_names=True)
+
+        # for y in ["dist_yue_diff-same_fromstart", "dist_yue_diff-same_fromlast"]:
+        #     fig = sns.relplot(data=dfpivot, x="chunk_within_rank_fromlast_1", y=y, hue="chunk_shape_1", kind="line", col="bregion")
+        #     for ax in fig.axes.flatten():
+        #         ax.axhline(0, color="k", alpha=0.5)                    
+        dfpivot
+        fig = sns.relplot(data=dfpivot, x="dist_yue_diff-same_fromstart", y="dist_yue_diff-same_fromlast", hue="chunk_within_rank_1_both_clean", col="bregion", kind="scatter")
+
+
 if __name__=="__main__":
     from neuralmonkey.scripts.analy_euclidian_dist_pop_script_MULT import load_preprocess_get_dates
 

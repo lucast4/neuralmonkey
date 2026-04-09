@@ -25,6 +25,7 @@ from pythonlib.tools.pandastools import grouping_plot_n_samples_conjunction_heat
 from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good
 from pythonlib.tools.plottools import savefig
 
+TWIND_PLOT = (-0.45, 0.4)
 
 def plotwrap_grammar_vs_sp(DFallpa, SAVEDIR_PLOTS):
     """
@@ -53,7 +54,6 @@ def plotwrap_rank_within_chunk(DFallpa, SAVEDIR_PLOTS):
     """
     Plots of sm fr, related to effect of rank witin chunk
     """                
-
     for bregion in DFallpa["bregion"].unique().tolist():
         pa = _extract_pa(DFallpa, bregion, apply_grammar_preprocessing=True)
 
@@ -233,11 +233,21 @@ def _extract_pa(DFallpa, bregion, apply_grammar_preprocessing=True):
         pa = PA.copy()
     
     # Prune to include just time around stroke onset
-    twind = [-0.5, 0.8]
-    pa = pa.slice_by_dim_values_wrapper("times", twind)
-    # dflab = pa.Xlabels["trials"]
-    # dflab["task_kind"].value_counts()    
+    if False:
+        twind = [-0.5, 0.8]
+        pa = pa.slice_by_dim_values_wrapper("times", twind)
+        # dflab = pa.Xlabels["trials"]
+        # dflab["task_kind"].value_counts()    
+    else:
+        pa = pa.slice_by_dim_values_wrapper("times", TWIND_PLOT)
 
+
+    # make sure ranks are plotted as numbers, not as categories.
+    dflab = pa.Xlabels["trials"]    
+    dflab["chunk_within_rank_fromlast"] = dflab["chunk_within_rank_fromlast"].astype(float)
+    dflab["chunk_within_rank"] = dflab["chunk_within_rank"].astype(float)
+    dflab["chunk_n_in_chunk"] = dflab["chunk_n_in_chunk"].astype(float)
+    
     return pa
 
 def plotwrap_rank_within_chunk_controlling_motor(DFallpa, SAVEDIR_PLOTS):
@@ -689,6 +699,7 @@ if __name__=="__main__":
     # run_number = int(sys.argv[4])
     PLOTS_DO = [2.3, 2.2, 2.1]
     PLOTS_DO = [2.3]
+    PLOTS_DO = [1.3]
 
     from neuralmonkey.classes.population_mult import load_handsaved_wrapper, dfpa_concat_merge_pa_along_trials, dfpa_concatbregion_preprocess_wrapper, dfpa_concat_bregion_to_combined_bregion
     from neuralmonkey.classes.population_mult import load_handsaved_wrapper, dfpa_concat_bregion_to_combined_bregion
@@ -745,6 +756,8 @@ if __name__=="__main__":
             list_dates, _, _, _ = load_preprocess_get_dates(animal, "two_shape_sets")
             if date in list_dates:
                 plotwrap_two_shapes(DFallpa, SAVEDIR_PLOTS)   
+            else:
+                print("skipping date since its not twoshapes:", date)
         elif plot_do == 1.2:
             ### Grammar vs. SP
             plotwrap_grammar_vs_sp(DFallpa, SAVEDIR_PLOTS)
