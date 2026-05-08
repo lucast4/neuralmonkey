@@ -1343,7 +1343,7 @@ def euclidian_time_resolved_fast_shuffled_mult_stats_v3(animal, date, var_other,
             vals_shuff = DFSTATS.iloc[inds_shuff][var_value].values
 
             from pythonlib.tools.statstools import empiricalPval
-            p = empiricalPval(val_dat, vals_shuff)
+            p, _ = empiricalPval(val_dat, vals_shuff)
 
             # Also compute z-score
             shuff_mean = np.mean(vals_shuff)
@@ -2158,7 +2158,6 @@ def euclidianshuff_stats_linear_plot_wrapper_manuscript(DFDISTS, SAVEDIR_PLOTS, 
     """
     from pythonlib.tools.pandastools import grouping_print_n_samples
     from pythonlib.tools.pandastools import plot_45scatter_means_flexible_grouping
-    from neuralmonkey.scripts.analy_shape_invariance_all_plots_SP import _euclidianshuff_stats_linear_2br_scatter_wrapper
     from pythonlib.tools.pandastools import aggregGeneral
 
     assert len(DFDISTS["prune_version"].unique())==1, "code assumes only one, becuase was written for shape invar"
@@ -2412,7 +2411,6 @@ def euclidianshuff_stats_linear_plot_wrapper(DFDISTS, SAVEDIR_PLOTS, var_other, 
     # This means that could have repeated conditions across days, leading to more datapts.
 
     # Perform this using different aggs (i.e, different definitions of datapt)
-    from neuralmonkey.scripts.analy_shape_invariance_all_plots_SP import _euclidianshuff_stats_linear_2br_scatter_wrapper
     from pythonlib.tools.pandastools import aggregGeneral
     plot_heatmap_counts = False
     plot_catplots = False
@@ -4252,8 +4250,6 @@ if __name__=="__main__":
     # PLOTS_DO = [0]
     
     # --- Good:
-    PLOTS_DO = [0, 5, 4, 2, 3] # Good
-    PLOTS_DO = [4] # Good
     # PLOTS_DO = [4]
     # PLOTS_DO = [2, 3] # Good
 
@@ -4266,6 +4262,11 @@ if __name__=="__main__":
     # # Scalar state space plots
     # PLOTS_DO = [1] # 
 
+    ### FINAL GOOD
+    PLOTS_DO = [5, 0, 4] # Good (the essentials) (anytime to plot SP)
+    PLOTS_DO = [0, 5, 4, 2, 3] # Good
+    PLOTS_DO = [4] # Good
+    
     ######################################
     if any([x!=6 for x in PLOTS_DO]):
         # Load a single DFallPA

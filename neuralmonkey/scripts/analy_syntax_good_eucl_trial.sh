@@ -11,9 +11,10 @@ do
   touch ${logfile}
   echo ${logfile}
   python analy_syntax_good_eucl_trial.py ${animal} ${date1} 2>&1 | tee ${logfile} &
-  sleep 30s
+  sleep 10s
 done
-sleep 10m
+# sleep 10m
+sleep 1h
 
 ##################
 animal=Diego
@@ -25,8 +26,8 @@ do
   touch ${logfile}
   echo ${logfile}
   python analy_syntax_good_eucl_trial.py ${animal} ${date1} 2>&1 | tee ${logfile} &
-  sleep 30s
+  sleep 10s
 done
 
-sleep 20m
+# sleep 20m
 

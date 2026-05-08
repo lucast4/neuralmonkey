@@ -2602,6 +2602,7 @@ def targeted_pca_clean_plots_and_dfdist(DFallpa, animal, date, SAVEDIR_ALL, DEBU
         # Now split into train (fitting targeted PCA) and testing (projection).
         ### Get subsamples
         if folds_dflab is None:
+
             if False:
                 vars_stratification = ["epoch", "chunk_within_rank_semantic_v2", "chunk_shape", "syntax_concrete", "task_kind"]
             else:
@@ -2619,10 +2620,11 @@ def targeted_pca_clean_plots_and_dfdist(DFallpa, animal, date, SAVEDIR_ALL, DEBU
             savefig(fig_con, f"{SAVEDIR}/after_split_constrained_test_fold_0.pdf") # TEST
             savefig(fig_unc, f"{SAVEDIR}/after_split_unconstrained_train_fold_0.pdf") # TRIAN
             plt.close("all")
+
+            trialcodes_saved = PAscal.Xlabels["trialcode"].tolist()
         else:
             # Then use this folds_dflab...
-            pass
-        
+            assert PAscal.Xlabels["trialcode"].tolist() == trialcodes_saved, "trials are not lined up across brain regions, not sur eif this is problem."
 
         # Save some params
         from pythonlib.tools.expttools import writeDictToYaml, writeDictToTxtFlattened
@@ -2714,7 +2716,7 @@ def targeted_pca_clean_plots_and_dfdist(DFallpa, animal, date, SAVEDIR_ALL, DEBU
                                     print(f"Skipping question ({question}) for subspace ({var_subspace}).")
                                     continue
 
-                        ### [Optional] Things to do for each question
+                        ### [Optional] Things to do for each question [ONLY FOR SPECIFIC ANALYSES]
                         if question == "7_ninchunk_vs_rankwithin":
                             # Regress out motor covariates before computing eucldiean distance
                             variables_cont = ["motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y"]
@@ -3113,6 +3115,10 @@ def kernel_ordinal_logistic_regression_wrapper(PA, yvar, vars_grp, savedir, plot
         Helper to score these data using this model
         """
         from sklearn.metrics import balanced_accuracy_score, accuracy_score
+
+        assert False, "decide whether to update, based on this suggestion from Cursor:"
+        # High — metric inflation risk (false positives) from dropping hard test labels
+        # _score() removes any test samples whose label was not seen in training, then computes accuracy metrics on the reduced set. This can systematically overestimate performance and hide failure modes (especially in cross-group generalization), i.e., false positives in model quality.
 
         # Only keep test labels that fall within training distribution
         bools_test_keep = np.isin(y_test, y_train)

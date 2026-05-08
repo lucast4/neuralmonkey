@@ -69,12 +69,14 @@ def load_preprocess_get_dates(animal, save_suffix, new_varied_hyperparams=True):
         if save_suffix=="two_shape_sets":
             # AnBkCk, two shape sets.
             # dates = [220906, 220907, 220908, 220909]
-            dates = [220902, 220906, 220907, 220908, 220909, 240830, 250321, 250322] # ALL (3/18/25)
+            # dates = [220902, 220906, 220907, 220908, 220909, 240830, 250321, 250322] # ALL (3/18/25)
+            dates = [220902, 220906, 220907, 220908, 220909, 240830, 250322] # YES 250321 had bad learning, it is never used.
             question = "RULE_ANBMCK_STROKE"
             fr_normalization_method = "across_time_bins"
         elif save_suffix=="AnBmCk_general":
             # dates = [220906, 220907, 220908, 220909, 230811, 230829]
-            dates = [220831, 220901, 230810, 230811, 230824, 230826, 230829, 231114, 231116, 220902, 220906, 220907, 220908, 220909, 240830, 250321, 250322] # ALL (4/6/25)
+            # dates = [220831, 220901, 230810, 230811, 230824, 230826, 230829, 231114, 231116, 220902, 220906, 220907, 220908, 220909, 240830, 250321, 250322] # ALL (4/6/25)
+            dates = [220901, 230810, 230811, 230824, 230826, 230829, 231114, 231116, 220902, 220906, 220907, 220908, 220909, 240830, 250322] # Yes this is the final. Except 220831 still need to extract..
             question = "RULE_ANBMCK_STROKE"
             fr_normalization_method = "across_time_bins"
         elif save_suffix=="sh_vs_seqsup":

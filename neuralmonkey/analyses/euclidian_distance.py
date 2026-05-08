@@ -70,7 +70,7 @@ def timevarying_compute_fast_to_scalar(PA, label_vars=("seqc_0_shape", "seqc_0_l
                                        rsa_heatmap_savedir=None, var_context_same=None,
                                        plot_conjunctions_savedir=None, prune_levs_min_n_trials=2,
                                        get_group_distances=True, context_dict=None,
-                                       get_only_one_direction=True):
+                                       get_only_one_direction=True, skip_computing_dists=False):
     """
     Compute pariwise euclidean distance, using trajectories.
 
@@ -90,7 +90,7 @@ def timevarying_compute_fast_to_scalar(PA, label_vars=("seqc_0_shape", "seqc_0_l
     - prune_levs_min_n_trials, then throws out any levels of grouping vars, label_vars + [var_context_same], which lack at least 2
     trials. Need at laest 2, otherwise error in dist computation.
     - context_dict, dict with {"same":[], "diff":[]}, where each holds list of strings (variables).
-
+    - skip_computing_dists, make True to fill in distances with random numbers, to make this go faster.
     MS: checked
 
     RETURNS:
@@ -222,7 +222,10 @@ def timevarying_compute_fast_to_scalar(PA, label_vars=("seqc_0_shape", "seqc_0_l
         Return scalar distance, averaged over all time.
         """
         return np.mean((np.sum((x1 - x2)**2, axis=0))**0.5)
-    dmat = distmat_construct_wrapper(list_x, list_x, dist_func)
+    if skip_computing_dists:
+        dmat = np.random.randn(len(list_x), len(list_x))
+    else:
+        dmat = distmat_construct_wrapper(list_x, list_x, dist_func)
 
     # Convert to Cl
     dflab = PA.Xlabels["trials"]
@@ -311,7 +314,7 @@ def timevarying_compute_fast_to_scalar(PA, label_vars=("seqc_0_shape", "seqc_0_l
 
 def compute_angle_between_conditions(PA, dfdist, var_effect, vars_grp):
     """
-    Get angles between each pair of conditions, one for each row of dfdist. 
+    Get angles between each pair of conditions (one angle for each row of dfdist).
     
     Note that these rows should be individual levels of [var_effect] + vars_group, but that
     is assumed to be true in this code.
@@ -386,6 +389,71 @@ def compute_angle_between_conditions(PA, dfdist, var_effect, vars_grp):
 
     return dfangle
 
+def compute_vector_between_conditions(PA, dfdist, var_effect, vars_grp):
+    """
+    Get angles between each pair of condition (one angle for each row of dfdist).
+    
+    Note that these rows should be individual levels of [var_effect] + vars_group, but that
+    is assumed to be true in this code.
+
+    PA is the dataset used to get dfdist.
+
+    See dfdist = timevarying_compute_fast_to_scalar(PA)
+
+    In all cases is the angle from labels_1 to labels_2
+
+    RETURNS:
+    - dfangle, should be same length as dfdist.
+    """
+
+    assert PA.X.shape[2]==1, "only coded for scalar"
+
+    ### (3) Get angles between all conditions
+    dflab = PA.Xlabels["trials"]
+    dflab = append_col_with_grp_index(dflab, vars_grp, "_var_other", use_strings=False)
+
+    # Collect data for each row of dfdist
+    res = []
+    for _, row in dfdist.iterrows():
+        if row["labels_1"] == row["labels_2"]:
+            # By definition. 
+            vec = np.array([0, 0])
+        else:
+            try:
+                inds1 = dflab[(dflab[var_effect] == row["labels_1"][0]) & (dflab["_var_other"] == row["labels_1"][1:])].index.tolist()
+                inds2 = dflab[(dflab[var_effect] == row["labels_2"][0]) & (dflab["_var_other"] == row["labels_2"][1:])].index.tolist()
+                assert len(inds1)>0
+                assert len(inds2)>0
+            except Exception as err:
+                print(dflab[var_effect])
+                print(dflab["_var_other"])
+                print(sum((dflab[var_effect] == row["labels_1"][0])))
+                print(sum((dflab["_var_other"] == row["labels_1"][1])))
+                print("---")
+                print(dflab["_var_other"].unique())
+                print(row["labels_1"][1:])
+                print("---")
+                raise err
+            
+            # Get the neural data
+            x1 = PA.X[:, inds1].squeeze()
+            x2 = PA.X[:, inds2].squeeze()
+
+            x1_mean = np.mean(x1, axis=1)            
+            x2_mean = np.mean(x2, axis=1)            
+
+            vec = x2_mean - x1_mean
+
+        # Append
+        res.append({
+            "labels_1":row["labels_1"],
+            "labels_2":row["labels_2"],
+            "vector":vec,
+        })
+    dfanglevecs = pd.DataFrame(res)
+
+    return dfanglevecs
+
 def compute_average_angle_between_pairs_of_levels_of_vareffect(dfdist, var_effect, min_levs_per_levother = 2, PRINT=False):
     """
     Get sum of vectors connecting levels of <var_effect>, within each level of vars_others. E.g, you have two vectors 
@@ -405,7 +473,11 @@ def compute_average_angle_between_pairs_of_levels_of_vareffect(dfdist, var_effec
     """
     from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good
     from pythonlib.tools.vectools import get_vector_from_angle, average_vectors_wrapper
+    from pythonlib.tools.listtools import sort_mixed_type
 
+    if "var_effect" not in dfdist:
+        assert False, "you need to manually input var_effect and vars_others"
+        
     assert len(dfdist["var_effect"].unique())==1
     assert len(dfdist["vars_others"].unique())==1
     dfdist_variables_append_vars_others(dfdist)
@@ -419,7 +491,8 @@ def compute_average_angle_between_pairs_of_levels_of_vareffect(dfdist, var_effec
     dfdist = pd.concat([dfdist, dfdist_copy]).reset_index(drop=True)    
     
     assert "theta" in dfdist.columns, "first run compute_angle_between_conditions"
-    list_vars_others = sorted(set(dfdist["vars_others_1"].unique().tolist() + dfdist["vars_others_2"].unique().tolist()))
+    # list_vars_others = sorted(set(dfdist["vars_others_1"].unique().tolist() + dfdist["vars_others_2"].unique().tolist()))
+    list_vars_others = sort_mixed_type(set(dfdist["vars_others_1"].unique().tolist() + dfdist["vars_others_2"].unique().tolist()))
 
     res = []
     for var_other_grp in list_vars_others:
@@ -434,7 +507,7 @@ def compute_average_angle_between_pairs_of_levels_of_vareffect(dfdist, var_effec
                     print("levs_exist:", levs_exist)
                 assert len(levs_exist)>1
 
-                # Get adjacent values of var_effect
+                # (1) Get adjacent values of var_effect (ie stack the vectors)
                 tmp = []
                 for lev1, lev2 in zip(levs_exist[:-1], levs_exist[1:]):
                     this = DFTMP[(DFTMP[f"{var_effect}_1"] == lev1) & (DFTMP[f"{var_effect}_2"] == lev2)]
@@ -458,7 +531,7 @@ def compute_average_angle_between_pairs_of_levels_of_vareffect(dfdist, var_effec
                     tmp.append(this)
                 dftmp = pd.concat(tmp) # should have just this in order
                 
-                # Compute average vector, different possible methods
+                # (2) Compute average vector, different possible methods
                 for var_vector_length in ["dist_norm", "dist_yue_diff"]:
                     angles = dftmp["theta"].values
                     weights = dftmp[var_vector_length].values

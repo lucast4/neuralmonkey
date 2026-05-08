@@ -122,6 +122,9 @@ class PopAnal():
         assert len(self.Trials)==self.X.shape[1]
         assert len(self.Times)==self.X.shape[2]
 
+        # Convert to numpy always (sometimes is elephant. dont need this)
+        self.Times = np.array(self.Times)
+
     def preprocess(self):
         """ preprocess X, mainly so units dimension is axis 0 
         """
@@ -788,10 +791,17 @@ class PopAnal():
         - OR None, if not enough data, and fail_if_times_outside_existing==True
         """
 
-        if sum(self.Times<=t1)==0 or sum(self.Times>=t2)==0:
+        # Determine if there is not enough data for the inputed time window
+        t_interval = self.Times[1] - self.Times[0]
+        bad1 = self.Times[0] - t1 > 1.001*t_interval
+        bad2 = t2 - self.Times[-1] > 1.001*t_interval
+        
+        if bad1 or bad2: # Then you are asking for times outside of times that exist in self.Times
+        # if sum(self.Times<=t1)==0 or sum(self.Times>=t2)==0:
             # Not enough time data.
             if fail_if_times_outside_existing:
                 # Then throw error
+                print("all self.Times: ", self.Times)
                 print("asking for times outside data range; (min, max that exists, t1, t2):", min(self.Times), max(self.Times), t1, t2)
                 from pythonlib.tools.exceptions import NotEnoughDataException
                 raise NotEnoughDataException
