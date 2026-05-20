@@ -640,7 +640,7 @@ def compute_firing_rate_percentiles_each_chan(DFallpa, prctilevals=None):
     PARAMS:
     - prctilevals, list of ints [0,100]
     RETURNS:
-    - dfres, holds fr values for each percentile.
+    - dfres, holds fr values for each percentile (separate rows for each event)
     """
     import numpy as np
     
@@ -648,7 +648,7 @@ def compute_firing_rate_percentiles_each_chan(DFallpa, prctilevals=None):
     if prctilevals is None:
         prctilevals = [1, 10, 20, 50, 80, 90, 99]
 
-    for i, row in DFallpa.iterrows():
+    for _, row in DFallpa.iterrows():
         bregion = row["bregion"]
         event = row["event"]
         pa = row["pa"]
@@ -693,7 +693,33 @@ def prune_chans_with_low_firing_rate(DFallpa, PLOT=False):
             ax.axhline(MIN_RATE, color="r", alpha=0.5)
     
     # Remove cases that are below threshod.
-    chans_bad = dfres[(dfres["percentile"] == percentile_check) & (dfres["below_thresh"] == True)]["chan"].unique().tolist()
+    def f(x):
+        """
+        Determine whether this chan should be kept.
+
+        x = 
+        bregion	event	chan	percentile	rate	below_thresh
+        0	M1	03_samp	1000	80	65.429910	False
+        228	M1	05_first_raise	1000	80	88.617732	False
+        456	M1	06_on_strokeidx_0	1000	80	88.951339	False
+
+        """
+        if False:
+            # If you want to remove a channel if it is below threshold
+            # for ANY event
+            # (This is what it used to be before 5/19/26)
+            remove_chan = any(x["below_thresh"])
+        else:
+            # Better, remove only if it is below for ALL events. This allows
+            # to keep units that are silent for visual presentation but active during movement.
+            remove_chan = all(x["below_thresh"])
+        return remove_chan
+
+    dfres = dfres[dfres["percentile"] == percentile_check].reset_index(drop=True); assert len(dfres)>0
+    df_chans_remove = dfres.groupby("chan").apply(f)
+    chans_bad = df_chans_remove.index[df_chans_remove].tolist()
+    # Old method. This is obsolete.
+    # chans_bad = dfres[(dfres["percentile"] == percentile_check) & (dfres["below_thresh"] == True)]["chan"].unique().tolist()
     chans_good = [ch for ch in dfres["chan"].unique().tolist() if ch not in chans_bad]
 
     list_pa =[]
