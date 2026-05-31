@@ -40,8 +40,8 @@ def timevarying_compute(PA, vars_group):
     for i in range(len(vars_group)):
         for j in range(len(vars_group)):
             if j>i:
-                var1 = vars_group[0]
-                var2 = vars_group[1]
+                var1 = vars_group[i]
+                var2 = vars_group[j]
                 DFDIST = append_col_with_grp_index(DFDIST, [f"{var1}_same", f"{var2}_same"], f"same-{var1}|{var2}")
 
     return DFDIST
@@ -302,11 +302,16 @@ def timevarying_compute_fast_to_scalar(PA, label_vars=("seqc_0_shape", "seqc_0_l
     else:
         dfdist = None
 
-    # Sanity check that all distances are normalized to the same DIST_98 value.
-    if len(dfdist["DIST_98"].unique())>1:
-    # if dfdist["DIST_98"].max() - dfdist["DIST_98"].min()>0.001:
-        print(dfdist["DIST_98"].unique())
-        assert False, "fix this bug.."
+    if skip_computing_dists:
+        # Delete these, so you don't accidentcaly use it as real data
+        for v in ["dist_mean", "DIST_50", "DIST_98", "dist_norm", "dist_yue_diff"]:
+            del dfdist[v]
+    else:
+        # Sanity check that all distances are normalized to the same DIST_98 value.
+        if len(dfdist["DIST_98"].unique())>1:
+        # if dfdist["DIST_98"].max() - dfdist["DIST_98"].min()>0.001:
+            print(dfdist["DIST_98"].unique())
+            assert False, "fix this bug.."
 
     dfdist["data_dim"] = PA.X.shape[0]
     
@@ -500,7 +505,9 @@ def compute_average_angle_between_pairs_of_levels_of_vareffect(dfdist, var_effec
         DFTMP = dfdist[(dfdist["vars_others_same"] == True) & (dfdist["vars_others_1"] == var_other_grp)]
         
         if len(DFTMP)>0:
-            levs_exist = sorted(DFTMP[f"{var_effect}_1"].unique())
+            levs_exist_1 = sorted(DFTMP[f"{var_effect}_1"].unique())
+            levs_exist_2 = sorted(DFTMP[f"{var_effect}_2"].unique())
+            levs_exist = sorted(set(levs_exist_1 + levs_exist_2))
 
             if len(levs_exist)>=min_levs_per_levother:
                 if PRINT:

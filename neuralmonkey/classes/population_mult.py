@@ -681,7 +681,6 @@ def prune_chans_with_low_firing_rate(DFallpa, PLOT=False):
 
     dfres = compute_firing_rate_percentiles_each_chan(DFallpa)
     dfres["below_thresh"] = dfres["rate"]<MIN_RATE
-    
     if PLOT:
         import seaborn as sns
         from pythonlib.tools.snstools import rotateLabel
@@ -2155,6 +2154,8 @@ def dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, fr_mean_subtrac
     # (6) Normalize FR    
     if fr_mean_subtract_method is None:
         # Then don't do anything
+        assert False, "to avoid confusion, you arent allowed to use None. either use sqrt, or raw"
+    elif fr_mean_subtract_method == "sqrt_raw_fr":
         pass
     elif fr_mean_subtract_method == "raw_fr":
         # Square the Fr, becuase when saving, I saved sqare-root transformed fr.
