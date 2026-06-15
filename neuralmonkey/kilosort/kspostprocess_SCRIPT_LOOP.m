@@ -1,5 +1,5 @@
 clear all; close all; 
-ANIMAL = 'Pancho';
+ANIMAL = 'Diego';
 % DATE = 220719;
 % DATES = [221015 221024 221220 230616 230622 230623];
 
