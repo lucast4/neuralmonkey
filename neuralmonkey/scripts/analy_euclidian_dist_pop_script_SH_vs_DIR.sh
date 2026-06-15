@@ -16,7 +16,7 @@ do
   python analy_euclidian_dist_pop_script.py ${animal} ${date1} ${question} ${which_level} 2>&1 | tee ${logfile} &
   sleep 1m
 done
-sleep 60m
+sleep 90m
 
 animal=Pancho
 question=RULESW_ANBMCK_DIR_STROKE

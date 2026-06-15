@@ -24,35 +24,41 @@ from pythonlib.tools.plottools import savefig
 LABELS_IGNORE = ["IGN", ("IGN",), "IGNORE", ("IGNORE",)] # values to ignore during dcode.
 N_MIN_TRIALS = 5 # min trials per level, otherwise throws level out.
 
-def _popanal_preprocess_normalize(PA, PLOT=False):
+def _popanal_preprocess_normalize_softzscore(PA, PLOT=False):
     """ Normalize firing rates so that similar acorss neruons (higha nd low fr) whiel
     still having higher for high fr.
     Similar to "soft normalization" used by Churchland group.
     """
 
     x = PA.X.reshape(PA.X.shape[0], -1)
-
-    # STD (across all trials and times)
-    normvec = np.std(x, axis=1)
-    assert len(normvec.shape)==1
-    normvec = np.reshape(normvec, [normvec.shape[0], 1,1]) # (chans, 1, 1) # std for each chan, across (times, trials).
-    normmin = np.percentile(normvec, [2.5]) # get the min (std fr across time/conditions) across channels, add this on to still have
-
-    # min fr, to make this a "soft" normalization
-    frmean_each_chan = np.mean(x, axis=1) # (chans, 1, 1) # std for each chan, across (times, trials).
-    frmin = np.min(frmean_each_chan) # (chans, 1, 1)) # min (mean fr across time/condition) across chans
-    # frmin = np.min(np.mean(np.mean(PA.X, axis=1, keepdims=True), axis=2, keepdims=True)) # (chans, 1, 1)) # min (mean fr across time/condition) across chans
-
-    # to further help making this "soft"
-    abs_fr_min = 3 # any fr around this low, want to penalize drastically, effectively making it not contyribute much to population activit.
-
-    # DENOM = (normvec+normmin)
-    # DENOM = (normvec + normmin + frmin + abs_fr_min) # To further lower infleunce of low FR neurons (started 2/8/24, 2:55pm)
-    DENOM = (normvec + frmin + abs_fr_min) # To make more similar across chans. (started 2/11/24)
+    
+    x, DENOM, CENTER = _popanal_preprocess_normalize_softzscore_raw(x)
 
     # Do normalization.
     PAnorm = PA.copy()
-    PAnorm.X = PAnorm.X/DENOM
+    PAnorm.X = PAnorm.X/DENOM[:, :, None]
+
+    # # STD (across all trials and times)
+    # normvec = np.std(x, axis=1)
+    # assert len(normvec.shape)==1
+    # normvec = np.reshape(normvec, [normvec.shape[0], 1,1]) # (chans, 1, 1) # std for each chan, across (times, trials).
+    # normmin = np.percentile(normvec, [2.5]) # get the min (std fr across time/conditions) across channels, add this on to still have
+
+    # # min fr, to make this a "soft" normalization
+    # frmean_each_chan = np.mean(x, axis=1) # (chans, 1, 1) # std for each chan, across (times, trials).
+    # frmin = np.min(frmean_each_chan) # (chans, 1, 1)) # min (mean fr across time/condition) across chans
+    # # frmin = np.min(np.mean(np.mean(PA.X, axis=1, keepdims=True), axis=2, keepdims=True)) # (chans, 1, 1)) # min (mean fr across time/condition) across chans
+
+    # # to further help making this "soft"
+    # abs_fr_min = 3 # any fr around this low, want to penalize drastically, effectively making it not contyribute much to population activit.
+
+    # # DENOM = (normvec+normmin)
+    # # DENOM = (normvec + normmin + frmin + abs_fr_min) # To further lower infleunce of low FR neurons (started 2/8/24, 2:55pm)
+    # DENOM = (normvec + frmin + abs_fr_min) # To make more similar across chans. (started 2/11/24)
+
+    # # Do normalization.
+    # PAnorm = PA.copy()
+    # PAnorm.X = PAnorm.X/DENOM
 
     if PLOT:
         from pythonlib.tools.plottools import plotScatter45
@@ -102,6 +108,58 @@ def _popanal_preprocess_normalize(PA, PLOT=False):
 
     return PAnorm, fig
 
+def _popanal_preprocess_normalize_softzscore_raw(x):
+    """ 
+    Normalize firing rates so that similar acorss neruons (higha nd low fr) whiel
+    still having higher for high fr.
+    Similar to "soft normalization" used by Churchland group.
+
+    PARAMS:
+    - x, (nchans, ndat), where ndat is usually (trials x times). Raw (or sqrt transfomred) firing rates
+    RETURNS:
+    - x_norm, (nchans, ndat), rescaled, then mean-subtracted (global mean)
+    - DENOM, (nchans, 1)
+    - CENTER, (nchans, 1)
+    -- can apply DENOM and CENTER to x to return x:
+        x_norm = x.copy()
+        x_norm = x_norm/DENOM
+        x_norm = x_norm-CENTER
+    """
+
+    assert len(x.shape)==2
+
+    #### (1) How much to rescale FR
+    
+    # STD (across all trials and times)
+    normvec = np.std(x, axis=1)
+    assert len(normvec.shape)==1
+    normvec = np.reshape(normvec, [normvec.shape[0], 1]) # (chans, 1) # std for each chan, across (times, trials).
+    # normvec = np.reshape(normvec, [normvec.shape[0]]) # (chans, 1, 1) # std for each chan, across (times, trials).
+    # normmin = np.percentile(normvec, [2.5]) # get the min (std fr across time/conditions) across channels, add this on to still have
+
+    # Min fr across all chans (mean frs), to make this a "soft" normalization
+    frmean_each_chan = np.mean(x, axis=1) # (chans, 1, 1) # mean for each chan, across (times, trials).
+    frmin = np.min(frmean_each_chan) # scalar
+    # frmin = np.min(np.mean(np.mean(PA.X, axis=1, keepdims=True), axis=2, keepdims=True)) # (chans, 1, 1)) # min (mean fr across time/condition) across chans
+
+    # to further help making this "soft"
+    abs_fr_min = 3 # any fr around this low, want to penalize more, effectively making it contyribute less to population activit.
+
+    # DENOM = (normvec+normmin)
+    # DENOM = (normvec + normmin + frmin + abs_fr_min) # To further lower infleunce of low FR neurons (started 2/8/24, 2:55pm)
+    DENOM = (normvec + frmin + abs_fr_min) # To make more similar across chans. (started 2/11/24)
+
+    ### Do normalization.
+    # Rescale fr [0, around 2]
+    x_norm = x.copy()
+    assert len(DENOM.shape)==len(x_norm.shape)
+    x_norm = x_norm/DENOM
+
+    # After rescaling (by dividing), get mean (which will be subtracted to do soft z-score)
+    CENTER = np.mean(x_norm, axis=1, keepdims=True) # (nchans, 1)
+    x_norm = x_norm-CENTER
+
+    return x_norm, DENOM, CENTER
 
 def popanal_preprocess_scalar_normalization(PA, grouping_vars, subtract_mean_each_level_of_var="IGNORE",
                                             plot_example_chan_number=None, plot_example_split_var_string=None,
@@ -127,7 +185,7 @@ def popanal_preprocess_scalar_normalization(PA, grouping_vars, subtract_mean_eac
 
     # 1) First, rescale all FR (as in Churchland stuff), but isntead of using
     # range, use std (like z-score)
-    PAnorm_pre, _ = _popanal_preprocess_normalize(PA)
+    PAnorm_pre, _ = _popanal_preprocess_normalize_softzscore(PA)
     PAnorm = PAnorm_pre.copy()
 
     # if False:
@@ -981,7 +1039,8 @@ def plot_variance_explained_timecourse(SP, animal, DATE, pca_trial_agg_grouping,
         plt.close("all")
 
 
-def _trajgood_make_colors_discrete_var(labels, which_dim_of_labels_to_use=None):
+def _trajgood_make_colors_discrete_var(labels, which_dim_of_labels_to_use=None,
+                                       force_continuous=False):
     """
     Helper to make colors for plotting, mapping from unque item
     in labels to rgba color. Can be continuous or discrete (and will
@@ -996,48 +1055,50 @@ def _trajgood_make_colors_discrete_var(labels, which_dim_of_labels_to_use=None):
     - color_type, str, either "cont" or "discrete".
     - colors, list of colors, matching input labels.
     """
+    from pythonlib.tools.plottools import color_make_map_discrete_labels
+    return color_make_map_discrete_labels(labels, which_dim_of_labels_to_use, force_continuous=force_continuous)
+        
+    # if which_dim_of_labels_to_use is None:
+    #     labels_for_color = labels
+    # else:
+    #     labels_for_color = [lab[which_dim_of_labels_to_use] for lab in labels]
+    # labels_color_uniq = sort_mixed_type(list(set(labels_for_color)))
 
-    if which_dim_of_labels_to_use is None:
-        labels_for_color = labels
-    else:
-        labels_for_color = [lab[which_dim_of_labels_to_use] for lab in labels]
-    labels_color_uniq = sort_mixed_type(list(set(labels_for_color)))
+    # if len(set([type(x) for x in labels_color_uniq]))>1:
+    #     # more than one type...
+    #     color_type = "discr"
+    #     pcols = makeColors(len(labels_color_uniq))
+    #     _map_lev_to_color = {}
+    #     for lev, pc in zip(labels_color_uniq, pcols):
+    #         _map_lev_to_color[lev] = pc
+    # # continuous?
+    # elif len(labels_color_uniq)>50 and isinstance(labels_color_uniq[0], (int)):
+    #     color_type = "cont"
+    #     # from pythonlib.tools.plottools import map_continuous_var_to_color_range as mcv
+    #     # valmin = min(df[var_color_by])
+    #     # valmax = max(df[var_color_by])
+    #     # def map_continuous_var_to_color_range(vals):
+    #     #     return mcv(vals, valmin, valmax)
+    #     # label_rgbs = map_continuous_var_to_color_range(df[var_color_by])
+    #     _map_lev_to_color = None
+    # elif len(labels_color_uniq)>8 and isinstance(labels_color_uniq[0], (np.ndarray, float)):
+    #     color_type = "cont"
+    #     _map_lev_to_color = None
+    # else:
+    #     color_type = "discr"
+    #     # label_rgbs = None
+    #     pcols = makeColors(len(labels_color_uniq))
+    #     _map_lev_to_color = {}
+    #     for lev, pc in zip(labels_color_uniq, pcols):
+    #         _map_lev_to_color[lev] = pc
 
-    if len(set([type(x) for x in labels_color_uniq]))>1:
-        # more than one type...
-        color_type = "discr"
-        pcols = makeColors(len(labels_color_uniq))
-        _map_lev_to_color = {}
-        for lev, pc in zip(labels_color_uniq, pcols):
-            _map_lev_to_color[lev] = pc
-    # continuous?
-    elif len(labels_color_uniq)>50 and isinstance(labels_color_uniq[0], (int)):
-        color_type = "cont"
-        # from pythonlib.tools.plottools import map_continuous_var_to_color_range as mcv
-        # valmin = min(df[var_color_by])
-        # valmax = max(df[var_color_by])
-        # def map_continuous_var_to_color_range(vals):
-        #     return mcv(vals, valmin, valmax)
-        # label_rgbs = map_continuous_var_to_color_range(df[var_color_by])
-        _map_lev_to_color = None
-    elif len(labels_color_uniq)>8 and isinstance(labels_color_uniq[0], (np.ndarray, float)):
-        color_type = "cont"
-        _map_lev_to_color = None
-    else:
-        color_type = "discr"
-        # label_rgbs = None
-        pcols = makeColors(len(labels_color_uniq))
-        _map_lev_to_color = {}
-        for lev, pc in zip(labels_color_uniq, pcols):
-            _map_lev_to_color[lev] = pc
+    # # Return the color for each item
+    # if _map_lev_to_color is None:
+    #     colors = labels_color_uniq
+    # else:
+    #     colors = [_map_lev_to_color[lab] for lab in labels_for_color]
 
-    # Return the color for each item
-    if _map_lev_to_color is None:
-        colors = labels_color_uniq
-    else:
-        colors = [_map_lev_to_color[lab] for lab in labels_for_color]
-
-    return _map_lev_to_color, color_type, colors
+    # return _map_lev_to_color, color_type, colors
 
 def trajgood_plot_colorby_splotbydims_scalar(X, labels_color, list_dims,
                                          overlay_mean=False, plot_text_over_examples=False,
@@ -1312,11 +1373,11 @@ def _trajgood_plot_colorby_scalar_BASE_GOOD(xs, ys, labels_color, ax,
                                             map_lev_to_color=None, color_type="discr",
                                             overlay_mean=False,
                                             plot_text_over_examples=False, text_to_plot=None,
-                                            alpha=0.5, SIZE=5,
+                                            alpha=0.6, SIZE=5,
                                             connect_means_with_line=False, connect_means_with_line_levels=None,
                                             connect_means_with_line_color=None,
                                             plot_3D=False, zs=None,
-                                            mean_markersize=10, mean_alpha=0.9, plot_scatter=True,):
+                                            mean_markersize=10, mean_alpha=0.9, plot_scatter=True):
     """
     [LOW-LEVEL base plot for scatterplot]
     Like trajgood_plot_colorby_splotby_scalar, but passing in the raw data directly, instead
@@ -1335,8 +1396,12 @@ def _trajgood_plot_colorby_scalar_BASE_GOOD(xs, ys, labels_color, ax,
         ys = ys[:, None]
     assert xs.shape[1]==1
     assert ys.shape[1]==1
+    if zs is not None and len(zs.shape)==1:
+        zs = zs[:, None]
+
 
     if plot_3D:
+        # print(xs.shape, ys.shape, zs)
         X = np.concatenate((xs, ys, zs), axis=1)
         dimsplot = (0,1,2)
     else:
@@ -1405,6 +1470,132 @@ def _trajgood_plot_colorby_scalar_BASE_GOOD(xs, ys, labels_color, ax,
             # Plot
             ax.plot(Xmeans[:,0], Xmeans[:,1], "-", color=connect_means_with_line_color)
 
+def trajgood_plot_colorby_splotby_scalar_2dgrid_bregion(dfallpa, var_effect, var_other, savedir, 
+                                                        pa_var = "pa_redu", prune_min_n_trials=3,
+                                                        pretty_plot=False, alpha=0.6):
+    """
+    Make a 2d grid, where each row is a pa from dfallpa (usually different brain regions), 
+    and each column is a level of var_other, and each dot is a trial, colored by var_effect
+    """
+    from pythonlib.tools.plottools import savefig
+
+    nrows = len(dfallpa)
+
+    _pa = dfallpa[pa_var].values[0]
+    dflab = _pa.Xlabels["trials"]
+    levels_col = dflab[var_other].unique().tolist()
+    ncols = len(levels_col)
+    SIZE =5
+
+    # First, prune n trials
+    from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars
+    list_pa_redu = []
+    for i, row in dfallpa.iterrows():
+        bregion = row["bregion"]
+        event = row["event"]
+        PAredu = row[pa_var]     
+
+        # Only keep effect that is present across all var conj
+        dflab = PAredu.Xlabels["trials"]
+        balance_no_missed_conjunctions = True
+        prune_min_n_levs = 2
+        plot_counts_heatmap_savepath = f"{savedir}/counts.pdf"
+        dfout, _ = extract_with_levels_of_conjunction_vars(dflab, var_effect, [var_other],
+                                                                n_min_across_all_levs_var=prune_min_n_trials,
+                                                                lenient_allow_data_if_has_n_levels=prune_min_n_levs,
+                                                                prune_levels_with_low_n=True,
+                                                                ignore_values_called_ignore=True,
+                                                                plot_counts_heatmap_savepath=plot_counts_heatmap_savepath,
+                                                                balance_no_missed_conjunctions=balance_no_missed_conjunctions)
+        plt.close("all")
+        list_pa_redu.append(PAredu.slice_by_dim_indices_wrapper("trials", dfout["_index"].tolist(), True))
+    dfallpa[f"{pa_var}_here"] = list_pa_redu
+
+    ### Plot
+    # for dims in [(0,1), (1,2), (2,3), (3,4)]:
+    for dims in [(0,1), (1,2)]:
+        for share_axes in [False, True]:
+            
+            fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*SIZE, nrows*SIZE), 
+                                     sharex=share_axes, sharey=share_axes, squeeze=False)
+
+            for i, row in dfallpa.iterrows():
+
+                bregion = row["bregion"]
+                event = row["event"]
+                PAredu = row[f"{pa_var}_here"]     
+
+                for j, lev_col in enumerate(levels_col):
+                    try:
+                        ax = axes[i][j]
+                    except Exception as err:
+                        print(axes)
+                        print(i, j)
+                        raise err
+                    
+                    ax.set_title((bregion, lev_col))
+
+                    pa = PAredu.slice_by_labels_filtdict({var_other:[lev_col]})
+
+                    # # Only keep effect that is present across all var conj
+                    # from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars
+                    # dflab = pa.Xlabels["trials"]
+                    # balance_no_missed_conjunctions = True
+                    # prune_min_n_levs = 2
+                    # plot_counts_heatmap_savepath = f"{savedir}/counts.pdf"
+                    # dfout, _ = extract_with_levels_of_conjunction_vars(dflab, var_effect, [var_other],
+                    #                                                         n_min_across_all_levs_var=prune_min_n_trials,
+                    #                                                         lenient_allow_data_if_has_n_levels=prune_min_n_levs,
+                    #                                                         prune_levels_with_low_n=True,
+                    #                                                         ignore_values_called_ignore=True,
+                    #                                                         plot_counts_heatmap_savepath=plot_counts_heatmap_savepath,
+                    #                                                         balance_no_missed_conjunctions=balance_no_missed_conjunctions)
+                    # plt.close("all")
+                    # pa = pa.slice_by_dim_indices_wrapper("trials", dfout["_index"].tolist(), True)
+
+                    if dims[1]<=pa.X.shape[0]-1:
+                        xs = pa.X[dims[0], :, 0]
+                        ys = pa.X[dims[1], :, 0]
+                        # zs = pa.X[2, :, 0]
+                        dflab = pa.Xlabels["trials"]
+                        labels = dflab[var_effect].tolist()
+
+                        # _trajgood_plot_colorby_scalar_BASE_GOOD(xs, ys, labels, ax, plot_3D=False, zs = zs)
+                        _trajgood_plot_colorby_scalar_BASE_GOOD(xs, ys, labels, ax, alpha=alpha)
+
+                    # Make it pretty
+                    if pretty_plot:
+
+                        if False: # Beucase if this on, then for some reason share_axes_row_or_col_of_subplots() fails
+                            # INcrease fontsize
+                            for item in ([ax.xaxis.label, ax.yaxis.label] +
+                                        ax.get_xticklabels() + ax.get_yticklabels()):
+                                item.set_fontsize(15)
+                            
+                        # if j>0:
+                        #     from pythonlib.tools.plottools import naked_erase_axes
+                        #     naked_erase_axes(ax)
+                        # else:
+                        #     # INcrease fontsize
+                        #     for item in ([ax.xaxis.label, ax.yaxis.label] +
+                        #                 ax.get_xticklabels() + ax.get_yticklabels()):
+                        #         item.set_fontsize(20)
+                        if i>0 or j>0:
+                            try:
+                                ax.get_legend().remove()
+                            except AttributeError as err:
+                                print("Skipping: ", err)
+                                pass
+                            
+            # Must share axes, within bregino
+            if share_axes==False:
+                from pythonlib.tools.plottools import share_axes_row_or_col_of_subplots
+                share_axes_row_or_col_of_subplots(axes, "row", "both")
+
+            # Save
+            savefig(fig, f"{savedir}/scatter-event={event}-dims={dims}-shareax={share_axes}.pdf")
+            plt.close("all")
+    
 def trajgood_plot_colorby_splotby_scalar_WRAPPER(X, dflab, var_color, savedir,
                                                  vars_subplot=None, list_dims=None,
                                                  STROKES_BEH=None, STROKES_TASK=None,
@@ -1413,7 +1604,9 @@ def trajgood_plot_colorby_splotby_scalar_WRAPPER(X, dflab, var_color, savedir,
                                                  connect_means_with_line=False, connect_means_with_line_levels=None,
                                                  SIZE=7, alpha=0.5,
                                                  skip_subplots_lack_mult_colors=True, save_suffix=None,
-                                                 plot_3D = False):
+                                                 plot_3D = False,
+                                                 overlay_mean_orig = False,
+                                                 plot_kde=False, force_continuous=False):
     """
     Final wrapper to make many plots, each figure showing supblots one for each levv of otehr var, colored
     by levels of var. Across figures, show different projections to dim pairs. And plot sepraerpte figuers for
@@ -1424,7 +1617,7 @@ def trajgood_plot_colorby_splotby_scalar_WRAPPER(X, dflab, var_color, savedir,
     :param var_color:
     :param savedir:
     :param vars_subplot:
-    :param list_dims:
+    :param list_dims: list of 2-tuples
     :param STROKES_BEH:
     :param STROKES_TASK:
     :param overlay_mean_var_color, str, which variable (in var_color, if it is list) to use for coloring. This doesnt affect
@@ -1437,6 +1630,10 @@ def trajgood_plot_colorby_splotby_scalar_WRAPPER(X, dflab, var_color, savedir,
         save_suffix = f"-{save_suffix}"
     else:
         save_suffix = ""
+
+    if overlay_mean:
+        assert isinstance(var_color, list)
+        assert overlay_mean_var_color in var_color
 
     if overlay_mean_var_color is not None and overlay_mean:
         # Currently, overlay_mean_var_color must be subset of var_color
@@ -1451,8 +1648,19 @@ def trajgood_plot_colorby_splotby_scalar_WRAPPER(X, dflab, var_color, savedir,
         # Color variables are same as grouping variables.
         colorby_ind_in_vars_mean = None
 
-    assert len(X.shape)==2
-    assert len(X)==len(dflab)
+    if len(X.shape)==1:
+        # Then is 1-d. hack solution by adding a fake column
+        X = np.stack([X, np.ones_like(X)], axis=1)
+
+    if not len(X.shape)==2:
+        print(X)
+        print(X.shape)
+        assert False, "prob catch this upstream and block."
+
+    if not len(X)==len(dflab):
+        print(X.shape)
+        print(len(dflab))
+        assert False
 
     if list_dims is None:
         list_dims = [(0,1,2)]
@@ -1460,6 +1668,23 @@ def trajgood_plot_colorby_splotby_scalar_WRAPPER(X, dflab, var_color, savedir,
     # Make sure is lewngth 3
     list_dims = [list(dims)+[max(dims)+1] if len(dims)==2 else dims for dims in list_dims]
 
+    list_dims_keep = []
+    for dims in list_dims:
+        # Determine if keep this dims
+        keep = True
+        for d in dims[:2]: # Just take 2, since 3rd is optional
+            if X.shape[1]<d+1:
+                print("Excluding this dims .. (not enough data)", dims, "data : ", X.shape)
+                # print(X.shape)
+                # print(list_dims)
+                # assert False, "cannot get these dims"   
+                keep = False
+        if keep:
+            list_dims_keep.append(dims)
+    list_dims = list_dims_keep
+    if len(list_dims)==0:
+        return
+    # assert len(list_dims)>0
     # else:
     #     if plot_3D:
     #         for dims in list_dims:
@@ -1479,7 +1704,7 @@ def trajgood_plot_colorby_splotby_scalar_WRAPPER(X, dflab, var_color, savedir,
 
     if vars_subplot is None:
         labels_subplot = None
-        vars_subplot_string = ""
+        vars_subplot_string = None
     else:
         # is a conjunctive var
         dflab = append_col_with_grp_index(dflab, vars_subplot, "_tmp", strings_compact=True)
@@ -1509,13 +1734,15 @@ def trajgood_plot_colorby_splotby_scalar_WRAPPER(X, dflab, var_color, savedir,
                                                                                            labels_color, labels_subplot, var_color,
                                                                                            vars_subplot_string, SIZE=7,
                                                                                            alpha=alpha,
-                                                                                           overlay_mean=False,
+                                                                                           overlay_mean=overlay_mean_orig,
                                                                                            text_to_plot=text_to_plot,
                                                                                            skip_subplots_lack_mult_colors=skip_subplots_lack_mult_colors,
                                                                                            n_min_per_levo=n_min_per_levo,
                                                                                            connect_means_with_line=connect_means_with_line,
                                                                                            connect_means_with_line_levels=connect_means_with_line_levels,
-                                                                                           plot_3D=plot_3D, zs=zs)
+                                                                                           plot_3D=plot_3D, zs=zs,
+                                                                                           plot_kde=plot_kde,
+                                                                                           force_continuous=force_continuous)
 
         # Overlay means, including option to use one set of variables for grouping, and a subset of those variables for coloring.
         if overlay_mean and colorby_ind_in_vars_mean is not None:
@@ -1556,6 +1783,81 @@ def trajgood_plot_colorby_splotby_scalar_WRAPPER(X, dflab, var_color, savedir,
         plt.close("all")
 
 
+def _trajgood_construct_df_from_PAscal(PA, var_effect, vars_others):
+    """
+    Given array/list inputs, each same length, constructs df useful for 
+    downstream plots, where each row is a single scalar value (x, y, and potentially z).
+    """
+    Xredu = PA.X # (chans, trials, 1)
+    dflab = PA.Xlabels["trials"]
+    assert Xredu.shape[2]==1
+    x = Xredu.squeeze().T # (trials, chans)
+    xs = x[:, 0]
+    ys = x[:, 1]
+    labels_color = dflab[var_effect].tolist()
+    labels_subplot = [tuple(x) for x in dflab[vars_others].values.tolist()]
+    dfthis = _trajgood_construct_df(xs, ys, labels_color, labels_subplot)
+    return dfthis
+
+def _trajgood_construct_df(xs, ys, labels_color, labels_subplot,
+                           color_var="color", subplot_var="subplot", 
+                           plot_3D=False,  zs=None):
+    """
+    Given array/list inputs, each same length, constructs df useful for 
+    downstream plots, where each row is a single scalar value (x, y, and potentially z).
+
+    """
+
+    if False: 
+        # I had this code previously, but doesnt seem like I need it.
+        # Make this True if plotting fails.
+        if len(xs.shape)==1:
+            xs = xs[:, None]
+        if len(ys.shape)==1:
+            ys = ys[:, None]
+        if zs is not None and len(zs.shape)==1:
+            zs = zs[:, None]
+            assert zs.shape[1]==1
+
+        assert xs.shape[1]==1
+        assert ys.shape[1]==1
+
+    if labels_subplot is None:
+        # subplot_var = None
+        tmp = {
+            color_var:labels_color,
+            # "x":xs.tolist(),
+            # "y":ys.tolist(),
+            "x":xs,
+            "y":ys,
+        }
+    else:
+        tmp = {
+            color_var:labels_color,
+            subplot_var:labels_subplot,
+            # "x":xs.tolist(),
+            # "y":ys.tolist(),
+            "x":xs,
+            "y":ys,
+        }
+
+    if plot_3D:
+        tmp["z"] = zs
+        # tmp["z"] = zs.tolist()
+
+    # print(tmp["x"][0].shape)
+    # print(tmp["y"][0].shape)
+    # print(tmp["z"][0].shape)
+    # print(tmp["x"][:2])
+    # # print(tmp["y"][0].shape)
+    # print(tmp["z"][:2])
+    # assert False
+
+    dfthis = pd.DataFrame(tmp)
+
+    return dfthis
+
+
 def trajgood_plot_colorby_splotby_scalar(xs, ys, labels_color, labels_subplot,
                                          color_var, subplot_var,
                                          overlay_mean=False,
@@ -1569,7 +1871,8 @@ def trajgood_plot_colorby_splotby_scalar(xs, ys, labels_color, labels_subplot,
                                          n_min_per_levo=None,
                                        connect_means_with_line=False,
                                        connect_means_with_line_levels=None,
-                                         plot_3D=False, zs=None
+                                         plot_3D=False, zs=None,
+                                         plot_kde=False, force_continuous=False
                                          ):
     """
     Like trajgood_plot_colorby_splotby_scalar, but passing in the raw data directly, instead
@@ -1588,50 +1891,55 @@ def trajgood_plot_colorby_splotby_scalar(xs, ys, labels_color, labels_subplot,
     """
     from pythonlib.drawmodel.strokePlots import overlay_stroke_on_plot_mult_rand
 
-    if len(xs.shape)==1:
-        xs = xs[:, None]
-    if len(ys.shape)==1:
-        ys = ys[:, None]
-    if zs is not None and len(zs.shape)==1:
-        zs = zs[:, None]
-        assert zs.shape[1]==1
-
-    assert xs.shape[1]==1
-    assert ys.shape[1]==1
-
-    if labels_subplot is None:
-        subplot_var = None
-        tmp = {
-            color_var:labels_color,
-            "x":xs.tolist(),
-            "y":ys.tolist()
-        }
+    if True:
+        dfthis = _trajgood_construct_df(xs, ys, labels_color, labels_subplot,
+                            color_var, subplot_var, plot_3D, zs)
     else:
-        tmp = {
-            color_var:labels_color,
-            subplot_var:labels_subplot,
-            "x":xs.tolist(),
-            "y":ys.tolist()
-        }
-    if plot_3D:
-        tmp["z"] = zs.tolist()
-    # print(tmp["x"][0].shape)
-    # print(tmp["y"][0].shape)
-    # print(tmp["z"][0].shape)
-    # print(tmp["x"][:2])
-    # # print(tmp["y"][0].shape)
-    # print(tmp["z"][:2])
-    # assert False
-    dfthis = pd.DataFrame(tmp)
+        if len(xs.shape)==1:
+            xs = xs[:, None]
+        if len(ys.shape)==1:
+            ys = ys[:, None]
+        if zs is not None and len(zs.shape)==1:
+            zs = zs[:, None]
+            assert zs.shape[1]==1
 
+        assert xs.shape[1]==1
+        assert ys.shape[1]==1
+
+        if labels_subplot is None:
+            subplot_var = None
+            tmp = {
+                color_var:labels_color,
+                "x":xs.tolist(),
+                "y":ys.tolist()
+            }
+        else:
+            tmp = {
+                color_var:labels_color,
+                subplot_var:labels_subplot,
+                "x":xs.tolist(),
+                "y":ys.tolist()
+            }
+        if plot_3D:
+            tmp["z"] = zs.tolist()
+        # print(tmp["x"][0].shape)
+        # print(tmp["y"][0].shape)
+        # print(tmp["z"][0].shape)
+        # print(tmp["x"][:2])
+        # # print(tmp["y"][0].shape)
+        # print(tmp["z"][:2])
+        # assert False
+        dfthis = pd.DataFrame(tmp)
+    
     fig, axes, map_levo_to_ax, map_levo_to_inds = _trajgood_plot_colorby_splotby_scalar(dfthis, color_var, subplot_var,
-                                         overlay_mean, plot_text_over_examples,
+                                                overlay_mean, plot_text_over_examples,
                                                 text_to_plot, alpha, SIZE,
                                                 skip_subplots_lack_mult_colors=skip_subplots_lack_mult_colors,
                                                 n_min_per_levo=n_min_per_levo,
-                                  connect_means_with_line=connect_means_with_line,
+                                                connect_means_with_line=connect_means_with_line,
                                                 connect_means_with_line_levels=connect_means_with_line_levels,
-                                                plot_3D=plot_3D)
+                                                plot_3D=plot_3D, plot_kde=plot_kde,
+                                                force_continuous=force_continuous)
 
     if fig is None:
         return None, None, None, None
@@ -1687,7 +1995,9 @@ def _trajgood_plot_colorby_splotby_scalar(df, var_color_by, var_subplots,
                                           n_min_per_levo=None,
                                           connect_means_with_line=False,
                                           connect_means_with_line_levels=None,
-                                          plot_3D=False):
+                                          plot_3D=False,
+                                          plot_kde=False, kde_plot_scatter=True, kde_ellipses=True, kde_text_labels=False, kde_plot_contours=True, kde_levels=6,
+                                          force_continuous=False):
     """ [GOOD], to plot scatter of pts, colored by one variable, and split across
     subplots by another variable.
     PARAMS:
@@ -1707,8 +2017,8 @@ def _trajgood_plot_colorby_splotby_scalar(df, var_color_by, var_subplots,
     # Color the labels
     # One color for each level of effect var
 
-    labellist = df[var_color_by].tolist()
-    map_lev_to_color, color_type, _ = _trajgood_make_colors_discrete_var(labellist)
+    labellist = df[var_color_by].unique().tolist()
+    map_lev_to_color, color_type, _ = _trajgood_make_colors_discrete_var(labellist, force_continuous=force_continuous)
 
     # If you pass in continuous variable as othervar, then overwrite that and just plot a single plot.
     if var_subplots is not None:
@@ -1770,10 +2080,13 @@ def _trajgood_plot_colorby_splotby_scalar(df, var_color_by, var_subplots,
 
     if plot_3D:
         subplot_kw = dict(projection='3d')
-        sharex, sharey = False, False
+        # sharex, sharey = False, False
+        share_axes = False
     else:
         subplot_kw = None
-        sharex, sharey = True, True
+        share_axes = True
+        # sharex, sharey = True, True
+    sharex, sharey = False, False
     fig, axes = plt.subplots(nrows, ncols, sharex=sharex, sharey=sharey,
                              figsize=(ncols*SIZE, nrows*SIZE), subplot_kw=subplot_kw)
 
@@ -1797,13 +2110,24 @@ def _trajgood_plot_colorby_splotby_scalar(df, var_color_by, var_subplots,
         else:
             zs = None
         labels_color = dfthis[var_color_by].values
-        _trajgood_plot_colorby_scalar_BASE_GOOD(xs, ys, labels_color, ax,
-                                                map_lev_to_color, color_type,
-                                                overlay_mean, plot_text_over_examples,
-                                                text_to_plot_this, alpha, SIZE,
-                                                connect_means_with_line=connect_means_with_line,
-                                                connect_means_with_line_levels=connect_means_with_line_levels,
-                                                plot_3D=plot_3D, zs=zs)
+
+        if plot_kde:
+            from pythonlib.tools.pandastools import plot_class_kde
+            plot_class_kde(dfthis, "x", "y", var_color_by, levels=kde_levels, ax=ax, 
+                           text_labels=kde_text_labels, scatter=kde_plot_scatter,
+                           ellipses=kde_ellipses, cmap_per_class=map_lev_to_color,
+                           plot_contours=kde_plot_contours)
+        else:
+            _trajgood_plot_colorby_scalar_BASE_GOOD(xs, ys, labels_color, ax,
+                                                    map_lev_to_color, color_type,
+                                                    overlay_mean, plot_text_over_examples,
+                                                    text_to_plot_this, alpha, SIZE,
+                                                    connect_means_with_line=connect_means_with_line,
+                                                    connect_means_with_line_levels=connect_means_with_line_levels,
+                                                    plot_3D=plot_3D, zs=zs)
+    if share_axes:
+        from pythonlib.tools.plottools import share_axes
+        share_axes(fig.axes, "both")
 
     if plot_3D:
         xs = np.stack(df["x"])
@@ -1887,6 +2211,9 @@ def trajgood_plot_colorby_splotby_WRAPPER(X, times, dflab, var_color, savedir,
 
     for dims in list_dims:
         
+        if X.shape[0] < max(dims)+1:
+            continue
+
         # 1) Construct dataframe
         if vars_subplot is None:
             if isinstance(var_color, (list, tuple)):
@@ -1932,7 +2259,8 @@ def trajgood_plot_colorby_splotby(df, var_color_by, var_subplots, dims=(0,1),
                                    ntrials=5, plot_dots_on_traj=True,
                                    overlay_trials_on_mean=False, 
                                    n_trials_overlay_on_mean=5,
-                                   xlim_force=None, ylim_force=None):
+                                   xlim_force=None, ylim_force=None, SIZE=3.5,
+                                   ncols=4):
     """ [GOOD], to plot trajectories colored by one variable, and split across subplots by another
     variable.
     PARAMS:
@@ -1971,9 +2299,8 @@ def trajgood_plot_colorby_splotby(df, var_color_by, var_subplots, dims=(0,1),
 
     # One subplot per othervar
     levs_other = sort_mixed_type(df[var_subplots].unique().tolist())
-    ncols = 3
     nrows = int(np.ceil(len(levs_other)/ncols))
-    fig, axes = plt.subplots(nrows, ncols, sharex=True, sharey=True, figsize=(ncols*3.5, nrows*3.5))
+    fig, axes = plt.subplots(nrows, ncols, sharex=True, sharey=True, figsize=(ncols*SIZE, nrows*SIZE), squeeze=False)
     for ax, levo in zip(axes.flatten(), levs_other):
         ax.set_title(levo)
         dfthis = df[df[var_subplots]==levo]
@@ -2001,7 +2328,6 @@ def trajgood_plot_colorby_splotby(df, var_color_by, var_subplots, dims=(0,1),
                                        time_bin_size = time_bin_size,
                                        markersize=markersize, marker=marker,
                                        text_plot_pt1=text_plot_pt1, alpha=alpha, plot_dots_on_traj=plot_dots_on_traj)
-                
                 if overlay_trials_on_mean:
                     # Optionally overlay some single trials, so show variability
                     n = X.shape[1]
@@ -2040,6 +2366,7 @@ def trajgood_plot_colorby_splotby(df, var_color_by, var_subplots, dims=(0,1),
             ax.set_xlim(xlim_force)
         if ylim_force is not None:
             ax.set_ylim(ylim_force)
+        plt.grid(False)
 
     # Add legend to the last axis
     legend_add_manual(ax, map_lev_to_color.keys(), map_lev_to_color.values(), 0.2, "best")
@@ -2050,7 +2377,12 @@ def trajgood_plot_colorby_splotby_timeseries(df, var_color_by, var_subplots,
                                              dim=0, plot_trials=True, plot_trials_n=10,
                                              plot_mean=True, 
                                              alpha=0.5, SUBPLOT_OPTION="combine_levs"):
-    """ [GOOD], to plot trajectories colored by one variable, and split across subplots by another
+    """ 
+    NOTE: OBSOLETE -- SHOULD replace with:
+    pa.plotwrappergrid_smoothed_fr_splot_neuron (if SUBPLOT_OPTION="combine_levs")
+    pa.plotwrappergrid_smoothed_fr_splot_var (if SUBPLOT_OPTION="split_levs")
+
+    [GOOD], to plot trajectories colored by one variable, and split across subplots by another
     variable, where x axis is always time.
 
     PARAMS:
@@ -2065,8 +2397,6 @@ def trajgood_plot_colorby_splotby_timeseries(df, var_color_by, var_subplots,
     from neuralmonkey.population.dimreduction import statespace_plot_single
     from pythonlib.tools.plottools import legend_add_manual
     from neuralmonkey.neuralplots.population import plot_smoothed_fr
-
-    dim = 0
 
     if var_subplots is None:
         df = df.copy()
@@ -2114,20 +2444,21 @@ def trajgood_plot_colorby_splotby_timeseries(df, var_color_by, var_subplots,
                 times = row["times"]
                 color_for_trajectory = map_lev_to_color[row[var_color_by]]
 
-                if plot_trials:
-                    if X.shape[1]>plot_trials_n:
-                        import random
-                        _inds = random.sample(range(X.shape[1]), plot_trials_n)
-                        Xthis = X[:, _inds, :]
-                    else:
-                        Xthis = X
-                    for _trial in range(Xthis.shape[1]):
-                        ax.plot(times, Xthis[dim, _trial, :], "-", color=color_for_trajectory, alpha=alpha)
-                
-                if plot_mean:
-                    plot_smoothed_fr(X[dim, :, :], times, ax, color=color_for_trajectory)
-                    # Xmean = np.mean(X[dim, :, :], axis=0)
-                    # ax.plot(times, Xmean, "-", color=color_for_trajectory, linewidth=4, alpha=0.7)
+                if X.shape[0]>dim:
+                    if plot_trials:
+                        if X.shape[1]>plot_trials_n:
+                            import random
+                            _inds = random.sample(range(X.shape[1]), plot_trials_n)
+                            Xthis = X[:, _inds, :]
+                        else:
+                            Xthis = X
+                        for _trial in range(Xthis.shape[1]):
+                            ax.plot(times, Xthis[dim, _trial, :], "-", color=color_for_trajectory, alpha=alpha)
+                    
+                    if plot_mean:
+                        plot_smoothed_fr(X[dim, :, :], times, ax, color=color_for_trajectory)
+                        # Xmean = np.mean(X[dim, :, :], axis=0)
+                        # ax.plot(times, Xmean, "-", color=color_for_trajectory, linewidth=4, alpha=0.7)
 
     # OPTION 2 - grid of subplots (var vs. othervar)
     elif SUBPLOT_OPTION=="split_levs":
@@ -2153,23 +2484,23 @@ def trajgood_plot_colorby_splotby_timeseries(df, var_color_by, var_subplots,
                 elif len(dfthis)>1:
                     print(dfthis)
                     assert False
-                else:
+                else:                    
                     X = dfthis["z"].values[0] # (dims, trials, times)
                     times = dfthis["times"].values[0]
                     color_for_trajectory = map_lev_to_color[leveff]
-
-                    if plot_trials:
-                        if X.shape[1]>plot_trials_n:
-                            import random
-                            _inds = random.sample(range(X.shape[1]), plot_trials_n)
-                            Xthis = X[:, _inds, :]
-                        else:
-                            Xthis = X
-                        for _trial in range(Xthis.shape[1]):
-                            ax.plot(times, Xthis[dim, _trial, :], "-", alpha=alpha)
-                    
-                    if plot_mean:
-                        plot_smoothed_fr(X[dim, :, :], times, ax, color=color_for_trajectory)
+                    if X.shape[0]>dim:
+                        if plot_trials:
+                            if X.shape[1]>plot_trials_n:
+                                import random
+                                _inds = random.sample(range(X.shape[1]), plot_trials_n)
+                                Xthis = X[:, _inds, :]
+                            else:
+                                Xthis = X
+                            for _trial in range(Xthis.shape[1]):
+                                ax.plot(times, Xthis[dim, _trial, :], "-", alpha=alpha)
+                        
+                        if plot_mean:
+                            plot_smoothed_fr(X[dim, :, :], times, ax, color=color_for_trajectory)
     else:
         print(SUBPLOT_OPTION)
         assert False
@@ -2187,7 +2518,7 @@ def dimredgood_nonlinear_embed_data(X, METHOD="umap", n_components=2, tsne_perp=
     PARAMS:
     - X, already-preprocessed data, (nsamps, ndims)
     RETURNS:
-        - Xredu, (nsamp, n_components)
+    - Xredu, (nsamp, n_components)
     """
     nsamp = X.shape[0]
     if METHOD == "tsne":
@@ -2206,7 +2537,6 @@ def dimredgood_nonlinear_embed_data(X, METHOD="umap", n_components=2, tsne_perp=
         print("UMAP, Using this n_neighbors:", umap_n_neighbors, ", nsamp =", nsamp, ", n_components: ", n_components)
         min_dist = 0.1
         reducer = umap.UMAP(n_components=n_components, n_neighbors=umap_n_neighbors, min_dist=min_dist)
-        # mapper = reducer.fit(X)
         Xredu = reducer.fit_transform(X)
     elif METHOD == "mds":
         from sklearn.manifold import MDS
@@ -2218,6 +2548,136 @@ def dimredgood_nonlinear_embed_data(X, METHOD="umap", n_components=2, tsne_perp=
 
     return Xredu, reducer
 
+def dimredgood_subspace_variance_accounted_for(X, subspace_1, subspace_2):
+    """
+    Compute variance accounted for (VAF), i.e., how much variance of activity in subspace 1 still remains
+    when you then projct to susbpace 2 (and vice versa).
+    
+    See Xie, Liping Wang, Science 2022
+    
+    PARAMS:
+    - X, data, usually (nchans, nconditions or ntrials). This is the original data from which the original variance
+    is computed.
+    - subspace_1/2, arrays (nchans, ndims), the two subspaces to compare. Will autmatically make sure
+    their columns are unit length.
+    """
+
+    # First, project data to subspaces
+    data_1, _ = dimredgood_project_data_denoise_simple(X, subspace_1, "denoise", normalization="norm")
+    data_2, _ = dimredgood_project_data_denoise_simple(X, subspace_2, "denoise", normalization="norm")
+
+    # Second, project those projectsions to the other subspace
+    data_1_2, _ = dimredgood_project_data_denoise_simple(data_1, subspace_2, "denoise", normalization="norm")
+    data_2_1, _ = dimredgood_project_data_denoise_simple(data_2, subspace_1, "denoise", normalization="norm")
+
+    
+    # Compute variances
+    def _compute_variance(x):
+        return np.sum((x - np.mean(x, axis=0))**2)
+    
+    variance_total = _compute_variance(X)
+    variance_1 = _compute_variance(data_1)
+    variance_2 = _compute_variance(data_2)
+    variance_1_2 = _compute_variance(data_1_2)
+    variance_2_1 = _compute_variance(data_2_1)
+
+    if False:
+        print(X.shape)
+        print(data_1.shape)
+        print(data_1.shape)
+        print(data_1_2.shape)
+        print(data_2_1.shape)
+        heatmap_mat(X, annotate_heatmap=False, diverge=True);
+        heatmap_mat(data_1, annotate_heatmap=False, diverge=True);
+        heatmap_mat(data_2, annotate_heatmap=False, diverge=True);
+        heatmap_mat(data_1_2, annotate_heatmap=False, diverge=True);
+        heatmap_mat(data_2_1, annotate_heatmap=False, diverge=True);
+        print(variance_total, variance_1, variance_2, variance_1_2, variance_2_1)
+        print(vaf_1_2, vaf_2_1)
+
+    # Compute VAF
+    vaf_1 = variance_1/variance_total
+    vaf_2 = variance_2/variance_total
+
+    vaf_1_2 = variance_1_2/variance_1 
+    vaf_2_1 = variance_2_1/variance_2
+
+    out = {
+        "variance_total":variance_total,
+        "variance_1":variance_1,
+        "variance_2":variance_2,
+        "variance_1_2":variance_1_2,
+        "variance_2_1":variance_2_1,
+        "vaf_1":vaf_1,
+        "vaf_2":vaf_2,
+        "vaf_1_2":vaf_1_2,
+        "vaf_2_1":vaf_2_1
+        }
+    
+    return out
+
+def dimredgood_project_data_denoise_simple(X, basis_vectors, version="projection", normalization=None,
+                                           plot_orthonormalization=False):
+    """
+    Project X to the subspace spanned by the basis vectors, and optionally denoise by projecting back to the original space
+    PARAMS:
+    - X, data, (nchans, nfeatures) or (nchans, ntrials)
+    - basis_vectors, (nchans, ndims_project), where nchans matches self.CHans
+    - version, whethr to project or to denoise (i.e, project the reproject out)
+    - do_orthonormal, bool, if True, then orthonormlaizes the basis using QR decomspotion. The order of columns
+    in basis matters. ie sequentially gets orthognalizes each column by the subspace spanned by the preceding columns.
+    """
+
+    if not basis_vectors.shape[0] == X.shape[0]:
+        print(basis_vectors.shape)
+        print(X.shape)
+        assert False
+
+    if normalization=="orthonormal":
+        # Optionally, orthonormalize the vectors
+        basis_vectors_ortho, r = np.linalg.qr(basis_vectors)
+        if plot_orthonormalization:
+            from pythonlib.tools.snstools import heatmap_mat
+            heatmap_mat(basis_vectors, annotate_heatmap=False, diverge=True)
+            heatmap_mat(basis_vectors_ortho, annotate_heatmap=False, diverge=True)
+            heatmap_mat(r, annotate_heatmap=False, diverge=True)
+            # print(basis_vectors.shape, X.shape)
+        basis_vectors = basis_vectors_ortho
+    elif normalization=="norm":
+        # Each vector length to 1
+        basis_vectors = basis_vectors/np.sum(basis_vectors**2, axis=0)**0.5
+        # print(np.sum(basis_vectors**2, axis=0))
+        # assert False
+    else:
+        assert normalization is None
+
+    # Get data
+    if len(X.shape)>2:
+        assert X.shape[2]==1, "need to be scalar (i.e., not time-series)"
+        X = X.squeeze() # (nchans, ntrials)
+
+    # project data onto basis vectors
+    if version=="projection":
+        Xnew = basis_vectors.T @ X
+        if False:
+            # NOTE: this does exactly the same thing -- I confirmed
+            from neuralmonkey.analyses.state_space_good import dimredgood_pca_project
+            Xredu, stats, Xredu_in_orig_shape = dimredgood_pca_project(basis_vectors.T, X.T, plot_pca_explained_var_path="/tmp/pca.pdf")
+        # print(stats)
+        # assert False
+    elif version=="denoise":
+        # Project to subspace, and then expand back out -- this is to "denoise" the activity
+        D = basis_vectors @ basis_vectors.T # (nchans, nchans)
+        Xnew = D @ X # (nchans, nfeatures)
+        # print(D.shape)
+        # print(X.shape)
+        # print(Xnew.shape)
+        # assert False
+    else:
+        print(version)
+        assert False
+
+    return Xnew, basis_vectors
 
 def dimredgood_pca_project(components, X, plot_pca_explained_var_path=None,
                            do_additional_reshape_from_ChTrTi=False,
@@ -2225,8 +2685,10 @@ def dimredgood_pca_project(components, X, plot_pca_explained_var_path=None,
                            ):
     """
     Project new data onto a subspace, e.g.,, PCA subspace, and compute variance explained.
-    :param components: pca loadings, (n_components, n_features)
-    :param X: data to project, already demeaned, etc. and already reshaped to (ntrials, nfeats),
+    
+    PARAMS
+    :param components: pca loadings, (n_components, n_features) [i.e., (ndims, nchans)]
+    :param X: data to project, already demeaned, etc. and already reshaped to (ntrials, nfeats), .. [i.e., (ntrials, nchans)]
     except if do_additional_reshape_from_ChTrTi==True, in which case input is (nchans, ntrials, ntimesS),
     and here will do the approppriate reshaping.
     
@@ -2239,8 +2701,6 @@ def dimredgood_pca_project(components, X, plot_pca_explained_var_path=None,
     :return:
     - Xredu, (ntrials, n_components)
     """
-    from pythonlib.tools.nptools import isnear
-
 
     # Decide if do reshape first
     if do_additional_reshape_from_ChTrTi:
@@ -2248,16 +2708,19 @@ def dimredgood_pca_project(components, X, plot_pca_explained_var_path=None,
         Xorig = X.copy()
         nchans, ntrials, ntimes = Xorig.shape
         X = np.reshape(Xorig, [nchans, ntrials * ntimes]).T # (ntrials*ntimes, nchans)        
-        # print(components.shape)
-        # print(Xorig.shape)
-        # print(X.shape)
-        # assert False
 
     # Sanity checks
-    assert X.shape[1] == components.shape[1]
+    if not X.shape[1] == components.shape[1]:
+        print(X.shape)
+        print(components.shape)
+        print(do_additional_reshape_from_ChTrTi)
+        print("Is this because you are doing 'scalar', and trying to use different windwos for pca space identificaiton vs. projecting? Then this must fail, since scalar doesnt slide over time... Solve by setting time windows the same.")
+    
     # print("HERE", np.mean(X, axis=0))
-    assert np.all(np.mean(X, axis=0)<0.1)
-    # assert isnear(np.mean(X, axis=0), np.zeros(X.shape)) # Check that X is zeroed, or else the variance calcualtion may be weird.
+    if False: # Need this False in order to project data that hasnt had each time bin subtracted...
+        from pythonlib.tools.nptools import isnear
+        assert np.all(np.mean(X, axis=0)<0.1)
+    # assert isnear(np.mean(X, axis=0), np.zeros(X.shape)) # Check that X is zeroed, or else the variance calcualtion may be weird, and the result can be weird.
 
     # Compute projection
     Xredu = np.dot(X, components.T)
@@ -2277,12 +2740,6 @@ def dimredgood_pca_project(components, X, plot_pca_explained_var_path=None,
     else:
         Xredu_in_orig_shape = None
 
-    # print(Xorig.shape)
-    # print(components.shape)
-    # print(Xredu.shape)
-    # print(Xredu_in_orig_shape.shape)
-    # assert False
-        
     if plot_pca_explained_var_path is not None:
         fig, axes = plt.subplots(1,2, figsize=(8,3))
 
@@ -2306,13 +2763,12 @@ def dimredgood_pca_project(components, X, plot_pca_explained_var_path=None,
     }
     return Xredu, stats, Xredu_in_orig_shape
 
-
 def dimredgood_pca(X, n_components=None,
                    how_decide_npcs_keep = "cumvar",
                    pca_frac_var_keep=0.85, pca_frac_min_keep=0.01,
                    plot_pca_explained_var_path=None, plot_loadings_path=None,
                    plot_loadings_feature_labels=None,
-                   method="svd", npcs_keep_force=None):
+                   method="svd", npcs_keep_force=None, return_stats=False):
     """
     Holds All things related to applying PCA, and plots.
     :param X: data (ndat, nfeats)
@@ -2340,7 +2796,6 @@ def dimredgood_pca(X, n_components=None,
     elif method=="svd":
         # No recenter or rescale. Otehrwise owrks identically to above (tested).
         # Copied from sklearn.decomposion._pca._fit()
-
         if False:
             # If do this, thens hould be identical to sklearn (tested).
             X = X.copy()
@@ -2348,10 +2803,7 @@ def dimredgood_pca(X, n_components=None,
 
         from sklearn.utils.extmath import svd_flip
         U, S, Vt = np.linalg.svd(X, full_matrices=False)
-
-        # flip eigenvectors' sign to enforce deterministic output
-        U, Vt = svd_flip(U, Vt)
-
+        U, Vt = svd_flip(U, Vt) # flip sign of eigenvectors ,to force deterministic output
         components_ = Vt
 
         # Get variance explained by singular values
@@ -2359,7 +2811,7 @@ def dimredgood_pca(X, n_components=None,
         explained_variance_ratio_ = explained_variance_ / explained_variance_.sum()
         # singular_values_ = S.copy()  # Store the singular values.
 
-        Xpca = np.dot(X, components_.T)
+        Xpca = np.dot(X, components_.T) # get projection
 
         # Store pca weights
         pca = {
@@ -2393,6 +2845,7 @@ def dimredgood_pca(X, n_components=None,
     Xpcakeep = Xpca[:, :npcs_keep]
     assert Xpcakeep.shape[1] == npcs_keep
 
+    ### Plot?
     if plot_pca_explained_var_path is not None:
         fig, axes = plt.subplots(1,2, figsize=(8,3))
 
@@ -2426,7 +2879,10 @@ def dimredgood_pca(X, n_components=None,
         ax.set_xlabel("features (chans x twind)")
         savefig(fig, plot_loadings_path)
 
-    return Xpcakeep, Xpca, pca
+    if return_stats:
+        return Xpcakeep, Xpca, pca, explained_variance_ratio_, components_
+    else:
+        return Xpcakeep, Xpca, pca
 
 
 def cleanup_remove_labels_ignore(xs, ys, labels_color, labels_subplot):
@@ -2495,81 +2951,23 @@ def euclidian_distance_compute_scalar(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT
 
     ######################## (1) CONSTRUCT A SINGLE SUBSPACE (that all subsequence plots and analyses will be performed on)
     # Get specific params, based on how want to do dim reduction
-    METHOD = "basic"
-    if dim_red_method is None:
-        # Then use raw data
-        pca_reduce = False
-        extra_dimred_method = None
-    elif dim_red_method=="pca":
-        pca_reduce = True
-        extra_dimred_method = None
-    elif dim_red_method=="pca_umap":
-        # PCA --> UMAP
-        pca_reduce = True
-        extra_dimred_method = "umap"
-    elif dim_red_method=="umap":
-        # UMAP
-        pca_reduce = False
-        extra_dimred_method = "umap"
-    elif dim_red_method=="mds":
-        # MDS
-        pca_reduce = False
-        extra_dimred_method = "mds"
-    elif dim_red_method=="superv_dpca":
-        # Supervised, based on DPCA, find subspace for a given variable by doing PCA on the mean values.
-        superv_dpca_var = superv_dpca_params["superv_dpca_var"]
-        superv_dpca_vars_group = superv_dpca_params["superv_dpca_vars_group"]
-        superv_dpca_filtdict = superv_dpca_params["superv_dpca_filtdict"]
-        METHOD = "dpca"
+    if superv_dpca_params is None:
+        dpca_var = None
+        dpca_vars_group = None
+        dpca_filtdict=None
+        dpca_proj_twind = None
     else:
-        print(dim_red_method)
-        assert False
+        dpca_var = superv_dpca_params["superv_dpca_var"]
+        dpca_vars_group = superv_dpca_params["superv_dpca_vars_group"]
+        dpca_filtdict = superv_dpca_params["superv_dpca_filtdict"]
+        dpca_proj_twind = superv_dpca_params["dpca_proj_twind"]
 
-    if METHOD=="basic":
-        # First, Extract data in PC space
-        plot_pca_explained_var_path = f"{savedir}/pca_explained_var.pdf"
-        plot_loadings_path = f"{savedir}/pca_loadings_heatmap.pdf"
-        Xredu, PAredu, _, _, _ = PA.dataextract_state_space_decode_flex(twind, tbin_dur, tbin_slice, reshape_method="trials_x_chanstimes",
-                                               pca_reduce=pca_reduce, plot_pca_explained_var_path=plot_pca_explained_var_path,
-                                                                              plot_loadings_path=plot_loadings_path,
-                                              npcs_keep_force=NPCS_KEEP,
-                                              extra_dimred_method=extra_dimred_method,
-                                              extra_dimred_method_n_components=extra_dimred_method_n_components,
-                                                    umap_n_neighbors = umap_n_neighbors)
-        n_pcs_keep_euclidian = Xredu.shape[1]
-    elif METHOD=="dpca":
-        from neuralmonkey.classes.population import PopAnal
-
-        savedirthis = f"{savedir}/pca_construction"
-        os.makedirs(savedirthis, exist_ok=True)
-        PLOT_STEPS = False
-        Xredu, PAredu, _, _, pca = PA.dataextract_pca_demixed_subspace(
-            superv_dpca_var, superv_dpca_vars_group, twind, tbin_dur, superv_dpca_filtdict, savedirthis,
-            n_min_per_lev_lev_others=nmin_trials_per_lev, PLOT_STEPS=PLOT_STEPS,
-            n_pcs_subspace_max=NPCS_KEEP)
-
-        if Xredu is None:
-            # Then no data...
-            return None
-
-        # Save a version with full D, for state space
-        # PAredu_orig_dim = PAredu.copy()
-
-        # Figure out how many dimensions to keep (for euclidian).
-        n1 = pca["nclasses_of_var_pca"] # num classes of superv_dpca_var that exist. this is upper bound on dims.
-        n2 = Xredu.shape[1] # num classes to reach criterion for cumvar for pca.
-        n_pcs_keep_euclidian = min([n1, n2])
-
-        print("dpca, keeping this many dims (final):", n_pcs_keep_euclidian)
-        # # - prune data for euclidian
-        # Xredu = Xredu[:, :n_pcs_keep_euclidian]
-        # dflab = PAredu.Xlabels.copy()
-        # PAredu = PopAnal(Xredu.T[:, :, None], [0])  # (ndimskeep, ntrials, 1)
-        # PAredu.Xlabels = {dim:df.copy() for dim, df in dflab.items()}
-
-    else:
-        print(METHOD)
-        assert False
+    Xredu, PAredu = PA.dataextract_dimred_wrapper("scal", dim_red_method, savedir, 
+                                   twind, tbin_dur=tbin_dur, tbin_slide=tbin_slice, 
+                                   NPCS_KEEP = NPCS_KEEP,
+                                   dpca_var = dpca_var, dpca_vars_group = dpca_vars_group, dpca_filtdict=dpca_filtdict, dpca_proj_twind = dpca_proj_twind, 
+                                   raw_subtract_mean_each_timepoint=False,
+                                   umap_n_components=extra_dimred_method_n_components, umap_n_neighbors=umap_n_neighbors)
 
     ############################ (2) Euclidian and State space plots
     if LIST_CONTEXT is not None:
@@ -2623,6 +3021,7 @@ def euclidian_distance_compute_scalar(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT
     vars_already_state_space_plotted = []
     var_varothers_already_plotted = []
     heatmaps_already_plotted = []
+
     for i_var, (var, var_others, context, filtdict, prune_min_n_levs) in enumerate(zip(LIST_VAR, LIST_VARS_OTHERS, LIST_CONTEXT, LIST_FILTDICT, LIST_PRUNE_MIN_N_LEVS)):
         print("RUNNING: ", i_var,  var, " -- ", var_others)
         # Copy pa for this
@@ -2639,7 +3038,6 @@ def euclidian_distance_compute_scalar(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT
             for _var, _levs in filtdict.items():
                 print("len pa bnefore filt this values (var, levs): ", _var, _levs)
                 pa = pa.slice_by_labels("trials", _var, _levs, verbose=True)
-                # pa_orig_dim = pa_orig_dim.slice_by_labels("trials", _var, _levs)
 
         ############### PRUNE DATA, TO GET ENOUGH FOR THIS VARIABLE
         # # Prep by keeping only if enough data
@@ -2693,6 +3091,7 @@ def euclidian_distance_compute_scalar(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT
             chan = pa.Chans[0]
             pa.plotwrapper_smoothed_fr_split_by_label("trials", var, ax, chan=chan)
             plt.close("all")
+
         if COMPUTE_EUCLIDIAN:
             from pythonlib.tools.listtools import stringify_list
 
@@ -2702,9 +3101,12 @@ def euclidian_distance_compute_scalar(PA, LIST_VAR, LIST_VARS_OTHERS, PLOT, PLOT
                 plot_mask_path = f"{savedir}/{i_var}_MASK-var={var_for_name}-ovar={'|'.join(var_others)}-context={context}.pdf" # just diff, or else too lomg. diff is main info anyway
 
             # Keep just the n dims you want
-            pa_eucl = pa.slice_by_dim_indices_wrapper("chans", list(range(n_pcs_keep_euclidian)))
-            print("FINAL DIMENSION OF DATA (after dimredu, before eucl):", pa_eucl.X.shape)
-            
+            if False: # Already done, in dim reductions
+                pa_eucl = pa.slice_by_dim_indices_wrapper("chans", list(range(n_pcs_keep_euclidian)))
+                print("FINAL DIMENSION OF DATA (after dimredu, before eucl):", pa_eucl.X.shape)
+            else:
+                pa_eucl = pa
+                
             if False:
                 # This passes
                 assert np.all(pa.X[:n_pcs_keep_euclidian, :, :] == pa_eucl.X)
@@ -3536,6 +3938,8 @@ def euclidian_distance_compute_trajectories_timedistmat(PA, var, var_others,
     Helper to get dsitance matrix between trajectories, one for each time bin. 
     This only uses a SINGLE var-var_others, since doing just one takes a long time, and the
     downstream plotting functions all assume there's just one var...
+
+    WRapper, in that it does a bunch of things, like preprpocessing too, e.g., dim reduction.
     """
     DFRES = euclidian_distance_compute_trajectories(PA, [var], [var_others], twind, tbin_dur,
                                tbin_slice, savedir, PLOT_TRAJS, False,
@@ -3556,7 +3960,9 @@ def euclidian_distance_compute_trajectories(PA, LIST_VAR, LIST_VARS_OTHERS, twin
                                dim_red_method = "pca", superv_dpca_params=None,
                                RETURN_EACH_TIMES_CLDIST=False,
                                PLOT_CLEAN_VERSION = False,
-                               COMPUTE_EUCLIDIAN=True
+                               COMPUTE_EUCLIDIAN=True, 
+                               get_reverse_also = False,
+                               PLOT_MASKS=False
                                ):
     """
     Wrapper to compute all distances between levels of variables, with flecxible abilties for
@@ -3581,94 +3987,139 @@ def euclidian_distance_compute_trajectories(PA, LIST_VAR, LIST_VARS_OTHERS, twin
     from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars
     from pythonlib.cluster.clustclass import Clusters
 
+    assert PA.X.shape[1]>0, "empty trials..."
+
     PA = PA.copy()
     assert NPCS_KEEP is not None, "coded onoy for this so far -0 forceing an npcs"
 
     ######################## (1) CONSTRUCT A SINGLE SUBSPACE (that all subsequence plots and analyses will be performed on)
     # Get specific params, based on how want to do dim reduction
-    METHOD = "basic"
-    if dim_red_method is None:
-        # Then use raw data
-        pca_reduce = False
-        extra_dimred_method = None
-    elif dim_red_method=="pca":
-        pca_reduce = True
-        extra_dimred_method = None
-    elif dim_red_method=="pca_umap":
-        # PCA --> UMAP
-        pca_reduce = True
-        extra_dimred_method = "umap"
-    elif dim_red_method=="umap":
-        # UMAP
-        pca_reduce = False
-        extra_dimred_method = "umap"
-    elif dim_red_method=="mds":
-        # MDS
-        pca_reduce = False
-        extra_dimred_method = "mds"
-    elif dim_red_method=="superv_dpca":
-        # Supervised, based on DPCA, find subspace for a given variable by doing PCA on the mean values.
-        superv_dpca_var = superv_dpca_params["superv_dpca_var"]
-        superv_dpca_vars_group = superv_dpca_params["superv_dpca_vars_group"]
-        superv_dpca_filtdict = superv_dpca_params["superv_dpca_filtdict"]
-        METHOD = "dpca"
+    if superv_dpca_params is None:
+        dpca_var = None
+        dpca_vars_group = None
+        dpca_filtdict=None
+        dpca_proj_twind = None
     else:
-        print(dim_red_method)
-        assert False
-
-    if METHOD=="basic":
-        # 1. Dim reduction
-        # - normalize - remove time-varying component
-        PA = PA.norm_subtract_trial_mean_each_timepoint()
+        dpca_var = superv_dpca_params["superv_dpca_var"]
+        dpca_vars_group = superv_dpca_params["superv_dpca_vars_group"]
+        dpca_filtdict = superv_dpca_params["superv_dpca_filtdict"]
+        if "dpca_proj_twind" in superv_dpca_params:
+            dpca_proj_twind = superv_dpca_params["dpca_proj_twind"]
+        else:
+            dpca_proj_twind = twind
+        if "dpca_pca_twind" in superv_dpca_params:
+            # HACKY, for nice trajs
+            # This is for construting p
+            twind = superv_dpca_params["dpca_pca_twind"]
         
-        # - PCA
-        reshape_method = "chans_x_trials_x_times"
-        plot_pca_explained_var_path=f"{savedir}/pcaexp.pdf"
-        plot_loadings_path = f"{savedir}/pcaload.pdf"
-        umap_n_neighbors = 40
-        _, PAredu, _, _, _ = PA.dataextract_state_space_decode_flex(twind, tbin_dur, tbin_slice, reshape_method=reshape_method,
-                                                    pca_reduce=pca_reduce, plot_pca_explained_var_path=plot_pca_explained_var_path, 
-                                                    plot_loadings_path=plot_loadings_path, npcs_keep_force=NPCS_KEEP,
-                                                    extra_dimred_method=extra_dimred_method, umap_n_neighbors = umap_n_neighbors)    
-        n_pcs_keep_euclidian = PAredu.X.shape[1]
+    # if dpca_filtdict=={"task_kind":["prims_on_grid"], "stroke_index":[0]}:
+    #     print("=====")
+    #     print(PA.X.shape)
+    #     print("input task kinds: ", PA.Xlabels["trials"]["task_kind"].unique())
+        
+    _, PAredu = PA.dataextract_dimred_wrapper("traj", dim_red_method, savedir, 
+                                   twind, tbin_dur=tbin_dur, tbin_slide=tbin_slice, 
+                                   NPCS_KEEP = NPCS_KEEP,
+                                   dpca_var = dpca_var, dpca_vars_group = dpca_vars_group, dpca_filtdict=dpca_filtdict, dpca_proj_twind = dpca_proj_twind, 
+                                   raw_subtract_mean_each_timepoint=False,
+                                   umap_n_components=None, umap_n_neighbors=None)
+    # if dpca_filtdict=={"task_kind":["prims_on_grid"], "stroke_index":[0]}:
+    #     print("=====")
+    #     print(PAredu.X.shape)
+    #     assert False
+    
+    if PAredu is None:
+        # Then filtiering cleared all trials...
+        print("----")
+        print("Input shape: ", PA.X.shape)
+        print("Lost all trials, using this fildtict:", dpca_filtdict)
+        return None
 
-    elif METHOD=="dpca":
-        # from neuralmonkey.classes.population import PopAnal
-        print("... dpca")
+    # ######################## (1) CONSTRUCT A SINGLE SUBSPACE (that all subsequence plots and analyses will be performed on)
+    # # Get specific params, based on how want to do dim reduction
+    # METHOD = "basic"
+    # if dim_red_method is None:
+    #     # Then use raw data
+    #     pca_reduce = False
+    #     extra_dimred_method = None
+    # elif dim_red_method=="pca":
+    #     pca_reduce = True
+    #     extra_dimred_method = None
+    # elif dim_red_method=="pca_umap":
+    #     # PCA --> UMAP
+    #     pca_reduce = True
+    #     extra_dimred_method = "umap"
+    # elif dim_red_method=="umap":
+    #     # UMAP
+    #     pca_reduce = False
+    #     extra_dimred_method = "umap"
+    # elif dim_red_method=="mds":
+    #     # MDS
+    #     pca_reduce = False
+    #     extra_dimred_method = "mds"
+    # elif dim_red_method=="superv_dpca":
+    #     # Supervised, based on DPCA, find subspace for a given variable by doing PCA on the mean values.
+    #     superv_dpca_var = superv_dpca_params["superv_dpca_var"]
+    #     superv_dpca_vars_group = superv_dpca_params["superv_dpca_vars_group"]
+    #     superv_dpca_filtdict = superv_dpca_params["superv_dpca_filtdict"]
+    #     METHOD = "dpca"
+    # else:
+    #     print(dim_red_method)
+    #     assert False
 
-        savedirthis = f"{savedir}/pca_construction"
-        os.makedirs(savedirthis, exist_ok=True)
-        PLOT_STEPS = False
-        reshape_method = "chans_x_trials_x_times"
-        _, PAredu, _, _, pca = PA.dataextract_pca_demixed_subspace(
-            superv_dpca_var, superv_dpca_vars_group, twind, tbin_dur, superv_dpca_filtdict, savedirthis,
-            n_min_per_lev_lev_others=nmin_trials_per_lev, PLOT_STEPS=PLOT_STEPS, reshape_method=reshape_method,
-            pca_tbin_slice=tbin_slice)
+    # reshape_method = "chans_x_trials_x_times"
+    # if METHOD=="basic":
+    #     # 1. Dim reduction
+    #     # - normalize - remove time-varying component
+    #     PA = PA.norm_subtract_trial_mean_each_timepoint()
+        
+    #     # - PCA
+    #     plot_pca_explained_var_path=f"{savedir}/pcaexp.pdf"
+    #     plot_loadings_path = f"{savedir}/pcaload.pdf"
+    #     umap_n_neighbors = 40
+    #     _, PAredu, _, _, _ = PA.dataextract_state_space_decode_flex(twind, tbin_dur, tbin_slice, reshape_method=reshape_method,
+    #                                                 pca_reduce=pca_reduce, plot_pca_explained_var_path=plot_pca_explained_var_path, 
+    #                                                 plot_loadings_path=plot_loadings_path, npcs_keep_force=NPCS_KEEP,
+    #                                                 extra_dimred_method=extra_dimred_method, umap_n_neighbors = umap_n_neighbors)    
+    #     n_pcs_keep_euclidian = PAredu.X.shape[1]
+
+    # elif METHOD=="dpca":
+    #     # from neuralmonkey.classes.population import PopAnal
+    #     print("... dpca")
+
+    #     savedirthis = f"{savedir}/pca_construction"
+    #     os.makedirs(savedirthis, exist_ok=True)
+    #     PLOT_STEPS = False
+    #     _, PAredu, _, _, pca = PA.dataextract_pca_demixed_subspace(
+    #         superv_dpca_var, superv_dpca_vars_group, twind, tbin_dur, superv_dpca_filtdict, savedirthis,
+    #         n_min_per_lev_lev_others=nmin_trials_per_lev, PLOT_STEPS=PLOT_STEPS, reshape_method=reshape_method,
+    #         pca_tbin_slice=tbin_slice)
 
         
-        if PAredu is None:
-            # Then no data...
-            return None
+    #     if PAredu is None:
+    #         # Then no data...
+    #         return None
         
-        # Save a version with full D, for state space
-        # PAredu_orig_dim = PAredu.copy()
+    #     # Save a version with full D, for state space
+    #     # PAredu_orig_dim = PAredu.copy()
 
-        # Figure out how many dimensions to keep (for euclidian).
-        n1 = pca["nclasses_of_var_pca"] # num classes of superv_dpca_var that exist. this is upper bound on dims.
-        n2 = PAredu.X.shape[1] # num classes to reach criterion for cumvar for pca.
-        n_pcs_keep_euclidian = min([n1, n2, NPCS_KEEP])
+    #     # Figure out how many dimensions to keep (for euclidian).
+    #     n1 = pca["nclasses_of_var_pca"] # num classes of superv_dpca_var that exist. this is upper bound on dims.
+    #     n2 = PAredu.X.shape[1] # num classes to reach criterion for cumvar for pca.
+    #     n3 = PAredu.X.shape[0] # num dimensions.
+    #     n_pcs_keep_euclidian = min([n1, n2, n3, NPCS_KEEP])
         
-        PAredu = PAredu.slice_by_dim_indices_wrapper("chans", list(range(n_pcs_keep_euclidian)))
+    #     PAredu = PAredu.slice_by_dim_indices_wrapper("chans", list(range(n_pcs_keep_euclidian)))
 
-        # # - prune data for euclidian
-        # Xredu = Xredu[:, :n_pcs_keep_euclidian]
-        # dflab = PAredu.Xlabels.copy()
-        # PAredu = PopAnal(Xredu.T[:, :, None], [0])  # (ndimskeep, ntrials, 1)
-        # PAredu.Xlabels = {dim:df.copy() for dim, df in dflab.items()}
+    #     # # - prune data for euclidian
+    #     # Xredu = Xredu[:, :n_pcs_keep_euclidian]
+    #     # dflab = PAredu.Xlabels.copy()
+    #     # PAredu = PopAnal(Xredu.T[:, :, None], [0])  # (ndimskeep, ntrials, 1)
+    #     # PAredu.Xlabels = {dim:df.copy() for dim, df in dflab.items()}
 
-    else:
-        print(METHOD)
-        assert False    
+    # else:
+    #     print(METHOD)
+    #     assert False    
 
     ############################ (2) Euclidian and State space plots
     if LIST_CONTEXT is not None:
@@ -3715,6 +4166,7 @@ def euclidian_distance_compute_trajectories(PA, LIST_VAR, LIST_VARS_OTHERS, twin
         else:
             prune_min_n_trials = N_MIN_TRIALS
 
+        
         if (var, tuple(var_others)) not in heatmaps_already_plotted:
             plot_counts_heatmap_savepath = f"{savedir}/{i_var}_counts_heatmap-var={var_for_name}-ovar={'|'.join(var_others)}.pdf"
             heatmaps_already_plotted.append((var, tuple(var_others)))
@@ -3722,6 +4174,8 @@ def euclidian_distance_compute_trajectories(PA, LIST_VAR, LIST_VARS_OTHERS, twin
             plot_counts_heatmap_savepath = None
 
         # pa_before_prune = pa.copy()
+        if not PLOT_TRAJS:
+            plot_counts_heatmap_savepath = None
         pa, _, _= pa.slice_extract_with_levels_of_conjunction_vars(var, var_others, prune_min_n_trials, prune_min_n_levs,
                                                          plot_counts_heatmap_savepath=plot_counts_heatmap_savepath)
         if pa is None:
@@ -3754,12 +4208,16 @@ def euclidian_distance_compute_trajectories(PA, LIST_VAR, LIST_VARS_OTHERS, twin
                 # Get a single score taking mean over all time (entire traj)
                 # 3. Compute euclidian
                 savedir_heatmaps = f"{savedir}/heatmap_average.pdf"
-                dir_to_print_lab_each_mask = f"{savedir}/final_labels_data_pairs_in_masks-{i_var}-var={var}-ovar={var_others}"
-                os.makedirs(dir_to_print_lab_each_mask, exist_ok=True)
+                if PLOT_TRAJS:
+                    dir_to_print_lab_each_mask = f"{savedir}/final_labels_data_pairs_in_masks-{i_var}-var={var}-ovar={var_others}"
+                    os.makedirs(dir_to_print_lab_each_mask, exist_ok=True)
+                else:
+                    dir_to_print_lab_each_mask = None
                 res = euclidian_distance_compute_trajectories_single(pa, var, var_others, version_distance="euclidian",
                                                                     context_input=context, PLOT_HEATMAPS=PLOT_HEATMAPS, 
                                                                     savedir_heatmaps=savedir_heatmaps,
-                                                                    dir_to_print_lab_each_mask=dir_to_print_lab_each_mask)
+                                                                    dir_to_print_lab_each_mask=dir_to_print_lab_each_mask,
+                                                                    get_reverse_also = get_reverse_also, PLOT_MASKS=PLOT_MASKS)
                 for r in res:
                     r["shuffled"] = False
                     r["shuffled_iter"] = -1
@@ -3771,6 +4229,7 @@ def euclidian_distance_compute_trajectories(PA, LIST_VAR, LIST_VARS_OTHERS, twin
         # 2. Plot trajectories
         if PLOT_TRAJS:
             pathis = pa # Use the pruned data for plots.
+            pathis_scalar = pa.agg_wrapper("times")
             # pathis = PAredu
             
             if len(LIST_VAR)<15:
@@ -3796,6 +4255,17 @@ def euclidian_distance_compute_trajectories(PA, LIST_VAR, LIST_VARS_OTHERS, twin
                     trajgood_plot_colorby_splotby_WRAPPER(pathis.X, pathis.Times, pathis.Xlabels["trials"], var, 
                                                         savedir, var_others, list_dims, 
                                                         time_bin_size=time_bin_size, save_suffix=i_var)
+                    
+                    # -- Plot scalar scatterplot too.
+                    dflab = pathis_scalar.Xlabels["trials"]
+                    Xthis = pathis_scalar.X.squeeze(axis=2).T # (n4trials, ndims)
+                    sdir = f"{savedir}/SCALAR"
+                    os.makedirs(sdir, exist_ok=True)
+                    trajgood_plot_colorby_splotby_scalar_WRAPPER(Xthis, dflab, var, sdir,
+                                                                    vars_subplot=var_others, list_dims=list_dims,
+                                                                    skip_subplots_lack_mult_colors=False, save_suffix = i_var)
+                    var_varothers_already_plotted.append((var, tuple(var_others)))
+
                     plt.close("all")
                 else:
                     # Plot a "clean" version (Paper version), including with different x and y lims, so can compare
@@ -3855,6 +4325,18 @@ def euclidian_distance_compute_trajectories(PA, LIST_VAR, LIST_VARS_OTHERS, twin
                                                         savedir, None, list_dims, 
                                                         time_bin_size=time_bin_size, save_suffix=i_var)
                     
+                    # -- Plot scalar scatterplot too.
+                    dflab = pathis_scalar.Xlabels["trials"]
+                    Xthis = pathis_scalar.X.squeeze(axis=2).T # (n4trials, ndims)
+                    sdir = f"{savedir}/SCALAR"
+                    os.makedirs(sdir, exist_ok=True)
+                    trajgood_plot_colorby_splotby_scalar_WRAPPER(Xthis, dflab, var, sdir,
+                                                                    vars_subplot=None, list_dims=list_dims,
+                                                                    skip_subplots_lack_mult_colors=False, save_suffix = i_var)
+                    var_varothers_already_plotted.append((var, tuple(var_others)))
+
+                    plt.close("all")
+
                 plt.close("all")
             
             # Also plot timecourse
@@ -3893,14 +4375,23 @@ def euclidian_distance_compute_trajectories(PA, LIST_VAR, LIST_VARS_OTHERS, twin
 def euclidian_distance_compute_trajectories_single(PA, var_effect, vars_others, context_input=None,
                                                    version_distance="euclidian",
                                                 PLOT_HEATMAPS=False, savedir_heatmaps=None, PLOT_MASKS=False,
-                                                get_reverse_also=True, dir_to_print_lab_each_mask=None):
+                                                get_reverse_also=True, dir_to_print_lab_each_mask=None,
+                                                return_cldist=False, compute_same_diff_scores=True):
     """
-    Compute distance between trajectories (each pair of trajs (i.e, triualsd) returns a single scalar distances, which
-    is the average distance over time)
+    [GOOD]
+
+    Compute distance between trajectories (each pair of trajs (i.e, triualsd) returns a 
+    single scalar distances, which is the average distance over time)
 
     """
     from pythonlib.cluster.clustclass import Clusters
     import numpy as np
+
+    if vars_others is None:
+        vars_others = []
+
+    if compute_same_diff_scores:
+        assert len(vars_others)>0
 
     # # 3. Compute euclidian
     # # For each timepoint, compute
@@ -3925,6 +4416,7 @@ def euclidian_distance_compute_trajectories_single(PA, var_effect, vars_others, 
         LIST_REVERSE = [False]
 
     list_res = []
+    Cldist_good = None
     for DO_REVERSE_CONTROL in LIST_REVERSE:
         if DO_REVERSE_CONTROL:
             niter = 3
@@ -3937,21 +4429,25 @@ def euclidian_distance_compute_trajectories_single(PA, var_effect, vars_others, 
             # Collect Cldists, one for each time bin
             # Collect 
             if DO_REVERSE_CONTROL:
-                LIST_CLDIST, LIST_TIME = PA.dataextract_as_distance_matrix_clusters_flex_reversed([var_effect] + vars_others, 
-                                                                                            version_distance=version_distance)
+                assert False, "Fix this, the return_as_single_mean_over_time deosnt amke sense"
+                Cldist = PA.dataextract_as_distance_matrix_clusters_flex_reversed([var_effect] + vars_others, 
+                                                                                            version_distance=version_distance,
+                                                                                            return_as_single_mean_over_time=True)
             else:
-                LIST_CLDIST, LIST_TIME = PA.dataextract_as_distance_matrix_clusters_flex([var_effect] + vars_others, 
-                                                                                            version_distance=version_distance)
-            
-            ### Take mean distance over time, and construct a single Clusters
-            Xinpput_mean = np.mean(np.stack([Cldist.Xinput for Cldist in LIST_CLDIST], axis=0), axis=0)
-            params = {
-                "label_vars":LIST_CLDIST[0].Params["label_vars"],
-                "version_distance":LIST_CLDIST[0].Params["version_distance"],
-                "Clraw":None,
-            }
-            list_lab = LIST_CLDIST[0].Labels
-            Cldist = Clusters(Xinpput_mean, list_lab, list_lab, ver="dist", params=params)
+                Cldist = PA.dataextract_as_distance_matrix_clusters_flex([var_effect] + vars_others, 
+                                                                                            version_distance=version_distance,
+                                                                                            return_as_single_mean_over_time=True)
+                Cldist_good = Cldist
+
+            # ### Take mean distance over time, and construct a single Clusters
+            # Xinpput_mean = np.mean(np.stack([Cldist.Xinput for Cldist in LIST_CLDIST], axis=0), axis=0)
+            # params = {
+            #     "label_vars":LIST_CLDIST[0].Params["label_vars"],
+            #     "version_distance":LIST_CLDIST[0].Params["version_distance"],
+            #     "Clraw":None,
+            # }
+            # list_lab = LIST_CLDIST[0].Labels
+            # Cldist = Clusters(Xinpput_mean, list_lab, list_lab, ver="dist", params=params)
 
             if PLOT_HEATMAPS and savedir_heatmaps is not None:
                 fig, _ = Cldist.rsa_plot_heatmap()
@@ -3959,18 +4455,21 @@ def euclidian_distance_compute_trajectories_single(PA, var_effect, vars_others, 
                     savefig(fig, f"{savedir_heatmaps}/heatmap_average.pdf")
                     plt.close("all")
             
-            ### Compute scores
-            # dir_to_print_lab_each_mask = # good to always save the final data pairs.
-            res, DIST_NULL_50, DIST_NULL_95, DIST_NULL_98 = Cldist.rsa_distmat_score_same_diff_by_context(var_effect, vars_others, 
-                                                                                        context_input, dat_level, 
-                                                                                        PLOT_MASKS,
-                                                                                        dir_to_print_lab_each_mask=dir_to_print_lab_each_mask)
-            for r in res:
-                r["DIST_NULL_98"] = DIST_NULL_98
-                r["shuffled_time"] = DO_REVERSE_CONTROL
-                r["shuffled_time_iter"] = _i
-                
-            list_res.extend(res)
+            ### Compute scores (same vs. diff)
+            if compute_same_diff_scores:
+                # dir_to_print_lab_each_mask = # good to always save the final data pairs.
+                print("var_effect --- vars_others --- context_input")
+                print(var_effect, " --- ", vars_others, " --- ", context_input)
+                res, DIST_NULL_50, DIST_NULL_95, DIST_NULL_98 = Cldist.rsa_distmat_score_same_diff_by_context(var_effect, vars_others, 
+                                                                                            context_input, dat_level, 
+                                                                                            PLOT_MASKS,
+                                                                                            dir_to_print_lab_each_mask=dir_to_print_lab_each_mask)
+                for r in res:
+                    r["DIST_NULL_98"] = DIST_NULL_98
+                    r["shuffled_time"] = DO_REVERSE_CONTROL
+                    r["shuffled_time_iter"] = _i
+                    
+                list_res.extend(res)
 
     ##### Version 2 -- quicker, treat trajectoreis as single datapts [IGNORE, working, but decided above is better, intergartes with my code better]
 
@@ -4081,8 +4580,10 @@ def euclidian_distance_compute_trajectories_single(PA, var_effect, vars_others, 
 
     # Cldist.rsa_plot_heatmap()
 
-
-    return list_res
+    if return_cldist:
+        return Cldist_good, list_res
+    else:
+        return list_res
 
 
 def euclidian_distance_compute_AnBmCk_endpoint(PAredu, SAVEDIR):

@@ -7,9 +7,9 @@ assert(SKIP_LOADING_DATSTRUCT==true, 'too much coded now assuming this...');
 
 %% MODIFY PARAMS
 
-PATH_TO_SPIKES_CODE = '/gorilla1/code/spikes';
-PATH_TO_NPY_CODE = '/gorilla1/code/npy-matlab';
-PATH_TO_KILOSORT_CODE = '/gorilla1/code/kilosort-2.5';
+PATH_TO_SPIKES_CODE = '/home/danhan/code/spikes';
+PATH_TO_NPY_CODE = '/home/danhan/code/npy-matlab';
+PATH_TO_KILOSORT_CODE = '/home/danhan/code/kilosort-2.5';
 
 % LOADDIR_BASE = '/lemur2/kilosort_data'; % location of kilosorted data
 % SAVEDIR_LOCAL = '/lemur2/kilosort_temp'; % fast ssd
@@ -21,7 +21,7 @@ switch MACHINE
         %         LOADDIR_BASE = '/mnt/Freiwald_kgupta/kgupta/neural_data'; % location of kilosorted data
         %         SAVEDIR_LOCAL = '/gorilla4/neural_preprocess_kilosort'; % fast ssd
     case 'lemur'
-        SAVEDIR_FINAL_SERVER =  '/mnt/Freiwald/kgupta/neural_data/postprocess'; % final, so all machines can access.
+        SAVEDIR_FINAL_SERVER =  '/mnt/Freiwald_kgupta/kgupta/neural_data/postprocess'; % final, so all machines can access.
         %         LOADDIR_BASE = '/lemur2/kilosort_data'; % location of kilosorted data
         %         SAVEDIR_LOCAL = '/lemur2/kilosort_temp'; % fast ssd
     case 'LAPTOP-5ROGVGP5' % rig laptop
@@ -29,7 +29,7 @@ switch MACHINE
         %         LOADDIR_BASE = '/lemur2/kilosort_data'; % location of kilosorted data
         %         SAVEDIR_LOCAL = '/lemur2/kilosort_temp'; % fast ssd
     case 'ltbonobo'
-        SAVEDIR_FINAL_SERVER = '/home/kgg/mnt/Freiwald/kgupta/neural_data/postprocess';
+        SAVEDIR_FINAL_SERVER = '/home/danhan/freiwaldDrive/kgupta/neural_data/postprocess';
     otherwise
         disp(['MACHINE: ' MACHINE])
         disp([MACHINE(1)])
@@ -93,6 +93,7 @@ assert(exist(path, 'file')==2, ['Did not complete prev step, ' path]);
 
 %% OUTPUT OF CLEAN
 SAVEDIR_FINAL_CLEAN = [SAVEDIR_FINAL '/CLEAN_AFTER_MERGE'];
+disp(SAVEDIR_FINAL_CLEAN);
 mkdir(SAVEDIR_FINAL_CLEAN);
 
 

@@ -46,8 +46,10 @@ def _model_score_OBSOLETE(X, y, version="lin_svm", model_params=None, do_train_t
 
 
 def _model_fit(X, y, version="lin_svm", model_params=None, do_train_test_split=False,
-                do_center=True, do_std=True):
+                do_center=True, do_std=True, test_size=0.1):
     """ 
+    Heklper to fit linear SVM classifier
+    
     PARAMS:
     - X, (nsamp, nfeat), features
     - y, (nsamp, ), labels
@@ -55,6 +57,7 @@ def _model_fit(X, y, version="lin_svm", model_params=None, do_train_test_split=F
     See this for chaining a PCA:
     https://scikit-learn.org/stable/auto_examples/compose/plot_digits_pipe.html
 
+    MS: checked
     """
     import warnings
     from sklearn.svm import SVC
@@ -91,7 +94,6 @@ def _model_fit(X, y, version="lin_svm", model_params=None, do_train_test_split=F
         warnings.simplefilter('error') # to break if fails to converge
         if do_train_test_split:
             from sklearn.model_selection import train_test_split
-            test_size=0.1
             Xtrain, Xtest, ytrain, ytest = train_test_split(X, y, test_size=test_size)
             mod.fit(Xtrain, ytrain)
             score = mod.score(Xtest, ytest)

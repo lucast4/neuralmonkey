@@ -46,7 +46,7 @@ def _load_sessions_corrupted():
     return load_yaml_config(path)
 
 def _load_session_mapper(animal, date = None):
-    """ Load a dict (metadat) mapping from session (neural) to beh,
+    """ Load a dict (metadat) with hand-coded special cases, of mapping from session (neural) to beh,
     across all data for this date.
     PARAMS:
     - date, if None, returns the dict. if date is int (YYMMDD), returns its
@@ -163,7 +163,7 @@ def session_map_from_rec_to_ml2(animal, date, rec_session):
     # beh_session = rec_session+1    
 
     # Which beh session maps to this neural session?
-    session_map = _load_session_mapper(animal, int(date)) # e..g [3,4,5] for beh sessions
+    session_map = _load_session_mapper(animal, int(date)) # e..g  [3,4,5] for beh sessions [HAND CODED SPECIAL CASES]
     sessdict = getSessionsList(animal, datelist=[date]) 
     
     # confirm that each sess num (beh) only occurs once
@@ -182,7 +182,27 @@ def session_map_from_rec_to_ml2(animal, date, rec_session):
         assert list(sessdict.keys()) == [date]
         if session_map is not None:
             # Then you want to take multiple specific beh sessions (hand-entered session).
-            sessdict[date] = [sess_expt for sess_expt in sessdict[date] if sess_expt[0] in session_map]
+            if True:            
+                # New, can deal with cases when mult rec sess refer to same beh session, e.g., returns 
+                # sessdict = {'231207': [(1, 'chardiego2g'), (2, 'chardiego2g'), (2, 'chardiego2g')]}
+                # if session_map = [1,2,2]
+                def get_sess_tuple(behsess, date):
+                    """ Retunr the single sess tuple that is (behsess, <string name>) or raise error if doesnt
+                    exist in sessdict[date]
+                    """
+                    for sess_tuple in sessdict[date]:
+                        if sess_tuple[0]==behsess:
+                            return sess_tuple
+                    print(sessdict)
+                    print(date)
+                    print(behsess)
+                    assert False, "did not find this behsess"
+
+                sessdict[date] = [get_sess_tuple(behsess, date) for behsess in session_map]
+            else:
+                # Old, each beh session max 1 time. 
+                sessdict[date] = [sess_expt for sess_expt in sessdict[date] if sess_expt[0] in session_map]
+                
             if rec_session+1 > len(session_map):
                 # Then
                 return None, None, None, None

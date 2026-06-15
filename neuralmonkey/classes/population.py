@@ -1,9 +1,10 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-
+import os
 from neuralmonkey.neuralplots.population import plotNeurHeat, plotNeurTimecourse
-
+from pythonlib.tools.plottools import savefig
+from pythonlib.tools.listtools import sort_mixed_type
 
 class PopAnal():
     """ for analysis of population state spaces
@@ -89,7 +90,7 @@ class PopAnal():
         # print("HERERE", times, len(times))
 
         if chans is None:
-            self.Chans = range(self.X.shape[0])
+            self.Chans = list(range(self.X.shape[0]))
         else:
             self.Chans = copy.copy(chans)
 
@@ -121,6 +122,8 @@ class PopAnal():
         assert len(self.Trials)==self.X.shape[1]
         assert len(self.Times)==self.X.shape[2]
 
+        # Convert to numpy always (sometimes is elephant. dont need this)
+        self.Times = np.array(self.Times)
 
     def preprocess(self):
         """ preprocess X, mainly so units dimension is axis 0 
@@ -493,7 +496,7 @@ class PopAnal():
         self.Xdataframe = applyFunctionToAllRows(self.Xdataframe, F, newcolname="neur_z")
 
     def zscoreFrNotDataframe(self):
-        """ z-score across trials and time bins, separately for each chan
+        """ z-score across trials and time bins, separately for each chan.
         RETURNS:
         - modifies self.Xz
         - return self.Xz
@@ -606,7 +609,9 @@ class PopAnal():
             return XdataframeAgg
 
     ####################### SLICING
-    def slice_by_dim_values_wrapper(self, dim, values, time_keep_only_within_window=True):
+    def slice_by_dim_values_wrapper(self, dim, values, 
+                                    time_keep_only_within_window=True,
+                                    fail_if_times_outside_existing=True):
         """ Slice based on values (not indices), works for dim =
         times, trials, or chans.
         PARAMS:
@@ -614,8 +619,10 @@ class PopAnal():
         - values, list of values into self.Trials or Chans (depending on dim).
         Asserts that self.Trials or Chans doesnt contain any Nones
         -- if dim=="times", then values are the min and max of the window
+        - fail_if_times_outside_existing, True ensure that enough time bins
+        exist in dataset to span entire range of times you
         """
-        if dim in ["chans", "trials"]:
+        if dim in ["site", "sites", "chans", "trials"]:
             # 1) Map the values to indices
             # dim, dim_str = self.help_get_dimensions(dim)
             indices = self.index_find_these_values(dim, values)
@@ -629,10 +636,11 @@ class PopAnal():
             # indices = self.index_find_these_values(dim, values)
             assert len(indices)==2
         else:
-            assert False
+            print(dim)
+            assert False, "not correct dim"
 
         # 2) Call indices version
-        return self.slice_by_dim_indices_wrapper(dim, indices)
+        return self.slice_by_dim_indices_wrapper(dim, indices, fail_if_times_outside_existing=fail_if_times_outside_existing)
 
     # def slice_time_by_indices(self, ind1, ind2):
     #     """ This is actually doing what slice_by_dim_indices_wrapper is supposed to do
@@ -645,11 +653,12 @@ class PopAnal():
     #     # convert from indices to times
     #     time_wind = [self.Times[ind1], self.Times[ind2]]
     #     return self.slice_by_dim_indices_wrapper("times", time_wind)
-    #
+    # 
     # def bin_time(self):
 
 
-    def slice_by_dim_indices_wrapper(self, dim, inds, reset_trial_indices=False):
+    def slice_by_dim_indices_wrapper(self, dim, inds, reset_trial_indices=False,
+                                     fail_if_times_outside_existing=True):
         """ Helper that is standard across the three dims (trials, times, chans),
         to use indices (i.e., not chans, but indices into chans)
         PARAMS:
@@ -660,6 +669,8 @@ class PopAnal():
         - reset_trial_indices, bool, if True, then new PA will have trials 0, 1, 2, ...
         regardless of initial trials. Useful if trials are just playibg role of index, with
         no meaning, and meaningful trial indiices are stored in PA.Xlabels["trials"]["trialcode"]
+
+        Makes copies of Xlabels dataframes
         RETURNS:
         - PopAnal object, , copy
         - OR frmat array (chans, trials, times) if return_only_X==True
@@ -669,25 +680,37 @@ class PopAnal():
         dim, dim_str = self.help_get_dimensions(dim)
 
         if dim_str=="times":
+            if len(inds)==1:
+                # Assume you want to just get a single bin
+                inds = [inds[0], inds[0]]
+                
             assert len(inds)==2
             t1 = self.Times[inds[0]]
             t2 = self.Times[inds[1]]
 
+            # print(t1, t2)
             # make times slgitly wider, to ensure get inclusive indices. This solves
             # problems if numerical imprecision leading to variable output sizes.
-            if inds[0]==0:
-                t1 = t1-1
+            
+            if True:
+                # Better
+                t_delta = (self.Times[1] - self.Times[0])/2
+                t1 = t1-t_delta
+                t2 = t2+t_delta
             else:
-                t1_prev = self.Times[inds[0]-1]
-                t1 -= (t1-t1_prev)/2
+                if inds[0]==0:
+                    t1 = t1-1
+                else:
+                    t1_prev = self.Times[inds[0]-1]
+                    t1 -= (t1-t1_prev)/2
 
-            if inds[1]==-1 or inds[1]==len(self.Times)-1:
-                t2 = t2+1
-            else:
-                t2_next = self.Times[inds[1]+1]
-                t2 += (t2_next - t2)/2
+                if inds[1]==-1 or inds[1]==len(self.Times)-1:
+                    t2 = t2+1
+                else:
+                    t2_next = self.Times[inds[1]+1]
+                    t2 += (t2_next - t2)/2
 
-            pa = self._slice_by_time_window(t1, t2, True, False)
+            pa = self._slice_by_time_window(t1, t2, True, fail_if_times_outside_existing)
 
             if len(self.Xlabels["times"])>0:
                 # then slice it
@@ -718,6 +741,8 @@ class PopAnal():
             pa = self._slice_by_trial(inds, return_as_popanal=True)
             if len(self.Xlabels["trials"])>0:
                 # then slice it
+                from pythonlib.tools.pandastools import _check_index_reseted
+                _check_index_reseted(self.Xlabels["trials"])
                 dfnew = self.Xlabels["trials"].iloc[inds].reset_index(drop=True).copy()
             else:
                 dfnew = pd.DataFrame()
@@ -735,8 +760,8 @@ class PopAnal():
         #     # copy all dimensions
         #     pa.Xlabels = {dim:df.copy() for dim, df in self.Xlabels.items()}
 
-        if reset_trial_indices:
-            assert dim_str=="trials", "this doesnt make sense otherwise. mistake?"
+        if reset_trial_indices and dim_str=="trials":
+            # assert dim_str=="trials", "this doesnt make sense otherwise. mistake?"
             pa.Trials = list(range(pa.X.shape[1]))
 
         return pa
@@ -746,8 +771,14 @@ class PopAnal():
             fail_if_times_outside_existing=True, version="raw", 
             subtract_this_from_times = None,
             method_if_not_enough_time="keep_and_prune_time"):
-        """ Slice population by time window, where
+        """ 
+        LOW-LEVEL CODE -- 
+        Slice population by time window, where
         time is based on self.Times
+
+        NOTE: It is correct for there to be this as well as self.slice_by_dim_values_wrapper(), as the
+        latter calls this current code.
+
         PARAMS;
         - t1, t2, start and end time for slicing, inclusive
         - fail_if_times_outside_existing, bool, if True, then self.Times must have times
@@ -760,10 +791,17 @@ class PopAnal():
         - OR None, if not enough data, and fail_if_times_outside_existing==True
         """
 
-        if sum(self.Times<=t1)==0 or sum(self.Times>=t2)==0:
+        # Determine if there is not enough data for the inputed time window
+        t_interval = self.Times[1] - self.Times[0]
+        bad1 = self.Times[0] - t1 > 1.001*t_interval
+        bad2 = t2 - self.Times[-1] > 1.001*t_interval
+        
+        if bad1 or bad2: # Then you are asking for times outside of times that exist in self.Times
+        # if sum(self.Times<=t1)==0 or sum(self.Times>=t2)==0:
             # Not enough time data.
             if fail_if_times_outside_existing:
                 # Then throw error
+                print("all self.Times: ", self.Times)
                 print("asking for times outside data range; (min, max that exists, t1, t2):", min(self.Times), max(self.Times), t1, t2)
                 from pythonlib.tools.exceptions import NotEnoughDataException
                 raise NotEnoughDataException
@@ -848,17 +886,41 @@ class PopAnal():
         --- PopAnal object (if return_as_popanal)
         """
 
+        if len(chans)==0:
+            # Then return empty
+            assert False
+
         # convert from channel labels to row indices
         if chan_inputed_row_index:
             inds = chans
-            del chans
+            # del chans
         else:
             inds = [self.index_find_this_chan(ch) for ch in chans]
-            del chans
+            # del chans
+
+        if len(self.Chans)<max(inds)+1:
+            # Then not enough chans
+            print(version)
+            print(self.X.shape)
+            print(inds)
+            print(self.Chans)
+            print(chans)
+            print(chan_inputed_row_index)
+            assert False, "you need to input only chans that exist"
 
         # Slice
-        X = self.extract_activity_copy(version=version)
-        X = X[inds, :, :]
+        try:
+            X = self.extract_activity_copy(version=version)
+            X = X[inds, :, :]
+        except Exception as err:
+            print(version)
+            print(self.X.shape)
+            print(X.shape)
+            print(inds)
+            print(self.Chans)
+            print(chans)
+            print(chan_inputed_row_index)
+            raise err
 
         if return_as_popanal:
             chans_actual = [self.Chans[i] for i in inds]
@@ -990,43 +1052,117 @@ class PopAnal():
 
         """
 
+        if DUR is None:
+            return self.copy()
+        
         # Only contineu if DUR is larger than the largest period between adjacent samples.
         max_period = np.max(np.diff(self.Times))
 
         if DUR >= (1.001 * max_period):
 
-            time_windows = self._agg_by_time_windows_binned_get_windows(DUR, SLIDE)
+            if False:
+                # 1. Original -- SLOW!!
+                time_windows = self._agg_by_time_windows_binned_get_windows(DUR, SLIDE)
 
-            # if SLIDE is None:
-            #     SLIDE = DUR
+                # if SLIDE is None:
+                #     SLIDE = DUR
 
-            # # MAke new times iwndows
-            # PRE = self.Times[0]
-            # POST = self.Times[-1]
-            # if False:
-            #     # Failed soemtimes, if dur > amount of data. then time_wind would be []
-            #     # n = (POST-PRE)/DUR
-            #     times1 = np.arange(PRE, POST-DUR, SLIDE)
-            #     times2 = times1+DUR
-            #     time_windows = np.stack([times1, times2], axis=1)
-            # else:
-            #     times1 = np.arange(PRE, POST-DUR/2, SLIDE) # each window, at least half of it inlcudes data
-            #     times2 = times1 + DUR
-            #     time_windows = np.stack([times1, times2], axis=1)
-            #     assert np.isclose(time_windows[0,0], PRE)
-            #     # assert time_windows[-1,1]>=post
-            #     assert time_windows[-1,0]<POST
-            
+                # # MAke new times iwndows
+                # PRE = self.Times[0]
+                # POST = self.Times[-1]
+                # if False:
+                #     # Failed soemtimes, if dur > amount of data. then time_wind would be []
+                #     # n = (POST-PRE)/DUR
+                #     times1 = np.arange(PRE, POST-DUR, SLIDE)
+                #     times2 = times1+DUR
+                #     time_windows = np.stack([times1, times2], axis=1)
+                # else:
+                #     times1 = np.arange(PRE, POST-DUR/2, SLIDE) # each window, at least half of it inlcudes data
+                #     times2 = times1 + DUR
+                #     time_windows = np.stack([times1, times2], axis=1)
+                #     assert np.isclose(time_windows[0,0], PRE)
+                #     # assert time_windows[-1,1]>=post
+                #     assert time_windows[-1,0]<POST
+                
 
-            # print("===========")
-            # print(DUR, SLIDE)
-            # print(time_windows)
-            # print(self.Times)
-            # assert False
+                # print("===========")
+                # print(DUR, SLIDE)
+                # print(time_windows)
+                # print(self.Times)
+                # assert False
 
-            X, times = self.agg_by_time_windows(time_windows)
+                X_binned, times_binned = self.agg_by_time_windows(time_windows)
+            elif False:
+                # 2. New, ChatGPT, works, but might fail in some cases with weird bins
+                # THis should be faster, esp for large data
+                # Tested and checked that it works.
+                # Assuming X is your neural data with shape (neurons, trials, times)
+                # and T is the time vector with units of seconds
 
-            PA = PopAnal(X, times=times, chans=self.Chans,
+                T = self.Times
+                X = self.X
+
+                # Calculate the sampling interval
+                dt = T[1] - T[0]  # Assuming uniform sampling
+
+                # Calculate the number of points per bin and step
+                bin_size_points = int(DUR / dt)
+                step_size_points = int(SLIDE / dt)
+
+                # Initialize lists to store the binned data and time stamps
+                X_binned = []
+                T_binned = []
+
+                total_time_points = X.shape[2]
+
+                # Sliding window loop
+                for start in range(0, total_time_points - bin_size_points + 1, step_size_points):
+                    end = start + bin_size_points  # End index for the current bin
+                    
+                    # Extract data for the current bin
+                    X_window = X[:, :, start:end]  # Shape: (neurons, trials, bin_size_points)
+                    
+                    # Compute the mean across the time dimension (axis=2)
+                    X_mean = X_window.mean(axis=2)  # Shape: (neurons, trials)
+                    
+                    # Append the mean data to the list
+                    X_binned.append(X_mean)
+                    
+                    # Compute and append the center time of the bin
+                    bin_center_time = T[start] + (DUR / 2)
+                    T_binned.append(bin_center_time)
+
+                # Convert lists to arrays
+                X_binned = np.stack(X_binned, axis=2)  # Shape: (neurons, trials, number of bins)
+                times_binned = np.array(T_binned)          # Shape: (number of bins,)
+            else:
+                # 3. The best method, is fast. Gets identical windows to method 1, but muhc fastrs.
+                time_windows = self._agg_by_time_windows_binned_get_windows(DUR, SLIDE)
+
+                T = np.array(self.Times)
+                X = self.X
+
+                X_binned = []
+                T_binned = []
+                for i in range(time_windows.shape[0]):
+                    twind = time_windows[i, :] # (t1, t2)
+                    # print(twind)
+
+                    x = self.X[:, :, (T>=twind[0]) & (T<=twind[1])]
+                    X_mean = np.mean(x, axis=2) # (chans, trials)
+
+                    # Append the mean data to the list
+                    X_binned.append(X_mean)
+                    
+                    # Compute and append the center time of the bin
+                    bin_center_time = twind[0] + DUR/2
+                    T_binned.append(bin_center_time)
+
+                # Convert lists to arrays
+                X_binned = np.stack(X_binned, axis=2)  # Shape: (neurons, trials, number of bins)
+                times_binned = np.array(T_binned)          # Shape: (number of bins,)
+
+            PA = PopAnal(X_binned, times=times_binned, chans=self.Chans,
                         trials = self.Trials)
             PA.Xlabels["trials"] = self.Xlabels["trials"].copy()
         else:
@@ -1143,9 +1279,53 @@ class PopAnal():
         pa = self.slice_by_dim_indices_wrapper(dim_str, inds)
         return pa
 
-    def slice_extract_with_levels_of_conjunction_vars(self, var, vars_others,
+    def slice_extract_with_levels_of_conjunction_vars_as_dictpa(self, var, vars_others,
                                                       prune_min_n_trials=5, prune_min_n_levs=2,
                                                       plot_counts_heatmap_savepath=None):
+        """
+        See slice_extract_with_levels_of_conjunction_vars, here does same, but returns as dict, 
+        grp:pa
+        """
+        _, _, dict_dfthis = self.slice_extract_with_levels_of_conjunction_vars(var, vars_others, 
+                                                                               prune_min_n_trials, prune_min_n_levs, 
+                                                                               plot_counts_heatmap_savepath)
+
+        dict_pa = {}
+        if dict_dfthis is not None:                                                                        
+            for grp, _df in dict_dfthis.items():
+                # print(grp, _df["_index"].tolist())
+                dict_pa[grp] = self.slice_by_dim_indices_wrapper("trials", _df["_index"].tolist(), True)
+            
+        return dict_pa
+        
+    
+    # def slice_extract_with_levels_of_conjunction_vars(self, var, vars_others, n_min_per_lev=1,
+    #                                                plot_counts_heatmap_savepath=None,
+    #                                                 lenient_allow_data_if_has_n_levels=None,
+    #                                                 levels_var=None, remove_extra_columns=False,
+    #                                                 plot_counts_also_before_prune_path=None):
+    #     """
+    #     Return slice of self (along trials dimension), satistfying criteria in 
+    #     extract_with_levels_of_conjunction_vars_helper(). See that for detials.
+        
+    #     RETURNS:
+    #     - copy of PA (sliced) or None (if removes all data)
+    #     """
+    #     from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper
+    #     dflab = self.Xlabels["trials"]
+    #     _dflab, _ = extract_with_levels_of_conjunction_vars_helper(dflab, var, vars_others, n_min_per_lev,
+    #                                                plot_counts_heatmap_savepath, lenient_allow_data_if_has_n_levels,
+    #                                                levels_var, remove_extra_columns, plot_counts_also_before_prune_path)
+    #     if len(_dflab)>0:
+    #         pa = self.slice_by_dim_indices_wrapper("trials", _dflab["_index"])
+    #         return pa
+    #     else:
+    #         return None
+
+    def slice_extract_with_levels_of_conjunction_vars(self, var, vars_others,
+                                                      prune_min_n_trials=5, prune_min_n_levs=2,
+                                                      plot_counts_heatmap_savepath=None,
+                                                      levels_var=None):
         """
         Keep only levels of vars_others, which have at least <prune_min_n_trials> across
         <prune_min_n_levs> many levels of var. Remove all levels of var and vars_others which
@@ -1155,12 +1335,19 @@ class PopAnal():
         from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars
         pa = self.copy()
         dflab = pa.Xlabels["trials"]
+        # from pythonlib.tools.pandastools import _check_index_reseted
+        # _check_index_reseted(dflab)
+
         dfout, dict_dfthis = extract_with_levels_of_conjunction_vars(dflab, var, vars_others,
                                                                  n_min_across_all_levs_var=prune_min_n_trials,
                                                                  lenient_allow_data_if_has_n_levels=prune_min_n_levs,
                                                                  prune_levels_with_low_n=True,
                                                                  ignore_values_called_ignore=True,
-                                                                 plot_counts_heatmap_savepath=plot_counts_heatmap_savepath)
+                                                                 plot_counts_heatmap_savepath=plot_counts_heatmap_savepath,
+                                                                 levels_var=levels_var)
+        # print(len(dflab), len(dfout))
+        # print(dflab.index)
+        # print(dfout.index)
 
         if len(dfout)>0:
             # Only keep the indices in dfout
@@ -1168,6 +1355,56 @@ class PopAnal():
             return pa, dfout, dict_dfthis
         else:
             return None, None, None
+
+    def slice_prune_dflab_and_vars_others(self, var_effect, vars_others, n_min_per_lev, 
+                                          lenient_allow_data_if_has_n_levels, fail_if_prune_all=True):
+        """
+        Return pruned copy of self, and pruned vars_others, such that data exists, i.e,, that at least <lenient_allow_data_if_has_n_levels>
+        number levels of <var_effect> for some levesl of <varsS_others>, with at least <n_min_per_lev> trials.
+        
+        Will allow to pass if at least 1 datapt.
+
+        Iteratively removes item from end of vars_others.
+
+        """
+        from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper
+        n = 0
+        while n==0:
+            assert len(vars_others)>0, "all pruned...?"
+            dflab = self.Xlabels["trials"]
+
+            if False:
+                print("Pruning ... ", var_effect, " -- ", vars_others, " -- ", n_min_per_lev, " -- ", lenient_allow_data_if_has_n_levels)
+
+            dfout, _ = extract_with_levels_of_conjunction_vars_helper(dflab, var=var_effect, vars_others=vars_others, 
+                                                    n_min_per_lev=n_min_per_lev, 
+                                                    lenient_allow_data_if_has_n_levels=lenient_allow_data_if_has_n_levels)        
+            n = len(dfout)
+            if n==0:
+                vars_others = vars_others[:-1]
+                print("vars_others is now: ", vars_others)
+        
+        inds = dfout["_index"].tolist()
+        if len(inds)==0 and fail_if_prune_all:
+            assert False
+        pa = self.slice_by_dim_indices_wrapper("trials", inds)
+
+        return pa, vars_others
+
+
+    def slice_extract_with_levels_of_var_good_prune(self, grp_vars, n_min_per_var):
+        """
+        Preprocess, pruning to keep onl levels of grouping var which have at least
+        <n_min_per_var> many trials
+        RETURNS:
+        - pa, a copy
+        """
+        from pythonlib.tools.pandastools import extract_with_levels_of_var_good
+        dflab = self.Xlabels["trials"]
+        _, inds_keep = extract_with_levels_of_var_good(dflab, grp_vars, n_min_per_var)
+        pa = self.slice_by_dim_indices_wrapper("trials", inds_keep, reset_trial_indices=True)
+        print("Pruned: ", self.X.shape, " --> ", pa.X.shape)
+        return pa
 
     def slice_by_labels_filtdict(self, filtdict):
         """
@@ -1181,9 +1418,12 @@ class PopAnal():
                 assert isinstance(_var, str)
                 assert isinstance(_levs, (list, tuple))
 
-                inds = pa.Xlabels["trials"][pa.Xlabels["trials"][_var].isin(_levs)].index.tolist()
-                pa = pa.slice_by_dim_indices_wrapper("trials", inds)
-                # pa.Xlabels["trials"] = pa.Xlabels["trials"][pa.Xlabels["trials"][_var].isin(_levs)].reset_index(drop=True)
+                if len(pa.Xlabels["trials"])>0:
+                    inds = pa.Xlabels["trials"][pa.Xlabels["trials"][_var].isin(_levs)].index.tolist()
+                    print(f"pa.slice_by_labels_filtdict, using var={_var}, n before filt: {pa.X.shape}")
+                    pa = pa.slice_by_dim_indices_wrapper("trials", inds)
+                    print(f"pa.slice_by_labels_filtdict, using var={_var}, n after filt: {pa.X.shape}")
+                    # pa.Xlabels["trials"] = pa.Xlabels["trials"][pa.Xlabels["trials"][_var].isin(_levs)].reset_index(drop=True)
         return pa
 
     def slice_by_labels(self, dim_str, dim_variable, list_values, verbose=False):
@@ -1238,6 +1478,141 @@ class PopAnal():
     #     # inds = dfthis[dfthis[dim_variable]==dim_value].index.tolist()
     #     # pa = self.slice_by_dim_indices_wrapper(dim_str, inds)
     #     # return pa
+
+    def sort_trials_by_trialcode(self):
+        """
+        return copy of self, with trials sorted by incresaeing trial (using trialcode)
+        """
+        from pythonlib.tools.stringtools import trialcode_to_scalar
+
+        dflab = self.Xlabels["trials"]
+
+        # First, get trialcodes into sortable scalrs
+        trialcode_scalars = [trialcode_to_scalar(tc) for tc in dflab["trialcode"]]
+        dflab["trialcode_scal"] = trialcode_scalars
+
+        sort_indices = dflab["trialcode_scal"].argsort()
+
+        pa = self.slice_by_dim_indices_wrapper("trials", sort_indices, reset_trial_indices=True)
+        
+        return pa
+
+    def sort_chans_by_fr_in_window(self, twind):
+        """
+        REturn PA (copy) that has channels sorted in order of incresaing firing rates,
+        within time window twind (2-tuple).
+        RETURNS:
+        - copy of PA, with chans ordered from low FR to high FR
+        """
+        
+        pathis = self.slice_by_dim_values_wrapper("times", twind).agg_wrapper("times").agg_wrapper("trials")
+        sortinds_chan = np.argsort(pathis.X[:, 0,0]).tolist()
+        PA = self.slice_by_dim_indices_wrapper("chans", sortinds_chan)
+
+        return PA, sortinds_chan
+
+    def sort_chans_by_modulation_over_time(self, PLOT=False):
+        """
+        Return PA copy that has chans sorted based on moudlation of fr over time.
+        Modulation over time is r2, anova, vs time, which is a good metric for how 
+        strongly this chan is modulated as a SNR metric.
+        RETURNS:
+        - copy of PA, with chans ordered from most to least modulated
+        """
+        from neuralmonkey.metrics.scalar import _calc_modulation_by_frsm_event_aligned_time
+        
+        # For each chan, compute modulation
+        res = []
+        for i, chan in enumerate(self.Chans):
+            frmat = self.X[i, :, :]
+            r2 = _calc_modulation_by_frsm_event_aligned_time(frmat)
+            res.append({
+                "r2":r2,
+                "chan":chan,
+                "indchan":i
+            })
+        df = pd.DataFrame(res)
+
+        if PLOT:
+            import seaborn as sns
+            from pythonlib.tools.snstools import rotateLabel
+            fig = sns.catplot(data=df, x="chan", y="r2", aspect=2.5, kind="bar")
+            rotateLabel(fig)
+        
+        # Sort
+        sortinds_chan = df.sort_values("r2", ascending=False)["indchan"].tolist()
+        PA = self.slice_by_dim_indices_wrapper("chans", sortinds_chan)
+
+        return PA, sortinds_chan
+
+    def norm_rel_all_timepoints(self, method="zscore"):
+        """
+        Normalize each channel against stats from its entire data (i.e., trials x times)
+        RETURNS:
+        - copy of PA, with modified X
+        """
+
+        if method=="zscore":
+            self.zscoreFrNotDataframe()
+            pa = self.copy()
+            pa.X = self.Xz
+            self.Xz = None
+        else:
+            print(method)
+            assert False
+
+        return pa
+
+    def norm_rel_base_window(self, twind_base, method="zscore", return_stats=False):
+        """
+        Normalize actrivity by subtractigin mean acitivty taken from a baseline
+        time window (and then averaged over time). 
+        """
+
+        # Get mean and std for each chan, using a baseline twind
+        pa_base = self.slice_by_dim_values_wrapper("times", twind_base)
+        x = pa_base.dataextract_reshape("chans_x_trialstimes")
+        xmean = np.mean(x, axis=1)[:, None, None]
+        xstd = np.std(x, axis=1)[:, None, None]
+
+        # print(self.X.shape)
+        # print(pa_base.X.shape)
+        # print(xmean.shape)
+        # print(xstd.shape)
+        # if method=="zscore":
+        #     # pa_norm.X = (pa_norm.X - xmean)/xstd
+        # elif method=="subtract":
+        # else:
+        #     assert False
+
+        pa_norm = self.norm_rel_base_apply(xmean, xstd, method)
+
+        if return_stats:
+            return pa_norm, xmean, xstd
+        else:
+            return pa_norm
+
+    def norm_rel_base_apply(self, xmean, xstd, method="zscore"):
+        """
+        Apply this prcomputed mean and std
+        PARAMS:
+        - xmean, (nchans, 1, 1) or (nchans,)
+        """
+
+        assert (xmean.shape == (self.X.shape[0], 1, 1)) or (xmean.shape == (self.X.shape[0],))
+        assert xstd.shape == (self.X.shape[0], 1, 1) or (xstd.shape == (self.X.shape[0],))
+        
+        pa_norm = self.copy()
+        if method=="zscore":
+            pa_norm.X = (pa_norm.X - xmean)/xstd
+        elif method=="subtract":
+            pa_norm.X = pa_norm.X - xmean
+        else:
+            print(method)
+            assert False
+
+        return pa_norm
+
 
     def norm_subtract_mean_each_chan(self):
         """
@@ -1334,6 +1709,326 @@ class PopAnal():
         assert len(PA.Trials)==len(self.Trials)
 
         return PA
+    
+    def split_stratified_constrained_grp_var(self, nsplits, label_grp_vars, fraction_constrained_set=0.5, n_constrained=2, 
+                                             list_labels_need_n=None, min_frac_datapts_unconstrained=None, 
+                                             min_n_datapts_unconstrained=1, plot_train_test_counts=False, plot_indices=False,
+                                             plot_all_folds=False):
+        """
+
+        Generate stratified cross-validation folds with constraints on minimum sample sizes.
+        
+        Creates multiple train-test splits where each fold contains two sets:
+        - **Constrained set**: Guaranteed ≥n_constrained trials per label group (typically for testing)
+        - **Unconstrained set**: Remaining trials (typically for training)
+        
+        Uses sampling with replacement across folds to ensure constraints are met.
+        
+        PARAMETERS
+        ----------
+        nsplits : int
+            Number of cross-validation folds to generate
+        label_grp_vars : list of str
+            Column names in self.Xlabels["trials"] defining trial groups for stratification.
+            Each unique combination of these variables defines a stratum.
+        fraction_constrained_set : float, default=0.5
+            Target fraction of trials to allocate to constrained set for each label group
+        n_constrained : int, default=2
+            Minimum number of trials required per label group in constrained set
+        list_labels_need_n : list of tuples, optional
+            Specific label combinations that must have ≥n_constrained trials in constrained set.
+            If any fail this requirement, raises NotEnoughDataException.
+        min_frac_datapts_unconstrained : float, optional
+            Minimum fraction of total trials that must remain in unconstrained set
+        min_n_datapts_unconstrained : int, default=1
+            Minimum absolute number of trials that must remain in unconstrained set
+        plot_train_test_counts : bool, default=False
+            Whether to plot trial count heatmaps for first fold
+        plot_indices : bool, default=False
+            Whether to plot trial indices for debugging
+        plot_all_folds : bool, default=False
+            Whether to plot trial counts for all folds (can be slow)
+        
+        RETURNS
+        -------
+        folds : list of tuples
+            List of (unconstrained_indices, constrained_indices) for each fold.
+            Each element contains numpy arrays of trial indices.
+        fig_unc : matplotlib.Figure or None
+            Heatmap showing trial counts in unconstrained set (if plot_train_test_counts=True)
+        fig_con : matplotlib.Figure or None
+            Heatmap showing trial counts in constrained set (if plot_train_test_counts=True)
+        
+        RAISES
+        ------
+        NotEnoughDataException
+            If constraints cannot be satisfied with available data
+        
+        EXAMPLES
+        --------
+        Basic usage for 5-fold cross-validation:
+        
+        >>> # Split trials by shape and location, ensuring ≥3 trials per group in test set
+        >>> folds, _, _ = pa.split_stratified_constrained_grp_var(
+        ...     nsplits=5,
+        ...     label_grp_vars=['shape', 'location'], 
+        ...     n_constrained=3,
+        ...     fraction_constrained_set=0.3
+        ... )
+        >>> 
+        >>> # Use first fold
+        >>> train_indices, test_indices = folds[0]
+        >>> pa_train = pa.slice_by_dim_indices_wrapper("trials", train_indices)
+        >>> pa_test = pa.slice_by_dim_indices_wrapper("trials", test_indices)
+        
+        With specific label requirements:
+        
+        >>> # Ensure specific conditions have enough test trials
+        >>> required_labels = [('circle', 'center'), ('square', 'left')]
+        >>> folds, _, _ = pa.split_stratified_constrained_grp_var(
+        ...     nsplits=3,
+        ...     label_grp_vars=['shape', 'location'],
+        ...     n_constrained=5,
+        ...     list_labels_need_n=required_labels,
+        ...     plot_train_test_counts=True
+        ... )
+        
+        NOTES
+        -----
+        - Uses sampling WITH replacement across folds, so same trial can appear in multiple folds
+        - Constrained set typically used for testing (needs guaranteed sample sizes)
+        - Unconstrained set typically used for training (can handle variable sample sizes)
+        - If a label group has ≤n_constrained total trials, all go to constrained set
+        - For machine learning: constrained_set → test, unconstrained_set → train
+
+        
+        OLD, my docs
+        [Good] Split data (trials) in stratitied manner by label, with helping to make sure have enough trials in output
+        (constraints).
+
+        One set (constrained) will have at least <n_constrained> datapts per each level of label_grp_vars.
+        
+        PARAMS:
+        - nsplits, each time does newly with shuffle (with replacment).
+        - fraction_constrained_set = 0.75 # Take most for the euclidian distance (less for dpca)
+        - n_constrained = 2 # Need at least 2 for pairwise comparisons
+        - min_frac_datapts_unconstrained = None
+        - min_n_datapts_unconstrained, n trials for unconstrinaed. e.g., if using this for dpca, then could be 
+        len(dflab[dpca_var].unique()) # 
+        - list_labels_need_n, e..g, [('arcdeep-4-4-0', (-1, 1), 'rig3_3x3_big')]
+        """
+        # from pythonlib.tools.statstools import split_stratified_constrained, split_stratified_constrained_multiple
+        from pythonlib.tools.statstools import split_stratified_constrained_multiple
+        from pythonlib.tools.pandastools import _check_index_reseted, grouping_plot_n_samples_conjunction_heatmap_helper
+
+        ### Extract labels
+        dflab = self.Xlabels["trials"]
+        _check_index_reseted(dflab)
+        y = [tuple(x) for x in dflab.loc[:, label_grp_vars].values.tolist()]
+
+        ### Run
+        # unconstrained_indices, constrained_indices, _, _ = split_stratified_constrained(y, fraction_constrained_set, 
+        #                                                         n_constrained, list_labels_need_n=list_labels_need_n, 
+        #                                                         min_frac_datapts_unconstrained=min_frac_datapts_unconstrained,  
+        #                                                         min_n_datapts_unconstrained=min_n_datapts_unconstrained, PRINT=False, PLOT=plot_indices)
+        try:
+            folds = split_stratified_constrained_multiple(y, nsplits, fraction_constrained_set, 
+                                                                    n_constrained, list_labels_need_n=list_labels_need_n, 
+                                                                    min_frac_datapts_unconstrained=min_frac_datapts_unconstrained,  
+                                                                    min_n_datapts_unconstrained=min_n_datapts_unconstrained, 
+                                                                    PRINT=False, PLOT=plot_indices)
+        except Exception as err:
+            fig = grouping_plot_n_samples_conjunction_heatmap_helper(self.Xlabels["trials"], label_grp_vars)
+            savefig(fig, "/tmp/counts_tmp.pdf")
+            print("check: ", "/tmp/counts_tmp.pdf")
+            raise err
+
+        ### Check things
+        # Plot coutns (sanity check)
+        if plot_train_test_counts:
+            # Just plot the first fold
+
+            unconstrained_indices, constrained_indices = folds[0]
+            paredu_train = self.slice_by_dim_indices_wrapper("trials", unconstrained_indices)
+            paredu_test = self.slice_by_dim_indices_wrapper("trials", constrained_indices)
+            grouping_plot_n_samples_conjunction_heatmap_helper(dflab, label_grp_vars)
+            fig_unc = grouping_plot_n_samples_conjunction_heatmap_helper(paredu_train.Xlabels["trials"], label_grp_vars)
+            fig_con = grouping_plot_n_samples_conjunction_heatmap_helper(paredu_test.Xlabels["trials"], label_grp_vars)
+
+            if plot_all_folds:
+                for unconstrained_indices, constrained_indices in folds:
+                    paredu_train = self.slice_by_dim_indices_wrapper("trials", unconstrained_indices)
+                    paredu_test = self.slice_by_dim_indices_wrapper("trials", constrained_indices)
+                    grouping_plot_n_samples_conjunction_heatmap_helper(paredu_train.Xlabels["trials"], label_grp_vars)
+                    grouping_plot_n_samples_conjunction_heatmap_helper(paredu_test.Xlabels["trials"], label_grp_vars)
+        else:
+            fig_unc, fig_con = None, None
+
+        return folds, fig_unc, fig_con
+
+    def split_balanced_stratified_kfold_subsample_level_of_var(self, label_grp_vars, var_exclude=None, levels_exclude_from_splitting=None,
+                                        n_splits="auto", do_balancing_of_train_inds=True, plot_train_test_counts=False, plot_indices=False,
+                                        shuffle=False):
+        """
+        Split into n_splits train-test samples, ensuring that trains are balanced across lewvels
+        of <label_grp_vars>. 
+
+        Additiaonlly, do this only for specific levels of var.
+
+        e.g., var_exclude=="var", and levels_exclude==[A, B], then does train-test split for each level that is not A, B,..
+        and for each fold, includes all of the indices for A an B> This is useufl if you want to do train-test for everything that
+        is not A, B. Returns indices into the oriinal Dflab (self)
+
+        NOTE: guaranteed that each index will contribute to test once and only once.
+
+        NOTE: to run this without excluding anything, set levels_exclude_from_splitting=[]
+        PARAMS:
+        - do_balancing_of_train_inds, bool.
+        - label_grp_vars = ["idx_morph_temp", "seqc_0_loc"]
+        """
+        assert False, "note that this forces lower nsplits if any level has ndata less than nsplits. Instead, use split_stratified_constrained_grp_var (altbough that samples with replacement)"
+
+        # Train-test split
+        from pythonlib.tools.statstools import balanced_stratified_kfold
+        from pythonlib.tools.pandastools import append_col_with_grp_index, _check_index_reseted
+
+        dflab = self.Xlabels["trials"]
+        _check_index_reseted(dflab)
+        dflab = append_col_with_grp_index(dflab, label_grp_vars, "tmp")
+
+        if var_exclude is None:
+            dflab_inner = dflab
+            inds_in_dflab_inner = dflab_inner.index
+            inds_in_dflab_base = []
+        else:
+            dflab_inner = dflab[~dflab[var_exclude].isin(levels_exclude_from_splitting)] # get the non-base inds
+            dflab_base = dflab[dflab[var_exclude].isin(levels_exclude_from_splitting)] # get the non-base inds
+            inds_in_dflab_inner = dflab_inner.index
+            inds_in_dflab_base = dflab_base.index
+
+        y = dflab_inner["tmp"].values.astype(str)
+
+        folds = balanced_stratified_kfold(None, y,  n_splits=n_splits, 
+                                          do_balancing_of_train_inds=do_balancing_of_train_inds,
+                                          shuffle=shuffle)
+        print(n_splits)
+        print(len(folds))
+        assert False
+        
+        # map the indices here back to indices in original dflab
+        folds_dflab = []
+        for train_inds, test_inds in folds:
+            train_inds_dflab = inds_in_dflab_inner[train_inds]
+            test_inds_dflab = inds_in_dflab_inner[test_inds]
+
+            # also append the base inds, always, for both training and testing.
+            train_inds_dflab = np.concatenate([train_inds_dflab, inds_in_dflab_base])
+            test_inds_dflab = np.concatenate([test_inds_dflab, inds_in_dflab_base])
+
+            folds_dflab.append([train_inds_dflab, test_inds_dflab])
+
+        # Plot coutns (sanity check)
+        if plot_train_test_counts:
+            from pythonlib.tools.pandastools import grouping_plot_n_samples_conjunction_heatmap
+            for train_inds, test_inds in folds_dflab:
+                # train_inds, test_inds = folds_dflab[0]
+                paredu_train = self.slice_by_dim_indices_wrapper("trials", train_inds)
+                paredu_test = self.slice_by_dim_indices_wrapper("trials", test_inds)
+
+                grouping_plot_n_samples_conjunction_heatmap(paredu_train.Xlabels["trials"], "idx_morph_temp", "seqc_0_loc");
+                grouping_plot_n_samples_conjunction_heatmap(paredu_test.Xlabels["trials"], "idx_morph_temp", "seqc_0_loc");
+
+        # Plot indices
+        if plot_indices:
+            fig, ax = plt.subplots(figsize=(15,5))
+            for i, (trains, tests) in enumerate(folds_dflab):
+                ax.plot(trains, i*np.ones(len(trains)), ".k")
+                ax.plot(tests, i*np.ones(len(tests)), "xr")
+
+        return folds_dflab
+    
+
+    def split_balanced_stratified_kfold(self, label_grp_vars, n_splits="auto", do_balancing_of_train_inds=True):
+        """
+        Split into n_splits train-test samples, ensuring that trains are balanced across lewvels
+        of <label_grp_vars>. 
+        PARAMS:
+        - do_balancing_of_train_inds, bool.
+        - label_grp_vars = ["idx_morph_temp", "seqc_0_loc"]
+        """
+        assert False, "this is identical to split_balanced_stratified_kfold_subsample_level_of_var, with levels_exclude_from_splitting=[]. Merge them"
+        # Train-test split
+        from pythonlib.tools.statstools import balanced_stratified_kfold
+        from pythonlib.tools.pandastools import append_col_with_grp_index
+
+        dflab = self.Xlabels["trials"]
+        dflab = append_col_with_grp_index(dflab, label_grp_vars, "tmp")
+
+        y = dflab["tmp"].values.astype(str)
+        folds = balanced_stratified_kfold(None, y,  n_splits=n_splits, do_balancing_of_train_inds=do_balancing_of_train_inds)
+        return folds
+    
+    def split_sample_stratified_by_label(self, label_grp_vars, test_size=0.5, PRINT=False):
+        """
+        REturn two evenly (or uneven, if test_size not 0.5) slit PA, 
+        using up all the trials in self, and mainting the same proportion of classes of
+        conj-var label_grp_vars (i.e,, stratified).
+
+        MS: checked
+        """
+        # from pythonlib.tools.statstools import balanced_stratified_resample_kfold
+        from pythonlib.tools.pandastools import append_col_with_grp_index
+        from pythonlib.tools.statstools import stratified_resample_split_kfold
+        from pythonlib.tools.listtools import tabulate_list
+
+        # COnvert to conjunctive label as strings.
+        self.Xlabels["trials"] = append_col_with_grp_index(self.Xlabels["trials"], label_grp_vars, "tmp")
+        labels = self.Xlabels["trials"]["tmp"].tolist()
+
+        # Get split indices for the two groups.
+        outdict = tabulate_list(labels)
+        if PRINT:
+            print("Labels, split:")
+            for k, v in outdict.items():
+                print(k, " -- ", v)
+        split_inds = stratified_resample_split_kfold(labels, 1, test_size=test_size, PRINT=PRINT)
+
+        # Generate new pa
+        train_index, test_index = split_inds[0]
+        pa1 = self.slice_by_dim_indices_wrapper("trials", train_index.tolist())
+        pa2 = self.slice_by_dim_indices_wrapper("trials", test_index.tolist())
+
+        if PRINT:
+            print(" --- pa1:")
+            display(pa1.Xlabels["trials"]["tmp"].value_counts())
+            print(" --- pa2:")
+            display(pa2.Xlabels["trials"]["tmp"].value_counts())
+
+        self.Xlabels["trials"] = self.Xlabels["trials"].drop("tmp", axis=1)
+        pa1.Xlabels["trials"] = pa1.Xlabels["trials"].drop("tmp", axis=1)
+        pa2.Xlabels["trials"] = pa2.Xlabels["trials"].drop("tmp", axis=1)
+
+        pa_train = pa1
+        pa_test = pa2
+        return pa_train, pa_test
+
+    def split_train_test_random(self, frac_test):
+        """
+        Quick, random split trials into train, test, taking random subset of trials.
+        """
+        import random
+        ntrials = len(self.Trials)
+        ntrials_sub = int(np.ceil(frac_test*ntrials))
+        inds_all = list(range(len(self.Trials)))
+        inds_test = sorted(random.sample(inds_all, ntrials_sub))
+        inds_train = [i for i in inds_all if i not in inds_test]
+
+        # print(len(inds_all), len(inds_train), len(inds_test))
+        
+        pa_train = self.slice_by_dim_indices_wrapper("trials", inds_train, reset_trial_indices=True)
+        pa_test = self.slice_by_dim_indices_wrapper("trials", inds_test, reset_trial_indices=True)
+
+        return pa_train, pa_test
 
     def split_by_label(self, dim_str, dim_variable_grp):
         """ Splits self into multiple smaller PA, each with a single level for
@@ -1360,7 +2055,7 @@ class PopAnal():
                                                           "_dummy", use_strings=False)
 
         # 1) Get list of levels
-        list_levels = self.Xlabels[dim_str]["_dummy"].unique().tolist()
+        list_levels = sort_mixed_type(self.Xlabels[dim_str]["_dummy"].unique().tolist())
 
         # 2) For each level, return a single PA
         ListPA = []
@@ -1376,6 +2071,69 @@ class PopAnal():
         return ListPA, list_levels
 
     #######################
+    def _dataextract_timewarp_piecewise_linear_trial(self, indtrial, anchor_times_this_trial, times_template, 
+                                              anchor_times_template, smooth_boundaries_sigma=0.015, 
+                                              PLOT=False, no_negative_fr_allowed=True):
+        """
+        For this trial, time-warp the neural data based on mathcing anchor pts to a template, and linearly warping between the
+        anchor points.
+        RETURNS:
+        - a single PA holding this trial.
+        """
+        from neuralmonkey.utils.frmat import timewarp_piecewise_linear_interpolate
+
+        X_trial = self.X[:, indtrial, :]
+        times_trial = self.Times
+        X_warped, fig1, fig2 = timewarp_piecewise_linear_interpolate(X_trial, times_trial, anchor_times_this_trial, times_template, 
+                                          anchor_times_template, smooth_boundaries_sigma, PLOT)       
+
+        if no_negative_fr_allowed:
+            #  Make sure X is all positive. This is possible negative sometimes due to numerical imprecision and filtering?
+            X_warped[X_warped<0] = 0.
+
+        return X_warped, fig1, fig2
+
+    def dataextract_timewarp_piecewise_linear(self, anchor_times_this_trial, times_template, 
+                                              anchor_times_template, smooth_boundaries_sigma=0.015,
+                                              PLOT=False):
+        """
+        Apply this timewarp to all trials, returning a copy of self which has all trials warped
+        RETURNS:
+        - PA, copy, shape (nchans, ntrials, len(times_template))
+        """
+
+        list_x = []
+        fig1, fig2 = None, None
+        for indtrial in range(self.X.shape[1]):
+            if indtrial==0 and PLOT:
+                X_warped, fig1, fig2 = self._dataextract_timewarp_piecewise_linear_trial(indtrial, anchor_times_this_trial, times_template, 
+                                                                anchor_times_template, smooth_boundaries_sigma, PLOT=True)
+            else:
+                X_warped, _, _ = self._dataextract_timewarp_piecewise_linear_trial(indtrial, anchor_times_this_trial, times_template, 
+                                                                anchor_times_template, smooth_boundaries_sigma, PLOT=False)
+            list_x.append(X_warped)
+        
+        X = np.stack(list_x, axis=0)
+        X = np.transpose(X, (1,0,2))
+        
+
+        PA = self.copy()
+        PA.X = X
+        PA.Times = times_template
+
+        return PA, fig1, fig2
+
+    def dataextract_reshape(self, reshape_method="chans_x_trialstimes"):
+        """
+        Holds methods for reshaping data.
+        """
+        if reshape_method=="chans_x_trialstimes":
+            X = self.X.reshape(self.X.shape[0], -1)
+        else:
+            assert False
+
+        return X
+
     def dataextract_as_distance_matrix_clusters_flex_reversed(self, var_group,
                                                      version_distance="euclidian",
                                                      accurately_estimate_diagonal=False):
@@ -1430,35 +2188,365 @@ class PopAnal():
         
         return LIST_CLDIST, LIST_TIME
 
+    def dataextract_as_distance_index_between_two_base_classes(self, var_effect = "idx_morph_temp", effect_lev_base1=0, 
+                                                               effect_lev_base2=99, list_grps_get=None, version="pts_time", 
+                                                               PLOT=False, var_context_diff=None,
+                                                               plot_conjunctions_savedir=None):
+        """
+        GOOD - to project all data onto 1d scalar mapping between two levels, <effect_lev_base1>, <effect_lev_base2>, of a variable <var_effect>.
+        And many options to do so using singel trials (always against the groups of the base levels) or gorups, and time, vs. mean over time.
+
+        NOTE: This uses raw euclidian distance to compute the metrics. 
+
+        NOTE: Was previously _compute_df_using_dist_index_traj in psychometric...
+
+        Map individual trials onto dist_index, which is based on eucl distance to base1 and base2.
+        This does two special things:
+        1. Works with trajectories - does each time bin one by one.
+        2. Processes individual datapts (each vs. groups), instead of (groups vs. groups)
+
+        NOTE:
+        - DFPROJ_INDEX_AGG, with pts_or_groups=="pts" is (almoost) identical to DFPROJ_INDEX, with pts_or_groups=="grps", becuase the 
+        former aggs over trials. Therefore, in general, using pts_or_groups=="pts" is better, but is slower.
+
+        PARAMS:
+        - var_context_diff, if not None, then only takes pairs of data that have different level for this var.
+        
+        EXAMPLE: Run this code to compute all the version, and to visualize that the following are equivalent:
+        - pts --> grps, if you just agg over trials, using the outputed data
+        - time --> scal, if you just agg over time, using the outputed data.
+
+        var_effect = "idx_morph_temp"
+        effect_lev_base1 = 0
+        effect_lev_base2 = 99
+        list_grps_get = [(0,), (99,)] # This is important, or else will fail if there are any (idx|assign) with only one datapt.
+
+
+        version = "pts_time"
+        DFPROJ_INDEX, DFDIST, DFPROJ_INDEX_AGG, DFDIST_AGG = _compute_df_using_dist_index_traj(PAredu, var_effect, 
+                                                                                            effect_lev_base1, effect_lev_base2, 
+                                                                                            version = version)
+        DFPROJ_INDEX_SCAL = aggregGeneral(DFPROJ_INDEX, ["idx_row_datapt", "labels_1_datapt", "idx_morph_temp"], ["dist_index"])
+        sns.relplot(data=DFPROJ_INDEX, x="time_bin", y="dist_index", kind="line", hue="idx_morph_temp")
+        sns.catplot(data=DFPROJ_INDEX, x="idx_morph_temp", y="dist_index", kind="point")
+
+        version = "grps_time"
+        DFPROJ_INDEX, DFDIST, DFPROJ_INDEX_AGG, DFDIST_AGG = _compute_df_using_dist_index_traj(PAredu, var_effect, 
+                                                                                            effect_lev_base1, effect_lev_base2, 
+                                                                                            version = version)
+        DFPROJ_INDEX_SCAL = aggregGeneral(DFPROJ_INDEX, ["idx_morph_temp"], ["dist_index"])
+        sns.relplot(data=DFPROJ_INDEX, x="time_bin", y="dist_index", kind="line", hue="idx_morph_temp")
+        sns.catplot(data=DFPROJ_INDEX, x="idx_morph_temp", y="dist_index", kind="point")
+
+
+        version = "pts_scal"
+        DFPROJ_INDEX, DFDIST, DFPROJ_INDEX_AGG, DFDIST_AGG = _compute_df_using_dist_index_traj(PAredu, var_effect, 
+                                                                                            effect_lev_base1, effect_lev_base2, 
+                                                                                            version = version)
+        sns.catplot(data=DFPROJ_INDEX, x="idx_morph_temp", y="dist_index", kind="point")
+
+        version = "grps_scal"
+        DFPROJ_INDEX, DFDIST, DFPROJ_INDEX_AGG, DFDIST_AGG = _compute_df_using_dist_index_traj(PAredu, var_effect, 
+                                                                                            effect_lev_base1, effect_lev_base2, 
+                                                                                            version = version)
+        sns.catplot(data=DFPROJ_INDEX, x="idx_morph_temp", y="dist_index", kind="point")
+
+        MS: skimmed
+        """
+        from neuralmonkey.scripts.analy_decode_moment_psychometric import dfdist_to_dfproj_index
+        from neuralmonkey.scripts.analy_decode_moment_psychometric import dfdist_to_dfproj_index_datapts
+        # At each time, score distance between pairs of groupigs 
+        from pythonlib.tools.pandastools import aggregGeneral 
+        from pythonlib.tools.pandastools import extract_with_levels_of_var_good, grouping_plot_n_samples_conjunction_heatmap_helper
+
+        if version=="pts_time":
+            # Use indiv datapts (distnace between pts vs. groups), and separately for each time bin
+            pts_or_groups="pts"
+            return_as_single_mean_over_time=False
+        elif version == "pts_scal":
+            # Use indiv datapts, but use mean eucl distance across tiem bins. 
+            # NOTE: this mean is taken of the eucl dist across time ibns, which themselves are computed independetmyl.
+            # so this is nothing special. Is not that good - might as well run using pts_time, and then average the result over tmime.
+            pts_or_groups="pts"
+            return_as_single_mean_over_time=True
+        elif version == "grps_time":
+            # Distance bewteen (group vs. group), separately fro each time bin.
+            pts_or_groups="grps"
+            return_as_single_mean_over_time=False
+        elif version == "grps_scal":
+            # See above.
+            pts_or_groups="grps"
+            return_as_single_mean_over_time=True
+        else:
+            print(version)
+            assert False, "typo for version?"
+
+        if plot_conjunctions_savedir is not None:
+            if var_context_diff is not None:
+                fig = grouping_plot_n_samples_conjunction_heatmap_helper(self.Xlabels["trials"], [var_effect, var_context_diff])
+            else:
+                fig = grouping_plot_n_samples_conjunction_heatmap_helper(self.Xlabels["trials"], [var_effect])
+            savefig(fig, f"{plot_conjunctions_savedir}/dataextract_as_distance_index_between_two_base_classes-final.pdf")
+        plt.close("all")
+
+        ### Get distance between all trials at each time bin
+        version_distance = "euclidian"
+        if return_as_single_mean_over_time:
+            # Each trial pair --> scalar
+
+            if var_context_diff is not None:
+                assert False, "code it. see below, where return_as_single_mean_over_time=False"
+
+            cldist = self.dataextract_as_distance_matrix_clusters_flex([var_effect], version_distance=version_distance,
+                                                                    accurately_estimate_diagonal=False, 
+                                                                    return_as_single_mean_over_time=return_as_single_mean_over_time)
+            if pts_or_groups=="pts":
+                # Score each datapt
+                # For each datapt, get its distance to each of the groupings.
+                # --> nrows = (ndatapts x n groups).
+                # list_grps_get = [
+                #     ("0|base1",),  
+                #     ("99|base2",)
+                #     ] # This is important, or else will fail if there are any (idx|assign) with only one datapt.
+                DFDIST = cldist.rsa_distmat_score_all_pairs_of_label_groups_datapts(list_grps_get=list_grps_get)
+                DFPROJ_INDEX = dfdist_to_dfproj_index_datapts(DFDIST, var_effect=var_effect, 
+                                                        effect_lev_base1=effect_lev_base1, effect_lev_base2=effect_lev_base2)
+
+            elif pts_or_groups=="grps":
+                # Score pairs of (group, group)
+                # Obsolete, because this is just above, followed by agging
+                DFDIST = cldist.rsa_distmat_score_all_pairs_of_label_groups(get_only_one_direction=False)
+
+                # convert distnaces to distance index
+                DFPROJ_INDEX = dfdist_to_dfproj_index(DFDIST, var_effect=var_effect, 
+                                                        effect_lev_base1=effect_lev_base1, effect_lev_base2=effect_lev_base2)
+            else:
+                assert False
+
+            # Take mean over trials
+            if pts_or_groups=="pts":
+                DFPROJ_INDEX_AGG = aggregGeneral(DFPROJ_INDEX, ["labels_1_datapt", var_effect], ["dist_index"])
+                DFDIST_AGG = aggregGeneral(DFDIST, ["labels_1_datapt", "labels_2_grp", var_effect, f"{var_effect}_1", f"{var_effect}_2"], ["dist_mean", "DIST_50", "DIST_98", "dist_norm", "dist_yue_diff"])
+            elif pts_or_groups == "grps":
+                DFPROJ_INDEX_AGG = None
+                DFDIST_AGG = None
+            else:
+                assert False
+
+        else:
+            # Each trial pair --> vector
+            if var_context_diff is not None:
+                _vars_grp = [var_effect, var_context_diff]
+            else:
+                _vars_grp = [var_effect]
+            list_cldist, list_time = self.dataextract_as_distance_matrix_clusters_flex(_vars_grp, version_distance=version_distance,
+                                                                                    accurately_estimate_diagonal=False, 
+                                                                                    return_as_single_mean_over_time=return_as_single_mean_over_time)
+            if var_context_diff is not None and list_grps_get is not None:
+                # For each grp in list_grps_get, append each level of var_context_diff.
+                # eg. if starting list_grps_get = [("0|base1",), ("99|base2",)], and var_context_diff="seqc_0_loc",
+                # then modifies to list_grps_get = [('0|base1', (0, 0)), ('99|base2', (0, 0)), ('0|base1', (1, 1)), ('99|base2', (1, 1))]
+                dflab = self.Xlabels["trials"]
+                _levels = dflab[var_context_diff].unique().tolist()
+                list_grps_get = [tuple(list(grp) + [_lev]) for _lev in _levels for grp in list_grps_get]
+
+            ### For each time bin, for each trial, get its dist index relative to base1 and base2.
+            list_dfproj_index = []
+            list_dfdist = []
+            for i, (cldist, time) in enumerate(zip(list_cldist, list_time)):
+                if pts_or_groups=="pts":
+                    # Score each datapt
+                    # For each datapt, get its distance to each of the groupings.
+                    # --> nrows = (ndatapts x n groups).
+                    # list_grps_get = [
+                    #     ("0|base1",),  
+                    #     ("99|base2",)
+                    #     ] # This is important, or else will fail if there are any (idx|assign) with only one datapt.
+                    if var_context_diff is not None:
+                        # Then you only care about pairs that have different levels of var_context_diff...
+                        ignore_self_distance = True
+                    else:
+                        ignore_self_distance = False
+                    dfdist = cldist.rsa_distmat_score_all_pairs_of_label_groups_datapts(list_grps_get=list_grps_get,
+                                                                                        ignore_self_distance=ignore_self_distance)
+
+                    if var_context_diff is not None:
+                        # Only keep cases where the datapt has different level of <var_context_diff> compared to the grp.
+                        dfdist = dfdist[dfdist[f"{var_context_diff}_same"]==False].reset_index(drop=True)
+                    dfproj_index = dfdist_to_dfproj_index_datapts(dfdist, var_effect=var_effect, 
+                                                            effect_lev_base1=effect_lev_base1, effect_lev_base2=effect_lev_base2)
+
+                elif pts_or_groups=="grps":
+                    # Score pairs of (group, group)
+                    # Obsolete, because this is just above, followed by agging
+
+                    if var_context_diff is not None:
+                        assert False, "code it. see above in pts_or_groups==pts. Beteter, just make this code"
+
+                    dfdist = cldist.rsa_distmat_score_all_pairs_of_label_groups(get_only_one_direction=False)
+
+                    # convert distnaces to distance index
+                    dfproj_index = dfdist_to_dfproj_index(dfdist, var_effect=var_effect, 
+                                                            effect_lev_base1=effect_lev_base1, effect_lev_base2=effect_lev_base2)
+                else:
+                    assert False
+
+                dfproj_index["time_bin"] = time
+                dfdist["time_bin"] = time
+
+                dfproj_index["time_bin_idx"] = i
+                dfdist["time_bin_idx"] = i
+
+                list_dfproj_index.append(dfproj_index)
+                list_dfdist.append(dfdist)
+
+            ### Clean up the results
+            DFPROJ_INDEX = pd.concat(list_dfproj_index).reset_index(drop=True)
+            DFDIST = pd.concat(list_dfdist).reset_index(drop=True)
+            # DFDIST[var_effect] = DFDIST[f"{var_effect}_1"]
+
+            # Take mean over trials
+            if pts_or_groups=="pts":
+                DFPROJ_INDEX_AGG = aggregGeneral(DFPROJ_INDEX, ["labels_1_datapt", var_effect, "time_bin_idx"], ["dist_index"], nonnumercols=["time_bin"])
+                if "dist_yue_diff" in DFDIST.columns:
+                    values = ["dist_mean", "DIST_50", "DIST_98", "dist_norm", "dist_yue_diff", "time_bin"]
+                else:
+                    values = ["dist_mean", "DIST_50", "DIST_98", "dist_norm", "time_bin"]
+                DFDIST_AGG = aggregGeneral(DFDIST, 
+                                           ["labels_1_datapt", "labels_2_grp", var_effect, f"{var_effect}_1", 
+                                                    f"{var_effect}_2", "time_bin_idx"], values)
+            elif pts_or_groups == "grps":
+                DFPROJ_INDEX_AGG = None
+                DFDIST_AGG = None
+            else:
+                assert False
+
+        # Also get dist index normalized to 0 and 1 (min and max)
+        DFPROJ_INDEX["dist_index_norm"] = (DFPROJ_INDEX["dist_index"] - DFPROJ_INDEX["dist_index"].min())/(DFPROJ_INDEX["dist_index"].max() - DFPROJ_INDEX["dist_index"].min())
+        if DFPROJ_INDEX_AGG is not None:
+            DFPROJ_INDEX_AGG["dist_index_norm"] = (DFPROJ_INDEX_AGG["dist_index"] - DFPROJ_INDEX_AGG["dist_index"].min())/(DFPROJ_INDEX_AGG["dist_index"].max() - DFPROJ_INDEX_AGG["dist_index"].min())
+
+        ######## GET DIFFERENCE ACROSS ADJACENT IDNICES
+        if var_effect == "idx_morph_temp":
+            from neuralmonkey.scripts.analy_decode_moment_psychometric import _rank_idxs_append, convert_dist_to_distdiff
+            _rank_idxs_append(DFPROJ_INDEX)
+            DFPROJ_INDEX_DIFFS = convert_dist_to_distdiff(DFPROJ_INDEX, "dist_index", "idx_morph_temp_rank")
+
+            # Also get diff score normalized 
+        else:
+            DFPROJ_INDEX_DIFFS = None
+
+        #### PLOT
+        if PLOT:
+            import seaborn as sns
+            if version in ["pts_time", "grps_time"]:
+                # DFPROJ_INDEX_SCAL = aggregGeneral(DFPROJ_INDEX, ["idx_row_datapt", "labels_1_datapt", "idx_morph_temp"], ["dist_index"])
+                fig = sns.relplot(data=DFPROJ_INDEX, x="time_bin", y="dist_index", kind="line", hue="idx_morph_temp")
+                fig = sns.catplot(data=DFPROJ_INDEX, x="idx_morph_temp", y="dist_index", kind="point")
+                if DFPROJ_INDEX_DIFFS is not None:
+                    sns.catplot(data=DFPROJ_INDEX_DIFFS, x="idx_along_morph", y="dist", kind="point")
+            elif version in ["pts_scal", "grps_scal"]:
+                fig = sns.catplot(data=DFPROJ_INDEX, x="idx_morph_temp", y="dist_index", kind="point")
+                if DFPROJ_INDEX_DIFFS is not None:
+                    sns.catplot(data=DFPROJ_INDEX_DIFFS, x="idx_along_morph", y="dist", kind="point")
+            else:
+                assert False
+
+        trialcodes = self.Xlabels["trials"]["trialcode"].tolist()
+        assert sorted(trialcodes)==sorted(set(DFPROJ_INDEX["trialcode"]))
+        assert sorted(trialcodes)==sorted(set(DFDIST["trialcode"]))
+
+        return DFPROJ_INDEX, DFDIST, DFPROJ_INDEX_AGG, DFDIST_AGG, DFPROJ_INDEX_DIFFS
+
+
+    def dataextractwrap_distance_between_groups(self, vars_group, version):
+        """
+        Wrapper for all methods to get euclidian distnace between trial groups,
+        defined by input variables.
+        """
+
+        if version=="traj_to_scal":
+            # Compute for each time bin, then average over all time.
+            Cldist = self.dataextract_as_distance_matrix_clusters_flex(vars_group, 
+                                                                        return_as_single_mean_over_time=True)
+            DFDIST = Cldist.rsa_distmat_score_all_pairs_of_label_groups(get_only_one_direction=False)
+
+        elif version=="traj":
+            # Compute for each time bin, keeping them seprate, thus returning time series.
+            # Get pairwise dist between each shape at each timepoint
+            list_cldist, list_time = self.dataextract_as_distance_matrix_clusters_flex(vars_group,
+                                                                version_distance="euclidian",
+                                                                agg_before_distance=False, 
+                                                                return_as_single_mean_over_time=False)
+            ### For each time bin, for each trial, get its dist index relative to base1 and base2.
+            # list_dfproj_index = []
+            list_dfdist = []
+            for i, (cldist, time) in enumerate(zip(list_cldist, list_time)):
+                print(time)
+                
+                # Score pairs of (group, group)
+                dfdist = cldist.rsa_distmat_score_all_pairs_of_label_groups(get_only_one_direction=True)
+                dfdist["time_bin"] = time
+                dfdist["time_bin_idx"] = i
+
+                list_dfdist.append(dfdist)
+
+            ### Clean up the results
+            DFDIST = pd.concat(list_dfdist).reset_index(drop=True)
+
+        else:
+            print(version)
+            assert False
+
+        return DFDIST
 
     def dataextract_as_distance_matrix_clusters_flex(self, var_group,
                                                      version_distance="euclidian",
-                                                     accurately_estimate_diagonal=False):
+                                                     accurately_estimate_diagonal=False,
+                                                     agg_before_distance=False,
+                                                     return_as_single_mean_over_time=False):
         """
         GOOD - Extract distance matrix between trials, with flexible ways of c,m,puting and agging over variables.
-        :params: var_group, determines the trial labels kept in Cl, and, if vd is distributional, then
+        :params: var_group,list, determines the trial labels kept in Cl, and, if vd is distributional, then
         how to group trials into distributiosn
         :params: accurately_estimate_diagonal, bool, True means faster compute. In general I don't use
         the diagonal, so leave false.
+        :agg_before_distance: bool, only applies for version_distance that is not distributional. By defautl (FAlse),
+        returns distance between trials. If True, then first agg so returns shape (n levels of var_group, n levels of var_group)
         :return:
         - LIST_CLDIST, List of Cl, each holding distance of shape (ntrials, trials), if version_distance 
         is pairwise between pts, or shape (ngroups, ngroups), if version_distance is distribugtional (ie.
         is pairwise between levels of conjucntion of var_group)
+
+        MS: ok
         """
         from pythonlib.cluster.clustclass import Clusters
+
+        if version_distance == "euclidian":
+            version_distance_is_not_distributional = True
+        elif version_distance == "euclidian_unbiased":
+            version_distance_is_not_distributional = False
+        else:
+            print(version_distance)
+            assert False, "fill this in"
         
-        # How to deal with multiple time windows.
-        
+        # version_distance_is_not_distributional = version_distance=="euclidian"
+
+        if agg_before_distance and version_distance_is_not_distributional:
+            PA = self.slice_and_agg_wrapper("trials", var_group)
+        else:
+            PA = self.copy()
+
         # Option 1 - do independently for each time bin, and return list of all results.
         # - Collect Cldists, one for each time bin
         LIST_CLDIST = []
         LIST_TIME = []
-        ntimes = self.X.shape[2]
+        ntimes = PA.X.shape[2]
         print("... computing distance matrices, using distnace:", version_distance)
         for i_time in range(ntimes):
             
             # make a pa that just has this one time bin
-            pa_single_time = self.slice_by_dim_indices_wrapper("times", [i_time, i_time])
+            pa_single_time = PA.slice_by_dim_indices_wrapper("times", [i_time, i_time])
             assert pa_single_time.X.shape[2]==1
             
             # Create clusters
@@ -1471,6 +2559,7 @@ class PopAnal():
             labels_rows = [tuple(x) for x in labels_rows] # list of tuples
             params = {"label_vars":label_vars}
 
+            trialcodes = dflab["trialcode"].tolist()
             if False:
                 # Compute distance matrix directly
                 # 0=idnetical, more positive more distance.
@@ -1485,7 +2574,7 @@ class PopAnal():
 
             else:
                 # Compute using Cl intermediate
-                Cl = Clusters(Xthis, labels_rows, ver="rsa", params=params)
+                Cl = Clusters(Xthis, labels_rows, ver="rsa", params=params, trialcodes=trialcodes)
                             
                 # convert to distance matrix
                 if version_distance == "euclidian":
@@ -1494,12 +2583,12 @@ class PopAnal():
                     Cldist = Cl.distsimmat_convert_distr(label_vars, version_distance, accurately_estimate_diagonal=accurately_estimate_diagonal)
             
             LIST_CLDIST.append(Cldist)
-            LIST_TIME.append(self.Times[i_time])
+            LIST_TIME.append(PA.Times[i_time])
 
         # Sanity check that all Cl match
         labels = None
         labels_cols = None
-        for t, Cldist in zip(LIST_TIME, LIST_CLDIST):
+        for _, Cldist in zip(LIST_TIME, LIST_CLDIST):
             # check labels match
             if labels is not None:
                 assert labels == Cldist.Labels
@@ -1508,52 +2597,40 @@ class PopAnal():
                 assert labels_cols == Cldist.LabelsCols
                 labels_cols = Cldist.LabelsCols
 
-        return LIST_CLDIST, LIST_TIME
-
-    # def dataextract_as_clusters_after_conj_grouping(self, vars_grp_and_extract, do_agg_by_grouping=False):
-    #     """
-    #     Extract clusters represntation of PA.X, which is (
-    #     :param vars_grp_and_extract:
-    #     :param do_agg_by_grouping:
-    #     :return:
-    #     """
-    #     from pythonlib.cluster.clustclass import Clusters
-    #
-    #     if agg_by_grouping:
-    #         pa = self.slice_and_agg_wrapper("trials", vars_grp_and_extract)
-    #     else:
-    #         pa = self.copy()
-    #
-    #     label_vars = vars_grp_and_extract
-    #     dflab = pa.Xlabels["trials"]
-    #     labels_rows = dflab.loc[:, label_vars].values.tolist()
-    #     labels_rows = [tuple(x) for x in labels_rows] # list of tuples
-    #     params = {
-    #         "label_vars":label_vars,
-    #     }
-    #
-    #     # If >1 time dimension, take mean over time.
-    #     if pa.X.shape[2]>1:
-    #         pa = pa.agg_wrapper("times")
-    #
-    #     Cl = Clusters(pa.X, labels_rows, ver="rsa", params=params)
-    #
-    #     return Cl
+        if return_as_single_mean_over_time:
+            ### Take mean distance over time, and construct a single Clusters
+            Xinpput_mean = np.mean(np.stack([Cldist.Xinput for Cldist in LIST_CLDIST], axis=0), axis=0)
+            params = {
+                "label_vars":LIST_CLDIST[0].Params["label_vars"],
+                "version_distance":LIST_CLDIST[0].Params["version_distance"],
+                "Clraw":None,
+            }
+            list_lab = LIST_CLDIST[0].Labels
+            Cldist = Clusters(Xinpput_mean, list_lab, list_lab, ver="dist", params=params, trialcodes = LIST_CLDIST[0].Trialcodes)
+            return Cldist
+        else:
+            return LIST_CLDIST, LIST_TIME
 
     def dataextract_pca_demixed_subspace(self, var_pca, vars_grouping,
-                                                pca_twind, pca_tbindur,
-                                                filtdict=None, savedir_plots=None,
+                                                pca_twind, pca_tbindur, # -- PCA params start
+                                                pca_filtdict=None, savedir_plots=None,
                                                 raw_subtract_mean_each_timepoint=True,
                                                 pca_subtract_mean_each_level_grouping=True,
-                                                n_min_per_lev_lev_others=5, prune_min_n_levs = 2,
-                                                n_pcs_subspace_max = None,
+                                                n_min_per_lev_lev_others=4, prune_min_n_levs = 2,
+                                                n_pcs_subspace_max = None, 
                                                 do_pca_after_project_on_subspace=False,
                                                 PLOT_STEPS=False, SANITY=False,
                                                 reshape_method="trials_x_chanstimes",
-                                                pca_tbin_slice=None):
+                                                pca_tbin_slice=None, return_raw_data=False,
+                                                proj_twind=None, proj_tbindur=None, proj_tbin_slice=None, # --- Extra params for projecting data to PC space
+                                                inds_pa_fit=None, inds_pa_final=None
+                                                ):
         """
         Helper to construct pca space (deminxed pca) in flexible ways, and then project raw data onto this space.
         Uses representations that are sliced data (n sub slices, concate into vector).
+
+        In general first averaging over trials to get means for variable, and then
+        doing PCA on those means, then projeceting trial data onto those PCs
 
         Does work of projecting raw data onto this space.
 
@@ -1586,6 +2663,9 @@ class PopAnal():
         :param do_pca_after_project_on_subspace, bool, if True, does on final after proj. Useful if want to rotate
         final data but this usually shouldnt be done.
         :param PLOT_STEPS:
+        :param return_raw_data: bool, return data that has not yet been sliced for pca.
+        :param inds_pa_fit, inds_pa_final, either None (Ignore) or list of ints, which are the rows of self, for splitting data into train (for
+        fitting PCA) and test (for projecting i))
         :return:
         - Xredu, (ntrials, npc dims)
         - Xfinal, (ntrials, nchan * timesteps), data immed before pCA
@@ -1597,8 +2677,26 @@ class PopAnal():
         """
         from neuralmonkey.analyses.state_space_good import dimredgood_pca_project
 
+        # If the inputed variables are not exist, then return None
+        if var_pca not in self.Xlabels["trials"].columns:
+            return  (None for _ in range(5))
+        if vars_grouping is not None:
+            for var in vars_grouping:
+                if var not in self.Xlabels["trials"].columns:
+                    return (None for _ in range(5))
+
+        ###### Prep variables
         if n_pcs_subspace_max is None:
             n_pcs_subspace_max = 10
+
+        # Params for windowing data before projecting to pc space. By default use the same params as 
+        # for fitting PCA.
+        if proj_twind is None:
+            proj_twind = pca_twind
+        if proj_tbindur is None:
+            proj_tbindur = pca_tbindur
+        if proj_tbin_slice is None:
+            proj_tbin_slice = pca_tbin_slice
 
         if isinstance(var_pca, (list, tuple)):
             # conjunctive variable...
@@ -1620,35 +2718,40 @@ class PopAnal():
         if PLOT_STEPS:
             self.plotwrapper_smoothed_fr_split_by_label_and_subplots(chan, var_pca, vars_grouping)
 
-        ############### DO ALL NORMALIZING ON RAW DATA, BEFORE take avg and do pca, so that can pass in raw and project to pc space.
+        ############### ALL NORMALIZING ON RAW DATA, BEFORE take avg and do pca, so that can pass in raw and project to pc space.
         PAraw = self.copy()
+        assert PAraw.X.shape[1]>0, "intpou has no trials"
 
         if raw_subtract_mean_each_timepoint:
             PAraw = PAraw.norm_subtract_trial_mean_each_timepoint()
             if PLOT_STEPS:
                 PAraw.plotwrapper_smoothed_fr_split_by_label_and_subplots(chan, var_pca, vars_grouping)
 
-        ############### Perform PCA
-        pa = PAraw.copy()
+        ############### Perform PCA -- (1) Extract data for computing projection
+        # Split into train/test?
+        if inds_pa_fit is not None:
+            assert inds_pa_final is not None
+            pa = PAraw.slice_by_dim_indices_wrapper("trials", inds_pa_fit) # fewer trials usually
+            PAraw = PAraw.slice_by_dim_indices_wrapper("trials", inds_pa_final)
+        else:
+            # Fit using same data.
+            pa = PAraw.copy()
 
         # Apply filtdict
-        pa = pa.slice_by_labels_filtdict(filtdict)
+        pa = pa.slice_by_labels_filtdict(pca_filtdict)
 
         # Keep only othervar that has multiple cases of var
         if savedir_plots is not None:
             plot_counts_heatmap_savepath = f"{savedir_plots}/counts_conj.pdf"
         else:
             plot_counts_heatmap_savepath = None
+
         pa, dfout, dict_dfthis = pa.slice_extract_with_levels_of_conjunction_vars(var_pca, vars_grouping, n_min_per_lev_lev_others,
                                                               prune_min_n_levs, plot_counts_heatmap_savepath=plot_counts_heatmap_savepath)
-        # print(var_pca)
-        # print(vars_grouping)
-        # print(pa.Xlabels["trials"]["gridloc"])
-        # print(n_min_per_lev_lev_others)
-        # assert False
         if pa is None:
             print("No variation found for this var_pca (reutrning None): ", var_pca)
             return (None for _ in range(5))
+        
         if PLOT_STEPS:
             pa.plotwrapper_smoothed_fr_split_by_label_and_subplots(chan, var_pca, vars_grouping)
 
@@ -1684,21 +2787,29 @@ class PopAnal():
             if PLOT_STEPS:
                 pa.plotwrapper_smoothed_fr_split_by_label_and_subplots(chan, var_pca, vars_grouping)
 
+        ############### Perform PCA -- (2) Fit PCA
         # Do PCA for each time window (normalize within that window)
-        plot_pca_explained_var_path = f"{savedir_plots}/expvar.pdf"
-        plot_loadings_path = f"{savedir_plots}/loadings.pdf"
+        if savedir_plots is not None:
+            plot_pca_explained_var_path = f"{savedir_plots}/expvar.pdf"
+            plot_loadings_path = f"{savedir_plots}/loadings.pdf"
+        else:
+            plot_pca_explained_var_path = None
+            plot_loadings_path = None
+
+        assert pa.X.shape[0] == PAraw.X.shape[0]
+        assert pa.X.shape[2] == PAraw.X.shape[2], "or else projection will fail later"
+
         _, PApca, _, pca, X_before_dimred = pa.dataextract_state_space_decode_flex(pca_twind, pca_tbindur, pca_tbin_slice,
                                                           reshape_method=reshape_method, pca_reduce=True,
                                                           plot_pca_explained_var_path=plot_pca_explained_var_path,
                                                           plot_loadings_path=plot_loadings_path, how_decide_npcs_keep="cumvar",
-                                                           norm_subtract_single_mean_each_chan=False)
+                                                          pca_frac_var_keep=0.95, 
+                                                        norm_subtract_single_mean_each_chan=False)
+        
         pca["explained_variance_ratio_initial_construct_space"] = pca["explained_variance_ratio_"]
         del pca["explained_variance_ratio_"]
         pca["X_before_dimred"] = X_before_dimred
         pca["nclasses_of_var_pca"] = nclasses_of_var_pca
-        # print(PApca.X.shape)
-        # print(pca["X_before_dimred"].shape)
-        # assert False
 
         if SANITY:
             from neuralmonkey.analyses.state_space_good import dimredgood_pca_project
@@ -1730,14 +2841,682 @@ class PopAnal():
                                                             skip_subplots_lack_mult_colors=False,
                                                             save_suffix=save_suffix)
 
-        ########### Project RAW data back into this space
-        # - preprocess data
-        Xfinal_before_redu, PAfinal_before_redu, _, _, _ = PAraw.dataextract_state_space_decode_flex(pca_twind, pca_tbindur, pca_tbin_slice,
+        ### (3) Project RAW data back into this space
+        # Figure out how many dimensions to keep (for euclidian).
+        n1 = pca["nclasses_of_var_pca"] # num classes of superv_dpca_var that exist. this is upper bound on dims.
+        if n1<4:
+            n1 = 4
+        if False:
+            n2 = PApca.X.shape[1] # num classes to reach criterion for cumvar for pca.
+            if n2<4:
+                n2 = 4 # Then ignore it. Someitnes is very low D, but still want to keep dims >0
+        else:
+            n2 = 10000
+        n3 = PApca.X.shape[0] # num dimensions.
+        if n3<4:
+            n3 = 4
+        n_pcs_subspace_max = min([n1, n2, n3, n_pcs_subspace_max])
+        
+        # Project trial data to this space
+        Xredu, PAredu, stats_redu, Xfinal_before_redu, pca = PAraw.dataextract_pca_demixed_subspace_project(pca, proj_twind, 
+                                            proj_tbindur, proj_tbin_slice, reshape_method,
+                                            dimredgood_pca_project_do_reshape, n_pcs_subspace_max, do_pca_after_project_on_subspace,
+                                            savedir_plots)
+        
+        if return_raw_data:
+            return Xredu, PAredu, stats_redu, Xfinal_before_redu, pca, PAraw
+        else:
+            return Xredu, PAredu, stats_redu, Xfinal_before_redu, pca
+
+    def dataextract_smooth_gaussian(self, std_sec, plot=False):
+        """
+        Smooth FR over time, returning a copy.
+        Prunes the onset and offset, so the times will be subset of input times.
+        PARAMS:
+        - std_sec, std of gaussian kernel, in sec.
+        """
+
+        # Convolve spikes to smooth them
+        from scipy.signal.windows import gaussian
+        import matplotlib.pyplot as plt
+        from scipy.signal import lfilter, filtfilt
+
+        # Scale the width of the Gaussian by our bin width
+        bin_width_sec = np.mean(np.diff(self.Times))
+
+        std = int(std_sec / bin_width_sec)
+        if std==0:
+            std = 1
+
+        # We need a window length of 3 standard deviations on each side (x2)
+        M = std * 3 * 2
+        window = gaussian(M, std)
+        # Normalize so the window sums to 1
+        window = window / window.sum()
+
+        if plot:
+            _ = plt.stem(window)
+            
+        # Remove convolution artifacts
+        invalid_len = len(window) // 2
+        # Xfilt = lfilter(window, 1, self.X, axis=2)[:, :, invalid_len:]
+        # times_filt = self.Times[invalid_len:]
+
+        pad = int(invalid_len/2)
+        Xfilt = filtfilt(window, 1, self.X, axis=2)[:, :, pad:-pad]
+        times_filt = self.Times[pad:-pad]
+                
+        assert Xfilt.shape[2] == len(times_filt), f"Xfilt shape: {Xfilt.shape}, times shape: {len(times_filt)}"
+
+        # Visualize raw spikes, smoothed spikes, and PSTHs
+        if plot:
+            fig, (ax1, ax2, ax3) = plt.subplots(nrows=3, sharey=True)
+            _ = ax1.imshow(self.X[:, 0, :])
+            _ = ax2.imshow(Xfilt[:, 0, :])
+            ax2.set_title("One example trial")
+            ax2.set_xlabel("time")
+            ax2.set_ylabel("chan")
+            plt.tight_layout()
+
+            fig, ax = plt.subplots()
+            ax.plot(self.Times, self.X[0, 0, :])
+            ax.plot(times_filt, Xfilt[0, 0, :])
+
+            fig, ax = plt.subplots()
+            ax.plot(self.Times, self.X[10, 2, :])
+            ax.plot(times_filt, Xfilt[10, 2, :])
+
+        # create new PA
+        return self.copy_replacing_X(Xfilt, times_filt)
+        
+    def dataextract_dimred_wrapper(self, scalar_or_traj, dim_red_method, savedir, 
+                                   twind_pca, tbin_dur=None, tbin_slide=None, 
+                                   NPCS_KEEP = 10,
+                                   dpca_var = None, dpca_vars_group = None, dpca_filtdict=None, dpca_proj_twind = None, 
+                                   raw_subtract_mean_each_timepoint=False,
+                                   umap_n_components=2, umap_n_neighbors=40,
+                                   inds_pa_fit=None, inds_pa_final=None,
+                                   n_min_per_lev_lev_others = 2,
+                                   return_pca_components=False):
+        """
+        THE Wrapper for all often-used methods for dim reduction
+
+        PARAMS:
+        - scalar_or_traj, str, either "scal" [returns (dims, trials, 1)], or "traj" [returns (dims, trials, timebins)]
+        - version, str, either "pca" or "dpca"
+        - twind_pca, (t1, t2), window to use for pca (for fitting)
+        - tbin_dur, in sec, for smoothing
+        - tbin_slide, in sec, smoothign
+        - NPCS_KEEP, int
+        - dpca_var, str
+        - dpca_vars_group, list of str
+        - dpca_proj_twind = None, window for the final data.
+        - raw_subtract_mean_each_timepoint=False
+        RETURNS:
+        - Xredu, 
+        --- if scalar_or_traj==scal --> (ntrials, ndims)
+        --- if scalar_or_traj==traj --> (ndims, ntrials, ntimes)
+        - PAredu, holding reduced data.
+        
+        MS: checked
+        """
+
+        PA = self
+
+        if umap_n_components is None:
+            umap_n_components=2
+        if umap_n_neighbors is None:
+            umap_n_neighbors=40
+
+        # Extra dim reductions?
+        METHOD = "basic"
+        if dim_red_method is None:
+            # Then use raw data
+            pca_reduce = False
+            extra_dimred_method = None
+            extra_dimred_method_n_components = None
+        elif dim_red_method=="pca":
+            pca_reduce = True
+            extra_dimred_method = None
+            extra_dimred_method_n_components = None
+        elif dim_red_method=="pca_proj":
+            # Use one window to fit PC space, then project larger window onto that space.
+            pca_reduce = True
+            extra_dimred_method = None
+            extra_dimred_method_n_components = None
+            assert twind_pca is not None, "this is the data for fitting PC space"
+            assert dpca_proj_twind is not None, "This is final window size"
+            # assert not twind_pca == dpca_proj_twind, "yo should just do dim_red_method=pca"
+        elif dim_red_method=="pca_umap":
+            # PCA --> UMAP
+            pca_reduce = True
+            extra_dimred_method = "umap"
+            extra_dimred_method_n_components = umap_n_components
+        elif dim_red_method=="umap":
+            # UMAP
+            pca_reduce = False
+            extra_dimred_method = "umap"
+            extra_dimred_method_n_components = umap_n_components
+        elif dim_red_method=="mds":
+            # MDS
+            pca_reduce = False
+            extra_dimred_method = "mds"
+            extra_dimred_method_n_components = umap_n_components
+        elif dim_red_method in ["dpca", "superv_dpca"]:
+            # Supervised, based on DPCA, find subspace for a given variable by doing PCA on the mean values.
+            assert dpca_var is not None
+            if dpca_vars_group is not None:
+                assert isinstance(dpca_vars_group, (list, tuple))
+            # superv_dpca_var = superv_dpca_params["superv_dpca_var"]
+            # superv_dpca_vars_group = superv_dpca_params["superv_dpca_vars_group"]
+            # superv_dpca_filtdict = superv_dpca_params["superv_dpca_filtdict"]
+            METHOD = "dpca"
+        else:
+            print(dim_red_method)
+            assert False
+        
+        if tbin_dur is None:
+            # Assume you want to take all time bins... None takes time average..
+            tbin_dur = "ignore"
+        if tbin_slide is None:
+            # If conitnue with None, then code  makes it equal to tbin_dur
+            tbin_slide = 0.01
+
+        if scalar_or_traj in ["traj", "trajectory"]:
+            reshape_method = "chans_x_trials_x_times"
+            if tbin_dur == "default":
+                tbin_dur = 0.15
+            if tbin_slide == "default":
+                tbin_slide = 0.02
+        elif scalar_or_traj in ["scal", "scalar"]:
+            reshape_method = "trials_x_chanstimes"
+            if dpca_proj_twind is not None:
+                # Force it to be the same
+                dpca_proj_twind = None
+                # assert twind_pca == dpca_proj_twind, "scalar assumes a fixed time window, or else n features in pc will not match when try to project new data."
+            if tbin_dur == "default":
+                tbin_dur = 0.2
+                tbin_slide = 0.1
+        else:
+            print(scalar_or_traj)
+            assert False
+
+        if METHOD=="basic":
+            # Then just PCA on all data.
+
+            # - normalize - remove time-varying component
+            if raw_subtract_mean_each_timepoint:
+                PA = PA.norm_subtract_trial_mean_each_timepoint()
+            
+            # - PCA
+            if savedir is not None:
+                plot_pca_explained_var_path=f"{savedir}/pcaexp.pdf"
+                plot_loadings_path = f"{savedir}/pcaload.pdf"
+            else:
+                plot_pca_explained_var_path = None
+                plot_loadings_path = None
+
+            if dim_red_method=="pca_proj":
+                # Save a copy of PA
+                PAraw = PA.copy()
+            else:
+                # Sanity checks about times
+                if dpca_proj_twind is not None:
+                    if not dpca_proj_twind==twind_pca:
+                        print(twind_pca, dpca_proj_twind)
+                        assert False, "you entered params as if you wanted to use diff twind to fit pca (twind_pca) vs the final data size (dpca_proj_twind), but using diff windows only works for dataextract_pca_demixed_subspace. You should avoid entering dpca_proj_twind if doing pca"
+
+            Xredu, PAredu, _, pca, X_before_dimred = PA.dataextract_state_space_decode_flex(twind_pca, tbin_dur, tbin_slide, reshape_method=reshape_method,
+                                                        pca_reduce=pca_reduce, plot_pca_explained_var_path=plot_pca_explained_var_path, 
+                                                        plot_loadings_path=plot_loadings_path, npcs_keep_force=NPCS_KEEP,
+                                                        extra_dimred_method_n_components = extra_dimred_method_n_components,
+                                                        extra_dimred_method=extra_dimred_method, umap_n_neighbors = umap_n_neighbors)    
+
+            if dim_red_method=="pca_proj":
+                pca["explained_variance_ratio_initial_construct_space"] = pca["explained_variance_ratio_"]
+                del pca["explained_variance_ratio_"]
+                pca["X_before_dimred"] = X_before_dimred
+                # pca["nclasses_of_var_pca"] = nclasses_of_var_pca
+
+                if reshape_method=="chans_x_trials_x_times":
+                    dimredgood_pca_project_do_reshape = True
+                else:
+                    dimredgood_pca_project_do_reshape = False
+
+                if False: # SANITY
+                    from neuralmonkey.analyses.state_space_good import dimredgood_pca_project
+                    X = pca["X_before_dimred"]
+                    print(X.shape)
+                    print(PAraw.X.shape)
+                    dimredgood_pca_project(pca["components"], X, "/tmp/test2", 
+                                        do_additional_reshape_from_ChTrTi=dimredgood_pca_project_do_reshape)
+                    print("HCECK tmp/test2 -- This should match the exp var above...")
+                    assert False
+
+                Xredu, PAredu, _, _, _ = PAraw.dataextract_pca_demixed_subspace_project(pca, dpca_proj_twind, 
+                                                    tbin_dur, tbin_slide, reshape_method,
+                                                    dimredgood_pca_project_do_reshape, NPCS_KEEP, False, savedir)
+
+
+        elif METHOD=="dpca":
+            # Then does targeted dim reduction, first averaging over trials to get means for variable, and then
+            # doing PCA on those means, then projeceting trial data onto those PCs
+            assert dpca_var is not None
+            Xredu, PAredu, _, _, pca = PA.dataextract_pca_demixed_subspace(dpca_var, dpca_vars_group,
+                                                            twind_pca, tbin_dur, # -- PCA params start
+                                                            dpca_filtdict,
+                                                            pca_tbin_slice = tbin_slide,
+                                                            savedir_plots=savedir,
+                                                            raw_subtract_mean_each_timepoint=raw_subtract_mean_each_timepoint,
+                                                            pca_subtract_mean_each_level_grouping=True,
+                                                            n_min_per_lev_lev_others=n_min_per_lev_lev_others, prune_min_n_levs = 2,
+                                                            n_pcs_subspace_max = NPCS_KEEP, 
+                                                            reshape_method=reshape_method,
+                                                            proj_twind=dpca_proj_twind,
+                                                            inds_pa_fit=inds_pa_fit, inds_pa_final=inds_pa_final)
+        else:
+            print(dim_red_method)
+            assert False
+
+        if return_pca_components:
+            return Xredu, PAredu, pca
+        else:
+            return Xredu, PAredu
+
+    def dataextract_subspace_targeted_pca_project_helper(self, dfbases, var_subspace, npcs_keep,
+                                                         normalization=None, plot_orthonormalization=False):
+        """
+        Project self.X onto PCA axes that are already computed in dfbases, where dfbases is gotten from 
+        self.regress_neuron_task_variables_all_chans(). This helper is useful becuase it figures out the
+        number of available dimensions.
+
+        PARAMS:
+        - dfbases, holds the Xpca axes for each variable. These don't have to be orthonormalized yet.
+        - var_subspace, string, item in the "var_subspace" column of dfbases that you want to index
+
+        RETURNS:
+        - pa_subspace, PA holding data projected to <var_subspace> subspace
+        - subspace_axes_orig
+        - subspace_axes_normed
+        - dfcoeff
+        """
+        # Get basis vectors --> dfcoeff dataframe
+        tmp = dfbases[dfbases["var_subspace"] == var_subspace]
+        if len(tmp)!=1:
+            print(dfbases)
+            print(dfbases["var_subspace"].unique())
+            print(var_subspace)
+            assert False
+        Xpca = tmp["Xpca"].values[0]
+        dfcoeff = pd.DataFrame(Xpca, columns=range(Xpca.shape[1]))
+        # explained_variance_ratio_ = tmp["explained_variance_ratio_"].values[0]
+
+        # - keep maximum num dims
+        ndims = Xpca.shape[1]
+        if npcs_keep>ndims:
+            npcs_keep = ndims
+
+        # make this ndims subspace
+        subspace_tuple = tuple(range(npcs_keep))
+        dict_subspace_pa, dict_subspace_axes_orig, dict_subspace_axes_normed = self.dataextract_subspace_targeted_pca_project(
+            dfcoeff, [subspace_tuple], normalization, plot_orthonormalization)
+
+        pa_subspace = dict_subspace_pa[subspace_tuple]
+        subspace_axes_orig = dict_subspace_axes_orig[subspace_tuple]
+        subspace_axes_normed = dict_subspace_axes_normed[subspace_tuple]
+
+        return pa_subspace, subspace_axes_orig, subspace_axes_normed, dfcoeff
+
+    def dataextract_subspace_targeted_pca_project(self, dfcoeff, list_subspace_tuples, normalization=None, 
+                                                  plot_orthonormalization=False):
+        """
+        Project self data onto subspace defined by axes which are columns in dfcoeff. 
+
+        PARAMS:
+        - dfcoeff, dataframe holding axes, where columns are names of axes (which correspond to items in list_subspace_tuples). 
+        They don't yet need to be orthonormal, etc.
+        - list_subspace_tuples, list of tuples, each tuple is a subspace. Each subspace is a list of variables, which are the 
+        columns of dfcoeff, to pick out the axes to project onto.
+        """
+
+        # Clean up so no na. This can happen with overcomplete bases.
+        dfcoeff = dfcoeff.fillna(0.0)
+
+        # Get basis vectors
+        dict_subspace_pa = {}
+        dict_subspace_axes_orig = {}
+        dict_subspace_axes_normed = {}
+        for subspace_tuple in list_subspace_tuples:
+
+            basis_vectors_orig = dfcoeff.loc[:, subspace_tuple].values # (nchans, nrank)
+            PAredu, basis_vectors_normed = self.dataextract_project_data_denoise(basis_vectors_orig, normalization=normalization, 
+                                                         plot_orthonormalization=plot_orthonormalization)
+            dict_subspace_pa[tuple(subspace_tuple)] = PAredu
+            dict_subspace_axes_orig[tuple(subspace_tuple)] = basis_vectors_orig # in original space.
+            dict_subspace_axes_normed[tuple(subspace_tuple)] = basis_vectors_normed # in original space.
+
+            # For example
+            # print(PAredu.X.shape) # (2, 356, 1)
+            # print(PA.X.shape) (297, 356, 1)
+            # print(basis_vectors.shape) (297, 2)
+
+        if False:        
+            for k, v in dict_subspace_pa:
+                print(k, " -- ", type(k[0]), " -- ", v)
+
+        return dict_subspace_pa, dict_subspace_axes_orig, dict_subspace_axes_normed
+
+    def dataextract_subspace_targeted_pca_one_axis_per_var(self, variables, variables_is_cat, list_subspaces, demean=True, 
+                                          normalization=None, plot_orthonormalization=False, 
+                                          PLOT_COEFF_HEATMAP=False, savedir_coeff_heatmap=None, PRINT=False,
+                                          get_axis_for_categorical_vars=True):
+        """
+        [GOOD] Get subspace for a set of variables, and then project data into that subspace.
+        one_axis_per_var --> returns projected so that each var gets one dimension. e.g., project onto a 3d space
+        defined by (shape, location, epoch)
+
+        PARAMS:
+        - variables, list of str, the variables that will be fit using regression, and from which the regression coefficients
+        will be used to get the subspace. REgression performed independently for each neuron.
+        PARAMS:
+        - variables, list of str, the variables that will be fit using regression, and from which the regression coefficients
+        - variables_is_cat, list of bool, whether each variable is categorical or not.
+        - list_subspaces, list of tuples, each tuple is a subspace. Each subspace is a list of variables.
+        - normalization, str, either None, "norm", or "orthonormalize".
+        """ 
+
+        for subspace_tuple in list_subspaces:
+            assert isinstance(subspace_tuple, (tuple, list))
+            assert isinstance(subspace_tuple[0], str)
+
+        # Input must be scalarized
+        assert self.X.shape[2]==1
+
+        # Demean 
+        if demean:
+            PA = self.norm_subtract_mean_each_chan()
+        else:
+            PA = self
+
+        ### Collect coefficients across all neurons
+        dfcoeff, dfbases, res_all, original_feature_mapping = PA.regress_neuron_task_variables_all_chans(variables, variables_is_cat, 
+                                                                        PLOT_COEFF_HEATMAP, PRINT=PRINT, savedir_coeff_heatmap=savedir_coeff_heatmap,
+                                                                        get_axis_for_categorical_vars=get_axis_for_categorical_vars)
+        
+
+        # Get basis vectors
+        dict_subspace_pa, dict_subspace_axes_orig, dict_subspace_axes_normed = PA.dataextract_subspace_targeted_pca_project(
+            dfcoeff, list_subspaces, normalization, plot_orthonormalization)
+
+        return dict_subspace_pa, dict_subspace_axes_orig, dict_subspace_axes_normed, dfcoeff, PA
+
+    # dataextract_subspace_targeted_pca_subtract_confounds
+    def dataextract_subspace_targeted_pca_wrapper(self, variables_cont, variables_cat, vars_remove,
+                                                             var_subspace, npcs_keep, normalization="orthonormal",
+                                                             PLOT_COEFF_HEATMAP=False, PRINT=False,
+                                                             savedir_coeff_heatmap=None, savedir_pca_subspaces=None,
+                                                             inds_trials_pa_train=None, inds_trials_pa_test=None,
+                                                             demean=False, plot_orthonormalization=False):
+        """
+        [Good] Flexible helper to project self.X onto a subspace defined using OLS on each neuron 
+        to get coefficients for each variable, and then orthonormlaize to get subspace, 
+        and then project data into that subspace.
+        
+        Also option to subtract a chosen subset of those variable's coefficients (i.e, controlling for confounds) 
+        before projecting onto another set of variables (using the same coefficents from the original regression 
+        -- note that this is identical to redoing regression after subtracting)
+
+        Two advances compared to: self.dataextract_subspace_targeted_pca_one_var_mult_axes(): (i) works also with continuous varialbes. 
+        This is very easy, just pass it in without, and (ii) subtracts a subset of variables (resulting in left over residual)
+        
+        PARAMS:
+        - variables_cont, list of str, continuous variables to include.
+        - variables_cat, list of str, categorical variables to include.
+        - vars_remove, list of str, which variables to regress out. To skip, use None or empty list.
+        - var_subspace, either str or tuple of strings, to project to (after applying vars_remove)
+        - normalization, str, either None, "norm", or "orthonormalize".
+        - inds_trials_pa_train, inds_trials_pa_test, optionally, inds to train and then project data onto subsapce
+
+        Examples:
+        variables_cont = ("motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y")
+        variables_cat = ("gridloc", "DIFF_gridloc", "stroke_index_is_first", "chunk_rank", "shape", "rank_conj")
+        vars_remove = ["motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", 
+                    "velmean_x", "velmean_y", "gridloc", "DIFF_gridloc", "stroke_index_is_first"]
+
+        """
+        from patsy import dmatrix
+        from neuralmonkey.analyses.regression_good import formula_string_construct
+
+        # Demean 
+        if demean:
+            PA = self.norm_subtract_mean_each_chan()
+        else:
+            PA = self
+
+        assert self.X.shape[2]==1
+        variables = variables_cont + variables_cat
+        variables_is_cat = [False for _ in range(len(variables_cont))] + [True for _ in range(len(variables_cat))]
+
+        ### Optionally split into train and test PA
+        if inds_trials_pa_train is not None:
+            pa_train = PA.slice_by_dim_indices_wrapper("trials", inds_trials_pa_train)
+        else:
+            pa_train = PA
+        
+        if inds_trials_pa_test is not None:
+            pa_test = PA.slice_by_dim_indices_wrapper("trials", inds_trials_pa_test)
+        else:
+            pa_test = PA
+
+        ### (1) Regression, to get coefficients
+        # Do neuron-level regression and PCA of coeffs to get subspaces
+        # dflab = pa_train.Xlabels["trials"]
+        dfcoeff, dfbases, res_all, original_feature_mapping = pa_train.regress_neuron_task_variables_all_chans(
+            variables, variables_is_cat, PLOT_COEFF_HEATMAP, PRINT=PRINT,
+            savedir_coeff_heatmap=savedir_coeff_heatmap, savedir_pca_subspaces=savedir_pca_subspaces)
+
+        ### (2) Subtract residuals, doing this to test data
+        if vars_remove is not None and len(vars_remove)>0:
+            dflab_test = pa_test.Xlabels["trials"]
+            vars_remove_is_cat = [variables_is_cat[variables.index(v)] for v in vars_remove]
+            subset_formula = formula_string_construct("frate", vars_remove, vars_remove_is_cat, exclude_var_response=True)
+            # Go thru each unit, getting its residuals
+            list_xresid =[]
+            for ind_chan in range(len(pa_test.Chans)):
+                frates = pa_test.X[ind_chan, :, 0]
+                model = res_all[ind_chan]["model"]
+
+                # Make new design matrix
+                X_subset = dmatrix("~" + subset_formula, dflab_test, return_type="dataframe")
+
+                # --- extract coefficients for these terms from full model ---
+                beta_subset = model.params.reindex(X_subset.design_info.column_names).fillna(0.0).values # fillna, otherwise will fail if there is overparametrized case.
+                if np.any(np.isnan(beta_subset)):
+                    print(model.params)
+                    print(beta_subset)
+                    print(X_subset.design_info.column_names)
+                    assert False, "why nan?"
+
+                # --- compute predictions from subset terms only ---
+                frates_subset = X_subset.values @ beta_subset # (ntrials, nfeats) * (nfeats) --> (ntrials)
+                
+                # --- residuals relative to subset predictions ---
+                xresid = frates - frates_subset
+
+                if False:
+                    fig, ax = plt.subplots()
+                    ax.plot(self.X[ind_chan, :, 0], yhat_subset, "xk", alpha=0.1)
+                    assert False
+
+                list_xresid.append(xresid)
+            Xresid = np.stack(list_xresid)[:, :, None]
+            PAresid = pa_test.copy_replacing_X(Xresid)
+        else:
+            # Just copy over
+            PAresid = pa_test.copy()
+
+        if False:
+            # Sanity check, project the residuals onto the desired subspace
+            # NOTE: This returns EXACTLY the same coefficients from before removing confounds.
+            dfcoeff2, dfbases2, res_all2, original_feature_mapping2 = PAresid.regress_neuron_task_variables_all_chans(
+                variables, variables_is_cat, True)
+
+        ### (3) Project to subspace.
+        if var_subspace is None:
+            # Then skip this
+            pa_subspace, subspace_axes_orig, subspace_axes_normed = None, None, None
+        elif isinstance(var_subspace, str):
+            # var_subspace = "rank_conj" 
+            pa_subspace, subspace_axes_orig, subspace_axes_normed, _ = PAresid.dataextract_subspace_targeted_pca_project_helper(
+                    dfbases, var_subspace, npcs_keep, normalization, plot_orthonormalization)
+        elif isinstance(var_subspace, (list, tuple)):
+            # vars_this_subspace = ("motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", 
+            #             "velmean_x", "velmean_y", "gridloc", "DIFF_gridloc")
+            dfbases = PAresid.regress_neuron_task_variables_convert_coeff_to_basis(dfcoeff, 
+                                                                var_subspace, original_feature_mapping, savedir_pca_subspaces)
+            if dfbases is None:
+                # Then not enough variatoin to do regression
+                pa_subspace, subspace_axes_orig, subspace_axes_normed = None, None, None
+            else:
+                pa_subspace, subspace_axes_orig, subspace_axes_normed, _ = PAresid.dataextract_subspace_targeted_pca_project_helper(
+                        dfbases, "this", npcs_keep, normalization, plot_orthonormalization)
+
+        else:
+            assert False
+            
+        return pa_subspace, subspace_axes_orig, subspace_axes_normed, dfcoeff, pa_test, PAresid, original_feature_mapping
+        
+    def dataextract_subspace_targeted_pca_one_var_mult_axes(self, variables, variables_is_cat, var_subspace, npcs_keep,
+                                                demean=True, 
+                                                normalization=None, plot_orthonormalization=False, 
+                                                PLOT_COEFF_HEATMAP=False, savedir_coeff_heatmap=None, PRINT=False,
+                                                get_axis_for_categorical_vars=True, savedir_pca_subspaces=None,
+                                                inds_trials_pa_train=None, inds_trials_pa_test=None):
+        """
+        [GOOD] Get subspace for a set of variables, and then project data into that subspace.
+        one_var --> returns ndim, projected to this var, where dims are defined by PCA on the basis set spanned by
+        the levels for this categorical var.
+
+        PARAMS:
+        - variables, list of str, the variables that will be fit using regression, and from which the regression coefficients
+        will be used to get the subspace. REgression performed independently for each neuron.
+        PARAMS:
+        - variables, list of str, the variables that will be fit using regression, and from which the regression coefficients
+        - variables_is_cat, list of bool, whether each variable is categorical or not.
+        - list_subspaces, list of tuples, each tuple is a subspace. Each subspace is a list of variables.
+        - normalization, str, either None, "norm", or "orthonormalize".
+        """ 
+
+        assert False, "obsolete, this is identical to dataextract_subspace_targeted_pca_wrapper() with vars_remove = None "
+        # for subspace_tuple in list_subspaces:
+        #     assert isinstance(subspace_tuple, (tuple, list))
+        #     assert isinstance(subspace_tuple[0], str)
+
+        # Input must be scalarized
+        assert self.X.shape[2]==1
+        assert var_subspace is not None
+        if var_subspace not in variables:
+            print("var_subspace:", var_subspace)
+            print("variables:", variables)
+            assert False
+         
+        # Demean 
+        if demean:
+            PA = self.norm_subtract_mean_each_chan()
+        else:
+            PA = self
+
+        ### Optionally split into train and test PA
+        if inds_trials_pa_train is not None:
+            pa_train = PA.slice_by_dim_indices_wrapper("trials", inds_trials_pa_train)
+        else:
+            pa_train = PA
+        
+        if inds_trials_pa_test is not None:
+            pa_test = PA.slice_by_dim_indices_wrapper("trials", inds_trials_pa_test)
+        else:
+            pa_test = PA
+
+        # print(pa_train.X.shape, pa_test.X.shape)
+        # assert False
+
+        ### Collect coefficients across all neurons
+        # dfbases holds PCA dimensions for each variable (i.e., subspace)
+        _, dfbases, _, _ = pa_train.regress_neuron_task_variables_all_chans(variables, variables_is_cat, PLOT_COEFF_HEATMAP, 
+                                                                      PRINT=PRINT, savedir_coeff_heatmap=savedir_coeff_heatmap,
+                                                                      get_axis_for_categorical_vars=get_axis_for_categorical_vars, 
+                                                                      savedir_pca_subspaces=savedir_pca_subspaces)
+
+        if True:
+            pa_subspace, subspace_axes_orig, subspace_axes_normed, dfcoeff = pa_test.dataextract_subspace_targeted_pca_project_helper(
+                dfbases, var_subspace, npcs_keep, normalization, plot_orthonormalization)
+        else:
+            # Get basis vectors --> dfcoeff dataframe
+            tmp = dfbases[dfbases["var_subspace"] == var_subspace]
+            if len(tmp)!=1:
+                print(dfbases)
+                print(dfbases["var_subspace"].unique())
+                print(var_subspace)
+                assert False
+            Xpca = tmp["Xpca"].values[0]
+            # explained_variance_ratio_ = tmp["explained_variance_ratio_"].values[0]
+            dfcoeff = pd.DataFrame(Xpca, columns=range(Xpca.shape[1]))
+
+            # Given PCA of the categorical variables, project onto any subspace
+            # - keep maximum num dims
+            ndims = Xpca.shape[1]
+            if npcs_keep>ndims:
+                npcs_keep = ndims
+            # make this ndims subspace
+            subspace_tuple = tuple(range(npcs_keep))
+            list_subspaces = [subspace_tuple]
+            dict_subspace_pa, dict_subspace_axes_orig, dict_subspace_axes_normed = pa_test.dataextract_subspace_targeted_pca_project(
+                dfcoeff, list_subspaces, normalization, plot_orthonormalization)
+
+            pa_subspace = dict_subspace_pa[subspace_tuple]
+            subspace_axes_orig = dict_subspace_axes_orig[subspace_tuple]
+            subspace_axes_normed = dict_subspace_axes_normed[subspace_tuple]
+
+        return pa_subspace, subspace_axes_orig, subspace_axes_normed, dfcoeff, pa_test
+
+    def dataextract_project_data_denoise(self, basis_vectors, version="projection", 
+                                         normalization=None, plot_orthonormalization=False):
+        """
+        PARAMS:
+        - (nchans, ndims_project), where nchans matches self.CHans
+        - do_orthonormal, bool, if True, then orthonormlaizes the basis using QR decomspotion. The order of columns
+        in basis matters. ie sequentially gets orthognalizes each column by the subspace spanned by the preceding columns.
+        """
+        from neuralmonkey.analyses.state_space_good import dimredgood_project_data_denoise_simple
+        Xnew, basis_vectors = dimredgood_project_data_denoise_simple(self.X, basis_vectors, version, normalization, 
+                                                                     plot_orthonormalization)
+        PAredu = self.copy_replacing_X(Xnew[:, :, None])
+        return PAredu, basis_vectors
+
+    def dataextract_pca_demixed_subspace_project(self, pca, pca_twind, pca_tbindur, pca_tbin_slice, reshape_method,
+                                                 dimredgood_pca_project_do_reshape, n_pcs_subspace_max, do_pca_after_project_on_subspace,
+                                                 savedir_plots):
+        """
+        Project raw data into pc space.
+        Assumes that self.X is already preprocessed to allow directly projecting with components from pca
+        PARAMS:
+        - pca, pc matrices. See use within.
+        RETURNS:
+        - Xredu, PAredu, stats_redu, Xfinal_before_redu, pca
+        """
+        from neuralmonkey.analyses.state_space_good import dimredgood_pca_project
+
+        ### Project RAW data back into this space
+        # - preprocess data to the correct shape
+        Xfinal_before_redu, PAfinal_before_redu, _, _, _ = self.dataextract_state_space_decode_flex(pca_twind, pca_tbindur, pca_tbin_slice,
                                                                                  reshape_method=reshape_method, pca_reduce=False,
                                                                                  norm_subtract_single_mean_each_chan=False)
         
         ### Project all raw data
-        plot_pca_explained_var_path = f"{savedir_plots}/expvar_reproj_raw.pdf"
+        if savedir_plots is not None:
+            plot_pca_explained_var_path = f"{savedir_plots}/expvar_reproj_raw.pdf"
+        else:
+            plot_pca_explained_var_path = None
         Xredu, stats_redu, Xredu_in_orig_shape = dimredgood_pca_project(pca["components"], 
                                                                         Xfinal_before_redu, 
                                                                         plot_pca_explained_var_path=plot_pca_explained_var_path,
@@ -1761,7 +3540,7 @@ class PopAnal():
                 Xredu, _, _ = dimredgood_pca(Xredu, how_decide_npcs_keep = "keep_all",
                                 plot_pca_explained_var_path=plot_pca_explained_var_path_this,
                             plot_loadings_path=plot_loadings_path_this)
-
+                plt.close("all")
             # Get a PA holding final projected data
             PAredu = PAfinal_before_redu.copy_replacing_X(Xredu_in_orig_shape)
 
@@ -1788,17 +3567,12 @@ class PopAnal():
                 Xredu, _, _ = dimredgood_pca(Xredu, how_decide_npcs_keep = "keep_all",
                                 plot_pca_explained_var_path=plot_pca_explained_var_path_this,
                             plot_loadings_path=plot_loadings_path_this)
-
+                plt.close("all")
             # Get a PA holding final projected data
             assert len(PAfinal_before_redu.Xlabels["trials"]) == Xredu.shape[0]
             PAredu = PopAnal(Xredu.T[:, :, None].copy(), [0])  # (ndimskeep, ntrials, 1)
             PAredu.Xlabels = {dim:df.copy() for dim, df in PAfinal_before_redu.Xlabels.items()}
 
-            # print(Xredu.shape)
-            # print(PAredu.X.shape)
-            # print(Xfinal_before_redu.shape)
-            # print(pca["X_before_dimred"].shape)
-            # assert False
             return Xredu, PAredu, stats_redu, Xfinal_before_redu, pca
 
     def dataextract_state_space_decode_flex(self, twind_overall=None,
@@ -1859,14 +3633,12 @@ class PopAnal():
 
         if norm_subtract_single_mean_each_chan:
             # Normalize activity before doing pca?
-            # - at very least, always subtract mean within each channel (not going as far as subtracting mean
-            # within eahc time point of each channel).
             PAslice = PAslice.norm_subtract_mean_each_chan()
 
         if PLOT_EXAMPLE_X_BEFORE_GO_INTO_PCA:
             PAslice.plotNeurHeat(0)
 
-        ## DIM REDUCTION
+        ### DIM REDUCTION
         nchans, ntrials, ntimes = PAslice.X.shape
         if reshape_method == "chans_x_trialstimes":
             # E.g. if decoding, soemtimes want each time bin as datapt.
@@ -1874,10 +3646,8 @@ class PopAnal():
             dflab = PAslice.Xlabels["trials"]
             list_x = []
             list_dflab = []
-            # labels_all = []
             for i in range(ntimes):
-                list_x.append(PAslice.X[:, :, i])
-                # labels_all.extend(labels)
+                list_x.append(PAslice.X[:, :, i]) # (chans, trials)
                 list_dflab.append(dflab)
             X_before_dimred = np.concatenate(list_x, axis=1) # (nchans, ntrials x ntimes)
             dflab_final = pd.concat(list_dflab).reset_index(drop=True)
@@ -1902,24 +3672,15 @@ class PopAnal():
             # assert X.shape[0] == PAfinal.X.shape[1]
 
         elif reshape_method=="trials_x_chanstimes":
+            from neuralmonkey.analyses.state_space_good import dimredgood_pca
             # Reshape to (ntrials, nchans*ntimes)
             tmp = np.transpose(PAslice.X, (1, 0, 2)) # (trials, chans, times)
             X = np.reshape(tmp, [ntrials, nchans * ntimes]) # (ntrials, nchans*timebins)
             X_before_dimred = X.copy()
 
-            # Sanitych check
-            if False: # no need to check. know it works.
-                trial = 0
-                tmp = np.concatenate([PAslice.X[:, trial, i] for i in range(ntimes)])
-                if not np.isclose(np.std(X[trial]), np.std(tmp)):
-                    print(np.std(X[trial]))
-                    print(np.std(tmp))
-                    assert False, "bug in reshaping"
-
             if pca_reduce:
                 print("Running PCA")
                 print(how_decide_npcs_keep, pca_frac_var_keep, pca_frac_min_keep)
-                from neuralmonkey.analyses.state_space_good import dimredgood_pca
                 # Make labels (chans x timebins)
                 ntimes = len(PAslice.Times)
                 col_labels = []
@@ -1934,6 +3695,7 @@ class PopAnal():
                                            plot_loadings_feature_labels=col_labels,
                                            method=pca_method,
                                            npcs_keep_force=npcs_keep_force) # (ntrials, nchans) --> (ntrials, ndims)
+                plt.close("all")
 
                 # Represent X in PopAnal
                 # PAfinal = PopAnal(X.T[:, :, None].copy(), [0])  # (ndimskeep, ntrials, 1)
@@ -1984,7 +3746,7 @@ class PopAnal():
 
             # No need to reshape
             X = PAslice.X
-            X_before_dimred = X.copy()
+            X_before_dimred = PAslice.X.copy()
 
             ################## Get in shape.
             X = np.reshape(PAslice.X, [nchans, ntrials * ntimes]).T # (ntrials*ntimes, nchans)
@@ -2013,9 +3775,16 @@ class PopAnal():
                                            plot_loadings_feature_labels=col_labels,
                                            method=pca_method,
                                            npcs_keep_force=npcs_keep_force) # (ntrials, nchans) --> (ntrials, ndims)
+            plt.close("all")
+
             # Extra dimreduction step?
             if extra_dimred_method in ["umap", "mds"]:
                 from neuralmonkey.analyses.state_space_good import dimredgood_nonlinear_embed_data
+                # print(X.shape)
+                # print(extra_dimred_method)
+                # print(extra_dimred_method_n_components)
+                # print(umap_n_neighbors)
+                # assert False
                 X, _ = dimredgood_nonlinear_embed_data(X, METHOD=extra_dimred_method, n_components=extra_dimred_method_n_components,
                                                            umap_n_neighbors=umap_n_neighbors) # 
             else:
@@ -2037,29 +3806,65 @@ class PopAnal():
             if pca_reduce:
                 assert X.shape == PAfinal.X.shape
 
-            # # Extra dimreduction step?
-            # assert extra_dimred_method is None, "not yet coded.. a bit tricky?"
-
         else:
             print(reshape_method)
             assert False
 
-            # X = PAslice.X
-            #
-            # if pca_reduce:
-            #     assert False, "not coded..."
-            #
-            # assert extra_dimred_method is None, "not yet coded"
-
         if not pca_reduce:
             pca = None
-            # PAfinal = None
 
-        # print(X.shape)
-        # print(PAfinal.X.shape)
-        # print(PAslice.X.shape)
-        # assert False
         return X, PAfinal, PAslice, pca, X_before_dimred
+
+    def dataextract_metrics_scalar(self, idx_chan, list_var):
+        """
+        Extract data as a MetricsScalar object, which holds methods for computing
+        modulation stats at unit-level. This is older code, so need
+        to hack here to make it fit into ms.
+        PARAMS:
+        - list_var, var that you will potentially care about for anova
+        """
+        from neuralmonkey.metrics.scalar import MetricsScalar, _calc_modulation_by_frsm
+        
+        # Collect all neural data as a list of trials
+        list_x = []
+        for it, _ in enumerate(self.Trials):
+            x = self.X[idx_chan, it, :]
+            list_x.append(x[None, :])
+        list_times = [np.array(self.Times)[None, :] for _ in range(len(list_x))]
+
+        # Extract a copy of dflab with the neural data appended
+        dflab = self.Xlabels["trials"]
+        data = dflab.copy()
+        data["fr_sm"] = list_x
+        data["fr_sm_sqrt"] = list_x
+        data["fr_sm_times"] = list_times
+        data["event_aligned"] = "dummy"
+        data["event"] = "dummy"
+
+        ms = MetricsScalar(data, list_var)
+
+        return ms
+    
+    def metrics_scalar_compute_r2(self, idx_chan, var):
+        """
+        Helper to convert self to MetricsScalar object, and then to 
+        compute r2 using the method I used previously, taking maximum time winodw, 
+        and subtracting shuffled version.
+        """
+
+        ms = self.dataextract_metrics_scalar(idx_chan, [var])
+        r2 = ms.modulationgood_wrapper_(var, "r2_maxtime_1way_mshuff", return_as_score_zscore_tuple=False)["dummy"]
+        return r2
+
+        # var ="shape_semantic"
+        # levels = data[var].unique()
+
+        # r2, SS, SST = _calc_modulation_by_frsm(data, var, levels, COL_FR="fr_sm", plot_fr=False, plot_results=False, do_shuffle=False)
+        # print(r2, SS, SST)
+        # nshuff = 20
+        # list_r2_shuff = [_calc_modulation_by_frsm(data, var, levels, COL_FR="fr_sm", plot_fr=False, plot_results=False, do_shuffle=True)[0] for ishuff in range(nshuff)]
+
+        # r2 - np.mean(list_r2_shuff)
 
     def _dataextract_split_by_label_grp_for_statespace(self, grpvars):
         """
@@ -2079,6 +3884,21 @@ class PopAnal():
         df = trajgood_construct_df_from_raw(self.X, self.Times, labels, labelvars)
         return df
 
+
+    ##################### APPEND THINGS
+    def datamod_append_col_with_grp_index(self, grp, new_col_name):
+        """
+        Append a column that is conjunction of values across variables in grp.
+        RETURNS:
+        - (nothing, modifies self.Xlabels["trials"])
+        """
+        from pythonlib.tools.pandastools import append_col_with_grp_index
+        dflab = self.Xlabels["trials"]
+        dflab = append_col_with_grp_index(dflab, grp, new_col_name)
+        self.Xlabels["trials"] = dflab
+
+    ###################### EUCLIDIAN DISTNACE
+        
     #######################
     def reshape_by_splitting(self):
         """
@@ -2111,7 +3931,7 @@ class PopAnal():
         return PA
 
 
-    def slice_by_label_grouping(self, dim_str, grouping_variables, grouping_values):
+    def slice_by_label_grouping(self, grouping_variables):
         """ 
         Return sliced PA, where first constructs grouping varible (can be conjunctive)
         then only keep desired subsets 
@@ -2120,12 +3940,18 @@ class PopAnal():
         - grouping_variables, list of str
         - grouping_values, values to keep
         """
-        assert False, "code it, see slice_and_agg_wrapper"
-
-
+        from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good
+        dflab = self.Xlabels["trials"]
+        grpdict = grouping_append_and_return_inner_items_good(dflab, grouping_variables)
+        pa_dict = {}
+        for grp, inds in grpdict.items():
+            pa = self.slice_by_dim_indices_wrapper("trials", inds, reset_trial_indices=True)
+            pa_dict[grp] = pa
+        
+        return pa_dict
 
     def slice_and_agg_wrapper(self, along_dim, grouping_variables, grouping_values=None,
-            agg_method = "mean", return_group_dict=False, return_list_pa=False):
+            agg_method = "mean", return_group_dict=False, return_list_pa=False, min_n_trials_in_lev=1):
         """ Flexibly aggregate neural data along any of the three dimensions, using
         any variable, etc. Returns PA where each level of the grouping
         variable is a single "trial" (after averaging over all trials with that level).
@@ -2162,18 +3988,23 @@ class PopAnal():
         # Get sliced pa for each grouping level
         list_pa = []
         list_grplevel = []
+        groupdict_keep = {}
         for grp in groupdict:
             inds = groupdict[grp]
 
-            # slice
-            pathis = self.slice_by_dim_indices_wrapper(dim=along_dim, inds=inds)
+            # print(grp, len(inds))
+            if len(inds)>=min_n_trials_in_lev:
+                # slice
+                pathis = self.slice_by_dim_indices_wrapper(dim=along_dim, inds=inds)
 
-            # agg
-            pathis = pathis.agg_wrapper(along_dim=along_dim, agg_method=agg_method)
+                # agg
+                pathis = pathis.agg_wrapper(along_dim=along_dim, agg_method=agg_method)
 
-            # collect
-            list_pa.append(pathis)
-            list_grplevel.append(grp)
+                # collect
+                list_pa.append(pathis)
+                list_grplevel.append(grp)
+                groupdict_keep[grp] = inds
+        groupdict = groupdict_keep
 
         # Concatenate all pa into a larger pa
         pa_all = concatenate_popanals(list_pa, dim=along_dim, values_for_concatted_dim=list_grplevel)
@@ -2385,6 +4216,417 @@ class PopAnal():
         df[name] = values
 
 
+    ################ BEHAVIOR
+    def behavior_extract_neural_stroke_aligned(self, ind_trial, lag_neural_vs_beh=0., 
+                                               var_strok="strok_beh", PRINT=False, PLOT=False):
+        """
+        Extract neural and stroke data, where neural data is clipped to align to stroke.
+
+        PARAMS:
+        - lag_neural_vs_beh = 0. # if negative this means get neural data that precedes behavior.
+
+        NOTE: assumes that self is stroke data -- ie. that time 0 is aligned to stroke onset.
+        NOTE: Deals with cases where there is not neough neural data to match duration of stroke, by
+        clipping off the end of the stroke, to match whatever neural data exists.
+
+        MINOR PROBLEM -- this runs over all trial sfor pa, but aligned to a single trail for beh... is
+        inefficient.
+        """
+        from pythonlib.tools.stroketools import strokesInterpolate2
+
+        pa_timestamp_stroke_onset = 0. # assumes self is stroke data.
+
+        self.behavior_extract_strokes_to_dflab(trial_take_first_stroke=True)
+        dflab = self.Xlabels["trials"]
+        strokes = dflab[var_strok].tolist()
+        # Condition the stroke
+        strok = strokes[ind_trial]
+
+        # Get strok, with times now zeroed to stroke onset
+        strok = strok.copy()
+        strok[:, 2] -= strok[0, 2] # to zero them
+        dur_take = strok[-1, 2] - strok[0, 2] # how long is the stroke?
+
+        if PRINT:
+            print("Starting times:")
+            print(self.Times)
+            print(strok[:, 2])
+            print(strok[-1, 2] - strok[0, 2])
+
+        # pull out time window from neural data matching the stroke
+        t1 = pa_timestamp_stroke_onset + lag_neural_vs_beh
+        t2 = pa_timestamp_stroke_onset + dur_take + lag_neural_vs_beh
+
+        if PLOT:
+            fig, axes = plt.subplots(2,1, sharex=True, sharey=True)
+            ax = axes.flatten()[0]
+            ax.plot(strok[:,2], strok[:,0], "b-", label="stroke")
+            ax.plot(self.Times, self.X[0, ind_trial, :], "r-", label="neural")
+            ax.set_title("before align")
+            ax.legend()
+            ax.axvline(t1, color="r")
+            ax.axvline(t2, color="r")
+
+        ###
+        pa = self.slice_by_dim_indices_wrapper("trials", [ind_trial]).slice_by_dim_values_wrapper("times", [t1, t2])
+        times_to_get_beh = pa.Times - lag_neural_vs_beh # undo the lag -- these are the times of beh that are desired
+        assert np.all(times_to_get_beh>=0)
+
+        # If not enough neural data, then need to clip off end of storkes
+        strok = strok[strok[:, 2]<=times_to_get_beh[-1]+0.01, :]
+
+        # Interpolate the beh so that it matches the neural time bins.
+        strok = strokesInterpolate2([strok], ["input_times", times_to_get_beh], plot_outcome=False)[0]
+        assert np.all(strok[:, 2] == times_to_get_beh)
+
+        if PLOT:
+            ax = axes.flatten()[1]
+            ax.plot(strok[:,2], strok[:,0], "b-", label="stroke")
+            ax.plot(pa.Times, pa.X[0, 0, :], "r-", label="neural")
+            ax.set_title("after align")
+            ax.set_xlabel("time (rel stroke onset)")
+            ax.legend()
+
+        if PRINT:
+            print(len(pa.Times))
+            print(strok.shape)
+            print("neural times: ", pa.Times)
+            print("beh times: ", times_to_get_beh)
+            print("beh times: ", strok[:,2])
+
+        return pa, strok
+    
+    def behavior_strokes_kinematics_stats(self, trial_take_first_stroke=True, twind=None):
+        """
+        Extract strokes from self.Xlabels["trials"], and get variuos stats related to kinmetaics, and then store
+        in self.Xlabels["trials"]
+        """
+        
+        assert trial_take_first_stroke, "assumes one stroke below.."
+
+        self.behavior_extract_strokes_to_dflab(trial_take_first_stroke=trial_take_first_stroke)
+        dflab = self.Xlabels["trials"]
+        strokes = dflab["strok_beh"].tolist()
+
+        ### MOTOR PARAMETERS
+        # get the initial velocity (angle and magnitude)
+        if False:
+            from pythonlib.dataset.dataset_strokes import DatStrokes
+            DS = DatStrokes()
+        
+        ### For each stroke, compute some features
+        import numpy as np
+        from pythonlib.tools.stroketools import sliceStrokes, slice_strok_by_frac_bounds
+        from pythonlib.tools.stroketools import feature_velocity_vector_angle_norm
+
+        # (1) For initial angle, take start of each stroke 
+        if twind is None:
+            twind = [0, 0.15] # sec
+        strokes_sliced = sliceStrokes(strokes, twind, time_is_relative_each_onset=True, assert_no_lost_strokes=True)
+
+        # - velocity vector
+        angles = [] 
+        norms = []
+        vels = []
+        for strok in strokes_sliced:
+            velmean, a, n = feature_velocity_vector_angle_norm(strok, fs_allow_outlier_timestamp_intervals=True)
+            angles.append(a)
+            norms.append(n)
+            vels.append(velmean)
+
+        vels = np.stack(vels)
+        dflab["velmean_x"] = vels[:, 0]
+        dflab["velmean_y"] = vels[:, 1]
+
+        # - circularity
+        from pythonlib.drawmodel.features import strokeCircularity
+        fraclow = 0
+        frachigh = 0.5
+        strokes_sliced = [slice_strok_by_frac_bounds(s, fraclow, frachigh) for s in strokes]
+        # strokes_sliced = slice_strok_by_frac_bounds(strokes, twind, time_is_relative_each_onset=True, assert_no_lost_strokes=True)
+
+        # circularities = strokeCircularity(strokes)
+        circularities = strokeCircularity(strokes_sliced)
+
+        # - location of onset.
+        # (reach angle, relative to on location)
+        onsets_x = [strok[0, 0] for strok in strokes]
+        onsets_y = [strok[0, 1] for strok in strokes]
+
+        # Bin the angles
+        from pythonlib.tools.vectools import bin_angle_by_direction
+        angles_binned = bin_angle_by_direction(angles, num_angle_bins=8)
+
+        # Put motor variables back into dflab
+        dflab["motor_angle"] = angles
+        # dflab["motor_angle_sin"] = angles
+
+        dflab["motor_angle_binned"] = angles_binned
+
+        if "gap_from_prev_angle" in dflab:
+            dflab["gap_from_prev_angle_binned"] = bin_angle_by_direction(dflab["gap_from_prev_angle"].values, num_angle_bins=8)
+            
+        dflab["gap_from_prev_x"] = dflab["gap_from_prev_dist"] * np.cos(dflab["gap_from_prev_angle"])
+        dflab["gap_from_prev_y"] = dflab["gap_from_prev_dist"] * np.sin(dflab["gap_from_prev_angle"])
+
+        try:
+            dflab["gap_to_next_x"] = dflab["gap_to_next_dist"] * np.cos(dflab["gap_to_next_angle"])
+            dflab["gap_to_next_y"] = dflab["gap_to_next_dist"] * np.sin(dflab["gap_to_next_angle"])
+        except Exception as err:
+            print(np)
+            raise err
+        
+        dflab["motor_norm"] = norms
+
+        dflab["motor_circ"] = circularities
+
+        dflab["motor_onsetx"] = onsets_x
+
+        dflab["motor_onsety"] = onsets_y
+
+        self.Xlabels["trials"] = dflab
+
+    def behavior_extract_strokes_times_to_dflab(self, trial_take_first_stroke=True):
+        """
+        Append new columns: strok_on_time, strok_off_time
+        These hold strok on and off time.
+        
+        Also return (on_times, off_times), each an array.
+
+        """
+        assert trial_take_first_stroke == True, "becuase assuming only one stroke, below"
+        self.behavior_extract_strokes_to_dflab(trial_take_first_stroke=trial_take_first_stroke)
+        dflab = self.Xlabels["trials"]
+        dflab["strok_on_time"] = [strok[0, 2] for strok in dflab["strok_beh"]]
+        dflab["strok_off_time"] = [strok[-1, 2] for strok in dflab["strok_beh"]]
+
+        # Convert from time in trial to time rel event.
+        dflab["strok_on_time"] = dflab["strok_on_time"] - dflab["event_time"]
+        dflab["strok_off_time"] = dflab["strok_off_time"] - dflab["event_time"] 
+
+        on_times = dflab["strok_on_time"].values
+        off_times = dflab["strok_off_time"].values
+
+        return on_times, off_times
+
+    def behavior_extract_strokes_to_dflab(self, trial_take_first_stroke=False):
+        """
+        Extracts strokes_beh and strokes_task to dflab
+        """
+        dflab = self.Xlabels["trials"]
+
+        if ("strok_beh" in dflab) and ("strok_task" in dflab):
+            assert trial_take_first_stroke, "hacky only workse for this, assumes it is this"
+            # if trial_take_first_stroke:
+            #     # Then take the first stroke
+            #     for col in ["strok_beh", "strok_task"]:
+            #         strokes = dflab[col].tolist()
+            #         strokes = [s[0] for s in strokes]
+            #         dflab[col] = strokes
+            return
+
+        # Collect all the strokes
+        strokes_task = []
+        strokes_beh = []
+        if "Tkbeh_stkbeh" in dflab.columns:
+            # Then this is "trial" version
+            for i, row in dflab.iterrows():
+                
+                tokens = row["Tkbeh_stkbeh"].Tokens
+                if not trial_take_first_stroke:
+                    assert len(tokens)==1, "hacky, currneyl only workse for single prim tasks"
+                strok_beh = tokens[0]["Prim"].Stroke()
+
+                tokens = row["Tkbeh_stktask"].Tokens
+                if not trial_take_first_stroke:
+                    assert len(tokens)==1, "hacky, currneyl only workse for single prim tasks"
+                strok_task = tokens[0]["Prim"].Stroke()
+
+                strokes_task.append(strok_task)
+                strokes_beh.append(strok_beh)
+        elif "Stroke" in dflab.columns:
+            # Then this is "stroke" version
+            for i, row in dflab.iterrows():
+                
+                strok_beh = row["Stroke"]()
+                
+                tokens = row["TokTask"].Tokens
+                assert len(tokens)==1, "hacky, currneyl only workse for single prim tasks"
+                strok_task = tokens[0]["Prim"].Stroke()
+
+                strokes_task.append(strok_task)
+                strokes_beh.append(strok_beh)
+        else:
+            print(sorted(dflab.columns))
+            assert False, "where are strokes saved?"
+
+        dflab["strok_beh"] = strokes_beh
+        dflab["strok_task"] = strokes_task
+
+    def behavior_replace_neural_with_strokes(self, version="beh", n_time_bins=50,
+                                             centerize_strokes=True, plot_examples=False,
+                                             remove_time_axis=True,
+                                             align_strokes_to_onset=False):
+        """
+        Replace self.X with strokes, such that shape is now (2, ntrials, ntimes), where
+        the 2 are x and y.
+        PARAMS:
+        - n_time_bins, for interpolation
+        RETURNS:
+        - PAstroke, copy of self, with X replaced, shape (2 or 3, ntrials, n_time_bins), where
+        2 or 3 depends on if remove_time_axis.
+        """
+        from pythonlib.tools.stroketools import strokesInterpolate2, strokes_centerize
+        from pythonlib.drawmodel.strokePlots import plotDatStrokesWrapper
+
+        # Extract beh and task strokes
+        self.behavior_extract_strokes_to_dflab()
+
+        # interpolate so that all strokes are same length
+        dflab = self.Xlabels["trials"]
+        if version == "beh":
+            strokes = dflab["strok_beh"].tolist()
+        else:
+            strokes = dflab["strok_task"].tolist()
+        strokes = strokesInterpolate2(strokes, ["npts", n_time_bins], base="time", plot_outcome=False)
+
+        # center each stroke.
+        if centerize_strokes:
+            strokes = strokes_centerize(strokes)
+
+        if align_strokes_to_onset:
+            from pythonlib.tools.stroketools import strokes_alignonset
+            strokes = strokes_alignonset(strokes)
+
+        if plot_examples:
+            fig, ax = plt.subplots()
+            plotDatStrokesWrapper(strokes[:4], ax)
+        
+        X = np.stack(strokes, axis=0) # (ntrials, ntimes, ndims)
+        X = np.transpose(X, (2, 0, 1)) # (ndims, ntrials, ntimes)
+
+        if remove_time_axis:
+            # remove the time axis
+            X = X[:2, :, :]
+
+        # replace PAredu
+        PAstroke = self.copy_replacing_X(X)
+
+        return PAstroke
+    
+    def behavior_extract_events_timing(self, MS, events=None, normalize_to_this_event=None):
+        """
+        Extract times of events for each trial, using the original MS (sessions).
+        Optimized for "stroke"-level data.
+        PARAMS:
+        - normalize_to_this_event, str, if not None, then each event time subtracts this time.
+        RETURNS:
+        - dftimes, each row matches correspnding row of self.Xlabels["trials"], and columns hold events
+        - events, list of str.
+        """
+
+        dflab = self.Xlabels["trials"]
+
+        if events is None:
+            # currently optimized for strokes data
+            events = ["go", "first_raise", "on_strokeidx_0", "off_strokeidx_0"]
+
+        list_inds = list(range(len(dflab)))
+                         
+        res = []
+        for ind in list_inds:
+            tc = dflab.iloc[ind]["trialcode"]
+
+            sn, trial_sn, _ = MS.index_convert_trial_trialcode_flex(tc)
+
+            # Get times of events for this trials
+            event_times = {}
+            for ev in events:
+                event_times[ev] = sn.events_get_time_helper(ev, trial_sn, assert_one=True)[0]
+
+            res.append(event_times)
+            res[-1]["trialcode"] = tc
+            res[-1]["ind_dflab"] = ind
+
+
+            # try:
+            if dflab.iloc[ind]["event"] == "00_stroke" and dflab.iloc[ind]["stroke_index"] == 0 and "on_strokeidx_0" in events:
+                # Then do sanity check that times match...
+                assert np.abs(dflab.iloc[ind]["event_time"] - event_times["on_strokeidx_0"]) < 0.05, "touchscreen lag? this is arleayd accounted for with 0.05"
+            # except Exception as err:
+            #     print(event_times["on_strokeidx_0"])
+            #     print(dflab.iloc[ind]["event_time"])
+            #     print(dflab.iloc[ind])
+            #     raise err
+
+        dftimes = pd.DataFrame(res)
+
+        # Normalie buy subtracting stroke onset time
+        if normalize_to_this_event is not None:
+            tmp = dftimes[normalize_to_this_event].copy()
+            for ev in events:
+                dftimes[ev] = dftimes[ev] - tmp
+        
+        return dftimes, events
+
+    def behavior_extract_events_timing_plot_distributions(self, MS, shape_var, events=None, 
+                                                          normalize_to_this_event=None, xlims=None):
+        """
+        [pretty specific] plot timing of events surrounding stroke onset.
+        Tailored for strokes-data.
+        """
+        from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good
+        from pythonlib.tools.plottools import color_make_map_discrete_labels
+        from pythonlib.tools.plottools import legend_add_manual
+
+        # Extract timing of events
+        dftimes, events = self.behavior_extract_events_timing(MS, events=events, 
+                                                              normalize_to_this_event=normalize_to_this_event)
+        
+        # Prep plot
+        dflab = self.Xlabels["trials"]
+        map_event_to_color, _, _= color_make_map_discrete_labels(events)
+        grpdict = grouping_append_and_return_inner_items_good(dflab, [shape_var])
+        SIZE = 2
+        ncols = 6
+        n = len(grpdict)+1
+        nrows = int(np.ceil(n/ncols))
+        fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*SIZE*2, nrows*SIZE), sharex=True, sharey=True)
+
+        for ax, (grp, inds) in zip(axes.flatten(), grpdict.items()):
+
+            dfthis = dftimes.iloc[inds]
+            for ev in events:
+                col = map_event_to_color[ev]
+                times = dfthis[ev].values
+                ax.plot(times, np.ones(len(times))+0.1*(np.random.rand(len(times))-0.5), ".", 
+                        label=ev, alpha=0.35, color=col)
+            ax.set_ylim([0.5, 1.5])
+
+            ax.set_xlabel("time (sec)")
+            ax.set_title(grp)
+
+            if xlims is not None:
+                ax.set_xlim(xlims)
+
+        ax = axes.flatten()[-1]
+        legend_add_manual(ax, map_event_to_color.keys(), map_event_to_color.values())
+
+        return fig
+
+    def bregion_extract_by_chan(self, chan, get_bregion_combined=True):
+        """
+        Get bregion string for this chan (value in self.Chans)
+        """
+
+        dflabchans = self.Xlabels["chans"]
+        dftmp = dflabchans[dflabchans["chan"] == chan]
+        assert len(dftmp)==1
+        if get_bregion_combined:
+            return dftmp["bregion_combined"].values[0]
+        else:
+            return dftmp["bregion"].values[0]
+
     ################ INDICES
     def index_find_this_chan(self, chan):
         """ Returns the index (into self.X[index, :, :]) for this
@@ -2432,6 +4674,7 @@ class PopAnal():
         inds = self.index_find_these_values("times", twind)
         assert len(inds)==2
         if twind[0] > max(self.Times) or twind[1] < min(self.Times):
+            print("-----")
             print(twind)
             print(self.Times)
             print(inds)
@@ -2563,18 +4806,18 @@ class PopAnal():
     ### PLOTTING
     def plotNeurHeat(self, trial, version="raw", **kwargs):
         X = self.extract_activity_copy(trial, version)
-        return plotNeurHeat(X, **kwargs)
+        return plotNeurHeat(X, times=self.Times, **kwargs)
 
     def plotNeurTimecourse(self, trial, version="raw", **kwargs):
         X = self.extract_activity_copy(trial, version)
-        return plotNeurTimecourse(X, **kwargs)
+        return plotNeurTimecourse(X, times=self.Times, **kwargs)
 
-    def plotwrapper_smoothed_fr(self, values_this_axis=None, axis_for_inds="site", ax=None, 
+    def plotwrapper_smoothed_fr(self, values_this_axis=None, axis_for_inds="chans", ax=None, 
                      plot_indiv=True, plot_summary=False, error_ver="sem",
                      pcol_indiv = "k", pcol_summary="r", summary_method="mean",
                      event_bounds=(None, None, None), alpha=0.6, 
-                     time_shift_dur=None):
-        """ Wrapper for different ways of plotting multiple smoothed fr traces, where
+                     time_shift_dur=None, plot_indiv_n_rand = 10):
+        """ [GOOD: low-level] Wrapper for different ways of plotting multiple smoothed fr traces, where
         multiple could be trials or sites. Also to plot summaries (means, etc). 
         PARAMS:
         - PA, popanal object
@@ -2618,9 +4861,13 @@ class PopAnal():
         n_time_bins = X.shape[1]
 
         # 1) Plot indiividual traces?
+        if plot_summary==True and isinstance(pcol_indiv, str) and pcol_indiv=="k":
+            # Then this is default pcol color. make it the same as the sumary color.
+            pcol_indiv = pcol_summary
+
         if plot_indiv:
             fig1, ax1 = plotNeurTimecourse(X, times, ax=ax, color = pcol_indiv,
-                alpha=alpha)
+                alpha=alpha, n_rand=plot_indiv_n_rand)
         else:
             fig1, ax1 = None, None
 
@@ -2655,16 +4902,17 @@ class PopAnal():
 
     def plotwrapper_smoothed_fr_split_by_label(self, dim_str, dim_variable, ax=None,
                                               plot_indiv=False, plot_summary=True,
-                                              event_bounds=[None, None, None],
+                                              event_bounds=(None, None, None),
                                               add_legend=True, legend_levels=None,
-                                               chan=None):
+                                               chan=None, dict_lev_color=None,
+                                               plot_indiv_n_rand=10):
         """ Plot separate smoothed fr traces, overlaid on single plot, each a different
         level of an inputted variable
         PARAMS:
         - dim_str, str, in {times, chans}
         - dim_variable, column in dataframe in self.Xlabels, to look for levels of
-        - event_bounds, [num, num, num] to plot pre, alignemnt, and post times. any that
-        are None will be skipped.
+        - event_bounds, [num, num, num] to plot vertical lines at given times, specifically
+        pre, alignemnt, and post times. any that are None will be skipped.
         - legend_levels, list of values that will be used for legend, where the order
         defines a globally true mapping between level and color, useful if you want to 
         dictate the colors for levels that are not in this partiucla plot.
@@ -2688,41 +4936,227 @@ class PopAnal():
         if legend_levels is None:
             # then use the levels within here
             legend_levels = list_levels_matching_pa
-        pcols = makeColors(len(legend_levels))
-        dict_lev_color = {}
 
-        for pc, lev in zip(pcols, legend_levels):
-            dict_lev_color[lev] = pc
+        # Two ways to specify global colors mapping from levels to colors. If they both fail,
+        # then use the levels that exist here
+        from pythonlib.tools.plottools import color_make_map_discrete_labels
+        if legend_levels is not None:
+            # Then use this
+            assert dict_lev_color is None, "speciy one or the other."
+            dict_lev_color, _, _ = color_make_map_discrete_labels(legend_levels)
+        elif dict_lev_color is not None:
+            # Then use this
+            pass
+        else:
+            # Then use the local levels in this function call.
+            dict_lev_color, _, _ = color_make_map_discrete_labels(list_levels_matching_pa)
+        # dict_lev_color = {}
+        # pcols = makeColors(len(legend_levels))
+        # for pc, lev in zip(pcols, legend_levels):
+        #     dict_lev_color[lev] = pc
 
         for pa, lev in zip(list_pa, list_levels_matching_pa):
             pcol = dict_lev_color[lev]
             pa.plotwrapper_smoothed_fr(ax=ax, plot_indiv=plot_indiv, plot_summary=plot_summary,
                                           pcol_indiv = pcol, pcol_summary=pcol,
-                                          event_bounds=event_bounds)
-
+                                          event_bounds=event_bounds, plot_indiv_n_rand=plot_indiv_n_rand)
         # add legend
         if add_legend:
             from pythonlib.tools.plottools import legend_add_manual
-            legend_add_manual(ax, legend_levels, pcols, 0.2)
+            legend_add_manual(ax, dict_lev_color.keys(), dict_lev_color.values(), 0.2)
 
-        return pcols
+        return dict_lev_color.values()
 
-    def plotwrapper_smoothed_fr_split_by_label_and_subplots(self, chan, var, vars_subplots):
+    def plotwrappergrid_smoothed_fr_splot_var_colored(self, var_row, var_col, var_color,
+                                                      chan, 
+                                                      do_sort=True, add_x_zero_line=False):
+        """
+        Smoothed FR, in a 
+        Grid of subplots:
+        Subplot = (var_row, var_col); Colors = var_color
+
+        EXAMPLE:
+        var_col = "seqc_0_shape", or list of col
+        var_row = "seqc_0_loc"
+        var_color = "epoch"
+        """
+        
+        if isinstance(var_col, (list, tuple)):
+            from pythonlib.tools.pandastools import append_col_with_grp_index
+            self.Xlabels["trials"] = append_col_with_grp_index(self.Xlabels["trials"], var_col, "_var_col")
+            var_col = "_var_col"
+
+        grpvars = [var_col, var_row]
+        pa_dict = self.slice_by_label_grouping(grpvars)
+
+        levels_col = list(set([x[0] for x in pa_dict.keys()]))
+        levels_row = list(set([x[1] for x in pa_dict.keys()]))
+        if do_sort:
+            levels_col = sort_mixed_type(levels_col)
+            levels_row = sort_mixed_type(levels_row)
+
+        ncols = len(levels_col)
+        nrows = len(levels_row)
+
+        # Get the levels for the colors, so that they are consistent across subplots.
+        dflab = self.Xlabels["trials"]
+        var_levels = sort_mixed_type(dflab[var_color].unique().tolist())
+
+        fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*3, nrows*3), sharex=True, sharey=True, squeeze=False)
+        legend_added = False
+        for i, levcol in enumerate(levels_col):
+            for j, levrow in enumerate(levels_row):
+                ax = axes[j][i]
+                
+                if (levcol, levrow) in pa_dict.keys():
+                    pa = pa_dict[(levcol, levrow)]
+                    
+                    add_legend = legend_added == False
+                    pa.plotwrapper_smoothed_fr_split_by_label("trials", var_color, ax, chan=chan, add_legend=add_legend, legend_levels=var_levels)
+
+                    legend_added = True
+                    ax.set_title((levrow, levcol))
+                else:
+                    ax.set_title("missing data")
+
+                if add_x_zero_line:
+                    ax.axvline(0, color="k", alpha=0.5)
+
+        return fig
+
+
+    def plotwrappergrid_smoothed_fr_splot_var(self, var_row, var_col, chans, 
+                                              plot_indiv=False, do_sort=True,
+                                              plot_indiv_n_rand=10, add_x_zero_line=False):
+        """
+        Smoothed FR, in a 
+        Grid of subplots:
+        Subplot = (var_row, var_col); Colors = dimensions/chans
+
+        EXAMPLE:
+        var_col = "seqc_0_shape", or list of col
+        var_row = "seqc_0_loc"
+        chans = [0,1,2,3,4]
+        """
+
+        # Prune to just the chans that exist
+        chans = [ch for ch in chans if ch in self.Chans]
+
+        if isinstance(var_col, (list, tuple)):
+            from pythonlib.tools.pandastools import append_col_with_grp_index
+            self.Xlabels["trials"] = append_col_with_grp_index(self.Xlabels["trials"], var_col, "_var_col")
+            var_col = "_var_col"
+
+        grpvars = [var_col, var_row]
+        pa_dict = self.slice_by_label_grouping(grpvars)
+
+        levels_col = list(set([x[0] for x in pa_dict.keys()]))
+        levels_row = list(set([x[1] for x in pa_dict.keys()]))
+        if do_sort:
+            levels_col = sort_mixed_type(levels_col)
+            levels_row = sort_mixed_type(levels_row)
+
+        ncols = len(levels_col)
+        nrows = len(levels_row)
+
+        from pythonlib.tools.plottools import color_make_map_discrete_labels
+        map_chan_to_color, _, _ = color_make_map_discrete_labels(chans)
+
+        fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*3, nrows*3), sharex=True, sharey=True, squeeze=False)
+        for i, levcol in enumerate(levels_col):
+            for j, levrow in enumerate(levels_row):
+                ax = axes[j][i]
+                if (levcol, levrow) in pa_dict.keys():
+                    pa = pa_dict[(levcol, levrow)]
+
+                    for ch in chans:
+                        pcol = map_chan_to_color[ch]
+                        pa.plotwrapper_smoothed_fr([ch], axis_for_inds="chans", ax=ax, plot_indiv=plot_indiv, plot_summary=True,
+                                                pcol_summary=pcol, pcol_indiv = "k", plot_indiv_n_rand=plot_indiv_n_rand)
+
+                    ax.set_title((levcol, levrow))
+                else:
+                    ax.set_title("missing data")
+
+                if i==len(levels_col)-1 and j==len(levels_row)-1:
+                    from pythonlib.tools.plottools import legend_add_manual
+                    legend_add_manual(ax, map_chan_to_color.keys(), map_chan_to_color.values(), 0.2)
+                    
+                if add_x_zero_line:
+                    ax.axvline(0, color="k", alpha=0.5)
+
+        return fig
+
+    def plotwrappergrid_smoothed_fr_splot_neuron(self, var_effect, vars_others, chans, plot_indiv=False,
+                                                 plot_indiv_n_rand=10, plot_summary=True, sharey=True):
+        """
+        Grid of subplots...
+        Subplot = (chan, vars_others); Colors = var_effect
+        PARAMS:
+        - chans, list of values in self.Chans (not the indices)
+        EXAMPLE:
+        # vars_subplots = ["seqc_0_loc"]
+        # var = "seqc_0_shape"
+        # chans = [0,1000, 2]
+
+        NOTE: This replaces 
+        """
+
+        # Prune to just the chans that exist
+        chans_orig = [ch for ch in chans]
+        chans = [ch for ch in chans if ch in self.Chans]
+
+        if len(chans)==0:
+            print("chans you want to plot:", chans_orig)
+            print("self.Chans:", self.Chans)
+
+        list_pa, levels = self.split_by_label("trials", vars_others)
+        ncols = len(levels)
+        nrows = len(chans)
+        
+        fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*3, nrows*3), sharex=True, sharey=sharey, squeeze=False)
+        for i, (lev, pa) in enumerate(zip(levels, list_pa)):
+            for j, ch in enumerate(chans):
+                ax = axes[j][i]
+
+                add_legend = (i==len(levels)-1) and (j==len(chans)-1)
+                pa.plotwrapper_smoothed_fr_split_by_label("trials", var_effect, ax, chan=ch, add_legend=add_legend,
+                    plot_indiv=plot_indiv, plot_indiv_n_rand=plot_indiv_n_rand, plot_summary=plot_summary)
+                ax.set_title(lev)
+
+                if i==0:
+                    ax.set_ylabel(f"ch {ch}")
+
+        if sharey==False:
+            # Make sure y is still shared within each row (each channel).
+            from pythonlib.tools.plottools import share_axes_row_or_col_of_subplots
+            share_axes_row_or_col_of_subplots(axes, "row", "y")
+
+        return fig
+
+    def plotwrapper_smoothed_fr_split_by_label_and_subplots(self, chan, var, vars_subplots, add_x_zero_line=False):
         """
         Helper to plot smoothed fr, multkiple supblots, each varying by var
         :param var: str, to splot and color within subplot
         :param vars_subplots: list of str, each is a supblot
-        :param chan:
+        :param chan: value in self.Chans
         :return:
         """
         list_pa, levels = self.split_by_label("trials", vars_subplots)
-        ncols = 8
+        ncols = min([len(list_pa), 8])
         nrows = int(np.ceil(len(levels)/ncols))
-        fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*3, nrows*3), sharex=True, sharey=True)
+        from pythonlib.tools.listtools import sort_mixed_type
+        dflab = self.Xlabels["trials"]
+        var_levels = sort_mixed_type(dflab[var].unique().tolist())
+        fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*3, nrows*3), sharex=True, sharey=True, squeeze=False)
         for ax, lev, pa in zip(axes.flatten(), levels, list_pa):
-            pa.plotwrapper_smoothed_fr_split_by_label("trials", var, ax, chan=chan)
+            pa.plotwrapper_smoothed_fr_split_by_label("trials", var, ax, chan=chan, legend_levels=var_levels)
             ax.set_title(lev)
 
+            if add_x_zero_line:
+                ax.axvline(0, color="k", alpha=0.5)
+        return fig
+    
     ############################
     def convert_to_dataframe_long(self):
         """ Convert to dataframe, where each trial*chan is a row. each row
@@ -2797,8 +5231,801 @@ class PopAnal():
         ax.grid()
 
 
+
+    def plot_state_space_good_wrapper(self, savedir, LIST_VAR, LIST_VARS_OTHERS=None, LIST_FILTDICT=None, LIST_PRUNE_MIN_N_LEVS=None,
+                                      time_bin_size = 0.05, PLOT_CLEAN_VERSION = False, 
+                                      nmin_trials_per_lev=None, list_dim_timecourse=None, list_dims=None,
+                                      also_plot_heatmaps=False):
+        """
+        Wrapper to make ALL state space plots, including (i) trajectiroeis (ii) scalars, and (iii) traj vs. time plots.
+        PARAMS:
+        - LIST_VAR, list of str, variable to use for coloring plots. Makes separate plots.
+        - LIST_VARS_OTHERS, list of list/tuples of strings. for splitting into subplots.
+        - LIST_FILTDICT, for filtering before plotting.
+        - LIST_PRUNE_MIN_N_LEVS, list of int.
+        - PLOT_CLEAN_VERSION, bool, if true, then amkes the plot prety.
+        - nmin_trials_per_lev, prunes levels with fewer trials thant his.
+        - time_bin_size, this is the final separation in time between the pts that are plotted (i.e., is "slide")
+
+        MS: checked
+        """
+
+        from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_WRAPPER
+        from pythonlib.tools.pandastools import append_col_with_grp_index
+        from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_scalar_WRAPPER, trajgood_plot_colorby_splotby_WRAPPER
+        from neuralmonkey.analyses.state_space_good import trajgood_construct_df_from_raw, trajgood_plot_colorby_splotby_timeseries
+
+        PAorig = self.copy()
+        if LIST_VARS_OTHERS is None:
+            PAorig.Xlabels["trials"]["dummy"] = "dummy"
+            LIST_VARS_OTHERS = [["dummy"] for _ in range(len(LIST_VAR))]
+        if LIST_FILTDICT is None:
+            LIST_FILTDICT = [None for _ in range(len(LIST_VAR))]
+        if LIST_PRUNE_MIN_N_LEVS is None:
+            LIST_PRUNE_MIN_N_LEVS = [2 for _ in range(len(LIST_VAR))]
+            
+        assert len(LIST_VARS_OTHERS) == len(LIST_VAR)
+        assert len(LIST_FILTDICT) == len(LIST_VAR)
+        assert len(LIST_PRUNE_MIN_N_LEVS) == len(LIST_VAR)
+
+        if list_dims is None:
+            if len(LIST_VAR)<15:
+                if self.X.shape[0]==3:
+                    list_dims = [(0,1), (1,2)]
+                elif self.X.shape[0]>3:
+                    list_dims = [(0,1), (2,3)]
+                else:
+                    list_dims = [(0,1)]
+            else:
+                # Too slow, just do 1st 2 d
+                list_dims = [(0,1)]
+
+        list_dims = [dims for dims in list_dims if max(dims)<self.X.shape[0]]
+
+        if list_dim_timecourse is None:
+            list_dim_timecourse = [0, 1]
+
+        list_dim_timecourse = [dim for dim in list_dim_timecourse if dim<self.X.shape[0]]
+
+        ### Plot each set of var, var_others
+        vars_already_state_space_plotted = []
+        var_varothers_already_plotted = []
+        heatmaps_already_plotted = []
+        for i_var, (var, var_others, filtdict, prune_min_n_levs) in enumerate(zip(LIST_VAR, LIST_VARS_OTHERS, LIST_FILTDICT, LIST_PRUNE_MIN_N_LEVS)):
+            print("RUNNING: ", i_var,  var, " -- ", var_others)
+
+            # Copy pa for this
+            PA = PAorig.copy()
+
+            ####################### Cleanup PA
+            var_for_name = var
+            if isinstance(var, (tuple, list)):
+                PA.Xlabels["trials"] = append_col_with_grp_index(PA.Xlabels["trials"], var, "_tmp")
+                var = "_tmp"
+
+            if filtdict is not None:
+                for _var, _levs in filtdict.items():
+                    print("len pa bnefore filt this values (var, levs): ", _var, _levs)
+                    PA = PA.slice_by_labels("trials", _var, _levs, verbose=True)
+
+            if nmin_trials_per_lev is not None:
+                prune_min_n_trials = nmin_trials_per_lev
+            else:
+                prune_min_n_trials = 5
+
+            if (var, tuple(var_others)) not in heatmaps_already_plotted:
+                plot_counts_heatmap_savepath = f"{savedir}/{i_var}_counts_heatmap-var={var_for_name}-ovar={'|'.join(var_others)}.pdf"
+                heatmaps_already_plotted.append((var, tuple(var_others)))
+            else:
+                plot_counts_heatmap_savepath = None
+
+            PA, _, _ = PA.slice_extract_with_levels_of_conjunction_vars(var, var_others, prune_min_n_trials, prune_min_n_levs,
+                                                            plot_counts_heatmap_savepath=plot_counts_heatmap_savepath)
+            if PA is None:
+                print("all data pruned!!")
+                continue
+            
+            # DEcide if this is trajectory or scalar.
+            if PA.X.shape[2]>1:
+                # Then is trajecotry
+                PA_traj = PA
+                PA_scal = PA.agg_wrapper("times")
+            else:
+                PA_traj = None
+                PA_scal = PA
+
+            ### (1) var -- split by subplotvar
+            if not var_others == "dummy":
+                if (var, var_others) not in var_varothers_already_plotted:
+                    var_varothers_already_plotted.append((var, tuple(var_others)))
+                    # (1a) Traj
+                    sdir = f"{savedir}/TRAJ"
+                    os.makedirs(sdir, exist_ok=True)
+                    if PA_traj is not None:    
+                        if PLOT_CLEAN_VERSION == False:
+                            trajgood_plot_colorby_splotby_WRAPPER(PA_traj.X, PA_traj.Times, PA_traj.Xlabels["trials"], var, 
+                                                                sdir, var_others, list_dims, 
+                                                                time_bin_size=time_bin_size, save_suffix=i_var)
+                        else:
+                            # Plot a "clean" version (Paper version), including with different x and y lims, so can compare
+                            # across plots
+                            ssuff = f"{i_var}"
+                            trajgood_plot_colorby_splotby_WRAPPER(PA_traj.X, PA_traj.Times, PA_traj.Xlabels["trials"], var, 
+                                                                sdir, var_others, list_dims, 
+                                                                time_bin_size=None, save_suffix=ssuff,
+                                                                plot_dots_on_traj=False)
+                            
+                            for xlim_force in [
+                                # [-3.2, 3.2],
+                                [-2.4, 2.4],
+                                ]:
+                                for ylim_force in [
+                                    # [-1.5, 1.5],
+                                    [-2, 2],
+                                    # [-2.5, 2.5],
+                                    ]:
+                                    ssuff = f"{i_var}--xylim={xlim_force}|{ylim_force}"
+                                    trajgood_plot_colorby_splotby_WRAPPER(PA_traj.X, PA_traj.Times, PA_traj.Xlabels["trials"], var, 
+                                                                        sdir, var_others, list_dims, 
+                                                                        time_bin_size=None, save_suffix=ssuff,
+                                                                        plot_dots_on_traj=False,
+                                                                        xlim_force = xlim_force, ylim_force=ylim_force)
+                    # (1b) Scal
+                    dflab = PA_scal.Xlabels["trials"]
+                    Xthis = PA_scal.X.squeeze(axis=2).T # (n4trials, ndims)
+                    sdir = f"{savedir}/SCALAR"
+                    os.makedirs(sdir, exist_ok=True)
+                    trajgood_plot_colorby_splotby_scalar_WRAPPER(Xthis, dflab, var, sdir,
+                                                                    vars_subplot=var_others, list_dims=list_dims,
+                                                                    skip_subplots_lack_mult_colors=False, save_suffix = i_var)
+                    var_varothers_already_plotted.append((var, tuple(var_others)))
+                    plt.close("all")
+                    
+
+                    # (1c) Timecourse
+                    if PA_traj is not None:
+                        sdir = f"{savedir}/TIMECOURSE"
+                        os.makedirs(sdir, exist_ok=True)
+
+                        plot_trials_n = 5
+                        if var_others is not None:
+                            _vars = [var] + list(var_others)
+                        else:
+                            _vars = [var]
+
+                        if False:
+                            df = trajgood_construct_df_from_raw(PA_traj.X, PA_traj.Times, PA_traj.Xlabels["trials"], _vars)
+                            
+                            for dim in list_dim_timecourse:
+                                # - (i) combined, plotting means.
+                                fig, _ = trajgood_plot_colorby_splotby_timeseries(df, var, var_others, dim=dim,
+                                                                                plot_trials_n=plot_trials_n, 
+                                                                                SUBPLOT_OPTION="split_levs")
+                                path = f"{sdir}/TIMECOURSEsplit-color={var}-sub={var_others}-dim={dim}-suff={i_var}.pdf"
+                                print("Saving ... ", path)
+                                savefig(fig, path)
+
+                                # - (2) split
+                                fig, _ = trajgood_plot_colorby_splotby_timeseries(df, var, var_others, dim=dim, plot_trials_n=plot_trials_n,
+                                                                        plot_trials=False, SUBPLOT_OPTION="combine_levs")
+                                path = f"{sdir}/TIMECOURSEcomb-color={var}-sub={var_others}-dim={dim}-suff={i_var}.pdf"
+                                print("Saving ... ", path)
+                                savefig(fig, path)
+                                
+                                plt.close("all")
+                        else:
+                            try:
+                                fig = PA_traj.plotwrappergrid_smoothed_fr_splot_var(var, var_others, list_dim_timecourse)
+                                path = f"{sdir}/timecourse_splot_var-var={var}-varother={var_others}.pdf"
+                                print("Saving ... ", path)
+                                savefig(fig, path)
+
+                                fig = PA_traj.plotwrappergrid_smoothed_fr_splot_neuron(var, var_others, list_dim_timecourse)
+                                path = f"{sdir}/timecourse_splot_neur-var={var}-varother={var_others}.pdf"
+                                print("Saving ... ", path)
+                                savefig(fig, path)
+                            except Exception as err:
+                                print(PA_traj.X.shape, PA_traj.Chans)
+                                print(var, var_others, list_dim_timecourse)
+                                raise err
+
+
+            ### (2) var (combining across subplot vars)
+            if var not in vars_already_state_space_plotted:
+                vars_already_state_space_plotted.append(var)
+                # (2a) Traj
+                if PA_traj is not None:    
+                    sdir = f"{savedir}/TRAJ"
+                    os.makedirs(sdir, exist_ok=True)
+                    if PLOT_CLEAN_VERSION:
+                        # Plot a "clean" version (Paper version), including with different x and y lims, so can compare
+                        # across plots
+                        trajgood_plot_colorby_splotby_WRAPPER(PA_traj.X, PA_traj.Times, PA_traj.Xlabels["trials"], var, 
+                                                            sdir, None, list_dims, 
+                                                            time_bin_size=None, save_suffix=i_var,
+                                                            plot_dots_on_traj=False)
+
+                        for xlim_force in [
+                            # [-3.2, 3.2],
+                            [-2.4, 2.4],
+                            ]:
+                            for ylim_force in [
+                                # [-1.5, 1.5],
+                                [-2, 2],
+                                # [-2.5, 2.5],
+                                ]:
+                                ssuff = f"{i_var}--xylim={xlim_force}|{ylim_force}"
+                                trajgood_plot_colorby_splotby_WRAPPER(PA_traj.X, PA_traj.Times, PA_traj.Xlabels["trials"], var, 
+                                                                    sdir, None, list_dims, 
+                                                                    time_bin_size=None, save_suffix=ssuff,
+                                                                    plot_dots_on_traj=False,
+                                                                    xlim_force = xlim_force, ylim_force=ylim_force)
+                    else:
+                        trajgood_plot_colorby_splotby_WRAPPER(PA_traj.X, PA_traj.Times, PA_traj.Xlabels["trials"], var, 
+                                                            sdir, None, list_dims, 
+                                                            time_bin_size=time_bin_size, save_suffix=i_var)
+                # (2b) Scal
+                dflab = PA_scal.Xlabels["trials"]
+                Xthis = PA_scal.X.squeeze(axis=2).T # (n4trials, ndims)
+                sdir = f"{savedir}/SCALAR"
+                os.makedirs(sdir, exist_ok=True)
+                trajgood_plot_colorby_splotby_scalar_WRAPPER(Xthis, dflab, var, sdir,
+                                                                vars_subplot=None, list_dims=list_dims,
+                                                                skip_subplots_lack_mult_colors=False, save_suffix = i_var)
+                var_varothers_already_plotted.append((var, tuple(var_others)))
+
+            ########### HEATMAPS of activity
+            if PA_traj is not None and also_plot_heatmaps:
+                savedir_this = f"{savedir}/heatmaps-var={var}-varother={var_others}"
+                os.makedirs(savedir_this, exist_ok=True)
+                from neuralmonkey.neuralplots.population import heatmapwrapper_many_useful_plots
+                zlims = None
+                heatmapwrapper_many_useful_plots(PA_traj, savedir_this, var, var_others, False, False, zlims)
+
+            ####
+            plt.close("all")    
+
+    def plot_heatmap_state_euclidean_wrapper(self, var_effect, var_other, SAVEDIR, 
+                                             list_twind_scal_eucl, 
+                                             LIST_VAR_SS, LIST_VARS_OTHERS_SS, list_dims=None, ndims_timecourse=4,
+                                             twind_base = (-0.6, -0.05),
+                                             do_heatmap=True, do_state_space=True, do_euclidean=True,
+                                             list_mean_zscore_base=None,
+                                             quick_mode=False):
+        """
+        General helper for summarizing activity for this population,
+        to makes all plots I tend to make, including heatmaps, RSA, state space, euclidean distance.
+        NOTE: must first do dim reduction, etc, and use that processed PA for this plots.
+        """
+        from neuralmonkey.neuralplots.population import heatmapwrapper_many_useful_plots
+        import seaborn as sns
+
+        if list_mean_zscore_base is None:
+            # # For heatmap...
+            # list_mean_zscore_base = [(False, False, False), (False, True, True), (True, False, False), (True, True, False), (False, False, True)]
+
+            # For state space...
+            list_mean_zscore_base = [(False, False, False), (True, False, False),  (False, True, True)]
+
+        if quick_mode:
+            list_mean_zscore_base = [(False, False, False), (False, True, True)] # Good for SS and z-score, respectively.
+
+        list_heatmap_means = [True]
+        # list_mean_zscore_base = [(False, True, False)]
+        PLOT_CLEAN_VERSION = False
+        # plot_bad_strokes=False
+
+        ### HEATMAP and STATE SPACE
+        for subtr_time_mean, zscore, subtr_baseline in list_mean_zscore_base:
+
+            pathis = self.copy()
+            diverge = False
+
+            if zscore:
+                pathis = pathis.norm_rel_all_timepoints()
+                zlims = None
+                # zlims = [-2, 2]
+                diverge = True
+            else:
+                zlims = None
+
+            if subtr_time_mean:
+                pathis = pathis.norm_subtract_trial_mean_each_timepoint()
+                diverge = True
+
+            if subtr_baseline:
+                pathis = pathis.norm_rel_base_window(twind_base, "subtract")
+                diverge = True
+
+            for mean_over_trials in list_heatmap_means:
+                savedirthis = f"{SAVEDIR}/zscore={zscore}-subtr_time_mean={subtr_time_mean}-subtrbase={subtr_baseline}-mean={mean_over_trials}"
+                os.makedirs(savedirthis, exist_ok=True)
+
+                ######## HEATMAPS
+                if do_heatmap:
+                    heatmapwrapper_many_useful_plots(pathis, savedirthis, var_effect, var_other, False, 
+                                                    mean_over_trials=mean_over_trials, zlims=zlims, flip_rowcol=True,
+                                                    plot_fancy=True, diverge=diverge)  
+
+                    plt.close("all")
+
+            ###################################### Running euclidian
+            nmin_trials_per_lev = 4
+            # Plot state space
+            # LIST_VAR = [
+            #     var_effect,
+            # ]
+            # LIST_VARS_OTHERS = [
+            #     (var_conj,),
+            # ]
+
+            if do_state_space:
+                if list_dims is None:
+                    list_dims = [(0,1), (1,2), (2,3), (3,4)]
+                list_dim_timecourse = list(range(ndims_timecourse))
+
+                savedirthis = f"{SAVEDIR}/SS-zscore={zscore}-subtr_time_mean={subtr_time_mean}-subtrbase={subtr_baseline}"
+                os.makedirs(savedirthis, exist_ok=True)
+
+                pathis.plot_state_space_good_wrapper(savedirthis, LIST_VAR_SS, LIST_VARS_OTHERS_SS, PLOT_CLEAN_VERSION=PLOT_CLEAN_VERSION,
+                                                list_dim_timecourse=list_dim_timecourse, list_dims=list_dims,
+                                                nmin_trials_per_lev=nmin_trials_per_lev)                
+
+
+        ### Euclidean and RSA
+        # Newer version, multiple dims for each var
+        if do_euclidean:
+            list_dfdist = []
+            for twind_scal in list_twind_scal_eucl:
+                ###################################### Running euclidian
+                from neuralmonkey.analyses.euclidian_distance import timevarying_compute_fast_to_scalar
+                
+                pa = self.slice_by_dim_values_wrapper("times", twind_scal)
+
+                # (1) Data
+                savedir = f"{SAVEDIR}/euclidean-twindscal={twind_scal}"
+                os.makedirs(savedir, exist_ok=True)
+                dfdist, _ = timevarying_compute_fast_to_scalar(pa, [var_effect, var_other], rsa_heatmap_savedir=savedir,
+                                                                plot_conjunctions_savedir=savedir)
+
+                # import seaborn as sns
+                fig = sns.catplot(data=dfdist, x=f"same-{var_effect}|{var_other}", y="dist_yue_diff", alpha=0.5, jitter=True)
+                savefig(fig, f"{savedir}/catplot-1.pdf")
+                fig = sns.catplot(data=dfdist, x=f"same-{var_effect}|{var_other}", y="dist_yue_diff", kind="bar")
+                savefig(fig, f"{savedir}/catplot-2.pdf")
+
+                plt.close("all")
+
+                dfdist["twind_scal"] = [twind_scal for _ in range(len(dfdist))]
+                list_dfdist.append(dfdist)
+        else:
+            list_dfdist = None
+
+        return list_dfdist
+
+##########################
+    def plotmod_overlay_stroke_times(self, ax):
+        """
+        For a plot where x axis is time, and self is holding storkes, plot the mean and std of stroke off times
+        """
+        from pythonlib.tools.plottools import rugplot_scatter_hist_on_axis
+        _, off_times = self.behavior_extract_strokes_times_to_dflab()
+
+        # edach trial
+        rugplot_scatter_hist_on_axis(ax, off_times, "c", False, True)
+
+##########################
+    def regress_neuron_task_variables_all_chans_plot_coeffs(self, dfcoeff, savedir_coeff_heatmap=None, suffix=None):
+        """
+        Helper to plot dfcoeff, which holds the the coefficients of the regression for each chan, where the coefficients are
+        the regression coefficients for each variable.
+        """
+        from pythonlib.tools.snstools import heatmap
+        fig, _, _ = heatmap(dfcoeff, annotate_heatmap=False, diverge=True, labels_col=dfcoeff.columns, labels_row=self.Chans)         
+        if savedir_coeff_heatmap is not None:
+            if suffix is not None:
+                savefig(fig, f"{savedir_coeff_heatmap}/regression_coeffs-{suffix}.pdf")
+            else:
+                savefig(fig, f"{savedir_coeff_heatmap}/regression_coeffs.pdf")
+
+    def regress_neuron_task_variables_all_chans_data_splits(self, variables, variables_is_cat, 
+                                                            var_effect_within_split, var_other_for_split):
+        """
+        For each chan, do multiple regression, where variables predicts firing rate.
+        Here, "data_splits" means that can compute regression axes using different splits of dataset, each a level of vars_others, and
+        then concatenate the results across all splits, to result in a single subspace
+        - e.g, useful if want to compute axis for chunk_within_rank, conditioned on each level of chunk_shape.
+        - also useful if you want to aggregate axes across different levels, to get a single better estimate of the axis.
+        PARAMS:
+        - variables, list of str, variables, to input input multipel regression.
+        - variables_is_cat, list of bool, not used in regression, but used in later code.
+        """    
+
+        # tbin_dur = 0.2
+        # tbin_slide = 0.1
+        # npcs_keep_force = 50
+        # normalization = "orthonormal"
+        PLOT_COEFF_HEATMAP = False
+        demean = False # Must be false, as we dont want function to modify PA
+        get_axis_for_categorical_vars = True
+
+        PAscal = self.norm_subtract_mean_each_chan()
+        assert PAscal.X.shape[2]==1, "must be scalra"
+
+        dflab = PAscal.Xlabels["trials"]
+        # var_subspace = "chunk_within_rank"
+
+        ### For each lev_other, extract the axis encoding <var_effect_within_split>
+        list_axes = []
+        # list_subspace_tuples = []
+        levs_other = dflab[var_other_for_split].unique()
+        for levo in levs_other:
+
+            # First, get subset of data
+            filtdict = {var_other_for_split:[levo]}
+            pathis = PAscal.slice_by_labels_filtdict(filtdict)
+
+            list_subspaces = []
+            # list_subspaces = [(var_effect_within_split,)]
+            _, _, _, dfcoeff, _, dfbases = pathis.dataextract_subspace_targeted_pca(
+                            variables, variables_is_cat, list_subspaces, demean=demean, 
+                            # normalization=normalization,
+                            PLOT_COEFF_HEATMAP=PLOT_COEFF_HEATMAP, savedir_coeff_heatmap=None, PRINT=False,
+                            get_axis_for_categorical_vars=get_axis_for_categorical_vars)
+
+            list_axes.append(dfcoeff[var_effect_within_split])
+
+        ### Store in a dataframe, the columns encoding <var_effect_within_split> within each levo (split)
+        columns_each_split = [(var_effect_within_split, levo) for levo in levs_other]
+        dfcoeff_splits = pd.DataFrame(np.stack(list_axes, axis=1), columns=columns_each_split)
+        
+        ### Rerun, using the entire data, not just the splits
+        _, _, _, dfcoeff_all, _, dfbases = PAscal.dataextract_subspace_targeted_pca(
+                            variables, variables_is_cat, [], demean=demean, 
+                            # normalization=normalization, 
+                            plot_orthonormalization=False, 
+                            PLOT_COEFF_HEATMAP=False, savedir_coeff_heatmap=None, PRINT=False, get_axis_for_categorical_vars=get_axis_for_categorical_vars)
+
+        ### Finally, merge the split and the all
+        for col in dfcoeff_splits.columns:
+            assert col not in dfcoeff_all.columns
+        DFCOEFF = pd.concat([dfcoeff_all, dfcoeff_splits], axis=1)    
+
+        # Also get the names of columns that are for the split levels:
+
+        return DFCOEFF, columns_each_split
+
+    def regress_neuron_task_variables_convert_coeff_to_basis(self, dfcoeff, vars_this_subspace, original_feature_mapping,
+                                                             savedir_pca_subspaces=None, convert_to_dfbasis=True):
+        """
+        Convert coefficients to subspace using PCA, given set of regression coefficients (dfcoeff) and variables to combine
+        into this subspace (vars_this_subspace)
+
+        PARAMS:
+        - vars_this_subspace, list of str, the variable names to include in making this subspace
+            vars_this_subspace = ("motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", 
+                        "velmean_x", "velmean_y", "gridloc", "DIFF_gridloc")
+        RETURNS:
+        - dfbases, one, row, this subspace's basis
+        OR None, if not enough variation to fit regression model.
+        """
+        from neuralmonkey.analyses.state_space_good import dimredgood_pca
+
+        # convert vars to columns
+        # Get the levels for this categorical variable.
+        list_var_inner = [k for k, v in original_feature_mapping.items() if v in vars_this_subspace]
+        
+        if len(list_var_inner)==0:
+            # This usually means this variable did not have enough variation to be part of regression model.
+            # print(list_var_inner)
+            # print("Var mappings:")
+            # for k, v in original_feature_mapping.items():
+            #     print(k, v)
+            # print("Failed to find this var: ", var_subspace)
+            # assert False
+            if convert_to_dfbasis:
+                return None
+            else:
+                return None, None, None
+
+        # Do PCA to get the first PC
+        data = dfcoeff.loc[:, list_var_inner].values
+        assert data.shape[1]==len(list_var_inner)
+
+        print(f"[doing pca for var={vars_this_subspace}, this many levels: {len(list_var_inner)+1}")
+        if savedir_pca_subspaces is not None:
+            plot_pca_explained_var_path = f"{savedir_pca_subspaces}/pca-var_explained-{'|'.join(vars_this_subspace)}.pdf"
+            plot_loadings_path = f"{savedir_pca_subspaces}/pca-loadings-{'|'.join(vars_this_subspace)}.pdf"
+        else:
+            plot_pca_explained_var_path, plot_loadings_path = None, None
+
+        _, Xpca, _, explained_variance_ratio_, components_ = dimredgood_pca(data, method="sklearn", 
+                                        plot_pca_explained_var_path=plot_pca_explained_var_path, 
+                                        plot_loadings_path=plot_loadings_path, return_stats=True)
+        plt.close("all")
+
+        if convert_to_dfbasis:
+            res = []
+            res.append({
+                "var_subspace":"this",
+                "Xpca":Xpca,
+                "explained_variance_ratio_":explained_variance_ratio_,
+                "components_":components_,
+            })
+            dfbases = pd.DataFrame(res)
+
+            return dfbases
+        else:
+            return Xpca, explained_variance_ratio_, components_
+
+    def regress_neuron_task_variables_all_chans_residuals(self, variables, variables_is_cat, PLOT_COEFF_HEATMAP=False, PRINT=False,
+                                                savedir_coeff_heatmap=None, get_axis_for_categorical_vars=False,
+                                                savedir_pca_subspaces=None, also_return_updated_variables=False):
+        """
+        Control for variables by regressing them out of self.X. 
+        """
+        dfcoeff, dfbases, res_all, original_feature_mapping = self.regress_neuron_task_variables_all_chans(variables, variables_is_cat, 
+                                                                PLOT_COEFF_HEATMAP, PRINT, savedir_coeff_heatmap, 
+                                                                get_axis_for_categorical_vars, savedir_pca_subspaces, 
+                                                                also_return_updated_variables)
+        
+        Xresid = np.stack([x["residuals"] for x in res_all], axis=0) # (nneur, ntrials)
+        Xresid = Xresid[:, :, None] # (nneur, ntrials, 1)
+        PAresid = self.copy_replacing_X(Xresid)
+        print("TODO !!!!: use ridge regression")
+        return PAresid
+        
+    def regress_neuron_task_variables_all_chans(self, variables, variables_is_cat, PLOT_COEFF_HEATMAP=False, PRINT=False,
+                                                savedir_coeff_heatmap=None, get_axis_for_categorical_vars=False,
+                                                savedir_pca_subspaces=None, also_return_updated_variables=False):
+        """
+        For each chan, do multiple regression, where variables predicts firing rate, and then return the combined coefficients
+
+        PARAMS:
+        - return_as_residuals, bool, if True, then returns copy of self, with X replaced with residuals, after subtracting predicted
+        activity given variables.
+        """    
+        x1 = self.X.copy()
+        if variables_is_cat is None:
+            variables_is_cat = [True for _ in range(len(variables))]
+        else:
+            assert len(variables) == len(variables_is_cat)
+
+        res = []
+        res_all = []
+        for chan_idx in range(len(self.Chans)):
+            dict_coeff, model, data, original_feature_mapping, variables, variables_is_cat = self.regress_neuron_task_variables(chan_idx, variables, 
+                                                                                                variables_is_cat, PRINT=PRINT)
+            res.append(dict_coeff)
+            res_all.append({
+                "dict_coeff":dict_coeff,
+                "model":model,
+                "data":data,
+                "original_feature_mapping":original_feature_mapping,
+            })
+        dfcoeff = pd.DataFrame(res)
+
+        # Before get basis vectors, for categorical variables, get a single vector (first PC)
+        if get_axis_for_categorical_vars:
+            print(dfcoeff.columns.tolist())
+            for var_subspace, var_is_cat in zip(variables, variables_is_cat):
+                print(var_subspace, var_is_cat)
+                if var_is_cat: 
+                    from neuralmonkey.analyses.state_space_good import dimredgood_pca
+                    # Get the levels for this categorical variable.
+                    original_feature_mapping = res_all[0]["original_feature_mapping"]
+                    list_var_inner = [k for k, v in original_feature_mapping.items() if v==var_subspace]
+
+                    if len(list_var_inner)==0:
+                        # This usually means this variable did not have enough variation to be part of regression model.
+                        # print(list_var_inner)
+                        # print("Var mappings:")
+                        # for k, v in original_feature_mapping.items():
+                        #     print(k, v)
+                        # print("Failed to find this var: ", var_subspace)
+                        # assert False
+                        continue
+                    
+                    # Do PCA to get the first PC
+                    data = dfcoeff.loc[:, list_var_inner].values
+                    assert len(data)>0
+
+                    # if np.var(data)==0:
+                    #     Xpcakeep = data
+                    # else:
+                    Xpcakeep, _, _ = dimredgood_pca(data, method="sklearn")
+                                                        #  plot_pca_explained_var_path="/tmp/test1.pdf", plot_loadings_path="/tmp/test2.pdf")
+                    # print("Shapes: ", Xpcakeep.shape, data.shape)
+                    dfcoeff[var_subspace] = Xpcakeep[:, 0]
+                    plt.close("all")
+
+                    # Also, optionally, get not just first PC
+
+        if PLOT_COEFF_HEATMAP:
+            self.regress_neuron_task_variables_all_chans_plot_coeffs(dfcoeff, savedir_coeff_heatmap)
+            # from pythonlib.tools.snstools import heatmap
+            # fig, _, _ = heatmap(dfcoeff, annotate_heatmap=False, diverge=True, labels_col=dfcoeff.columns, labels_row=self.Chans)         
+            # if savedir_coeff_heatmap is not None:
+            #     savefig(fig, f"{savedir_coeff_heatmap}/regression_coeffs.pdf")
+
+        # Get mapping from input variables to their levels (i.e,. their coefficent names)
+        original_feature_mapping = res_all[0]["original_feature_mapping"]
+        for x in res_all:
+            assert original_feature_mapping == x["original_feature_mapping"], "failed sanity check! diff chanels have diff mapping, why?"
+
+        ### Get multi-D subspace for each categorical variable. 
+        # Get a subspace that is higher-D than just 1-D
+        res = []
+        for var_subspace, var_is_cat in zip(variables, variables_is_cat):
+            if var_is_cat: 
+                if True:
+                    Xpca, explained_variance_ratio_, components_ = self.regress_neuron_task_variables_convert_coeff_to_basis(
+                            dfcoeff, [var_subspace], original_feature_mapping, savedir_pca_subspaces, convert_to_dfbasis=False)
+                    if Xpca is None:
+                        print(var_subspace)
+                        continue
+                else:
+                    from neuralmonkey.analyses.state_space_good import dimredgood_pca
+                    # Get the levels for this categorical variable.
+                    list_var_inner = [k for k, v in original_feature_mapping.items() if v==var_subspace]
+
+                    if len(list_var_inner)==0:
+                        # This usually means this variable did not have enough variation to be part of regression model.
+                        # print(list_var_inner)
+                        # print("Var mappings:")
+                        # for k, v in original_feature_mapping.items():
+                        #     print(k, v)
+                        # print("Failed to find this var: ", var_subspace)
+                        # assert False
+                        continue
+                    
+                    # Do PCA to get the first PC
+                    data = dfcoeff.loc[:, list_var_inner].values
+                    assert len(data)>0
+
+                    print(f"For var={var_subspace}, this many levels: {len(list_var_inner)}")
+                    if savedir_pca_subspaces is not None:
+                        plot_pca_explained_var_path = f"{savedir_pca_subspaces}/pca-var_explained-{var_subspace}.pdf"
+                        plot_loadings_path = f"{savedir_pca_subspaces}/pca-loadings-{var_subspace}.pdf"
+                    else:
+                        plot_pca_explained_var_path, plot_loadings_path = None, None
+
+                    _, Xpca, _, explained_variance_ratio_, components_ = dimredgood_pca(data, method="sklearn", 
+                                                    plot_pca_explained_var_path=plot_pca_explained_var_path, 
+                                                    plot_loadings_path=plot_loadings_path, return_stats=True)
+                    plt.close("all")
+                    
+                # store everything
+                res.append({
+                    "var_subspace":var_subspace,
+                    "var_is_cat":var_is_cat,
+                    # "list_var_inner":list_var_inner,
+                    "Xpca":Xpca,
+                    "explained_variance_ratio_":explained_variance_ratio_,
+                    "components_":components_,
+                })
+        dfbases = pd.DataFrame(res)
+
+        assert np.all(x1==self.X), "I dont expect it to change based on this functino..."
+
+        if also_return_updated_variables:
+            return dfcoeff, dfbases, res_all, original_feature_mapping, variables, variables_is_cat
+        else:
+            return dfcoeff, dfbases, res_all, original_feature_mapping
+    
+    def regress_neuron_task_variables(self, chan_idx, variables, variables_is_cat, PRINT=False):
+        """
+        For a single chan, do multiple regression, where variables predicts firing rate.
+        Must be using scalar neural data
+        """    
+        import pandas as pd
+        import statsmodels.api as sm
+        import statsmodels.formula.api as smf
+
+        dflab = self.Xlabels["trials"]
+
+        # Only use variables that have at least 2 levels in data, or else may run into error later.
+        _variables = []
+        _variables_is_cat = []
+        for v, vcat in zip(variables, variables_is_cat):
+            if len(dflab[v].unique())>1:
+                _variables.append(v)
+                _variables_is_cat.append(vcat)
+            else:
+                print("Excluding this variable (only one level):", v)
+        variables = _variables
+        variables_is_cat = _variables_is_cat
+        assert len(variables)>0
+
+        ### Average over time
+        assert self.X.shape[2]==1, "you must pass in scalars -- e.g, could mean over time"
+        # pa = self.slice_by_dim_values_wrapper("times", twind_scal)
+        # pa = pa.agg_wrapper("times")
+
+        ### Pull out chan
+        frates = self.X[chan_idx, :, 0] # (ntrials, )
+
+        ### Feeatures
+        # TODO: Check for correlated variables.
+        data = dflab.loc[:, variables].copy()
+        data["frate"] = frates
+
+        ### Construct function string
+        from neuralmonkey.analyses.regression_good import formula_string_construct
+        func = formula_string_construct("frate", variables, variables_is_cat)
+
+        # # z-score all continuous varialbes
+        # data[["cont1", "cont2"]] = (data[["cont1", "cont2"]] - data[["cont1", "cont2"]].mean()) / data[["cont1", "cont2"]].std()
+
+        ### Run regression
+        model = smf.ols(func, data=data).fit()
+        # model = smf.ols(func, data=data).fit_regularized(alpha=0.00001)
+        # display(model.summary())
+        # assert False
+
+        # Extract the coefficients
+        feature_names = model.params.index.tolist()
+        coef_array = model.params.values  # shape (1, nfeat)
+
+        dict_coeff = {f:c for f, c in zip(feature_names, coef_array)}
+
+        # Map from dummy variables back to original variables
+        original_feature_mapping = {}
+        for feat in feature_names:
+            if 'C(' in feat:
+                # e.g., feat = 'C(gender)[T.male]'
+                base = feat.split('[')[0]  # 'C(gender)'
+                base = base.replace('C(', '').replace(')', '')  # 'gender'
+                original_feature_mapping[feat] = base
+            else:
+                original_feature_mapping[feat] = feat
+
+        if PRINT:
+            print(model.summary())
+            print(feature_names)
+            print(coef_array)   
+
+        return dict_coeff, model, data, original_feature_mapping, variables, variables_is_cat
+
+    def regress_neuron_task_variables_subtract_from_activity(self, tbin_dur, tbin_slide, twind, var_shape):
+        """
+        HACKY, to remove effect of first stroke, by regressing out from activity (raw, PA.X)
+        """
+        import numpy as np
+
+        # Convert to desired time bins
+        pa = self.slice_by_dim_values_wrapper("times", twind)
+        pa = pa.agg_by_time_windows_binned(tbin_dur, tbin_slide)
+
+        # For each time bin, do regression.
+        n_time_bins = pa.X.shape[2]
+        X = np.zeros([pa.X.shape[0], pa.X.shape[1], n_time_bins]) - np.inf # Initialize holder for final data.
+        for i in range(n_time_bins):
+            pathis = pa.slice_by_dim_indices_wrapper("times", [i])
+
+            var_effect = var_shape
+            variables = ["stroke_index_is_first", "task_kind", var_effect]
+            variables_is_cat = [True for _ in range(len(variables))]
+            dfcoeff, _, _, _ = pathis.regress_neuron_task_variables_all_chans(variables, 
+                                                                            variables_is_cat)
+
+            # This is the value you should subtract from all cases with first stroke = True
+            a = dfcoeff["C(stroke_index_is_first)[T.True]"].values[:, None] # (nchans, 1)
+
+            dflab = pa.Xlabels["trials"]
+            b = dflab["stroke_index_is_first"].astype(int).values[:, None] # (ntrials, 1)
+
+            X[:, :, i] = np.dot(a, b.T) # (nchans, ntrials). should subtract this from X at this timepoint.
+
+        assert np.all(X > -np.inf), "check that is all filled"        
+
+        # Do subtraction
+        pa.X = pa.X - X
+
+        return pa
+
 def concatenate_popanals_flexible(list_pa, concat_dim="trials", how_deal_with_different_time_values="replace_with_dummy"):
-    """ Concatenates popanals (along trial dim) which may have different time bases (but
+    """ Concatenates popanals (along a given dim) which may have different time bases (but
     the same n time bins.
     If differnet, then replaces time with 0,1, 2... (index), otherwise uses actual time.
     PARAMS:
@@ -2852,8 +6079,13 @@ def concatenate_popanals_flexible(list_pa, concat_dim="trials", how_deal_with_di
                                      replace_times_with_dummy_variable=False)
 
     elif concat_dim=="chans":
+        # for pa in list_pa:
+        #     print(pa.Chans) 
         PA = concatenate_popanals(list_pa, "chans",
                                   all_pa_inherit_trials_of_pa_at_this_index=0)
+        # print("output")
+        # print(PA.Chans)
+        # assert False
     else:
         print(concat_dim)
         assert False
@@ -2877,7 +6109,8 @@ def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None,
     - list_pa, list of PopAnal objects
     - dim, int, which dimensiion to concat along
     - values_for_concatted_dim, list of items which are labels for
-    each value in the new concatted dimension. Must be apporopriate length.
+    each value in the new concatted dimension. Must be apporopriate length. If None, thne
+    concatenates the values in the input pa
     - map_idxpa_to_value, dict or list, mapping from index in list_pa toa value, 
     used to populate a new column named map_idxpa_to_value_colname
     - map_idxpa_to_value_colname, str, name of new col, mapping (se ablve0)
@@ -2958,6 +6191,7 @@ def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None,
 
     for d in ["times", "chans", "trials"]:
         check_this_dim[d] = (assert_otherdims_have_same_values) and (d in assert_otherdims_restrict_to_these)
+
     # - extract values
     if dim_str=="times":
         times = values_for_concatted_dim
@@ -2971,12 +6205,27 @@ def concatenate_popanals(list_pa, dim, values_for_concatted_dim=None,
         trials = check_get_common_values_this_dim(list_pa, "trials", check_this_dim["trials"])
     elif dim_str=="chans":
         times = check_get_common_values_this_dim(list_pa, "times", check_this_dim["times"])
-        chans = values_for_concatted_dim
+        if values_for_concatted_dim is None:
+            _chans = []
+            for _pa in list_pa:
+                _chans.extend(_pa.Chans)
+            chans = _chans
+        else:
+            chans = values_for_concatted_dim
+        assert len(set(chans)) == len(chans), "have non-unique chans, this can run into error later"
         trials = check_get_common_values_this_dim(list_pa, "trials", check_this_dim["trials"])
     elif dim_str=="trials":
         times = check_get_common_values_this_dim(list_pa, "times", check_this_dim["times"])
         chans = check_get_common_values_this_dim(list_pa, "chans", check_this_dim["chans"])
-        trials = values_for_concatted_dim   
+
+        if values_for_concatted_dim is None:
+            _trials = []
+            for _pa in list_pa:
+                _trials.extend(_pa.Trials)
+            trials = _trials
+        else:
+            trials = values_for_concatted_dim   
+            assert len(set(trials)) == len(trials), "have non-unique chans, this can run into error later"
     else:
         print(dim_str)
         assert False

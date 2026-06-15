@@ -18,6 +18,8 @@ from pythonlib.tools.stroketools import strokesInterpolate2
 from pythonlib.globals import PATH_NEURALMONKEY, PATH_DATA_NEURAL_RAW, PATH_DATA_NEURAL_PREPROCESSED, PATH_MATLAB, PATH_SAVE_CLUSTERFIX
 # PATH_NEURALMONKEY = "/data1/code/python/neuralmonkey/neuralmonkey"
 import pandas as pd
+import seaborn as sns
+from pythonlib.tools.plottools import savefig
 
 LOCAL_LOADING_MODE = False
 LOCAL_PATH_PREPROCESSED_DATA = f"{PATH_DATA_NEURAL_PREPROCESSED}/recordings"
@@ -45,6 +47,12 @@ MAP_COMBINED_REGION_TO_REGION = {
     "SMA":["SMA_p", "SMA_a"],
     "preSMA":["preSMA_p", "preSMA_a"]}
 MAP_COMBINED_REGION_TO_REGION = {k:tuple(v) for k, v in MAP_COMBINED_REGION_TO_REGION.items()}
+
+MAP_REGION_TO_COMBINED_REGION = {}
+for regcomb, regions in MAP_COMBINED_REGION_TO_REGION.items():
+    for reg in regions:
+        MAP_REGION_TO_COMBINED_REGION[reg] = regcomb
+MAP_REGION_TO_COMBINED_REGION
 
 # SMFR_SIGMA = 0.025
 # SMFR_SIGMA = 0.040 # 4/29/23
@@ -120,6 +128,8 @@ MAP_EVENT_TO_PREFIX = {
 
 DATASETBEH_CACHED_USE_BEHTOUCH = True
 
+HACK_TOUCHSCREEN_LAG = True
+
 def load_mult_session_helper(DATE, animal, dataset_beh_expt=None, expt = "*", 
     MINIMAL_LOADING=True,
     units_metadat_fail_if_no_exist=False,
@@ -158,6 +168,12 @@ def load_mult_session_helper(DATE, animal, dataset_beh_expt=None, expt = "*",
 
     # Combine into all sessions
     MS = MultSessions(SNlist)
+
+    # Sanity check that the sites match (had issues with KS)
+    sites = MS.sitegetter_all(how_combine="intersect")
+    for s in sites:
+        MS.sitegetter_summarytext(s)
+
     return MS
 
 
@@ -226,7 +242,7 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
         print("------------------------------")
         print("Loading this neural session:", rec_session)
         print("Loading these beh expts:", beh_expt_list)
-        print("Loading these beh sessions:",beh_sess_list)
+        print("Loading these beh sessions:", beh_sess_list)
         print("Using this beh_trial_map_list:", beh_trial_map_list)
 
     if beh_trial_map_list == [(1, 0)]:
@@ -236,12 +252,12 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
         # since you want to be able to fail, since to debug this.
         ALLOW_RETRY=False
 
-    # # Hard code sessions where multiple sec sessions to a single beh session, this leads to
-    # # error where the rec sessions doesnt know which beh trial to start at.
-    # if animal=="Pancho" and int(DATE)==221024 and rec_session==1:
-    #     # two rec sessions, one beh session
-    #     beh_trial_map_list = [(667, 0)]
-    #     ALLOW_RETRY=False
+    # Hard code sessions where multiple sec sessions to a single beh session, this leads to
+    # error where the rec sessions doesnt know which beh trial to start at.
+    if animal=="Pancho" and int(DATE)==221024 and rec_session==1:
+        # two rec sessions, one beh session
+        beh_trial_map_list = [(667, 0)]
+        ALLOW_RETRY=False
     # elif animal=="Pancho" and int(DATE)==220719:
     #     # one rec session, two beh sessions
     #     beh_trial_map_list = [(1,0), (1,45)]
@@ -253,6 +269,7 @@ def load_session_helper(DATE, dataset_beh_expt=None, rec_session=0, animal="Panc
     #     print(beh_sess_list)
     #     print(sessdict[DATE])
     #     assert False
+
     try:
         SN = Session(DATE, beh_expt_list, beh_sess_list, beh_trial_map_list,
             animal =animal,  
@@ -358,10 +375,17 @@ class Session(object):
         """
         from pythonlib.tools.expttools import makeTimeStamp
 
+        if isinstance(datestr, int):
+            datestr = str(datestr)
+
         if (animal=="Diego" and datestr=="231001") or (animal=="Pancho" and datestr=="231020"):
             print("This day has flipped cue-image onset. It will fail photodiode extraction. ")
             print("See Dropbox/Diego_231001_cue_stim_flipped.png and Dropbox/Diego_231001_cue_stim_normal.png")
             print("Solve this using debug_eventcode...ipynb")
+            assert False
+
+        if (animal=="Pancho" and datestr=="220831"):
+            print("This day fails, becuase beh (session 3) = rec sessions 3 and 4. Should fix this.")
             assert False
 
         # if BAREBONES_LOADING:
@@ -465,6 +489,7 @@ class Session(object):
                     spikes_version = "kilosort"
                 else:
                     spikes_version = "tdt"
+                print("USING THIS SPIKES VERSION: ", spikes_version)
 
         # spikes versino (initialize as tdt always)
         self.SPIKES_VERSION = "tdt"
@@ -664,6 +689,7 @@ class Session(object):
         # Initialize mappers
         self.MapSiteToRegionCombined = {}
         self.MapSiteToRegion = {}
+        # self.MapDatasetKeyTo
 
         # # Check if ks exists.
         # if spikes_version=="kilosort_if_exists":
@@ -696,11 +722,30 @@ class Session(object):
             self.SMFR_SIGMA = _SMFR_SIGMA
 
     ####################### PREPROCESS THINGS
+    def _datasetbeh_input_dataset(self, D):
+        """
+        Update self.Datasetbeh with a new dataset D
+
+        Doesn't do sanity check that every nerual trial (in self) exists in D.
+        
+        But does constrain that will only sample neural traisl that exist in D,
+        if you previously had _FORCE_GET_TRIALS_ONLY_IN_DATASET==True
+
+        """
+        self.Datasetbeh = D        
+
+        # Update the trials in neuarl to match beh
+        if self._FORCE_GET_TRIALS_ONLY_IN_DATASET==True:
+            self._datasetbeh_remove_neural_trials_missing_beh()
+
     def _datasetbeh_remove_neural_trials_missing_beh(self):
-        """ Does ONE THING --> removes neural trials which dont exist in dataset.
+        """ 
+        Does ONE THING --> removes neural trials which dont exist in dataset.
         This is useful since dataset beh might prune trials which have bad strokes, etc.
-        ACTUALLY - this now doesnt do anything. Istead,  just turns on flag to always only return trials that
+        ACTUALLY this is very simple -- just turns on flag to always only return trials that
         are in Dataset.
+
+        NOTE: Run this if you ever input a new datsaetbeh.
         """
 
         if True:
@@ -925,7 +970,327 @@ class Session(object):
         else:
             # Skip.
             dirty_kinds = []
-        self._sitesdirty_update(dirty_kinds=dirty_kinds)
+        self._sitesdirty_noisy_update(dirty_kinds=dirty_kinds)
+
+    def sitesdirtygood_preprocess_wrapper(self, SAVEDIR=None, nsigma=3.5):
+        """
+        Wrapper for all things for good pruning of chans and trails within chans, based on firing rates
+        stats -- outliers.
+        
+        For each chan, gets stats based on (fr over trials), such as drift and variance fr across blocks of trials.
+        
+        For each chan, get list of trials which are bad, in having mean fr higher or lower than mean trial by nsigma*STD.
+
+        Apply threshold for different metrics, keeping only those chans that pass for all metrics.
+        """
+
+        assert False, "obsolete -- use the one in MultSessions"
+        
+        from pythonlib.tools.snstools import rotateLabel
+        from pythonlib.tools.pandastools import savefig
+
+        # Manually input thresholds
+        # These based on Diego,, 240508.
+        map_var_to_thresholds = {
+            "frstd_spread_index_across_bins":(0, 1),
+            "slope_over_mean":(-0.18, 0.18),
+            "fr_spread_index_across_bins":(0, 0.4),
+            "frac_trials_bad":(0, 0.012)
+        }
+
+        if SAVEDIR is None:
+            from pythonlib.globals import PATH_DATA_NEURAL_PREPROCESSED
+            SAVEDIR = f"{PATH_DATA_NEURAL_PREPROCESSED}/sitesdirtygood_preprocess/{self.Animal}-{self.Date}-{self.RecSession}"
+            os.makedirs(SAVEDIR, exist_ok=True)
+
+        ### First, extract spikes data for each (site, trial)
+        # NOTE: if this is already done, will be very fast.
+        self.sitestats_fr_get_and_save(save=False)
+
+        ### COLLECT ALL DATA        
+        savedir = f"{SAVEDIR}/fr_over_trials"
+        os.makedirs(savedir, exist_ok=True)
+
+        sites = self.sitegetterKS_all_sites()
+        trials = self.get_trials_list()
+        res = []
+        for chan in sites:
+            print(chan)
+            
+            # FR stability/drift
+            frvals, trials_this, times_frac, metrics, inds_bad = self.sitesdirtygood_preprocess_firingrate_drift(
+                chan, trials, savedir, nsigma=nsigma)
+
+            # FR outliers, specific trials.
+            res.append({
+                "chan":chan,
+                "frvals":frvals,
+                "trials":trials_this,
+                "times_frac":times_frac,
+                "inds_bad":inds_bad,
+            })
+            for name, val in metrics.items():
+                res[-1][name] = val
+
+            plt.close("all")
+
+        dfres = pd.DataFrame(res)
+        dfres["bregion"] = [self.sitegetterKS_map_site_to_region(chan) for chan in dfres["chan"].tolist()]
+
+        ### Generate dataframe and add things to it
+        # Quantify, frac trials that are outliers
+        def F(x):
+            return len(x)
+        dfres["n_inds_bad"] = dfres["inds_bad"].apply(F)
+        dfres["n_trials"] = [len(trials) for trials in dfres["trials"]]
+        dfres["frac_trials_bad"] = dfres["n_inds_bad"]/dfres["n_trials"]
+
+        # Which chans pass threshodl
+        # Check which chans are excluded
+        keeps = None
+        for var, threshes in map_var_to_thresholds.items():
+            if all(dfres[var].isna()):
+                continue
+            _keeps = (dfres[var]>=threshes[0]) & (dfres[var]<=threshes[1])
+            if keeps is None:
+                keeps = _keeps
+            else:
+                keeps = keeps & _keeps
+        dfres["good_chan"] = keeps
+
+        #### SAVE DATA
+        pd.to_pickle(dfres, f"{SAVEDIR}/dfres.pkl")
+        dfres.to_csv(f"{SAVEDIR}/dfres.csv")
+        params = {
+            "nsigma":nsigma,
+            "animal":self.Animal,
+            "ExptSynapse":self.ExptSynapse,
+            "date":self.Date,
+            "RecSession":self.RecSession,
+            "spikes_version":self.SPIKES_VERSION,
+            "trials":trials,
+            "chans":sites,
+            "chans_good":dfres[dfres["good_chan"]]["chan"].tolist(),
+            "trialcodes":[self.datasetbeh_trial_to_trialcode(t) for t in trials],
+        }
+        from pythonlib.tools.expttools import writeDictToYaml, writeDictToTxtFlattened
+        writeDictToYaml(params, f"{SAVEDIR}/params.yaml")
+        writeDictToTxtFlattened(params, f"{SAVEDIR}/params_text.yaml")
+
+        ### Plot summary across sites
+        savedir = f"{SAVEDIR}/summary_figures"
+        os.makedirs(savedir, exist_ok=True)
+
+        # plot distribution over chans, of different metrics.
+        vars = ["frstd_spread_index_across_bins", "slope_over_mean", "fr_spread_index_across_bins", "frac_trials_bad"]
+        
+        # Keep only those vars that dont have na. na is becuase not enoughd data to do bins.
+        vars = [v for v in vars if ~np.all(dfres[v].isna())]
+        
+        # (1) val vs. site (catplot)
+        for yvar in vars:
+            # yvar = "fr_spread_index_across_bins"
+            fig = sns.catplot(data=dfres, x="chan", y=yvar, alpha=0.5, hue="bregion", aspect=10, height=4)
+            rotateLabel(fig, 70)
+            savefig(fig, f"{savedir}/catplot-yvar={yvar}.pdf")
+
+        # (2) Pairplot
+        fig = sns.pairplot(data = dfres, x_vars=vars, y_vars=vars, hue="bregion", height=4)
+        savefig(fig, f"{savedir}/pairplot.pdf")
+
+        # (3) Pairplot, with text labeling chans
+        # overlay with text
+        ct = 0
+        chans = dfres["chan"].tolist()
+        assert chans == sites
+        fig, axes = plt.subplots(3,3, figsize=(15, 15))
+        for i in range(len(vars)):
+            for j in range(len(vars)):
+                if j>i:
+                    var1 = vars[i]
+                    var2 = vars[j]
+
+                    ax = axes.flatten()[ct]
+                    if ct==0:
+                        ax.set_title("red=bad chans. red lines=thresholds")
+                    ct+=1
+
+                    # overlay thresholds
+                    thresh_lower, thresh_upper = map_var_to_thresholds[var1]
+                    ax.axvline(thresh_lower, color="r", alpha=0.3)
+                    ax.axvline(thresh_upper, color="r", alpha=0.3)
+
+                    thresh_lower, thresh_upper = map_var_to_thresholds[var2]
+                    ax.axhline(thresh_lower, color="r", alpha=0.3)
+                    ax.axhline(thresh_upper, color="r", alpha=0.3)
+
+                    ax.axhline(0)
+                    ax.axvline(0)
+
+                    # Plot data
+                    x = dfres[var1].values
+                    y = dfres[var2].values
+                    good_chans = dfres["good_chan"].values
+
+                    ax.plot(x[~good_chans], y[~good_chans], ".r", alpha=0.7)
+                    ax.plot(x[good_chans], y[good_chans], ".k", alpha=0.4) # label the bad ones
+                    
+                    for ch, xx, yy in zip(chans, x, y):
+                        # if good:
+                        col = 0.1 + 0.8*np.random.rand(3)
+                        # else:
+                        #     col = "r"
+                        ax.text(xx, yy, ch, color=col, alpha=0.65, fontsize=8)
+
+                    # Labels
+                    ax.set_xlabel(var1)
+                    ax.set_ylabel(var2)
+        savefig(fig, f"{savedir}/pairplot-labeling_chans.pdf")
+        plt.close("all")
+
+        return dfres, params, SAVEDIR
+
+    def sitesdirtygood_preprocess_firingrate_drift(self, chan, trials, savedir=None,
+                                                   ntrials_per_bin = 50, nsigma=3.5):
+        """
+        Score the across-day drift in FR
+        """
+        from pythonlib.tools.datetools import standardize_time_helper
+        from sklearn.linear_model import LinearRegression
+        # import pandas as pde
+        from neuralmonkey.metrics.goodsite import score_firingrate_drift
+
+        # def _threshold_fr(frvals):
+        #     """
+        #     """
+        #     mu = np.mean(frvals)
+        #     sig = np.std(frvals)
+        #     thresh_upper = mu + nsigma*sig
+        #     thresh_lower = mu - nsigma*sig
+        #     inds_bad_bool = (frvals>thresh_upper) | ((frvals<thresh_lower))
+        #     inds_bad = [int(x) for x in np.where(inds_bad_bool)[0]]
+        #     return inds_bad, thresh_lower, thresh_upper, inds_bad_bool
+
+        # def _plot(_x, _y, ax):
+        #     """
+        #     """
+        #     inds_bad, thresh_lower, thresh_upper, inds_bad_bool= _threshold_fr(_y)
+        #     _x_bad = _x[inds_bad]
+        #     _y_bad = _y[inds_bad]
+        #     ax.plot(_x, _y, 'xk');
+        #     ax.plot(_x_bad, _y_bad, 'or')
+        #     # plot text next to each
+        #     for t, fr in zip(_x_bad, _y_bad):
+        #         ax.text(t, fr, f"{t:.2f}", color="r")
+        #     ax.set_ylim(bottom=0.)
+        #     # ax.set_title(f"fr_spread_index_across_bins={fr_spread_index_across_bins.item():.2f}")
+
+        ### Extract data
+        frvals, trials, times_frac, trialcodes = self.sitestats_fr_extract_good(chan, trials, extract_using_smoothed_fr=False, keep_within_events_flanking_trial=True)
+        # # (1) firing rates across trials (one scalar each trial)
+        # list_fr = []
+        # for t in trials:
+        #     list_fr.append(self.sitestats_fr_single(chan, t, extract_using_smoothed_fr=False, keep_within_events_flanking_trial=True))
+        # frvals = np.array(list_fr)
+        # # frvals_sq = frvals**0.5
+
+        # # (2) times (frac of day)
+        # trials = np.array(trials)
+        # dfthis = self.datasetbeh_extract_dataframe(trials)
+        # times_frac = np.array([standardize_time_helper(dt) for dt in dfthis["datetime"].tolist()])
+
+        metrics, inds_bad = score_firingrate_drift(frvals, times_frac, 
+                                                                               trials, ntrials_per_bin, 
+                                                                               nsigma, savedir=savedir, savename=self.sitegetter_summarytext(chan))
+
+        return frvals, trials, times_frac, metrics, inds_bad
+
+        # # (3) Trehshodl the firing rate
+        # inds_bad, thresh_lower, thresh_upper, inds_bad_bool = _threshold_fr(frvals_sq)
+        
+        # ### Metrics (Score drift)_
+        # nbins = int(len(times_frac)/ntrials_per_bin)
+        # if nbins == 1:
+        #     # SKIP THIS, too few trials.
+        #     fr_spread_index_across_bins = None
+        #     slope_over_intercept = None
+        # else:
+        #     # from pythonlib.tools.nptools import bin_values_by_rank
+        #     # bin_values_by_rank(times_frac, nbins)
+
+        #     frvals_sq_no_outlier = frvals_sq[~inds_bad_bool]
+        #     times_frac_no_outlier = times_frac[~inds_bad_bool]
+        #     trials_this_no_outlier = trials_this[~inds_bad_bool]
+
+        #     # (1) linear, across day
+        #     reg = LinearRegression().fit(times_frac_no_outlier[:, None], frvals_sq_no_outlier[:, None])
+        #     slope = reg.coef_.item()
+        #     frmean = np.mean(frvals_sq_no_outlier)
+        #     # intercept = reg.intercept_.item()
+        #     slope_over_mean = slope/frmean # units = intercepts/day
+        #     slope_over_mean = slope_over_mean/24 # units = intercepts/hour.
+        #     # print(slope, intercept, slope_over_intercept)
+
+        #     # (2) any block of time with very diff fr from others?
+        #     # Any trial bins with deviation in fr? Get index of (max - min)/(mean) across 50-trial bins.
+        #     dfrate = pd.DataFrame({"fr":frvals_sq_no_outlier, "times_frac":times_frac_no_outlier, "trials":trials_this_no_outlier})
+        #     dfrate["times_frac_bin"] = pd.qcut(dfrate["times_frac"], nbins) # bin it
+
+        #     fr_max_across_bins = np.max(dfrate.groupby("times_frac_bin").mean()["fr"])
+        #     fr_min_across_bins = np.min(dfrate.groupby("times_frac_bin").mean()["fr"])
+        #     fr_mean_across_bins = np.mean(dfrate.groupby("times_frac_bin").mean()["fr"])
+        #     fr_spread_index_across_bins = (fr_max_across_bins - fr_min_across_bins)/fr_mean_across_bins        
+
+        #     # (3) Any block with very high variance across trials?
+        #     frstd_max_across_bins = np.max(dfrate.groupby("times_frac_bin").std()["fr"])
+        #     frstd_min_across_bins = np.min(dfrate.groupby("times_frac_bin").std()["fr"])
+        #     frstd_mean_across_bins = np.mean(dfrate.groupby("times_frac_bin").std()["fr"])
+        #     frstd_spread_index_across_bins = (frstd_max_across_bins - frstd_min_across_bins)/frstd_mean_across_bins        
+
+        # ### Plots
+        # # for each chan and event, find outlier trials
+        # fig, axes = plt.subplots(5,1, figsize=(10,16))
+
+        # ax = axes.flatten()[0]
+        # ax.hist(frvals, 50, color="k");
+        # ax.set_xlabel("firing rate histogram")
+
+        # ax = axes.flatten()[1]
+        # ax.hist(frvals_sq, 50, log=True, color="g");
+        # ax.set_xlabel("firing rate histogram (sqrt)")
+
+        # ax = axes.flatten()[2]
+        # # print(trials_this)
+        # # print(frvals)
+        # _plot(trials_this, frvals, ax)
+        # ax.set_ylabel("fr (hz)")
+        # ax.set_title(f"slope_over_mean={slope_over_mean:.2f}")
+
+        # ax = axes.flatten()[3]
+        # _plot(trials_this, frvals_sq, ax)
+        # ax.set_ylabel("fr (hz**0.5)")
+        # ax.set_title(f"frstd_spread_index_across_bins={frstd_spread_index_across_bins:.2f}")
+
+        # # Plot against time.
+        # ax = axes.flatten()[4]
+        # _plot(times_frac, frvals_sq, ax)
+        # ax.set_ylabel("fr (hz**0.5)")
+        # ax.set_title(f"fr_spread_index_across_bins={fr_spread_index_across_bins:.2f}")
+
+        # ### SAVE
+        # if savedir is not None:
+        #     from pythonlib.tools.pandastools import savefig
+        #     savefig(fig, f"{savedir}/{self.sitegetter_summarytext(chan)}.pdf")
+
+        # metrics = {
+        #     "fr_spread_index_across_bins":fr_spread_index_across_bins, 
+        #     "frstd_spread_index_across_bins":frstd_spread_index_across_bins, 
+        #     "slope_over_mean":slope_over_mean
+        # }
+
+        # return frvals, trials_this, times_frac, metrics, inds_bad
+
+
 
     def sitesdirty_filter_by_spike_magnitude(self, 
             # MIN_THRESH = 90, # before 2/12/23
@@ -1007,7 +1372,7 @@ class Session(object):
 
         return dfthis
 
-    def _sitesdirty_update(self, dirty_kinds = None):
+    def _sitesdirty_noisy_update(self, dirty_kinds = None):
         """
         Filter sites to find those that are "dirty" based on flexibly criteria (dirty_kinds).
         :param dirty_kinds:
@@ -1045,7 +1410,6 @@ class Session(object):
         RETURNS:
            - Updates self._MapperTrialcode2TrialToTrial
         """
-
         if hasattr(self, "_MapperTrialcode2TrialToTrial") and len(self._MapperTrialcode2TrialToTrial)>0:
             # SANITY CHECK that it mathes current. if not, then error --> misalign betwene nerual and dataset beh
             for trial in self.get_trials_list():
@@ -1082,6 +1446,27 @@ class Session(object):
         else:
             paths = findPath(self.RecPathBase, path_hierarchy)
 
+        if False: # Actually, no need, becuase evne if there are more preprcessing folders, the code below only picks out those
+            # that match the raw rec data folders. So is fine.
+
+            # Sanity check that the number of rec sessions on server (raw neural) matches the number of preprocessed data
+            # If not, then this is a bug -- you probabyl pruned a sessions on server and left it in place in the preprocessed data
+            if self._LOAD_VERSION == "MINIMAL_LOADING": 
+                # THen this means preprocessing across all sessions hsould be finalized at this point.
+                _paths1 = findPath(LOCAL_PATH_PREPROCESSED_DATA, path_hierarchy)
+                _paths2 = findPath(self.RecPathBase, path_hierarchy)
+
+                # If paths are not the 
+                if len(_paths1) != len(_paths2):
+                    print(_paths1)
+                    print(_paths2)
+                    assert False, "Fix this -- align the paths. PRobably need to delete a preprocess date?"
+                for p1, p2 in zip(_paths1, _paths2):
+                    if deconstruct_filename(p1)["filename_final_noext"]!=deconstruct_filename(p2)["filename_final_noext"]:
+                        print(_paths1)
+                        print(_paths2)
+                        assert False, "Fix this -- align the paths. PRobably need to delete a preprocess date?"
+
         # REmove paths that say "IGNORE"
         paths = [p for p in paths if "IGNORE" not in p]
         # assert len(paths)==1, 'not yhet coded for combining sessions'
@@ -1102,8 +1487,6 @@ class Session(object):
             assert False, "why mismatch?"
 
         paththis = paths[self.RecSession]
-        # print(paths, self.RecSession)
-        # assert False
 
         fnparts = deconstruct_filename(paththis)
         print(fnparts)
@@ -1185,11 +1568,12 @@ class Session(object):
                 for suffix in ["-4", "-3.5", "-4.5", ""]: 
                     path_maybe = f"{paththis}/spikes_tdt_quick{suffix}"
                     # if os.path.exists(path_maybe):
-
+                    # print("CHECKING ... ", path_maybe, checkIfDirExistsAndHasFiles(path_maybe))
                     if checkIfDirExistsAndHasFiles(path_maybe)[0]:
                         # count how many files
-                        nfiles, list_files = count_n_files_in_dir(path_maybe, "png")
-                        if nfiles>=NCHANS:
+                        # nfiles, list_files = count_n_files_in_dir(path_maybe, "png") # This failed.
+                        nfiles, list_files = count_n_files_in_dir(path_maybe, "mat") # This is the iomportant file
+                        if nfiles == NCHANS*2: # x2, becuase there are 2 .mat files per chan.
                             print("FOund this path for spikes: ", path_maybe)
                             return path_maybe
                 
@@ -1448,6 +1832,7 @@ class Session(object):
         
         if self.Paths['spikes'] is None:
             print("self.Paths['spikes'] is None")
+            print("self.Paths:", self.Paths)
             return False
 
         rs, chan = self.convert_site_to_rschan(site)
@@ -1697,6 +2082,8 @@ class Session(object):
         :param dataset_version:
         :return:
         """
+
+        assert dataset_version=="raw", "always reload, to include latest things."
         if dataset_version=="cached":
             # Then load cached version
             paththis = f"{pathdir}/dataset_beh.pkl"
@@ -1753,8 +2140,15 @@ class Session(object):
             go1 = self.events_get_time_helper("go", trial, assert_one=True)[0]
             go2 = self.Datasetbeh.Dat.iloc[idx]["motorevents"]["go_cue"]
 
-            assert go1-go2<1 # emprically, go1 tends to be ~0.15 earlier than go2. There is such high variance in gos across
-            # trials, that a threshold of 1 will surely catch misalignment between neural and beh data.
+            if go1-go2>=1:
+                print(trial)
+                print(self.datasetbeh_trial_to_trialcode(trial))
+                print(go1)
+                print(go2)
+                print(self.Datasetbeh.Dat.iloc[idx]["motorevents"])
+                assert False, "see note below"
+                # assert go1-go2<1 # emprically, go1 tends to be ~0.15 earlier than go2. There is such high variance in gos across
+                # # trials, that a threshold of 1 will surely catch misalignment between neural and beh data.
 
             gos1.append(go1)
             gos2.append(go2)
@@ -1766,9 +2160,17 @@ class Session(object):
                 idx = self.datasetbeh_trial_to_datidx(t)
                 strokes_task_1 = self._CachedStrokesTask_SANITY[t]
                 strokes_task_2 = self.Datasetbeh.Dat.iloc[idx]["strokes_task"]
-                assert len(strokes_task_1)==len(strokes_task_2)
-                for s1, s2 in zip(strokes_task_1, strokes_task_2):
-                    assert np.all(s1==s2)
+                try:
+                    assert len(strokes_task_1)==len(strokes_task_2)
+                    for s1, s2 in zip(strokes_task_1, strokes_task_2):
+                        assert np.all(s1==s2)
+                except AssertionError as err:
+                    print(len(strokes_task_1), len(strokes_task_2))
+                    print(strokes_task_1)
+                    print(strokes_task_2)
+                    print(t)
+                    raise err
+
             # Now can delete..
             del self._CachedStrokesTask_SANITY
 
@@ -1809,7 +2211,7 @@ class Session(object):
                     try:
                         with open(paththis, "rb") as f:
                             dat = pickle.load(f)
-                        print("Loading... ", trial, site)
+                        # print("Loading... ", trial, site)
                     except Exception as err:
                         print(paththis)
                         raise err
@@ -1839,6 +2241,32 @@ class Session(object):
                 path = f"{self.Paths['cached_dir']}/trials_list.pkl"
                 with open(path, "rb") as f:
                     self._CachedTrialsList = pickle.load(f)
+
+                    # If trials need to be skipped, then this wont work. so dont do it.
+                    _, do_skip_trials = self._get_trials_list_skipped_trials(trials=[]) # enter dummy trials, as youjust want t know if this date has sipped trials...
+                    if not do_skip_trials:
+                        # Sanity check, that the trials in cached trials list are not incocnsitent with reloaded data.
+                        # Should relaly just reconstruct each time from raw, since sometimes (rarely) there mistakes due
+                        # to older data missing some trials (saw one case whwere those passing fixation success were empty)
+                        self.load_behavior()
+                        
+                        trials = list(range(len(self.TrialsOffset)))
+                        trials_missing = [t for t in trials if t not in self._CachedTrialsList[(False, True)]]
+                        if len(trials_missing)>5 and len(trials_missing)/len(self._CachedTrialsList[(False, True)]) > 0.04:
+                        # if not self._CachedTrialsList[(False, True)] == trials:
+                            print("trials cached: ", self._CachedTrialsList[(False, True)])
+                            print("trials reloaded: ", trials)
+                            print("trials in reloaded that not exist in cahced: ", trials_missing)
+                            assert False, "figure out why there is mismatch between cached trials and now-reloaded from raw (prob just rerun local caching)"
+
+                        trials_pass_fixation = [t for t in trials if self.beh_fixation_success(t)]
+                        trials_missing = [t for t in trials_pass_fixation if t not in self._CachedTrialsList[(True, True)]]
+                        if len(trials_missing)>5 and len(trials_missing)/len(self._CachedTrialsList[(True, True)]) > 0.08:
+                            # Is ok to miss a few, this can be explained by trials with no beh strokes matched to task.
+                            print("trials cached: ", self._CachedTrialsList[(True, True)])
+                            print("trials reloaded: ", trials_pass_fixation)
+                            print("trials in reloaded that not exist in cahced: ", trials_missing)
+                            assert False, "figure out why there is mismatch between cached trials and now-reloaded from raw (prob just rerun local caching)"
 
             # FOrce must_use_cached_trials, beecuase datslice are only saved for those cached trials.
             trials = self.get_trials_list(SAVELOCALCACHED_TRIALS_FIXATION_SUCCESS, must_use_cached_trials=True)
@@ -1940,9 +2368,10 @@ class Session(object):
         the num neural rec sessions -- ie can find alignment times.
         """
         from os.path import isfile
+        from pythonlib.globals import PATH_KS_POSTPROCESSED
 
         # Check that files exust
-        BASEDIR = "/mnt/Freiwald/kgupta/neural_data/postprocess/final_clusters/"
+        BASEDIR = PATH_KS_POSTPROCESSED 
         clusters_final = f"{BASEDIR}/{self.Animal}/{self.Date}/DATSTRUCT_CLEAN_MERGED.mat"
         A = isfile(clusters_final)
 
@@ -2024,7 +2453,8 @@ class Session(object):
         # import scipy.io as sio
         # import scipy
         # import zlib
-        BASEDIR = "/mnt/Freiwald/kgupta/neural_data/postprocess/final_clusters/"
+        from pythonlib.globals import PATH_KS_POSTPROCESSED
+        BASEDIR = PATH_KS_POSTPROCESSED
         clusters_final = f"{BASEDIR}/{self.Animal}/{self.Date}/DATSTRUCT_CLEAN_MERGED.mat"
 
         ## Load all data
@@ -2047,15 +2477,40 @@ class Session(object):
 
         # assert isinstance(DATSTRUCT["times_sec_all"], list), "i am assuming this... for this code below."
         list_times = []
-        for times, rs in zip(DATSTRUCT["times_sec_all"], DATSTRUCT["RSn"]):
+        list_clustinds_without_spikes = []
+        for i, (times, rs) in enumerate(zip(DATSTRUCT["times_sec_all"], DATSTRUCT["RSn"])):
             times = times - onsets_using_rs4_each_rs[int(rs)]
-            times = times[times>=0]
-            assert len(times)>0, "why no spikes"
-            list_times.append(times)
+            times_good = times[times>=0]
+            if len(times_good)==0:
+                # This probably means you lost this cluster some point during day, and
+                # so this session has no spikes. Solution: Exclude this cluster
+                list_clustinds_without_spikes.append(i)
+                # Allow to pass, then count how many clust this hapens to.
+                # print([(k, v[i]) for k, v in DATSTRUCT.items()])
+                # print(times)
+                # print(rs)
+                # print(onsets_using_rs4_each_rs[int(rs)])
+                # self.print_summarize_expt_params()
+                # assert False, "why no spikes"
+            list_times.append(times_good)
         DATSTRUCT["times_sec_all"] = list_times
-        # DATSTRUCT["times_sec_all"] = [times - time_global_start_of_this_session for times in DATSTRUCT["times_sec_all"]]
-        # for ind, times in enumerate(DATSTRUCT["times_sec_all"]):
-        #     DATSTRUCT["times_sec_all"][ind] = times - time_global_start_of_this_session
+
+        # Did any clsuters not have spikes? Is ok if is rare...
+        assert len(list_clustinds_without_spikes)<5, "why so many clusts are mnimssing spikes?"
+        assert len(list_clustinds_without_spikes)/len(DATSTRUCT["times_sec_all"]) < 0.1, "why so many clusts are mnimssing spikes?"
+
+        if False: # To look at all clusts that did ntot have spikes.
+            if len(list_clustinds_without_spikes)>0:
+                print("SOME CLUSTERS DID NOT HAVE SPIKES WITHIN THIS SESSION!! is ok, will skip them")
+                print(len(list_clustinds_without_spikes), list_clustinds_without_spikes)
+                print("n clusts exist: ", len(DATSTRUCT["times_sec_all"]))
+                for clust in list_clustinds_without_spikes:
+                    times = (DATSTRUCT["times_sec_all"][clust])
+                    rs = (DATSTRUCT["RSn"][clust])
+                    print(" ---- clust num: ", clust)
+                    print(onsets_using_rs4_each_rs[int(rs)])
+                    print(times)
+                assert False
 
         # Some metadata
         nbatches = int(np.max(DATSTRUCT["batch"]))
@@ -2069,15 +2524,24 @@ class Session(object):
         self.DatSpikesSessByClust = {}
 
         # keys_extract = [k for k in DATSTRUCT.keys() if k not in ["chan_global", "clust"]]
-        keys_extract = DATSTRUCT.keys()
+        # keys_extract = DATSTRUCT.keys()
         keys_exclude = ["GOOD", "clust", "clust_before_merge", "clust_group_id", "clust_group_name",
             'index', 'index_before_merge', 'times_sec_all_BEFORE_REMOVE_DOUBLE', 'waveforms']
         keys_convert_to_int = ["RSn", "batch", "chan", "chan_global", "label_final_int"]
 
         # index by a global cluster id
-        clustid_glob = 0 + CLUST_STARTING_INDEX
+        clustid_glob = 0 + CLUST_STARTING_INDEX - 1
         for ind in range(len(DATSTRUCT["times_sec_all"])):
             
+            # IMPORTANT to start here, so that across sessions the mapping frmo clustid_glob to index in DATSRUCT is maintained.
+            # (the continue can fuck things up)
+            clustid_glob+=1
+            
+            if len(DATSTRUCT["times_sec_all"][ind])==0:
+                # Then this clust had no times within this session. Skip it.
+                assert ind in list_clustinds_without_spikes, "sanity check failed"
+                continue
+
         #     print("-------------------------------------")
         #     for k in DATSTRUCT.keys():
         #         print(k, " -- ", DATSTRUCT[k][ind])
@@ -2139,7 +2603,7 @@ class Session(object):
                 assert self.convert_rschan_to_site(rs, chan_within_rs) == site
             
             # increment clustic
-            clustid_glob+=1
+            # clustid_glob+=1
 
     def spiketimes_ks_extract_alltrials(self, cluster_labels_keep=("su", "mua")):
         """
@@ -2263,7 +2727,66 @@ class Session(object):
         else:
             dat = self.DatSpikesSessByClust[clust_id]
             assert dat["clust_id"] == clust_id
-            return dat
+            return dat  
+
+    def spiketimes_bin_counts(self, spike_times, t_start, t_end, bin_size, plot=False, 
+                              assert_all_times_within_bounds=True):
+        """
+        Bin spike times into counts per bin.
+
+        Parameters
+        ----------
+        spike_times : array-like
+            Array of spike times (in seconds or ms, as long as consistent with t_start, t_end, bin_size).
+        t_start : float
+            Start time of the window.
+        t_end : float
+            End time of the window.
+        bin_size : float
+            Bin size.
+
+        Returns
+        -------
+        counts : np.ndarray
+            Array of spike counts for each bin.
+        bin_edges : np.ndarray
+            The edges of the bins (length = len(counts) + 1).
+        bin_centers : np.ndarray
+            The centers of the bins (length = len(counts)).
+        """
+        
+        if assert_all_times_within_bounds and len(spike_times)>0:
+            assert np.min(spike_times) >= t_start, "Spike times should be >= t_start"
+            assert np.max(spike_times) <= t_end, "Spike times should be <= t_end"
+
+        bin_edges = np.arange(t_start, t_end+0.001, bin_size)
+        counts, _ = np.histogram(spike_times, bins=bin_edges)
+        bin_centers = bin_edges[:-1] + bin_size / 2 # Center of each bin
+        assert len(bin_centers)==len(counts)
+
+        if not len(spike_times)==np.sum(counts):
+            print(spike_times)
+            print(counts)
+            print(bin_centers)
+            assert False
+
+        if plot:
+            if False:
+                print("Spike counts:", counts)
+                print("Bin edges:", bin_edges)
+
+            # Plot the spike counts histogram:
+            plt.figure(figsize=(10, 5))
+            plt.bar(bin_edges[:-1], counts, width=np.diff(bin_edges), align='edge', edgecolor='black')
+            plt.xlabel('Time (s)')
+            plt.ylabel('Spike counts')
+            plt.title('Binned Spike Counts')
+
+            # Overlay the spikes
+            plt.eventplot(spike_times, orientation='horizontal', color='red')
+
+            plt.show()
+        return counts, bin_edges, bin_centers
 
     ########################################### TDT LOADING
     def load_spike_times(self):
@@ -2457,6 +2980,15 @@ class Session(object):
 
 
     ###################### EXTRACT SPIKES (RAW, PRE-CLIUSTERED)
+    def load_spike_waveforms(self, site):
+        """
+        Helper to load spike waveform from raw. 
+        Might be obsolete.
+        """
+        rs, chan = self.convert_site_to_rschan(site)
+        assert self.SPIKES_VERSION=="tdt", "make this auto detect whtehr get tdt or ks. if get ks, then have to extract from raw. See Paolo Emilio stuff."
+        self.load_spike_waveforms_(rs, chan)
+
     def load_spike_waveforms_(self, rs, chan, ver="spikes_tdt_quick"):
         """ Return spike waveforms, pre-extracted
         """
@@ -2483,19 +3015,24 @@ class Session(object):
             # PATH_SPIKES = f"{self.PathRaw}/spikes_tdt_quick"
             fn = f"{PATH_SPIKES}/RSn{rs}-{chan}-snips_subset"
             try:
+                print("Loading file: ", fn)
                 mat_dict = sio.loadmat(fn)
+                if "snips" not in mat_dict.keys():
+                    print(mat_dict)
+                    print("Redo extraction of spikes?..")
+                    raise err
                 waveforms = mat_dict["snips"]
             except zlib.error as err:
                 print("[scipy error] failed load_spike_waveforms_ for (rs, chan): ", rs, chan)
                 self.print_summarize_expt_params()
                 # waveforms = None
-                raise
+                raise err
             except Exception as err:
                 print(err)
                 print("[load_spike_waveforms] Failed for this rs, chan: ",  rs, chan)
                 print(fn)
                 self.print_summarize_expt_params()
-                raise
+                raise err
                 # assert False
 
             self.DatSpikeWaveforms[site] = waveforms
@@ -2991,9 +3528,11 @@ class Session(object):
         time_to_add = time_to_add - TIME_ML2_TRIALON
 
         if len(times)>0:
-            times, vals, time_dur, time_on, time_off = self._extract_windowed_data(times, [t1, t2], vals, recompute_time_rel_onset, time_to_add = time_to_add)
+            times, vals, time_dur, time_on, time_off = self._extract_windowed_data(times, [t1, t2], vals, 
+                                                                                   recompute_time_rel_onset, time_to_add = time_to_add)
         else:
-            time_dur, time_on, time_off = self._extract_windowed_data_get_time_bounds([t1, t2], recompute_time_rel_onset, time_to_add = time_to_add)
+            time_dur, time_on, time_off = self._extract_windowed_data_get_time_bounds([t1, t2], recompute_time_rel_onset, 
+                                                                                      time_to_add = time_to_add)
 
         return times, vals, time_dur, time_on, time_off
 
@@ -3029,7 +3568,6 @@ class Session(object):
     #             return True
     #     else:
     #         return True
-
 
 
     def datall_TDT_KS_slice_single_bysite(self, site_or_clust, trial0, return_index=False,
@@ -3325,9 +3863,15 @@ class Session(object):
             from ..utils.monkeylogic import _load_sessions_corrupted
             sessdict = _load_sessions_corrupted()
             value = (int(self.Date), self.RecSession)
-            if value in sessdict[self.Animal]:
+            
+            if self.Animal in sessdict.keys() and value in sessdict[self.Animal]:
                 # then ok, expect to fail
                 print("_beh_validate_trial_number failed, but OK becuase is expected!!")
+                print("**&*&**")
+                print("trials in neural data:", trials_all)
+                print("trials_exist_in_ml2:", trials_exist_in_ml2)
+                print("neural trials that miss beh data:", [t for t in trials_all if t not in trials_exist_in_ml2])
+                print("beh trials that miss neural data:", [t for t in trials_exist_in_ml2 if t not in trials_all])
             else:
                 print("**&*&**")
                 print("trials in neural data:", trials_all)
@@ -3554,6 +4098,10 @@ class Session(object):
 
                     print("to: ")
                     print(self.BehTrialMapList)
+                    # for x in self.BehTrialMapList:
+                    #     if x[0]==0:
+                    #         print(self.BehTrialMapList)
+                    #         assert False, "This means it iwll look for ml trial 0, which doesnt eixst. This means you do not have beh for the first neural data. Solution: skip the first n neural trials. see what I did fro Pancho 220614"
 
                     # Force an update
                     print("Old BehTrialMapListGood: ")
@@ -3584,14 +4132,28 @@ class Session(object):
         from neuralmonkey.utils.conversions import get_map_trial_and_set
 
         # RECURSIVE. Stop
-        # ntrials = len(self.get_trials_list(only_if_ml2_fixation_success=False, only_if_has_valid_ml2_trial=True))
-        ntrials = len(self.get_trials_list(only_if_ml2_fixation_success=False, only_if_has_valid_ml2_trial=False))
-        # ntrials = len(self.TrialsOnset) 
+        if False:
+            # ntrials = len(self.get_trials_list(only_if_ml2_fixation_success=False, only_if_has_valid_ml2_trial=True))
+            ntrials = len(self.get_trials_list(only_if_ml2_fixation_success=False, only_if_has_valid_ml2_trial=False))
+
+            # print(self.get_trials_list(only_if_ml2_fixation_success=False, only_if_has_valid_ml2_trial=False))
+            # assert False
+
+            # ntrials = len(self.TrialsOnset) 
+        else:
+            # This is better. If tdt trials start at 1 (instead of 0) then the length will be short. This leads to bug.
+            # Instead, you want the max tdt trial. Is generalyl equivalent.
+            _trials = self.get_trials_list(only_if_ml2_fixation_success=False, only_if_has_valid_ml2_trial=False)
+            max_trial_index_beh = max(_trials)+1
+            ntrials = max_trial_index_beh
+            
         self.BehTrialMapListGood = get_map_trial_and_set(self.BehTrialMapList, ntrials)
 
         print("... Generated these...")
         print("self.BehTrialMapList", self.BehTrialMapList)
         print("self.BehTrialMapListGood", self.BehTrialMapListGood)
+        print("ntrials:", ntrials)
+        # assert False
 
     def _beh_get_fdnum_trial(self, trialtdt):
         """ Get the filedata indices and trial indices (beh) for
@@ -3604,13 +4166,25 @@ class Session(object):
             self._beh_get_fdnum_trial_generate_mapper()
 
         # assert trialtdt < ntrials, "This tdt trial doesnt exist, too large..."
-        [fd_setnum, fd_trialnum] = self.BehTrialMapListGood[trialtdt]
+        try:
+            [fd_setnum, fd_trialnum] = self.BehTrialMapListGood[trialtdt]
+        except KeyError as err:
+            for k, v in self.BehTrialMapListGood.items():
+                print(k, " -- ", v)
+            raise err
         return fd_setnum, fd_trialnum
         
     def beh_get_fd_trial(self, trialtdt):
         """ Return the fd and trial linked to this tdt trial
         """
         fd_setnum, fd_trialnum = self._beh_get_fdnum_trial(trialtdt)
+        if fd_trialnum == 0:
+            assert False, "need to skip the first neural trial (it lacks beh data). See what I did for pancho 220614"
+        # print("-----------------")
+        # print("self.BehFdList", self.BehFdList)
+        # print("fd_setnum", fd_setnum)
+        # print("fd_trialnum", fd_trialnum)
+        # print("trialtdt", trialtdt)
         assert len(self.BehFdList)>fd_setnum, "probably didnt load all beh data. see beh_trial_map_list.py"
         fd = self.BehFdList[fd_setnum]
         if fd is None or fd_trialnum is None:
@@ -3889,6 +4463,21 @@ class Session(object):
     #     """
     #     return self.sitegetter_all(list_region, clean=clean)
 
+    def sitegetter_map_site_to_array_physical_location(self):
+        """
+        Map electrode to a location on the physical array.
+        Also holds exceptions, such as mistakes in plugging.
+        """
+
+        if self.Animal=="Pancho" and int(self.Date)==220621:
+            assert False, "preSMAa was flipped"
+        if self.Animal=="Pancho" and int(self.Date)==220714:
+            assert False, "FPa was flipped"
+        if self.Animal=="Pancho" and int(self.Date)==240730:
+            assert False, "SMAp was flipped"
+        
+        assert False, "code it"
+
     def sitegetterKS_map_region_to_sites(self, region, clean=True,
             force_tdt_sites=False,
                                          exclude_bad_areas=False):
@@ -3947,7 +4536,7 @@ class Session(object):
         #             Mapper[s] = bregion
         # return Mapper[site]
 
-    def sitegetterKS_thissite_info(self, site, clean=False):
+    def sitegetterKS_thissite_info(self, site, clean=False, ks_get_extra_info=False):
         """ returns info for this site in a dict
         INCLUDES even dirty sites
         """
@@ -3967,18 +4556,34 @@ class Session(object):
             rs, chan = self.convert_site_to_rschan(site)
             site_tdt = site
             clust = None
+
+            info = {
+                "site_tdt":site_tdt,
+                "clust":clust,
+                "region":regionthis,
+                "rs":rs,
+                "chan":chan}
         elif self.SPIKES_VERSION=="kilosort":
             clust = site
             site_tdt, rs, chan = self.ks_convert_clust_to_site_rschan(clust)
+            
+            info = {
+                "site_tdt":site_tdt,
+                "clust":clust,
+                "region":regionthis,
+                "rs":rs,
+                "chan":chan}
+
+            if ks_get_extra_info and self.SPIKES_VERSION=="kilosort":
+                # tmp = self.datall_TDT_KS_slice_single_bysite(site, self.get_trials_list()[0])
+                trial_dummy = list(self.DatSpikesSliceClustTrial.keys())[0][1]
+                tmp = self.datall_TDT_KS_slice_single_bysite(site, trial_dummy)
+                # tmp = self.datall_TDT_KS_slice_single_bysite(site, 0) # This is much faster
+                info["label_final"] = tmp["label_final"]
         else:
             assert False
 
-        return {
-            "site_tdt":site_tdt,
-            "clust":clust,
-            "region":regionthis,
-            "rs":rs,
-            "chan":chan}
+        return info
 
     def _sitegetter_sort_sites_by(self, sites, by, take_top_n=None):
         """ Sort sites by some method and optionally return top n
@@ -4010,11 +4615,11 @@ class Session(object):
 
         return sites_sorted
 
-    def sitegetterKS_all_sites(self):
+    def sitegetterKS_all_sites(self, clean=True):
         """
         Return list of all sites
         """
-        return self.sitegetterKS_map_region_to_sites_MULTREG()
+        return self.sitegetterKS_map_region_to_sites_MULTREG(clean=clean)
 
     def sitegetterKS_map_region_to_sites_MULTREG(self, list_regions=None, clean=True,
                                                  force_tdt_sites=False):
@@ -4147,41 +4752,89 @@ class Session(object):
 
 
     ########################### Stats for each site
-    def sitestats_fr_single(self, sitenum, trial):
+    def sitestats_fr_extract_good(self, sitenum, trials=None, 
+                                  extract_using_smoothed_fr=False, keep_within_events_flanking_trial=False):
+        """
+        Good, wrapper to extract firing rate across trials (one scalar each trial), along wtih the time of the trial.
+        RETURNS:
+        - frvals, trials, times_frac, each a (ntrials,) array.
+        - trialcodes, list of trialcodes
+        """
+        from pythonlib.tools.datetools import standardize_time_helper
+
+        if trials is None:
+            trials = self.get_trials_list(True)
+
+        list_fr = []
+        for t in trials:
+            list_fr.append(self.sitestats_fr_single(sitenum, t, extract_using_smoothed_fr, keep_within_events_flanking_trial))
+        frvals = np.array(list_fr)
+
+        # (2) times (frac of day)
+        trials = np.array(trials)
+        dfthis = self.datasetbeh_extract_dataframe(trials)
+        times_frac = np.array([standardize_time_helper(dt) for dt in dfthis["datetime"].tolist()])
+
+        trialcodes = dfthis["trialcode"].tolist()
+
+        
+        return frvals, trials, times_frac, trialcodes
+
+    def sitestats_fr_single(self, sitenum, trial, extract_using_smoothed_fr=False,
+                            keep_within_events_flanking_trial=False):
         """ get fr (sp/s)
         - if fr doesnt exist in self.DatAll, then will add it to the dict.
         """
-        assert self.SPIKES_VERSION=="tdt"
-        dat = self.datall_TDT_KS_slice_single_bysite(sitenum, trial)
-        if "fr" not in dat.keys():
-            if dat["spike_times"] is None:
-                print("****")
-                print(sitenum, trial)
-                print(self.print_summarize_expt_params())
-                assert False, "figure out why this is None. probably in loading (scipy error) and I used to replace errors with None. I should re-extract the spikes."
-            nspikes = len(dat["spike_times"]) 
-            dur = dat["time_dur"]
-            dat["fr"] = nspikes/dur
-        return dat["fr"]
+
+        if extract_using_smoothed_fr:
+            # Then use smoothed fr, which is already extracted. Might be quicker.
+            # This gets within two events that flank trial. So may be different fro below.
+            pa = self.smoothedfr_extract_timewindow_during_trial(sitenum, trial, keep_within_events_flanking_trial)
+            return np.mean(pa.X)
+        else:
+            # Use spike count.
+            # assert self.SPIKES_VERSION=="tdt"
+
+            if keep_within_events_flanking_trial:
+                fr_key = "fr_within_trial"
+            else:
+                fr_key = "fr"
+
+            dat = self.datall_TDT_KS_slice_single_bysite(sitenum, trial)
+            if fr_key not in dat.keys():
+
+                if dat["spike_times"] is None:
+                    print("****")
+                    print(sitenum, trial)
+                    print(self.print_summarize_expt_params())
+                    assert False, "figure out why this is None. probably in loading (scipy error) and I used to replace errors with None. I should re-extract the spikes."
+                
+                st = dat["spike_times"]
+                dur = dat["time_dur"]
+                if keep_within_events_flanking_trial:
+                    # print(st)
+                    # print(dur)
+                    t1, t2 = self.events_get_time_flanking_trial_helper(trial)
+                    st = st[(st>=t1) & (st<=t2)]
+                    dur = t2-t1
+                    # print(st)
+                    # print(dur)
+                    fr_key = "fr_within_trial"
+                    # assert False
+                else:
+                    fr_key = "fr"
+                nspikes = len(st) 
+                dat[fr_key] = nspikes/dur
+            return dat[fr_key]
 
     def sitestats_fr(self, sitenum):
         """ gets fr across all trials. Only works if you have already extracted fr 
         into DatAll (and its dataframe)
-        """
-        
+        """ 
+        assert self._LOAD_VERSION == "FULL_LOADING", "This required self.DatAll, which is not gotten in MINIMAL LOADING"
         assert self.SPIKES_VERSION=="tdt", "not codeede for anything else."
         list_fr = []
         
-
-        # if first_extraction:
-        #     # then dont use dataframe, this both extracts and returns.
-        #     # This both easfasdfxtracts and returns
-        #     for trial in self.get_trials_list(True):
-        #         fr = self.sitestats_fr_single(sitenum, trial)
-        #         list_fr.append(fr)
-        # else:
-        # Use Dataframe, is much faster than iterating over trials
-
         trials = self.get_trials_list()
 
         # Confirm that has already been extracted and saved
@@ -4207,6 +4860,9 @@ class Session(object):
             return ERROR
 
         # 1) check if you have fr in dataframe
+        if not hasattr(self, "DatAllDf"):
+            self.datall_cleanup_add_things(only_generate_dataframe=True)
+
         dfthis = self.DatAllDf[(self.DatAllDf["site"]==sitenum) & (self.DatAllDf["trial0"].isin(trials))]
         ERROR = _check_for_fr(dfthis)
 
@@ -4237,18 +4893,20 @@ class Session(object):
 
     def sitestats_fr_get_and_save(self, save=True):
         """ Gets fr for all sites and saves in self.DatAll, and saves
-        to disk. This is more for computation than for returning anything useufl. 
+        to disk (if save==True). This is more for computation than for returning anything useufl. 
         Run this once.
-        Takes a while, like minutes
+        NOTE: Takes a while, like minutes, because has to load the cached spikes data for each (chan, trial)
+        I checked that this is optimized, assumimng that it has to go thru process of loading spikes for
+        each chan.
         """
+        list_trial = self.get_trials_list(True)
         for site in self.sitegetterKS_map_region_to_sites_MULTREG(clean=False):
-            
-            if site%50==0:
+            if site%10==0:
                 print(site)
             
-            for trial in self.get_trials_list(True):
+            for trial in list_trial:
                 self.sitestats_fr_single(site, trial)
-                # list_fr.append(fr)
+
             # self.sitestats_fr(site) # run this to iterate over all trials, and save to datall
         if save:
             self._savelocal_datall()
@@ -4386,7 +5044,7 @@ class Session(object):
     #     # trialml = convert_trialnum(trialtdt=trial0)
 
     def behcode_extract_times_semantic(self, codename, trial, 
-        skip_constraints_that_call_self=False):
+        skip_constraints_that_call_self=False, exclude_times_before_trial_onset=True):
         """ [ALL BEHCODE EXTRACTION GOES THRU THIS]
         To extract behcode for semantically labeled event. This wraps methods
         that try to ensure this is the correct code, espeically in cases
@@ -4402,7 +5060,7 @@ class Session(object):
 
         # 1) convert from string name to code and get times
         times =self._behcode_extract_times(codename, trial, shorthand=True,
-            refrac_period = 0.01)        
+            refrac_period = 0.01, exclude_times_before_trial_onset=exclude_times_before_trial_onset)        
         info = self._behcode_expectations()
 
         # 3b) if multiple times found, resolve it.
@@ -4861,7 +5519,9 @@ class Session(object):
             "DAsamp1_visible_change":"seqon",  # previuslyt "sampseq"
             "DoneButtonTouched":"doneb", # previsouljy "done"
             "DAstimoff_fini":"post", # preivusly "fb_vis"
-            "reward":"rew"} # previously rew
+            "reward":"rew", # previously rew
+            "end":"off",
+            } 
         return dict_full2short
 
     def _behcode_shorthand(self, full=None, short=None):
@@ -4938,6 +5598,8 @@ class Session(object):
                 # self.datasetbeh_load(version="daily", FORCE_AFTER_MINIMAL=FORCE_AFTER_MINIMAL) # daily
                 self.datasetbeh_load(version="daily") # daily
                 print("**Loaded dataset! daily")
+            except DataMisalignError as err:
+                raise err
             except Exception as err:
                 # Try loading using "null" rule, which is common
                 print("This err, when try to load datset:",  err)
@@ -4945,6 +5607,8 @@ class Session(object):
                 self.datasetbeh_load(dataset_beh_expt=dataset_beh_expt, 
                     version="main")
                 print("**Loaded dataset! using rule: null")
+        except DataMisalignError as err:
+            raise err
         except Exception as err:
             print("probably need to pass in correct rule to load dataset.")
             raise err
@@ -4991,6 +5655,7 @@ class Session(object):
             if self.DatasetbehExptname is None:
                 # you must enter it
                 expt = dataset_beh_expt
+                assert dataset_beh_expt is not None, "huh?"
             else:
                 # load saved
                 expt = self.DatasetbehExptname
@@ -5012,15 +5677,52 @@ class Session(object):
             self.Datasetbeh.Dat = self.Datasetbeh.Dat[self.Datasetbeh.Dat["trialcode"].isin(trialcodes_neural_exist)].reset_index(drop=True)
             print("Ending length: ", len(self.Datasetbeh.Dat))
 
+            # Count how many neural trials are missing dataset beh trials
+            misses = 0
+            gottens = 0
+            for t in self.get_trials_list(True):
+                if self.datasetbeh_trial_to_datidx(t) is None:
+                    misses += 1
+                else: 
+                    gottens += 1
+            # if (gottens==0) or (misses>3):
+            if (gottens==0) or (misses>10):
+                print("misses: ", misses)
+                print("gottens: ", gottens)
+                # assert False, "why so many neural trials are missing from dataset? "
+                print("This is often beucase there are two beh sessions and one neural session, and so this thinks there is neural trial like sess 1 trial 500, when it should be sess 2, trial 200, this is beucase beh_trial_map_list is wrong. So now this leads to auto computing of beh_trial_map_list")
+                print("Trialcodes in beh dataset (before pruning):", len(trialcodes), trialcodes)
+                trialcodes_neural_all = [self.datasetbeh_trial_to_trialcode(t) for t in self.get_trials_list()]
+                print("Trialcodes in neural data (all):", len(trialcodes_neural_all), trialcodes_neural_all)
+                trialcodes_neural_pass_fix = [self.datasetbeh_trial_to_trialcode(t) for t in self.get_trials_list(True)]
+                print("Trialcodes in neural data (good, passing fixation):", len(trialcodes_neural_pass_fix), trialcodes_neural_pass_fix)
+                trialcodes_missing = [tc for tc in trialcodes_neural_pass_fix if tc not in trialcodes]
+                print("Trialcodes expected to exist, but which did not find in beh dataset: ", len(trialcodes_missing), trialcodes_missing)
+                print("--> Why are neural trialcodes missing from beh data?")
+                print("--> Sometimes, it is because many of the neural trials are actually not passing fixation. In that case, is fine to remove them")
+                print("--> Check that the trialcodes missing are legit misses in beh dataset (often: single stroke that was aborted)")
+                # NOTE: This is often becuase the beh trial wasn't even started!!
+                raise DataMisalignError
+
+            # If got this far, then is fine to just take trials that exist in datasetbeh, as doing so will not throw out much
+            # data. If this is False, then some dates will fail, because idx1 or idx2 will be None
+            only_if_in_dataset = True
+
             # (2) Sanity check --> within trial 1 and trial last, all the dataset trials should have a matching
             # neural trial (or at least all). This important beucase later only gets nerual trials that exist in dataset.
             # I dont want to inadvertangly throw out many neural trails due to bug...
-            t1 = self.get_trials_list(True)[0]
-            t2 = self.get_trials_list(True)[-1]
+            t1 = self.get_trials_list(True, only_if_in_dataset=only_if_in_dataset)[0]
+            t2 = self.get_trials_list(True, only_if_in_dataset=only_if_in_dataset)[-1]
             idx1 = self.datasetbeh_trial_to_datidx(t1)
             idx2 = self.datasetbeh_trial_to_datidx(t2)
+            if idx1 is None or idx2 is None:
+                print(t1, t2)
+                print(idx1)
+                print(idx2)
+                assert False, "this means that one of these two trials doesnt exist in datasetbeh. But this should not be possible if only_if_in_dataset=True"
             failures = 0
             total = 0
+
             for idx in range(idx1, idx2+1):
                 try:
                     # Check that neural data exist.
@@ -5147,13 +5849,16 @@ class Session(object):
     def datasetbeh_extract_dataframe(self, list_trials):
         """
         Returns D.Dat, with idnices exactly matching list_trials,
-        in order, etc.
+        in order, etc, and with indices resetted.
         """
 
-        assert False, 'in progress'
-        trialcodes = [sn.dataset_beh_trial_to_trialcode(t) for t in list_trials]
+        # assert False, 'in progress'
+        # trialcodes = [sn.dataset_beh_trial_to_trialcode(t) for t in list_trials]
 
-
+        D = self.Datasetbeh
+        inds = [self.datasetbeh_trial_to_datidx(t) for t in list_trials]
+        dfthis = D.Dat.iloc[inds].reset_index(drop=True)
+        return dfthis
 
     ###################### GET TEMPORAL EVENTS
     def eventsanaly_helper_pre_postdur_for_analysis(self, do_prune_by_inter_event_times=False,
@@ -5196,6 +5901,7 @@ class Session(object):
             "doneb":[-0.6, 0.6], # image response    
             "post":[-0.6, 0.6], # image response    
             "reward_all":[-0.6, 0.6], # image response    
+            "reward_first_post":[-0.6, 0.6], # image response    
         }
 
         if just_get_list_events:
@@ -5323,6 +6029,17 @@ class Session(object):
 
         return dict_events_bounds, dict_int_bounds
 
+    def events_get_times_as_array_global(self, trial, list_events):
+        """
+        Return array of times (first time in tiral) for these events, 
+        as global times,
+        relative to onset of this recording session.
+        """
+        times = self.events_get_times_as_array(trial, list_events)
+        time_trial_onset_global = self.TrialsOnset[trial]
+        times_global = times + time_trial_onset_global
+        return times_global
+
     def events_get_times_as_array(self, trial, list_events):
         """ 
         return as array, where take first crossing if exists., and
@@ -5337,13 +6054,13 @@ class Session(object):
             else:
                 out[i] = times[0]
         return out
+    
     def events_does_trial_include_all_events(self, trial, list_events):
         """
         REturns True if this trial includes each event at least one time
         """
         events_array = self.events_get_times_as_array(trial, list_events)
         return ~np.any(np.isnan(events_array))
-
 
 
     def events_get_time_sorted(self, trial, 
@@ -5436,6 +6153,16 @@ class Session(object):
         if os.path.exists(path):
             with open(path, "rb") as f:
                 self.EventsTimeUsingPhd = pickle.load(f)
+            
+            # Sanity check that you havent cached any events that use touchscreen. This important
+            # beucase touchscreen lag is solved by shifting times. THis shift wont occur
+            # if already cached
+            # TODO: this only should apply to preprocessing that occured before 11/2/24, otherwise is 
+            # more time (for reextracting these FD) but not a real problem.
+            events_not_involving_touch = ["fixcue", "rulecue2", "samp", "go", "seqon", 
+                            "post", "reward_all", "seqon"]
+            self.EventsTimeUsingPhd = {x:vals for x, vals in self.EventsTimeUsingPhd.items() if x[1] in events_not_involving_touch}
+
             return True
         else:
             print("_loadlocal_events DOESNT EXIST")
@@ -5530,6 +6257,21 @@ class Session(object):
         else:
             return out, reason
 
+    def hack_adjust_touch_times_touchscreen_lag(self, times):
+        """
+        ########### HACKY: the touchscreen has a slight lag of ~1.5-2 videocam frames (50hz).
+        # This means that if stroke onset is here T, then it actualyl was earlier, T-delta.
+        PARAMS:
+        - times, list of scalar times.
+        RETURNS:
+        - times_shifted
+        NOTE: added 11/4/24
+        """
+        assert HACK_TOUCHSCREEN_LAG==True, "fix this, you are not allowed to run it."
+        delta = 1.5 * 0.02 # n frames x 20ms per frame
+        times = [t-delta for t in times]
+        return times
+
     def events_get_time_using_photodiode(self, trial, 
         list_events = ("stim_onset", "go", "first_raise", "on_stroke_1"),
         do_reextract_even_if_saved=False, plot_beh_code_stream = False,
@@ -5564,17 +6306,16 @@ class Session(object):
             allcrossings = [t for o in out for t in o["timecrosses"]]
             return allcrossings
 
-        def _resort_to_behcode_time(event, padding):
+        def _resort_to_behcode_time(event, padding, exclude_times_before_trial_onset=True):
             """ If truly fail pd, then resort to behcode time, plus
             padding
             PARAMS;
             - event, str, semantic
             """                        
 
-            times = self.behcode_extract_times_semantic(event, trial)
+            times = self.behcode_extract_times_semantic(event, trial, exclude_times_before_trial_onset=exclude_times_before_trial_onset)
             times = [t+padding for t in times]
             return times
-
  
         def compute_times_from_scratch(event):
             """ Returns times, list of scalars. Empty list if no times found.
@@ -5589,25 +6330,31 @@ class Session(object):
             if not self.beh_fixation_success(trial) and event in list_events_skip_if_no_fixation:
                 times = []
             else:
-                if event=="on":
+                if event in ["trialon", "on"]:
                     # start of the trial. use the pd crossing, whihc reflect screen color chanigng.
                     # but not that crucuail to get a precise value for trail onset.
                     # NOTE: this sometimes fails for trial 0 (photodiode is in diff state?)
 
-                    try:
-                        # assert False, "this doesnt work that well for the first trial of the day... fix that before use"
-                        out = self.behcode_get_stream_crossings_in_window(trial, 9, t_pre=0, t_post = 0.15, whichstream="pd2", 
-                                                ploton=plot_beh_code_stream, cross_dir_to_take="up", assert_single_crossing_per_behcode_instance=True,
-                                                assert_single_crossing_this_trial = True,
-                                                assert_expected_direction_first_crossing = "up")
-                        times = _extract_times(out)
-                    except AssertionError as err:
-                        if trial<20:
-                            # then is early trial, when I know this sometimes fails.
-                            times = _resort_to_behcode_time(event, 0.)
-                        else:
-                            raise err
-
+                    if False:
+                        try:
+                            # assert False, "this doesnt work that well for the first trial of the day... fix that before use"
+                            out = self.behcode_get_stream_crossings_in_window(trial, 9, t_pre=0, t_post = 0.15, whichstream="pd2", 
+                                                    ploton=plot_beh_code_stream, cross_dir_to_take="up", assert_single_crossing_per_behcode_instance=True,
+                                                    assert_single_crossing_this_trial = True,
+                                                    assert_expected_direction_first_crossing = "up")
+                            times = _extract_times(out)
+                        except AssertionError as err:
+                            if trial<20:
+                                # then is early trial, when I know this sometimes fails.
+                                exclude_times_before_trial_onset = False # beucase can be very small value negative (around 0)
+                                times = _resort_to_behcode_time(event, 0., exclude_times_before_trial_onset=exclude_times_before_trial_onset)
+                            else:
+                                raise err
+                    else:
+                        # Just always use PD, as "on" is not precise.
+                        # then is early trial, when I know this sometimes fails.
+                        exclude_times_before_trial_onset = False # beucase can be very small value negative (around 0)
+                        times = _resort_to_behcode_time(event, 0., exclude_times_before_trial_onset=exclude_times_before_trial_onset)
                 elif event=="fixcue":
                     # fixation cue visible.
                     try:
@@ -5672,7 +6419,8 @@ class Session(object):
                             # Try with larger window
                             assert len(self._behcode_extract_times(behcode, trial, shorthand=True))<2, "then doent want to expand window"
 
-                            out = self.behcode_get_stream_crossings_in_window(trial, behcode, t_pre=0.5, t_post = 1, whichstream="touch_in_fixsquare_binary", 
+                            # out = self.behcode_get_stream_crossings_in_window(trial, behcode, t_pre=0.5, t_post = 1, whichstream="touch_in_fixsquare_binary", 
+                            out = self.behcode_get_stream_crossings_in_window(trial, behcode, t_pre=0.6, t_post = 1, whichstream="touch_in_fixsquare_binary", 
                                                                       ploton=plot_beh_code_stream, cross_dir_to_take="up", assert_single_crossing_per_behcode_instance=True,
                                                                         assert_single_crossing_this_trial = True,
                                                                          assert_expected_direction_first_crossing = "up",
@@ -5682,6 +6430,9 @@ class Session(object):
 
                         # take the first time
                         times = times[:1]
+
+                        # Touchscreen lag adjust.
+                        times = self.hack_adjust_touch_times_touchscreen_lag(times)
                         
                         # sometimes fixtch will be before presntation of fixcue (e.g., if subject touchees in anticiation).
                         # Make fixtch same (slightly later) than fixcue, or else this might lead to errors later.
@@ -5713,25 +6464,35 @@ class Session(object):
                                                   assert_expected_direction_first_crossing = "down",
                                                   refrac_period_between_events=0.05)              
                     except AssertionError as err:
+                        # USUALLY: rulecue/fixcue(samething) --> fixtouch.
+                        # SOMETIMES: fixtouch --> rulecue/fixcue [i.e., he touches in anticipation]. THis is prolbem beucase
+                        # fixtouch also triggers pd2. 
+                        # SOLUTION: shorten t_pre until fixtouch influence is gone. This is fine, since response to rulecue occurs
+                        # after rulecue.
+
+                        # OLDER NOTES:
                         # sometimes rulecue is shown too quickly relative to fixation cue, e.g.,, becuase subject
                         # presses quickly in anticiation. Then the predur might have a contamination. solve this by
                         # shortening predur
 
-                        LIST_TPRE = list(np.linspace(0.045, -0.15, 50))
+                        from itertools import product
+                        LIST_TPRE = list(np.linspace(0.045, -0.17, 40))
+                        LIST_TPOST = list(np.linspace(0.2, 0.4, 20)) # Sometimes PD drops too far ahead
                         SM_WIN = 0.005 # if fix cue and rule2 are too close, then smoothing makes them hard to separate...
-                        for t_pre in LIST_TPRE:
+                        for t_pre, t_post in product(LIST_TPRE, LIST_TPOST):
                             try:
-                                out = self.behcode_get_stream_crossings_in_window(trial, 132, t_pre=t_pre, t_post = 0.22, whichstream="pd2", 
-                                                      ploton=plot_beh_code_stream, cross_dir_to_take="down", 
-                                                      assert_single_crossing_per_behcode_instance=True,
+                                # out = self.behcode_get_stream_crossings_in_window(trial, 132, t_pre=t_pre, t_post = 0.22, whichstream="pd2", 
+                                out = self.behcode_get_stream_crossings_in_window(trial, 132, t_pre=t_pre, t_post = t_post, whichstream="pd2", 
+                                                    ploton=plot_beh_code_stream, cross_dir_to_take="down", 
+                                                    assert_single_crossing_per_behcode_instance=True,
                                                         assert_single_crossing_this_trial = False,
-                                                          assert_expected_direction_first_crossing = "down",
-                                                          refrac_period_between_events=0.05,
-                                                          smooth_win = SM_WIN)        
+                                                        assert_expected_direction_first_crossing = "down",
+                                                        refrac_period_between_events=0.05,
+                                                        smooth_win = SM_WIN)        
                                 # Got here, this means success!
                                 break  
                             except AssertionError as err:
-                                if t_pre == LIST_TPRE[-1]:
+                                if t_pre == LIST_TPRE[-1] and t_post == LIST_TPOST[-1]:
                                     # Then you exhaustred all t_pre. fail
                                     raise err
                                 else:
@@ -5761,16 +6522,27 @@ class Session(object):
                         times_behcode = self.behcode_extract_times_semantic(behcode, trial) 
 
                     except AssertionError as err:
-                        # on certain days, this pd was bad. therefore extract the photodiode time + padding.
-                        print("*******************")
-                        VER = 2
-                        times = self.behcode_extract_times_semantic(behcode, trial)
-                        times_behcode = times
 
-                        print(VER, ' == ' , times, ' -- ' , times_behcode)
-                        assert False, "decide on delay to add to times, based on looking thru many trials."
+                        try:
+                            # Sometimes there is long delay from behcode to PD. 
+                            t_post = 0.5                    
+                            out = self.behcode_get_stream_crossings_in_window(trial, behcode, whichstream=stream, 
+                                                                    cross_dir_to_take=cross_dir, t_pre=t_pre,
+                                                                    t_post=t_post,
+                                                                    ploton=plot_beh_code_stream, assert_single_crossing_per_behcode_instance=True, 
+                                                                    assert_single_crossing_this_trial = assert_single_crossing_this_trial) 
+                            times = _extract_times(out)
+                            times_behcode = self.behcode_extract_times_semantic(behcode, trial) 
 
+                        except AssertionError as err:
+                            # on certain days, this pd was bad. therefore extract the photodiode time + padding.
+                            print("*******************")
+                            VER = 2
+                            times = self.behcode_extract_times_semantic(behcode, trial)
+                            times_behcode = times
 
+                            print(VER, ' == ' , times, ' -- ' , times_behcode)
+                            assert False, "decide on delay to add to times, based on looking thru many trials."
 
                 elif event in ["go", "go_cue"]:
                     # Use photodiode
@@ -5780,14 +6552,18 @@ class Session(object):
                     cross_dir = 'down'
                     t_pre = -0.01
                     # t_post = 0.16 # missed. too short.
-                    t_post = 0.33 # is ok to be kind of long, nothing following can contaminate.
+                    # t_post = 0.33 # is ok to be kind of long, nothing following can contaminate.
+                    t_post = 0.45 # is ok to be kind of long, nothing following can contaminate.
                     out = self.behcode_get_stream_crossings_in_window(trial, behcode, whichstream=stream, 
                                                               cross_dir_to_take=cross_dir, t_pre=t_pre,
                                                               t_post=t_post,
                                                               ploton=plot_beh_code_stream, assert_single_crossing_per_behcode_instance=True, 
-                                                              assert_single_crossing_this_trial = True,
+                                                              assert_single_crossing_this_trial = True, assert_expected_direction_first_crossing="down",
                                                               take_first_behcode_instance=True)
                     times = _extract_times(out)
+
+                    # Touchscreen lag adjust.
+                    times =self.hack_adjust_touch_times_touchscreen_lag(times)
 
                 elif event=="first_raise":
                     # Offset of the stroke that is overalpping in time with the go cue.
@@ -5825,6 +6601,9 @@ class Session(object):
                         # take the first time, sometimes can go in and out of squiare..
                         times = times[0:1]
 
+                    # Touchscreen lag adjust.
+                    times =self.hack_adjust_touch_times_touchscreen_lag(times)
+
                 elif event in ["samp_sequence_onset", "seqon"]:
                     # for sequence traiing, when samp1 is shown (e..g a stroke turning on)
                     # use negative t_pre becuase sometimes previous peak bleeds into the current (when
@@ -5840,12 +6619,7 @@ class Session(object):
                     times = _extract_times(out)
 
                 elif event=="on_stroke_1":
-                    # onset of first stroke (touch)
-                    ons, _ = self.strokes_extract_ons_offs(trial)
-                    if len(ons)==0:
-                        times = []
-                    else:
-                        times = [ons[0]]
+                    return compute_times_from_scratch("on_strokeidx_0")
 
                 elif "on_strokeidx_" in event:
                     # e.g., on_strokeidx_2 means onset of 3rd stroke
@@ -5861,6 +6635,9 @@ class Session(object):
                         times = []
                     else:
                         times = [ons[idx]]
+                    
+                    # Touchscreen lag adjust.
+                    times =self.hack_adjust_touch_times_touchscreen_lag(times)
 
                 elif "off_strokeidx_" in event:
                     # e.g., on_strokeidx_2 means onset of 3rd stroke
@@ -5877,6 +6654,9 @@ class Session(object):
                     else:
                         times = [offs[idx]]
 
+                    # Touchscreen lag adjust.
+                    times =self.hack_adjust_touch_times_touchscreen_lag(times)
+
                 elif event=="off_stroke_last":
                     # offset of the last stroke (touch)
                     _, offs = self.strokes_extract_ons_offs(trial)
@@ -5885,6 +6665,8 @@ class Session(object):
                     else:
                         times = [offs[-1]]
 
+                    # Touchscreen lag adjust.
+                    times =self.hack_adjust_touch_times_touchscreen_lag(times)
 
                 elif event in ["done_button", "doneb"]:
                     # Onset of touch of done button, based on touchgin within square
@@ -5985,6 +6767,9 @@ class Session(object):
                             # else:
 
                     times = times[0:1] # take the first time, sometimes can go in and out of squiare
+                    
+                    # Touchscreen lag adjust.
+                    times = self.hack_adjust_touch_times_touchscreen_lag(times)
 
                 elif event in ["post_screen_onset", "post"]:
                     # onset of the post-screen, which is offset of the "pause" after you report done
@@ -6064,9 +6849,11 @@ class Session(object):
                     # use None for assert_expected_direction_first_crossing, because sometimes the preceding
                     # reward can be very close in time, if manually rewarded.
                     times = _extract_times(out)
+                
                 elif event=="reward_ons_manual":
                     # do same as reward_ons, with eventcode = 14;
                     assert False, "code it"
+
                 elif event=="reward_all":
                     # Ingore beh codes. just use entire trial and get crossings.
                     out = self.behcode_get_stream_crossings_in_window(trial, None, t_pre=0.01, t_post = 0.04, whichstream="reward", 
@@ -6076,13 +6863,63 @@ class Session(object):
                                                                 assert_expected_direction_first_crossing = "up", 
                                                                 allow_no_crossing_per_behcode_instance_if=None)                
                     times = _extract_times(out)
+                
+                elif event=="reward_first_post":
+                    # Get the first reward that is triggered after done (actually, detected using end of last stroke) -- i.e,., this is evaluation of trial. This excludes
+                    # rewards that at other times, which are hand triggered. Might (rarely) include rew post done, which is what I 
+                    # would want anyway.
+                    # NOTE: this is a bit slow!
+                    
+                    # time_done = self.events_get_time_helper("post", trial, True)[0] # PROLBEM, this can sometimes occur after last rew
+                    # time_done = self.events_get_time_helper("doneb", trial, True)[0]
+                    # if len(time_done)==0:
+
+                    # if self.beh_this_day_uses_done_button(): # Actulaly dont do this, since some days have blocks not using done button.
+                    #     time_post = self.events_get_time_helper("doneb", trial, False)
+                    # else:
+                    # OPTION 1 - go back 0.5, to acocunt for times that tpost is after rew. rare, and usualyl very low, like 0.01
+                    time_post = self.events_get_time_helper("post", trial, False)
+                    time_post = [t - 0.5 for t in time_post]
+
+                    if len(time_post)>0:
+                        times_rew = self.events_get_time_helper("reward_all", trial, False)
+                        times = [t for t in times_rew if t>time_post]
+                    else:
+                        # Trial didnt
+                        times = []
+
+                    # Alternative, deals with issue that post sometimes occurs after rew. But above, putting -0.5, shold solve this probe
+                    # times_stroke_off = self.events_get_time_helper("off_stroke_last", trial, False) # list of times
+                    # time_doneb = self.events_get_time_helper("doneb", trial, False)
+                    # if len(times_stroke_off)>=1:
+                    #     times_stroke_off = times_stroke_off[0]
+                    #     times_rew = self.events_get_time_helper("reward_all", trial, False)
+                    #     times = [t for t in times_rew if (t>times_stroke_off)]
+
+                    #     if len(time_doneb)>0:
+                    #         times = [t for t in times if t>min(time_doneb)]
+
+                    #     times = [t for t in times if t>time_post-1]
+
+                    #     if len(times)>1:
+                    #         times = [min(times)]
+
+                    # else:
+                    #     # no stroke onthis trial.. so there cant be an evaluative reward
+                    #     times = []
+
+                    if len(times)>1:
+                        times = [min(times)]
+
+                elif event in ["off"]:
+                    # Rnd of trial, using the event code (18). Not that precise? but is ok. Did this for Emre Kurtoglu.
+                    times = _resort_to_behcode_time(event, 0.)
                 else:
                     print(event, "This event doesnt exist!!")
                     raise NotEnoughDataException
                     
                 assert times is not None
             return times
-
 
         ###############################
         dict_events = {}
@@ -6123,9 +6960,97 @@ class Session(object):
 
         return dict_events
 
+    def events_get_clusterfix_fixation_times_and_centroids_simple(self, trial, PLOT=False, PRINT=False):
+        """
+        Quick, clean extraction of data only, without any additional stuff, other than raw plots to verify
+        extraction. Extracts:
+        - raw eye position.
+        - fixation times and locations
+        - saccade times and locations (aligned to each fixation, the saccade leading into the fixation)
+        """
+    
+        trialcode = self.datasetbeh_trial_to_trialcode(trial)
+
+        ### (1) Load all fixation times and centroids
+        # load the .csv file for this trialcode, containing fixation times
+        fname_times = f"{PATH_SAVE_CLUSTERFIX}/{self.Animal}-{self.Date}-{self.RecSession}/clusterfix_result_csvs/{trialcode}-fixation-onsets.csv"
+        data_times_fix = pd.read_csv(fname_times, sep=',').values
+        data_times_fix = [item[0] for item in data_times_fix]
+
+        fname_times = f"{PATH_SAVE_CLUSTERFIX}/{self.Animal}-{self.Date}-{self.RecSession}/clusterfix_result_csvs/{trialcode}-saccade-onsets.csv"
+        data_times_sacc = pd.read_csv(fname_times, sep=',').values
+        data_times_sacc = [item[0] for item in data_times_sacc]
+
+        # load the .csv file for this trialcode, containing fixation centroids
+        fname_centroids = f"{PATH_SAVE_CLUSTERFIX}/{self.Animal}-{self.Date}-{self.RecSession}/clusterfix_result_csvs/{trialcode}-fixation-centroids.csv"
+        data_centroids = pd.read_csv(fname_centroids, sep=',').values
+        data_centroids = [item for item in data_centroids]
+
+        assert len(data_centroids) == len(data_times_fix), "the below assumes they are alinged"
+
+        # Prune, so that each fixation is aligned to the saccade that led up to it.
+        # - chose this, isntaed of the saccade leading away from fixaton, beucase, 
+        # in the extracted data, it is more ofetn the case that that the first saccade is before
+        # the first fixation, rather than after.
+        
+        if data_times_sacc[0] > data_times_fix[0]:
+            data_times_fix = data_times_fix[1:] # throw out the first fixation
+            data_centroids = data_centroids[1:] # centroids are always aligned to fixations
+
+        # prune the end so they match
+        if len(data_times_sacc) == len(data_times_fix) + 1:
+            data_times_sacc = data_times_sacc[:-1] # Good
+        elif len(data_times_sacc) == len(data_times_fix) - 1:
+            data_times_fix = data_times_fix[:-1]
+            data_centroids = data_centroids[:-1]
+        else:
+            assert len(data_times_fix)==len(data_times_sacc)
+
+        assert len(data_times_fix)==len(data_times_sacc)==len(data_centroids)
+
+        # sanity check that saccades are close in time to fixations
+        if PRINT:
+            print([(i, f - s) for i, (f, s) in enumerate(zip(data_times_fix, data_times_sacc))])
+
+        tmp = np.median([f - s for i, (f, s) in enumerate(zip(data_times_fix, data_times_sacc))])
+        assert 0.02 < tmp < 0.08, "something wrong -- misaligned saccade and fixation"    
+        assert all([(f - s)>0 for f, s in zip(data_times_fix, data_times_sacc)]), "all should be positive..."
+
+        ### (2) Extract raw data
+        times_tdt, vals_tdt_calibrated, _, _ = self.beh_extract_eye_good(trial, CHECK_TDT_ML2_MATCH=True, return_all=True,
+                                                                                                PLOT=PLOT)
+        if PLOT:
+            # Overlay onto timecourse of eye tracking.
+
+            fig1d, axes1d = plt.subplots(4,1, figsize=(40,10), squeeze=False, sharex=True)
+
+            ax = axes1d.flatten()[2]
+            ax.plot(times_tdt, vals_tdt_calibrated[:,0], label="tdt_x", color="b")
+            ax.plot(times_tdt, vals_tdt_calibrated[:,1], label="tdt_y", color="r")
+            ax.legend()
+
+
+            ax.plot(data_times_fix, np.stack(data_centroids)[:,0],  "ob")
+            ax.plot(data_times_fix, np.stack(data_centroids)[:,1],  "or")
+            for _i, t in enumerate(data_times_sacc):
+                ax.axvline(t, linestyle="-", alpha=0.5, color="k")
+                ax.text(t, -500, _i)
+            ax.set_title("fixation events overlaid on raw voltage (calibrated)")
+            # - overlay trial events
+            self.plotmod_overlay_trial_events(ax, trial)
+        else:
+            fig1d = None
+
+        return times_tdt, vals_tdt_calibrated, data_times_fix, data_times_sacc, data_centroids, fig1d
+
+
     # load fixation onset times (231027_eyetracking_neural_exploration.ipynb)
     def events_get_clusterfix_fixation_times_and_centroids(self, trial, on_or_off=True, event_endpoints=None,
-                                                           plot_overlay_on_raw=False):
+                                                           plot_overlay_on_raw=False,
+                                                           plot_var="assigned_task_shape"):
+        """
+        Load fixation times and locations, as derived using clusterfix.
+        """
         # load this trial's saccade times
         trialcode = self.datasetbeh_trial_to_trialcode(trial)
         directory_for_clusterfix = PATH_SAVE_CLUSTERFIX
@@ -6144,17 +7069,17 @@ class Session(object):
         data_centroids = pd.read_csv(fname_centroids, sep=',').values
         data_centroids = [item for item in data_centroids]
 
+        assert len(data_times)==len(data_centroids)
+
         if event_endpoints is not None:
-            if event_endpoints==["stim_onset", "go"]:
-                # get start, end indices
-                start_time, end_time = self.get_time_window_of_events(trial, event_endpoints[0], event_endpoints[1])
-                valid_inds = [i for i, t in enumerate(data_times) if end_time >= t >= start_time]
-                data_times = [data_times[i] for i in valid_inds]
-                data_centroids = [data_centroids[i] for i in valid_inds]
-
-
-            else:
-                assert False, "code this"
+            # if event_endpoints==["stim_onset", "go"]:
+            # get start, end indices
+            start_time, end_time = self.get_time_window_of_events(trial, event_endpoints[0], event_endpoints[1])
+            valid_inds = [i for i, t in enumerate(data_times) if end_time >= t >= start_time]
+            data_times = [data_times[i] for i in valid_inds]
+            data_centroids = [data_centroids[i] for i in valid_inds]
+            # else:
+            #     assert False, "code this"
 
         if plot_overlay_on_raw:
             times_tdt, vals_tdt_calibrated, fs_tdt, vals_tdt_calibrated_sm = self.beh_extract_eye_good(trial, CHECK_TDT_ML2_MATCH=True, return_all=True,
@@ -6168,7 +7093,7 @@ class Session(object):
             else:
                 assert event_endpoints is None
 
-            fig1d, axes1d = plt.subplots(3,1, figsize=(15,10), squeeze=False)
+            fig1d, axes1d = plt.subplots(4,1, figsize=(20,10), squeeze=False, sharex=True)
 
             ax = axes1d.flatten()[0]
             ax.plot(times_tdt, vals_tdt_calibrated[:,0], label="tdt_x", color="b")
@@ -6203,6 +7128,10 @@ class Session(object):
             # - overlay trial events
             self.plotmod_overlay_trial_events(ax, trial)
 
+            # Also put line underneath coloring the shapes
+            ax = axes1d.flatten()[3]
+            self.beh_eye_fixation_task_shape_overlay_plot(trial, ax, plot_var=plot_var)
+            
             # overlay on task image
             fig2d, axes2d = plt.subplots(2, 2, figsize=(10,10))
 
@@ -6387,6 +7316,22 @@ class Session(object):
                 assert len(times)==1
                 
         return times
+
+    def events_get_time_flanking_trial_helper(self, trial):
+        """
+        Get times for onset and offset of meat of trial (fixcue --> post/reward)
+        """
+
+        t1 = self.events_get_time_helper("fixcue", trial, assert_one=True)[0]
+        t2 = self.events_get_time_helper("post", trial, assert_one=True)[0]
+        tmp = self.events_get_time_helper("reward_all", trial, assert_one=False)
+        if len(tmp)>0:
+            t3 = max(tmp)
+        else:
+            t3 = 0.
+        t_start = t1
+        t_end = max([t2, t3]) # Ends either at start of post, or when get reward
+        return t_start, t_end
 
     def events_get_feature_helper(self, event, trial):
         """ [GOOD] Return the name of a feature, plus a list of feature values, in trial for this event.
@@ -6650,7 +7595,7 @@ class Session(object):
 
 
     def eventsdataframe_extract_timings(self, list_events=None, trials=None,
-            DEBUG=False):
+            DEBUG=False, include_events_from_dict=False):
         """
         Get a dataframe across all trials holding information about key timing of events.
         I used this for sanity checks (e.g., plotting events rasters across trials).
@@ -6670,7 +7615,7 @@ class Session(object):
             trials = trials[:20]
             
         if list_events is None:
-            list_events = self.events_default_list_events()
+            list_events = self.events_default_list_events(include_events_from_dict=include_events_from_dict)
 
         for trialthis in trials:
             if trialthis%50==0:
@@ -6735,7 +7680,8 @@ class Session(object):
             st = None
         else:
             # Convert to spike train
-            st = SpikeTrain(dat["spike_times"]*s, t_stop=dat["time_off"], t_start=dat["time_on"])
+            st = self.elephant_spiketrain_from_values(dat["spike_times"], dat["time_on"], dat["time_off"])
+            # st = SpikeTrain(dat["spike_times"]*s, t_stop=dat["time_off"], t_start=dat["time_on"])
 
         if cache:
             dat = self.datall_TDT_KS_slice_single_bysite(site, trial)
@@ -6804,6 +7750,7 @@ class Session(object):
     def _popanal_generate_from_raw(self, frate_mat, times, chans, df_label_trials=None,
         list_df_label_cols_get=None):
         """ Low level code to generate PopAnal from inputed raw fr data
+        THE ONLY place where PA are generated in Session or Snippets.
         PARAMS:
         - frate_mat, shape (chans, trials, times)
         - times, shape (times,)
@@ -7007,6 +7954,364 @@ class Session(object):
 
         return ListPA
 
+    def _popanal_generate_timewarped_rel_events_extract_raw(self,  events=None, sites=None, trials=None,
+                                                            predur_rel_first_event = -1, postdur_rel_last_event = 1,
+                                                            min_interval_dur=0.1, get_dfspikes=True):
+        """
+        Do this separateyl for each session before concatenating.
+        PARAMS:
+        - min_interval_dur, min dur between events. throws out trials that fail this.
+        """
+        from elephant.kernels import GaussianKernel        
+        from elephant.statistics import time_histogram, instantaneous_rate,mean_firing_rate
+        from quantities import s
+        from neo.core import SpikeTrain 
+
+        ### Prep params
+        if events is None:
+            # NOTE: exclude fixcue, beucase there is sometimes very short gap between fixcue and fixtch, and also high variability. This
+            # leads to weird things.
+            if self.beh_this_day_uses_done_button():
+                events = ['fixtch', 'samp', 'go_cue', 'first_raise', 'on_strokeidx_0', 'off_strokeidx_0', 'doneb', 'reward_first_post']
+                # events = ['fixcue', 'fixtch', 'samp', 'go_cue', 'first_raise', 'on_strokeidx_0', 'off_strokeidx_0', 'doneb', 'reward_first_post']
+            else:
+                events = ['fixtch', 'samp', 'go_cue', 'first_raise', 'on_strokeidx_0', 'off_strokeidx_0', 'reward_first_post']
+                # events = ['fixcue', 'fixtch', 'samp', 'go_cue', 'first_raise', 'on_strokeidx_0', 'off_strokeidx_0', 'reward_first_post']
+
+        # Get trials that hold a set of events
+        if trials is None:
+            trials = self.get_trials_list(True, events_that_must_include_in_order = events, min_interval_dur=min_interval_dur)
+        else:
+            tmp = self._get_trials_list_if_include_these_events_in_order(trials, events, min_interval_dur=min_interval_dur)
+            assert tmp==trials, "some trials are mssing events"
+        if sites is None:
+            sites = self.sitegetterKS_all_sites()
+
+        ### Get event time distributions across trials
+        dfeventsn, _ = self.eventsdataframe_extract_timings(events, trials)
+        times_array = np.array(dfeventsn["time_events_flat_first_unsorted"].tolist()) # convert to array (ntrials, nevents)
+        # Check that is good array
+        assert times_array.shape == (len(trials), len(events))
+        assert np.all(np.isnan(times_array)==False)
+
+        # Append pre and post times to first and last times of array
+        # -- makes rest of analysis easier.
+        times_array = np.concatenate([(times_array[:,0] + predur_rel_first_event)[:, None], times_array, (times_array[:, -1] + postdur_rel_last_event)[:, None]], axis=1)
+
+        ### Get spiketimes
+        if get_dfspikes:
+            res = []
+            for site in sites:
+                for ind_trial in range(len(trials)):
+                    print("Getting spiketimes, site:", site)
+                    event_time = times_array[ind_trial][0]
+                    post_dur = times_array[ind_trial][-1] - event_time
+                    pre_dur = 0
+                    trial_neural = trials[ind_trial]
+
+                    spike_times = self._snippets_extract_single_snip_spiketimes(site, trial_neural,
+                        event_time, pre_dur, post_dur, subtract_event_time=False)
+                    res.append({
+                        "site":site,
+                        "ind_trial":ind_trial,
+                        "trial":trial_neural,
+                        "spike_times_raw":spike_times,
+                    })
+            dfspikes = pd.DataFrame(res)
+        else:
+            dfspikes = None
+
+        ### Get pa for each trial
+        print("Getting pa for each trial")
+        list_pa = []
+        for ind_trial in range(len(trials)):
+            t_on = times_array[ind_trial][0]
+            t_off = times_array[ind_trial][-1]
+            trial_neural = trials[ind_trial]
+            sampling_period = 0.001 # to make interpolation more accurate
+            pa = self.popanal_generate_save_trial(trial_neural, sampling_period=sampling_period)
+            pa.Times = np.array(pa.Times)
+            pa = pa.slice_by_dim_values_wrapper("chans", sites)
+            pa = pa.slice_by_dim_values_wrapper("times", (t_on, t_off))
+            # if not pa.Chans == sites:
+            #     print(pa.Chans)
+            #     print(sites)
+            #     assert False
+            if False: # doing this above now
+                pa = pa.slice_by_dim_values_wrapper("times", [t_on, t_off])
+            list_pa.append(pa)
+
+        ### Get beh data
+        dflab = self.datasetbeh_extract_dataframe(trials)
+
+        # Sanity check:
+        # assert times_array.shape[0]==len()
+        return events, sites, times_array, dfspikes, dflab, list_pa
+
+
+    # def popanal_generate_timewarped_rel_events(self, events=None, sites=None, trials=None, PLOT=False,
+    #                                            predur_rel_first_event = -1, postdur_rel_last_event = 1):
+    #     """
+    #     Wrapper to generate PA that has fr time-warped to fit the "median" trial, based on linear
+    #     interpolation between events. Each trial must have all events. 
+    #     PARAMS:
+    #     - events, list of str. if give 4 events, then will actuayl ahve 6, including 2 flankers, whose timing
+    #     is given by predur_rel_first_event, and postdur_rel_last_event.
+    #     RETURNS:
+    #     - PA, with times in actual raw times. Event-info is in PA.Params
+    #     """
+    #     from elephant.kernels import GaussianKernel        
+    #     from elephant.statistics import time_histogram, instantaneous_rate,mean_firing_rate
+    #     from quantities import s
+    #     from neo.core import SpikeTrain
+
+    #     ### Prep params
+    #     if events is None:
+    #         events = ['samp', 'go_cue', 'first_raise', 'on_strokeidx_0']
+    #     # Get trials that hold a set of events
+    #     if trials is None:
+    #         trials = self.get_trials_list(events_that_must_include = events)
+    #     else:
+    #         tmp = self._get_trials_list_if_include_these_events(trials, events)
+    #         assert tmp==trials, "some trials are mssing events"
+    #     if sites is None:
+    #         sites = self.sitegetterKS_all_sites()
+
+    #     ### Get event time distributions across trials
+    #     dfeventsn, _ = self.eventsdataframe_extract_timings(events, trials)
+    #     times_array = np.array(dfeventsn["time_events_flat_first_unsorted"].tolist()) # convert to array (ntrials, nevents)
+    #     # Check that is good array
+    #     assert times_array.shape == (len(trials), len(events))
+    #     assert np.all(np.isnan(times_array)==False)
+
+    #     # Append pre and post times to first and last times of array
+    #     # -- makes rest of analysis easier.
+    #     times_array = np.concatenate([(times_array[:,0] + predur_rel_first_event)[:, None], times_array, (times_array[:, -1] + postdur_rel_last_event)[:, None]], axis=1)
+
+    #     ### Get median times
+    #     times_median = np.median(times_array, axis=0)
+        
+    #     def convert_spiketime_to_timecanonical(st, ind_trial, DEBUG=False):
+    #         """
+    #         Given a time and a trial, convert it to common coordinate system, 0...1...2, where these are the evenst, 
+    #         and fraction is fraction with nthe window
+    #         """
+    #         times = times_array[ind_trial]
+    #         event_ind_this_time_occurs_after = np.max(np.argwhere((st-times)>0))
+    #         time_delta = st - times[event_ind_this_time_occurs_after]
+    #         time_interval = times[event_ind_this_time_occurs_after+1] - times[event_ind_this_time_occurs_after]
+    #         time_delta_frac = time_delta/time_interval
+    #         time_canonical = event_ind_this_time_occurs_after + time_delta_frac
+
+    #         if DEBUG:
+    #             print(st, times, event_ind_this_time_occurs_after, time_delta_frac)
+            
+    #         assert time_delta_frac>=0
+    #         assert time_delta_frac<=1
+    #         return time_canonical
+        
+    #     ### Get spiketimes
+    #     res = []
+    #     for site in sites:
+    #         for ind_trial in range(len(trials)):
+    #             print("Getting spiketimes, site:", site)
+    #             event_time = times_array[ind_trial][0]
+    #             post_dur = times_array[ind_trial][-1] - event_time
+    #             pre_dur = 0
+    #             trial_neural = trials[ind_trial]
+
+    #             spike_times = self._snippets_extract_single_snip_spiketimes(site, trial_neural,
+    #                 event_time, pre_dur, post_dur, subtract_event_time=False)
+    #             res.append({
+    #                 "site":site,
+    #                 "ind_trial":ind_trial,
+    #                 "trial":trial_neural,
+    #                 "spike_times_raw":spike_times,
+    #             })
+    #     dfspikes = pd.DataFrame(res)
+        
+    #     def _get_spike_times(site, trial, spikes_version="spike_times_warped"):
+    #         """ get spike times for this (site, trial)"""
+    #         tmp = dfspikes[(dfspikes["site"] == site) & (dfspikes["trial"] == trial)]
+    #         assert len(tmp)==1
+    #         return tmp[spikes_version].values[0]
+
+    #     ### METHODS -- Convert from canonical time to projected onto median trial event times
+    #     times_median_canonical = np.arange(len(times_median)) # (0, 1, 2, ...)
+    #     map_segment_to_segmentdur = {} # each segment (0,1 ,2..) to dur in sec
+    #     for i, dur in enumerate(np.diff(times_median)):
+    #         map_segment_to_segmentdur[i] = dur
+
+    #     def project_spiketimescanonical_to_median(spike_times_canonical):
+    #         """
+    #         e.g., convert 0.1 (first segment, 0.1 frac within) to the actual raw time relative to the
+    #         median trial.
+    #         """
+    #         spike_times_warped = np.zeros(spike_times_canonical.shape)-999
+
+    #         for segment_idx in times_median_canonical[:-1]:
+
+    #             # get all inds in this segment
+    #             mask = ((spike_times_canonical-segment_idx)>=0) & ((spike_times_canonical-segment_idx)<1)
+
+    #             # get their fraction within the segment, and add that to the median time onset
+    #             fracs = (spike_times_canonical[mask] - segment_idx) # frac  
+    #             segment_dur = map_segment_to_segmentdur[segment_idx]
+    #             segment_onset = times_median[segment_idx]
+
+    #             assert np.all(spike_times_warped[mask] == -999), "already filled..."
+
+    #             spike_times_warped[mask] = segment_onset + fracs*segment_dur
+    #         assert np.all(spike_times_warped>-999), "missed items"
+    #         return spike_times_warped
+
+    #     ### Now time-warp each spike time to canonical coordiantes then to warped.
+    #     list_spike_times_canonical = []
+    #     list_spike_times_warped = []
+    #     for i, row in dfspikes.iterrows():
+    #         ind_trial = row["ind_trial"]
+    #         site = row["site"]
+    #         spike_times_raw = row["spike_times_raw"]
+
+    #         print("Times --> canonical, site:", site)
+    #         spike_times_canonical = np.array([convert_spiketime_to_timecanonical(st, ind_trial) for st in spike_times_raw])
+
+    #         # Project to median (final warp)
+    #         print("Canonical --> warped, site:", site)
+    #         spike_times_warped = project_spiketimescanonical_to_median(spike_times_canonical)
+
+    #         list_spike_times_canonical.append(spike_times_canonical)
+    #         list_spike_times_warped.append(spike_times_warped)
+    #     dfspikes["spike_times_canonical"] = list_spike_times_canonical
+    #     dfspikes["spike_times_warped"] = list_spike_times_warped
+
+    #     # PLOT EXAMPLE
+    #     if PLOT:
+    #         site = sites[0]
+    #         trials_plot = trials[:20]
+
+    #         fig, axes = plt.subplots(1, 4, figsize=(40, 8))
+
+    #         ax = axes.flatten()[0]
+    #         ax.set_title("original times")
+    #         for ind_trial in range(len(trials_plot)):
+    #             times = times_array[ind_trial, :]
+    #             ax.plot(times, np.ones(len(times))*ind_trial, "ok")
+
+    #             # overlay spikes
+    #             spike_times = _get_spike_times(site, trials[ind_trial], "spike_times_raw")
+    #             ax.plot(spike_times, np.ones(len(spike_times))*ind_trial, "xr")
+
+    #         ax = axes.flatten()[1]
+    #         ax.set_title("original times, subtract first time")
+    #         for ind_trial in range(len(trials_plot)):
+    #             times = times_array[ind_trial, :]
+    #             times = times_array[ind_trial, :]
+    #             time_start = times[0]
+    #             times = times - time_start
+    #             ax.plot(times, np.ones(len(times))*ind_trial, "ok")
+
+    #             # overlay spikes
+    #             spike_times = _get_spike_times(site, trials[ind_trial], "spike_times_raw")
+    #             spike_times = spike_times - time_start
+    #             ax.plot(spike_times, np.ones(len(spike_times))*ind_trial, "xr")
+
+    #         ax = axes.flatten()[2]
+    #         ax.set_title("canonical times")
+    #         for ind_trial in range(len(trials_plot)):
+    #             times = times_array[ind_trial, :]
+
+    #             # times = times_array[ind_trial, :]
+    #             times = times_median_canonical
+    #             ax.plot(times, np.ones(len(times))*ind_trial, "ok")
+
+    #             # overlay spikes
+    #             spike_times = _get_spike_times(site, trials[ind_trial], "spike_times_canonical")
+    #             ax.plot(spike_times, np.ones(len(spike_times))*ind_trial, "xr")
+
+    #         ax = axes.flatten()[3]
+    #         ax.set_title("warped times (final)")
+    #         for ind_trial in range(len(trials_plot)):
+    #             times = times_array[ind_trial, :]
+
+    #             # times = times_array[ind_trial, :]
+    #             times = times_median
+    #             ax.plot(times, np.ones(len(times))*ind_trial, "ok")
+
+    #             # overlay spikes
+    #             spike_times = _get_spike_times(site, trials[ind_trial], "spike_times_warped")
+    #             ax.plot(spike_times, np.ones(len(spike_times))*ind_trial, "xr")
+
+    #     ### Generate PA -- using warped aligned times, generate a single PA
+    #     t_on = times_median[0]
+    #     t_off = times_median[-1]
+    #     list_pa = []
+    #     for trial in trials:
+            
+    #         print("Generating PA, trial: ", trial)
+            
+    #         # Collect spike trains over all sites
+    #         list_spiketrain = []
+    #         for site in sites:
+    #             # dat = self.datall_TDT_KS_slice_single_bysite(site, trial)
+    #             st = _get_spike_times(site, trial, spikes_version="spike_times_warped")
+    #             list_spiketrain.append(self.elephant_spiketrain_from_values(st, t_on, t_off))
+                
+    #         # Convert spike train to smoothed FR
+    #         frate = instantaneous_rate(list_spiketrain, sampling_period=SMFR_TIMEBIN*s, 
+    #             kernel=GaussianKernel(self.SMFR_SIGMA*s))
+
+    #         # Convert to popanal
+    #         times = np.array(frate.times)
+    #         pa = self._popanal_generate_from_raw(frate.T.magnitude, times, sites, df_label_trials=None)
+    #         list_pa.append(pa)
+
+    #     from neuralmonkey.classes.population import concatenate_popanals
+    #     PA = concatenate_popanals(list_pa, "trials", 
+    #                             values_for_concatted_dim = trials,
+    #                             # assert_otherdims_have_same_values=True, 
+    #                             # assert_otherdims_restrict_to_these=("chans", "times"),
+    #                             assert_otherdims_have_same_values=False,   # no need, it must be by design
+    #                             assert_otherdims_restrict_to_these=("chans", "times"),
+    #                             all_pa_inherit_times_of_pa_at_this_index=0)
+
+    #     # Get beh data
+    #     PA.Xlabels["trials"] = self.datasetbeh_extract_dataframe(trials)
+
+    #     # Store params related to the events
+    #     PA.Params["version"] = "time_warped_to_events"
+    #     PA.Params["event_times_array"] = times_array
+    #     PA.Params["event_times_median"] = times_median
+    #     PA.Params["event_times_median_canonical"] = times_median_canonical
+    #     PA.Params["events_inner"] = events
+    #     PA.Params["events_all"] = ["ONSET"] + events + ["OFFSET"]
+    #     PA.Params["ONSET_predur_rel_first_event"] = predur_rel_first_event
+    #     PA.Params["OFFSET_postdur_rel_lst_event"] = postdur_rel_last_event
+
+    #     # Store bregions
+    #     # -- NOTE: This works.. list_pa, bregions = PA.split_by_label("chans", "bregion_combined")
+    #     res =[]
+    #     for site in PA.Chans:
+    #         res.append(
+    #             {"bregion_combined": self.sitegetterKS_map_site_to_region(site, region_combined=True),
+    #             "bregion":self.sitegetterKS_map_site_to_region(site, region_combined=False),
+    #             "chan":site
+    #         })
+
+    #     # save
+    #     PA.Xlabels["chans"] = pd.DataFrame(res)        
+
+    #     return PA
+
+
+    def elephant_spiketrain_from_values(self, spike_times, time_on, time_off):
+        """ Convert array of times to a SpikeTrain instance
+        """
+        from quantities import s
+        from neo.core import SpikeTrain
+        spiketrain = SpikeTrain(spike_times*s, t_stop=time_off, t_start=time_on)
+        return spiketrain
+
     def elephant_spiketrain_to_smoothedfr(self, spike_times, 
         time_on, time_off, 
         gaussian_sigma = None, # changed to 0.025 on 4/3/23. ,
@@ -7028,7 +8333,8 @@ class Session(object):
         if gaussian_sigma is None:
             gaussian_sigma = self.SMFR_SIGMA
 
-        spiketrain = SpikeTrain(spike_times*s, t_stop=time_off, t_start=time_on)
+        spiketrain = self.elephant_spiketrain_from_values(spike_times, time_on, time_off)
+        # spiketrain = SpikeTrain(spike_times*s, t_stop=time_off, t_start=time_on)
 
         frate = instantaneous_rate(spiketrain, sampling_period=sampling_period*s, 
             kernel=GaussianKernel(gaussian_sigma*s))
@@ -7068,7 +8374,7 @@ class Session(object):
         if gaussian_sigma is None:
             gaussian_sigma = self.SMFR_SIGMA
 
-        if trial not in self.PopAnalDict.keys() or overwrite==True:
+        if (self.PopAnalDict is None) or (trial not in self.PopAnalDict.keys()) or overwrite==True:
             # Get all spike trains for a trial
             list_sites = self.sitegetterKS_map_region_to_sites_MULTREG(clean=clean_chans)
             list_spiketrain = []
@@ -7078,6 +8384,17 @@ class Session(object):
                     # print("Generating spike train! (site, trial): ", site, trial)
                     self._spiketrain_as_elephant(site, trial, cache=True)
                 st = dat["spiketrain"]
+
+                # CANNOT do mods here, becuase is cached version
+                # if twind is not None:
+                #     start_time = twind[0] * s
+                #     end_time = twind[-1] * s
+                #     # print(st)
+                #     st = st.time_slice(start_time, end_time)
+                #     # st = st[(st>=twind[0]) & (st<=twind[1])]
+                #     # print(st)
+                #     # assert False
+
                 if st is None:
                     print("Trial, site:", trial, site)
                     assert False, "first generate spike trains.."
@@ -7088,8 +8405,10 @@ class Session(object):
                 kernel=GaussianKernel(gaussian_sigma*s))
 
             # Convert to popanal
-            PA = PopAnal(frate.T.magnitude, frate.times, chans = list_sites,
-                spike_trains = [list_spiketrain], print_shape_confirmation=print_shape_confirmation)
+            PA = self._popanal_generate_from_raw(frate.T.magnitude, frate.times, list_sites, df_label_trials=None)
+            assert PA.Chans == list_sites
+            # PA = PopAnal(frate.T.magnitude, frate.times, chans = list_sites,
+            #     spike_trains = [list_spiketrain], print_shape_confirmation=print_shape_confirmation)
             # PA.Params["frate_sampling_period"] = sampling_period
             self.PopAnalDict[trial] = PA
 
@@ -7101,6 +8420,16 @@ class Session(object):
 
 
     ###################### SMOOTHED FR
+    def smoothedfr_extract_timewindow_during_trial(self, sitenum, trial):
+        # Get for a single trial and site, the smoothed fr between two events that flank the main part of the
+        # trial when subject is doing things.
+
+        # Get the times for the events that flank the action part of trial.
+        t_start, t_end = self.events_get_time_flanking_trial_helper(trial)
+        pa, _, _, _ = self.smoothedfr_extract_timewindow_bytimes([trial], [t_start], [sitenum], pre_dur=0., post_dur=t_end-t_start)
+
+        return pa
+
     def smoothedfr_extract_timewindow_bytimes(self, trials, times, 
         sites, pre_dur=-0.1, post_dur=0.1,
         fail_if_times_outside_existing=True,
@@ -7144,6 +8473,14 @@ class Session(object):
             # Extract snip
             t1 = time_align + pre_dur
             t2 = time_align + post_dur
+
+            # --- This does nothing!! see below.
+            # if realign_to_time:
+            #     # then make time_align the new 0
+            #     subtract_this_from_times = time_align
+            # else:
+            #     subtract_this_from_times = None
+
             pa = pa._slice_by_time_window(t1, t2, return_as_popanal=True,
                 fail_if_times_outside_existing=fail_if_times_outside_existing,
                 subtract_this_from_times=time_align,
@@ -7479,11 +8816,92 @@ class Session(object):
             suc = getTrialsFixationSuccess(fd, trialml2)
             return suc
 
+    def _get_trials_list_skipped_trials(self, trials):
+        """
+        Decide if this session has any hard coded trials to skip --- most of the time this is due to 
+        losing power in amplifier, or other recording mishaps.
+        RETURNS:
+        - neural_trials_missing_beh, list of ints, neural trials that should be skipped (else None, if no skipping)
+        - do_skip_trials, bool, if True, then this date has trials that are skipped.
+        """
+
+        neural_trials_missing_beh = None
+        do_skip_trials = True
+
+        # Not sure if this works. It was commented out and then I turned it back on.
+        if (int(self.Date))==220609 and self.RecSession==0 and self.Animal=="Pancho":
+            neural_trials_missing_beh = [858, 859, 860, 861, 862, 863, 864, 865, 866, 867]
+            trials = [t for t in trials if t not in neural_trials_missing_beh]
+
+        elif (int(self.Date))==231206 and self.RecSession==0 and self.Animal=="Diego":
+            neural_trials_missing_beh = [551, 552, 553, 554, 555]
+            trials = [t for t in trials if t not in neural_trials_missing_beh]
+
+        elif (int(self.Date))==250319 and self.RecSession==1 and self.Animal=="Diego":
+            # Lkast good trial was beh sess 2, beh trial 531 (this only applies for chans 1-256)
+
+            if self.Datasetbeh is not None: # Otherwise runs into recursion error. This is totally fine here
+                tc_start = (250319, 2, 532)
+                tc_end = (250319, 9, 999)
+                if True:
+                    # Doesnt work all the time, ie.. whend ataset not yet extracted
+                    _, trialcodes_bad = self.Datasetbeh.trialcode_extract_rows_within_range(tc_start, tc_end, input_tuple_directly=True)
+                else:
+                    from pythonlib.tools.stringtools import trialcode_extract_rows_within_range
+                    list_trialcode = [self._datasetbeh_trial_to_trialcode_from_raw(t) for t in trials]
+                    _, trialcodes_bad = trialcode_extract_rows_within_range(list_trialcode, tc_start, tc_end, input_tuple_directly=True)
+
+                # Convert from trialcodes to neural trial.
+                neural_trials_missing_beh = self.datasetbeh_trialcode_to_trial_batch(trialcodes_bad)
+
+                trials = [t for t in trials if t not in neural_trials_missing_beh]
+                # print("trialcodes_bad (orig): ", trialcodes_bad)
+                # print("trials bad:", neural_trials_missing_beh)
+                # print("trials kept: ", trials)
+                # # print("trials bad:", [self._datasetbeh_trial_to_trialcode_from_raw(t) for t in neural_trials_missing_beh])
+                # # print("trials kept: ", [self._datasetbeh_trial_to_trialcode_from_raw(t) for t in trials])
+                # assert False
+
+        elif (int(self.Date))==220614 and self.RecSession==0 and self.Animal=="Pancho":
+            # Skip the first neural trial
+            neural_trials_missing_beh = [0]
+            trials = [t for t in trials if t not in neural_trials_missing_beh]
+
+        elif (int(self.Date))==220621 and self.RecSession==0 and self.Animal=="Pancho":
+            # Skip the first neural trial
+            neural_trials_missing_beh = [0]
+            trials = [t for t in trials if t not in neural_trials_missing_beh]
+
+        elif (int(self.Date))==220827 and self.Animal=="Pancho":
+            assert False, "fill this in! See recording log for what trials lost."
+
+        elif (int(self.Date))==230606 and self.Animal=="Pancho":
+            assert False, "fill this in! See recording log for what trials lost."
+
+        elif (int(self.Date))==250324 and self.Animal=="Pancho":
+            # Batt died at very end of 793. 794 is good.
+            assert False, "fill this in! See recording log for what trials lost."
+
+        elif (int(self.Date))==250325 and self.Animal=="Pancho":
+            # Batt died (throw out trials 761 to 790, inclusive), and then plugged in.
+            assert False, "fill this in! See recording log for what trials lost."
+
+        elif (int(self.Date))==250417 and self.Animal=="Diego":
+            # He bit the cable. Also, bad peformance after this. Throw out the trials lost.
+            assert False, "fill this in! See recording log for what trials lost."
+            
+        else:
+            # This date is good!
+            do_skip_trials = False
+        
+        return neural_trials_missing_beh, do_skip_trials
+    
     def get_trials_list(self, only_if_ml2_fixation_success=False,
         only_if_has_valid_ml2_trial=True, only_if_in_dataset=False,
-        events_that_must_include=None,
+        events_that_must_include=None, events_that_must_include_in_order=None,
         dataset_input = None, nrand=None, nsub_uniform=None,
-                        must_use_cached_trials=False):
+                        must_use_cached_trials=False, min_interval_dur=0.,
+                        skip_cached_trials_even_if_exist=False):
         """
         Get list of ints, trials,
         PARAMS:
@@ -7503,6 +8921,8 @@ class Session(object):
         """
         if events_that_must_include is None:
             events_that_must_include = []
+        if events_that_must_include_in_order is None:
+            events_that_must_include_in_order = []
 
         if not hasattr(self, "_FORCE_GET_TRIALS_ONLY_IN_DATASET"):
             self._FORCE_GET_TRIALS_ONLY_IN_DATASET = False
@@ -7511,8 +8931,8 @@ class Session(object):
         if self._FORCE_GET_TRIALS_ONLY_IN_DATASET:
             only_if_in_dataset = True
             if self._FORCE_GET_TRIALS_ONLY_IN_DATASET_NTRIALS > 1.1*len(self.Datasetbeh.Dat):
-                print(self._FORCE_GET_TRIALS_ONLY_IN_DATASET_NTRIALS)
-                print(len(self.Datasetbeh.Dat))
+                print("Num trials expected: ", self._FORCE_GET_TRIALS_ONLY_IN_DATASET_NTRIALS)
+                print("Num trials actually in dataset: ", len(self.Datasetbeh.Dat))
                 print("You have pruned self.Dataset, which means turning on only_if_in_dataset may inadvertently reduce n trials more than you expect")
                 print("Figure out why self.Dataset has been pruned.")
                 assert False
@@ -7529,7 +8949,6 @@ class Session(object):
         #     # SInce I use dataset to determine if this trial was initiated (has stroke), can only include trials that have data.
         #     only_if_in_dataset = True
 
-
         # if only_if_in_dataset:
         #     # Then no need to check the foloowing, they wil be true
         #     only_if_ml2_fixation_success = False
@@ -7539,12 +8958,7 @@ class Session(object):
         # this cached
         # key = (only_if_in_dataset, only_if_ml2_fixation_success, only_if_has_valid_ml2_trial)
         key = (only_if_ml2_fixation_success, only_if_has_valid_ml2_trial)
-
-        # print(key)
-        # print(self._CachedTrialsList.keys())
-        # print("JHEERE", key in self._CachedTrialsList.keys())
-        # assert False
-        if key in self._CachedTrialsList.keys():
+        if key in self._CachedTrialsList.keys() and not skip_cached_trials_even_if_exist:
             trials = self._CachedTrialsList[key]
 
             if only_if_in_dataset:
@@ -7555,9 +8969,67 @@ class Session(object):
             trials = list(range(len(self.TrialsOffset)))
 
             ############# VERY HACKY,
+            neural_trials_missing_beh, do_skip_trials = self._get_trials_list_skipped_trials(trials)
+            if neural_trials_missing_beh is not None:
+                trials = [t for t in trials if t not in neural_trials_missing_beh]
+
+            # # Not sure if this works. It was commented out and then I turned it back on.
             # if (int(self.Date))==220609 and self.RecSession==0 and self.Animal=="Pancho":
             #     neural_trials_missing_beh = [858, 859, 860, 861, 862, 863, 864, 865, 866, 867]
             #     trials = [t for t in trials if t not in neural_trials_missing_beh]
+
+            # if (int(self.Date))==231206 and self.RecSession==0 and self.Animal=="Diego":
+            #     neural_trials_missing_beh = [551, 552, 553, 554, 555]
+            #     trials = [t for t in trials if t not in neural_trials_missing_beh]
+
+            # if (int(self.Date))==250319 and self.RecSession==1 and self.Animal=="Diego":
+            #     # Lkast good trial was beh sess 2, beh trial 531 (this only applies for chans 1-256)
+
+            #     if self.Datasetbeh is not None: # Otherwise runs into recursion error. This is totally fine here
+            #         tc_start = (250319, 2, 532)
+            #         tc_end = (250319, 9, 999)
+            #         if True:
+            #             # Doesnt work all the time, ie.. whend ataset not yet extracted
+            #             _, trialcodes_bad = self.Datasetbeh.trialcode_extract_rows_within_range(tc_start, tc_end, input_tuple_directly=True)
+            #         else:
+            #             from pythonlib.tools.stringtools import trialcode_extract_rows_within_range
+            #             list_trialcode = [self._datasetbeh_trial_to_trialcode_from_raw(t) for t in trials]
+            #             _, trialcodes_bad = trialcode_extract_rows_within_range(list_trialcode, tc_start, tc_end, input_tuple_directly=True)
+
+            #         # Convert from trialcodes to neural trial.
+            #         neural_trials_missing_beh = self.datasetbeh_trialcode_to_trial_batch(trialcodes_bad)
+
+            #         trials = [t for t in trials if t not in neural_trials_missing_beh]
+            #         # print("trialcodes_bad (orig): ", trialcodes_bad)
+            #         # print("trials bad:", neural_trials_missing_beh)
+            #         # print("trials kept: ", trials)
+            #         # # print("trials bad:", [self._datasetbeh_trial_to_trialcode_from_raw(t) for t in neural_trials_missing_beh])
+            #         # # print("trials kept: ", [self._datasetbeh_trial_to_trialcode_from_raw(t) for t in trials])
+            #         # assert False
+
+            # if (int(self.Date))==220614 and self.RecSession==0 and self.Animal=="Pancho":
+            #     # Skip the first neural trial
+            #     neural_trials_missing_beh = [0]
+            #     trials = [t for t in trials if t not in neural_trials_missing_beh]
+
+            # if (int(self.Date))==220621 and self.RecSession==0 and self.Animal=="Pancho":
+            #     # Skip the first neural trial
+            #     neural_trials_missing_beh = [0]
+            #     trials = [t for t in trials if t not in neural_trials_missing_beh]
+
+            # if (int(self.Date))==220827 and self.Animal=="Pancho":
+            #     assert False, "fill this in! See recording log for what trials lost."
+
+            # if (int(self.Date))==230606 and self.Animal=="Pancho":
+            #     assert False, "fill this in! See recording log for what trials lost."
+
+            # if (int(self.Date))==250324 and self.Animal=="Pancho":
+            #     # Batt died at very end of 793. 794 is good.
+            #     assert False, "fill this in! See recording log for what trials lost."
+
+            # if (int(self.Date))==250325 and self.Animal=="Pancho":
+            #     # Batt died (throw out trials 761 to 790, inclusive), and then plugged in.
+            #     assert False, "fill this in! See recording log for what trials lost."
 
             if only_if_in_dataset:
                 # SHould do this first, since if this trial is not in dataset then it will fail only_if_ml2_fixation_success
@@ -7591,7 +9063,8 @@ class Session(object):
                 trials = trials_keep
 
             # Store it.
-            self._CachedTrialsList[key] = trials
+            if not skip_cached_trials_even_if_exist:
+                self._CachedTrialsList[key] = trials
 
         # if only_if_in_dataset:
         #     trials = [t for t in trials if self.datasetbeh_trial_to_datidx(t) is not None]
@@ -7606,6 +9079,8 @@ class Session(object):
 
         if len(events_that_must_include)>0:
             trials = self._get_trials_list_if_include_these_events(trials, events_that_must_include)
+        if len(events_that_must_include_in_order)>0:
+            trials = self._get_trials_list_if_include_these_events_in_order(trials, events_that_must_include_in_order, min_interval_dur=min_interval_dur)
 
         if nrand is not None:
             # take randmo subset, ordered.
@@ -7636,7 +9111,38 @@ class Session(object):
             if self.events_does_trial_include_all_events(t, events_that_must_include):
                 trials_keep.append(t)
         return trials_keep  
+    
+    def _get_trials_list_if_include_these_events_in_order(self, trials, events_that_must_include, min_interval_dur=0.):
+        """ only inclues trials that have one and only one of each event, and they are present in chron order
+        matching the order in <events_that_must_include>
+        RETURNS:
+        - trials, those that pass this test.
+        """
+        dfeventsn, _ = self.eventsdataframe_extract_timings(events_that_must_include, trials)
 
+        # eventinds_in_chron_order
+        inds_get = list(range(len(events_that_must_include)))
+        inds_bool_keep = [inds==inds_get for inds in dfeventsn["eventinds_in_chron_order"]]
+        # display(dfeventsn)
+        # print(inds_bool_keep)
+        # print(sum(inds_bool_keep), len(inds_bool_keep))
+        # assert False
+
+        if min_interval_dur >0:
+            list_too_short = []
+            for times in dfeventsn["times_ordered_flat"]:
+                has_short_interval = np.any(np.diff(times)<min_interval_dur)
+                list_too_short.append(has_short_interval)
+                # if has_short_interval:
+                #     # print(times)
+                #     print(np.diff(times))
+
+            inds_bool_keep = [a and not b for a,b in zip(inds_bool_keep, list_too_short)]
+        
+        # Do pruning
+        trials_keep = dfeventsn[inds_bool_keep]["trial"].tolist()
+
+        return trials_keep
 
     ####################### PLOTS (generic)
     def plot_spike_waveform_site(self, site):
@@ -7821,18 +9327,19 @@ class Session(object):
         return list_list_trials, list_labels, 
 
     def plot_raster_spiketimes_blocked(self, ax, list_list_spiketimes, list_labels=None,
-                                    list_list_trials = None, list_list_evtimes = None,
+                                    list_list_trials = None, list_list_evtimes_just_for_eventsplot = None,
                                     overlay_trial_events=True,                                
                                    xmin = None, xmax = None, alpha_raster=0.8):
         """
         Plot rasters, hierarhcially inputted, giving the spiketimes directly.
         Is simialr to plot_raster_trials_blocked, but there pass in trials.
         PARAMS;
-        - list_list_spiketimes, list of list of spike times
+        - list_list_spiketimes, list of list of spike times. AFTER you have already realigned to 
+        events of interest
         - list_labels, list of str labels, matching len(list_list_spiketimes)
         - list_list_trials, list of lsit of ints, matching each datapt in list_list_spiketimes,
         for overlayign events.
-        - list_list_evtimes, list of list of scalar times, in the original time in trial,
+        - list_list_evtimes_just_for_eventsplot, list of list of scalar times, in the original time in trial,
         that is now defined as 0 for the matching spiektime. for overlayign events.
         """
 
@@ -7859,14 +9366,13 @@ class Session(object):
         if overlay_trial_events:
             # Flatten
             list_trials_flat = [t for X in list_list_trials for t in X]
-            list_evtimes_flat = [t for X in list_list_evtimes for t in X]
+            list_evtimes_flat = [t for X in list_list_evtimes_just_for_eventsplot for t in X]
             self.plotmod_overlay_trial_events_mult(ax, list_trials_flat, list_evtimes_flat, 
                 xmin=xmin, xmax=xmax) 
 
         # Plot y markers splitting the blocks
         ymarks = [y-0.5 for y in list_index_first_trial_in_block]
         self.plotmod_overlay_y_events(ax, ymarks, list_labels, True, textcolor="m")
-        
         if xmin is not None:
             ax.set_xlim(xmin=xmin)
         if xmax is not None:
@@ -8061,16 +9567,17 @@ class Session(object):
         if aspect>1.5:
             aspect = 1.5
 
-        height_cell = n_raster_lines * 0.025
+        # height_cell = n_raster_lines * 0.025
+        height_cell = n_raster_lines * 0.125
         if reduce_height_for_sm_fr:
             # make it wider
             height_cell = 0.9*height_cell
             aspect = 1.1 * aspect
-
+        
         if height_cell < 3.5:
             height_cell = 3.5
-        if height_cell > 10:
-            height_cell = 10
+        if height_cell > 15:
+            height_cell = 15
 
         width_cell = aspect * height_cell
 
@@ -8534,6 +10041,21 @@ class Session(object):
 
         return times, touchingfix.astype(int)
 
+    def beh_this_day_uses_done_button(self):
+        """
+        REturn bool if any trial on this dayuses done button (based on checking params)
+        """
+        for trial in self.get_trials_list():    
+            fd, t = self.beh_get_fd_trial(trial)
+            if mkl.getTrialsDoneButtonMethod(fd, t)=="skip":
+                # Then no done button, keep chekcing
+                continue
+            else:
+                # Found a trial with done button
+                return True
+        # No trial uses done button
+        return False
+
     def beh_extract_touch_in_done_button(self, trial, window_delta_pixels = 40.,
         ploton=False):
         """ Return binary wherther finger is in done button, based solely on 
@@ -8598,7 +10120,7 @@ class Session(object):
             if trial in self._CachedTouchData.keys():
                 return self._CachedTouchData[trial]
             else:
-                print("WARNING - the touch times might have gaps, esp during hold at fixation for Diego...")
+                print("WARNING 1 - the touch times might have gaps, esp during hold at fixation for Diego...")
                 # Should change base code in drawmonkey, updating how extract touch data (concat touches that are close).
                 fd, trialml = self.beh_get_fd_trial(trial)
                 xyt = mkl.getTrialsTouchData(fd, trialml)
@@ -8606,7 +10128,7 @@ class Session(object):
                 return xyt
                 # return xyt[:,2], xyt[:,0], xyt[:,1]
         else:
-            print("WARNING - the touch times might have gaps, esp during hold at fixation for Diego...")
+            print("WARNING 2    - the touch times might have gaps, esp during hold at fixation for Diego...")
             # Should change base code in drawmonkey, updating how extract touch data (concat touches that are close).
             fd, trialml = self.beh_get_fd_trial(trial)
             xyt = mkl.getTrialsTouchData(fd, trialml)
@@ -8731,32 +10253,24 @@ class Session(object):
 
         return self._BehEyeAlignOffset
 
-    def beh_eye_fixation_extract_and_assign_task_shape(self, trial, PLOT=False, event_endpoints=None):
+    def _beh_eye_fixation_assign_task_shape(self, trial, data_times, data_centroids, PLOT=False):
         """
-        Good helper to extract fixations for a trial, optionally within a range of events, and assigning the shape he is looking at, with
-        constraints on closeness in distance, and in time from onset of first event (i.e, in getting clean fixations).
-        
-        """
-        import pandas as pd
-        from pythonlib.tools.distfunctools import closest_pt_twotrajs
+        Given array of points, which are usually fixation coordinates, assign each to the cloests shape
+        in the image.
 
-        assert event_endpoints == ["stim_onset", "go"], "only coded for this, since it uses the time from stim onset to fixation to decide whether to throw it out.."
+        PARAMS:
+        - trial, 
+        - data_times,
+        - data_centroids, (n, 2) array of positions or list-like
+        """
+
+        from pythonlib.tools.distfunctools import closest_pt_twotrajs
 
         # Params - criteria for assigining a shape to fiaation, based on distance
         MIN_DIST_TASK_TO_FIX = 70 # radius (from closest point along stroke stroke task image), fixation must be within this to assign to this shape (L2)
-        MIN_TIME_REL_STIM_ONSET = 0.15 # (saccades take ~0.05-0.1 sec. Account for 0.1 reaction time)
 
-        # Get data for this trial
-        t_stim_onset = self.events_get_time_helper("stim_onset", trial, assert_one=True)[0]
-        tmp = self.events_get_clusterfix_fixation_times_and_centroids(trial, plot_overlay_on_raw=PLOT,
-                                                                                                    event_endpoints =event_endpoints)
         ind = self.datasetbeh_trial_to_datidx(trial)
         Tk = self.Datasetbeh.taskclass_tokens_extract_wrapper(ind, "task", return_as_tokensclass=True)
-
-        if PLOT:
-            data_times, data_centroids, fig1d, axes1d, fig2d, axes2d = tmp
-        else:
-            data_times, data_centroids = tmp
 
         if PLOT:
             # overlay locations of each shape
@@ -8800,51 +10314,39 @@ class Session(object):
             list_dist_to_closest_token.append(val_min)
             list_idx_closest_token.append(idx_min)
             list_distance_to_each_token.append(dist_to_each_token_gridloc)
-
-        # For each fixatoin, get its time relative to stim onset.
-        assert event_endpoints == ["stim_onset", "go"], "only coded for this, since it uses the time from stim onset to fixation to decide whether to throw it out.."
-        list_time_relative_stim_onset = [t - t_stim_onset for t in data_times]
         
-        if PLOT:
-            # Overlay results
-            fig, ax = plt.subplots()
-            self.plot_taskimage(ax=ax, trialtdt=trial)
-
-            # ax.plot(np.stack(data_centroids)[:, 0], np.stack(data_centroids)[:, 1], "-k", alpha=0.4)
-            ax.plot(np.stack(data_centroids)[:, 0], np.stack(data_centroids)[:, 1], "-k", alpha=0.4)
-            ax.scatter(np.stack(data_centroids)[:, 0], np.stack(data_centroids)[:, 1], c=list_idx_closest_token)
-            for i, (fix_cen, idx_closest, dist_closest, t_rel_stim) in enumerate(zip(data_centroids, list_idx_closest_token, list_dist_to_closest_token, list_time_relative_stim_onset)):
-                ax.text(fix_cen[0], fix_cen[1], f"#{i}-dist={dist_closest:.1f}-trelstim={t_rel_stim:.2f}")
-                if dist_closest>MIN_DIST_TASK_TO_FIX:
-                    ax.plot(fix_cen[0], fix_cen[1], "xr")
-                if t_rel_stim<MIN_TIME_REL_STIM_ONSET:
-                    ax.plot(fix_cen[0], fix_cen[1], "dr")
-                        
         # Get final list of good fixations
         res = []
         for i in range(len(data_centroids)):
-            if (list_time_relative_stim_onset[i]>MIN_TIME_REL_STIM_ONSET) & (list_dist_to_closest_token[i]<MIN_DIST_TASK_TO_FIX):
+            if (list_dist_to_closest_token[i]<MIN_DIST_TASK_TO_FIX):
                 # then assign the shape it was lookinga t
-                tk = Tk.Tokens[list_idx_closest_token[i]]
+                idx_token = list_idx_closest_token[i]
+                tk = Tk.Tokens[idx_token]
                 # - pull out useful things
                 shape = tk["shape"]
                 gridloc = tk["gridloc"]
                 idx_task_orig = tk["ind_taskstroke_orig"]
+                closer_than_threshold=True
             else:
+                idx_token = "FAR_FROM_ALL_SHAPES"
                 shape = "FAR_FROM_ALL_SHAPES"
                 gridloc = "FAR_FROM_ALL_SHAPES"
                 idx_task_orig = "FAR_FROM_ALL_SHAPES"
+                closer_than_threshold=False
             
+            assert idx_task_orig == idx_token
+
             res.append({
                 "idx_fixation":i,
                 "time_global":data_times[i],
                 "fix_cen":data_centroids[i],
-                "time_rel_stim_onset":list_time_relative_stim_onset[i],
+                "closer_than_threshold":closer_than_threshold,
                 "closest_task_token_dist":list_dist_to_closest_token[i],
                 "closest_task_token_idx":list_idx_closest_token[i],
+                "assigned_token_idx":idx_token,
                 "assigned_task_shape":shape,
                 "assigned_task_gridloc":gridloc,
-                "assigned_task_idx_task_orig":idx_task_orig,
+                # "assigned_task_idx_task_orig":idx_task_orig,
                 "assigned_task_token":tk,
                 "distance_to_each_token":list_distance_to_each_token[i],
             })
@@ -8852,6 +10354,457 @@ class Session(object):
         dffix = pd.DataFrame(res)
 
         return dffix
+
+
+    def beh_eye_fixation_extract_and_assign_task_shape(self, trial, PLOT=False, event_endpoints=None, 
+                                                       return_fig=False, fig_savedir=None,
+                                                       plot_var = "assigned_task_shape"):
+        """
+        Good helper to extract fixations for a trial, optionally within a range of events, and assigning the shape he is looking at, with
+        constraints on closeness in distance, and in time from onset of first event (i.e, in getting clean fixations).
+        
+        """
+        # import pandas as pd
+        # from pythonlib.tools.distfunctools import closest_pt_twotrajs
+
+        if fig_savedir is not None:
+            return_fig = True
+
+        # Params - criteria for assigining a shape to fiaation, based on distance
+        # MIN_DIST_TASK_TO_FIX = 70 # radius (from closest point along stroke stroke task image), fixation must be within this to assign to this shape (L2)
+
+        # Get data for this trial
+        tmp = self.events_get_clusterfix_fixation_times_and_centroids(trial, plot_overlay_on_raw=PLOT,
+                                                                      event_endpoints =event_endpoints,
+                                                                      plot_var = plot_var)
+        
+
+        if PLOT:
+            data_times, data_centroids, fig1d, axes1d, fig2d, axes2d = tmp
+            if fig_savedir is not None:
+                savefig(fig1d, f"{fig_savedir}/timecourse.pdf")
+                savefig(fig2d, f"{fig_savedir}/overlaid_image.pdf")
+        else:
+            data_times, data_centroids = tmp
+
+
+        dffix = self._beh_eye_fixation_assign_task_shape(trial, data_times, data_centroids)
+
+                # ind = self.datasetbeh_trial_to_datidx(trial)
+                # Tk = self.Datasetbeh.taskclass_tokens_extract_wrapper(ind, "task", return_as_tokensclass=True)
+
+                # if PLOT:
+                #     # overlay locations of each shape
+                #     ax = axes1d.flatten()[0]
+                #     centers = [tk["center"] for tk in Tk.Tokens]
+                #     if False: # This is not accurate anymore, since useing al;l pts, not just centroid
+                #         for cen in centers:
+                #             ax.axhline(cen[0], color="b")
+                #             ax.axhline(cen[0]-MIN_DIST_TASK_TO_FIX, color="b", linestyle="--")
+                #             ax.axhline(cen[0]+MIN_DIST_TASK_TO_FIX, color="b", linestyle="--")
+                        
+                #     ax = axes1d.flatten()[1]
+                #     centers = [tk["center"] for tk in Tk.Tokens]
+                #     if False:
+                #         for cen in centers:
+                #             ax.axhline(cen[1], color="r")
+                #             ax.axhline(cen[1]-MIN_DIST_TASK_TO_FIX, color="r", linestyle="--")
+                #             ax.axhline(cen[1]+MIN_DIST_TASK_TO_FIX, color="r", linestyle="--")
+
+                # if fig_savedir is not None:
+                #     savefig(fig1d, f"{fig_savedir}/timecourse.pdf")
+                #     savefig(fig2d, f"{fig_savedir}/overlaid_image.pdf")
+                
+                # # For each fixation, get its distance to task shapes.
+                # list_dist_to_closest_token = []
+                # list_idx_closest_token = []
+                # list_distance_to_each_token = []
+                # for fix_cen in data_centroids:
+
+                #     # get distance to each token
+                #     dist_to_each_token = []
+                #     dist_to_each_token_gridloc = {}
+                #     for tk in Tk.Tokens:
+                #         pts = tk["Prim"].Stroke()[:,:2]
+                #         #  - also inclue to centroid, since he may be looking in center of circle...
+                #         pts = np.concatenate([pts, np.array(tk["center"])[None, :]],axis=0)
+                #         mindist, _, _ = closest_pt_twotrajs(pts, fix_cen[None, :])
+                #         dist_to_each_token.append(mindist)
+                #         dist_to_each_token_gridloc[tk["gridloc"]] = mindist
+
+                #     # find the closest token
+                #     idx_min = np.argmin(dist_to_each_token)
+                #     val_min = np.min(dist_to_each_token)
+
+                #     list_dist_to_closest_token.append(val_min)
+                #     list_idx_closest_token.append(idx_min)
+                #     list_distance_to_each_token.append(dist_to_each_token_gridloc)
+                
+                # # Get final list of good fixations
+                # res = []
+                # for i in range(len(data_centroids)):
+                #     if (list_dist_to_closest_token[i]<MIN_DIST_TASK_TO_FIX):
+                #         # then assign the shape it was lookinga t
+                #         idx_token = list_idx_closest_token[i]
+                #         tk = Tk.Tokens[idx_token]
+                #         # - pull out useful things
+                #         shape = tk["shape"]
+                #         gridloc = tk["gridloc"]
+                #         idx_task_orig = tk["ind_taskstroke_orig"]
+                #         closer_than_threshold=True
+                #     else:
+                #         idx_token = "FAR_FROM_ALL_SHAPES"
+                #         shape = "FAR_FROM_ALL_SHAPES"
+                #         gridloc = "FAR_FROM_ALL_SHAPES"
+                #         idx_task_orig = "FAR_FROM_ALL_SHAPES"
+                #         closer_than_threshold=False
+                    
+                #     assert idx_task_orig == idx_token
+
+                #     res.append({
+                #         "idx_fixation":i,
+                #         "time_global":data_times[i],
+                #         "fix_cen":data_centroids[i],
+                #         "closer_than_threshold":closer_than_threshold,
+                #         "closest_task_token_dist":list_dist_to_closest_token[i],
+                #         "closest_task_token_idx":list_idx_closest_token[i],
+                #         "assigned_token_idx":idx_token,
+                #         "assigned_task_shape":shape,
+                #         "assigned_task_gridloc":gridloc,
+                #         # "assigned_task_idx_task_orig":idx_task_orig,
+                #         "assigned_task_token":tk,
+                #         "distance_to_each_token":list_distance_to_each_token[i],
+                #     })
+
+                # dffix = pd.DataFrame(res)
+
+
+        if PLOT:
+            # Plot task image and overlay gaze
+            fig, ax = plt.subplots()
+            self._beh_eye_fixation_overlay_plot(ax, dffix, trial, twind=None, var_color = plot_var, alpha = 0.8)
+
+            # self.plot_taskimage(ax=ax, trialtdt=trial)
+
+            # # ax.plot(np.stack(data_centroids)[:, 0], np.stack(data_centroids)[:, 1], "-k", alpha=0.4)
+            # ax.plot(np.stack(data_centroids)[:, 0], np.stack(data_centroids)[:, 1], "-k", alpha=0.4)
+            # ax.scatter(np.stack(data_centroids)[:, 0], np.stack(data_centroids)[:, 1], c=list_idx_closest_token)
+            # for i, (fix_cen, idx_closest, dist_closest) in enumerate(zip(data_centroids, list_idx_closest_token, list_dist_to_closest_token)):
+            #     ax.text(fix_cen[0], fix_cen[1], f"#{i}-dist={dist_closest:.1f}")
+            #     if dist_closest>MIN_DIST_TASK_TO_FIX:
+            #         ax.plot(fix_cen[0], fix_cen[1], "xr")
+
+            if fig_savedir:
+                savefig(fig, f"{fig_savedir}/overlaid_image_clean.pdf")
+        
+        if return_fig:
+            return dffix, fig, ax
+        else:
+            return dffix
+
+
+    # def beh_eye_fixation_extract_and_assign_task_shape(self, trial, PLOT=False, event_endpoints=None):
+    #     """
+    #     Good helper to extract fixations for a trial, optionally within a range of events, and assigning the shape he is looking at, with
+    #     constraints on closeness in distance, and in time from onset of first event (i.e, in getting clean fixations).
+        
+    #     """
+    #     import pandas as pd
+    #     from pythonlib.tools.distfunctools import closest_pt_twotrajs
+
+    #     assert event_endpoints == ["stim_onset", "go"], "only coded for this, since it uses the time from stim onset to fixation to decide whether to throw it out.."
+
+    #     # Params - criteria for assigining a shape to fiaation, based on distance
+    #     MIN_DIST_TASK_TO_FIX = 70 # radius (from closest point along stroke stroke task image), fixation must be within this to assign to this shape (L2)
+    #     MIN_TIME_REL_STIM_ONSET = 0.15 # (saccades take ~0.05-0.1 sec. Account for 0.1 reaction time)
+
+    #     # Get data for this trial
+    #     t_stim_onset = self.events_get_time_helper("stim_onset", trial, assert_one=True)[0]
+    #     tmp = self.events_get_clusterfix_fixation_times_and_centroids(trial, plot_overlay_on_raw=PLOT,
+    #                                                                                                 event_endpoints =event_endpoints)
+    #     ind = self.datasetbeh_trial_to_datidx(trial)
+    #     Tk = self.Datasetbeh.taskclass_tokens_extract_wrapper(ind, "task", return_as_tokensclass=True)
+
+    #     if PLOT:
+    #         data_times, data_centroids, fig1d, axes1d, fig2d, axes2d = tmp
+    #     else:
+    #         data_times, data_centroids = tmp
+
+    #     if PLOT:
+    #         # overlay locations of each shape
+    #         ax = axes1d.flatten()[0]
+    #         centers = [tk["center"] for tk in Tk.Tokens]
+    #         if False: # This is not accurate anymore, since useing al;l pts, not just centroid
+    #             for cen in centers:
+    #                 ax.axhline(cen[0], color="b")
+    #                 ax.axhline(cen[0]-MIN_DIST_TASK_TO_FIX, color="b", linestyle="--")
+    #                 ax.axhline(cen[0]+MIN_DIST_TASK_TO_FIX, color="b", linestyle="--")
+                
+    #         ax = axes1d.flatten()[1]
+    #         centers = [tk["center"] for tk in Tk.Tokens]
+    #         if False:
+    #             for cen in centers:
+    #                 ax.axhline(cen[1], color="r")
+    #                 ax.axhline(cen[1]-MIN_DIST_TASK_TO_FIX, color="r", linestyle="--")
+    #                 ax.axhline(cen[1]+MIN_DIST_TASK_TO_FIX, color="r", linestyle="--")
+
+    #     # For each fixation, get its distance to task shapes.
+    #     list_dist_to_closest_token = []
+    #     list_idx_closest_token = []
+    #     list_distance_to_each_token = []
+    #     for fix_cen in data_centroids:
+
+    #         # get distance to each token
+    #         dist_to_each_token = []
+    #         dist_to_each_token_gridloc = {}
+    #         for tk in Tk.Tokens:
+    #             pts = tk["Prim"].Stroke()[:,:2]
+    #             #  - also inclue to centroid, since he may be looking in center of circle...
+    #             pts = np.concatenate([pts, np.array(tk["center"])[None, :]],axis=0)
+    #             mindist, _, _ = closest_pt_twotrajs(pts, fix_cen[None, :])
+    #             dist_to_each_token.append(mindist)
+    #             dist_to_each_token_gridloc[tk["gridloc"]] = mindist
+
+    #         # find the closest token
+    #         idx_min = np.argmin(dist_to_each_token)
+    #         val_min = np.min(dist_to_each_token)
+
+    #         list_dist_to_closest_token.append(val_min)
+    #         list_idx_closest_token.append(idx_min)
+    #         list_distance_to_each_token.append(dist_to_each_token_gridloc)
+
+    #     # For each fixatoin, get its time relative to stim onset.
+    #     assert event_endpoints == ["stim_onset", "go"], "only coded for this, since it uses the time from stim onset to fixation to decide whether to throw it out.."
+    #     list_time_relative_stim_onset = [t - t_stim_onset for t in data_times]
+        
+    #     if PLOT:
+    #         # Overlay results
+    #         fig, ax = plt.subplots()
+    #         self.plot_taskimage(ax=ax, trialtdt=trial)
+
+    #         # ax.plot(np.stack(data_centroids)[:, 0], np.stack(data_centroids)[:, 1], "-k", alpha=0.4)
+    #         ax.plot(np.stack(data_centroids)[:, 0], np.stack(data_centroids)[:, 1], "-k", alpha=0.4)
+    #         ax.scatter(np.stack(data_centroids)[:, 0], np.stack(data_centroids)[:, 1], c=list_idx_closest_token)
+    #         for i, (fix_cen, idx_closest, dist_closest, t_rel_stim) in enumerate(zip(data_centroids, list_idx_closest_token, list_dist_to_closest_token, list_time_relative_stim_onset)):
+    #             ax.text(fix_cen[0], fix_cen[1], f"#{i}-dist={dist_closest:.1f}-trelstim={t_rel_stim:.2f}")
+    #             if dist_closest>MIN_DIST_TASK_TO_FIX:
+    #                 ax.plot(fix_cen[0], fix_cen[1], "xr")
+    #             if t_rel_stim<MIN_TIME_REL_STIM_ONSET:
+    #                 ax.plot(fix_cen[0], fix_cen[1], "dr")
+                        
+    #     # Get final list of good fixations
+    #     res = []
+    #     for i in range(len(data_centroids)):
+    #         if (list_time_relative_stim_onset[i]>MIN_TIME_REL_STIM_ONSET) & (list_dist_to_closest_token[i]<MIN_DIST_TASK_TO_FIX):
+    #             # then assign the shape it was lookinga t
+    #             tk = Tk.Tokens[list_idx_closest_token[i]]
+    #             # - pull out useful things
+    #             shape = tk["shape"]
+    #             gridloc = tk["gridloc"]
+    #             idx_task_orig = tk["ind_taskstroke_orig"]
+    #         else:
+    #             shape = "FAR_FROM_ALL_SHAPES"
+    #             gridloc = "FAR_FROM_ALL_SHAPES"
+    #             idx_task_orig = "FAR_FROM_ALL_SHAPES"
+            
+    #         res.append({
+    #             "idx_fixation":i,
+    #             "time_global":data_times[i],
+    #             "fix_cen":data_centroids[i],
+    #             "time_rel_stim_onset":list_time_relative_stim_onset[i],
+    #             "closest_task_token_dist":list_dist_to_closest_token[i],
+    #             "closest_task_token_idx":list_idx_closest_token[i],
+    #             "assigned_task_shape":shape,
+    #             "assigned_task_gridloc":gridloc,
+    #             "assigned_task_idx_task_orig":idx_task_orig,
+    #             "assigned_task_token":tk,
+    #             "distance_to_each_token":list_distance_to_each_token[i],
+    #         })
+
+    #     dffix = pd.DataFrame(res)
+
+    #     return dffix
+
+    def _beh_eye_fixation_overlay_plot(self, ax, dffix, trial, twind, var_color = "assigned_task_shape", alpha = 0.8):
+        """
+        Helper to plot overlaid fixations on top of image, coloring and texting with 
+        properties.
+
+        PARAMS:
+        - dffix, dataframe holding fixations
+        - twind, window to slice out data, by time in trial, e.g, twind = [8, 10.5]
+        - var_color = "assigned_token_idx", how to color the shapes.
+        --- e.g, "assigned_token_idx"
+        """
+        from pythonlib.tools.plottools import color_make_map_discrete_labels
+
+        # Slice out data
+        if twind is None:
+            dffix_this = dffix
+        else:
+            inds = (twind[0] < dffix["time_global"].values) & (dffix["time_global"].values < twind[1])
+            dffix_this = dffix[inds]
+
+        # how to color the fixations
+        fixes = np.stack(dffix_this["fix_cen"])
+        
+        levels_color = dffix_this[var_color].tolist()
+        list_idx_closest_token = dffix_this["closest_task_token_idx"].tolist()
+        list_dist_to_closest_token = dffix_this["closest_task_token_dist"].tolist()
+        closer_than_threshold_list = dffix_this["closer_than_threshold"].tolist()
+        map_lev_to_color, _, colors = color_make_map_discrete_labels(levels_color)
+
+        # First, plot image
+        self.plot_taskimage(ax, trial)
+        
+        # Second, plot fixations
+        ax.plot(np.stack(fixes)[:, 0], np.stack(fixes)[:, 1], "-k", alpha=0.4)
+        ax.scatter(np.stack(fixes)[:, 0], np.stack(fixes)[:, 1], c=colors, alpha=alpha)
+
+        # Third, Number and other text labels
+        for i, (fix_cen, idx_closest, dist_closest, closer) in enumerate(zip(fixes, list_idx_closest_token, list_dist_to_closest_token, closer_than_threshold_list)):
+            ax.text(fix_cen[0], fix_cen[1], f"#{i}-dist={dist_closest:.1f}")
+            if not closer:
+                ax.plot(fix_cen[0], fix_cen[1], "xr")
+
+    def beh_eye_fixation_grammar_summary_plot(self, trial):
+        """
+        """
+        # import pandas as pd
+        from pythonlib.tools.plottools import color_make_map_discrete_labels
+        import matplotlib.pyplot as plt
+
+        # Get fixtaion data
+        # event_endpoints = ["samp", "doneb"] # some fail, lack doneb
+        event_endpoints = ["samp", "post"]
+        dffix = self.beh_eye_fixation_extract_and_assign_task_shape(trial, 
+                                                                        event_endpoints= event_endpoints,
+                                                                        PLOT=False, fig_savedir=None);
+
+        # Get the correct sequence
+        trialcode = self.datasetbeh_trial_to_trialcode(trial)
+        D = self.Datasetbeh
+        tmp = D.Dat[D.Dat["trialcode"] == trialcode]
+        assert len(tmp)==1
+        ind_dat = tmp.index[0]
+        tokens_correct_order = D.grammarparses_task_tokens_correct_order_sequence(ind_dat, PLOT=False)
+
+        # map from token index, to its rank (in correct sequence)
+        map_taskidx_to_rank = {}
+        for rank, tok in enumerate(tokens_correct_order):
+            idx_orig = tok["ind_taskstroke_orig"]
+            map_taskidx_to_rank[idx_orig] = rank
+        dffix["assigned_tok_rank_correct"] = [map_taskidx_to_rank[i] if i!="FAR_FROM_ALL_SHAPES" else -1 for i in dffix["assigned_token_idx"]]
+
+        # To make sure plotted line stays on the fixated shape until right before next fixation (i.e,, before saccade), fake a dataframe.
+        dffixtmp = dffix.iloc[1:].copy()
+        dffixtmp["time_global"] -= 0.03
+        dffixtmp["assigned_tok_rank_correct"] = dffix.iloc[:-1]["assigned_tok_rank_correct"].tolist()
+        dffix_fake = pd.concat([dffix, dffixtmp], axis=0)
+        dffix_fake = dffix_fake.sort_values("time_global", axis=0)
+
+        # To plot strokes
+        ons, offs = D.strokes_onsets_offsets(ind_dat)
+        ranks = list(range(len(ons)))
+
+        # To color stroke by chunk
+        map_shape_to_color, _, _ = color_make_map_discrete_labels(D.taskclass_shapes_extract_unique_alltrials())
+        shapes = [tok["shape"] for tok in tokens_correct_order]
+        colors_strokes = [map_shape_to_color[sh] for sh in shapes]
+
+        # TODO: For each fixation, label it something useful
+        # same chunk
+        # next 
+        # Mark events
+
+        # Make plot where shapes are ordered by the drawing order, and the fixations and drawings are plotted overlaid on that
+        fig, axes = plt.subplots(1, 1, figsize=(10, 3), squeeze=False)
+        ax = axes.flatten()[0]
+        ax.grid(axis='y')
+
+        # Overlay strokes
+        assert len(ons)==len(offs)==len(ranks)
+        for _on, _off, _rank, _col in zip(ons, offs, ranks, colors_strokes):
+            # ax.plot([_on, _off], [_rank-0.2, _rank-0.2], "k-", linewidth=8, alpha=0.5)
+            ax.plot([_on, _off], [_rank, _rank], "-", color=_col, linewidth=8, alpha=0.7)
+            # ax.axvline(_on)
+            # ax.axvline(_off)
+
+        # Overlay fixations
+        ax.plot(dffix_fake["time_global"], dffix_fake["assigned_tok_rank_correct"], "-k", alpha=0.4)
+        # ax.scatter(dffix["time_global"], dffix["assigned_tok_rank_correct"], c=dffix["assigned_tok_rank_correct"])
+        colors = [map_shape_to_color[sh] if sh !="FAR_FROM_ALL_SHAPES" else "w" for sh in dffix["assigned_task_shape"]]
+        ax.scatter(dffix["time_global"], dffix["assigned_tok_rank_correct"], c=colors)
+
+        self.plotmod_overlay_trial_events(ax, trial, only_on_edge="bottom")
+
+        # legend
+        from pythonlib.tools.plottools import legend_add_manual
+        legend_add_manual(ax, map_shape_to_color.keys(), map_shape_to_color.values())
+
+        return fig
+
+    def beh_eye_fixation_task_shape_overlay_plot(self, trial, ax, event_endpoints=None, 
+                                                 map_shape_to_y=None, 
+                                                 map_shape_to_col=None,
+                                                 yplot=0, plot_vlines=True, vlines_alpha=0.5,
+                                                 plot_var="assigned_task_shape"):
+        """
+        Extract each fixation's assigned shape, and overlay this on any plot (ax) as horiz lines at bottom of
+        plot, whos y-coord and color indicates the matched shape, and where x marks fixations, and lines mark the times 
+        of ongoing fixation. 
+        I used this for moment by mmoment decoding.
+        PARAMS:
+        - map_shape_to_y, dict mappiong from shape label to y location.
+        - map_shape_to_col, dict mappiong from shape label to color (4-d array)
+        """
+
+        # Extract fixation data
+        dffix = self.beh_eye_fixation_extract_and_assign_task_shape(trial, PLOT=False, event_endpoints=event_endpoints)
+        shapes_exist = dffix[plot_var].unique().tolist()
+
+        # Decode how to map shape labels to y and to color
+        if map_shape_to_y is None:
+            if False: # Each shape is diff y coordinate
+                map_shape_to_y = {sh:i for i, sh in enumerate(shapes_exist)}
+            else:
+                # Move all to same Y
+                map_shape_to_y = {sh:yplot for sh in shapes_exist}
+
+        if map_shape_to_col is None:
+            from pythonlib.tools.plottools import color_make_map_discrete_labels
+            map_shape_to_col = color_make_map_discrete_labels(shapes_exist)[0]
+            # map_shape_to_col["FAR_FROM_ALL_SHAPES"] = np.array([0.8, 0.8, 0.8, 1.])
+
+        # Plot lines between each successive fixation
+        dffix = dffix.sort_values("time_global")
+        for i in range(len(dffix)):
+            if i+1<len(dffix):    
+                t1 = dffix.iloc[i]["time_global"]
+                shape = dffix.iloc[i][plot_var]
+                t2 = dffix.iloc[i+1]["time_global"]
+                y = map_shape_to_y[shape]
+                col = map_shape_to_col[shape]
+                ax.plot([t1, t2], [y, y], "-x", color=col, alpha=0.8)
+
+                if plot_vlines:
+                    ax.axvline(t1, color=col, alpha=vlines_alpha, linestyle=":")
+
+        from pythonlib.tools.plottools import legend_add_manual
+        legend_add_manual(ax, map_shape_to_col.keys(), map_shape_to_col.values())
+        
+        return dffix, map_shape_to_y, map_shape_to_col
+
+    def beh_plot_eye_raw_overlay_good(self, trial, ax):
+        """
+        QUick helper, to load raw fixation data, and plot overlaid on any axis.
+        """
+        times_tdt, vals_tdt_calibrated, fs_tdt, vals_tdt_calibrated_sm = self.beh_extract_eye_good(trial, 
+                                                                                            CHECK_TDT_ML2_MATCH=True, 
+                                                                                            return_all=True, PLOT=False)
+        ax.plot(times_tdt, vals_tdt_calibrated[:,0], label="tdt_x", color="b")
+        ax.plot(times_tdt, vals_tdt_calibrated[:,1], label="tdt_y", color="r")
+        ax.legend()
 
     def beh_extract_eye_good(self, trial, apply_empirical_offset=True,
         CHECK_TDT_ML2_MATCH=False, THRESH=5, PLOT=False, return_all=False,
@@ -8912,21 +10865,21 @@ class Session(object):
             fig, axes = plt.subplots(4,1, figsize=(15,20))
 
             ax = axes.flatten()[0]
-            ax.plot(times_ml2, vals_ml2, label="ml2")
-            ax.plot(times_tdt, vals_tdt, label="tdt")
-            ax.plot(times_tdt, vals_tdt_calibrated, label="tdt_calib")
+            ax.plot(times_ml2, vals_ml2, "--", label="ml2")
+            ax.plot(times_tdt, vals_tdt, "--", label="tdt")
+            ax.plot(times_tdt, vals_tdt_calibrated, "--",  label="tdt_calib")
             ax.legend()
 
             ax = axes.flatten()[1]
-            ax.plot(times_ml2, vals_ml2, label="ml2")
+            ax.plot(times_ml2, vals_ml2, "--",  label="ml2")
             # ax.plot(times_tdt, vals_tdt, label="tdt")
-            ax.plot(times_tdt, vals_tdt_calibrated, label="tdt_calib")
+            ax.plot(times_tdt, vals_tdt_calibrated, "--",  label="tdt_calib")
             ax.legend()
 
             ax = axes.flatten()[2]
             # ax.plot(times_ml2, vals_ml2, label="ml2")
-            ax.plot(times_tdt, vals_tdt, label="tdt")
-            ax.plot(times_tdt, vals_tdt_calibrated, label="tdt_calib")
+            ax.plot(times_tdt, vals_tdt, "--",  label="tdt")
+            ax.plot(times_tdt, vals_tdt_calibrated, "--",  label="tdt_calib")
             ax.legend()
 
         if CHECK_TDT_ML2_MATCH: 
@@ -8967,25 +10920,26 @@ class Session(object):
                 fig, axes = plt.subplots(4,1, figsize=(20,12))
 
                 ax = axes.flatten()[0]
-                ax.plot(times_ml2, vals_ml2_sm, label="ml2")
-                ax.plot(times_ml2, vals_tdt_calibrated_atml2times_sm, label="tdt_calib_interp_to_ml2_times")
+                ax.plot(times_ml2, vals_ml2_sm, "--",  label="ml2")
+                ax.plot(times_ml2, vals_tdt_calibrated_atml2times_sm, "--",  label="tdt_calib_interp_to_ml2_times")
                 ax.legend()
 
 
                 ax = axes.flatten()[1]
-                ax.plot(times_ml2, diff_ml2_tdt_rms, label="diff_ml2_tdt_rms")
+                ax.plot(times_ml2, diff_ml2_tdt_rms, "--",  label="diff_ml2_tdt_rms")
                 ax.legend()
 
                 # ZOOM IN
                 ax = axes.flatten()[2]
                 inds_ = range(1800, 2000)
-                ax.plot(times_ml2[inds_], vals_ml2_sm[inds_], label="ml2")
-                ax.plot(times_ml2[inds_], vals_tdt_calibrated_atml2times_sm[inds_], label="tdt_calib_interp_to_ml2_times")
+                ax.plot(times_ml2[inds_], vals_ml2_sm[inds_], "--",  label="ml2")
+                ax.plot(times_ml2[inds_], vals_tdt_calibrated_atml2times_sm[inds_], "--",  label="tdt_calib_interp_to_ml2_times")
                 ax.legend()
+                ax.set_title("zooming in")
 
                 ax = axes.flatten()[3]
-                ax.plot(times_ml2, vals_ml2, label="ml2_nosm")
-                ax.plot(times_tdt_raw, vals_tdt_calibrated, label="tdt_calib_nosm_nointerp")
+                ax.plot(times_ml2, vals_ml2, "--",  label="ml2_nosm")
+                ax.plot(times_tdt_raw, vals_tdt_calibrated, "--",  label="tdt_calib_nosm_nointerp")
                 ax.legend()
 
             if diff_floor>THRESH:
@@ -8999,13 +10953,68 @@ class Session(object):
             strokes_tdt = smoothStrokes(strokes_tdt, fs_tdt, SM_WIN, sanity_check_endpoint_not_different=False)
             vals_tdt_calibrated_sm = strokes_tdt[0][:,:2]
             times_tdt_sm = strokes_tdt[0][:,2]
-            assert np.all(times_tdt_sm==times_tdt)
+            from pythonlib.tools.nptools import isnear
+            assert isnear(times_tdt_sm, times_tdt)
             return times_tdt, vals_tdt_calibrated, fs_tdt, vals_tdt_calibrated_sm
         elif return_fs_tdt:
             return times_tdt, vals_tdt_calibrated, fs_tdt
         else:
             return times_tdt, vals_tdt_calibrated
 
+    def beh_eye_fixation_export_final_clean(self):
+        """
+        Export data that is "final clean":
+        - Raw data, times (sec) and position (pix), ensured aligned to ml2.
+        - clusterfix fixations and saccades (that lead into those fixations): times and pos.
+        - assigned image tokens (e..g, shapes).
+
+        RETURNS:
+        - Saves data to server.
+        """
+        from pythonlib.globals import PATH_SAVE_CLUSTERFIX
+        import pickle
+
+        animal = self.Animal 
+        date = self.Date 
+        SAVEDIR = f"{PATH_SAVE_CLUSTERFIX}/FINAL_CLEAN/{animal}-{date}"
+        os.makedirs(SAVEDIR, exist_ok=True)
+
+        list_events = self.events_default_list_events(include_events_from_dict=True)
+
+        for trial in self.get_trials_list(True, True):
+            trialcode = self.datasetbeh_trial_to_trialcode(trial)
+
+            doplot = trial%30==0
+                
+            times_tdt, vals_tdt_calibrated, data_times_fix, data_times_sacc, data_centroids, fig1d = \
+                self.events_get_clusterfix_fixation_times_and_centroids_simple(trial, PLOT=doplot)
+            dffix = self._beh_eye_fixation_assign_task_shape(trial, data_times_fix, data_centroids)
+
+            data = {
+                "times_tdt":times_tdt,
+                "vals_tdt_calibrated":vals_tdt_calibrated,
+                "data_times_fix":data_times_fix, 
+                "data_times_sacc_pre_fix":data_times_sacc, 
+                "data_centroids":data_centroids
+            }
+
+            ### Save
+            with open(f"{SAVEDIR}/{trialcode}-data.pkl", "wb") as f:
+                pickle.dump(data, f)
+
+            pd.to_pickle(dffix, f"{SAVEDIR}/{trialcode}-dffix.pkl")
+            
+            dict_events = self.events_get_time_using_photodiode(trial, list_events=list_events)
+            with open(f"{SAVEDIR}/{trialcode}-dict_events.pkl", "wb") as f:
+                pickle.dump(dict_events, f)
+
+            ### Plot
+            if doplot:
+                savefig(fig1d, f"{SAVEDIR}/{trialcode}-sacc_and_fixes.pdf")
+
+                plt.close("all")
+
+            
 
     def strokes_task_extract(self, trial):
         """ Extract the strokes for this task
@@ -9070,7 +11079,7 @@ class Session(object):
         
     def plot_epocs(self, ax, trial, list_epocs=("camframe", "camtrialon", "camtrialoff", 
         "rewon", "rewoff", "behcode"), overlay_trial_events=True, 
-        overlay_trial_events_notpd=False):
+        overlay_trial_events_notpd=False, label_cam_frames=False):
         """ Plot discrete events onto axes, for this trial
         """
         
@@ -9080,6 +11089,12 @@ class Session(object):
             times, vals = self.extract_data_tank_epocs(pl, trial0=trial)
             if times is not None:
                 ax.plot(times, np.ones(times.shape)+i, 'x', label=pl)
+                if pl == "camframe" and label_cam_frames:
+                    time_diffs = list(np.diff(np.array(times)))
+                    jump_ind = time_diffs.index(max(time_diffs))+1
+                    for x in range(jump_ind,len(times)):
+                        offset = -10 if (x & 1) else -15
+                        ax.annotate(f'{x-jump_ind}', (times[x],1), textcoords="offset points", xytext=(0,offset), ha='center')
                 if pl=="behcode":
                     for t, b in zip(times, vals):
                         ax.text(t, 1+i+np.random.rand(), int(b))
@@ -9169,7 +11184,6 @@ class Session(object):
         else:
             fig_draw = None
             axes_draw = None
-                
 
         return fig, axes, fig_draw, axes_draw
 
@@ -9177,7 +11191,8 @@ class Session(object):
     def plotwrapper_raster_oneetrial_multsites(self, trialtdt, 
             list_sites=None, site_to_highlight=None,
             WIDTH=20, HEIGHT = 10, overlay_trial_events=True,
-            overlay_trial_events_notpd=False):
+            overlay_trial_events_notpd=False,
+            only_cam_stuff=False):
         """ Plot a single raster for this trial, across these sites
         PARAMS:
         - site_to_highlight, bool, if True, colors it diff
@@ -9185,6 +11200,18 @@ class Session(object):
         
         # fig, axes = plt.subplots(2,2, figsize=(WIDTH, HEIGHT), sharex=False, 
         #                          gridspec_kw={'height_ratios': [1,8], 'width_ratios':[8,1]})
+        #Juts do plots relevant for cam stuff
+        if only_cam_stuff:
+            fig1, axes = plt.subplots(2, 1, figsize=(15, 14), sharex=True)
+            ax = axes.flatten()[0]
+            self.plot_epocs(ax, trialtdt, overlay_trial_events=overlay_trial_events,
+            overlay_trial_events_notpd=overlay_trial_events_notpd,label_cam_frames=True)
+            ax = axes.flatten()[1]
+            ax.set_title("beh strokes")
+            self.plot_trial_timecourse_summary(ax, trialtdt, overlay_trial_events=overlay_trial_events)
+            return fig1, None
+        
+        
         fig1, axes = plt.subplots(10, 1, figsize=(15, 28), sharex=True, 
             gridspec_kw={'height_ratios': [1, 1, 1, 1,1,1,1,12,1, 1]})
 
@@ -9193,7 +11220,8 @@ class Session(object):
         self.plot_epocs(ax, trialtdt, overlay_trial_events=overlay_trial_events,
             overlay_trial_events_notpd=overlay_trial_events_notpd)
         # XLIM = ax.get_xlim()
-
+            
+        # ax.set_xlim(XLIM)
         # Streams
         ax = axes.flatten()[1]
         for stream in ["pd1", "pd2"]:
@@ -9510,6 +11538,7 @@ class Session(object):
         t_post = 0.4 # time from beh code to search
         t_pre = 0
 
+        trials_list = self.get_trials_list(True)
         for behcode, stream in zip(list_behcode, list_whichstream):
             # behcode = 91
             # stream = 'pd1'
@@ -9524,7 +11553,7 @@ class Session(object):
             else:
                 assert False
                 
-            for trial in self.get_trials_list(True):
+            for trial in trials_list:
                 out = self.behcode_get_stream_crossings_in_window(trial, behcode, 
                         whichstream=stream, cross_dir_to_take=crosdir, t_pre=t_pre, 
                         t_post=t_post)
@@ -9623,6 +11652,8 @@ class Session(object):
         """
         Plot raw neural data (filtered) and overlying rasters on that.
         Useful for debugging, seeing results of spike clustering.
+        PARAMS:
+        - twind_plot, window relative to trial onset, to plot.
         :return:
         """
         import elephant as el
@@ -9760,6 +11791,7 @@ class Session(object):
             print("trials in mapper: ", self._MapperTrialcode2TrialToTrial.values())
             print("Looking for this trial", trial)
             raise err
+        
         return list(self._MapperTrialcode2TrialToTrial.keys())[idx]
 
         # trialcode = self.datasetbeh_trial_to_trialcode_from_raw(trial)
@@ -9773,13 +11805,11 @@ class Session(object):
 
     def datasetbeh_trial_to_datidx(self, trial, dataset_input=None):
         """ returns the index in self.Datasetbeh correspodning to
-        this trial. If doesnt exist, then returns None.
+        this trial. If doesnt exist, then returns None. 
         This is accurate even if self.Datasetbeh is changed.
         - dataset_input, which datsaet to query. useful to pass in a pruned
         datsaet if you want to check whether this trial exists (i.e., returns None)
         """
-        tc = self.datasetbeh_trial_to_trialcode(trial)
-        # print("get_trials_list - datasetbeh_trial_to_datidx", trial, tc)
 
         if dataset_input is None:
             dfcheck = self.Datasetbeh
@@ -9787,11 +11817,13 @@ class Session(object):
             dfcheck = dataset_input
         assert dfcheck is not None
 
+        # key = tuple(dfcheck["trialcode"].tolist())
+
+        tc = self.datasetbeh_trial_to_trialcode(trial)
+        # print("get_trials_list - datasetbeh_trial_to_datidx", trial, tc)
+
         dfthis = dfcheck.Dat[dfcheck.Dat["trialcode"]==tc]
 
-        # if len(dfthis)==0:
-        #     print(trial, tc)
-        #     assert False, "didnt find this in datasetbeh"
         if len(dfthis)>1:
             print(trial, tc, dfthis)
             assert False, "bug, cant find > 1 row"
@@ -9906,7 +11938,7 @@ class Session(object):
                     for s in sites:
 
                         # get spiketimes
-                        spike_times = self._snippets_extract_single_snip(s, trial_neural,
+                        spike_times = self._snippets_extract_single_snip_spiketimes(s, trial_neural,
                             event_time, pre_dur, post_dur)
 
                         # save it
@@ -10028,6 +12060,7 @@ class Session(object):
                 assert False
 
             if use_time_within_DS:
+                assert False, "never use this, it has touchscreen lag.. see below"
                 if align_to=="onset":
                     event_time = DS.Dat.iloc[ind]["time_onset"]
                 elif align_to=="offset":
@@ -10039,13 +12072,15 @@ class Session(object):
                 # Sanity check
                 try:
                     if align_to=="onset":
-                        assert event_time==DS.Dat.iloc[ind]["time_onset"], "bug somewjhere"
+                        assert [event_time]==self.hack_adjust_touch_times_touchscreen_lag([DS.Dat.iloc[ind]["time_onset"]]), "bug somewjhere"
                     elif align_to=="offset":
-                        assert event_time==DS.Dat.iloc[ind]["time_offset"]
+                        assert [event_time]==self.hack_adjust_touch_times_touchscreen_lag([DS.Dat.iloc[ind]["time_offset"]]), "bug somewjhere"
                 except Exception as err:
                     print(event_time)
+                    print(DS.Dat.iloc[ind]["time_onset"])
+                    print(DS.Dat.iloc[ind]["time_offset"])
                     print(DS.Dat.iloc[ind])
-                    assert False
+                    raise err
 
             trials.append(trial_neural)
             strokeids.append(si)
@@ -10054,7 +12089,7 @@ class Session(object):
             for s in sites:
 
                 # get spiketimes
-                spike_times = self._snippets_extract_single_snip(s, trial_neural, 
+                spike_times = self._snippets_extract_single_snip_spiketimes(s, trial_neural, 
                     event_time, pre_dur, post_dur)
 
                 # save it
@@ -10219,7 +12254,7 @@ class Session(object):
                 for i_s, s in enumerate(sites):
 
                     # get spiketimes
-                    spike_times = self._snippets_extract_single_snip(s, t,
+                    spike_times = self._snippets_extract_single_snip_spiketimes(s, t,
                         event_time, pre_dur, post_dur)
 
                     # get smoothed fr
@@ -10249,25 +12284,32 @@ class Session(object):
 
         return df, list_events_uniqnames
 
-    def _snippets_extract_single_snip(self, site, trial, event_time,
-            pre_dur, post_dur):
-        """ Extract a single snippet's spike times. aligned to event_time.
+    def _snippets_extract_single_snip_spiketimes(self, site, trial, event_time,
+            pre_dur, post_dur, subtract_event_time=True):
+        """ Extract a single snippet's spike times. aligned to event_time (i.e,
+        subtracts that time, setting it to 0).
+        PARAMS:
+        - pre_dur, input a negative number, in sec, relative to 0.
+        - post_dur, postiive number, in sec, rleative to 0
         """
         dat = self.datall_TDT_KS_slice_single_bysite(site, trial)
         spike_times = dat["spike_times"]
-        time_on = dat["time_on"]
-        time_off = dat["time_off"]
+        # time_on = dat["time_on"]
+        # time_off = dat["time_off"]
         # spike_times = dat["spiketrain"]
         
         # recenter s times to event
         spike_times = spike_times - event_time
-        time_on = time_on - event_time
-        time_off = time_off - event_time
+        # time_on = time_on - event_time
+        # time_off = time_off - event_time
 
         # get windowed spike times
         if True:
             # use popanal
             spike_times = spike_times[(spike_times >= pre_dur) & (spike_times <= post_dur)]
+            if not subtract_event_time:
+                # Then un-subtract event_time
+                spike_times = spike_times + event_time
         else:
             # get smoothed fr
             # print(s, "ii")
@@ -10711,9 +12753,255 @@ class Session(object):
         print("running clusterfix in matlab...")
         self.extract_and_save_clusterfix_results_mat()
         print("exporting fixation/saccade csvs...")
-        self.extract_and_save_clusterfix_trial_fixsacc_csvs()
+        self.extract_and_save_clusterfix_trial_fixsacc_csvs()                        
+
+    def clusterfix_check_if_preprocessing_complete(self):
+        """
+        Return True if clusterfix has been done on this day, to extract
+        fixation events.
+        """
+        from neuralmonkey.utils.directory import clusterfix_check_if_preprocessing_complete
+        animal = self.Animal 
+        date = self.Date 
+        session_no = self.RecSession
+        return clusterfix_check_if_preprocessing_complete(animal, date, session_no)
+
+        # SAVEDIR = f"{PATH_SAVE_CLUSTERFIX}/{animal}-{date}-{session_no}/clusterfix_result_csvs"
+        # import os
+        # return os.path.exists(SAVEDIR)
+
+    ##################### SANITY CHECKS
+    def sanity_waveforms_all_arrays_extract(self):
+        """
+        Extract data across arrays (bregion, site_within_region). The data will be
+        peak_minus_trough of average waveform, althgou code culd be modiifed to 
+        get different metrics.
+
+        The output can be used for computation of changes in arrays across days.
+        """
+
+        ### Get mappers between global site and (region, site_within_region)
+        map_region_site = self.sitegetterKS_generate_mapper_region_to_sites_BASE(clean=False)
+
+        # Get global site that is index of first site in this region
+        map_region_first_site = {} 
+        for region, sites_global in map_region_site.items():
+            if len(sites_global)>0:
+                map_region_first_site[region] = min(sites_global)
+                print(region, sites_global)
+                # print(region, min(sites_global))
+
+        # Finally, map from global to (region, site_within)
+        map_site_to_region_sitewithin = {}
+        for region, sites_global in map_region_site.items():
+            
+            if len(sites_global)>0:
+
+                site_first = map_region_first_site[region]
+
+                for s in sites_global:
+                    map_site_to_region_sitewithin[s] = (region, s-site_first)
+
+        ### Collect data for each site
+        res = []
+        sites = self.sitegetterKS_all_sites(clean=False) # get all sites, except missing arrays
+        for s in sites:
+            if s in self.DatSpikeWaveforms:
+                waveforms = self.DatSpikeWaveforms[s]
+            else:
+                self.load_spike_waveforms(s)
+                waveforms = self.DatSpikeWaveforms[s]
+
+            # Compute stats
+            wf_mean = np.mean(waveforms, axis=0)
+            peak_minus_trough = np.max(wf_mean) - np.min(wf_mean)
+
+            # Store
+            region = self.sitegetterKS_map_site_to_region(s)
+            _region, site_within = map_site_to_region_sitewithin[s]
+            assert region==_region
+
+            res.append({
+                "region":region,
+                "site_within":site_within,
+                "site_global":s,
+                "peak_minus_trough":peak_minus_trough,
+                "wf_mean":wf_mean,
+            })        
+
+        dfres = pd.DataFrame(res)
+        return dfres        
+    
 
 
+    def _sanity_waveforms_concat_waveforms(self, dfres):
+        """
+        Get data (bregions, sites x time bins), which is a more fine-grained represntation of entire array, to help in comparing
+        across days. 
+        PARAMS:
+        - dfres, output of sanity_waveforms_all_arrays_extract
+        RETURNS:
+        - dataframe, index is nregions, and columns are ntimes after concatting across all 32 sites for this array (960 usually)
+        """
+
+        list_sites_within = range(32)
+        list_regions = dfres["region"].unique().tolist()
+
+        out = []
+        for br in list_regions:
+            
+            # Collect and concat all sites
+            wf_all = []
+            for s in list_sites_within:
+                dfthis = dfres[(dfres["region"] == br) & (dfres["site_within"] == s)]
+                assert len(dfthis)==1
+
+                wf_mean = dfthis["wf_mean"].item()
+                wf_all.append(wf_mean)
+
+            # concat into a single vector
+            wf_all_concat = np.concatenate(wf_all, axis=0)
+            out.append(wf_all_concat)
+        mat_region_wfall = np.stack(out, axis=0) # (bregions, concatted times)    
+
+        df = pd.DataFrame(mat_region_wfall, index=list_regions)
+
+        return df
+    
+    def _sanity_waveforms_verify_finally(self, dat1, dat2, savedir, suffix,
+                                         corr_method, heatmap_zlims):
+        """
+        Final quantification to verify array alignement across days.
+        PARAMS:
+        - dat1, dataframe data for day1, (nregions, ndimensions) where ndimensions could be nsites (each with a scalar statstic), or
+        sites x time bins (if concatenate waveforms)
+        - dat2, dataframe data for day2, similar structure.
+        - regions, list of regions, assumed that these are the rows for both dat1, and dat2
+        RETURNS:
+        - passed, bool, True iff all bregions passed
+        """
+        from pythonlib.tools.pandastools import plot_subplots_heatmap
+        from pythonlib.tools.snstools import heatmap
+
+        # Check regions (rows) and confirm match across dataframes
+        assert np.all(dat1.index==dat2.index)
+        regions = dat1.index.tolist()
+
+        # Get correlation between each pair of arrays (pairs are across datasets)
+        res_cross = []
+        for br1 in dat1.index:
+            vals1 = dat1.loc[br1, :]
+
+            for br2 in dat2.index:
+                vals2 = dat2.loc[br2, :]
+
+                if corr_method == "pearson":
+                    corr = np.corrcoef(vals1, vals2)[0,1]
+                elif corr_method == "spearman":
+                    from scipy import stats
+                    res = stats.spearmanr(vals1, vals2)
+                    corr = res.statistic
+                else:
+                    assert False
+                    
+                res_cross.append({
+                    "region1":br1,
+                    "region2":br2,
+                    "corr":corr
+                })
+        dfcross = pd.DataFrame(res_cross)
+
+        ### Plots
+        # Plot heatmaps for each dataset
+        fig, axes = plt.subplots(2, 1, figsize=(12, 10))
+        ax = axes.flatten()[0]
+        heatmap(dat1, ax, False, diverge=False, labels_row=regions, zlims=heatmap_zlims)#     
+        ax = axes.flatten()[1]
+        heatmap(dat2, ax, False, diverge=False, labels_row=regions, zlims=heatmap_zlims)#     
+        savefig(fig, f"{savedir}/heatmaps_each_both_datasets-suffix={suffix}.pdf")
+        
+        # Plot heatmap of cross-corrleation
+        # dfcross2d = plot_subplots_heatmap(dfcross, "region1", "region2", "corr", None, return_dfs=True)[2]["dummy"]
+        fig, axes, tmp = plot_subplots_heatmap(dfcross, "region1", "region2", "corr", None, return_dfs=True, ZLIMS=[-1, 1], diverge=True)
+        dfcross2d = tmp["dummy"]
+        savefig(fig, f"{savedir}/correlation_across_sessions-suffix={suffix}.pdf")
+
+        # Check that diagonals are much higher than offs
+        passed_cross = True
+        failed_regions = []
+        for i, (br, row) in enumerate(dfcross2d.iterrows()):
+            corr_same_array = row[i]
+            corrs_other_arrays = np.r_[row[:i], row[i+1:]]
+
+            if not corr_same_array > max(corrs_other_arrays):
+                print(i, br, row)
+                # assert False, "why array on day 1 mathces a different arrya on day 2?"
+                passed_cross = False
+                failed_regions.append((i, br, row))
+        if passed_cross:
+            print("Good!! passed sanity check. Each array on day 1, tested on day 2, matches best to itself.")        
+        else:
+            print("Failed! These were the failed regions:")
+            for x in failed_regions:
+                print(x)
+
+        fig, ax = plt.subplots()
+        savefig(fig, f"{savedir}/passed_cross={passed_cross}-suffix={suffix}")
+
+        ##################################################
+        ### Also, check whether array was flipped. i..e, if corr across days improves after flipping one array, then that means is
+        # was flipped.
+        dat2_flipped = pd.DataFrame(np.fliplr(dat2), index=dat2.index)
+
+        # Get correlation between each pair of arrays (pairs are across datasets)
+        res_cross = []
+        for br1 in dat1.index:
+            vals1 = dat1.loc[br1, :]
+
+            for br2 in dat2_flipped.index:
+                vals2 = dat2_flipped.loc[br2, :]
+
+                if corr_method == "pearson":
+                    corr = np.corrcoef(vals1, vals2)[0,1]
+                elif corr_method == "spearman":
+                    from scipy import stats
+                    res = stats.spearmanr(vals1, vals2)
+                    corr = res.statistic
+                else:
+                    assert False
+
+                res_cross.append({
+                    "region1":br1,
+                    "region2":br2,
+                    "corr":corr
+                })
+        dfcross_rev = pd.DataFrame(res_cross)
+
+        # Plot heatmaps for each dataset
+        fig, axes = plt.subplots(2, 1, figsize=(12, 10))
+        ax = axes.flatten()[0]
+        heatmap(dat1, ax, False, diverge=False, labels_row=regions, zlims=heatmap_zlims) #     
+        ax = axes.flatten()[1]
+        heatmap(dat2_flipped, ax, False, diverge=False, labels_row=regions, zlims=heatmap_zlims) #     
+        savefig(fig, f"{savedir}/heatmaps_each_both_datasets-FLIPPED-suffix={suffix}.pdf")
+        
+        # Plot heatmap of cross-corrleation
+        fig, axes, tmp = plot_subplots_heatmap(dfcross_rev, "region1", "region2", "corr", None, return_dfs=True, ZLIMS=[-1, 1], diverge=True)
+        savefig(fig, f"{savedir}/correlation_across_sessions-FLIPPED-suffix={suffix}.pdf")
+
+        # Get the diagonals
+        dfcorr = dfcross[dfcross["region1"] == dfcross["region2"]]
+        dfcorr_rev = dfcross_rev[dfcross_rev["region1"] == dfcross_rev["region2"]]
+        assert np.all(dfcorr["region1"] == dfcorr_rev["region1"])
+        assert np.all(dfcorr["region2"] == dfcorr_rev["region2"])
+
+        passed_flip = all(dfcorr["corr"] > dfcorr_rev["corr"])
+
+        fig, ax = plt.subplots()
+        savefig(fig, f"{savedir}/passed_flip={passed_flip}-suffix={suffix}")
+
+        return passed_cross, passed_flip, dfcross
+    
 #####################################################################
 assert _REGIONS_IN_ORDER == ("M1_m", "M1_l", "PMv_l", "PMv_m",
                 "PMd_p", "PMd_a", "dlPFC_p", "dlPFC_a", 

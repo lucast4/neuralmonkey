@@ -8,8 +8,8 @@ from pythonlib.tools.expttools import writeStringsToFile
 ONLY_ESSENTIAL_VARS = False # then just the first var, assuemd to be most important, for quick analys
 
 ##################
-LIST_ANALYSES = ["rulesw", "rulesingle", "ruleswALLDATA", "ruleswERROR", "singleprimvar", "seqcontextvar",
-                 "seqcontext", "singleprim", "charstrokes", "chartrial", "substrokes_sp", "PIG_BASE"] # repo of possible analses,
+LIST_ANALYSES = ["rulesw", "rulesingle", "rulesingleALLDATA", "ruleswALLDATA", "ruleswERROR", "singleprimvar", "seqcontextvar",
+                 "seqcontext", "singleprim", "charstrokes", "chartrial", "substrokes_sp", "PIG_BASE", "singleprim_psycho"] # repo of possible analses,
 
 # - rulesw, rule switching
 # - rulesingle, a single rule, look for draw program representations.
@@ -26,7 +26,7 @@ LIST_ANALYSES = ["rulesw", "rulesingle", "ruleswALLDATA", "ruleswERROR", "single
 def _params_score_sequence_ver(animal, DATE, ANALY_VER):
     """ Decide how to score each trial's sequence success, either
     comparing beh to matlab task seuqence or to parses"""
-    if ANALY_VER in ["rulesw", "ruleswERROR", "ruleswALLDATA", "rulesingle"]:
+    if ANALY_VER in ["rulesw", "ruleswERROR", "ruleswALLDATA", "rulesingle", "rulesingleALLDATA"]:
         if animal=="Pancho" and DATE in [220913]:
             DO_SCORE_SEQUENCE_VER = "parses"
         elif animal=="Pancho" and DATE in [220812, 220814, 220815, 220816, 220827,
@@ -48,7 +48,7 @@ def _params_score_sequence_ver(animal, DATE, ANALY_VER):
         else:
             print(animal, DATE)
             assert False
-    elif ANALY_VER in ["singleprimvar", "seqcontext", "singleprim", "seqcontextvar", "charstrokes", "chartrial", "substrokes_sp", "PIG_BASE"]:
+    elif ANALY_VER in ["singleprimvar", "seqcontext", "singleprim", "singleprim_psycho", "seqcontextvar", "charstrokes", "chartrial", "substrokes_sp", "PIG_BASE"]:
         DO_SCORE_SEQUENCE_VER = None
     else:
         assert False
@@ -915,7 +915,8 @@ def params_getter_extraction(animal, DATE, which_level, ANALY_VER):
 #     return Dall, dataset_pruned_for_trial_analysis, TRIALCODES_KEEP, params, params_extraction
 
 
-def dataset_apply_params(D, DS, ANALY_VER, animal, DATE, save_substroke_preprocess_figures=True):
+def dataset_apply_params(D, DS, ANALY_VER, animal, DATE, save_substroke_preprocess_figures=True,
+                         SKIP_PLOTS=False):
     """Preprocess dataset in all ways, including pruning, appending/modifying columns, etc.
     PARAMS:
     - ANALY_VER, str, params to use.
@@ -964,6 +965,7 @@ def dataset_apply_params(D, DS, ANALY_VER, animal, DATE, save_substroke_preproce
         if params["DO_SCORE_SEQUENCE_VER"]=="parses":
             D.grammarparses_successbinary_score_wrapper()
         elif params["DO_SCORE_SEQUENCE_VER"]=="matlab":
+            assert False, "should always use parse version (right?)"
             D.grammarmatlab_successbinary_score()
             assert params["datasetstrokes_extract_chunks_variables"]==False, "if True, you need to use parses method."
         else:
@@ -1146,14 +1148,16 @@ def dataset_apply_params(D, DS, ANALY_VER, animal, DATE, save_substroke_preproce
             # And extract syntax_concrete column
             D.grammarparses_syntax_concrete_append_column()
 
-            # For each sequence kind (e.g. shapes) split into concrete variations (classes).
             savedir_preprocess = D.make_savedir_for_analysis_figures_BETTER("preprocess_general")
-            sdir = f"{savedir_preprocess}/seqcontext_behorder_cluster_concrete_variation"
-            os.makedirs(sdir, exist_ok=True)
-            D.seqcontext_behseq_cluster_concrete_variation(SAVEDIR=sdir,
-                                                           LIST_VAR_BEHORDER=["behseq_shapes", "behseq_locs",
-                                                                    "behseq_locs_x", "behseq_locs_diff", "behseq_locs_diff_x"])
-
+            if params["datasetstrokes_extract_chunks_behseq_clusts"]:
+                # For each sequence kind (e.g. shapes) split into concrete variations (classes).
+                if not SKIP_PLOTS:
+                    sdir = f"{savedir_preprocess}/seqcontext_behorder_cluster_concrete_variation"
+                    os.makedirs(sdir, exist_ok=True)
+                    D.seqcontext_behseq_cluster_concrete_variation(SAVEDIR=sdir,
+                                                                LIST_VAR_BEHORDER=["behseq_shapes", "behseq_locs",
+                                                                            "behseq_locs_x", "behseq_locs_diff", "behseq_locs_diff_x"])
+                
             if True:
                 # Wrapper to get all info about epochs
                 D.grammarparses_rules_epochs_superv_summarize_wrapper(PRINT=True)
@@ -1166,31 +1170,41 @@ def dataset_apply_params(D, DS, ANALY_VER, animal, DATE, save_substroke_preproce
             if D.animals(force_single=True)[0]=="Pancho" and int(D.dates(True)[0])>=220902 and int(D.dates(True)[0])<=220909:
                 # AnBm, with two shape ses switching by trail in same day.
                 # Replace epoch and syntax_concrete so shapaes are diff epoch, but same synta concrete.
-                list_epoch = []
-                list_syntax_concrete = []
-                for i, row in D.Dat.iterrows():
-                    tmp = [x>0 for x in row["syntax_concrete"][:4]]
-                    epoch_orig = row["epoch_orig"]
-                    if tmp == [True, False, True, False]:
-                        list_epoch.append(f"{epoch_orig}|A")
-                        list_syntax_concrete.append((row["syntax_concrete"][0], row["syntax_concrete"][2]))
-                    elif tmp == [False, True, False, True]:
-                        list_epoch.append(f"{epoch_orig}|B")
-                        list_syntax_concrete.append((row["syntax_concrete"][1], row["syntax_concrete"][3]))
-                    else:
-                        print(tmp)
-                        print(row["syntax_concrete"])
-                        print(row["epoch_orig"])
-                        assert False
-                # D.Dat["epoch_orig"] = list_epoch # NO!! this leads to rulestring problems (old note: must update epoch_orig (and not epoch) or else grammarparses_syntax_role_append_to_tokens)
-                D.Dat["epoch"] = list_epoch # must update epoch_orig (and not epoch) or else grammarparses_syntax_role_append_to_tokens
-                # will incorrectly count within all data.
-                D.Dat["syntax_concrete"] = list_syntax_concrete
+                assert len(D.Dat.iloc[0]["syntax_concrete"])<=3, "should probably runt he code below. See this note:"
+                # If sc is like (2,3,0), then  epochs arelady split into two epochs, with same representation of sc.
+                # If sc is like (2,3,0,0) vs. (0, 0, 2,3), then need to run the code her:
+                if False:
+                    list_epoch = []
+                    list_syntax_concrete = []
+                    for i, row in D.Dat.iterrows():
+                        tmp = [x>0 for x in row["syntax_concrete"][:4]]
+                        epoch_orig = row["epoch_orig"]
+                        if tmp == [True, False, True, False]:
+                            list_epoch.append(f"{epoch_orig}|A")
+                            list_syntax_concrete.append((row["syntax_concrete"][0], row["syntax_concrete"][2]))
+                        elif tmp == [False, True, False, True]:
+                            list_epoch.append(f"{epoch_orig}|B")
+                            list_syntax_concrete.append((row["syntax_concrete"][1], row["syntax_concrete"][3]))
+                        else:
+                            print(tmp)
+                            print(row["syntax_concrete"])
+                            print(row["epoch_orig"])
+                            assert False
+                    # D.Dat["epoch_orig"] = list_epoch # NO!! this leads to rulestring problems (old note: must update epoch_orig (and not epoch) or else grammarparses_syntax_role_append_to_tokens)
+                    D.Dat["epoch"] = list_epoch # must update epoch_orig (and not epoch) or else grammarparses_syntax_role_append_to_tokens
+                    # will incorrectly count within all data.
+                    D.Dat["syntax_concrete"] = list_syntax_concrete
 
             # Further bin trials based on variation in gap duration --> longer gaps means difference in preSMA state space?
-            sdir = f"{savedir_preprocess}/grammarparses_chunk_transitions_gaps_extract_batch"
-            os.makedirs(sdir, exist_ok=True)
-            D.grammarparses_chunk_transitions_gaps_extract_batch(plot_savedir=sdir)
+            if SKIP_PLOTS:
+                PLOT = False
+                sdir = None
+            else:
+                PLOT = True
+                sdir = f"{savedir_preprocess}/grammarparses_chunk_transitions_gaps_extract_batch"
+                os.makedirs(sdir, exist_ok=True)
+            D.grammarparses_chunk_transitions_gaps_extract_batch(plot_savedir=sdir, PLOT=PLOT)
+            plt.close("all")
 
             # For each token, assign a new key called "syntax role" -- good.
             D.grammarparses_syntax_role_append_to_tokens()
@@ -1215,7 +1229,10 @@ def dataset_apply_params(D, DS, ANALY_VER, animal, DATE, save_substroke_preproce
         # Shape sequence for each trial:
         D.seqcontext_extract_shapes_in_beh_order_append_column()
 
-        return D, DS, params
+        # Rename so I remember that this is NOT the final DS. This is just used for pruning D
+        DS_for_pruning_D = DS
+
+        return D, DS_for_pruning_D, params
 
 
 def conjunctions_print_plot_all(ListD, SAVEDIR, ANALY_VER, which_level="trial"):
@@ -1278,7 +1295,14 @@ def conjunctions_print_plot_all(ListD, SAVEDIR, ANALY_VER, which_level="trial"):
 
     ### STROKE LEVEL - heatmaps of (shape, location) vs. index
     from pythonlib.dataset.dataset_strokes import DatStrokes
+    # D.sketchpad_fixation_append_as_string()
     DS = DatStrokes(Dpruned)
+    # DS.dataset_append_column("epoch") 
+    # DS.dataset_append_column("origin_string") 
+
+    DS.dataset_append_column("block")
+    list_block = DS.Dat["block"].unique().tolist()
+
     for task_kind in ["prims_single", "prims_on_grid"]:
         dfthis = DS.Dat[DS.Dat["task_kind"]==task_kind]
         
@@ -1288,12 +1312,32 @@ def conjunctions_print_plot_all(ListD, SAVEDIR, ANALY_VER, which_level="trial"):
             savefig(fig, path)
 
             # Dissociate stroke index from remaining num strokes.
-            fig = grouping_plot_n_samples_conjunction_heatmap(dfthis, var1="stroke_index", 
-                                                              var2="stroke_index_fromlast", vars_others=["shape", "gridloc"])
-            path = f"{sdir}/STROKELEVEL-conjunctions_stroke_index-task_kind_{task_kind}.pdf"
-            savefig(fig, path)
+            if len(dfthis["shape"].unique())<30:
+                fig = grouping_plot_n_samples_conjunction_heatmap(dfthis, var1="stroke_index", 
+                                                                var2="stroke_index_fromlast", vars_others=["shape", "gridloc"])
+                path = f"{sdir}/STROKELEVEL-conjunctions_stroke_index-task_kind_{task_kind}.pdf"
+                savefig(fig, path)
 
             plt.close("all")
+        
+        # Also split by block
+        for bk in list_block:
+            dfthis = DS.Dat[(DS.Dat["task_kind"]==task_kind) & (DS.Dat["block"]==bk)]
+            
+            if len(dfthis)>10:
+                fig = grouping_plot_n_samples_conjunction_heatmap(dfthis, var1="shape", var2="gridloc", vars_others=["stroke_index"])
+                path = f"{sdir}/STROKELEVEL-conjunctions_shape_gridloc-task_kind_{task_kind}-BLOCK_{bk}.pdf"
+                savefig(fig, path)
+
+                # Dissociate stroke index from remaining num strokes.
+                if len(dfthis["shape"].unique())<30 and not task_kind=="prims_single":
+                    fig = grouping_plot_n_samples_conjunction_heatmap(dfthis, var1="stroke_index", 
+                                                                    var2="stroke_index_fromlast", vars_others=["shape", "gridloc"])
+                    path = f"{sdir}/STROKELEVEL-conjunctions_stroke_index-task_kind_{task_kind}-BLOCK_{bk}.pdf"
+                    savefig(fig, path)
+
+                plt.close("all")
+
 
 def _conjunctions_print_plot_all(DF, LIST_VAR, LIST_VARS_CONJUNCTION, sdir, 
         N_MIN, Dplotter):
@@ -1378,7 +1422,7 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
     # for grid sequence tasks with different probes, want to merge them for larger N.
     if ANALY_VER in ["ruleswERROR", "rulesw", "ruleswALLDATA"]:
         taskgroup_reassign_simple_neural = True
-    elif ANALY_VER in ["rulesingle"]:
+    elif ANALY_VER in ["rulesingle", "rulesingleALLDATA"]:
         # Skip for now, since it takes long time and not necessary, but in future maybe move to True
         taskgroup_reassign_simple_neural = False
     else:
@@ -1390,10 +1434,10 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
         preprocess_steps_append = ["correct_sequencing_binary_score",
             "one_to_one_beh_task_strokes_allow_unfinished"]
     elif ANALY_VER in ["rulesingle"]:
-        # preprocess_steps_append = ["correct_sequencing_binary_score",
-        #     "one_to_one_beh_task_strokes"]
         preprocess_steps_append = ["correct_sequencing_binary_score",
             "one_to_one_beh_task_strokes_allow_unfinished"]
+    elif ANALY_VER in ["rulesingleALLDATA"]:
+        preprocess_steps_append = ["one_to_one_beh_task_strokes_allow_unfinished"]
     elif ANALY_VER in ["ruleswALLDATA"]:
         # keep all trials
         preprocess_steps_append = []
@@ -1403,7 +1447,9 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
     elif ANALY_VER in ["seqcontext", "singleprimvar", "seqcontextvar", "PIG_BASE"]:
         preprocess_steps_append = ["one_to_one_beh_task_strokes_allow_unfinished"]
     elif ANALY_VER in ["singleprim"]:
-        preprocess_steps_append = ["one_to_one_beh_task_strokes", "remove_online_abort"]
+        preprocess_steps_append = ["beh_strokes_one", "remove_online_abort"]
+    elif ANALY_VER in ["singleprim_psycho"]:
+        preprocess_steps_append = []
     elif ANALY_VER in ["charstrokes", "chartrial"]:
         # Dont carea bout match btw beh and task strokes
         preprocess_steps_append = ["remove_online_abort"]
@@ -1472,7 +1518,7 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
         EXTRACT_EPOCHSETS_trial_label = "taskconfig_shploc"
         EXTRACT_EPOCHSETS_n_max_epochs = 10 # make this higher, since these are usually clean expts.
         EXTRACT_EPOCHSETS_merge_sets = True
-    elif ANALY_VER in ["singleprim", "seqcontext", "charstrokes", "chartrial", "substrokes_sp", "PIG_BASE"]:
+    elif ANALY_VER in ["singleprim_psycho", "singleprim", "seqcontext", "charstrokes", "chartrial", "substrokes_sp", "PIG_BASE"]:
         # DO_CHARSEQ_VER = None
         # EXTRACT_EPOCHSETS = False
         # EXTRACT_EPOCHSETS_trial_label = None
@@ -1537,6 +1583,11 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
         # Ignore, since already pruned at substrokes level.
         datasetstrokes_extract_to_prune_trial = None
         datasetstrokes_extract_to_prune_stroke_and_get_features = None
+    elif ANALY_VER in ["singleprim_psycho"]:
+        # Single prim -- most stringent
+        # datasetstrokes_extract_to_prune_trial = "singleprim_psycho"
+        datasetstrokes_extract_to_prune_trial = "singleprim_psycho_noabort"
+        datasetstrokes_extract_to_prune_stroke_and_get_features = None
     elif ANALY_VER in ["singleprim", "singleprimvar"]:
         # Single prim -- most stringent
         datasetstrokes_extract_to_prune_trial = "singleprim"
@@ -1570,7 +1621,7 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
         substrokes_features_do_extraction = True
     elif ANALY_VER in ["singleprim", "singleprimvar", "seqcontext",
                        "charstrokes", "chartrial", "PIG_BASE",
-                       "rulesingle", "rulesw"]:
+                       "rulesingle", "rulesingleALLDATA", "rulesw", "singleprim_psycho"]:
         substrokes_features_do_extraction = False
     else:
         print(ANALY_VER)
@@ -1578,12 +1629,19 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
 
     ######## CHUNKS, e.g., AnBm, wherther to extract state, e.g.,, n in chunk, and so on.
     if "rule" in ANALY_VER:
-        # This operates on DS only.
-        datasetstrokes_extract_chunks_variables = True
+        if "ALLDATA" in ANALY_VER or "ERROR" in ANALY_VER:
+            # An exception, if you are collecting all data, then avoid things that will fail, because not correct number
+            # of strokes.
+            datasetstrokes_extract_chunks_variables = True
+            datasetstrokes_extract_chunks_behseq_clusts = False
+        else:
+            # This operates on DS only.
+            datasetstrokes_extract_chunks_variables = True
+            datasetstrokes_extract_chunks_behseq_clusts = True
     else:
         datasetstrokes_extract_chunks_variables = False
-
-
+        datasetstrokes_extract_chunks_behseq_clusts = False
+    
     params = {
         "DO_CHARSEQ_VER":DO_CHARSEQ_VER,
         # "EXTRACT_EPOCHSETS":EXTRACT_EPOCHSETS,
@@ -1603,7 +1661,8 @@ def params_getter_dataset_preprocess(ANALY_VER, animal, DATE):
         "datasetstrokes_extract_to_prune_stroke_and_get_features":datasetstrokes_extract_to_prune_stroke_and_get_features,
         "substrokes_features_do_extraction":substrokes_features_do_extraction,
         "charclust_dataset_extract_shapes":charclust_dataset_extract_shapes,
-        "datasetstrokes_extract_chunks_variables":datasetstrokes_extract_chunks_variables
+        "datasetstrokes_extract_chunks_variables":datasetstrokes_extract_chunks_variables,
+        "datasetstrokes_extract_chunks_behseq_clusts":datasetstrokes_extract_chunks_behseq_clusts,
     }
 
     return params
@@ -2163,7 +2222,7 @@ def params_getter_umap_vars(question):
 
     return list_var_color_var_subplot
 
-def params_getter_euclidian_vars(question):
+def params_getter_euclidian_vars(question, context_version="new"):
     """
     GOOD - these are the most carefully constructed, in terms of high control, and testing specific hypothes
     Helper to get variables for euclidian distnace when this involves specific hand-pikced variables to test speciifc
@@ -3392,7 +3451,82 @@ def params_getter_euclidian_vars(question):
         print(len(LIST_PRUNE_MIN_N_LEVS))
         print(LIST_FILTDICT)
         print(len(LIST_FILTDICT))
-        assert False
+        assert False    
+
+    ### WHether is old or new version of context
+    # old -- using the time-varying eucl. context is confusing combination of vars_others and contet
+    # new -- using the faster method. vars_others and context remain separate (i.e, context always applies)
+    if context_version=="old":
+        pass
+    elif context_version == "new":
+        # Update context, so that it is compatible with new approahc, where vars_others and context independent.
+        # To see what is wrong with old approach, see docs in Cl.rsa_mask_context_helper() -- basicalyl, it is 
+        # confusing beucase vars_others, and context interact.
+
+        for i, (var, vars_others, context) in enumerate(zip(LIST_VAR, LIST_VARS_OTHERS, LIST_CONTEXT)):
+            if context is not None:
+                assert sorted(vars_others) == sorted(context["same"] + context["diff"])
+                print(i, " == ", var, " -- ", vars_others, " -- ", context)
+
+                # - context["diff"] is only used for "diff" pairs, and so it is redundant with vars_others.
+
+                # - check that it is in vars_others
+                if len(context["diff"])>0:
+                    assert all([c in vars_others for c in context["diff"]])
+                
+                # - Remove it
+                context["diff"] = []
+
+                if "diff_context_ver" in context:
+                    # if context["diff_context_ver"] == "diff_specific_lenient":
+                    #     diff_context_ver = "diff_at_least_one"
+                    # elif context["diff_context_ver"] == "diff_specific":
+                    #     diff_context_ver = "diff_complete"
+                    #     assert False, "need to tell the code somehow that should diff vars_others shold be complete"
+                    # else:
+                    #     # Default mode.
+                    #     diff_context_ver = "diff_at_least_one"
+                    if context["diff_context_ver"] == "diff_specific":
+                        diff_context_ver = "diff_complete"
+                        assert False, "need to tell the code somehow that should diff vars_others shold be complete"
+
+                # Check for cases where no "diff var_other" is possible (mistakenly)
+                print()
+                if sorted(context["same"]) == sorted(vars_others):
+                    print(i, " == ", var, " -- ", vars_others, " -- ", context)
+                    assert False
+        print("context and vars_others are identical...")
+        print("LIST_VAR, LIST_VARS_OTHERS, LIST_CONTEXT are ready to use!")
+
+    # Standardize the output format.
+    def _context_cleanup(context):
+        """
+        Returns (potentialyl) copy
+        """
+
+        if context is None:
+            return context
+        else:    
+            assert isinstance(context, dict)
+
+            # Must have same and diff
+            if "same" not in context:
+                context["same"] = None
+            if "diff" not in context:
+                context["diff"] = None
+            
+            # empy --> None
+            if (context["same"] is not None) and (len(context["same"]))==0:
+                context["same"] = None
+            if (context["diff"] is not None) and (len(context["diff"]))==0:
+                context["diff"] = None
+
+            # If both same and diff are None, then make the whole thing None
+            if context["same"] is None and context["diff"] is None:
+                context = None
+            
+            return context
+    LIST_CONTEXT = [_context_cleanup(context) for context in LIST_CONTEXT]
 
     return LIST_VAR, LIST_VARS_OTHERS, LIST_CONTEXT, LIST_PRUNE_MIN_N_LEVS, LIST_FILTDICT
 

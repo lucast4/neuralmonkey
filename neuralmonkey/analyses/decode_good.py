@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt
 from pythonlib.tools.plottools import savefig
 from pythonlib.tools.listtools import sort_mixed_type
 from pythonlib.tools.pandastools import append_col_with_grp_index
+from pythonlib.tools.statstools import decode_resample_balance_dataset, decode_upsample_dataset
 
 LABELS_IGNORE = ["IGN", ("IGN",), "IGNORE", ("IGNORE",)] # values to ignore during dcode.
 N_MIN_TRIALS = 5 # min trials per level, otherwise throws level out.
@@ -30,20 +31,29 @@ def decode_apply_model_to_test_data(mod, x_test, labels_test,
     PARAMS:
     - x_test, (ntrials, ndims)
     - labels_test (ntrials)
+
+    MS: checked
     """
     from sklearn.metrics import balanced_accuracy_score
 
-    x_test, labels_test, inds_keep = cleanup_remove_labels_ignore(x_test, labels_test)
+    x_test, labels_test, _ = cleanup_remove_labels_ignore(x_test, labels_test)
     assert x_test.shape[0]==len(labels_test)
 
     labels_predicted = mod.predict(x_test)
+
+    if False:
+        for l1, l2 in zip(labels_test, labels_predicted):
+            if l1==l2:
+                print("(actual, predicted)", l1, " -- ", l2)
+            else:
+                print("(actual, predicted)", " ** ", l1, " -- ", l2)
 
     classes_in_ypred_but_not_in_ytrue = [x for x in set(labels_predicted) if x not in set(labels_test)]
     if len(classes_in_ypred_but_not_in_ytrue)>0:
         print(classes_in_ypred_but_not_in_ytrue)
         print(set(labels_predicted))
         print(set(labels_test))
-        assert False, "should first prune trainig data so that it onlyincludes classes present in testing data"
+        assert False, "should first     prune trainig data so that it onlyincludes classes present in testing data"
     score = balanced_accuracy_score(labels_test, labels_predicted, adjusted=False)
     score_adjusted = balanced_accuracy_score(labels_test, labels_predicted, adjusted=True)
 
@@ -51,10 +61,172 @@ def decode_apply_model_to_test_data(mod, x_test, labels_test,
         # Also get conficence scores.
         conf_scores = mod.decision_function(x_test) # (ntrials, nclasses), distance of samp from
         # decision boundary
-
         return score, score_adjusted, labels_predicted, labels_test, conf_scores
     else:
         return score, score_adjusted
+
+# def decode_resample_balance_dataset(X_train, labels_train, method="upsample",
+#                                     plot_resampled_data_path_nosuff=None):
+#     """
+#     Resample data to balance n datapts across classes of labels, with methods for both up- and down-sample
+#     PARAMS:
+#     - X_train, scalar acgivity to decode, a single time bin, (ntrials, nchans)
+#     - labels_train, list of cat valuyes. len ntrials
+#     """
+#     from pythonlib.tools.listtools import tabulate_list
+#     from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotbydims_scalar
+
+#     # Skip, if only 1 class exists...
+#     if len(set(labels_train))==1:
+#         print("SKipping, ony one class lewvel found... [decode_train_model]")
+#         return None, None
+    
+#     if False:
+#         print("---------")
+#         print("ntot:", len(labels))
+#         print("n train", len(train_index))
+#         print("n test", len(test_index))
+#         print("n splits", n_splits)
+#         print("n classes", len(set(labels)))
+
+#     # Do upsampling here, since it is hleped by having more data
+#     # Balance the train data
+#     n_min_across_labs = min(tabulate_list(labels_train).values())
+#     n_max_across_labs = max(tabulate_list(labels_train).values())
+#     if n_min_across_labs/n_max_across_labs<0.85:
+
+#         # Plot (BEFORE)
+#         if plot_resampled_data_path_nosuff is not None:
+#             # Only do for i==0 since each time is very similar (trains are overlapoing).
+#             # For plot
+#             list_dims_plot = [(0,1), (2,3), (4,5), (6,7)]
+#             list_dims_plot = [dims for dims in list_dims_plot if X_train.shape[1]>max(dims)]
+
+#             fig, axes = trajgood_plot_colorby_splotbydims_scalar(X_train, labels_train, list_dims_plot)
+#             savefig(fig, f"{plot_resampled_data_path_nosuff}-raw.png")
+
+#         # Do this or else will raise erorr.
+#         labels_train_orig = labels_train
+#         if isinstance(labels_train, (list, tuple)):
+#             # Convert indiv labels, if they are list/tyuple, to str, or else will fail.
+#             # from pythonlib.tools.listtools import stringify_list_of_tuple
+#             # labels_train = stringify_list_of_tuple(labels_train)
+
+#             map_idx_to_lab = {}
+#             map_lab_to_idx = {}
+#             for i, lab in enumerate(set(labels_train)): 
+#                 map_idx_to_lab[i] = lab
+#                 map_lab_to_idx[lab] = i
+#             labels_train = [map_lab_to_idx[lab] for lab in labels_train]
+#             do_convert=True
+#         else:
+#             do_convert=False
+
+#         print(f"[Doing {method}] Across levels, nmin_dat / nmax_dat:", n_min_across_labs, n_max_across_labs)
+#         if method=="upsample":
+#             from imblearn.over_sampling import SMOTE
+#             smote = SMOTE(sampling_strategy="not majority", k_neighbors=n_min_across_labs-1)
+#             try:
+#                 # if False:
+#                 #     assert False, "bad -- need to use X, as it does interpolation..."
+#                 #     # Allows to keep labels_train as list of tuples
+#                 #     indexes = np.arange(X_train.shape[0])[:, None]
+#                 #     indexes_resamp, _ = smote.fit_resample(indexes, labels_train)
+#                 #     print(labels_train)
+#                 #     print(indexes)
+#                 #     print(indexes_resamp)
+#                 #     assert False
+#                 #     indexes_resamp = [int(i) for i in indexes_resamp]
+#                 #     _x_resamp = X_train[indexes_resamp,:]
+#                 #     _lab_resamp = [labels_train_orig[i] for i in indexes_resamp]
+#                 # else:
+#                 _x_resamp, _lab_resamp = smote.fit_resample(X_train, labels_train)
+#             except Exception as err:
+#                 print(X_train.shape)
+#                 print(X_train[:5, :])
+#                 print(len(labels_train))
+#                 print(labels_train[:5])
+#                 print(type(X_train), type(labels_train))
+#                 raise err
+#         elif method=="downsample":
+#             # Random
+#             from imblearn.under_sampling import RandomUnderSampler
+#             rus = RandomUnderSampler()
+#             _x_resamp, _lab_resamp = rus.fit_resample(X_train, labels_train)
+#         else:
+#             print(method)
+#             assert False, "code it"
+
+#         # Finally, update values.
+#         X_train = _x_resamp
+#         if do_convert:
+#             labels_train = [map_idx_to_lab[idx] for idx in _lab_resamp]
+#         else:
+#             labels_train = _lab_resamp
+        
+#         # Plot (AFTER)
+#         if plot_resampled_data_path_nosuff is not None:
+#             fig, axes = trajgood_plot_colorby_splotbydims_scalar(X_train, labels_train, list_dims_plot)
+#             savefig(fig, f"{plot_resampled_data_path_nosuff}-upsampled.png")
+        
+#     return X_train, labels_train
+
+# def decode_upsample_dataset(X_train, labels_train, plot_resampled_data_path_nosuff=False):
+#     """
+#     Upsample data to balance n datapts across classes of labels.
+#     PARAMS:
+#     - X_train, scalar acgivity to decode, a single time bin, (ntrials, nchans)
+#     - labels_train, list of cat valuyes. len ntrials
+#     """
+
+#     X_train, labels_train = decode_resample_balance_dataset(X_train, labels_train, "upsample", plot_resampled_data_path_nosuff)
+#     return X_train, labels_train
+
+#     # from pythonlib.tools.listtools import tabulate_list
+#     # from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotbydims_scalar
+
+#     # list_dims_plot = [(0,1), (2,3), (4,5), (6,7)]
+#     # list_dims_plot = [dims for dims in list_dims_plot if X_train.shape[1]>max(dims)]
+
+#     # n_min_across_labs = min(tabulate_list(labels_train).values())
+#     # n_max_across_labs = max(tabulate_list(labels_train).values())
+
+#     # # Skip, if only 1 class exists...
+#     # if len(set(labels_train))==1:
+#     #     print("SKipping, ony one class lewvel found... [decode_train_model]")
+#     #     return None
+
+#     # if False:
+#     #     print("---------")
+#     #     print("ntot:", len(labels))
+#     #     print("n train", len(train_index))
+#     #     print("n test", len(test_index))
+#     #     print("n splits", n_splits)
+#     #     print("n classes", len(set(labels)))
+
+#     # # Do upsampling here, since it is hleped by having more data
+#     # # Balance the train data
+#     # if n_min_across_labs/n_max_across_labs<0.85:
+#     #     print("[Upsampling] Across levels, nmin_dat / nmax_dat:", n_min_across_labs, n_max_across_labs)
+#     #     from imblearn.over_sampling import SMOTE
+#     #     n_min_across_labs = min(tabulate_list(labels_train).values())
+#     #     smote = SMOTE(sampling_strategy="not majority", k_neighbors=n_min_across_labs-1)
+#     #     _x_resamp, _lab_resamp = smote.fit_resample(X_train, labels_train)
+
+#     #     # Plot
+#     #     if plot_resampled_data_path_nosuff is not None:
+#     #         # Only do for i==0 since each time is very similar (trains are overlapoing).
+
+#     #         fig, axes = trajgood_plot_colorby_splotbydims_scalar(X_train, labels_train, list_dims_plot)
+#     #         savefig(fig, f"{plot_resampled_data_path_nosuff}-raw.png")
+
+#     #         fig, axes = trajgood_plot_colorby_splotbydims_scalar(_x_resamp, _lab_resamp, list_dims_plot)
+#     #         savefig(fig, f"{plot_resampled_data_path_nosuff}-upsampled.png")
+#     #     X_train = _x_resamp
+#     #     labels_train = _lab_resamp
+
+#     # return X_train, labels_train
+
 
 def decode_train_model(X_train, labels_train, plot_resampled_data_path_nosuff=None,
                        do_center=True, do_std=False):
@@ -65,26 +237,19 @@ def decode_train_model(X_train, labels_train, plot_resampled_data_path_nosuff=No
     - X_train, scalar acgivity to decode, a single time bin, (ntrials, nchans)
     - labels_train, list of cat valuyes. len ntrials
     RETURNS:
-        - mod
+    - mod
+
+    MS: checked
     """
-    from pythonlib.tools.listtools import tabulate_list
-    from sklearn.model_selection import StratifiedKFold
-    from sklearn.metrics import balanced_accuracy_score
     from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotbydims_scalar
 
     assert len(X_train.shape)==2
     assert X_train.shape[0]==len(labels_train)
 
-    X_train, labels_train, inds_keep = cleanup_remove_labels_ignore(X_train, labels_train)
+    X_train, labels_train, _ = cleanup_remove_labels_ignore(X_train, labels_train)
 
     if X_train is None or len(labels_train)==0:
         return None
-
-    list_dims_plot = [(0,1), (2,3), (4,5), (6,7)]
-    list_dims_plot = [dims for dims in list_dims_plot if X_train.shape[1]>max(dims)]
-
-    n_min_across_labs = min(tabulate_list(labels_train).values())
-    n_max_across_labs = max(tabulate_list(labels_train).values())
 
     # Skip, if only 1 class exists...
     if len(set(labels_train))==1:
@@ -101,23 +266,30 @@ def decode_train_model(X_train, labels_train, plot_resampled_data_path_nosuff=No
 
     # Do upsampling here, since it is hleped by having more data
     # Balance the train data
-    if n_min_across_labs/n_max_across_labs<0.85:
-        from imblearn.over_sampling import SMOTE
-        n_min_across_labs = min(tabulate_list(labels_train).values())
-        smote = SMOTE(sampling_strategy="not majority", k_neighbors=n_min_across_labs-1)
-        _x_resamp, _lab_resamp = smote.fit_resample(X_train, labels_train)
+    X_train, labels_train = decode_upsample_dataset(X_train, labels_train, plot_resampled_data_path_nosuff=plot_resampled_data_path_nosuff)
+    # list_dims_plot = [(0,1), (2,3), (4,5), (6,7)]
+    # list_dims_plot = [dims for dims in list_dims_plot if X_train.shape[1]>max(dims)]
 
-        # Plot
-        if plot_resampled_data_path_nosuff is not None:
-            # Only do for i==0 since each time is very similar (trains are overlapoing).
+    # n_min_across_labs = min(tabulate_list(labels_train).values())
+    # n_max_across_labs = max(tabulate_list(labels_train).values())
+    # if n_min_across_labs/n_max_across_labs<0.85:
+    #     from imblearn.over_sampling import SMOTE
+    #     n_min_across_labs = min(tabulate_list(labels_train).values())
+    #     smote = SMOTE(sampling_strategy="not majority", k_neighbors=n_min_across_labs-1)
+    #     _x_resamp, _lab_resamp = smote.fit_resample(X_train, labels_train)
 
-            fig, axes = trajgood_plot_colorby_splotbydims_scalar(X_train, labels_train, list_dims_plot)
-            savefig(fig, f"{plot_resampled_data_path_nosuff}-raw.png")
+    #     # Plot
+    #     if plot_resampled_data_path_nosuff is not None:
+    #         # Only do for i==0 since each time is very similar (trains are overlapoing).
 
-            fig, axes = trajgood_plot_colorby_splotbydims_scalar(_x_resamp, _lab_resamp, list_dims_plot)
-            savefig(fig, f"{plot_resampled_data_path_nosuff}-upsampled.png")
-        X_train = _x_resamp
-        labels_train = _lab_resamp
+    #         fig, axes = trajgood_plot_colorby_splotbydims_scalar(X_train, labels_train, list_dims_plot)
+    #         savefig(fig, f"{plot_resampled_data_path_nosuff}-raw.png")
+
+    #         fig, axes = trajgood_plot_colorby_splotbydims_scalar(_x_resamp, _lab_resamp, list_dims_plot)
+    #         savefig(fig, f"{plot_resampled_data_path_nosuff}-upsampled.png")
+    #     X_train = _x_resamp
+    #     labels_train = _lab_resamp
+
 
     # Fit model (Classifier)
     try:
@@ -127,6 +299,7 @@ def decode_train_model(X_train, labels_train, plot_resampled_data_path_nosuff=No
                             do_center=do_center, do_std=do_std, do_train_test_split=False)
     except Exception as err:
         # Plot the data then raise error
+        list_dims_plot = [(0,1)]
         fig, axes = trajgood_plot_colorby_splotbydims_scalar(X_train, labels_train, list_dims_plot)
         if plot_resampled_data_path_nosuff is None:
             plot_resampled_data_path_nosuff = "/tmp/test"
@@ -192,7 +365,6 @@ def decode_categorical_within_condition(X, dflab, var_decode, vars_conj_conditio
                 "train_labels_counts":train_labels_counts,
                 "n_classes_test":len(train_labels_counts)
             })
-
     dfres = pd.DataFrame(RES)
 
     # aggregate, to get one score for each var_decode
@@ -208,7 +380,6 @@ def decode_categorical_within_condition(X, dflab, var_decode, vars_conj_conditio
 
     return dfres, dfres_agg
 
-
 def decode_categorical_cross_condition(X, dflab, var_decode, vars_conj_condition,
                                        do_center=True, do_std=False):
     """
@@ -222,10 +393,10 @@ def decode_categorical_cross_condition(X, dflab, var_decode, vars_conj_condition
     - var_decode, string, variable to decode.
     - vars_conj_condition, list of str, conjuctive variable that will condition decoder on
     vars_conj_condition = ["seqc_0_loc"]
+
+    MS: checked
     """
 
-    # labels_decode = pd.factorize(dflab[var_decode])[0]
-    # labels_condition = pd.factorize(dflab[var_condition])[0]
     from sklearn.metrics import balanced_accuracy_score
     from pythonlib.tools.listtools import tabulate_list
     from pythonlib.tools.pandastools import grouping_append_and_return_inner_items
@@ -247,12 +418,10 @@ def decode_categorical_cross_condition(X, dflab, var_decode, vars_conj_condition
     # Iterate over all levels of conditioned grp vars
     RES = []
     for grp_train, inds_train in groupdict.items():
-        # print(grp_train, len(inds_train))
 
         # This group provides training data
         X_train = X[inds_train, :] # (ntrials, nchans)
         labels_train = [labels_all[i] for i in inds_train]
-
         train_labels_counts = tabulate_list(labels_train)
 
         if len(set(labels_train))>1:
@@ -271,7 +440,6 @@ def decode_categorical_cross_condition(X, dflab, var_decode, vars_conj_condition
 
                     # Gather test data
                     X_test = X[inds_test, :] # (ntrials, nchans)
-                    # labels_test = labels_all[inds_test]
                     labels_test = [labels_all[i] for i in inds_test]
 
                     # check the distribution of var_decode labels.
@@ -286,8 +454,9 @@ def decode_categorical_cross_condition(X, dflab, var_decode, vars_conj_condition
 
                     if len(X_test)>0:
                         # score it
-                        score, score_adjusted = decode_apply_model_to_test_data(mod, X_test, labels_test)
-
+                        score, score_adjusted, labels_predicted, labels_test, conf_scores = decode_apply_model_to_test_data(mod, 
+                                                                                                            X_test, labels_test, 
+                                                                                                            return_predictions_all_trials=True)
                         # Save results
                         RES.append({
                             "var_decode":var_decode,
@@ -298,7 +467,10 @@ def decode_categorical_cross_condition(X, dflab, var_decode, vars_conj_condition
                             "score_adjusted":score_adjusted,
                             "train_labels_counts":train_labels_counts,
                             "test_labels_counts":test_labels_counts,
-                            "n_classes_test":len(test_labels_counts)
+                            "n_classes_test":len(test_labels_counts),
+                            "labels_predicted":labels_predicted,
+                            "labels_test":labels_test,
+                            "conf_scores":conf_scores,
                         })
     dfres = pd.DataFrame(RES)
 
@@ -320,11 +492,271 @@ def decode_categorical_cross_condition(X, dflab, var_decode, vars_conj_condition
     return dfres, dfres_agg
 
 
+def decode_categorical_pairwise(X, dflab, var_decode, n_min_trials, savedir,
+                                do_across_condition, vars_conj_condition=None,
+                                do_std=False, do_plots=True):
+    """
+    For each pair of classes of var_decode, do a separate decoding procedure, and then 
+    collect all reasults. Ie asks about how well can decode each possible pair of conditions.
+    
+    This is useful for a more accurate estmiante of separateion for each pair.
+
+    """ 
+
+    if do_across_condition:
+        assert vars_conj_condition is not None
+
+    ### For each pair of shapes, do decoding
+    list_dfres = []
+    list_res_scores = []
+    shapes = dflab[var_decode].unique().tolist()
+    for i, sh1 in enumerate(shapes):
+        for j, sh2 in enumerate(shapes):
+            if j>i: # it is symmetric, so only do one direction
+
+                shape_pair = [sh1, sh2]
+                # Get subset data
+                inds = dflab[dflab[var_decode].isin(shape_pair)].index.tolist()
+                X_this = X[inds,:]
+                dflab_this = dflab.iloc[inds].reset_index(drop=True)
+
+                # Decode
+                if do_across_condition:
+                    dfres, _ = decode_categorical_cross_condition(X_this, dflab_this, var_decode, vars_conj_condition,
+                                                        do_center=True, do_std=do_std)
+
+                else:
+                    RES = decode_categorical(X_this, dflab_this[var_decode].tolist(), n_min_trials, 
+                                             do_center=True, do_std=do_std, plot_resampled_data_path_nosuff=None,
+                                                            return_mean_score_over_splits=False, 
+                                                            return_predictions_all_trials=True)
+                    dfres = pd.DataFrame(RES)
+                    # decode_categorical_plot_confusion_score_quick(RES, savedir_this)
+
+                ### Collect
+                # Collect raw
+                dfres["shape_pair"] = [tuple(shape_pair) for _ in range(len(dfres))]
+                list_dfres.append(dfres)
+
+                # Also collect a single score for each shape pair
+                score, score_adjusted, _ = decode_categorical_plot_confusion_score_quick(dfres, savedir=None)
+                list_res_scores.append({
+                    "shape_pair":tuple(shape_pair),
+                    "shape_1":shape_pair[0],
+                    "shape_2":shape_pair[1],
+                    "score":score,
+                    "score_adjusted":score_adjusted,
+                })
+    DFRES = pd.concat(list_dfres).reset_index(drop=True)
+    DFSCORES = pd.DataFrame(list_res_scores) # Hold scores (decoding) for each pair
+    DFSCORES["score_minus_50"] = DFSCORES["score"] - 0.5
+
+    ### Some quick plots
+    if do_plots:
+        from pythonlib.tools.pandastools import plot_subplots_heatmap
+
+        fig, axes = plot_subplots_heatmap(DFSCORES, "shape_1", "shape_2", "score_minus_50", None, diverge=True,
+                            row_values=shapes, col_values=shapes, share_zlim=True, ZLIMS=[-0.5, 0.5], annotate_heatmap=True)
+        savefig(fig, f"{savedir}/heatmap-decode-1.pdf")
+
+        fig, axes = plot_subplots_heatmap(DFSCORES, "shape_1", "shape_2", "score", None, diverge=False,
+                            row_values=shapes, col_values=shapes, share_zlim=True, ZLIMS=[0, 1], annotate_heatmap=True)
+        savefig(fig, f"{savedir}/heatmap-decode-2.pdf")
+
+        plt.close("all")   
+
+    ### Also get dataframe of counts/probs, collecting across all labels
+    # ie for each pair, get 4 numbers (Counts) which is its own 2x2 confusion matrix.
+    from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good
+    grpdict = grouping_append_and_return_inner_items_good(DFRES, ["shape_pair"])
+    res = []
+    for grp, inds in grpdict.items():
+        shape_pair = grp[0]
+        dfres = DFRES.iloc[inds]
+
+        ### Cnvert to 2d
+        from pythonlib.tools.pandastools import convert_to_2d_dataframe
+        score, score_adjusted, dfclasses = decode_categorical_plot_confusion_score_quick(dfres, None)
+        dfcounts = convert_to_2d_dataframe(dfclasses, "label_actual", "label_predicted", norm_method="row_div")[0]
+        # normalize, for each label_actual, sums to 1
+        dfprob = dfcounts.div(dfcounts.sum(axis=1), axis=0)
+
+        ### Collect
+        tmp = []
+        for sh1 in shape_pair:
+            for sh2 in shape_pair:
+                tmp.append({
+                    "shape_actual":sh1,
+                    "shape_predicted":sh2,
+                    "count":int(dfcounts.loc[sh1, sh2]),
+                    "prob":dfprob.loc[sh1, sh2],
+                    "shape_pair":shape_pair,
+                })
+        dftmp = pd.DataFrame(tmp)
+
+        res.append(dftmp)
+    DFRES_COUNTS = pd.concat(res).reset_index(drop=True)       
+    DFRES_COUNTS["prob_minus_50"] = DFRES_COUNTS["prob"] - 0.5
+
+    if do_plots:
+        from pythonlib.tools.pandastools import plot_subplots_heatmap
+
+        fig, axes = plot_subplots_heatmap(DFRES_COUNTS, "shape_actual", "shape_predicted", "prob_minus_50", None, diverge=True,
+                            row_values=shapes, col_values=shapes, share_zlim=True, ZLIMS=[-0.5, 0.5], annotate_heatmap=True)
+        savefig(fig, f"{savedir}/heatmap-pairwise-1.pdf")
+
+        fig, axes = plot_subplots_heatmap(DFRES_COUNTS, "shape_actual", "shape_predicted", "prob", None, diverge=False,
+                            row_values=shapes, col_values=shapes, share_zlim=True, ZLIMS=[0, 1], annotate_heatmap=True)
+        savefig(fig, f"{savedir}/heatmap-pairwise-2.pdf")
+        plt.close("all")
+
+    return DFRES, DFRES_COUNTS, DFSCORES
+
+def decode_categorical_pairwise_plots(DFSCORES, SAVEDIR_PLOTS):
+    """
+    HElper, plots for the results of decode_categorical_pairwise().
+    Plots confusion matrix and 1d histogram of scores, ie decoding scores collected across
+    all pairs.
+    """
+
+    ### Plots
+
+    # (1) Pairwise, across all expts.
+
+    # (2) Scatterplot --> show that every shape is separated from every other shape.
+    # Append a copy with shape 1 and 2 flipped (as this is symmetric)
+    dftmp = DFSCORES.copy()
+    dftmp["shape_1"] = DFSCORES["shape_2"]
+    dftmp["shape_2"] = DFSCORES["shape_1"]
+    dftmp["shape_pair"] = [(row["shape_1"], row["shape_2"]) for _, row in dftmp.iterrows()]
+    DFSCORES_FULL = pd.concat([DFSCORES, dftmp]).reset_index(drop=True)
+    from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good, plot_subplots_heatmap
+    from pythonlib.tools.plottools import savefig
+
+    annotate_heatmap = False
+    grpdict = grouping_append_and_return_inner_items_good(DFSCORES_FULL, ["animal"])
+    for grp, inds in grpdict.items():
+        dfscores = DFSCORES_FULL.iloc[inds].reset_index(drop=True)
+        shapes = sorted(dfscores["shape_1"].unique())
+        
+        fig, axes = plot_subplots_heatmap(dfscores, "shape_1", "shape_2", "score_minus_50", "bregion", diverge=True, 
+                            annotate_heatmap=annotate_heatmap, ZLIMS=[-0.5, 0.5], ncols=4, W=7,
+                            row_values=shapes, col_values=shapes, diverge_center_dark=True)
+        # Color background, those cases without data.
+        for ax in axes.flatten():
+            # ax.set_facecolor('g')
+            ax.set_facecolor([0.85, 0.85, 0.85])
+            # ax.set_facecolor([0.1, 0.1, 0.1])
+            # ax.set_facecolor([0.2, 0.4, 0.2])
+        if False:
+            # Keep just the upper triangle
+            ma_ut = np.triu(np.ones_like(self.Xinput, dtype=bool), k=k)
+        savefig(fig, f"{SAVEDIR_PLOTS}/heatmap_pairwise_decode-animal={grp}.pdf")
+
+        fig, axes = plot_subplots_heatmap(dfscores, "shape_1", "shape_2", "score_minus_50", "bregion", diverge=False, 
+                            annotate_heatmap=annotate_heatmap, ZLIMS=[0, 0.5], ncols=4, W=7,
+                            row_values=shapes, col_values=shapes)
+        # Color background, those cases without data.
+        for ax in axes.flatten():
+            ax.set_facecolor([0.6, 0.8, 0.7])
+        savefig(fig, f"{SAVEDIR_PLOTS}/heatmap_pairwise_decode-animal={grp}-2.pdf")
+        plt.close("all")
+
+    from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good, plot_subplots_heatmap
+    grpdict = grouping_append_and_return_inner_items_good(DFSCORES_FULL, ["animal", "date"])
+    for grp, inds in grpdict.items():
+        dfscores = DFSCORES_FULL.iloc[inds].reset_index(drop=True)
+        shapes = sorted(dfscores["shape_1"].unique())
+        fig, axes = plot_subplots_heatmap(dfscores, "shape_1", "shape_2", "score_minus_50", "bregion", diverge=True, 
+                            annotate_heatmap=annotate_heatmap, ZLIMS=[-0.5, 0.5], ncols=4, W=7,
+                            row_values=shapes, col_values=shapes, diverge_center_dark=True)
+        # Color background, those cases without data.
+        for ax in axes.flatten():
+            ax.set_facecolor([0.85, 0.85, 0.85])
+        savefig(fig, f"{SAVEDIR_PLOTS}/heatmap_pairwise_decode-animal_date={grp}.pdf")
+
+        fig, axes = plot_subplots_heatmap(dfscores, "shape_1", "shape_2", "score_minus_50", "bregion", diverge=False, 
+                            annotate_heatmap=annotate_heatmap, ZLIMS=[0, 0.5], ncols=4, W=7,
+                            row_values=shapes, col_values=shapes)
+        # Color background, those cases without data.
+        for ax in axes.flatten():
+            ax.set_facecolor([0.6, 0.8, 0.7])
+        savefig(fig, f"{SAVEDIR_PLOTS}/heatmap_pairwise_decode-animal_date={grp}-2.pdf")
+        plt.close("all")
+
+    def _compute_mask_shapes_exist(df, shapes_in_order, rowname, colname):
+        """
+        """
+        
+        counts = np.zeros((len(shapes_in_order), len(shapes_in_order))) - np.inf
+        for i, lab1 in enumerate(shapes_in_order):
+            for j, lab2 in enumerate(shapes_in_order):
+                n = sum((df[rowname] == lab1) & (df[colname] == lab2))
+                counts[i, j] = n
+        assert np.all(counts>=0)
+
+        ma_exist = counts>0
+        plt.figure()
+        plt.imshow(ma_exist)
+
+        return counts, ma_exist
+    counts, ma_exist = _compute_mask_shapes_exist(DFSCORES_FULL, shapes, "shape_1", "shape_2");
+    ma_none = ~ma_exist
+    ### Plot 1D histogram of decoding (highlighting if significantly > 0.5)
+    from pythonlib.tools.pandastools import aggregGeneral, stringify_values
+    import seaborn as sns
+
+    # Agg across dates, so each shape_pair has one datapt
+    DFSCORES_AGG = aggregGeneral(stringify_values(DFSCORES), ["shape_pair", "analysis_kind", "animal", "bregion"], ["score", "score_adjusted", "score_minus_50"])
+    fig = sns.catplot(data=DFSCORES_AGG, x="bregion", y="score_minus_50", col="animal", jitter=True, alpha=0.3)
+    for ax in fig.axes.flatten():
+        ax.axhline(0, color="k", alpha=0.5)
+    savefig(fig, f"{SAVEDIR_PLOTS}/catplot_datapt=shape_pair-1.pdf")
+
+    fig = sns.catplot(data=DFSCORES_AGG, x="bregion", y="score_minus_50", col="animal", kind="bar")
+    for ax in fig.axes.flatten():
+        ax.axhline(0, color="k", alpha=0.5)
+    savefig(fig, f"{SAVEDIR_PLOTS}/catplot_datapt=shape_pair-2.pdf")
+
+    fig = sns.catplot(data=DFSCORES_AGG, x="bregion", y="score_minus_50", col="animal", kind="violin")
+    for ax in fig.axes.flatten():
+        ax.axhline(0, color="k", alpha=0.5)
+    savefig(fig, f"{SAVEDIR_PLOTS}/catplot_datapt=shape_pair-3.pdf")
+
+    fig = sns.catplot(data=DFSCORES_AGG, x="bregion", y="score_minus_50", col="animal", kind="boxen", color="k")
+    for ax in fig.axes.flatten():
+        ax.axhline(0, color="k", alpha=0.5)
+    savefig(fig, f"{SAVEDIR_PLOTS}/catplot_datapt=shape_pair-4.pdf")
+
+    # Plot for each date
+    fig = sns.catplot(data=DFSCORES, x="bregion", y="score_minus_50", row="animal", col="date", jitter=True, alpha=0.3)
+    # fig = sns.catplot(data=DFSCORES, x="bregion", y="score_minus_50", row="animal", col="date", kind="swarm", size=3)
+    for ax in fig.axes.flatten():
+        ax.axhline(0, color="k", alpha=0.5)
+    savefig(fig, f"{SAVEDIR_PLOTS}/catplot_datapt=shape_pair-5.pdf")
+
+    fig = sns.catplot(data=DFSCORES, x="bregion", y="score_minus_50", row="animal", hue="date", kind="point")
+    # fig = sns.catplot(data=DFSCORES, x="bregion", y="score_minus_50", row="animal", col="date", kind="swarm", size=3)
+    for ax in fig.axes.flatten():
+        ax.axhline(0, color="k", alpha=0.5)
+    savefig(fig, f"{SAVEDIR_PLOTS}/catplot_datapt=shape_pair-6.pdf")
+
+    plt.close("all")
+
+    # Also save counts
+    from pythonlib.tools.pandastools import grouping_count_n_samples, grouping_print_n_samples
+    from pythonlib.tools.pandastools import grouping_count_n_samples, grouping_print_n_samples
+    savepath = f"{SAVEDIR_PLOTS}/catplot_datapt=shape_pair-COUNTS_before_agg.txt"
+    grouping_print_n_samples(DFSCORES, ["animal", "bregion", "date"], savepath=savepath)    
+
+    savepath = f"{SAVEDIR_PLOTS}/catplot_datapt=shape_pair-COUNTS.txt"
+    grouping_print_n_samples(DFSCORES_AGG, ["animal", "bregion"], savepath=savepath)    
 
 def decode_categorical(X, labels, expected_n_min_across_classes,
                        plot_resampled_data_path_nosuff=None, max_nsplits=None,
                        do_center=True, do_std=False,
-                       return_mean_score_over_splits=False):
+                       return_mean_score_over_splits=False,
+                       return_predictions_all_trials=False):
     """
     Helper to run multiple train-test splits (Kfold), including rebalancing data if labels are unbalanced, and
     then scoring using a balanced accuracty score, for a single time step.
@@ -345,11 +777,13 @@ def decode_categorical(X, labels, expected_n_min_across_classes,
          'n_max_across_labs': 113}
     NOTE: Splits must be done BEFORE upsampling. otherwise, test data will contribute to the upsampling and
     therefore leak into training data.
+
+    MS: checked
     """
-    from pythonlib.tools.nptools import bin_values_categorical_factorize
+    # from pythonlib.tools.nptools import bin_values_categorical_factorize
     from pythonlib.tools.listtools import tabulate_list
     from sklearn.model_selection import StratifiedKFold
-    from sklearn.metrics import balanced_accuracy_score
+    # from sklearn.metrics import balanced_accuracy_score
 
     labels = list(labels)
     X, labels, inds_keep = cleanup_remove_labels_ignore(X, labels)
@@ -404,21 +838,37 @@ def decode_categorical(X, labels, expected_n_min_across_classes,
 
         if mod is not None: # Happens, if only one class in dataset
             ################# Test on held out
-            score, score_adjusted = decode_apply_model_to_test_data(mod, X_test, labels_test)
-            # labels_predicted = mod.predict(X_test)
-            # score = balanced_accuracy_score(labels_test, labels_predicted, adjusted=False)
-            # score_adjusted = balanced_accuracy_score(labels_test, labels_predicted, adjusted=True)
+            if return_predictions_all_trials:
+                score, score_adjusted, labels_predicted, labels_test, conf_scores = decode_apply_model_to_test_data(mod, X_test, 
+                                                                                                labels_test, 
+                                                                                                return_predictions_all_trials=True)
+                
+                # Save
+                RES.append({
+                    "iter_kfold":i,
+                    "score_xval":score,
+                    "score_xval_adjusted":score_adjusted,
+                    "n_dat":len(labels),
+                    "n_splits":n_splits,
+                    "n_min_across_labs":n_min_across_labs,
+                    "n_max_across_labs":n_max_across_labs,
+                    "labels_predicted":labels_predicted,
+                    "labels_test":labels_test,
+                    "conf_scores":conf_scores
+                })
+            else:
+                score, score_adjusted = decode_apply_model_to_test_data(mod, X_test, labels_test, 
+                                                                        return_predictions_all_trials=False)
 
-            # Save
-            RES.append({
-                "iter_kfold":i,
-                "score_xval":score,
-                "score_xval_adjusted":score_adjusted,
-                "n_dat":len(labels),
-                "n_splits":n_splits,
-                "n_min_across_labs":n_min_across_labs,
-                "n_max_across_labs":n_max_across_labs
-            })
+                RES.append({
+                    "iter_kfold":i,
+                    "score_xval":score,
+                    "score_xval_adjusted":score_adjusted,
+                    "n_dat":len(labels),
+                    "n_splits":n_splits,
+                    "n_min_across_labs":n_min_across_labs,
+                    "n_max_across_labs":n_max_across_labs
+                })
 
     if return_mean_score_over_splits:
         score = np.mean([r["score_xval"] for r in RES])
@@ -426,6 +876,35 @@ def decode_categorical(X, labels, expected_n_min_across_classes,
         return score, score_adjusted
     else:
         return RES
+    
+def decode_categorical_plot_confusion_score_quick(RES, savedir=None):
+    """
+    QUick plot, pass in the output of decode_categorical(), 
+    and plots confusion matrix and score. 
+    PARAMS:
+    - RES, either list of dict, or dataframe made by converting that to df
+    """
+    from neuralmonkey.analyses.decode_good import plot_confusion_matrix
+
+    # Concat across allsplits
+    if isinstance(RES, list):
+        dfres = pd.DataFrame(RES) # n rows = n splits
+    else: 
+        dfres = RES
+        assert isinstance(dfres, pd.core.frame.DataFrame)
+
+    # Collect test and predicted labels across all splits
+    labels_predicted = []
+    labels_test = []
+    nsplits = len(dfres)
+    for i in range(nsplits): # n splits
+        labels_predicted.extend(dfres["labels_predicted"].values[i])
+        labels_test.extend(dfres["labels_test"].values[i])
+    assert len(labels_predicted)==len(labels_test)
+
+    score, score_adjusted, dfclasses = plot_confusion_matrix(labels_test, labels_predicted, savedir)
+
+    return score, score_adjusted, dfclasses
 
 def decodewrap_categorical_timeresolved_within_condition(pa, var_decode,
                                                         vars_conj_condition,
@@ -447,6 +926,8 @@ def decodewrap_categorical_timeresolved_within_condition(pa, var_decode,
     - vars_conj_conjunction, list of str, conditioned vairalb.e
     - prune_do, bool, then autoatmically prunes data so that each level of conj var has at least
     <prune_min_n_levs> levels with at least <prune_min_n_trials> trials.
+
+    MS: checked
     """
     from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars
 
@@ -456,7 +937,7 @@ def decodewrap_categorical_timeresolved_within_condition(pa, var_decode,
     if prune_do:
         balance_no_missed_conjunctions = False # Since this is within condition.
         dflab = pa.Xlabels["trials"]
-        dfout, dict_dfthis = extract_with_levels_of_conjunction_vars(dflab, var_decode, vars_conj_condition,
+        dfout, _ = extract_with_levels_of_conjunction_vars(dflab, var_decode, vars_conj_condition,
                                                                  n_min_across_all_levs_var=prune_min_n_trials,
                                                                  lenient_allow_data_if_has_n_levels=prune_min_n_levs,
                                                                  prune_levels_with_low_n=True,
@@ -525,6 +1006,8 @@ def decodewrap_categorical_timeresolved_cross_condition(pa, var_decode,
     - subtract_mean_vars_conj, bool, if True, then subtracts mean with ineach level of vars_conj_conjunction
     RETURNS:
         - (None, if prunes all data).
+
+    MS: checked
     """
     from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars
 
@@ -543,6 +1026,7 @@ def decodewrap_categorical_timeresolved_cross_condition(pa, var_decode,
                                                                  ignore_values_called_ignore=True,
                                                                  plot_counts_heatmap_savepath=plot_counts_heatmap_savepath,
                                                                  balance_no_missed_conjunctions=balance_no_missed_conjunctions)
+        plt.close("all")
 
         if len(dfout)==0:
             print("all data pruned!!")
@@ -582,11 +1066,8 @@ def decodewrap_categorical_timeresolved_cross_condition(pa, var_decode,
         dfresthis, dfres_agg = decode_categorical_cross_condition(Xscal, dflab,
                                                                   var_decode,
                                                                   vars_conj_condition,
-                                                                  do_center=do_center, do_std=do_std)
+                                                                  do_center=do_center, do_std=do_std) 
         if len(dfresthis)>0:
-            # print("---------------")
-            # display(dfresthis)
-            # display(dfres_agg)
             assert len(dfres_agg)==1
 
             # 3. Collect data
@@ -861,7 +1342,7 @@ def decodewrapouterloop_categorical_timeresolved_within_condition(DFallpa, list_
 
     RES = []
     already_done = []
-    for i, row in DFallpa.iterrows():
+    for _, row in DFallpa.iterrows():
         br = row["bregion"]
         tw = row["twind"]
         ev = row["event"]
@@ -936,7 +1417,7 @@ def decodewrapouterloop_categorical_timeresolved_within_condition(DFallpa, list_
 
 def decodewrapouterloop_categorical_timeresolved_cross_condition(DFallpa, list_var_decode,
                                                                  list_vars_conj,
-                                                 SAVEDIR, time_bin_size=0.1, slide=0.05,
+                                                                SAVEDIR, time_bin_size=0.1, slide=0.05,
                                                                  subtract_mean_vars_conj=False,
                                                                   filtdict = None,
                                                                  separate_by_task_kind = True):
@@ -953,7 +1434,7 @@ def decodewrapouterloop_categorical_timeresolved_cross_condition(DFallpa, list_v
 
     RES = []
     already_done = []
-    for i, row in DFallpa.iterrows():
+    for _, row in DFallpa.iterrows():
         br = row["bregion"]
         tw = row["twind"]
         ev = row["event"]
@@ -967,9 +1448,8 @@ def decodewrapouterloop_categorical_timeresolved_cross_condition(DFallpa, list_v
 
         for task_kind in list_task_kind:
             pa = PA.slice_by_labels("trials", "_task_kind", [task_kind])
-            # print(pa.Xlabels["trials"]["task_kind"].unique())
-            # assert False
 
+            # For each (var, vars_others) set
             for var_decode, vars_conj_condition in zip(list_var_decode, list_vars_conj):
                 print(ev, br, tw, var_decode)
 
@@ -989,7 +1469,7 @@ def decodewrapouterloop_categorical_timeresolved_cross_condition(DFallpa, list_v
                             print("Filter completely removed all trials... SKIPPING")
                 if len(pa.Xlabels["trials"])==0:
                     continue
-
+                
                 # 1. Extract the specific pa for this (br, tw)
                 res = decodewrap_categorical_timeresolved_cross_condition(pa, var_decode,
                                                             vars_conj_condition,
@@ -1007,7 +1487,7 @@ def decodewrapouterloop_categorical_timeresolved_cross_condition(DFallpa, list_v
     DFRES = pd.DataFrame(RES)
 
     ### PLOT
-    from pythonlib.tools.pandastools import convert_to_2d_dataframe, grouping_plot_n_samples_conjunction_heatmap, plot_subplots_heatmap
+    # from pythonlib.tools.pandastools import convert_to_2d_dataframe, grouping_plot_n_samples_conjunction_heatmap, plot_subplots_heatmap
     import seaborn as sns
     import matplotlib.pyplot as plt
 
@@ -1516,20 +1996,41 @@ def decodewrapouterloop_categorical_cross_time(DFallpa, list_var_decode, time_bi
 
     return DFRES
 
-
 def decodewrapouterloop_categorical_cross_time_cross_var(DFallpa, list_var_decode_train_test,
                                                          time_bin_size, slide, savedir=None, extract_params=True,
-                                                         ignore_same_events=True, which_level="trial"):
+                                                         ignore_same_events=True, which_level="trial",
+                                                         filtdict_train=None, filtdict_test = None,
+                                                         do_split_train_by_context=False, vars_conj_train = None,
+                                                         do_split_test_by_context=False, vars_conj_test = None,
+                                                         conj_n_min_per_lev = 5
+                                                         ):
     """ Decode across events_taskkinds and time, asking how decoder generalizes, where
     now trains to decode one variable, and asks how well that decoder generalizes to
     decode another variable. THis only works for things liek seqc_0_shape --> seqc_1_shape,
     i.e,, variables, with semanticalyl overlapping labels.
 
+    Also can optioanlly split train and test data based on conjunctive vars, and get decode for all pairs
+    of train-test data splits. (e.g, train decoder for variable A, controlling for variable B) and test how
+    well it decodes variable B, controlling for variable A --- where A and B are shape-fixation and seqc_0_shape,
+    for eye fixation data).
+
     Should run this outer loop. goes over all
     events and task_kinds.
 
     :param: list_var_decode_train_test, list of list, where each inner 2-list is [var_train, var_test]
+    :param: do_split_train_by_context, bool, if True, then runs sepeartely for each elvel fo <vars_conj_train>,
+    each time training a new decoder.
+
     """
+    from collections import Counter
+    from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper, _check_index_reseted
+
+    if do_split_train_by_context:
+        assert isinstance(vars_conj_train, (list, tuple))
+    
+    if do_split_test_by_context:
+        assert isinstance(vars_conj_test, (list, tuple))
+
     if extract_params:
         list_br, list_tw, list_ev, n_strokes_max = decodewrapouterloop_preprocess_extract_params(DFallpa)
     else:
@@ -1561,58 +2062,106 @@ def decodewrapouterloop_categorical_cross_time_cross_var(DFallpa, list_var_decod
                             for task_kind_test in list_task_kind_test:
 
                                 PA_train = PA_train_orig.slice_by_labels("trials", "task_kind", [task_kind_train])
-
-                                # print("JHERER", PA_test_orig.X.shape)
                                 PA_test = PA_test_orig.slice_by_labels("trials", "task_kind", [task_kind_test])
 
+                                # Filter
+                                if filtdict_train is not None:
+                                    PA_train = PA_train.slice_by_labels_filtdict(filtdict_train)
+                                if filtdict_test is not None:
+                                    PA_test = PA_test.slice_by_labels_filtdict(filtdict_test)
+
                                 if PA_train.X.shape[1]==0 or PA_test.X.shape[1]==0:
+                                    print("Skipping, becuase filtdict removed all data from PA")
                                     continue
 
                                 for var_decode_train, var_decode_test in list_var_decode_train_test:
+                                    _check_index_reseted(PA_train.Xlabels["trials"])
 
-                                    X_train, labels_train, times_train = preprocess_extract_X_and_labels(PA_train,
-                                                                                         var_decode_train, time_bin_size, slide)
-                                    X_test, labels_test, times_test = preprocess_extract_X_and_labels(PA_test,
-                                                                                          var_decode_test, time_bin_size, slide)
-
-                                    if X_train is None or X_test is None:
-                                        print("SKIPPING, becuase only not enough data:")
-                                        continue
-
-                                    if len(set(labels_train))<2 or len(set(labels_test))<2:
-                                        print("SKIPPING, becuase only one label:")
-                                        print("Train:", set(labels_train))
-                                        print("Test:", set(labels_test))
-                                        continue
-
-                                    # Only do splits if these are same trials
-                                    do_train_test_kfold_splits = labels_train==labels_test
-
-                                    # print("HERERE", X_train.shape)
-                                    # print("HERERE", len(labels_train))
-                                    # print("HERERE", X_test.shape)
-                                    # print("HERERE", len(labels_test))
-
-                                    if savedir is not None:
-                                        savepath_ndata = f"{savedir}/{br}-{tw}-evtrain={ev_train}-evtest={ev_test}-tktrain={task_kind_train}-tktest={task_kind_test}-vartrain={var_decode_train}-vartest={var_decode_test}"
+                                    # ------- Extract train data conjunctions
+                                    if do_split_train_by_context:
+                                        # Then only keep levels of var_conj that have at least 2 levels of train var
+                                        lenient_allow_data_if_has_n_levels = 2
                                     else:
-                                        savepath_ndata = None
+                                        vars_conj_train = ["task_kind"] # This means take all data...
+                                        lenient_allow_data_if_has_n_levels = 1
 
-                                    res = decodewrap_categorical_cross_time(X_train, labels_train, times_train,
-                                                                      X_test, labels_test, times_test,
-                                                                      do_std=False,
-                                                                        do_train_test_kfold_splits=do_train_test_kfold_splits,
-                                                                        savepath_ndata=savepath_ndata)
+                                    _, dict_dfthis_train = extract_with_levels_of_conjunction_vars_helper(PA_train.Xlabels["trials"], var_decode_train, 
+                                                                                                    vars_conj_train, n_min_per_lev=conj_n_min_per_lev,
+                                                                                                    lenient_allow_data_if_has_n_levels=lenient_allow_data_if_has_n_levels)
 
-                                    for r in res:
-                                        r["var_decode_train"]=var_decode_train
-                                        r["var_decode_test"]=var_decode_test
-                                        r["bregion"]=br
-                                        r["event_train"]=ev_train
-                                        r["event_test"]=ev_test
-                                        r["task_kind_train"] = task_kind_train
-                                        r["task_kind_test"] = task_kind_test
-                                    RES.extend(res)
+                                    # ------- Extract test data conjunctions
+                                    if do_split_test_by_context:
+                                        # Then only keep levels of var_conj that have at least 2 levels of train var
+                                        lenient_allow_data_if_has_n_levels = 2
+                                    else:
+                                        vars_conj_test = ["task_kind"] # This means take all data...
+                                        lenient_allow_data_if_has_n_levels = 1
+                                    _, dict_dfthis_test = extract_with_levels_of_conjunction_vars_helper(PA_test.Xlabels["trials"], var_decode_test, 
+                                                                                                    vars_conj_test, n_min_per_lev=conj_n_min_per_lev, 
+                                                                                                    lenient_allow_data_if_has_n_levels=lenient_allow_data_if_has_n_levels)
+                                    plt.close("all")
+
+                                    for grp_train, _df in dict_dfthis_train.items():
+                                        pa_train = PA_train.slice_by_dim_indices_wrapper("trials", _df["_index"].tolist())
+
+                                        for grp_test, _df in dict_dfthis_test.items():
+                                            pa_test = PA_test.slice_by_dim_indices_wrapper("trials", _df["_index"].tolist())
+
+                                            print("... Running decode for TRAIN: (grp, taskkind, n)", grp_train, task_kind_train, "n=", pa_train.X.shape, " -- TEST:", grp_test, task_kind_test, "n=", pa_test.X.shape)
+                                            X_train, labels_train, times_train = preprocess_extract_X_and_labels(pa_train,
+                                                                                                var_decode_train, time_bin_size, slide)
+                                            X_test, labels_test, times_test = preprocess_extract_X_and_labels(pa_test,
+                                                                                                var_decode_test, time_bin_size, slide)
+
+                                            if X_train is None or X_test is None:
+                                                print("SKIPPING, becuase only not enough data:")
+                                                continue
+
+                                            if len(set(labels_train))<2 or len(set(labels_test))<2:
+                                                print("SKIPPING, becuase only one label:")
+                                                print("Train:", set(labels_train))
+                                                print("Test:", set(labels_test))
+                                                continue
+                                            
+                                            # Only run if at least 2 overlapping labels eixst
+                                            if len([lab in set(labels_test) for lab in set(labels_train)])<2:
+                                                print("SKIPPING, because not enough overlap in labels betwen train and test")
+                                                print("Train:", set(labels_train))
+                                                print("Test:", set(labels_test))
+                                                continue
+
+                                            # Only do splits if these are same trials. This is hacky way to assess that
+                                            do_train_test_kfold_splits = labels_train==labels_test
+                                            if savedir is not None:
+                                                savepath_ndata = f"{savedir}/{br}-{tw}-evtrain={ev_train}-evtest={ev_test}-tktrain={task_kind_train}-tktest={task_kind_test}-vartrain={var_decode_train}-vartest={var_decode_test}"
+                                            else:
+                                                savepath_ndata = None
+
+                                            res = decodewrap_categorical_cross_time(X_train, labels_train, times_train,
+                                                                            X_test, labels_test, times_test,
+                                                                            do_std=False,
+                                                                                do_train_test_kfold_splits=do_train_test_kfold_splits,
+                                                                                savepath_ndata=savepath_ndata)
+
+                                            plt.close("all")
+
+                                            for r in res:
+                                                r["var_decode_train"]=var_decode_train
+                                                r["var_decode_test"]=var_decode_test
+                                                r["bregion"]=br
+                                                r["event_train"]=ev_train
+                                                r["event_test"]=ev_test
+                                                r["task_kind_train"] = task_kind_train
+                                                r["task_kind_test"] = task_kind_test
+                                            
+                                                r["grp_train"] = grp_train
+                                                r["grp_test"] = grp_test
+                                                r["labels_exist_train"] = Counter(labels_train)
+                                                r["labels_exist_test"] = Counter(labels_test)
+                                                r["vars_conj_train"] = tuple(vars_conj_train)
+                                                r["vars_conj_test"] = tuple(vars_conj_test)
+                                            RES.extend(res)
+
     DFRES = pd.DataFrame(RES)
 
     # save results (too large, like 1GB. This does to like 10MB).
@@ -1624,6 +2173,116 @@ def decodewrapouterloop_categorical_cross_time_cross_var(DFallpa, list_var_decod
         pd.to_pickle(dfres, path)
 
     return DFRES
+
+# def decodewrapouterloop_categorical_cross_time_cross_var(DFallpa, list_var_decode_train_test,
+#                                                          time_bin_size, slide, savedir=None, extract_params=True,
+#                                                          ignore_same_events=True, which_level="trial"):
+#     """ Decode across events_taskkinds and time, asking how decoder generalizes, where
+#     now trains to decode one variable, and asks how well that decoder generalizes to
+#     decode another variable. THis only works for things liek seqc_0_shape --> seqc_1_shape,
+#     i.e,, variables, with semanticalyl overlapping labels.
+
+#     Should run this outer loop. goes over all
+#     events and task_kinds.
+
+#     :param: list_var_decode_train_test, list of list, where each inner 2-list is [var_train, var_test]
+#     """
+#     if extract_params:
+#         list_br, list_tw, list_ev, n_strokes_max = decodewrapouterloop_preprocess_extract_params(DFallpa)
+#     else:
+#         list_br = DFallpa['bregion'].unique().tolist()
+#         list_tw = DFallpa['twind'].unique().tolist()
+#         list_ev = DFallpa['event'].unique().tolist()
+#         n_strokes_max = None
+
+#     assert len(DFallpa["twind"].unique())==1, "not big deal. just change code below to iter over all (ev, tw)."
+
+#     RES = []
+#     for br in list_br:
+#         for tw in list_tw:
+#             for i, ev_train in enumerate(list_ev):
+#                 for j, ev_test in enumerate(list_ev):
+#                     if ignore_same_events and j<=i: # Dont so same events.
+#                         print("skipping same event")
+#                     else:
+#                         print(br, tw, ev_train, ev_test)
+
+#                         # TRAIN
+#                         PA_train_orig = extract_single_pa(DFallpa, br, tw, event=ev_train, which_level=which_level)
+#                         PA_test_orig = extract_single_pa(DFallpa, br, tw, event=ev_test, which_level=which_level)
+
+#                         list_task_kind_train = PA_train_orig.Xlabels["trials"]["task_kind"].unique()
+#                         list_task_kind_test = PA_test_orig.Xlabels["trials"]["task_kind"].unique()
+
+#                         for task_kind_train in list_task_kind_train:
+#                             for task_kind_test in list_task_kind_test:
+
+#                                 PA_train = PA_train_orig.slice_by_labels("trials", "task_kind", [task_kind_train])
+
+#                                 # print("JHERER", PA_test_orig.X.shape)
+#                                 PA_test = PA_test_orig.slice_by_labels("trials", "task_kind", [task_kind_test])
+
+#                                 if PA_train.X.shape[1]==0 or PA_test.X.shape[1]==0:
+#                                     continue
+
+#                                 for var_decode_train, var_decode_test in list_var_decode_train_test:
+
+#                                     X_train, labels_train, times_train = preprocess_extract_X_and_labels(PA_train,
+#                                                                                          var_decode_train, time_bin_size, slide)
+#                                     X_test, labels_test, times_test = preprocess_extract_X_and_labels(PA_test,
+#                                                                                           var_decode_test, time_bin_size, slide)
+
+#                                     if X_train is None or X_test is None:
+#                                         print("SKIPPING, becuase only not enough data:")
+#                                         continue
+
+#                                     if len(set(labels_train))<2 or len(set(labels_test))<2:
+#                                         print("SKIPPING, becuase only one label:")
+#                                         print("Train:", set(labels_train))
+#                                         print("Test:", set(labels_test))
+#                                         continue
+
+#                                     # Only do splits if these are same trials
+#                                     do_train_test_kfold_splits = labels_train==labels_test
+
+#                                     # print("HERERE", X_train.shape)
+#                                     # print("HERERE", len(labels_train))
+#                                     # print("HERERE", X_test.shape)
+#                                     # print("HERERE", len(labels_test))
+
+#                                     if savedir is not None:
+#                                         savepath_ndata = f"{savedir}/{br}-{tw}-evtrain={ev_train}-evtest={ev_test}-tktrain={task_kind_train}-tktest={task_kind_test}-vartrain={var_decode_train}-vartest={var_decode_test}"
+#                                     else:
+#                                         savepath_ndata = None
+
+#                                     res = decodewrap_categorical_cross_time(X_train, labels_train, times_train,
+#                                                                       X_test, labels_test, times_test,
+#                                                                       do_std=False,
+#                                                                         do_train_test_kfold_splits=do_train_test_kfold_splits,
+#                                                                         savepath_ndata=savepath_ndata)
+
+#                                     for r in res:
+#                                         r["var_decode_train"]=var_decode_train
+#                                         r["var_decode_test"]=var_decode_test
+#                                         r["bregion"]=br
+#                                         r["event_train"]=ev_train
+#                                         r["event_test"]=ev_test
+#                                         r["task_kind_train"] = task_kind_train
+#                                         r["task_kind_test"] = task_kind_test
+#                                     RES.extend(res)
+#     DFRES = pd.DataFrame(RES)
+
+#     # save results (too large, like 1GB. This does to like 10MB).
+#     if savedir is not None:
+#         dfres = DFRES.copy()
+#         print(len(dfres))
+#         dfres = dfres.drop(["conf_scores", "labels_test", "labels_predicted"], axis=1)
+#         path = f"{savedir}/DFRES.pkl"
+#         pd.to_pickle(dfres, path)
+
+#     return DFRES
+
+
 
 def decodewrap_categorical_cross_time(X_train, labels_train, times_train,
                                       X_test, labels_test, times_test,
@@ -1783,14 +2442,14 @@ def preprocess_factorize_class_labels_ints(DFallpa, savepath=None):
     """
     Convert all shape and location class labels to integers, which are identical across
     all pa in DFallpa, and which covers all variables iwth strings ("shape") and ("loc"),
-    except those with classes in labels_to_ignore
+    except those with classes in labels_to_ignore. This allows having a predictable type (int) 
+    across decoding anlayses
     PARAMS:
     - savepath, full path to save dict holding mapping between ints and labels.
     RETURNS:
         - (Modifies without returning, DFallpa, with pa updated so its labeles are ints)
         - (REturns) MAP_LABELS_TO_INT, holding params, including maps from int to class labels.
     """
-
 
     ################# GET LIST OF VARIABLES
     pa = DFallpa["pa"].values[0]
@@ -1872,10 +2531,16 @@ def preprocess_factorize_class_labels_ints(DFallpa, savepath=None):
 
     MAP_LABELS_TO_INT = {}
     def _replace_labels(name, list_variables):
+        """
+        Replace classes with ints, and make sure the ints are consistent 
+        across all simialr variables (e.g,, all shape varibales)
+
+        Modifies each PA of DFallPA
+        """
         # ------- RUN
         map_int_to_class = {}
-        ct=0
-        for i, row in DFallpa.iterrows():
+        count=0
+        for _, row in DFallpa.iterrows():
             dflab = row["pa"].Xlabels["trials"]
             for var in list_variables:
                 if var in dflab.columns:
@@ -1888,8 +2553,8 @@ def preprocess_factorize_class_labels_ints(DFallpa, savepath=None):
                             else:
                                 if not _isin(cl, list(map_int_to_class.values())):
                                 # if cl not in list(map_int_to_class.values()):
-                                    map_int_to_class[ct] = cl
-                                    ct +=1
+                                    map_int_to_class[count] = cl
+                                    count +=1
                         except Exception as err:
                             print(var)
                             print(list_variables)
@@ -1901,16 +2566,17 @@ def preprocess_factorize_class_labels_ints(DFallpa, savepath=None):
                             print(type(cl))
                             print("Issue with  mixed types...?")
                             raise err
-        map_class_to_int = {cl:i for i, cl in map_int_to_class.items()}
-
+        map_class_to_int = {cl:i for i, cl in map_int_to_class.items()} # invert the mapping
         for k, v in map_class_to_int.items():
             print(k, " --- ", v)
-        for i, row in DFallpa.iterrows():
+
+        for _, row in DFallpa.iterrows():
             pathis = row["pa"]
             dflab = pathis.Xlabels["trials"]
             for var in list_variables:
                 if var in dflab.columns:
                     dflab[var] = [map_class_to_int[cl] for cl in dflab[var]]
+
         MAP_LABELS_TO_INT[name] = {
             "labels_to_ignore":LABELS_IGNORE,
             "map_int_to_class":map_int_to_class,
@@ -1936,7 +2602,8 @@ def preprocess_factorize_class_labels_ints(DFallpa, savepath=None):
 
 def cleanup_remove_labels_ignore(X, labels):
     """
-    Remove trials that have classes matching those in LABELS_IGNORE
+    Remove trials that have classes matching those in LABELS_IGNORE,
+    which are usualyl dummy variables
     PARAMS:
     - X, eitehr (chans, trials, times) or (trials, chans)
     - labels, list, len trials.
@@ -1958,3 +2625,41 @@ def cleanup_remove_labels_ignore(X, labels):
     labels = [labels[i] for i in inds_keep]
 
     return X, labels, inds_keep
+
+
+def plot_confusion_matrix(labels_test, labels_predicted, plot_savedir):
+    """
+    Helper to plot confusion matrix
+    PARAMS:
+    - labels_test and labels_predicted, lists
+    """
+    from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good
+    from sklearn.metrics import balanced_accuracy_score
+    from pythonlib.tools.pandastools import grouping_plot_n_samples_conjunction_heatmap
+    
+    # Confusion matrix
+    dfclasses = pd.DataFrame({"label_actual":labels_test, "label_predicted":labels_predicted})
+
+    score = balanced_accuracy_score(labels_test, labels_predicted, adjusted=False)
+    score_adjusted = balanced_accuracy_score(labels_test, labels_predicted, adjusted=True)
+
+    if plot_savedir is not None:
+        for annotate_heatmap in [False, True]:
+            # Plot summaries of accuracy
+            for norm_method in [None, "row_sub", "col_sub", "row_div", "col_div"]:
+                fig = grouping_plot_n_samples_conjunction_heatmap(dfclasses, "label_actual", 
+                                                                    "label_predicted", None, 
+                                                                    norm_method=norm_method, annotate_heatmap=annotate_heatmap)            
+                savefig(fig, f"{plot_savedir}/accuracy_heatmap-norm={norm_method}-annotate={annotate_heatmap}.pdf")
+
+        # Also plot scores
+        fig, ax = plt.subplots()
+        ax.stem(0, score, "ok", label="score")
+        ax.stem(1, score_adjusted, "or", label="score_adjusted")
+        ax.set_ylabel([0, 1])
+        ax.legend()
+        savefig(fig, f"{plot_savedir}/score_final.pdf")
+
+        plt.close("all")
+    
+    return score, score_adjusted, dfclasses

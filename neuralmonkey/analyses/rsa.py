@@ -27,7 +27,7 @@ def behavior_load_pairwise_strokes_distmat(animal, DATE, PA, distance_ver = "dtw
     """ Load pre-computed distnace matrix for this dataset, return distmat matching exactly the
     rows in PA.Xlabels["trials"], and ensuring that it is distnace (not sim) matrix
     """
-    DIR = f"/gorilla1/analyses/recordings/main/EXPORTED_BEH_DATA/DS/{animal}/{DATE}/distance_matrix_all_strokes_pairwise/{distance_ver}"
+    DIR = f"/gorilla1/analyses/recordings/main/EXPORTED_BEH_DATA/DS/char_strokes_clusters/{animal}/{DATE}/distance_matrix_all_strokes_pairwise/{distance_ver}"
 
     ## LOAd
     # DATA
@@ -3195,7 +3195,8 @@ def rsagood_questions_params(question):
         # for Single prims, strokes.
 
         effect_vars = ["shape_oriented"]
-        list_which_level = ["stroke", "stroke_off"] # Whihc which_level to keep
+        # list_which_level = ["stroke", "stroke_off"] # Whihc which_level to keep
+        list_which_level = ["stroke"] # Whihc which_level to keep
 
         ## For "stroke" and "stroke_off" which_levels
         # - include all strokes within sequence
@@ -3240,6 +3241,38 @@ def rsagood_questions_params(question):
             '03_samp',
             '06_on_strokeidx_0']
         ANALY_VER = "singleprim"
+
+        # If this requires slicing and agging DFallpa
+        slice_agg_slices = None
+        slice_agg_vars_to_split = None
+
+        list_subtract_mean_each_level_of_var = [None]
+
+        # Which variables to plot all the pairwise distmats for
+        plot_pairwise_distmats_variables = None
+        plot_pairwise_distmats_twinds = None
+
+    elif question=="SP_psycho_trial":
+        # for Single prims, strokes.
+        # Is more lenient in pruning data.
+
+        effect_vars = ["seqc_0_shape"]
+        list_which_level = ["trial"] # Whihc which_level to keep
+
+        ## For "stroke" and "stroke_off" which_levels
+        # - include all strokes within sequence
+        exclude_last_stroke=False
+        exclude_first_stroke=False
+        keep_only_first_stroke=False
+        min_taskstrokes = 1
+        max_taskstrokes = 10
+
+        ## Params which apply AFTER you have concated across which_level
+        # Which events to prune to
+        events_keep = [
+            '03_samp',
+            '06_on_strokeidx_0']
+        ANALY_VER = "singleprim_psycho"
 
         # If this requires slicing and agging DFallpa
         slice_agg_slices = None
@@ -3487,10 +3520,79 @@ def rsagood_questions_params(question):
 
         return q_params
 
+    elif question in ["RULE_ANBMCK_STROKE_ALLDATA"]:
+        # Single rule, and making sure to include error trials too.
+
+        effect_vars = ["shape"]
+        list_which_level = ["stroke"] # Whihc which_level to keep
+
+        ## For "stroke" and "stroke_off" which_levels
+        # - include all strokes within sequence
+        exclude_last_stroke=False
+        exclude_first_stroke=False
+        keep_only_first_stroke=False
+        min_taskstrokes = 1
+        max_taskstrokes = 20
+
+        ## Optionally, rename variables for speicifc which_level, so that variable
+        # names match across which_level --> Helps since the analy requires all datapts
+        # to use same variable names.
+        map_varname_to_new_varname = None
+
+        ## Params which apply AFTER you have concated across which_level
+        # Which events to prune to
+        events_keep = None
+        ANALY_VER = "rulesingleALLDATA"
+
+        # If this requires slicing and agging DFallpa
+        slice_agg_slices = None
+        slice_agg_vars_to_split = None
+
+        list_subtract_mean_each_level_of_var = [None]
+
+        # Which variables to plot all the pairwise distmats for
+        # Which variables to plot all the pairwise distmats for
+        plot_pairwise_distmats_variables = None
+        plot_pairwise_distmats_twinds = None
+
     elif question in ["RULE_BASE_stroke", "RULE_ANBMCK_STROKE", "RULE_COLRANK_STROKE", "RULE_DIR_STROKE", "RULE_ROWCOL_STROKE"]:
         # Base, for extracting PIG strokes and trial
         effect_vars = ["shape"]
         list_which_level = ["stroke"] # Whihc which_level to keep
+
+        ## For "stroke" and "stroke_off" which_levels
+        # - include all strokes within sequence
+        exclude_last_stroke=False
+        exclude_first_stroke=False
+        keep_only_first_stroke=False
+        min_taskstrokes = 1
+        max_taskstrokes = 20
+
+        ## Optionally, rename variables for speicifc which_level, so that variable
+        # names match across which_level --> Helps since the analy requires all datapts
+        # to use same variable names.
+        map_varname_to_new_varname = None
+
+        ## Params which apply AFTER you have concated across which_level
+        # Which events to prune to
+        events_keep = None
+        ANALY_VER = "rulesingle"
+
+        # If this requires slicing and agging DFallpa
+        slice_agg_slices = None
+        slice_agg_vars_to_split = None
+
+        list_subtract_mean_each_level_of_var = [None]
+
+        # Which variables to plot all the pairwise distmats for
+        # Which variables to plot all the pairwise distmats for
+        plot_pairwise_distmats_variables = None
+        plot_pairwise_distmats_twinds = None
+
+    elif question in ["RULE_BASE_trial"]:
+        # Base, for extracting RULE trial
+        effect_vars = ["seqc_0_shape"]
+        list_which_level = ["trial"] # Whihc which_level to keep
 
         ## For "stroke" and "stroke_off" which_levels
         # - include all strokes within sequence
@@ -3543,40 +3645,6 @@ def rsagood_questions_params(question):
         # Which events to prune to
         events_keep = None
         ANALY_VER = "seqcontext"
-
-        # If this requires slicing and agging DFallpa
-        slice_agg_slices = None
-        slice_agg_vars_to_split = None
-
-        list_subtract_mean_each_level_of_var = [None]
-
-        # Which variables to plot all the pairwise distmats for
-        # Which variables to plot all the pairwise distmats for
-        plot_pairwise_distmats_variables = None
-        plot_pairwise_distmats_twinds = None
-
-    elif question=="RULE_BASE_trial":
-        # Base, for extracting PIG strokes and trial
-        effect_vars = ["seqc_0_shape"]
-        list_which_level = ["trial"] # Whihc which_level to keep
-
-        ## For "stroke" and "stroke_off" which_levels
-        # - include all strokes within sequence
-        exclude_last_stroke=False
-        exclude_first_stroke=False
-        keep_only_first_stroke=False
-        min_taskstrokes = 1
-        max_taskstrokes = 20
-
-        ## Optionally, rename variables for speicifc which_level, so that variable
-        # names match across which_level --> Helps since the analy requires all datapts
-        # to use same variable names.
-        map_varname_to_new_varname = None
-
-        ## Params which apply AFTER you have concated across which_level
-        # Which events to prune to
-        events_keep = None
-        ANALY_VER = "rulesingle"
 
         # If this requires slicing and agging DFallpa
         slice_agg_slices = None

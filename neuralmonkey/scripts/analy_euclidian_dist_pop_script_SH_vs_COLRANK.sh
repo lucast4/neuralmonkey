@@ -25,7 +25,7 @@ do
   sleep 1m
 done
 # sleep 10m
-sleep 30m
+sleep 90m
 
  animal=Pancho
  question=RULESW_ANBMCK_COLRANK_STROKE

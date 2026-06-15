@@ -1,11 +1,24 @@
 """ Working with pathsa nd directories
 """
 import os.path
+import sys
 
-from pythonlib.globals import PATH_NEURALMONKEY, PATH_DATA_NEURAL_RAW, PATH_DATA_NEURAL_PREPROCESSED, PATH_KS_RAW
+from pythonlib.globals import PATH_NEURALMONKEY, PATH_DATA_NEURAL_RAW, PATH_DATA_NEURAL_PREPROCESSED, PATH_KS_RAW, PATH_SAVE_CLUSTERFIX
 from pythonlib.tools.expttools import writeStringsToFile, makeTimeStamp
 
 from neuralmonkey.classes.session import LOCAL_LOADING_MODE, LOCAL_PATH_PREPROCESSED_DATA
+
+def clusterfix_check_if_preprocessing_complete(animal, date, session_no=0):
+    """
+    Check whether clusterfix (eye tracking) has been done for this day.
+    Assumes that if exists for session 0, then exists for all this date, and doesnt check contents of the folder, just that
+    folder exists and has stuff
+    RETURNS:
+    - bool.
+    """
+    from pythonlib.tools.expttools import checkIfDirExistsAndHasFiles    
+    SAVEDIR = f"{PATH_SAVE_CLUSTERFIX}/{animal}-{date}-{session_no}/clusterfix_result_csvs"
+    return checkIfDirExistsAndHasFiles(SAVEDIR)[1]
 
 def find_ks_cluster_paths(animal, date):
     """
@@ -108,6 +121,7 @@ def check_log_preprocess_completion_status(animal, DEST_DIR= f"{PATH_NEURALMONKE
     from neuralmonkey.classes.session import load_session_helper
 
     DEST_FILE = f"{DEST_DIR}/{animal}.txt"
+    DEST_FILE_DONE_DATES = f"{DEST_DIR}/{animal}_done_dates.txt"
 
     # go thru raw data to collect dates and sessions
     DIR_RAW = f"{PATH_DATA_NEURAL_RAW}/{animal}"
@@ -115,6 +129,8 @@ def check_log_preprocess_completion_status(animal, DEST_DIR= f"{PATH_NEURALMONKE
 
     res = []
     res_strings = []
+    dates_done = []
+    dates_done_string = "" # " # a single flat string"
     for dirthis in list_dir_date:
 
         # List of sessiosn for this date
@@ -125,6 +141,8 @@ def check_log_preprocess_completion_status(animal, DEST_DIR= f"{PATH_NEURALMONKE
         
         # count and check sessions
         date_string = f"{date}" # Initialize
+        all_done = True
+        at_least_one_done = False
         for i, dirsess in enumerate(list_dir_sessions):
             
             sess_id = fileparts(dirsess)[-2] # e.g, Pancho-220715-154205
@@ -132,12 +150,17 @@ def check_log_preprocess_completion_status(animal, DEST_DIR= f"{PATH_NEURALMONKE
             DIR_PREPROCESS_CACHED = f"{DIR_PREPROCESS}/cached"
 
             # check if preprocess done.
-            SN = load_session_helper(date, None, i, animal, None,  
-                ACTUALLY_BAREBONES_LOADING = True) # Very quick loading
-            SN.Paths = {
-                "cached_dir":DIR_PREPROCESS_CACHED
-            }
-            done = SN._savelocalcached_check_done(datslice_quick_check=True)
+            try:
+                SN = load_session_helper(date, None, i, animal, None,  
+                    ACTUALLY_BAREBONES_LOADING = True) # Very quick loading
+                SN.Paths = {
+                    "cached_dir":DIR_PREPROCESS_CACHED
+                }
+                done = SN._savelocalcached_check_done(datslice_quick_check=True)
+            except AssertionError as err:
+                print(" ----- ", dirsess)
+                print(err)
+                continue
             
             # Save output
             if False:
@@ -150,15 +173,28 @@ def check_log_preprocess_completion_status(animal, DEST_DIR= f"{PATH_NEURALMONKE
             # Append to string
             if done:
                 date_string+=f"  {i}_done"
+                at_least_one_done=True
             else:
                 date_string+=f"  ({sess_id})"
-            
+                all_done = False
+
+                
         res_strings.append({
             "date":date,
             "string":date_string
         })
-
+        
+        # Store the dates that are done
+        if all_done and at_least_one_done:
+            dates_done.append(date)
+            # dates_done_string = f"{dates_done_string} {date}"
                 
+        # if int(date)==220626:
+        #     print(all_done, at_least_one_done)
+        #     print(dates_done_string)
+        #     assert False
+
+
     # write to file, after sorting by date
     res_strings = sorted(res_strings, key=lambda x: x["date"])
     list_strings = [x["string"] for x in res_strings]
@@ -166,6 +202,13 @@ def check_log_preprocess_completion_status(animal, DEST_DIR= f"{PATH_NEURALMONKE
     list_strings = [f"Checked on {ts}"] + ["date | sess-preprocess_done", "------------------------"] + list_strings
     writeStringsToFile(DEST_FILE, list_strings)
 
+    # also save a text file with all done dates
+    dates_done = sorted(dates_done)
+    dates_done_string = ""
+    for date in dates_done:
+        dates_done_string = f"{dates_done_string} {date}"
+
+    writeStringsToFile(DEST_FILE_DONE_DATES, [dates_done_string])
     print(f"Logged at {DEST_FILE}")
 
 
@@ -243,7 +286,9 @@ def rec_session_durations_extract_kilosort(animal, date):
     # - kiloosrt spike times are correct relative to onset of each sessions neural data (RS4).
     # - total duration of file used in KS will be same duration as sum of raw RS4 durations.
     # - data tank (e.g., all behavior and events) are at most 0.2 sec offset, from neural data, and I am checking with
-    # Myles whether this is guaranteed to be at the offset.
+    # Myles whether this is guaranteed to be at the offset. Yes, confirmed with MYles. Although best practice would be to 
+    # compare that RS4 neural is identical to dupl (which is neural data collected in Tank) and 
+    
     # Sanity check, ks similar to tdt, e.g, find M1 channel and do crosscor.
 
     :param animal:
@@ -253,6 +298,7 @@ def rec_session_durations_extract_kilosort(animal, date):
     First 2 are good.
     """
     from neuralmonkey.utils.directory import find_rec_session_paths, find_ks_cluster_paths
+    from pythonlib.tools.exceptions import NotEnoughDataException
     from pythonlib.globals import PATH_DATA_NEURAL_PREPROCESSED, PATH_DATA_NEURAL_RAW
     import pickle
     import scipy.io as sio
@@ -264,11 +310,16 @@ def rec_session_durations_extract_kilosort(animal, date):
 
     # sanity check that the sessions are aligned between rec and ks
     if not len(sessions_ks)==len(sessions_rec):
-        from pythonlib.tools.exceptions import NotEnoughDataException
-        print(sessions_ks)
-        print(sessions_rec)
+        print(len(sessions_ks), len(sessions_rec))
+        print("sessions_ks:")
+        for x in sessions_ks:
+            print(x)
+        print("sessions_rec:")
+        for x in sessions_rec:
+            print(x)
         print("you probably excluded some neural sessions for final analysis (moved to recordings_IGNORE). No solution yet for this problem.")
-        raise NotEnoughDataException
+        assert False, "breaking, becuase you probably want to fix this problem (just re-do all of kilosort, prob ran kilosrt before you removed bad neural sessions, this is rare)."
+        # raise NotEnoughDataException
 
     # - - chekck that the names match for neural and ks.
     for sessks, sessrec in zip(sessions_ks, sessions_rec):
@@ -352,53 +403,69 @@ def rec_session_durations_extract_kilosort(animal, date):
     # (3) Duration of lenght of each RS4 recordings, saved in raw logs
     # i.e., raw(RS4) [THIS, in logs] --> concated..
     durations_each_sess_rs4_keyed_by_rs = {}
+    rs_missed = []
     for rs in [2, 3]:
-        durations = [] # list, length sessions/
-        for sessnum, sessrec in enumerate(sessions_rec):
-            # - Collect duration for this session
-            logfile = f"RSn{rs}_log"
-            path = f"{PATH_DATA_NEURAL_RAW}/{animal}/{date}/{sessrec['pathfinal']}/{logfile}.txt"
-            with open(path) as f:
-                lines = f.readlines()
+        try:
+            # Collect durations across all sessions.
+            durations = [] # list, length sessions/
+            for sessnum, sessrec in enumerate(sessions_rec):
+                # - Collect duration for this session
+                logfile = f"RSn{rs}_log"
+                path = f"{PATH_DATA_NEURAL_RAW}/{animal}/{date}/{sessrec['pathfinal']}/{logfile}.txt"
+                with open(path) as f:
+                    lines = f.readlines()
 
-            if len(lines)>2:
-                # Then is something like this. Keep first and last.
-                # ['recording started at sample: 2\n', 'gap detected. last saved sample: 51833413, new saved sample: 51833425\n', 'recording stopped at sample: 332994022\n']
-                lines = [lines[0], lines[-1]]
+                if len(lines)>2:
+                    # Then is something like this. Keep first and last.
+                    # ['recording started at sample: 2\n', 'gap detected. last saved sample: 51833413, new saved sample: 51833425\n', 'recording stopped at sample: 332994022\n']
+                    lines = [lines[0], lines[-1]]
 
-            try:
-                assert lines[0][:27] == 'recording started at sample'
-                assert lines[1][:20] == 'recording stopped at'
-            except AssertionError as err:
-                print("==========")
-                print(lines)
-                print(len(lines))
-                for l in lines:
-                    print(l)
-                print(rs, sessnum, sessrec, path)
-                assert False, "investigate..."
+                try:
+                    assert lines[0][:27] == 'recording started at sample'
+                    assert lines[1][:20] == 'recording stopped at'
+                except AssertionError as err:
+                    print("==========")
+                    print(lines)
+                    print(len(lines))
+                    for l in lines:
+                        print(l)
+                    print(rs, sessnum, sessrec, path)
+                    assert False, "investigate..."
 
-            ind1 = lines[0].find(": ")
-            ind2 = lines[0].find("\n")
-            samp_on = int(lines[0][ind1+2:ind2])
-            assert samp_on < 25, "why is RS4 signal offset from onset of trial. This probably means misalignment vs. Data tank..."
+                ind1 = lines[0].find(": ")
+                ind2 = lines[0].find("\n")
+                samp_on = int(lines[0][ind1+2:ind2])
+                assert samp_on < 25, "why is RS4 signal offset from onset of trial. This probably means misalignment vs. Data tank..."
 
-            ind1 = lines[1].find(": ")
-            ind2 = lines[1].find("\n")
-            samp_off = int(lines[1][ind1+2:ind2])
-            nsamp = samp_off - samp_on + 1
-            # if dur is None:
-            #     dur = nsamp/FS
-            # else:
-            #     assert dur - nsamp/FS < 0.005
+                ind1 = lines[1].find(": ")
+                ind2 = lines[1].find("\n")
+                samp_off = int(lines[1][ind1+2:ind2])
+                nsamp = samp_off - samp_on + 1
+                # if dur is None:
+                #     dur = nsamp/FS
+                # else:
+                #     assert dur - nsamp/FS < 0.005
 
-            durations.append(nsamp/FS)
+                durations.append(nsamp/FS)
+        except FileNotFoundError as err:
+            rs_missed.append(rs)
+            durations = None
 
         durations_each_sess_rs4_keyed_by_rs[rs] = durations
         # # Store across all (sess, rs)
         # durations_each_sess_rs4_keyed_by_sessnum_rs_dict[(sessnum, rsnum)] = nsamp/FS
 
         # durations_each_sess_rs4.append(dur)
+    if rs_missed == [2]:
+        # Then use 3 to replace 2:
+        durations_each_sess_rs4_keyed_by_rs[2] = durations_each_sess_rs4_keyed_by_rs[3]
+    elif rs_missed == [3]:
+        durations_each_sess_rs4_keyed_by_rs[3] = durations_each_sess_rs4_keyed_by_rs[2]
+    elif rs_missed == [2,3]:
+        assert False, "did not find RSn logs (e.g, FileNotFoundError: [Errno 2] No such file or directory: '/home/lucas/mnt/Freiwald/ltian/recordings/Diego/240523/Diego-240523-155459/RSn3_log.txt')"
+    else:
+        # Good
+        assert rs_missed == []
 
     # (4) Total duration, by summing up RS4 raw across sessions (from log files).
     # sessnums = sorted(set([x[0] for x in out["durations_each_sess_rs4_keyed_by_sessnum_rs_dict"].keys()]))
@@ -449,7 +516,6 @@ def rec_session_durations_extract_kilosort(animal, date):
     # print("... durations_each_sess_rs4_keyed_by_rs", durations_each_sess_rs4_keyed_by_rs)
     # print("... _durations_each_sess_using_tank", _durations_each_sess_using_tank)
     # print("... duration_total_by_summing_rs4_dict", duration_total_by_summing_rs4_dict)
-
 
     return out
 

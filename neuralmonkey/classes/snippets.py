@@ -213,7 +213,7 @@ def concat_mult_snippets(list_sp, MS, SITES_COMBINE_METHODS = "intersect",
     return SPall
 
 def load_and_concat_mult_snippets(MS, which_level, events_keep, SITES_COMBINE_METHODS = "intersect",
-    DEBUG = False, prune_low_fr_sites=True, REGENERATE_SNIPPETS=True):
+    DEBUG = False, prune_low_fr_sites=True, REGENERATE_SNIPPETS=True, PRE_DUR=None, POST_DUR=None):
     """ [GOOD] For both loading pre-saved Snippets and regenerating new Snippets.
     previously saved snippets using save_v2
     PARAMS:
@@ -226,18 +226,21 @@ def load_and_concat_mult_snippets(MS, which_level, events_keep, SITES_COMBINE_ME
     RETURNS:
     - SPall, concatted SP
     - SAVEDIR_ALL, a newly genreated path
-    """
+    """ 
+
 
     if REGENERATE_SNIPPETS:
         from neuralmonkey.scripts.analy_snippets_extract import extract_snippets_all_sessions
         # EVENTS_KEEP = None
         # which_level = "trial"
         # EVENTS_KEEP = ["03_samp", "go_cue"]
-        list_sp = extract_snippets_all_sessions(MS, which_level, events_keep, 1, False)
+        list_sp = extract_snippets_all_sessions(MS, which_level, events_keep, 1, False, PRE_DUR=PRE_DUR, POST_DUR=POST_DUR,
+                                                prune_low_fr_sites=prune_low_fr_sites, DEBUG=DEBUG)
         SAVEDIR_ALL = None
     else:
         import os
 
+        assert DEBUG==False, "Not yet coded..."
         SAVEDIR = f"/gorilla1/analyses/recordings/main/anova/by{which_level}"
 
         # Genreate the seave dir.
@@ -377,7 +380,7 @@ def load_and_concat_mult_snippets(MS, which_level, events_keep, SITES_COMBINE_ME
 
 class Snippets(object):
     """
-    Neural snippets, extraction of PopAnal objects in relation to different events, and 
+    Neural snippets, extraction of PopAnal (hehe) objects in relation to different events, and 
     methods for reslicing, agging, plotting, etc.
     Written when doing primsinvar feature representations, but can apply generally 
     to most analyses.
@@ -613,9 +616,11 @@ class Snippets(object):
             # trials = SN.get_trials_list(True, True, only_if_in_dataset=True, 
             #     dataset_input=dataset_pruned_for_trial_analysis,
             #     events_that_must_include = list_events)
-            assert trials_prune_just_those_including_events==True, "this on by defualt. if turn off, then change line below in SN.get_trials_list"
+            # assert trials_prune_just_those_including_events==True, "this on by defualt. if turn off, then change line below in SN.get_trials_list"
             events_that_must_include = ["fix_touch", "on_strokeidx_0"]
-            trials = SN.get_trials_list(True, True, only_if_in_dataset=True,
+            trials = SN.get_trials_list(True, 
+                True,
+                only_if_in_dataset=True,
                 dataset_input=dataset_pruned_for_trial_analysis,
                 events_that_must_include = events_that_must_include)
             print("\n == extracting these trials: ", trials)
@@ -1015,6 +1020,22 @@ class Snippets(object):
         sn, _ = self._session_extract_sn_and_trial()
         return sn.sitegetter_summarytext(chan)
 
+    def session_sitegetter_map_site_to_region(self, chan):
+        """
+        Return dict holding bregion info for this chan
+        This assumes matcjhed sites across all SN.
+        """
+        sn, _ = self._session_extract_sn_and_trial()
+        dat = {
+            "bregion_combined": sn.sitegetterKS_map_site_to_region(chan, region_combined=True),
+            "bregion":sn.sitegetterKS_map_site_to_region(chan, region_combined=False),
+            "chan":chan,
+            "chan_tdt":sn.sitegetterKS_thissite_info(chan)["site_tdt"],
+            "rs_tdt":sn.sitegetterKS_thissite_info(chan)["rs"],
+            "chanwithinrs_tdt":sn.sitegetterKS_thissite_info(chan)["chan"],
+            }
+        return dat
+    
     # def session_plot_raster_create_figure_blank(self, duration, n_raster_lines, 
     #         n_subplot_rows=1, nsubplot_cols=1, 
     #         reduce_height_for_sm_fr=False, sharex=True):
@@ -1175,6 +1196,40 @@ class Snippets(object):
         print("len self.DfScalar:", len(df))
         print("self.PAscalar.X.shape : ", self.PAscalar.X.shape)
         return self.DfScalar
+
+    def datamod_append_spikecounts(self, bin_size=0.01, replace_sm_fr=False):
+        """
+        Compute spike counts using spike times, and then append two columns holding results:
+        - spike_counts
+        - spike_counts_t
+        PARAMS:
+        - replace_sm_fr, bool, if True, replace sm fr with spike counts
+        """
+
+        # Convert spike times to binned spike counts
+        sn = self._session_extract_all()[0] # just for methods
+        bin_centers = None
+        pre_dur = self.ParamsGlobals["PRE_DUR_CALC"]
+        post_dur = self.ParamsGlobals["POST_DUR_CALC"]
+        list_counts =[]
+        for _, row in self.DfScalar.iterrows():
+            counts, _, _bin_centers = sn.spiketimes_bin_counts(row["spike_times"], pre_dur, post_dur, 
+                                                                bin_size=bin_size, plot=False)
+            list_counts.append(counts[None, :]) # To match fr shape (1, n_bins)
+            if bin_centers is None:
+                bin_centers = _bin_centers  
+            else:
+                assert np.all(bin_centers == _bin_centers), "Bin centers should be the same for all trials."
+
+        # Replace sm fr with spike counts
+        self.DfScalar["spike_counts"] = list_counts
+        self.DfScalar["spike_counts_t"] = [bin_centers[None, :] for _ in range(len(self.DfScalar))]
+
+        if replace_sm_fr:
+            self.DfScalar["fr_sm"] = self.DfScalar["spike_counts"]
+            self.DfScalar["fr_sm_times"] = self.DfScalar["spike_counts_t"]
+            if "fr_sm_sqrt" in self.DfScalar.columns:
+                del self.DfScalar["fr_sm_sqrt"]
 
     def datamod_append_outliers(self, return_copy=False):
         """ If you removed outliers, add them back.
@@ -1547,7 +1602,6 @@ class Snippets(object):
             assert False, "cannot use both..."
         
         assert (var_level==None) == (var==None)
-            
         if dfthis is None:
             dfthis = self.DfScalar
 
@@ -1575,15 +1629,12 @@ class Snippets(object):
 
         return dfthis
 
-    # def dataextract_as_df_conjunction_vars_multsites(self, ...,
-    #     do_balance=False, balance_var=None, list_balance_vars_others=None):
-
-
     def dataextract_as_df_multsites_wrapper(self, sites, event_aligned,
                                             var=None, list_vars_others=None, do_balance=False,
                                             pre_dur=None, post_dur=None, trial_var = "index_datapt",
                                             PRINT = False,
-                                            exclude_othervar_levels_missing_any_var_level=False):
+                                            exclude_othervar_levels_missing_any_var_level=False,
+                                            replace_fr_sm_with_spike_counts=False, spike_counts_bin_size=0.01):
         """
         GOOD, a single method to extract structured data,
         allowing for multiple sites, structured by split by vars, etc, ensuring
@@ -1606,10 +1657,33 @@ class Snippets(object):
             also input do_balance=True
         """
 
+        if replace_fr_sm_with_spike_counts:
+            self.datamod_append_spikecounts(spike_counts_bin_size, replace_sm_fr=True)
+
         # Always start with geting raw data, since this function allows getting multiple sites, ignoring variables
         # print(event_aligned)
         # print(self.DfScalar["event"])
         dfthis = self.dataextract_as_df_good(event_aligned=event_aligned, list_chan=sites, pre_dur=pre_dur, post_dur=post_dur)
+
+        # if replace_fr_sm_with_spike_counts:
+        #     # Convert spike times to binned spike counts
+        #     sn = self._session_extract_all()[0] # just for methods
+        #     bin_centers = None
+        #     list_counts =[]
+        #     for _, row in dfthis.iterrows():
+        #         counts, _, _bin_centers = sn.spiketimes_bin_counts(row["spike_times"], pre_dur, post_dur, 
+        #                                                            bin_size=spike_counts_bin_size, plot=False)
+        #         list_counts.append(counts[None, :]) # To match fr shape (1, n_bins)
+        #         if bin_centers is None:
+        #             bin_centers = _bin_centers  
+        #         else:
+        #             assert np.all(bin_centers == _bin_centers), "Bin centers should be the same for all trials."
+        #     # Replace sm fr with spike counts
+        #     # dfthis["spike_counts"] = list_counts
+        #     # dfthis["spike_counts_t"] = [bin_centers[None, :] for _ in range(len(dfthis))]
+        #     dfthis["fr_sm"] = list_counts
+        #     dfthis["fr_sm_times"] = [bin_centers[None, :] for _ in range(len(dfthis))]
+        #     del dfthis["fr_sm_sqrt"]
 
         # Get conjunction vars, and balance the data?
         if var:
@@ -5049,7 +5123,8 @@ class Snippets(object):
                                       do_balance=False, balance_var=None, balance_list_vars_others=None,
                                       exclude_othervar_levels_missing_any_var_level=False,
                                       list_features_extraction=None,
-                                      which_fr_sm = "fr_sm", max_frac_trials_lose=None):
+                                      which_fr_sm = "fr_sm", max_frac_trials_lose=None,
+                                      replace_fr_sm_with_spike_counts=False, spike_counts_bin_size=0.01):
         """ [GOOD] Use this for all population-level analyses.
         Extract data that is clean - i.e., (i) balanced to get
         all combo of trials x chans x timepoints in a single PA. (ii) Can also choose to
@@ -5077,7 +5152,8 @@ class Snippets(object):
         # 1) Extract data
         dfthis = self.dataextract_as_df_multsites_wrapper(sites, event,
             balance_var, balance_list_vars_others, do_balance, pre_dur, post_dur,
-            exclude_othervar_levels_missing_any_var_level=exclude_othervar_levels_missing_any_var_level)
+            exclude_othervar_levels_missing_any_var_level=exclude_othervar_levels_missing_any_var_level,
+            replace_fr_sm_with_spike_counts=replace_fr_sm_with_spike_counts, spike_counts_bin_size=spike_counts_bin_size)
 
         if len(dfthis)==0:
             print(sites)
@@ -5793,10 +5869,6 @@ class Snippets(object):
             axes = plot_on_these_axes
             assert len(axes)>=len(dict_lev_pa), "not enough axes"
 
-        # joint he axes
-        if len(axes.flatten())>0:
-            from pythonlib.tools.plottools import share_axes
-            share_axes(axes, "y")
 
         # Make plots
         _legend_added = False
@@ -5815,6 +5887,11 @@ class Snippets(object):
                 ax.set_title(lev_other, fontsize=6, wrap=True)
                 # ax.set_ylim([0, 1.2*YMAX])
                 ax.axvline(0, color="m")
+
+        # joint he axes
+        if len(axes.flatten())>0:
+            from pythonlib.tools.plottools import share_axes
+            share_axes(axes, "y")
 
         return fig, axes
 
@@ -5974,7 +6051,7 @@ class Snippets(object):
         return fig, ax
 
     def _plotgood_rasters_split_by_feature_levels(self, ax, dfthis, var, event=None, 
-        levels_var=None, xmin=None, xmax=None):
+        levels_var=None, xmin=None, xmax=None, OVERLAY_TRIAL_EVENTS=True):
         """
         Plot rasters for this dataset, blocked by levels of a given feature (var). 
         PARAMS:
@@ -5987,6 +6064,7 @@ class Snippets(object):
         if levels_var is None:
             # levels_var = sorted(dfthis[var].unique().tolist())
             levels_var = sort_mixed_type(dfthis[var].unique().tolist())
+        levels_var = [lev for lev in levels_var if lev in dfthis[var].unique().tolist()]
 
         # extract
         list_list_st = []
@@ -6025,12 +6103,12 @@ class Snippets(object):
             ymax_prev+=len(trials)
             
         # 1) Plot all spike times
-        overlay_trial_events = self._CONCATTED_SNIPPETS==False
+        overlay_trial_events = self._CONCATTED_SNIPPETS==False and OVERLAY_TRIAL_EVENTS
         sn.plot_raster_spiketimes_blocked(ax, list_list_st, list_labels, list_list_trials, 
             list_list_evtimes, xmin = xmin, xmax=xmax, overlay_trial_events=overlay_trial_events)
 
         # 2) for each session, plot its event times.        
-        if self._CONCATTED_SNIPPETS:
+        if self._CONCATTED_SNIPPETS and OVERLAY_TRIAL_EVENTS:
             # Overlay each sub sn
 
             # i flatten
@@ -6350,15 +6428,17 @@ class Snippets(object):
         return fig, axesall
 
     def plotgood_rasters_smfr_each_level_combined(self, site, var, 
-                vars_others=None, event=None, plotvers=("raster", "smfr"),
-                                                  OVERWRITE_n_min=None,
-                                                  OVERWRITE_lenient_n=None,
-                                                  balance_same_levels_across_ovar=False):
+                                    vars_others=None, event=None, plotvers=("raster", "smfr"),
+                                    OVERWRITE_n_min=None,
+                                    OVERWRITE_lenient_n=None,
+                                    balance_same_levels_across_ovar=False,
+                                    clean=False):
         """ [Good], plot in a single figure both rasters (top row) and sm fr (bottom), aligned.
         Each column is a level of vars_others. 
         PARAMS;
         - var, str, the variable, e.g, epoch"
         --- or list of str, which will be interpreted as conjunction var.
+        - clean, then does not plot events onto the rasters.
         NOTE:
         - this could be made flexible so that each column is anyting, such as events.
 
@@ -6381,6 +6461,8 @@ class Snippets(object):
 
         assert event is not None, "or else OVERWRITE_n_min wont work, it will counta cross all event"
 
+        OVERLAY_TRIAL_EVENTS = not clean
+            
         if isinstance(var, (tuple, list)):
             from pythonlib.tools.pandastools import append_col_with_grp_index
             self.DfScalar = append_col_with_grp_index(self.DfScalar, var, "_tmp")
@@ -6427,7 +6509,7 @@ class Snippets(object):
                 axes = axesall[0]
                 for ax, (lev_other, dfthis) in zip(axes.flatten(), levdat.items()):
                     self._plotgood_rasters_split_by_feature_levels(ax, dfthis, var, event=event,
-                        xmin=xmin, xmax=xmax)
+                        levels_var=levels_var, xmin=xmin, xmax=xmax, OVERLAY_TRIAL_EVENTS=OVERLAY_TRIAL_EVENTS)
                     # Make sure is readable even if is long name.
                     ax.set_title(map_level_to_idx[lev_other], fontsize=FONTSIZE, wrap=True)
                     ax.set_ylabel(map_level_to_idx[lev_other], fontsize=FONTSIZE, wrap=True)
@@ -6442,7 +6524,9 @@ class Snippets(object):
                                                          plot_on_these_axes=axes,
                                                            OVERWRITE_n_min=OVERWRITE_n_min, OVERWRITE_lenient_n=OVERWRITE_lenient_n,
                                                                                 balance_same_levels_across_ovar=balance_same_levels_across_ovar)
-
+                # for ax in axes.flatten():
+                #     ax.set_ylim([0, 100])
+                # assert False
             # make sure x axes is same for raster and sm fr
             for i in range(ncols):
                 ax1 = axesall[0][i]
@@ -6476,11 +6560,15 @@ class Snippets(object):
         from pythonlib.tools.listtools import sort_mixed_type
         from pythonlib.tools.plottools import share_axes
 
+        if var is None:
+            self.DfScalar["_dummy"] = "dummy"
+            var = "dummy"
+
         # PREPARE plot
         # Extract data, just to see many subplots to make.
         vars_others = [var_other_1, var_other_2]
         _, levdat, levels_var = self.dataextract_as_df_conjunction_vars(var,
-                vars_others, site, event=event)
+                vars_others, site, event=event, OVERWRITE_lenient_n=1)
         levels_othervar = list(levdat.keys())
         levels_othervar_1 = sort_mixed_type(set([x[0] for x in levels_othervar]))
         levels_othervar_2 = sort_mixed_type(set([x[1] for x in levels_othervar]))
@@ -6543,9 +6631,9 @@ class Snippets(object):
                     assert False
 
             # all axes shared
-            share_axes(axesall, which="x")
+            share_axes(axesall.flatten(), which="x")
             if sharey:
-                share_axes(axesall, which="y")
+                share_axes(axesall.flatten(), which="y")
         else:
             fig, axesall = plt.subplots(2,1)
             axesall.flatten()[0].set_title("Not enough data!")
@@ -7122,6 +7210,7 @@ class Snippets(object):
         #     self.DfScalar = self.DfScalar.drop([v for v in vars if v in self.DfScalar.columns], axis=1)
         #     self.DfScalar = self.DfScalar.join(dfslice.loc[:, [column]])
         #     # merge_subset_indices_prioritizing_second(self.DfScalar, dfslice.loc[:, column])
+
     def datasetbeh_extract_dataset(self, kind="dataset"):
         """ Extract Dataset object concated across all sessions, for this Snippets.
         Either trial dataset ("dataset") or strokes ("datstrokes").
@@ -7153,22 +7242,31 @@ class Snippets(object):
                 print("Snippets -- extracting beh dataset for first time! (concatting and tokens preprocess)")
                 # Do concat and preprocessing, one time.
                 from pythonlib.dataset.analy_dlist import concatDatasets
+                from neuralmonkey.classes.multsessions import MultSessions
                 list_sn = self._session_extract_all()
-                Dall = concatDatasets([sn.Datasetbeh for sn in list_sn])
+                if True:
+                    # Bettter
+                    MS = MultSessions(list_sn)
+                    Dall = MS.datasetbeh_extract()
+                else:
+                    # cocnat can do weird things
+                    Dall = concatDatasets([sn.Datasetbeh for sn in list_sn])
 
-                if Dall.TokensStrokesBeh is None:
-                    for sn in list_sn:
-                        print(sn.Datasetbeh.TokensStrokesBeh)
-                    print("If print is not None, then this failed in concatDataset")
-                    assert False
-                    
-                # Preprocess dataset
-                if False:
-                    # No need, since these datasets have each already been preprocessed...
-                    Dall._cleanup_preprocess_each_time_load_dataset()
+                    if Dall.TokensStrokesBeh is None:
+                        for sn in list_sn:
+                            print(sn.Datasetbeh.TokensStrokesBeh)
+                        print("If print is not None, then this failed in concatDataset")
+                        assert False
+                        
+                    # Preprocess dataset
+                    if False:
+                        # No need, since these datasets have each already been preprocessed...
+                        Dall._cleanup_preprocess_each_time_load_dataset()
 
-                # Preprocess to get all toekns-related variables, etc.
-                Dall.tokens_preprocess_wrapper_good()
+                    if False: # Moved to concat Datasets
+                        # Preprocess to get all toekns-related variables, etc.
+                        # Have to redo, becuase must cluster variables across entire dataset.
+                        Dall.tokens_preprocess_wrapper_good()
 
                 self.Datasetbeh = Dall
 
@@ -7229,11 +7327,16 @@ class Snippets(object):
 
                     times1 = np.array(dftmp["event_time"])
                     times2 = np.array(onsets_ds)
+                    if False: 
+                        # Stopped doing this, because touchscreen lag lead me to adjust timing in hacky way in session. so this will fail.
 
-                    from pythonlib.tools.nptools import isnear
-                    if not isnear(times1, times2):
-                        print(np.argwhere((times2 - times1)>0.01))
-                        assert False, "times in SP and DS do not match! explanations: (i) you loaded old SP. do not do that. (ii) weirndess due to substrokes?"
+                        from pythonlib.tools.nptools import isnear
+                        if not isnear(times1, times2):
+                            print(np.argwhere((times2 - times1)>0.01))
+                            assert False, "times in SP and DS do not match! explanations: (i) you loaded old SP. do not do that. (ii) weirndess due to substrokes?"
+                    else:
+                        # THis is more lenient, catches egregious errors, but wont fail due to touchscreen lag
+                        assert np.all(np.abs(times1 - times2) < 0.1)
 
                     self.DS = DS
                     return self.DS
@@ -7308,7 +7411,7 @@ class Snippets(object):
                                      use_strings=False)
             self.DfScalar = append_col_with_grp_index(self.DfScalar, ["trialcode", "stroke_index"], new_col_name="trialcode_strokeidx",
                                      use_strings=False)
-            self.DfScalar = DS.dataset_slice_by_trialcode_strokeindex(tcs, sis, df=self.DfScalar,
+            self.DfScalar = DS_for_pruning_D.dataset_slice_by_trialcode_strokeindex(tcs, sis, df=self.DfScalar,
                                                                           assert_exactly_one_each=False)
             print("... End len: ", len(self.DfScalar))
 
@@ -7346,7 +7449,7 @@ class Snippets(object):
 
         ############### RETURN, IF MINIMAL (kgg, fixations).
         if ANALY_VER == "MINIMAL":
-            return D, []
+            return self.Datasetbeh, []
 
         ################ SUBSTROKES
         if params["substrokes_features_do_extraction"]:
@@ -7372,7 +7475,7 @@ class Snippets(object):
                                           "FEAT_num_strokes_task", "FEAT_num_strokes_beh",
                                           "character", "probe", "supervision_stage_concise", "superv_COLOR_METHOD",
                                          "INSTRUCTION_COLOR", "epoch_orig", "epoch", "taskgroup", "epochset",
-                                          "origin", "donepos"]
+                                          "origin", "donepos"] 
 
         # These are in both stroek and substroke (the latter is loaded from a saved pickled DS, so it only has older stuff)
         list_features_extraction_stroke_substroke = ["stroke_index", "stroke_index_fromlast", "stroke_index_fromlast_tskstks",
@@ -7382,13 +7485,14 @@ class Snippets(object):
                                     "CTXT_loc_prev", "CTXT_shape_prev",
                                     "gap_from_prev_angle_binned", "gap_to_next_angle_binned",
                                     "gap_from_prev_angle", "gap_to_next_angle",
+                                    "gap_from_prev_dist", "gap_to_next_dist",
                                     "Stroke"]
 
         list_features_extraction_stroke = [
                                     "TokTask", "stroke_index_is_first", "stroke_index_is_last_tskstks",
                                     "loc_on_clust", "CTXT_loconclust_prev", "CTXT_loconclust_next",
                                     "loc_off_clust", "CTXT_locoffclust_prev", "CTXT_locoffclust_next",
-                                    "shape_semantic", "shape_semantic_cat"]
+                                    "shape_semantic", "shape_semantic_cat", "shape_semantic_grp"]
                                     # "shape_is_novel"]
                                     # "distcum", "displacement", "circularity"]
                                     # "distcum", "displacement", "circularity"]
@@ -7399,16 +7503,29 @@ class Snippets(object):
                                               "ss_this_ctxt", "CTXT_prev_next", "CTXT_prev_this_next"]
         # supervision_stage_new, trial_neural, "char_seq"
 
-        list_features_extraction_trial = ["shape_is_novel_all", "shape_semantic_labels", "shape_is_novel_list",
+        list_features_extraction_trial = ["shape_is_novel_all", 
+                                        #   "shape_semantic_labels", 
+                                          "shape_is_novel_list",
                                           "taskconfig_shp", "taskconfig_shploc", "taskconfig_loc",
                                           "Tkbeh_stkbeh", "Tkbeh_stktask", "Tktask",
-                                          "taskconfig_shp_SHSEM", "taskconfig_shploc_SHSEM"                                          ]
-        n_strok_max = 6
+                                          "taskconfig_shp_SHSEM", "taskconfig_shploc_SHSEM"]
+
+        for i in range(20):
+            if f"seqc_{i}_shape" not in self.Datasetbeh.Dat.columns:
+                n_strok_max = i
+                break
+        
+        if n_strok_max < max(self.Datasetbeh.Dat["FEAT_num_strokes_beh"]):
+            print(n_strok_max)
+            print(max(self.Datasetbeh.Dat["FEAT_num_strokes_beh"]))
+            print(sorted(self.Datasetbeh.Dat.columns.tolist()))
+            assert False, "Fix this bug"
+            
         for i in range(n_strok_max):
             # for suff in ["shape", "loc", "loc_local"]:
             # for suff in ["shape", "loc"]:
             for suff in ["shape", "loc", "shapesem", "locon", "locx", "locy",
-                         "center_binned", "locon_binned", "shapesemcat", "angle", "angle_binned",
+                         "center_binned", "locon_binned", "shapesemcat", "shapesemgrp", "angle", "angle_binned",
                          "loc_on_clust"]:
                 # locon_bin_in_loc
                 list_features_extraction_trial.append(f"seqc_{i}_{suff}")
@@ -7445,7 +7562,8 @@ class Snippets(object):
         # NOTE: this is older stuff!! currently in Dataset the shapes are already updated in tokens.. so dont need
         # to do this.
         # Extract labels related to char stroke shapes
-        if params["charclust_dataset_extract_shapes"] and self.Params["which_level"]=="trial":
+        if "charclust_shape_seq" in self.Datasetbeh.Dat.columns:
+        # if params["charclust_dataset_extract_shapes"] and self.Params["which_level"]=="trial": # This doesnt work, since charclust_dataset_extract_shapes is now always False
             # Then this means it was extracted (trial-level)
             list_features_extraction = list_features_extraction + ["charclust_shape_seq", "charclust_shape_seq_scores"]
 
@@ -7455,14 +7573,43 @@ class Snippets(object):
 
         if params["datasetstrokes_extract_chunks_variables"] and self.Params["which_level"] == "stroke":
             # Then dataset_strokes lloaded chunk variables, e.g,
-            list_features_extraction = (list_features_extraction + ["chunk_rank", "chunk_within_rank", "chunk_within_rank_semantic",
-                                                                    "chunk_within_rank_semantic_v2", "chunk_within_rank_semantic_v3",
-                                                        "chunk_within_rank_fromlast", "chunk_n_in_chunk", "epoch_rand",
-                                                        "chunk_diff_from_prev"] + ["taskcat_by_rule", "behseq_shapes"] +
-                                        ["syntax_concrete", "syntax_role"] + ["epoch_orig_rand_seq", "epoch_is_AnBmCk", "epoch_is_DIR",
-                                                                              "superv_is_seq_sup", "INSTRUCTION_COLOR"]
-                                        + ["epochset_diff_motor", "epochset_shape", "epochset_dir"]
-                                        )
+            list_features_extraction = list_features_extraction + ["chunk_rank_global", "crg_shape", "chunk_rank", "chunk_within_rank", "chunk_within_rank_semantic", 
+                "chunk_within_rank_semantic_v2", "chunk_within_rank_semantic_v3", "chunk_within_rank_fromlast", 
+                "chunk_n_in_chunk", "epoch_rand", "chunk_diff_from_prev", "taskcat_by_rule", "syntax_concrete", "syntax_role", 
+                "epoch_orig_rand_seq", "epoch_is_AnBmCk", "epoch_is_DIR", "superv_is_seq_sup", "INSTRUCTION_COLOR", 
+                "epochset_diff_motor", "epochset_shape", "epochset_dir"]
+                                            
+
+            # Get other variables into DS if not arleady there
+            from pythonlib.dataset.dataset_analy.grammar import chunk_rank_global_extract
+            if "date" not in DS_for_feature_extraction.Dat.columns:
+                DS_for_feature_extraction.Dat["date"] = "dummy"
+            chunk_rank_global_extract(DS_for_feature_extraction.Dat, shape_ratio_max=1.0)
+            # a new column
+            from pythonlib.tools.pandastools import append_col_with_grp_index
+            DS_for_feature_extraction.Dat = append_col_with_grp_index(DS_for_feature_extraction.Dat, 
+                ["chunk_rank_global", "shape"], "crg_shape")
+
+            # Add bin indicating wheterh chunk gap is short or long duration
+            tmp = ["chunkgap_(0, 1)_durbin", "chunkgap_(1, 2)_durbin"]
+            for t in tmp:
+                if t in self.Datasetbeh.Dat.columns:
+                    list_features_extraction.append(t)
+
+        if params["datasetstrokes_extract_chunks_behseq_clusts"] and self.Params["which_level"] == "stroke":
+            # Add concrete variations within each taskcat_by_rule
+            LIST_VAR_BEHORDER=["behseq_shapes", "behseq_locs", "behseq_locs_x", "behseq_locs_diff", "behseq_locs_diff_x"]
+            list_features_extraction.extend([f"{var_behorder}_clust" for var_behorder in LIST_VAR_BEHORDER])
+
+            list_features_extraction.extend(["behseq_shapes", "behseq_locs"])
+
+        if params["datasetstrokes_extract_chunks_variables"] and self.Params["which_level"] == "trial":
+            # Then dataset_strokes lloaded chunk variables, e.g,
+            list_features_extraction = (list_features_extraction + ["epoch_rand", "taskcat_by_rule", "behseq_shapes", "behseq_locs",
+                                                                    "syntax_concrete", "epoch_orig_rand_seq", "epoch_is_AnBmCk",
+                                                                     "epoch_is_DIR", "superv_is_seq_sup", "INSTRUCTION_COLOR", 
+                                                                     "epochset_diff_motor", "epochset_shape", "epochset_dir"]
+                                                                     )
 
             # Add concrete variations within each taskcat_by_rule
             LIST_VAR_BEHORDER=["behseq_shapes", "behseq_locs", "behseq_locs_x", "behseq_locs_diff", "behseq_locs_diff_x"]
@@ -7471,13 +7618,22 @@ class Snippets(object):
             # Add bin indicating wheterh chunk gap is short or long duration
             tmp = ["chunkgap_(0, 1)_durbin", "chunkgap_(1, 2)_durbin"]
             for t in tmp:
-                if t in D.Dat.columns:
+                if t in self.Datasetbeh.Dat.columns:
                     list_features_extraction.append(t)
 
         # For the rest, try to get automatically.
         list_features_extraction = vars_extract_append + list_features_extraction
         list_features_extraction = list(set(list_features_extraction))
 
+        ### HACKY - sometimes need to extract data from DS_for_pruning_D. For some rason I dont use that, but instead reload DS. I dont want 
+        # to undo that, so here is hacky just fro these features.
+        # This is for char strokes, each stroke has a clust score and shape label.
+        if params["datasetstrokes_extract_to_prune_stroke_and_get_features"] =="clean_chars_clusters_without_reloading" and not self.Params["which_level"]=="trial":
+            # i.e., CHAR_BASE_stroke qustion, analy_ver="charstrokes"
+            print("HACKy -- extracting clust_sim_max for strokes")
+            self.datasetbeh_append_column_helper(["clust_sim_max", "clust_sim_max_colname"], None, DS=DS_for_pruning_D, stop_if_fail=True)
+
+        list_features_extraction = sorted(list_features_extraction)
         print("Attempting to extract these features into Snippets:")
         print(list_features_extraction)
 
@@ -7485,6 +7641,15 @@ class Snippets(object):
         print("cleanpreprocessifreloaded")
         if DS_for_feature_extraction is not None:
             DS_for_feature_extraction.clean_preprocess_if_reloaded()
+
+        if False:
+            # HACKY - testing whether DS_for_pruning_D matches DS_for_feature_extraction.
+            # Turns out DS_for_pruning_D can have less data (rows) than DS_for_feature_extraction
+            list_tc = DS_for_feature_extraction.Dat["trialcode"].tolist()
+            list_si = DS_for_feature_extraction.Dat["stroke_index"].tolist()
+            list_tc = self.DfScalar["trialcode"].tolist()
+            list_si = self.DfScalar["stroke_index"].tolist()
+            _df = DS_for_pruning_D.dataset_slice_by_trialcode_strokeindex(list_tc, list_si)
 
         # Perform extraction
         print("assert datasetbehappcolhelp")
@@ -7612,7 +7777,7 @@ class Snippets(object):
         # # add columns from 240307_sequence_rasters.ipynb
         # self._addSaccadeFixationColumns()
 
-        return D, list_features_extraction
+        return self.Datasetbeh, list_features_extraction
 
     # adds additional columns for SP.DfScalar here (including code to loop, and append_column vars)
     # NOTE: assumes multiple session SP, e.g. from
@@ -8288,7 +8453,7 @@ def extraction_helper(SN, which_level="trial", list_features_modulation_append=N
     if which_level=="trial":
         # Events
         do_prune_by_inter_event_times = False
-        dict_events_bounds, dict_int_bounds = SN.eventsanaly_helper_pre_postdur_for_analysis(
+        dict_events_bounds, _ = SN.eventsanaly_helper_pre_postdur_for_analysis(
             do_prune_by_inter_event_times=do_prune_by_inter_event_times,
             just_get_list_events=True)
 
@@ -8364,29 +8529,39 @@ def extraction_helper(SN, which_level="trial", list_features_modulation_append=N
         list_features_get_conjunction = list_features_get_conjunction + list_features_modulation_append
 
     #### Subsample events
-    if EVENTS_KEEP is not None:
-        # Firest, remove numbers, e.g,, ['03_samp', 'go_cue'] --> ['samp', 'go_cue']
-        tmp = []
-        for ev in EVENTS_KEEP:
-            try:
-                int(ev[:2])
-                a = True
-            except ValueError as err:
-                a = False
-            except Exception as err:
-                raise err
-            if a==True and ev[2]=="_":
-                # Then is like "03_samp"
-                tmp.append(ev[3:])
-            else:
-                tmp.append(ev)
-        EVENTS_KEEP = tmp
-        # Second, keep only desired events.
-        inds_keep = [i for i, ev in enumerate(list_events) if ev in EVENTS_KEEP]
-        list_events = [list_events[i] for i in inds_keep]
-        if len(list_pre_dur)>1:
-            list_pre_dur = [list_pre_dur[i] for i in inds_keep]
-            list_post_dur = [list_post_dur[i] for i in inds_keep]
+    if len(list_events)>0:
+        assert not which_level=="stroke"
+        # Then list_events holds the possible events. Select from those events the ones that match what you wnat.
+        if EVENTS_KEEP is not None:
+            # Firest, remove numbers, e.g,, ['03_samp', 'go_cue'] --> ['samp', 'go_cue']
+            tmp = []
+            for ev in EVENTS_KEEP:
+                try:
+                    int(ev[:2])
+                    a = True
+                except ValueError as err:
+                    a = False
+                except Exception as err:
+                    raise err
+                if a==True and ev[2]=="_":
+                    # Then is like "03_samp"
+                    tmp.append(ev[3:])
+                else:
+                    tmp.append(ev)
+            EVENTS_KEEP = tmp
+            # Second, keep only desired events.
+            inds_keep = [i for i, ev in enumerate(list_events) if ev in EVENTS_KEEP]
+            list_events = [list_events[i] for i in inds_keep]
+            if len(list_pre_dur)>1:
+                list_pre_dur = [list_pre_dur[i] for i in inds_keep]
+                list_post_dur = [list_post_dur[i] for i in inds_keep]
+            
+            for ev in EVENTS_KEEP:
+                if ev not in list_events:
+                    print(ev)
+                    print(list_events)
+                    print(EVENTS_KEEP)
+                    assert False, "PROBLEM - the original pool of events doesnt have an event you wnt"
 
     print("Kept these events: ", list_events)
 

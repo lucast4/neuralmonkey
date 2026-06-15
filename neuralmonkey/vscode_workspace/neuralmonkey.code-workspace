@@ -1,0 +1,27 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		},
+		{
+			"path": "../../../pythonlib/pythonlib"
+		},
+		{
+			"path": "../../../../miniconda3/envs/drag2_matlab/lib/python3.8/site-packages/slicetca"
+		},
+		{
+			"path": "../../../drawmonkey/drawmonkey/notebooks_datasets"
+		},
+		{
+			"path": "../../../ms_1_action_symbols/figure_notebooks"
+		}
+	],
+	"settings": {
+		"files.exclude": {
+			"**/__pycache__": true,
+			"**/kilosort": true,
+			"**/metadat/units*": true,
+			"**/slicetca": true
+		}
+	}
+}

@@ -13,4 +13,4 @@ do
   python analy_euclidian_dist_pop_script.py ${animal} ${date1} ${question} ${which_level} 2>&1 | tee ${logfile} &
   sleep 30s
 done
-#sleep 10m
+sleep 20m
