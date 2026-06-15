@@ -694,7 +694,8 @@ class PopAnal():
             
             if True:
                 # Better
-                t_delta = (self.Times[1] - self.Times[0])/2
+                # t_delta = (self.Times[1] - self.Times[0])/2
+                t_delta = np.mean(np.diff(self.Times))/2
                 t1 = t1-t_delta
                 t2 = t2+t_delta
             else:
@@ -3302,7 +3303,7 @@ class PopAnal():
             pa_train = PA.slice_by_dim_indices_wrapper("trials", inds_trials_pa_train)
         else:
             pa_train = PA
-        
+
         if inds_trials_pa_test is not None:
             pa_test = PA.slice_by_dim_indices_wrapper("trials", inds_trials_pa_test)
         else:
@@ -4373,9 +4374,28 @@ class PopAnal():
             dflab["gap_to_next_x"] = dflab["gap_to_next_dist"] * np.cos(dflab["gap_to_next_angle"])
             dflab["gap_to_next_y"] = dflab["gap_to_next_dist"] * np.sin(dflab["gap_to_next_angle"])
         except Exception as err:
-            print(np)
-            raise err
-        
+            # This means that probably tou have single stroke taks, which dont have defined "next", which
+            # will have value "none" instead.
+            # --- x
+            def f(x):
+                dist = x["gap_to_next_dist"]
+                angle = x["gap_to_next_angle"]
+                if dist=="none" and angle=="none":
+                    return "none"
+                else:
+                    return dist * np.cos(angle)
+            dflab["gap_to_next_x"] = dflab.apply(f, axis=1)
+
+            # --- y
+            def f(x):
+                dist = x["gap_to_next_dist"]
+                angle = x["gap_to_next_angle"]
+                if dist=="none" and angle=="none":
+                    return "none"
+                else:
+                    return dist * np.sin(angle)
+            dflab["gap_to_next_y"] = dflab.apply(f, axis=1)
+
         dflab["motor_norm"] = norms
 
         dflab["motor_circ"] = circularities
@@ -4668,7 +4688,7 @@ class PopAnal():
         PARAMS:
         - time_keep_only_within_window, bool, if True, then the time of the indices must be
         within twind. If False, then the times are the ones CLOSEST to twind, but they could
-        be larger.
+        be larger. NOTE: "within" means it is not even allowed to be equal, must be within.
         """
 
         inds = self.index_find_these_values("times", twind)
@@ -5134,7 +5154,8 @@ class PopAnal():
 
         return fig
 
-    def plotwrapper_smoothed_fr_split_by_label_and_subplots(self, chan, var, vars_subplots, add_x_zero_line=False):
+    def plotwrapper_smoothed_fr_split_by_label_and_subplots(self, chan, var, vars_subplots, add_x_zero_line=False, size=3,
+            global_legend=True, add_legend=True):
         """
         Helper to plot smoothed fr, multkiple supblots, each varying by var
         :param var: str, to splot and color within subplot
@@ -5148,9 +5169,14 @@ class PopAnal():
         from pythonlib.tools.listtools import sort_mixed_type
         dflab = self.Xlabels["trials"]
         var_levels = sort_mixed_type(dflab[var].unique().tolist())
-        fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*3, nrows*3), sharex=True, sharey=True, squeeze=False)
+        if global_legend:
+            var_levels_legend = var_levels
+        else:
+            var_levels_legend = None
+
+        fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*size, nrows*size), sharex=True, sharey=True, squeeze=False)
         for ax, lev, pa in zip(axes.flatten(), levels, list_pa):
-            pa.plotwrapper_smoothed_fr_split_by_label("trials", var, ax, chan=chan, legend_levels=var_levels)
+            pa.plotwrapper_smoothed_fr_split_by_label("trials", var, ax, chan=chan, legend_levels=var_levels_legend, add_legend=add_legend)
             ax.set_title(lev)
 
             if add_x_zero_line:
@@ -5491,7 +5517,9 @@ class PopAnal():
                                              twind_base = (-0.6, -0.05),
                                              do_heatmap=True, do_state_space=True, do_euclidean=True,
                                              list_mean_zscore_base=None,
-                                             quick_mode=False):
+                                             quick_mode=False, 
+                                             heatmap_plot_fancy = True, heatmap_plot_y_neuron=True, heatmap_plot_y_var_effect=True, heatmap_plot_nogrouping=True,
+                                             heatmap_subplot_height_by_nrows=False, heatmap_save_suffix=None):
         """
         General helper for summarizing activity for this population,
         to makes all plots I tend to make, including heatmaps, RSA, state space, euclidean distance.
@@ -5545,8 +5573,9 @@ class PopAnal():
                 if do_heatmap:
                     heatmapwrapper_many_useful_plots(pathis, savedirthis, var_effect, var_other, False, 
                                                     mean_over_trials=mean_over_trials, zlims=zlims, flip_rowcol=True,
-                                                    plot_fancy=True, diverge=diverge)  
-
+                                                    plot_fancy=heatmap_plot_fancy, diverge=diverge,
+                                                    plot_group_y_by_neuron=heatmap_plot_y_neuron, plot_group_y_by_var_effect=heatmap_plot_y_var_effect, plot_each_neuron_no_grouping_y=heatmap_plot_nogrouping,
+                                                    subplot_height_by_nrows=heatmap_subplot_height_by_nrows, save_suff=heatmap_save_suffix)  
                     plt.close("all")
 
             ###################################### Running euclidian

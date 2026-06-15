@@ -1204,9 +1204,13 @@ def dfdist_variables_generate_constrast_strings(vars_in_order, contrasts_diff, c
     RETURNS:
     - list of contrast strings.
     """
-    assert contrasts_same is None, "not coded yet"
+    # assert contrasts_same is None, "not coded yet"
 
     if contrasts_same is None:
+        contrasts_same = [v for v in vars_in_order if v not in contrasts_diff + contrasts_either]
+    else:
+        # Simply verify that waht you entered matches what is expected.
+        assert sorted(contrasts_same) == sorted([v for v in vars_in_order if v not in contrasts_diff + contrasts_either]), "you entered incompatible vars."
         contrasts_same = [v for v in vars_in_order if v not in contrasts_diff + contrasts_either]
 
     for v in contrasts_diff:
@@ -1249,7 +1253,7 @@ def dfdist_variables_generate_constrast_strings(vars_in_order, contrasts_diff, c
     return contrast_strings
 
 def dfdist_variables_effect_extract_helper(DFDIST, colname_conj_same, vars_in_order, contrasts_diff, 
-                                           contrasts_either, PRINT=False):
+                                           contrasts_either, PRINT=False, contrasts_same=None):
     """
     [Useful] Get slice of dfdist holding the desired effects, defined by their contrast values (e.g, 1|0|1, ..), 
     and other parameters
@@ -1272,7 +1276,8 @@ def dfdist_variables_effect_extract_helper(DFDIST, colname_conj_same, vars_in_or
     """
     assert len(DFDIST)>0
     # Finally, get just the desired contrasts
-    contrast_strings = dfdist_variables_generate_constrast_strings(vars_in_order, contrasts_diff, contrasts_either)
+    contrast_strings = dfdist_variables_generate_constrast_strings(vars_in_order, contrasts_diff, contrasts_either, 
+                                                                   contrasts_same=contrasts_same)
     if PRINT:
         print("Getting these contrast_strings: ", contrast_strings)
         print("Existing contrast strings: ", DFDIST[colname_conj_same].unique())
