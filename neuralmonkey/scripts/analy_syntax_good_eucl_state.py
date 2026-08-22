@@ -2404,6 +2404,77 @@ def targeted_pca_clean_plots_and_dfdist(DFallpa, animal, date, SAVEDIR_ALL, DEBU
         DO_ORDINAL_REGRESSION = True
         euclidean_npcs_keep = 6
         n_splits = 4
+
+    elif run_number == 31:
+        # - For initial global regression and subtraction of confounding variables
+        do_remove_global_first_stroke = True
+        variables_cont_global = ["motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y"]
+        variables_cat_global = ["epoch", "gridloc", "DIFF_gridloc", "stroke_index_is_first", "chunk_rank", "shape", "rank_conj"]
+        vars_remove_global = ["stroke_index_is_first"]
+        # - Then for subspace identification
+        # (note: Same as above, but remove the variable that has been regressed out)
+        variables_cont = []
+        variables_cat = ["epoch", "gridloc", "DIFF_gridloc", "stroke_index_is_first", "chunk_rank", "shape", "rank_conj"]
+        do_vars_remove = False
+        vars_remove = None
+        # Subspace params
+        list_var_subspace = [
+            tuple(["epoch", "gridloc", "DIFF_gridloc", "chunk_rank", "shape", "rank_conj"]), # global
+            # "shape", # Only run this for the question related to SP vs. grammar.
+            ]
+        restrict_questions_based_on_subspace = {
+            "shape":["4_shape_vs_chunk"],
+        }
+        
+        # - Update the time window to match the action sybmols stuff
+        twind_scal = [-0.35, 0.2]
+        tbin_dur = 0.15
+        tbin_slide = 0.05
+
+        # run 30 means this:
+        DO_PLOT_STATE_SPACE = False
+        DO_EUCLIDEAN = False
+        DO_ORDINAL_REGRESSION = False
+        euclidean_npcs_keep = 6
+        force_dont_split_train_test = True
+        exclude_single_prims = False
+
+    elif run_number == 32:
+        # SAME as 31, but excluding single prims.
+
+        # - For initial global regression and subtraction of confounding variables
+        do_remove_global_first_stroke = True
+        variables_cont_global = ["motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y"]
+        variables_cat_global = ["epoch", "gridloc", "DIFF_gridloc", "stroke_index_is_first", "chunk_rank", "shape", "rank_conj"]
+        vars_remove_global = ["stroke_index_is_first"]
+        # - Then for subspace identification
+        # (note: Same as above, but remove the variable that has been regressed out)
+        variables_cont = []
+        variables_cat = ["epoch", "gridloc", "DIFF_gridloc", "stroke_index_is_first", "chunk_rank", "shape", "rank_conj"]
+        do_vars_remove = False
+        vars_remove = None
+        # Subspace params
+        list_var_subspace = [
+            tuple(["epoch", "gridloc", "DIFF_gridloc", "chunk_rank", "shape", "rank_conj"]), # global
+            # "shape", # Only run this for the question related to SP vs. grammar.
+            ]
+        restrict_questions_based_on_subspace = {
+            "shape":["4_shape_vs_chunk"],
+        }
+        
+        # - Update the time window to match the action sybmols stuff
+        twind_scal = [-0.35, 0.2]
+        tbin_dur = 0.15
+        tbin_slide = 0.05
+
+        # run 30 means this:
+        DO_PLOT_STATE_SPACE = False
+        DO_EUCLIDEAN = False
+        DO_ORDINAL_REGRESSION = False
+        euclidean_npcs_keep = 6
+        force_dont_split_train_test = True
+        exclude_single_prims = True
+
     else:
         assert False
 
