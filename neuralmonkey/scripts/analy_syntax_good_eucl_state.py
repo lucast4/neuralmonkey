@@ -318,10 +318,14 @@ def preprocess_dfallpa_motor_features(DFallpa, tmax=0.2, plot_motor_values=False
 
     PARAMS:
     - tmax, to define time window (rel stroke onset)
+
+    LT CHECKED
     """
 
     # assert len(DFallpa["bregion"].unique())==len(DFallpa), "assuming they are all the same trials, etc"
-    variables_cont = ("motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "gap_to_next_x", "gap_to_next_y", "velmean_x", "velmean_y")
+    # variables_cont = ("motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "gap_to_next_x", "gap_to_next_y", "velmean_x", "velmean_y")
+    # -- leave gap_to_next_x", "gap_to_next_y out, since not actually using them, and they cause failure if you ahve SP included.
+    variables_cont = ("motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y")
 
     # Extract all motor stuff
     pa = DFallpa["pa"].values[0]
@@ -340,7 +344,7 @@ def preprocess_dfallpa_motor_features(DFallpa, tmax=0.2, plot_motor_values=False
         assert all(dflab.loc[:, ["trialcode", "stroke_index"]] == dflab_this.loc[:, ["trialcode", "stroke_index"]])
 
         # cols
-        dflab_this.loc[:, variables_cont] = dflab.loc[:, variables_cont]
+        dflab_this.loc[:, variables_cont] = dflab.loc[:, variables_cont].copy()
 
     if plot_motor_values:
         # Plots showing the continuous motor variables
@@ -372,6 +376,8 @@ def preprocess_pa_syntax(PA):
 
     RETURNS:
     - Modifies PA (nothing returned)
+
+    LT CHECKED
     """
 
     dflab = PA.Xlabels["trials"]
@@ -387,8 +393,9 @@ def preprocess_pa_syntax(PA):
 
     # Add n items in each shape slot
     nslots = len(dflab["syntax_concrete"].values[0])
+    # assert nslots<4, "not yet coded for this. See line 'for i in range(3):'"
     list_slots = []
-    for i in range(3):
+    for i in range(4):
         key = f"syntax_slot_{i}"
         if i > nslots-1:
             # Then this slot doesnt exist
@@ -410,6 +417,15 @@ def preprocess_pa_syntax(PA):
                         if isinstance(x[i], str):
                             print(x)
                             assert False
+
+                        # Sanity check
+                        if len(x)>5:
+                            # Expect, since I have max ABCD, that wil have things like (3,2,2,1,0). Actually,
+                            # almost all expts ahve ABC, except (I think) Diego 231116, 231118. If not, thne this
+                            # Could be contamination by cases with multple shape sets. If so, then it is incorrect
+                            # to consider slots in this way.
+                            print(x)
+                            assert False, "read note above. Need to first fix this if it includes two shape sets."
                         tmp.append(x[i])
             # print(set(tmp))
             dflab[key] = tmp
@@ -434,7 +450,9 @@ def preprocess_pa_syntax(PA):
     def _n_shapes(syntax_concrete):
         # e.g., (1,3,0) --> 2
         if syntax_concrete==('IGNORE',):
-            tmp.append(-1)
+            # tmp.append(-1)
+            assert False, "Code was error if got to here. Checking if did."
+            # return -1
         elif isinstance(syntax_concrete, str):
             return -1
         else:
@@ -483,7 +501,8 @@ def preprocess_pa(PA, var_effect, vars_others, prune_min_n_trials, prune_min_n_l
     Preprocess, for strokes-level data
     RETURNS:
     - Modifies PA, but also returns...
-    
+
+    LT CHECKED
     """
     from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper, grouping_plot_n_samples_conjunction_heatmap
     from pythonlib.tools.pandastools import append_col_with_grp_index, grouping_print_n_samples
@@ -1528,6 +1547,8 @@ def mult_plot_grammar_vs_seqsup_new(DFDIST, SAVEDIR, contrast_version="shape_ind
 def targeted_pca_clean_plots_and_dfdist_params():
     """
     Stores "questions", which are specific sets of variables for computing euclidean dsitance between each conunctive level.
+
+    LT CHECKED
     """ 
 
     ### Older ones, which are fine, but unnecesary, slows things down.
@@ -1673,6 +1694,8 @@ def targeted_pca_clean_plots_and_dfdist(DFallpa, animal, date, SAVEDIR_ALL, DEBU
                                         DO_PLOT_STATE_SPACE = True, DO_EUCLIDEAN = True, DO_ORDINAL_REGRESSION = False):
     """
     Main code for doing everything, including targeted PCA, and then state sapce and euclidean dsitance plots.
+
+    LT CHECKED (assuming run 29)
     """
     from pythonlib.tools.plottools import savefig
     import matplotlib.pyplot as plt
@@ -1737,6 +1760,7 @@ def targeted_pca_clean_plots_and_dfdist(DFallpa, animal, date, SAVEDIR_ALL, DEBU
     force_dont_split_train_test = False
     DO_REGRESS_FIRST_STROKE = False
     prune_min_n_trials = 3
+    exclude_single_prims = False
 
     # DONT MODIFIY
     force_allow_split_train_test = False
@@ -2373,6 +2397,7 @@ def targeted_pca_clean_plots_and_dfdist(DFallpa, animal, date, SAVEDIR_ALL, DEBU
         tbin_slide = 0.05
 
     elif run_number == 30:
+        ### Identical to run 27
         # - For initial global regression and subtraction of confounding variables
         do_remove_global_first_stroke = True
         variables_cont_global = ["motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y"]
@@ -2433,11 +2458,16 @@ def targeted_pca_clean_plots_and_dfdist(DFallpa, animal, date, SAVEDIR_ALL, DEBU
 
         # run 30 means this:
         DO_PLOT_STATE_SPACE = False
-        DO_EUCLIDEAN = False
+        DO_EUCLIDEAN = True
         DO_ORDINAL_REGRESSION = False
         euclidean_npcs_keep = 6
         force_dont_split_train_test = True
         exclude_single_prims = False
+
+        # Do euclid dist for a subset of questions (it is quicker than doing all)
+        restrict_questions_based_on_subspace = {
+            tuple(["epoch", "gridloc", "DIFF_gridloc", "chunk_rank", "shape", "rank_conj"]):["11_twoshapes"] # Just for trying out on two-shapes data.
+            }
 
     elif run_number == 32:
         # SAME as 31, but excluding single prims.
@@ -2475,6 +2505,42 @@ def targeted_pca_clean_plots_and_dfdist(DFallpa, animal, date, SAVEDIR_ALL, DEBU
         force_dont_split_train_test = True
         exclude_single_prims = True
 
+    elif run_number == 33:
+        # - 
+        do_remove_global_first_stroke = True
+        variables_cont_global = []
+        variables_cat_global = ["stroke_index_is_first", "shape", "task_kind"]
+        vars_remove_global = ["stroke_index_is_first"]
+        # - Then for subspace identification
+        # (note: Same as above, but remove the variable that has been regressed out)
+        variables_cont = []
+        variables_cat = ["shape", "task_kind"]
+        do_vars_remove = False
+        vars_remove = None
+        # Subspace params
+        list_var_subspace = [
+            "shape", # Only run this for the question related to SP vs. grammar.
+            # tuple(["shape", "task_kind"]),
+            ]
+        restrict_questions_based_on_subspace = {
+            "shape":["4_shape_vs_chunk", "4c_shape_vs_chunk", "11_twoshapes"],
+            # tuple(["shape", "task_kind"]):["4_shape_vs_chunk", "4c_shape_vs_chunk", "11_twoshapes"],
+        }
+        single_prims_exclude_from_training=False
+        force_allow_split_train_test = True
+        fraction_constrained_set=0.75 # make this higher, to include more data in euclidean (for SP).
+
+        # - Update the time window to match the action sybmols stuff
+        twind_scal = [-0.35, 0.2]
+        tbin_dur = 0.15
+        tbin_slide = 0.05
+
+        # run 30 means this:
+        DO_PLOT_STATE_SPACE = False
+        DO_EUCLIDEAN = True
+        DO_ORDINAL_REGRESSION = False
+        euclidean_npcs_keep = 6
+        force_dont_split_train_test = True
     else:
         assert False
 
@@ -2483,7 +2549,8 @@ def targeted_pca_clean_plots_and_dfdist(DFallpa, animal, date, SAVEDIR_ALL, DEBU
 
     if force_dont_split_train_test==True:
         n_splits = 1 # since it uses all data
-        
+        # NOTE: This just makes sure it doesnt loop multiple times. The key actor to not split is still force_dont_split_train_test
+
     ### State space plots params
     # LIST_VAR_VAROTHERS = [
     #     # ("chunk_within_rank", ['epoch', 'chunk_shape', 'loc_on_clust', 'CTXT_locoffclust_prev', 'CTXT_shape_prev', 'loc_off_clust']),
@@ -2608,6 +2675,15 @@ def targeted_pca_clean_plots_and_dfdist(DFallpa, animal, date, SAVEDIR_ALL, DEBU
     #     "24_sh_vs_superv":["stroke_index", "behseq_shapes", "epoch_rand_exclsv", "epoch_kind", "superv_is_seq_sup", "behseq_locs_clust"],
     #     "25_sh_vs_superv
 
+    # Remove single prims if desired
+    if exclude_single_prims:
+        list_pa = []
+        for pa in DFallpa["pa"]:
+            # Get tasks with strokes greater than 1
+            _pa = pa.slice_by_labels_filtdict({"FEAT_num_strokes_task":list(range(2, 20))})
+            list_pa.append(_pa)
+        DFallpa["pa"] = list_pa
+
     # - First, sanity check that all regions (PAs) have same rows
     _trials = None
     for pa in DFallpa["pa"].values:
@@ -2616,8 +2692,7 @@ def targeted_pca_clean_plots_and_dfdist(DFallpa, animal, date, SAVEDIR_ALL, DEBU
         else:
             _trials = pa.Xlabels["trials"].loc[:, ["trialcode", "stroke_index"]].values.tolist()       
 
-    # Use the same split folds for each bregion
-    folds_dflab = None
+    folds_dflab = None # Use the same split folds for each bregion
     for _, row in DFallpa.iterrows():
         bregion = row["bregion"]
         PA = row["pa"]
@@ -2673,7 +2748,7 @@ def targeted_pca_clean_plots_and_dfdist(DFallpa, animal, date, SAVEDIR_ALL, DEBU
         # Now split into train (fitting targeted PCA) and testing (projection).
         ### Get subsamples
         if folds_dflab is None:
-
+            # Then this is the first brain region. determine your folds indices
             if False:
                 vars_stratification = ["epoch", "chunk_within_rank_semantic_v2", "chunk_shape", "syntax_concrete", "task_kind"]
             else:
@@ -2685,17 +2760,23 @@ def targeted_pca_clean_plots_and_dfdist(DFallpa, animal, date, SAVEDIR_ALL, DEBU
             # folds_dflab --> (unc, cons) (train_inds, test_inds)
 
             if force_dont_split_train_test:
-                folds_dflab = [(train_inds+test_inds, train_inds+test_inds) for train_inds, test_inds in folds_dflab]
+                folds_dflab = [(sorted(train_inds+test_inds), sorted(train_inds+test_inds)) for train_inds, test_inds in folds_dflab]
                 folds_dflab = [folds_dflab[0]] # just take one fold...
+
+                # Sanity check that you really are not splitting.
+                assert folds_dflab[0][0] == list(range(len(PAscal.Trials)))
+                assert folds_dflab[0][1] == list(range(len(PAscal.Trials)))
 
             savefig(fig_con, f"{SAVEDIR}/after_split_constrained_test_fold_0.pdf") # TEST
             savefig(fig_unc, f"{SAVEDIR}/after_split_unconstrained_train_fold_0.pdf") # TRIAN
             plt.close("all")
 
-            trialcodes_saved = PAscal.Xlabels["trialcode"].tolist()
+            trialcodes_saved = PAscal.Xlabels["trials"]["trialcode"].tolist()
+            strokeinds_saved = PAscal.Xlabels["trials"]["stroke_index"].tolist()
         else:
-            # Then use this folds_dflab...
-            assert PAscal.Xlabels["trialcode"].tolist() == trialcodes_saved, "trials are not lined up across brain regions, not sur eif this is problem."
+            # Then this is the subsequent brain regions. Use the folds_dflab determined for the first region
+            assert PAscal.Xlabels["trials"]["trialcode"].tolist() == trialcodes_saved, "trials are not lined up across brain regions, not sur eif this is problem."
+            assert PAscal.Xlabels["trials"]["stroke_index"].tolist() == strokeinds_saved, "trials are not lined up across brain regions, not sur eif this is problem."
 
         # Save some params
         from pythonlib.tools.expttools import writeDictToYaml, writeDictToTxtFlattened
@@ -2731,8 +2812,17 @@ def targeted_pca_clean_plots_and_dfdist(DFallpa, animal, date, SAVEDIR_ALL, DEBU
             test_inds = [int(i) for i in test_inds]
             if len(test_inds)<len(train_inds):
                 print(len(train_inds), len(test_inds))
-                assert False, "sanity chcek that I understand my code.."
-            print("n_train, n_test:", len(train_inds), len(test_inds))
+                assert False, "sanity chcek.."
+            
+            if False:
+                # Just to see what is in the folds.
+                for x, y in folds_dflab:
+                    print("---")
+                    print(x)
+                    print(y)
+                print("n_train, n_test:", len(train_inds), len(test_inds))
+                print(PAscal.X.shape)
+                assert False
 
             if single_prims_exclude_from_training:
                 # HACK: Single prims trials should always be in test inds, not train inds.
@@ -2790,10 +2880,10 @@ def targeted_pca_clean_plots_and_dfdist(DFallpa, animal, date, SAVEDIR_ALL, DEBU
                         ### [Optional] Things to do for each question [ONLY FOR SPECIFIC ANALYSES]
                         if question == "7_ninchunk_vs_rankwithin":
                             # Regress out motor covariates before computing eucldiean distance
-                            variables_cont = ["motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y"]
-                            variables_cat = ["epoch", "gridloc", "DIFF_gridloc", "stroke_index_is_first", "chunk_rank", "shape", "rank_conj"]
-                            vars_remove = ["motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y", "gridloc", "DIFF_gridloc", "chunk_rank", "shape"]
-                            _, _, _, _, _, pa_subspace_this_this, _ = pa_subspace_this.dataextract_subspace_targeted_pca_wrapper(variables_cont, variables_cat, vars_remove,
+                            _variables_cont = ["motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y"]
+                            _variables_cat = ["epoch", "gridloc", "DIFF_gridloc", "stroke_index_is_first", "chunk_rank", "shape", "rank_conj"]
+                            _vars_remove = ["motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", "velmean_x", "velmean_y", "gridloc", "DIFF_gridloc", "chunk_rank", "shape"]
+                            _, _, _, _, _, pa_subspace_this_this, _ = pa_subspace_this.dataextract_subspace_targeted_pca_wrapper(_variables_cont, _variables_cat, _vars_remove,
                                                                                         None, None, 
                                                                                         PLOT_COEFF_HEATMAP=False, 
                                                                                         savedir_coeff_heatmap=None, demean=False)
@@ -2835,6 +2925,7 @@ def targeted_pca_clean_plots_and_dfdist(DFallpa, animal, date, SAVEDIR_ALL, DEBU
 
                 ################################################
                 if DO_ORDINAL_REGRESSION:
+                    assert False, "Fine, but did not do manual check of code below the way I did for the rest of this function, since I'm not using this part. Comment this out to run."
                     from neuralmonkey.scripts.analy_syntax_good_eucl_state import kernel_ordinal_logistic_regression_wrapper
 
                     LIST_VAR_VAROTHERS_REGR = [
@@ -4329,10 +4420,27 @@ def targeted_pca_state_space_split_over(DFallpa, SAVEDIR_ANALYSIS,
                     plt.close("all")
 
 
-def mult_plot_rankwithin_up_vs_down_good(dfdist_full_clean, savedir, do_final_agg_over_datapts):
+def mult_plot_rankwithin_up_vs_down_good(dfdist_full_clean, savedir, do_final_agg_over_datapts, skip_plots=False):
     """
+    GOOD
+
+    LT CHEKCED - did not look at plots. Just looked at steps related to saving 
+    dfdist_full_clean.to_pickle(f"{savedir}/dfdist_full_clean.pkl")
+    becuase this is the only thing that's used for the paper.
     """
     from pythonlib.tools.pandastools import append_col_with_grp_index
+
+    # Save data
+    assert do_final_agg_over_datapts == False, "if True, then dfdist_full_clean will be modified, and then I need to save after that modification. You should do a simple code fix."
+    grp_datapt = ["chunk_shape_1", "chunk_n_in_chunk_1", "chunk_within_rank_1", "chunk_shape_2", "chunk_n_in_chunk_2"]
+    dfdist_full_clean = append_col_with_grp_index(dfdist_full_clean, grp_datapt, "datapt")
+    dfdist_full_clean = append_col_with_grp_index(dfdist_full_clean, ["chunk_shape_1", "chunk_n_in_chunk_1"], "csn_1")
+    dfdist_full_clean = append_col_with_grp_index(dfdist_full_clean, ["chunk_shape_1", "chunk_n_in_chunk_1", "chunk_shape_2", "chunk_n_in_chunk_2"], "_subplot")
+    dfdist_full_clean.to_pickle(f"{savedir}/dfdist_full_clean.pkl")
+
+    if skip_plots:
+        return
+
     list_bregion = dfdist_full_clean["bregion"].unique().tolist()
     print("Currently making plots ... ", savedir)
 
@@ -4359,8 +4467,8 @@ def mult_plot_rankwithin_up_vs_down_good(dfdist_full_clean, savedir, do_final_ag
     from pythonlib.tools.pandastools import plot_45scatter_means_flexible_grouping
 
     # - Datapt level
-    grp_datapt = ["chunk_shape_1", "chunk_n_in_chunk_1", "chunk_within_rank_1", "chunk_shape_2", "chunk_n_in_chunk_2"]
-    dfdist_full_clean = append_col_with_grp_index(dfdist_full_clean, grp_datapt, "datapt")
+    # grp_datapt = ["chunk_shape_1", "chunk_n_in_chunk_1", "chunk_within_rank_1", "chunk_shape_2", "chunk_n_in_chunk_2"]
+    # dfdist_full_clean = append_col_with_grp_index(dfdist_full_clean, grp_datapt, "datapt")
 
     # --
     _, fig = plot_45scatter_means_flexible_grouping(dfdist_full_clean, "chunk_within_rank_pair_class", 
@@ -4384,7 +4492,7 @@ def mult_plot_rankwithin_up_vs_down_good(dfdist_full_clean, savedir, do_final_ag
     # (2) Also plot all the data in a heatmap
     # NOTE: it is expected for this heatmap to not be symmetrical. Each relevant datapt is role1.
     from pythonlib.tools.pandastools import plot_subplots_heatmap
-    dfdist_full_clean = append_col_with_grp_index(dfdist_full_clean, ["chunk_shape_1", "chunk_n_in_chunk_1", "chunk_shape_2", "chunk_n_in_chunk_2"], "_subplot")
+    # dfdist_full_clean = append_col_with_grp_index(dfdist_full_clean, ["chunk_shape_1", "chunk_n_in_chunk_1", "chunk_shape_2", "chunk_n_in_chunk_2"], "_subplot")
     for bregion in list_bregion:
 
         ### Heatmaps
@@ -4417,11 +4525,10 @@ def mult_plot_rankwithin_up_vs_down_good(dfdist_full_clean, savedir, do_final_ag
 
     
     # (3) Catplot summary
-    from pythonlib.tools.pandastools import append_col_with_grp_index
     import seaborn as sns
     from pythonlib.tools.snstools import rotateLabel
 
-    dfdist_full_clean = append_col_with_grp_index(dfdist_full_clean, ["chunk_shape_1", "chunk_n_in_chunk_1"], "csn_1")
+    # dfdist_full_clean = append_col_with_grp_index(dfdist_full_clean, ["chunk_shape_1", "chunk_n_in_chunk_1"], "csn_1")
     # dfdist_full_clean_agg = append_col_with_grp_index(dfdist_full_clean_agg, ["chunk_shape_1", "chunk_n_in_chunk_1"], "csn_1")
 
     if False: # takes too long
@@ -4544,7 +4651,7 @@ def mult_plot_rankwithin_up_vs_down_good(dfdist_full_clean, savedir, do_final_ag
         # TODO: FIT linear model of effect_diff vs. rank_within_fromlast.
 
     # Save data
-    dfdist_full_clean.to_pickle(f"{savedir}/dfdist_full_clean.pkl")
+    # dfdist_full_clean.to_pickle(f"{savedir}/dfdist_full_clean.pkl")
 
 if __name__=="__main__":
 
@@ -4581,6 +4688,11 @@ if __name__=="__main__":
     PLOTS_DO = [7.2] # Good
     PLOTS_DO = [7.1] # Good
 
+    runs_that_require_sp = [29, 33]
+    runs_that_dont_require_sp = [27, 31]
+    assert run_number in runs_that_dont_require_sp + runs_that_require_sp, "manualy input whwether this run should be in requires or dont require"
+    requires_sp = run_number in runs_that_require_sp
+    
     if any([(x>=7) and (x<8) for x in PLOTS_DO]) and (question == "RULE_ANBMCK_STROKE"):
     # if 7.1 in PLOTS_DO:
         # Then you want to also load SP
@@ -4592,9 +4704,14 @@ if __name__=="__main__":
         try:
             ### (2) Load SP data
             _question = "SP_BASE_stroke"
-            _twind = [-0.5, 2.1]
-            DFallpaSP = load_handsaved_wrapper(animal, date, version=version, combine_areas=combine, 
-                                                question=_question, twind=_twind)
+            try:
+                _twind = [-0.5, 2.1]
+                DFallpaSP = load_handsaved_wrapper(animal, date, version=version, combine_areas=combine, 
+                                                    question=_question, twind=_twind)
+            except Exception as err:
+                _twind = [-0.4, 1.8]
+                DFallpaSP = load_handsaved_wrapper(animal, date, version=version, combine_areas=combine, 
+                                                    question=_question, twind=_twind)               
             DFallpaSP = dfpa_concat_bregion_to_combined_bregion(DFallpaSP)
 
             # Merge SP and grammar along chan indices
@@ -4602,6 +4719,8 @@ if __name__=="__main__":
             del DFallpaSP
 
         except Exception as err:
+            if requires_sp:
+                raise err
             print(err)
 
     else:
@@ -4615,7 +4734,8 @@ if __name__=="__main__":
     dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date)
 
     ################ PARAMS
-    
+    # assert False, "IS OK"
+
     ################################### PLOTS
     for plotdo in PLOTS_DO:
         # if plotdo==0:
@@ -4807,7 +4927,9 @@ if __name__=="__main__":
             # DO_EUCLIDEAN = False
             # DO_ORDINAL_REGRESSION = True
 
-            DO_PLOT_STATE_SPACE = True
+            DO_PLOT_STATE_SPACE = False # To speed things up
+            # DO_PLOT_STATE_SPACE = True
+            
             DO_EUCLIDEAN = True
             DO_ORDINAL_REGRESSION = False
             targeted_pca_clean_plots_and_dfdist(DFallpa, animal, date, 
