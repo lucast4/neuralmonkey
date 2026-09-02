@@ -39,10 +39,8 @@ def load_preprocess_get_dates(animal, save_suffix, new_varied_hyperparams=True):
             question = "RULE_ANBMCK_STROKE"
             fr_normalization_method = "across_time_bins"
         elif save_suffix=="AnBmCk_general":
-            # dates = [230724, 230726, 230730, 230817, 230913, 231116, 231118]
-            # dates = [230724, 230726, 230817, 230913, 231116, 231118] # skipping 230730 most of the time.
-            dates = [230723, 230724, 230726, 230727, 230728, 230730, 230815, 230816, 230817, 230913, 230914, 230915, 231116, 231118, 240822, 240827, 250319, 250321] # ALL (3/18/25)
-            # dates = [230723, 230724, 230726, 230727, 230728, 230730, 230816, 231116, 231118, 240822, 240827, 250319, 250321] # ALL (3/18/25)
+            # dates = [230723, 230724, 230726, 230727, 230728, 230730, 230815, 230816, 230817, 230913, 230914, 230915, 231116, 231118, 240822, 240827, 250319, 250321, 250416, 250417] # ALL (8/25/26)
+            dates = [230723, 230724, 230726, 230727, 230728, 230730, 230815, 230816, 230817, 230913, 230914, 230915, 231116, 231118, 240822, 240827] # THOSE USED IN MS (8/25/26)
             question = "RULE_ANBMCK_STROKE"
             fr_normalization_method = "across_time_bins"
         elif save_suffix=="sh_vs_seqsup":
@@ -74,9 +72,8 @@ def load_preprocess_get_dates(animal, save_suffix, new_varied_hyperparams=True):
             question = "RULE_ANBMCK_STROKE"
             fr_normalization_method = "across_time_bins"
         elif save_suffix=="AnBmCk_general":
-            # dates = [220906, 220907, 220908, 220909, 230811, 230829]
-            # dates = [220831, 220901, 230810, 230811, 230824, 230826, 230829, 231114, 231116, 220902, 220906, 220907, 220908, 220909, 240830, 250321, 250322] # ALL (4/6/25)
-            dates = [220901, 230810, 230811, 230824, 230826, 230829, 231114, 231116, 220902, 220906, 220907, 220908, 220909, 240830, 250322] # Yes this is the final. Except 220831 still need to extract..
+            # dates = [220901, 220902, 220906, 220907, 220908, 220909, 230810, 230811, 230824, 230826, 230829, 231114, 231116, 240830, 250322] # Yes this is the final. Except 220831 still need to extract..
+            dates = [220901, 220902, 220906, 220907, 220908, 220909, 230810, 230811, 230824, 230826, 230829, 231114, 231116] # Just those used in the manuscript.
             question = "RULE_ANBMCK_STROKE"
             fr_normalization_method = "across_time_bins"
         elif save_suffix=="sh_vs_seqsup":
