@@ -49,8 +49,8 @@ def extract_snippets_all_sessions(MS, which_level, EVENTS_KEEP=None, FORCE_EXTRA
         LIST_SESSIONS = range(len(MS.SessionsList))
 
     LIST_SP = []
-    for session in LIST_SESSIONS:
-        sn = MS.SessionsList[session]
+    for session_idx in LIST_SESSIONS:
+        sn = MS.SessionsList[session_idx]
 
         if FORCE_EXTRACT==0:
             try:
@@ -89,12 +89,12 @@ def extract_snippets_all_sessions(MS, which_level, EVENTS_KEEP=None, FORCE_EXTRA
         if SKIP_EXTRACTION:
             print("** SKIPPING EXTRACTION, since was able to load snippets, for: ")
             print("(animal, DATE, which_level, session)")
-            print(animal, DATE, which_level, session)
+            print(animal, DATE, which_level, session_idx)
             continue
         else:
             print("** NOT SKIPPING EXTRACTION, since was not able to load snippets, for: ")
             print("(animal, DATE, which_level, session)")
-            print(animal, DATE, which_level, session)
+            print(animal, DATE, which_level, session_idx)
 
         ###################################
         if False:

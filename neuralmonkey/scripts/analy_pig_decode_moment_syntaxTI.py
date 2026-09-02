@@ -284,6 +284,7 @@ def prepare_beh_dataset(animal, date, do_syntax_rule_stuff=True, return_MS=False
         D.grammarparses_syntax_concrete_append_column(PRINT=False)
 
         # exclude last index, it is not sahpe...
+        assert False, "should never touch syntax_concrete: change the following code to assign a new column, eg syntax_concrete_mod"
         D.Dat["syntax_concrete"] = [x[:-1] for x in D.Dat["syntax_concrete"]]
         D.Dat["syntax_concrete"].value_counts()
 
@@ -758,6 +759,7 @@ if __name__=="__main__":
                             dflab = PAprobs.Xlabels["trials"]
 
                             # Update dflab with syntax stuff
+                            assert False, "should only update syntax_concrete using D methods"
                             dflab["syntax_concrete"] = [map_tc_to_syntaxconcrete[tc] for tc in dflab["trialcode"]]
                             dflab["syntax_concrete_indices"] = [tuple(np.argwhere(syntax_concrete).squeeze().tolist()) for syntax_concrete in dflab["syntax_concrete"]]
                             dflab["syntax_concrete_idx1"] = [sci[0] for sci in dflab["syntax_concrete_indices"]]
@@ -996,7 +998,8 @@ if __name__=="__main__":
                                     decoder_class_idx_in_shapes_drawn = shapes_drawn.index(decoder_class)
                                 else:
                                     decoder_class_idx_in_shapes_drawn = -1
-
+                        
+                                assert False, "should only update syntax_concrete using D Methods"
                                 syntax_concrete = map_tc_to_syntaxconcrete[trialcode]
                                 syntax_concrete_indices = tuple(np.argwhere(syntax_concrete).squeeze().tolist())
                                 if len(syntax_concrete_indices)>1:

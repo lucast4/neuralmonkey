@@ -587,9 +587,10 @@ if __name__=="__main__":
     # Preprocess D for grammar stuff
     D.preprocessGood(params=['one_to_one_beh_task_strokes_allow_unfinished'])
     D.grammarparses_successbinary_score_wrapper()
-    for ind in range(len(D.Dat)):
-        D.grammarparses_taskclass_tokens_assign_chunk_state_each_stroke(ind)
-    D.grammarparses_syntax_concrete_append_column()
+    D.grammarparses_chunk_syntax_extract_wrapper()
+    # for ind in range(len(D.Dat)):
+    #     D.grammarparses_taskclass_tokens_assign_chunk_state_each_stroke(ind)
+    # D.grammarparses_syntax_concrete_append_column()
 
     # Get future strokes chunks info.
     from pythonlib.dataset.dataset_analy.grammar import syntaxconcrete_extract_wrapper_chunks_future_errors_info

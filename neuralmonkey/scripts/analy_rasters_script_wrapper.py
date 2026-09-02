@@ -110,7 +110,7 @@ def plotter(SP, var, vars_others, event, SAVEDIR, OVERWRITE_n_min, OVERWRITE_len
         # path = f"{savedir}/{chan_text}.png"
         path = f"{savedir}/{chan_text}.{save_ext}"
         if not os.path.exists(path):
-            fig, axesall = SP.plotgood_rasters_smfr_each_level_combined(chan, var, vars_others,
+            fig, _ = SP.plotgood_rasters_smfr_each_level_combined(chan, var, vars_others,
                                                                         event=event,
                                                                         plotvers=plotvers,
                                                                         OVERWRITE_n_min=OVERWRITE_n_min,
