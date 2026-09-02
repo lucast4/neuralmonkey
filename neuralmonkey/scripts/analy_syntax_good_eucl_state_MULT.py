@@ -16,19 +16,119 @@ from pythonlib.globals import PATH_ANALYSIS_OUTCOMES
 import os
 import sys
 import pandas as pd
-from pythonlib.tools.expttools import writeDictToTxt
 import matplotlib.pyplot as plt
-from neuralmonkey.classes.population_mult import extract_single_pa, load_handsaved_wrapper
 import seaborn as sns
-from neuralmonkey.analyses.decode_good import preprocess_extract_X_and_labels
 from pythonlib.tools.pandastools import append_col_with_grp_index
-from neuralmonkey.scripts.analy_dfallpa_extract import extract_dfallpa_helper
-from pythonlib.tools.pandastools import grouping_plot_n_samples_conjunction_heatmap, replace_values_with_this
-from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good
 from pythonlib.tools.plottools import savefig
+import pickle
+from neuralmonkey.scripts.analy_euclidian_dist_pop_script_MULT import load_preprocess_get_dates
+from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_scalar_WRAPPER
+import pickle
+import os
+import matplotlib.pyplot as plt
 
+# General map used throughout syntax paper.
+map_bregion_to_color = {
+    "M1":"#587467eb",
+    "PMd":"#077026ec",
+    "PMv":"#397721ed",
+    "SMA":"#98be3eec",
+    "preSMA":"#f80f0f",
+    "dlPFC":"#8675AF",
+    "vlPFC":"#414994",
+    "FP":"#287AC7",
+}
 
-def final_dfeffect_plots_WRAPPER(RUN, save_suffix, yvar, analysis, return_debug=False):
+def final_plot_state_space(analysis, RUN, subspace, LIST_VAR_VAR_OTHERS, iternum=0):
+    """
+    Make good state space plots for paper. 
+    
+    LT Checked
+    """
+    from neuralmonkey.classes.session import _REGIONS_IN_ORDER_COMBINED
+
+    ### Params
+    save_suffix = "AnBmCk_general"
+    SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/syntax_good/targeted_dim_redu_v2/run{RUN}"
+    # yvar = "dist_yue_diff"
+    
+    HACK = False # Just to plot subset, for quicker analy
+    LIST_DIMS = [(0,1), (2,3), (4,5)]
+    # LIST_DIMS = [(4,5)]
+    # force_continuous = True # color using continuous colormap
+    force_continuous = False # color using continuous colormap
+
+    ### Iterate
+    for animal in ["Diego", "Pancho"]:
+        list_dates, _, _, _ = load_preprocess_get_dates(animal, save_suffix)
+        list_dates = list(set(list_dates))
+
+        if analysis=="two_shapes":
+            assert animal == "Diego", "dont need to do this."
+            list_dates = [240827, 240822]
+
+        if HACK:
+            # Just to plot a hand picked set of dates
+            list_dates = [230816, 230913, 231118, 230726]
+            # list_dates = [230726]
+        
+        for date in list_dates:
+            savedir= f"{SAVEDIR}/MULT/final-{animal}-ss={save_suffix}-analy={analysis}/neural_state_space/{animal}-{date}"
+            os.makedirs(savedir, exist_ok=True)
+
+            for bregion in _REGIONS_IN_ORDER_COMBINED:
+                
+                if HACK and bregion not in ["preSMA", "PMv", "M1"]:
+                    continue
+
+                # Make improved state space plots
+                path = f"{SAVEDIR}/{animal}-{date}-q=RULE_ANBMCK_STROKE/bregion={bregion}/FITTING_subspc={subspace}-iter={iternum}/pa_subspace.pkl"
+
+                if os.path.exists(path):
+                    print("loading path:", path)
+                    with open(path, "rb") as f:
+                        pa_subspace = pickle.load(f)
+
+                    ### Plot all subspaces
+                    dflab = pa_subspace.Xlabels["trials"]
+                    dflab["date"] = date
+                    
+                    # In general, remove SP
+                    if analysis != "pig_vs_sp":
+                        inds = dflab[
+                            ~(dflab["epoch"]=="base") &
+                            (dflab["task_kind"]=="prims_on_grid")
+                            ].index.tolist() # beucase "base" messes up global cr
+                        pa_subspace = pa_subspace.slice_by_dim_indices_wrapper("trials", inds)
+                        dflab = pa_subspace.Xlabels["trials"]
+
+                    if analysis == "two_shapes":
+                        from pythonlib.dataset.dataset_analy.grammar import chunk_rank_global_extract
+                        assert animal=="Diego" and date in [240822, 240827], "only checked for these expts."
+                        # To set up for other dates, run this and make sure that global chunk rank is aligned
+                        # with shapes.
+                        # from pythonlib.tools.pandastools import grouping_print_n_samples
+                        # grouping_print_n_samples(dflab, ["epoch", "chunk_rank_global", "shape", "chunk_rank"])
+                        dflab = pa_subspace.Xlabels["trials"]
+                        chunk_rank_global_extract(dflab)
+
+                    Xredu = pa_subspace.X # (chans, trials, 1)
+                    x = Xredu.squeeze().T # (trials, chans)
+                    dflab = pa_subspace.Xlabels["trials"]
+                    
+                    ### Second, plot scalar neural data
+                    # for plot_kde in [True, False]:
+                    for plot_kde in [True, False]:
+                        for var_effect, vars_others in LIST_VAR_VAR_OTHERS:
+                            trajgood_plot_colorby_splotby_scalar_WRAPPER(x, dflab, var_effect, savedir,
+                                                                            vars_subplot=vars_others, list_dims=LIST_DIMS,
+                                                                            overlay_mean_orig=True, plot_kde=plot_kde,
+                                                                            save_suffix=f"kde={plot_kde}-{bregion}-iter={iternum}",
+                                                                            force_continuous=force_continuous)
+                            plt.close("all")
+
+def final_dfeffect_plots_WRAPPER(RUN, save_suffix, yvar, analysis, return_debug=False, skip_ratio_stats=False,
+        n_shuff_ratio=1000, HACK_RETURN_DFEFFECT=False, HACK_ANIMALS=None):
     """
     Wrapper for all final plots of euclidean distance analysis of syntax.
 
@@ -59,6 +159,8 @@ def final_dfeffect_plots_WRAPPER(RUN, save_suffix, yvar, analysis, return_debug=
     # # yvar = "dist_yue_diff"
     # # analysis = "n_in_chunk"
 
+    LT CHECKED (at least for run 29)
+    - Also checked for the section relating ord encoding to gap duration (ie. rank_up_vs_down)
     """
 
     from neuralmonkey.scripts.analy_syntax_good_eucl_state_MULT import targeted_pca_MULT_3_combined_plots
@@ -68,6 +170,8 @@ def final_dfeffect_plots_WRAPPER(RUN, save_suffix, yvar, analysis, return_debug=
     from pythonlib.tools.pandastools import pivot_table
     import os
     from pythonlib.tools.pandastools import savefig
+
+    # yvar = "dist_yue_diff"
 
     if analysis=="two_shapes":
         # True/False gives very similar results, so just stick with False
@@ -85,8 +189,15 @@ def final_dfeffect_plots_WRAPPER(RUN, save_suffix, yvar, analysis, return_debug=
         # This is the final param
         list_n_min_trials = [2]
 
+    if HACK_ANIMALS is None:
+        list_animal = ["Pancho", "Diego"]
+    else:
+        list_animal = HACK_ANIMALS
+
+    # for animal in ["Diego"]:
+    # for animal in ["Pancho"]:
     # for animal in ["Diego", "Pancho"]:
-    for animal in ["Pancho", "Diego"]:
+    for animal in list_animal:
     # for animal in ["Diego"]:
         DFEFFECT_ALL, _ = targeted_pca_MULT_3_combined_plots(animal, RUN, save_suffix, return_dfeffect=True)
         SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/syntax_good/targeted_dim_redu_v2/run{RUN}/MULT/final-{animal}-ss={save_suffix}-analy={analysis}"
@@ -124,12 +235,6 @@ def final_dfeffect_plots_WRAPPER(RUN, save_suffix, yvar, analysis, return_debug=
                     # Agg. Datapt = date
                     DFEFFECT_AGG = aggregGeneral(DFEFFECT, ["effect", "animal", "date", "bregion", "question", "subspace"], ["dist_yue_diff"])
 
-                    ############################# COMPARE y/x ratios
-                    if analysis == "two_shapes":
-                        from neuralmonkey.scripts.analy_syntax_good_eucl_state_MULT import final_dfeffect_compute_plot_ratio_stats
-                        dfres, savedir_this = final_dfeffect_compute_plot_ratio_stats(DFEFFECT, eff1, eff2, savedir, n_shuff=1000)
-                        dfres.to_pickle(f"{savedir_this}/dfres.pkl")
-                        del dfres
 
                     ########################################
                     ### Classic plots
@@ -138,17 +243,20 @@ def final_dfeffect_plots_WRAPPER(RUN, save_suffix, yvar, analysis, return_debug=
                         for ax in fig.axes.flatten():
                             ax.axhline(0, color="k", alpha=0.5)
 
-                    yvar = "dist_yue_diff"
+                    # First, get both directions, in case you want to over labels_1
+                    dftmp = DFEFFECT.copy()
+                    dftmp["labels_1"] = DFEFFECT["labels_2"]
+                    dftmp["labels_2"] = DFEFFECT["labels_1"]
+                    dfeffect_full = pd.concat([dftmp, DFEFFECT], axis=0).reset_index(drop=True)
+
+                    if HACK_RETURN_DFEFFECT:
+                        # Just for devo/debugging.
+                        return DFEFFECT, DFEFFECT_AGG, dfeffect_full, eff1, eff2
 
                     # == Bar plots
                     # fig = sns.catplot(data=DFEFFECT, x="bregion", y=yvar, hue="effect", col="date", col_wrap=6, kind="bar", errorbar="se")
                     # savefig(fig, f"{savedir}/catplot-data=label-1.pdf")
 
-                    # First, get both directions, in case you want to over labels_1
-                    dftmp = DFEFFECT.copy()
-                    dftmp["labels_1"] = DFEFFECT["labels_2"]
-                    dftmp["labels_2"] = DFEFFECT["labels_1"]
-                    dfeffect_full = pd.concat([dftmp, DFEFFECT], axis=0)
                     for var_datapt in ["labels_1", "da_cr_sh_12"]:
                         _vars = ["effect", "animal", "date", "bregion", "question", "subspace"] + [var_datapt]
                         dfeffect_agg = aggregGeneral(dfeffect_full, _vars, [yvar])
@@ -175,7 +283,21 @@ def final_dfeffect_plots_WRAPPER(RUN, save_suffix, yvar, analysis, return_debug=
                     savefig(fig, f"{savedir}/scatter-data=date-2.pdf")
 
                     plt.close("all")
-                    
+
+                    # Also plot each date
+                    # Plot scatter for each date, comparing two bregions.
+                    # from pythonlib.tools.pandastools import grouping_append_and_return_inner_items
+                    from pythonlib.tools.pandastools import plot_45scatter_color_by_var                       
+
+                    ############################# COMPARE y/x RATIOS
+                    if analysis in ["pig_vs_sp", "two_shapes"] and skip_ratio_stats==False:
+                    # if analysis == "two_shapes" and skip_ratio_stats==False:
+                        from neuralmonkey.scripts.analy_syntax_good_eucl_state_MULT import final_dfeffect_compute_plot_ratio_stats
+                        dfres, savedir_this = final_dfeffect_compute_plot_ratio_stats(DFEFFECT, eff1, eff2, 
+                            savedir, analysis, n_shuff=n_shuff_ratio)
+                        dfres.to_pickle(f"{savedir_this}/dfres.pkl")
+                        del dfres
+
                     ##########
                     if analysis == "rank_up_vs_down": # Scatter, each datapt a (date, cr, shape) and color by things (e.g, cr)
                         from pythonlib.dataset.dataset_analy.grammar import chunk_rank_global_extract
@@ -197,28 +319,32 @@ def final_dfeffect_plots_WRAPPER(RUN, save_suffix, yvar, analysis, return_debug=
                         else:
                             dfeffect = DFEFFECT.reset_index(drop=True)
 
-                        # Get chunk rank global
-                        try:
+                        ### Analyses the require chunk_rank_global.
+                        if True: # Good code. I'm just testing.
+                            # Get chunk rank global
+                            # try:
+                            assert all(dfeffect["task_kind_12"] == "prims_on_grid|prims_on_grid")
+                            dfeffect["task_kind"] = "prims_on_grid" # Hacky, to get the followng to not break
                             _ = chunk_rank_global_extract(dfeffect, shape_ratio_max= 0.99)
                             list_var_to_color = [None, "chunk_rank_12", "chunk_rank_global"]
-                        except Exception as err:
-                            list_var_to_color = [None, "chunk_rank_12"]
+                            # except Exception as err:
+                            #     list_var_to_color = [None, "chunk_rank_12"]
 
-                        #################################################################
-                        # (1) Scatterplot
-                        var_datapt = "da_cr_sh_12"
-                        for var_to_color in list_var_to_color:
-                            
-                            if var_to_color is not None:
-                                map_datapt_lev_to_colorlev, colorlevs_that_exist = plot_45scatter_means_flexible_grouping_color_mapper(
-                                    dfeffect, var_datapt, var_to_color)
-                            else:
-                                map_datapt_lev_to_colorlev, colorlevs_that_exist = None, None
-                            _, fig = plot_45scatter_means_flexible_grouping(dfeffect, "effect", eff1, eff2, "bregion", yvar, var_datapt, 
-                                                                            plot_text=False, shareaxes=True, alpha=0.3,
-                                                                            map_datapt_lev_to_colorlev=map_datapt_lev_to_colorlev,
-                                                                            colorlevs_that_exist=colorlevs_that_exist);
-                            savefig(fig, f"{savedir}/scatter-data={var_datapt}-colorby={var_to_color}.pdf")            
+                            #################################################################
+                            # (1) Scatterplot
+                            var_datapt = "da_cr_sh_12"
+                            for var_to_color in list_var_to_color:
+                                
+                                if var_to_color is not None:
+                                    map_datapt_lev_to_colorlev, colorlevs_that_exist = plot_45scatter_means_flexible_grouping_color_mapper(
+                                        dfeffect, var_datapt, var_to_color)
+                                else:
+                                    map_datapt_lev_to_colorlev, colorlevs_that_exist = None, None
+                                _, fig = plot_45scatter_means_flexible_grouping(dfeffect, "effect", eff1, eff2, "bregion", yvar, var_datapt, 
+                                                                                plot_text=False, shareaxes=True, alpha=0.3,
+                                                                                map_datapt_lev_to_colorlev=map_datapt_lev_to_colorlev,
+                                                                                colorlevs_that_exist=colorlevs_that_exist)
+                                savefig(fig, f"{savedir}/scatter-data={var_datapt}-colorby={var_to_color}.pdf")            
 
                         
                         #################################################################
@@ -240,7 +366,7 @@ def final_dfeffect_plots_WRAPPER(RUN, save_suffix, yvar, analysis, return_debug=
 
                             # Assign gap duration values to dfeffect
                             if which_gap_semantic_higher == "within_chk":
-                                dfeffect_this = dfeffect.copy()
+                                dfeffect_this = dfeffect.copy() # These effects will already be within the same (cr, shape)
                             else:
                                 # Then have to prune neural data to just those neural chunks that trans from or to (depending on analysis)
                                 dfeffect_this = dfeffect[dfeffect["da_cr_sh_12"].isin(dfgaps_agg["da_cr_sh_12"].unique().tolist())].reset_index(drop=True)
@@ -259,7 +385,7 @@ def final_dfeffect_plots_WRAPPER(RUN, save_suffix, yvar, analysis, return_debug=
                                                                     var_subplot, yvar, var_datapt, var_color, return_dfpivot=True)
                             savefig(fig1, f"{savedir}/scatter-data={var_datapt}-colorby=gap_dur-{which_gap_semantic_higher}.pdf")            
                             savefig(fig2, f"{savedir}/scatter-data={var_datapt}-x={x_lev_manip}_MIN_{y_lev_manip}-{which_gap_semantic_higher}-1.pdf")            
-                            savefig(fig3, f"{savedir}/scatter-data={var_datapt}-x={x_lev_manip}_MIN_{y_lev_manip}-{which_gap_semantic_higher}-2.pdf")            
+                            savefig(fig3, f"{savedir}/scatter-data={var_datapt}-x={x_lev_manip}_MIN_{y_lev_manip}-{which_gap_semantic_higher}-2.pdf") # MS FIGURE
                             plt.close("all")
 
                             ### Also do regression to get p-values
@@ -275,10 +401,11 @@ def final_dfeffect_plots_WRAPPER(RUN, save_suffix, yvar, analysis, return_debug=
 
                     ########################################
                     ### Bootstrapped plot
-                    from neuralmonkey.scripts.analy_syntax_good_eucl_state_MULT import final_dfeffect_mean_simple_PIGvsSP_bootstrap
+                    # Each datapt a unique (label_1, label_2), ie each a single datapt (acafter taking mean over all trials).
                     vars_conj = ["bregion", "date", "effect"]
                     nboot = 100
-                    DFSCORE_BOOT, effect_div_name, eff1_name, eff2_name = final_dfeffect_mean_simple_PIGvsSP_bootstrap(DFEFFECT, eff1, eff2, vars_conj, nboot)
+                    DFSCORE_BOOT, effect_div_name, eff1_name, eff2_name = final_dfeffect_mean_simple_PIGvsSP_bootstrap(DFEFFECT, 
+                                                                eff1, eff2, vars_conj, nboot)
                     DFSCORE_BOOT_WIDE = pivot_table(DFSCORE_BOOT, ["bregion", "i_boot"], ["effect"], [yvar], flatten_col_names=True)
                     effect_div_name = f"{yvar}-{effect_div_name}"
                     assert effect_div_name in DFSCORE_BOOT_WIDE
@@ -308,16 +435,6 @@ def final_dfeffect_plots_WRAPPER(RUN, save_suffix, yvar, analysis, return_debug=
                             scatter=True
                         )
 
-                    map_bregion_to_color = {
-                        "M1":"#587467eb",
-                        "PMd":"#077026ec",
-                        "PMv":"#397721ed",
-                        "SMA":"#98be3eec",
-                        "preSMA":"#f80f0f",
-                        "dlPFC":"#8675AF",
-                        "vlPFC":"#414994",
-                        "FP":"#287AC7",
-                    }
                     try:
                         from pythonlib.tools.pandastools import plot_class_kde
                         from pythonlib.tools.plottools import set_axis_lims_square_bounding_data_45line
@@ -340,7 +457,7 @@ def final_dfeffect_plots_WRAPPER(RUN, save_suffix, yvar, analysis, return_debug=
                                     cmap_per_class=map_bregion_to_color, ellipses=True)
                         savefig(fig, f"{savedir}/kdescatter-2.pdf")
 
-                        # --- 
+                        # --- Plot ratios, without FP
                         df = DFSCORE_BOOT_WIDE[~(DFSCORE_BOOT_WIDE["bregion"]=="FP")]
                         fig, ax = plot_class_kde(df, x=eff1_name, y=effect_div_name, label="bregion", levels=10, scatter=False,
                                     cmap_per_class=map_bregion_to_color, ellipses=True)
@@ -356,7 +473,7 @@ def final_dfeffect_plots_WRAPPER(RUN, save_suffix, yvar, analysis, return_debug=
                         sns.jointplot(DFSCORE_WIDE, x="dist_yue_diff-shapePIG", y="dist_yue_diff-shapeSP", hue="bregion", kind="kde", fill=True)
 
                     ########################################
-                    #### Stats -- compare preSMA to the others 
+                    #### Stats -- compare regions to each other
                     from neuralmonkey.scripts.analy_shape_invariance_all_plots_SP import _euclidianshuff_stats_linear_2br_scatter_wrapper, euclidianshuff_stats_linear_plot_wrapper
                     import os
                     var_same_same = "effect"
@@ -382,7 +499,7 @@ def final_dfeffect_plots_WRAPPER(RUN, save_suffix, yvar, analysis, return_debug=
                     for var in vars_needed:
                         if var not in DFEFFECT:
                             DFEFFECT[var] = "none"
-                    DFSTATS_2BR = _euclidianshuff_stats_linear_2br_scatter_wrapper(DFEFFECT, var_same_same, var_datapt, savedir_this, 
+                    _ = _euclidianshuff_stats_linear_2br_scatter_wrapper(DFEFFECT, var_same_same, var_datapt, savedir_this, 
                                                                         plot_heatmap_counts, plot_catplots,
                                                                         plot_results_scatter, var_same_same_levels)
                     
@@ -411,25 +528,12 @@ def final_dfeffect_plots_WRAPPER(RUN, save_suffix, yvar, analysis, return_debug=
                     for ax in g.axes.flatten():
                         ax.axvline(0, color="k", alpha=0.5)
                         
-                    # # Make markers hollow (no fill, only edgecolor)
-                    # for ax in g.axes.flat:
-                    #     for coll in ax.collections:
-                    #         if hasattr(coll, "get_facecolors"):
-                    #             facecolors = coll.get_facecolors()
-                    #             if len(facecolors) > 0:
-                    #                 coll.set_facecolors("none")  # hollow
-                    #                 # keep edgecolors (already set by palette)
-
-                    # # Fix legend markers to also be hollow
-                    # for lh in g._legend.legendHandles:
-                    #     lh.set_facecolor("none")
-                    #     lh.set_edgecolor(map_bregion_to_color.get(lh.get_label(), "black"))
                     savefig(g, f"{savedir}/compare_regions-sessions-catplot-1.pdf")
 
                     # (2) Scatterplot -- Given preSMA, compare it to every other region.
                     # TODO, write a versoin above that plots all bregions.
                     from pythonlib.tools.pandastools import plot_45scatter_means_flexible_grouping
-                    plot_45scatter_means_flexible_grouping(DFEFFECT, "bregion", "SMA", "preSMA", "effect", yvar, "date", plot_text=True, shareaxes=True);
+                    plot_45scatter_means_flexible_grouping(DFEFFECT, "bregion", "SMA", "preSMA", "effect", yvar, "date", plot_text=True, shareaxes=True)
 
                     if False:
                         # These methods dont work. they get diff between variables, not diff between regions.
@@ -440,6 +544,9 @@ def final_dfeffect_plots_WRAPPER(RUN, save_suffix, yvar, analysis, return_debug=
                         dfsummary, dfpivot, effect_div_name, eff1_name, eff2_name = dfdist_compute_effects_diff_wideform(
                             DFEFFECT_AGG, "effect", eff1, eff2, ["bregion", "date"])    
 
+
+                    ########################################################
+                    #### Plots -- compare preSMA to the others 
                     from neuralmonkey.analyses.euclidian_distance import dfdist_compute_regions_diff
                     # vars_datapt = ["effect", "animal", "date", "bregion", "question", "subspace", "chunk_rank_12", "shape_12"]
                     # vars_datapt = ["effect", "animal", "date", "bregion", "question", "subspace"]
@@ -468,7 +575,7 @@ def final_dfeffect_plots_WRAPPER(RUN, save_suffix, yvar, analysis, return_debug=
                     plt.close("all")
 
 
-def final_dfeffect_compute_plot_ratio_stats(DFEFFECT, eff1, eff2, savedir, n_shuff=10000):
+def final_dfeffect_compute_plot_ratio_stats(DFEFFECT, eff1, eff2, savedir, analysis, n_shuff=10000):
     """
     Finally summary stats for two shapes, compare pairwise bregions, each bregion one value, which is
     its ratio (y/x axis)
@@ -480,6 +587,7 @@ def final_dfeffect_compute_plot_ratio_stats(DFEFFECT, eff1, eff2, savedir, n_shu
 
     from pythonlib.tools.pandastools import replace_None_with_string
     from neuralmonkey.scripts.analy_syntax_good_eucl_state_MULT import final_dfeffect_mean_simple_PIGvsSP
+    from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper
 
     savedir_this = f"{savedir}/stats_compare_ratios"
     os.makedirs(savedir_this, exist_ok=True)
@@ -487,25 +595,43 @@ def final_dfeffect_compute_plot_ratio_stats(DFEFFECT, eff1, eff2, savedir, n_shu
     ### First, prep dataste
     DFEFFECT = replace_None_with_string(DFEFFECT)
 
-    # - What grouping for shuffling? Idea is that you flip the labels for the two brain regions
-    # within each level of grouping. Choose a grouping that gives many levels but still reasonable
-    # to consider independnet comparisons
-    # vars_datapt = ["animal", "date", "question", "subspace", "labels_1", "labels_2", "effect"] # _index
-    # vars_datapt = ["animal", "date", "question", "subspace", "effect", "labels_1"] # ok
+    if analysis == "two_shapes":
+        # - What grouping for shuffling? Idea is that you flip the labels for the two brain regions
+        # within each level of grouping. Choose a grouping that gives many levels but still reasonable
+        # to consider independnet comparisons
+        # vars_datapt = ["animal", "date", "question", "subspace", "labels_1", "labels_2", "effect"] # _index
+        # vars_datapt = ["animal", "date", "question", "subspace", "effect", "labels_1"] # ok
 
-    # # This is probably most reasonable, each (chunk, shape, gridloc_1)
-    # vars_datapt = ["animal", "date", "question", "subspace", "effect", 
-    #             "epoch_1", "chunk_within_rank_1", "chunk_rank_1", "shape_1", "gridloc_1"] # _index
-    
-    # This gets stronger stats.
-    vars_datapt = ["animal", "date", "question", "subspace", "effect", 
-                "epoch_1", "chunk_within_rank_1", "chunk_rank_1", "shape_1", "gridloc_1", "CTXT_loc_prev_1"] # _index
+        # # This is probably most reasonable, each (chunk, shape, gridloc_1)
+        # vars_datapt = ["animal", "date", "question", "subspace", "effect", 
+        #             "epoch_1", "chunk_within_rank_1", "chunk_rank_1", "shape_1", "gridloc_1"] # _index
+        
+        # This gets stronger stats (Older version)
+        vars_datapt = ["animal", "date", "question", "subspace", "effect", 
+                    "epoch_1", "chunk_within_rank_1", "chunk_rank_1", "shape_1", "gridloc_1", "CTXT_loc_prev_1"] # Originaly good. (n=593 groups)
 
-    # This is alternative, not great.
-    # vars_datapt = ["animal", "date", "question", "subspace", "effect", 
-    #             "epoch_1", "chunk_within_rank_1", "shape_1", "gridloc_1"] # _index
-    
+        # This is alternative, not great.
+        # vars_datapt = ["animal", "date", "question", "subspace", "effect", 
+        #             "epoch_1", "chunk_within_rank_1", "shape_1", "gridloc_1"] # _index
+
+        # # This gets even stronger stats (useful for Pancho) [good on run 29]
+        # vars_datapt = ["animal", "date", "question", "subspace", "effect", 
+        #     "epoch_12", "chunk_within_rank_12", "chunk_rank_12", "shape_12", "gridloc_12", "CTXT_loc_prev_12"] # (n=682)
+
+    elif analysis == "pig_vs_sp":
+        # vars_datapt = ["animal", "date", "question", "subspace", "effect", 
+        #     "task_kind_12", "shape_12", "gridloc_12"] # Too strong. Everything is significaint, includng PFC less than preSMA.
+        # vars_datapt = ["animal", "date", "question", "subspace", "effect", 
+        #     "task_kind_12", "shape_12"] # Good for D, not enough data for P
+        vars_datapt = ["animal", "date", "question", "subspace", "effect", 
+            "task_kind_12", "shape_1", "gridloc_1"] # This is strong for D, but perfect for P
+    else:
+        print(analysis)
+        assert False, "What is this?"
+
     DFEFFECT = append_col_with_grp_index(DFEFFECT, vars_datapt, "_grp")
+
+    print("[ratio stats] This many unique grps exist: ", len(DFEFFECT["_grp"].unique()))
     
     # get preSMA against every other area
     list_bregion_1 = ["preSMA"]
@@ -521,12 +647,18 @@ def final_dfeffect_compute_plot_ratio_stats(DFEFFECT, eff1, eff2, savedir, n_shu
         return df_shuff
 
     res = []
-    for i, bregion1 in enumerate(list_bregion_1):
-        for j, bregion2 in enumerate(list_bregion_2):
+    for _, bregion1 in enumerate(list_bregion_1):
+        for _, bregion2 in enumerate(list_bregion_2):
             # if j>i:
             print(bregion1, bregion2)
             # Slice to just these, for doing shuffle between them
             dfeffect = DFEFFECT[DFEFFECT["bregion"].isin([bregion1, bregion2])].reset_index(drop=True)
+
+            # Make sure you actually have data to shuffle. Each group should have both brain regions.
+            print("Cleaning up pairs. Starting n = ", len(dfeffect))
+            dfeffect, _ = extract_with_levels_of_conjunction_vars_helper(dfeffect, "bregion", 
+                vars_datapt, 1, None, 2, [bregion1, bregion2], False, None)
+            print("... Resulting n = ", len(dfeffect))
 
             # Get actual value
             if False:
@@ -554,15 +686,15 @@ def final_dfeffect_compute_plot_ratio_stats(DFEFFECT, eff1, eff2, savedir, n_shu
             # Permutation test functions
             def funstat(df):
                 _, dfmerge_wide, effect_div_name, _, _ = final_dfeffect_mean_simple_PIGvsSP(df, eff1, eff2, doplot=False)
-                val_bregion2 = dfmerge_wide[dfmerge_wide["bregion"] == bregion2][effect_div_name].values[0]
-                val_bregion1 = dfmerge_wide[dfmerge_wide["bregion"] == bregion1][effect_div_name].values[0]
+                val_bregion2 = dfmerge_wide[dfmerge_wide["bregion"] == bregion2][effect_div_name].values[0] # ratio of effects, for this bregion.
+                val_bregion1 = dfmerge_wide[dfmerge_wide["bregion"] == bregion1][effect_div_name].values[0] # ...
                 return val_bregion2 - val_bregion1
 
             # Plot shuff and overlay actual
             from pythonlib.tools.statstools import permutationTest
             p, stat_actual, stats_shuff, fig = permutationTest(dfeffect, funstat, funshuff, 
                                                                                 n_shuff, force_return_stats=True)
-                                                                                
+
             # Save things
             savefig(fig, f"{savedir_this}/{bregion2}-minus-{bregion1}.pdf")
             plt.close("all")
@@ -577,6 +709,1218 @@ def final_dfeffect_compute_plot_ratio_stats(DFEFFECT, eff1, eff2, savedir, n_shu
 
     dfres = pd.DataFrame(res)
     return dfres, savedir_this
+
+def final_dfeffect_compute_ratio_OLS_deviation(DFEFFECT, eff1, eff2, FIT_MODE = "loo",
+    FIT_THROUGH_ORIGIN = True, RESCALE_BY_MAX_PROJECTION = True, var_datapt=None,
+    FIT_ON="bregion_means", DIAG_SQUARE=True, DIAG_SHARE_AXES=False,
+    RESID_KIND="orthogonal", savedir=None, SAVE_FIGS=False,
+    LL_DODGE_BY_ANIMAL=True, ALPHA_DATAPT=0.35, ALPHA_DATE=0.55):
+    """
+    OLS residual vs. projection of (eff1, eff2) effect means across brain regions.
+
+    For each (animal, date) session, fit OLS y ~ x, then for each region compute:
+      - projection: signed coordinate along the OLS line
+      - residual: signed deviation from the line (see RESID_KIND)
+        (negative ⇒ below the line ⇒ lower y/x)
+
+    Scientific goal: preSMA should have more negative residuals than other regions.
+
+    PARAMS
+    ------
+    DFEFFECT : DataFrame
+        Must have columns: animal, date, bregion, effect, dist_yue_diff.
+        If var_datapt is set, that column must exist too.
+    eff1, eff2 : hashable
+        Values of the "effect" column for the x and y axes (ratio ≈ eff2/eff1).
+    FIT_MODE : {"loo", "all"}
+        "loo" — for each region X, fit OLS excluding that region (leave-one-out).
+        "all" — single OLS fit on all regions; project every region onto that line.
+    FIT_THROUGH_ORIGIN : bool
+        True  → y = b*x (ratio-native, no intercept).
+        False → y = a + b*x.
+    RESCALE_BY_MAX_PROJECTION : bool
+        If True, also plot residual-vs-projection after dividing projection and residual
+        (and their SEMs) by max(projection) within each (animal, date).
+    var_datapt : str or None
+        Low-level condition column (e.g. "labels_1"). Required if FIT_ON="low_level".
+        If set, also project each low-level datapoint onto the session OLS line and run LME stats.
+    FIT_ON : {"bregion_means", "low_level"}
+        What goes into the per-(animal,date) OLS regression:
+        "bregion_means" — one (x,y) per bregion (≈8 points).
+        "low_level" — all low-level (var_datapt) points that date (requires var_datapt).
+        Session-level summaries always evaluate residuals on bregion means projected
+        onto that fitted line.
+    DIAG_SQUARE : bool
+        If True, per-date regression diagnostic panels use equal aspect and square axes.
+    DIAG_SHARE_AXES : bool
+        If True, share x and y limits across all per-date diagnostic panels.
+    RESID_KIND : {"orthogonal", "vertical"}
+        Deviation metric used for residual plots, heatmap, and stats:
+        "orthogonal" — signed perpendicular distance to the OLS line (geometry in xy).
+        "vertical" — classical OLS residual y - (a + b*x).
+    savedir : str or None
+        Directory for saved figures when SAVE_FIGS is True.
+    SAVE_FIGS : bool
+        If True, save all figures into savedir (created if needed) with descriptive names,
+        and save related stats/tables as CSVs with matching stems
+        (e.g. 06_..._stats.csv next to 06_....pdf).
+    LL_DODGE_BY_ANIMAL : bool
+        For low-level plots that combine animals: if True, x-dodge points by animal within
+        each bregion and draw one summary marker (mean±SE) per animal; if False, use the
+        previous pooled bar + overlapping jitter style.
+    ALPHA_DATAPT : float
+        Scatter alpha for low-level (var_datapt) datapoints.
+    ALPHA_DATE : float
+        Scatter / errorbar alpha for date-level means (one point per date).
+
+
+    Returns
+    -------
+    dict with keys:
+      DF, DF_sc, DF_plot, DF_diff, stats_date, DF_FIT_INFO
+      and if var_datapt is set: DF_ll, DF_diff_ll, stats_ll_resid, stats_ll_diff, mdf_ll_resid
+    """
+    import numpy as np
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    from scipy.stats import wilcoxon, sem
+    from matplotlib.lines import Line2D
+
+    yvar = "dist_yue_diff"
+    dfeffect = DFEFFECT.copy()
+    assert FIT_ON in ("bregion_means", "low_level")
+    assert RESID_KIND in ("orthogonal", "vertical")
+    if FIT_ON == "low_level":
+        assert var_datapt is not None, "FIT_ON='low_level' requires var_datapt"
+    if SAVE_FIGS:
+        assert savedir is not None, "SAVE_FIGS=True requires savedir"
+        os.makedirs(savedir, exist_ok=True)
+
+    # One (x,y) per group — same aggregation as the 45° scatter
+    def _build_df_xy(dfeffect, datapt_cols=None):
+        """datapt_cols: extra grouping cols beyond (animal, date, bregion), e.g. ['labels_1']."""
+        grp_cols = ["animal", "date", "bregion"] + (datapt_cols or [])
+        rows = []
+        for grp, g in dfeffect.groupby(grp_cols):
+            animal, date, bregion = grp[:3]
+            datapt_vals = {c: v for c, v in zip(datapt_cols or [], grp[3:])}
+            gx = g[g["effect"] == eff1]
+            gy = g[g["effect"] == eff2]
+            if len(gx) == 0 or len(gy) == 0:
+                continue
+            row = {
+                "animal": animal,
+                "date": date,
+                "bregion": bregion,
+                "x": gx[yvar].mean(),
+                "y": gy[yvar].mean(),
+                "x_sem": sem(gx[yvar]) if len(gx) > 1 else 0.0,
+                "y_sem": sem(gy[yvar]) if len(gy) > 1 else 0.0,
+            }
+            row.update(datapt_vals)
+            rows.append(row)
+        return pd.DataFrame(rows)
+
+    df_xy = _build_df_xy(dfeffect)
+    if var_datapt is not None:
+        assert var_datapt in dfeffect.columns, f"{var_datapt} not in DFEFFECT"
+        df_xy_ll = _build_df_xy(dfeffect, datapt_cols=[var_datapt])
+    else:
+        df_xy_ll = None
+
+    df_fit = df_xy_ll if FIT_ON == "low_level" else df_xy
+
+    def _ols_slope_intercept(x_fit, y_fit, through_origin):
+        if through_origin:
+            denom_xx = np.sum(x_fit ** 2)
+            if denom_xx == 0:
+                return None, None
+            b = float(np.sum(x_fit * y_fit) / denom_xx)
+            a = 0.0
+        else:
+            b, a = np.polyfit(x_fit, y_fit, 1)
+            a, b = float(a), float(b)
+        return a, b
+
+    def _r2(x_fit, y_fit, a, b, through_origin):
+        yhat = a + b * np.asarray(x_fit, dtype=float)
+        y_fit = np.asarray(y_fit, dtype=float)
+        ss_res = np.sum((y_fit - yhat) ** 2)
+        ss_tot = np.sum(y_fit ** 2) if through_origin else np.sum((y_fit - y_fit.mean()) ** 2)
+        return float(1.0 - ss_res / ss_tot) if ss_tot > 0 else np.nan
+
+    def _proj_resid(x0, y0, a, b):
+        denom = np.sqrt(1.0 + b ** 2)
+        residual_ortho = (y0 - a - b * x0) / denom
+        projection = (x0 + (y0 - a) * b) / denom
+        resid_vertical = y0 - (a + b * x0)
+        return projection, residual_ortho, resid_vertical
+
+    def _foot_of_perpendicular(x0, y0, a, b):
+        x_f = (x0 + b * (y0 - a)) / (1.0 + b ** 2)
+        y_f = a + b * x_f
+        return x_f, y_f
+
+    def _proj_resid_sem(x_sem, y_sem, a, b):
+        """Error propagation for orthogonal / vertical residuals and projection (a,b fixed)."""
+        denom = np.sqrt(1.0 + b ** 2)
+        dp_dx, dp_dy = 1.0 / denom, b / denom
+        dro_dx, dro_dy = -b / denom, 1.0 / denom
+        drv_dx, drv_dy = -b, 1.0
+        projection_sem = np.sqrt((dp_dx * x_sem) ** 2 + (dp_dy * y_sem) ** 2)
+        residual_ortho_sem = np.sqrt((dro_dx * x_sem) ** 2 + (dro_dy * y_sem) ** 2)
+        resid_vertical_sem = np.sqrt((drv_dx * x_sem) ** 2 + (drv_dy * y_sem) ** 2)
+        return projection_sem, residual_ortho_sem, resid_vertical_sem
+
+    def _get_ols_params_by_date(df_for_fit, through_origin, fit_mode="loo"):
+        """Fit OLS within each (animal, date) on df_for_fit rows.
+
+        Returns
+        -------
+        params : dict (animal, date, bregion) -> (a, b)
+        fit_info : dict (animal, date) -> dict with all-points fit diagnostics
+            (a, b, r2, n, used for per-session diagnostic plots).
+        """
+        params = {}
+        fit_info = {}
+        for (animal, date), gdate in df_for_fit.groupby(["animal", "date"]):
+            bregions = gdate["bregion"].unique().tolist()
+            if len(bregions) < 3:
+                continue
+            # all-points fit (for diagnostics + FIT_MODE='all')
+            x_all = gdate["x"].values.astype(float)
+            y_all = gdate["y"].values.astype(float)
+            a_all, b_all = _ols_slope_intercept(x_all, y_all, through_origin)
+            if a_all is None:
+                continue
+            fit_info[(animal, date)] = {
+                "animal": animal,
+                "date": date,
+                "a": a_all,
+                "b": b_all,
+                "r2": _r2(x_all, y_all, a_all, b_all, through_origin),
+                "n": len(gdate),
+                "n_bregion": len(bregions),
+                "through_origin": through_origin,
+                "fit_mode": fit_mode,
+                "fit_on": FIT_ON,
+            }
+            if fit_mode == "all":
+                for bregion in bregions:
+                    params[(animal, date, bregion)] = (a_all, b_all)
+            else:
+                for bregion in bregions:
+                    others = gdate[gdate["bregion"] != bregion]
+                    if others["bregion"].nunique() < 2:
+                        continue
+                    a, b = _ols_slope_intercept(
+                        others["x"].values.astype(float), others["y"].values.astype(float), through_origin)
+                    if a is None:
+                        continue
+                    params[(animal, date, bregion)] = (a, b)
+        return params, fit_info
+
+    def _apply_date_ols_to_datapts(df_xy_pts, params, through_origin, fit_mode, datapt_cols=None):
+        """Project each row's (x,y) using the session OLS line for its (animal, date, bregion)."""
+        datapt_cols = datapt_cols or []
+        rows = []
+        for _, row in df_xy_pts.iterrows():
+            key = (row["animal"], row["date"], row["bregion"])
+            if key not in params:
+                continue
+            a, b = params[key]
+            x0, y0 = float(row["x"]), float(row["y"])
+            x_sem, y_sem = float(row["x_sem"]), float(row["y_sem"])
+            projection, residual_ortho, resid_vertical = _proj_resid(x0, y0, a, b)
+            projection_sem, residual_ortho_sem, resid_vertical_sem = _proj_resid_sem(x_sem, y_sem, a, b)
+            out = {
+                "animal": row["animal"],
+                "date": row["date"],
+                "bregion": row["bregion"],
+                "x": x0,
+                "y": y0,
+                "x_sem": x_sem,
+                "y_sem": y_sem,
+                "slope": b,
+                "intercept": a,
+                "through_origin": through_origin,
+                "fit_mode": fit_mode,
+                "fit_on": FIT_ON,
+                "projection": projection,
+                "residual_ortho": residual_ortho,
+                "resid_vertical": resid_vertical,
+                "projection_sem": projection_sem,
+                "residual_ortho_sem": residual_ortho_sem,
+                "resid_vertical_sem": resid_vertical_sem,
+                # active residual filled by _select_resid_kind
+                "residual": residual_ortho,
+                "residual_sem": residual_ortho_sem,
+                "ratio": y0 / x0 if x0 != 0 else np.nan,
+            }
+            for c in datapt_cols:
+                out[c] = row[c]
+            rows.append(out)
+        return pd.DataFrame(rows)
+
+    def _select_resid_kind(df, resid_kind):
+        """Set residual / residual_sem from orthogonal or vertical deviation."""
+        df = df.copy()
+        if resid_kind == "vertical":
+            df["residual"] = df["resid_vertical"]
+            df["residual_sem"] = df["resid_vertical_sem"]
+        else:
+            df["residual"] = df["residual_ortho"]
+            df["residual_sem"] = df["residual_ortho_sem"]
+        df["resid_kind"] = resid_kind
+        return df
+
+    def _plot_session_fit_diagnostics(df_for_fit, df_means, fit_info, params, through_origin,
+                                      max_sessions=None, square=True, share_axes=False,
+                                      resid_kind="orthogonal"):
+        """Per (animal, date): regression points, fit line, R2, residual drops of bregion means.
+
+        Displayed line / R² / slope / intercept are always the all-points session fit.
+        Residual feet use that same line when FIT_MODE='all', or each bregion's LOO
+        line when FIT_MODE='loo' (so feet match the residuals used in analysis).
+        resid_kind controls whether drops are orthogonal or vertical.
+        """
+        sessions = sorted(fit_info.keys())
+        if max_sessions is not None:
+            sessions = sessions[:max_sessions]
+        if len(sessions) == 0:
+            return
+        ncols = 4
+        nrows = int(np.ceil(len(sessions) / ncols))
+        panel = 3.4 if square else 3.6
+        fig, axes = plt.subplots(
+            nrows, ncols,
+            figsize=(panel * ncols, panel * nrows),
+            squeeze=False,
+            sharex=share_axes, sharey=share_axes)
+        for ax, (animal, date) in zip(axes.flatten(), sessions):
+            info = fit_info[(animal, date)]
+            a_all, b_all = info["a"], info["b"]
+            gfit = df_for_fit[(df_for_fit["animal"] == animal) & (df_for_fit["date"] == date)]
+            gmean = df_means[(df_means["animal"] == animal) & (df_means["date"] == date)]
+            # regression datapoints
+            for br in gfit["bregion"].unique():
+                g = gfit[gfit["bregion"] == br]
+                c = map_bregion_to_color.get(br, "gray")
+                ax.scatter(g["x"], g["y"], c=c, s=18, alpha=0.45, edgecolors="none", zorder=2)
+            # bregion means + residual drop to fit line
+            for _, row in gmean.iterrows():
+                br = row["bregion"]
+                c = map_bregion_to_color.get(br, "gray")
+                x0, y0 = float(row["x"]), float(row["y"])
+                x_sem = float(row["x_sem"]) if "x_sem" in row and np.isfinite(row["x_sem"]) else 0.0
+                y_sem = float(row["y_sem"]) if "y_sem" in row and np.isfinite(row["y_sem"]) else 0.0
+                key = (animal, date, br)
+                if FIT_MODE == "loo" and key in params:
+                    a_use, b_use = params[key]
+                else:
+                    a_use, b_use = a_all, b_all
+                if resid_kind == "vertical":
+                    xf, yf = x0, a_use + b_use * x0
+                else:
+                    xf, yf = _foot_of_perpendicular(x0, y0, a_use, b_use)
+                ax.plot([x0, xf], [y0, yf], color=c, lw=1.0, alpha=0.85, zorder=3)
+                ax.scatter([xf], [yf], c=c, s=20, marker="x", zorder=4)
+                ax.errorbar(
+                    [x0], [y0], xerr=[x_sem], yerr=[y_sem],
+                    fmt="o", color=c, ecolor=c, elinewidth=1.0, capsize=0,
+                    markersize=6, markeredgecolor="k", markeredgewidth=0.6, zorder=5)
+            # fit line spanning data (all-points fit)
+            xs = np.concatenate([gfit["x"].values, gmean["x"].values])
+            ys = np.concatenate([gfit["y"].values, gmean["y"].values])
+            x_lo, x_hi = float(np.min(xs)), float(np.max(xs))
+            if through_origin and x_lo > 0:
+                x_lo = 0.0
+            x_line = np.linspace(x_lo, x_hi, 50)
+            ax.plot(x_line, a_all + b_all * x_line, "k-", lw=1.5, zorder=1)
+            ax.axhline(0, color="k", alpha=0.2, lw=0.8)
+            ax.axvline(0, color="k", alpha=0.2, lw=0.8)
+            if square:
+                # equal data units + square box; pad slightly beyond data
+                y_lo, y_hi = float(np.min(ys)), float(np.max(ys))
+                if through_origin and y_lo > 0:
+                    y_lo = 0.0
+                lo = min(x_lo, y_lo)
+                hi = max(x_hi, y_hi)
+                pad = 0.05 * (hi - lo) if hi > lo else 0.05
+                ax.set_xlim(lo - pad, hi + pad)
+                ax.set_ylim(lo - pad, hi + pad)
+                ax.set_aspect("equal", adjustable="box")
+            ax.set_title(
+                f"{animal} {date}\na={a_all:.3g}, b={b_all:.3g}, R²={info['r2']:.3f}, n={info['n']}",
+                fontsize=8)
+            ax.set_xlabel("x (eff1)", fontsize=8)
+            ax.set_ylabel("y (eff2)", fontsize=8)
+        for ax in axes.flatten()[len(sessions):]:
+            ax.axis("off")
+        if share_axes and square:
+            # one shared square limit across all used axes
+            used = list(axes.flatten()[:len(sessions)])
+            xlims = [ax.get_xlim() for ax in used]
+            ylims = [ax.get_ylim() for ax in used]
+            lo = min(min(x[0] for x in xlims), min(y[0] for y in ylims))
+            hi = max(max(x[1] for x in xlims), max(y[1] for y in ylims))
+            for ax in used:
+                ax.set_xlim(lo, hi)
+                ax.set_ylim(lo, hi)
+                ax.set_aspect("equal", adjustable="box")
+        feet_note = "feet=LOO line per bregion" if FIT_MODE == "loo" else "feet=all-points line"
+        drop_note = "vertical drops" if resid_kind == "vertical" else "orthogonal drops"
+        fig.suptitle(
+            f"Per-session OLS | RESID_KIND={resid_kind} ({drop_note}) | fit_on={FIT_ON} | "
+            f"{feet_note} | through_origin={through_origin}\n"
+            f"small pts=regression data; large dots=bregion means; lines=residual ({resid_kind})",
+            y=1.02, fontsize=10)
+        plt.tight_layout()
+        return fig
+
+    def _rescale_by_max_projection(DF):
+        """Within each (animal, date), divide projection and residual by the max
+        projection across all bregions for that session (so max projection = 1)."""
+        df = DF.copy()
+        df["max_proj"] = df.groupby(["animal", "date"])["projection"].transform("max")
+        bad = (df["max_proj"] == 0) | ~np.isfinite(df["max_proj"])
+        scale_cols = [
+            "projection", "residual", "projection_sem", "residual_sem",
+            "residual_ortho", "resid_vertical",
+            "residual_ortho_sem", "resid_vertical_sem",
+        ]
+        scale_cols = [c for c in scale_cols if c in df.columns]
+        df.loc[bad, scale_cols] = np.nan
+        ok = ~bad
+        for c in scale_cols:
+            df.loc[ok, c] = df.loc[ok, c] / df.loc[ok, "max_proj"]
+        return df
+
+    def _plot_resid_heatmap(DF, title, resid_kind):
+        """One heatmap: rows=(animal, date), cols=bregion, color=residual deviation."""
+        if DF is None or len(DF) == 0:
+            return None
+        order = [br for br in map_bregion_to_color if br in DF["bregion"].unique()]
+        df = DF.copy()
+        df["_session"] = df["animal"].astype(str) + " " + df["date"].astype(str)
+        # stable session order: animal then date
+        sessions = (
+            df[["animal", "date", "_session"]]
+            .drop_duplicates()
+            .sort_values(["animal", "date"])["_session"]
+            .tolist()
+        )
+        mat = (
+            df.pivot_table(index="_session", columns="bregion", values="residual", aggfunc="mean")
+            .reindex(index=sessions, columns=order)
+        )
+        vmax = np.nanmax(np.abs(mat.values)) if np.isfinite(mat.values).any() else 1.0
+        if not np.isfinite(vmax) or vmax == 0:
+            vmax = 1.0
+        n_row, n_col = mat.shape
+        fig_w = max(5.5, 0.7 * n_col + 2.2)
+        fig_h = max(3.5, 0.32 * n_row + 1.5)
+        fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+        sns.heatmap(
+            mat, ax=ax, cmap="RdBu_r", center=0, vmin=-vmax, vmax=vmax,
+            linewidths=0.4, linecolor="white",
+            cbar_kws={"label": f"RESID_KIND={resid_kind}", "shrink": 0.8},
+            annot=True, fmt=".2f", annot_kws={"size": 7})
+        ax.set_xlabel("bregion")
+        ax.set_ylabel("animal date")
+        ax.set_title(title)
+        plt.tight_layout()
+        return fig, mat
+
+    def _plot_resid_vs_proj(DF, ax, title, xlab=None, ylab=None):
+        from matplotlib.lines import Line2D
+        bregions_plot = [br for br in map_bregion_to_color if br in DF["bregion"].unique()]
+        order = [br for br in bregions_plot if br != "preSMA"] + (["preSMA"] if "preSMA" in bregions_plot else [])
+        animals = sorted(DF["animal"].unique())
+        animal_markers = {a: m for a, m in zip(animals, ["o", "s", "^", "D", "v", "P"])}
+        for bregion in order:
+            g = DF[DF["bregion"] == bregion]
+            c = map_bregion_to_color[bregion]
+            # per-date point ± SE; marker by animal, color by bregion
+            ax.errorbar(
+                g["projection"], g["residual"],
+                xerr=g["projection_sem"], yerr=g["residual_sem"],
+                fmt="none", ecolor=c, alpha=ALPHA_DATE, elinewidth=0.8, capsize=0,
+                zorder=2 if bregion != "preSMA" else 3)
+            for animal in animals:
+                ga = g[g["animal"] == animal]
+                if len(ga) == 0:
+                    continue
+                ax.scatter(
+                    ga["projection"], ga["residual"], c=c,
+                    marker=animal_markers[animal],
+                    label=bregion if animal == animals[0] else None,
+                    alpha=ALPHA_DATE, s=40, edgecolors="none",
+                    zorder=3 if bregion == "preSMA" else 2)
+            # bregion mean ± SE across dates (square marker, thicker errorbars)
+            ax.errorbar(g["projection"].mean(), g["residual"].mean(),
+                        xerr=g["projection"].sem(), yerr=g["residual"].sem(),
+                        fmt="s", color=c, ecolor=c, elinewidth=2.2, capsize=0,
+                        markersize=7, markeredgecolor="k", markeredgewidth=0.6,
+                        zorder=5 if bregion == "preSMA" else 4)
+        ax.axhline(0, color="k", alpha=0.35, lw=1)
+        ax.set_xlabel(xlab or "projection (along OLS line)")
+        ax.set_ylabel(ylab or f"residual ({RESID_KIND})")
+        ax.set_title(title)
+        # bregion color legend + animal marker legend
+        br_handles = [
+            Line2D([0], [0], marker="s", color="none", markerfacecolor=map_bregion_to_color[br],
+                   markersize=7, label=br)
+            for br in order]
+        an_handles = [
+            Line2D([0], [0], marker=animal_markers[a], color="k", linestyle="none",
+                   markersize=7, label=a)
+            for a in animals]
+        leg1 = ax.legend(handles=br_handles, fontsize=7, frameon=False, loc="best", title="bregion")
+        ax.add_artist(leg1)
+        if len(animals) > 1:
+            ax.legend(handles=an_handles, fontsize=7, frameon=False, loc="lower right", title="animal")
+
+    def _plot_resid_vs_proj_by_animal(DF, title, xlab=None, ylab=None):
+        """resid vs projection, one panel per animal; each point is one date × bregion."""
+        from matplotlib.lines import Line2D
+        animals = sorted(DF["animal"].unique())
+        if len(animals) == 0:
+            return None
+        bregions_plot = [br for br in map_bregion_to_color if br in DF["bregion"].unique()]
+        order = [br for br in bregions_plot if br != "preSMA"] + (["preSMA"] if "preSMA" in bregions_plot else [])
+        fig, axes = plt.subplots(
+            1, len(animals), figsize=(5.0 * len(animals), 4.5), sharex=False, sharey=False)
+        if len(animals) == 1:
+            axes = np.array([axes])
+        for ax, animal in zip(axes, animals):
+            df_a = DF[DF["animal"] == animal]
+            for bregion in order:
+                g = df_a[df_a["bregion"] == bregion]
+                if len(g) == 0:
+                    continue
+                c = map_bregion_to_color[bregion]
+                # one point per date (± SE from within-date x/y SEM)
+                ax.errorbar(
+                    g["projection"], g["residual"],
+                    xerr=g["projection_sem"], yerr=g["residual_sem"],
+                    fmt="none", ecolor=c, alpha=ALPHA_DATE, elinewidth=0.8, capsize=0,
+                    zorder=2 if bregion != "preSMA" else 3)
+                ax.scatter(
+                    g["projection"], g["residual"], c=c, marker="o",
+                    label=bregion, alpha=ALPHA_DATE, s=42, edgecolors="none",
+                    zorder=3 if bregion == "preSMA" else 2)
+                # mean across dates for this animal (square, thicker errorbars)
+                ax.errorbar(
+                    g["projection"].mean(), g["residual"].mean(),
+                    xerr=g["projection"].sem(), yerr=g["residual"].sem(),
+                    fmt="s", color=c, ecolor=c, elinewidth=2.2, capsize=0,
+                    markersize=7, markeredgecolor="k", markeredgewidth=0.6,
+                    zorder=5 if bregion == "preSMA" else 4)
+            ax.axhline(0, color="k", alpha=0.35, lw=1)
+            ax.set_title(animal)
+            ax.set_xlabel(xlab or "projection (along OLS line)")
+            ax.set_ylabel(ylab or f"residual ({RESID_KIND})")
+        br_handles = [
+            Line2D([0], [0], marker="s", color="none", markerfacecolor=map_bregion_to_color[br],
+                   markersize=7, label=br)
+            for br in order]
+        axes[-1].legend(handles=br_handles, fontsize=7, frameon=False, loc="best", title="bregion")
+        fig.suptitle(title, y=1.02)
+        plt.tight_layout()
+        return fig
+
+    def _compute_presma_residual_diff(DF, group_cols=("animal", "date"), bregion_ref="preSMA"):
+        """For each group and non-ref bregion: residual(other) - residual(ref).
+
+        Positive ⇒ other is above preSMA on the residual axis (above the OLS line
+        relative to preSMA).
+
+        residual_diff_sem is from error propagation under independence of the two
+        region residuals within a session:
+          sem(diff) = sqrt(sem(other)^2 + sem(preSMA)^2)
+        where each residual_sem already came from propagating x/y SEM through the
+        OLS residual formula (a,b treated as fixed).
+        """
+        rows = []
+        for grp, gdate in DF.groupby(list(group_cols)):
+            gref = gdate[gdate["bregion"] == bregion_ref]
+            if len(gref) != 1:
+                continue
+            r_ref = float(gref["residual"].iloc[0])
+            r_ref_sem = float(gref["residual_sem"].iloc[0]) if "residual_sem" in gref.columns else 0.0
+            if not np.isfinite(r_ref_sem):
+                r_ref_sem = 0.0
+            grp_meta = grp if isinstance(grp, tuple) else (grp,)
+            grp_dict = {c: v for c, v in zip(group_cols, grp_meta)}
+            for _, row in gdate.iterrows():
+                if row["bregion"] == bregion_ref:
+                    continue
+                r_other = float(row["residual"])
+                r_other_sem = float(row["residual_sem"]) if "residual_sem" in row.index and np.isfinite(row["residual_sem"]) else 0.0
+                out = {
+                    "bregion_other": row["bregion"],
+                    "residual_diff": r_other - r_ref,
+                    "residual_diff_sem": float(np.sqrt(r_other_sem ** 2 + r_ref_sem ** 2)),
+                    "residual_presma": r_ref,
+                    "residual_other": r_other,
+                    "residual_presma_sem": r_ref_sem,
+                    "residual_other_sem": r_other_sem,
+                }
+                out.update(grp_dict)
+                out.setdefault("animal", row["animal"])
+                out.setdefault("date", row["date"])
+                rows.append(out)
+        return pd.DataFrame(rows)
+
+    def _stats_presma_vs_others_wilcoxon(df_diff, bregion_ref="preSMA", alternative="two-sided"):
+        """
+        Wilcoxon signed-rank on residual_diff = residual(other) - residual(preSMA),
+        one value per (animal, date) session (or per group row in df_diff).
+
+        Default alternative is two-sided (diff != 0). Direction of the effect is in
+        median_diff / mean_diff: positive means the other region is more above the
+        OLS line than preSMA (the expected scientific direction).
+        """
+        order = [br for br in map_bregion_to_color if br in df_diff["bregion_other"].unique() and br != bregion_ref]
+        rows = []
+        for br in order:
+            vals = df_diff.loc[df_diff["bregion_other"] == br, "residual_diff"].dropna().values
+            if len(vals) < 3:
+                rows.append({
+                    "bregion_other": br,
+                    "n": len(vals),
+                    "median_diff": np.nan,
+                    "mean_diff": np.nan,
+                    "wilcoxon_stat": np.nan,
+                    "p": np.nan,
+                })
+                continue
+            try:
+                stat, p = wilcoxon(vals, alternative=alternative)
+            except ValueError:
+                stat, p = np.nan, np.nan
+            rows.append({
+                "bregion_other": br,
+                "n": len(vals),
+                "median_diff": np.median(vals),
+                "mean_diff": np.mean(vals),
+                "wilcoxon_stat": stat,
+                "p": p,
+            })
+        return pd.DataFrame(rows)
+
+    def _stats_presma_vs_others_lme(df_diff, bregion_ref="preSMA", rand_grp_list=("animal", "date")):
+        """
+        Separate intercept-only LME per other bregion on residual_diff:
+          residual_diff ~ 1, groups = concatenated (animal, date).
+        Tests whether residual(other) - residual(preSMA) differs from 0.
+        Positive Intercept ⇒ other more above the OLS line than preSMA.
+        """
+        from pythonlib.tools.pandastools import grouping_append_and_return_inner_items
+        import statsmodels.formula.api as smf
+
+        order = [br for br in map_bregion_to_color if br in df_diff["bregion_other"].unique() and br != bregion_ref]
+        rows = []
+        for br in order:
+            dfm = df_diff.loc[df_diff["bregion_other"] == br].dropna(
+                subset=["residual_diff"] + list(rand_grp_list)).reset_index(drop=True)
+            if len(dfm) < 5:
+                rows.append({
+                    "bregion_other": br,
+                    "n": len(dfm),
+                    "coef": np.nan,
+                    "se": np.nan,
+                    "mean_diff": dfm["residual_diff"].mean() if len(dfm) else np.nan,
+                    "p": np.nan,
+                })
+                continue
+            _, dfm = grouping_append_and_return_inner_items(
+                dfm, list(rand_grp_list), new_col_name="_lme_grp", return_df=True)
+            try:
+                md = smf.mixedlm("residual_diff ~ 1", dfm, groups=dfm["_lme_grp"])
+                mdf = md.fit(reml=False)
+                rows.append({
+                    "bregion_other": br,
+                    "n": len(dfm),
+                    "coef": mdf.params["Intercept"],
+                    "se": mdf.bse["Intercept"],
+                    "mean_diff": dfm["residual_diff"].mean(),
+                    "p": mdf.pvalues["Intercept"],
+                })
+            except Exception as err:
+                print(f"LME failed for bregion_other={br}: {err}")
+                rows.append({
+                    "bregion_other": br,
+                    "n": len(dfm),
+                    "coef": np.nan,
+                    "se": np.nan,
+                    "mean_diff": dfm["residual_diff"].mean(),
+                    "p": np.nan,
+                })
+        return pd.DataFrame(rows)
+
+    def _stats_lme_datapt(df, y, fixed_col, ref_level, rand_grp_list=("animal", "date")):
+        """
+        Mixed-effects model at datapoint level: random intercepts for (animal, date).
+        fixed_col is categorical (e.g. bregion or bregion_other).
+        """
+        from pythonlib.tools.pandastools import grouping_append_and_return_inner_items
+        import statsmodels.formula.api as smf
+
+        cols = [y, fixed_col] + list(rand_grp_list)
+        dfm = df.dropna(subset=cols).copy()
+        if len(dfm) < 10 or dfm[fixed_col].nunique() < 2:
+            return pd.DataFrame(), None
+
+        _, dfm = grouping_append_and_return_inner_items(
+            dfm, list(rand_grp_list), new_col_name="_lme_grp", return_df=True)
+        dfm[fixed_col] = dfm[fixed_col].astype(str)
+        str_treat = f"C({fixed_col}, Treatment('{ref_level}'))"
+        formula = f"{y} ~ {str_treat}"
+        try:
+            md = smf.mixedlm(formula, dfm, groups=dfm["_lme_grp"])
+            mdf = md.fit(reml=False)
+        except Exception as err:
+            print(f"LME failed ({formula}): {err}")
+            return pd.DataFrame(), None
+
+        rows = []
+        for exog_name in mdf.params.index:
+            if exog_name == "Intercept":
+                level = ref_level
+            elif exog_name.startswith(f"C({fixed_col}, Treatment("):
+                level = exog_name.split("[T.")[1].rstrip("]")
+            else:
+                level = exog_name
+            rows.append({
+                fixed_col: level,
+                "coef": mdf.params[exog_name],
+                "se": mdf.bse[exog_name],
+                "p": mdf.pvalues[exog_name],
+                "n": len(dfm),
+            })
+        return pd.DataFrame(rows), mdf
+
+    def _df_presma_diff_with_zero(df_diff):
+        """Add preSMA column at y=0 (preSMA minus preSMA) for each datapoint group."""
+        meta_cols = [c for c in df_diff.columns
+                     if c not in ("bregion_other", "residual_diff", "residual_diff_sem",
+                                  "residual_presma", "residual_other",
+                                  "residual_presma_sem", "residual_other_sem")]
+        df_zero = df_diff[meta_cols].drop_duplicates().copy()
+        df_zero["bregion_other"] = "preSMA"
+        df_zero["residual_diff"] = 0.0
+        df_zero["residual_diff_sem"] = 0.0
+        df_zero["residual_presma"] = np.nan
+        df_zero["residual_other"] = np.nan
+        df_zero["residual_presma_sem"] = np.nan
+        df_zero["residual_other_sem"] = np.nan
+        return pd.concat([df_zero, df_diff], axis=0, ignore_index=True)
+
+    def _presma_diff_x_order(df_plot):
+        """Same bregion order as resid-vs-bregion (map_bregion_to_color), including preSMA."""
+        return [br for br in map_bregion_to_color if br in df_plot["bregion_other"].unique()]
+
+    def _fmt_pval(p):
+        if not np.isfinite(p):
+            return "p=nan"
+        if p < 0.001:
+            return f"p={p:.1e}"
+        return f"p={p:.3f}"
+
+    def _annotate_pvalues(ax, order, stats_col, df_stats, y_col, df, x_col, alpha=0.05, skip_levels=None):
+        """Annotate each category with its p-value; red if significant."""
+        if df_stats is None or len(df_stats) == 0:
+            return
+        skip_levels = skip_levels or set()
+        ymin, ymax = ax.get_ylim()
+        y_span = ymax - ymin if ymax > ymin else 1.0
+        for i, lev in enumerate(order):
+            if lev in skip_levels:
+                continue
+            if lev not in df_stats[stats_col].values:
+                continue
+            p = df_stats.loc[df_stats[stats_col] == lev, "p"].values[0]
+            if not np.isfinite(p):
+                continue
+            g = df.loc[df[x_col] == lev, y_col]
+            if len(g) == 0:
+                y_pos = ymax - 0.04 * y_span
+            else:
+                y_pos = g.max() + 0.04 * y_span
+            color = "red" if p < alpha else "0.35"
+            ax.text(i, y_pos, _fmt_pval(p), ha="center", va="bottom", fontsize=7, color=color, clip_on=True)
+        ymin, ymax = ax.get_ylim()
+        ax.set_ylim(ymin, ymax + 0.12 * (ymax - ymin))
+
+    def _animal_x_offsets(animals, width=0.28):
+        """Map each animal to a fixed x offset within a categorical bin."""
+        animals = list(animals)
+        n = len(animals)
+        if n <= 1:
+            return {animals[0]: 0.0} if n == 1 else {}
+        offs = np.linspace(-width, width, n)
+        return {a: float(o) for a, o in zip(animals, offs)}
+
+    def _plot_presma_residual_diff(df_diff, ax, title, df_stats=None, dodge_by_animal=False,
+                                   plot_point_yerr=True, point_alpha=None):
+        """point_alpha: override for scatter/errorbar of individual points (date or datapt)."""
+        if point_alpha is None:
+            point_alpha = ALPHA_DATAPT if dodge_by_animal else ALPHA_DATE
+        df_plot = _df_presma_diff_with_zero(df_diff)
+        order = _presma_diff_x_order(df_plot)
+        animals = sorted(df_plot["animal"].unique())
+        animal_markers = {a: m for a, m in zip(animals, ["o", "s", "^", "D", "v", "P"])}
+        animal_offsets = _animal_x_offsets(animals) if dodge_by_animal else {a: 0.0 for a in animals}
+        rng = np.random.default_rng(0)
+        x_map = {br: i for i, br in enumerate(order)}
+        jitter = 0.06 if dodge_by_animal else 0.18
+        for animal in animals:
+            df_a = df_plot[df_plot["animal"] == animal]
+            off = animal_offsets[animal]
+            for br in order:
+                g = df_a.loc[df_a["bregion_other"] == br]
+                if len(g) == 0:
+                    continue
+                xs = x_map[br] + off + rng.uniform(-jitter, jitter, size=len(g))
+                ys = g["residual_diff"].values
+                c = map_bregion_to_color.get(br, "gray")
+                if plot_point_yerr and "residual_diff_sem" in g.columns:
+                    ax.errorbar(
+                        xs, ys, yerr=g["residual_diff_sem"].values,
+                        fmt="none", ecolor=c, alpha=point_alpha, elinewidth=0.8, capsize=0, zorder=2)
+                ax.scatter(
+                    xs, ys,
+                    c=c,
+                    marker=animal_markers[animal],
+                    s=22 if dodge_by_animal else 28, alpha=point_alpha, edgecolors="none",
+                    zorder=3)
+                if dodge_by_animal:
+                    ax.errorbar(
+                        x_map[br] + off, ys.mean(),
+                        yerr=sem(ys) if len(ys) > 1 else 0.0,
+                        fmt=animal_markers[animal], color=c,
+                        ecolor="k", elinewidth=1.2, capsize=0,
+                        markersize=7, markeredgecolor="k", markeredgewidth=0.7, zorder=5)
+        if not dodge_by_animal:
+            for i, br in enumerate(order):
+                g = df_plot.loc[df_plot["bregion_other"] == br, "residual_diff"]
+                if len(g) == 0:
+                    continue
+                ax.errorbar(i, g.mean(), yerr=g.sem(), fmt="o", color="k", markersize=6, capsize=0, zorder=5)
+        _annotate_pvalues(
+            ax, order, "bregion_other", df_stats, "residual_diff", df_plot, "bregion_other",
+            skip_levels={"preSMA"})
+        ax.axhline(0, color="k", alpha=0.35, lw=1)
+        ax.set_xticks(range(len(order)))
+        ax.set_xticklabels(order, rotation=45)
+        ax.set_xlabel("bregion")
+        ax.set_ylabel("residual(other) - residual(preSMA)")
+        ax.set_title(title)
+        from matplotlib.lines import Line2D
+        handles = [
+            Line2D([0], [0], marker=animal_markers[a], color="k", linestyle="none",
+                   markersize=7, label=a)
+            for a in animals]
+        ax.legend(handles=handles, fontsize=7, frameon=False, loc="best", title="animal")
+
+    # Fit OLS on df_fit (bregion means or low-level pts); always evaluate session DF on bregion means
+    params, fit_info = _get_ols_params_by_date(
+        df_fit, through_origin=FIT_THROUGH_ORIGIN, fit_mode=FIT_MODE)
+    DF = _select_resid_kind(
+        _apply_date_ols_to_datapts(
+            df_xy, params, through_origin=FIT_THROUGH_ORIGIN, fit_mode=FIT_MODE, datapt_cols=[]),
+        RESID_KIND)
+    DF_FIT_INFO = pd.DataFrame(list(fit_info.values())) if fit_info else pd.DataFrame()
+    DF_sc = _rescale_by_max_projection(DF)
+    DF_plot = DF_sc if RESCALE_BY_MAX_PROJECTION else DF
+
+    _mode_lbl = "LOO" if FIT_MODE == "loo" else "single fit (all regions)"
+    _fit_lbl = "through origin (y=bx)" if FIT_THROUGH_ORIGIN else "with intercept"
+    _on_lbl = "low-level pts" if FIT_ON == "low_level" else "bregion means"
+    _resid_lbl = "orthogonal dist" if RESID_KIND == "orthogonal" else "vertical residual y-(a+bx)"
+    _origin_tag = "origin" if FIT_THROUGH_ORIGIN else "intercept"
+    _fig_tag = f"fit-{FIT_MODE}_on-{FIT_ON}_resid-{RESID_KIND}_{_origin_tag}"
+    print(f"=== fit_mode={FIT_MODE} | fit_on={FIT_ON} ({_on_lbl}) | resid={RESID_KIND} | {_fit_lbl} ===")
+    print(DF_FIT_INFO.to_string(index=False) if len(DF_FIT_INFO) else "(no sessions fit)")
+    if SAVE_FIGS:
+        print(f"Saving figures to: {savedir}")
+
+    def _savefig(fig, name):
+        """Save figure to savedir if SAVE_FIGS; name is stem without extension."""
+        if not SAVE_FIGS or fig is None:
+            return
+        from pythonlib.tools.plottools import savefig
+        path = os.path.join(savedir, f"{name}.pdf")
+        savefig(fig, path)
+
+    def _savecsv(df, name, index=False):
+        """Save dataframe as CSV in savedir if SAVE_FIGS; name is stem without extension."""
+        if not SAVE_FIGS or df is None:
+            return
+        if not isinstance(df, pd.DataFrame) or len(df) == 0:
+            return
+        path = os.path.join(savedir, f"{name}.csv")
+        df.to_csv(path, index=index)
+        print(f"Saved stats table: {path}")
+
+    # Per-date diagnostic: regression points, fit line (all-pts), R², residual drops of means
+    fig = _plot_session_fit_diagnostics(
+        df_fit, df_xy, fit_info, params, through_origin=FIT_THROUGH_ORIGIN,
+        square=DIAG_SQUARE, share_axes=DIAG_SHARE_AXES, resid_kind=RESID_KIND)
+    _stem_01 = f"01_session_ols_diagnostics_{_fig_tag}"
+    _savefig(fig, _stem_01)
+    _savecsv(DF_FIT_INFO, f"{_stem_01}_fit_info")
+
+    # Concise summary heatmap across dates
+    _hm_out = _plot_resid_heatmap(
+        DF,
+        f"{_mode_lbl} | {_on_lbl} | RESID_KIND={RESID_KIND} ({_resid_lbl})\n"
+        f"residual by bregion × session",
+        RESID_KIND)
+    DF_HEAT = _hm_out[1] if _hm_out is not None else None
+    _stem_02 = f"02_heatmap_resid_by_bregion_x_session_{_fig_tag}"
+    if _hm_out is not None:
+        _savefig(_hm_out[0], _stem_02)
+        _savecsv(DF_HEAT, f"{_stem_02}_values", index=True)
+
+    # (1) residual vs projection — raw scale
+    fig, ax = plt.subplots(figsize=(5.5, 4.5))
+    _plot_resid_vs_proj(
+        DF, ax,
+        f"{_mode_lbl} | RESID_KIND={RESID_KIND} ({_resid_lbl}) | {_fit_lbl}\n"
+        f"(neg residual = below line = lower y/x)")
+    plt.tight_layout()
+    _savefig(fig, f"03_resid_vs_proj_{_fig_tag}")
+
+    fig = _plot_resid_vs_proj_by_animal(
+        DF,
+        f"{_mode_lbl} | RESID_KIND={RESID_KIND} ({_resid_lbl}) | {_fit_lbl} | by animal\n"
+        f"resid vs proj (datapoint = date)")
+    _savefig(fig, f"03b_resid_vs_proj_by_animal_{_fig_tag}")
+    
+    # (1b) residual vs projection — rescaled so max projection per (animal, date) = 1
+    if RESCALE_BY_MAX_PROJECTION:
+        fig, ax = plt.subplots(figsize=(5.5, 4.5))
+        _plot_resid_vs_proj(
+            DF_sc, ax,
+            f"{_mode_lbl} | RESID_KIND={RESID_KIND} | {_fit_lbl} — rescaled\n"
+            f"(proj, resid) / max_proj(animal, date)",
+            xlab="projection / max_proj(animal, date)",
+            ylab="residual / max_proj(animal, date)")
+        plt.tight_layout()
+        _savefig(fig, f"04_resid_vs_proj_rescaled_{_fig_tag}")
+
+        fig = _plot_resid_vs_proj_by_animal(
+            DF_sc,
+            f"{_mode_lbl} | RESID_KIND={RESID_KIND} | {_fit_lbl} | by animal — rescaled\n"
+            f"resid vs proj (datapoint = date)",
+            xlab="projection / max_proj(animal, date)",
+            ylab="residual / max_proj(animal, date)")
+        _savefig(fig, f"04b_resid_vs_proj_by_animal_rescaled_{_fig_tag}")
+
+    # (2) residual by bregion — no projection axis; directly compares regions
+
+    def _plot_resid_by_bregion(DF, ax, title, df_stats=None, plot_point_yerr=False,
+                              dodge_by_animal=False, point_alpha=None):
+        """Residual vs bregion: points colored by bregion, marker by animal.
+
+        dodge_by_animal=False: pooled bar + overlapping jitter (previous style).
+        dodge_by_animal=True: x-dodge points by animal within each bregion, plus one
+        mean±SE summary marker per animal.
+        point_alpha: override for individual points (defaults: ALPHA_DATAPT if dodge else ALPHA_DATE).
+        """
+        if point_alpha is None:
+            point_alpha = ALPHA_DATAPT if dodge_by_animal else ALPHA_DATE
+        from matplotlib.lines import Line2D
+        order = [br for br in map_bregion_to_color if br in DF["bregion"].unique()]
+        palette = {br: map_bregion_to_color[br] for br in order}
+        animals = sorted(DF["animal"].unique())
+        animal_markers = {a: m for a, m in zip(animals, ["o", "s", "^", "D", "v", "P"])}
+        animal_offsets = _animal_x_offsets(animals) if dodge_by_animal else {a: 0.0 for a in animals}
+        x_map = {br: i for i, br in enumerate(order)}
+        rng = np.random.default_rng(0)
+
+        if not dodge_by_animal:
+            sns.barplot(
+                data=DF, x="bregion", y="residual", order=order, palette=palette,
+                ax=ax, errorbar="se", capsize=0, errcolor="k", errwidth=1, alpha=0.45, zorder=1)
+
+        jitter = 0.06 if dodge_by_animal else 0.18
+        for animal in animals:
+            df_a = DF[DF["animal"] == animal]
+            off = animal_offsets[animal]
+            for br in order:
+                g = df_a.loc[df_a["bregion"] == br]
+                if len(g) == 0:
+                    continue
+                xs = x_map[br] + off + rng.uniform(-jitter, jitter, size=len(g))
+                ys = g["residual"].values
+                c = map_bregion_to_color[br]
+                if plot_point_yerr and "residual_sem" in g.columns:
+                    ax.errorbar(
+                        xs, ys, yerr=g["residual_sem"].values,
+                        fmt="none", ecolor=c, alpha=point_alpha, elinewidth=0.8, capsize=0, zorder=2)
+                ax.scatter(
+                    xs, ys, c=c, marker=animal_markers[animal],
+                    s=22 if dodge_by_animal else 28, alpha=point_alpha,
+                    edgecolors="none", zorder=3)
+                if dodge_by_animal:
+                    # one summary marker per animal within this bregion
+                    ax.errorbar(
+                        x_map[br] + off, ys.mean(),
+                        yerr=sem(ys) if len(ys) > 1 else 0.0,
+                        fmt=animal_markers[animal], color=c, ecolor="k",
+                        elinewidth=1.2, capsize=0, markersize=7,
+                        markeredgecolor="k", markeredgewidth=0.7, zorder=5)
+
+        _annotate_pvalues(ax, order, "bregion", df_stats, "residual", DF, "bregion")
+        ax.axhline(0, color="k", alpha=0.35, lw=1)
+        ax.set_xticks(range(len(order)))
+        ax.set_xticklabels(order, rotation=45)
+        ax.set_xlabel("bregion")
+        ax.set_ylabel(f"residual ({RESID_KIND})")
+        ax.set_title(title)
+        handles = [
+            Line2D([0], [0], marker=animal_markers[a], color="k", linestyle="none",
+                   markersize=7, label=a)
+            for a in animals]
+        ax.legend(handles=handles, fontsize=7, frameon=False, loc="best", title="animal")
+
+    def _stats_signed_rank_vs_zero(df, y_col, group_col, levels=None, alternative="two-sided", min_n=3):
+        """One-sample Wilcoxon signed-rank vs 0 for each level of group_col."""
+        if levels is None:
+            levels = [br for br in map_bregion_to_color if br in df[group_col].unique()]
+        rows = []
+        for lev in levels:
+            vals = df.loc[df[group_col] == lev, y_col].dropna().astype(float).values
+            if len(vals) < min_n:
+                rows.append({
+                    group_col: lev, "n": len(vals), "median": np.nan, "mean": np.nan,
+                    "wilcoxon_stat": np.nan, "p": np.nan,
+                })
+                continue
+            try:
+                stat, p = wilcoxon(vals, alternative=alternative)
+            except ValueError:
+                stat, p = np.nan, np.nan
+            rows.append({
+                group_col: lev,
+                "n": len(vals),
+                "median": float(np.median(vals)),
+                "mean": float(np.mean(vals)),
+                "wilcoxon_stat": stat,
+                "p": p,
+            })
+        return pd.DataFrame(rows)
+
+    def _plot_resid_by_bregion_by_animal(DF, title, plot_point_yerr=False, point_alpha=None):
+        """Low-level residual by bregion, one panel per animal (not pooled).
+
+        Overlays Wilcoxon signed-rank p-values (residual vs 0) per bregion.
+        """
+        if point_alpha is None:
+            point_alpha = ALPHA_DATAPT
+        order = [br for br in map_bregion_to_color if br in DF["bregion"].unique()]
+        palette = {br: map_bregion_to_color[br] for br in order}
+        animals = sorted(DF["animal"].unique())
+        fig, axes = plt.subplots(1, len(animals), figsize=(4.2 * len(animals), 4.2), sharex=False, sharey=False)
+        if len(animals) == 1:
+            axes = np.array([axes])
+        rng = np.random.default_rng(0)
+        x_map = {br: i for i, br in enumerate(order)}
+        list_stats = []
+        for ax, animal in zip(axes, animals):
+            df_a = DF[DF["animal"] == animal]
+            sns.barplot(
+                data=df_a, x="bregion", y="residual", order=order, palette=palette,
+                ax=ax, errorbar="se", capsize=0, errcolor="k", errwidth=1, alpha=0.45, zorder=1)
+            for br in order:
+                g = df_a.loc[df_a["bregion"] == br]
+                if len(g) == 0:
+                    continue
+                xs = x_map[br] + rng.uniform(-0.18, 0.18, size=len(g))
+                ys = g["residual"].values
+                c = map_bregion_to_color[br]
+                if plot_point_yerr and "residual_sem" in g.columns:
+                    ax.errorbar(
+                        xs, ys, yerr=g["residual_sem"].values,
+                        fmt="none", ecolor=c, alpha=point_alpha, elinewidth=0.8, capsize=0, zorder=2)
+                ax.scatter(xs, ys, c=c, marker="o", s=22, alpha=point_alpha, edgecolors="none", zorder=3)
+            stats_a = _stats_signed_rank_vs_zero(df_a, "residual", "bregion", levels=order)
+            stats_a.insert(0, "animal", animal)
+            list_stats.append(stats_a)
+            _annotate_pvalues(ax, order, "bregion", stats_a, "residual", df_a, "bregion")
+            ax.axhline(0, color="k", alpha=0.35, lw=1)
+            ax.set_xticks(range(len(order)))
+            ax.set_xticklabels(order, rotation=45)
+            ax.set_title(animal)
+            ax.set_xlabel("bregion")
+            ax.set_ylabel(f"residual ({RESID_KIND})")
+        fig.suptitle(title + "\nWilcoxon signed-rank: residual vs 0", y=1.04)
+        plt.tight_layout()
+        df_stats = pd.concat(list_stats, ignore_index=True) if list_stats else pd.DataFrame()
+        return fig, df_stats
+
+    def _plot_presma_residual_diff_by_animal(df_diff, title, point_alpha=None):
+        """other-preSMA residual diff, one panel per animal; includes preSMA at y=0.
+
+        Overlays Wilcoxon signed-rank p-values (residual_diff vs 0) per bregion.
+        """
+        if point_alpha is None:
+            point_alpha = ALPHA_DATAPT
+        df_plot = _df_presma_diff_with_zero(df_diff)
+        order = _presma_diff_x_order(df_plot)
+        palette = {br: map_bregion_to_color.get(br, "gray") for br in order}
+        animals = sorted(df_plot["animal"].unique())
+        fig, axes = plt.subplots(1, len(animals), figsize=(4.2 * len(animals), 4.2), sharex=False, sharey=False)
+        if len(animals) == 1:
+            axes = np.array([axes])
+        list_stats = []
+        for ax, animal in zip(axes, animals):
+            df_a = df_plot[df_plot["animal"] == animal]
+            # stats on real diffs only (exclude the synthetic preSMA zeros)
+            df_a_stats = df_diff[df_diff["animal"] == animal]
+            sns.stripplot(
+                data=df_a, x="bregion_other", y="residual_diff", order=order, palette=palette,
+                ax=ax, alpha=point_alpha, size=3, jitter=0.2)
+            for i, br in enumerate(order):
+                g = df_a.loc[df_a["bregion_other"] == br, "residual_diff"]
+                if len(g) == 0:
+                    continue
+                ax.errorbar(i, g.mean(), yerr=g.sem(), fmt="o", color="k", markersize=5, capsize=0, zorder=5)
+            stats_a = _stats_signed_rank_vs_zero(
+                df_a_stats, "residual_diff", "bregion_other",
+                levels=[br for br in order if br != "preSMA"])
+            stats_a.insert(0, "animal", animal)
+            list_stats.append(stats_a)
+            _annotate_pvalues(
+                ax, order, "bregion_other", stats_a, "residual_diff", df_a, "bregion_other",
+                skip_levels={"preSMA"})
+            ax.axhline(0, color="k", alpha=0.35, lw=1)
+            ax.set_title(animal)
+            ax.set_xlabel("bregion")
+            ax.set_ylabel("residual(other) - residual(preSMA)")
+            ax.tick_params(axis="x", rotation=45)
+        fig.suptitle(title + "\nWilcoxon signed-rank: residual_diff vs 0", y=1.04)
+        plt.tight_layout()
+        df_stats = pd.concat(list_stats, ignore_index=True) if list_stats else pd.DataFrame()
+        return fig, df_stats
+
+    fig, ax = plt.subplots(figsize=(5.5, 4.5))
+    _plot_resid_by_bregion(
+        DF, ax, f"{_mode_lbl} | {_fit_lbl}\nresidual by bregion",
+        plot_point_yerr=True, point_alpha=ALPHA_DATE)
+    plt.tight_layout()
+    _savefig(fig, f"05_resid_by_bregion_{_fig_tag}")
+
+    # (3) preSMA vs each other bregion: residual(other) - residual(preSMA), per (animal, date)
+    DF_diff = _compute_presma_residual_diff(DF)
+    stats_date = _stats_presma_vs_others_wilcoxon(DF_diff)
+    print(f"=== other vs preSMA | Wilcoxon signed-rank | {_fit_lbl} ===")
+    print(stats_date.to_string(index=False))
+
+    fig, ax = plt.subplots(figsize=(5.5, 4.5))
+    _plot_presma_residual_diff(
+        DF_diff, ax,
+        f"{_mode_lbl} | {_fit_lbl}\nresidual(other) - residual(preSMA)",
+        df_stats=stats_date, point_alpha=ALPHA_DATE)
+    plt.tight_layout()
+    _stem_06 = f"06_other_minus_presma_resid_{_fig_tag}"
+    _savefig(fig, _stem_06)
+    _savecsv(stats_date, f"{_stem_06}_stats")
+
+    # (4) low-level conditions: same session OLS params, residuals per individual datapt
+    out_ll = {}
+    if var_datapt is not None and df_xy_ll is not None and len(df_xy_ll) > 0:
+        group_cols_ll = ("animal", "date", var_datapt)
+        DF_ll = _select_resid_kind(
+            _apply_date_ols_to_datapts(
+                df_xy_ll, params, through_origin=FIT_THROUGH_ORIGIN, fit_mode=FIT_MODE, datapt_cols=[var_datapt]),
+            RESID_KIND)
+
+        print(f"=== low-level ({var_datapt}) | n datapts per bregion ===")
+        print(DF_ll.groupby("bregion")["residual"].agg(["count", "mean", "sem"]))
+
+        DF_diff_ll = _compute_presma_residual_diff(DF_ll, group_cols=group_cols_ll)
+
+        # LME at datapoint level: RE = (animal, date), FE = bregion
+        stats_ll_resid, mdf_ll_resid = _stats_lme_datapt(
+            DF_ll, "residual", "bregion", ref_level="preSMA")
+
+        # Separate intercept-only LME per other bregion on residual_diff
+        stats_ll_diff = _stats_presma_vs_others_lme(DF_diff_ll)
+
+        print(f"=== LME residual ~ bregion | low-level ({var_datapt}) | RE(animal,date) | {_fit_lbl} ===")
+        print(stats_ll_resid.to_string(index=False))
+        print(f"=== LME residual_diff ~ 1 per bregion_other | low-level ({var_datapt}) | RE(animal,date) | {_fit_lbl} ===")
+        print(stats_ll_diff.to_string(index=False))
+
+        fig, ax = plt.subplots(figsize=(5.5, 4.5))
+        _plot_resid_by_bregion(
+            DF_ll, ax,
+            f"{_mode_lbl} | {_on_lbl} | {_fit_lbl}\nresidual by bregion ({var_datapt})",
+            df_stats=stats_ll_resid,
+            dodge_by_animal=LL_DODGE_BY_ANIMAL,
+            point_alpha=ALPHA_DATAPT)
+        plt.tight_layout()
+        _stem_07 = f"07_ll_resid_by_bregion_{var_datapt}_{_fig_tag}"
+        _savefig(fig, _stem_07)
+        _savecsv(stats_ll_resid, f"{_stem_07}_stats")
+
+        fig, stats_ll_resid_by_animal = _plot_resid_by_bregion_by_animal(
+            DF_ll,
+            f"{_mode_lbl} | {_on_lbl} | {_fit_lbl} | by animal\nresidual by bregion ({var_datapt})",
+            point_alpha=ALPHA_DATAPT)
+        _stem_08 = f"08_ll_resid_by_bregion_by_animal_{var_datapt}_{_fig_tag}"
+        _savefig(fig, _stem_08)
+        _savecsv(stats_ll_resid_by_animal, f"{_stem_08}_stats")
+        print(f"=== Wilcoxon residual vs 0 | low-level by animal ({var_datapt}) ===")
+        print(stats_ll_resid_by_animal.to_string(index=False))
+
+        fig, ax = plt.subplots(figsize=(5.5, 4.5))
+        _plot_presma_residual_diff(
+            DF_diff_ll, ax,
+            f"{_mode_lbl} | {_on_lbl} | {_fit_lbl}\nother-preSMA residual ({var_datapt})",
+            df_stats=stats_ll_diff,
+            dodge_by_animal=LL_DODGE_BY_ANIMAL,
+            point_alpha=ALPHA_DATAPT)
+        plt.tight_layout()
+        _stem_09 = f"09_ll_other_minus_presma_{var_datapt}_{_fig_tag}"
+        _savefig(fig, _stem_09)
+        _savecsv(stats_ll_diff, f"{_stem_09}_stats")
+
+        fig, stats_ll_diff_by_animal = _plot_presma_residual_diff_by_animal(
+            DF_diff_ll,
+            f"{_mode_lbl} | {_on_lbl} | {_fit_lbl} | by animal\nother-preSMA ({var_datapt})",
+            point_alpha=ALPHA_DATAPT)
+        _stem_10 = f"10_ll_other_minus_presma_by_animal_{var_datapt}_{_fig_tag}"
+        _savefig(fig, _stem_10)
+        _savecsv(stats_ll_diff_by_animal, f"{_stem_10}_stats")
+        print(f"=== Wilcoxon residual_diff vs 0 | low-level by animal ({var_datapt}) ===")
+        print(stats_ll_diff_by_animal.to_string(index=False))
+
+        out_ll = {
+            "DF_ll": DF_ll,
+            "DF_diff_ll": DF_diff_ll,
+            "stats_ll_resid": stats_ll_resid,
+            "stats_ll_diff": stats_ll_diff,
+            "stats_ll_resid_by_animal": stats_ll_resid_by_animal,
+            "stats_ll_diff_by_animal": stats_ll_diff_by_animal,
+            "mdf_ll_resid": mdf_ll_resid,
+        }
+
+    return {
+        "DF": DF,
+        "DF_sc": DF_sc,
+        "DF_plot": DF_plot,
+        "DF_diff": DF_diff,
+        "stats_date": stats_date,
+        "DF_FIT_INFO": DF_FIT_INFO,
+        "DF_HEAT": DF_HEAT,
+        **out_ll,
+    }
 
 def final_dfeffect_load_dfgaps(dfeffect, animal, savedir):
     """
@@ -724,7 +2068,10 @@ def final_dfeffect_load_dfgaps_inner(list_date, animal, savedir):
         searchstr = f"/lemur2/lucas/analyses/main/syntax_gap_durations/{animal}_{_date}_*/dfgaps.pkl"
         # path = f"/lemur2/lucas/analyses/main/syntax_gap_durations/{animal}_{_date}_dirgrammardiego3b/dfgaps.pkl"
         list_path = glob(searchstr)
-        assert len(list_path)==1
+        if len(list_path)!=1:
+            print(list_path)
+            print(searchstr)
+            assert False, "not getting path for this... Need to extract raw gaps data?"
         path = list_path[0]
         dfgaps = pd.read_pickle(path)
         dfgaps["date"] = _date
@@ -750,7 +2097,8 @@ def final_dfeffect_load_dfgaps_inner(list_date, animal, savedir):
 
     # Relabel gaps by ("gap_semantic_vs_prev_stroke")
     def F(diff_chunk_rank_global):
-        if diff_chunk_rank_global!=0:
+        # if diff_chunk_rank_global!=0: # previously was this, but I changed to >0 as that seems tighter
+        if diff_chunk_rank_global>0:
             gap_semantic_vs_prev_stroke = "new_chk"
         else:
             assert diff_chunk_rank_global == 0
@@ -829,14 +2177,22 @@ def _final_dfeffect_postprocess_clean(dfgeneric, analysis, animal):
 
     ### Dates 
     if animal=="Diego":
-        dates_remove = [250319, 250321]
+        # dates_remove = [250319, 250321]
+        dates_remove = [250319, 250321, 250416, 250417] # Generally exclude, recent, with the latter 3 including cross-AB
         if analysis == "pig_vs_sp":
             # Testing, the above makes more sense.
-            dates_remove = []
+            # dates_remove = []
+            dates_remove = [250319, 250321, 250416, 250417] # TESTING
+        if analysis=="two_shapes":
+            dates_remove = [250319, 250321, 250416, 250417]
+            # dates_remove = []
     elif animal=="Pancho":
-        dates_remove = [250322]
+        # dates_remove = [250322]
+        dates_remove = [240830, 250322]
         if analysis=="rank_up_vs_down":
             dates_remove.append(230811) # this is low N tasks and low variability
+        # if analysis=="two_shapes":
+        #     dates_remove.append(220909) # this is low N tasks and low variability
         # if analysis == "pig_vs_sp":
         #     # Testing, the above makes more sense.
         #     dates_remove = []
@@ -857,6 +2213,8 @@ def final_dfeffect_postprocess(DFEFFECT_ALL, animal, analysis, savedir, n_min_tr
                                HACK_dates=None, two_shapes_remove_probe_trials=True):
     """
     Helper to clean up DFEFFECT_ALL, which holds data for all dates
+
+    LT CHECKED (only for sp_vs_pig)
     """
     from neuralmonkey.analyses.euclidian_distance import dfdist_postprocess_condition_prune_to_var_pairs_exist
     from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good, append_col_with_grp_index
@@ -870,7 +2228,8 @@ def final_dfeffect_postprocess(DFEFFECT_ALL, animal, analysis, savedir, n_min_tr
     if analysis == "pig_vs_sp":
         if animal=="Pancho":
             if HACK_dates is None:
-                _dates = [230810, 230811, 230829, 240830, 250322]
+                # _dates = [230810, 230811, 230829, 240830, 250322]
+                _dates = [230810, 230811, 230829, 231116, 240830]
             elif HACK_dates == 0:
                 _dates = [230810, 230811, 230829]
             elif HACK_dates == 1:
@@ -881,7 +2240,8 @@ def final_dfeffect_postprocess(DFEFFECT_ALL, animal, analysis, savedir, n_min_tr
                 assert False         
 
             map_question_to_dates = {
-                "4c":[231114, 231116],
+                # "4c":[231114, 231116],
+                "4c":[231114],
                 "4":_dates,
             }
         elif animal=="Diego":
@@ -912,7 +2272,8 @@ def final_dfeffect_postprocess(DFEFFECT_ALL, animal, analysis, savedir, n_min_tr
             for date in list_dates:
                 df = DFEFFECT_ALL[(DFEFFECT_ALL["date"] == date) & (DFEFFECT_ALL["effect"].isin(list_effect))].reset_index(drop=True)
                 df["effect"] = [map_effect_to_neweffect[eff] for eff in df["effect"]]    
-                assert len(df)>0
+                # if len(df)==0:
+                #     assert False, f"Missing this date: {date} for this animal {animal}"
                 list_df.append(df)    
         DFEFFECT = pd.concat(list_df).reset_index(drop=True)
         eff1 = "shapePIG"
@@ -1014,8 +2375,9 @@ def final_dfeffect_postprocess(DFEFFECT_ALL, animal, analysis, savedir, n_min_tr
             DFEFFECT = DFEFFECT[~bools_remove].reset_index(drop=True)
 
         # (3) Keep only shapes whose chunk_rank matches their chunk_rank_global
-        from pythonlib.dataset.dataset_analy.grammar import chunk_rank_global_extract
-        dfchunkrankmap = chunk_rank_global_extract(dfmerged, check_low_freq_second_shape=False)
+        from pythonlib.dataset.dataset_analy.grammar import _chunk_rank_global_extract
+        dfmerged["task_kind"] = "prims_on_grid" # Just a hack, inner code needs this...
+        dfchunkrankmap = _chunk_rank_global_extract(dfmerged, check_low_freq_second_shape=False)
 
         # First, Assign a new column to dfeffect with chunk_rank_global
         map_DaEpSh_to_crglob = {}
@@ -1105,13 +2467,14 @@ def final_dfeffect_postprocess(DFEFFECT_ALL, animal, analysis, savedir, n_min_tr
 
 def final_dfeffect_mean_simple_PIGvsSP(dfeffect, eff1, eff2, doplot=False):
     """
-    Simple -- return so that there is one row per bregion
+    Get stats related to effects (eff1 and eff2), including the means for each, and
+    the difference between those means for each brain region. ie dfeffect["effect"] has values eff1 and eff2
+
+    Simple -- return so that there is one row per ("effect", "date", "bregion")
+    - Ie get mean over all data to get one value per ("effect", "date", "bregion")
     """
     ###### GOOD
-    from pythonlib.tools.pandastools import summarize_featurediff
-    from pythonlib.tools.pandastools import pivot_table
-    from pythonlib.tools.pandastools import aggregGeneral
-    from pythonlib.tools.pandastools import plot_45scatter_means_flexible_grouping
+    from pythonlib.tools.pandastools import aggregGeneral, plot_45scatter_means_flexible_grouping
     from neuralmonkey.analyses.euclidian_distance import dfdist_compute_effects_diff_wideform
     yvar = "dist_yue_diff"
 
@@ -1120,9 +2483,9 @@ def final_dfeffect_mean_simple_PIGvsSP(dfeffect, eff1, eff2, doplot=False):
     assert len(dfeffect["subspace"].unique())==1
 
     # (1) Agg so that datapt = date
-    dfeffect = aggregGeneral(dfeffect, ["effect", "date", "bregion"], [yvar])
+    dfeffect = aggregGeneral(dfeffect, ["effect", "date", "bregion"], [yvar]) # Datapt = (labels1, labels2)
 
-    # (2) For each bregion, get mean value for each effect
+    # (2) For each bregion, get mean value for each effect (across dates)
     dfeffect_agg = aggregGeneral(dfeffect, ["bregion", "effect"], [yvar])
 
     # (3) For each bregion, get mean difference between effects
@@ -1132,12 +2495,12 @@ def final_dfeffect_mean_simple_PIGvsSP(dfeffect, eff1, eff2, doplot=False):
                                                                             eff1, eff2, vars_grp, 
                                                                             diff_func="div")
 
-    # (4) Merge each effect with difference of effects.
-    dfsummary["effect"] = effect_div_name # rename, for easy comparison
-    dfsummary[yvar] = dfsummary[effect_div_name]
+    # (4) Merge means for each effect (stored in dfeffect_agg) with differences between effects (stored in dfsummary)
+    dfsummary["effect"] = effect_div_name # Simply rename, for easy comparison
+    dfsummary[yvar] = dfsummary[effect_div_name] # Simply rename
     dfmerge_long = pd.concat([dfsummary.loc[:, dfeffect_agg.columns], dfeffect_agg], axis=0)
 
-    # (5) Also get version with one row per bregion
+    # (5) Also get version with one row per bregion (where columns are effects and difference of effects)
     dfmerge_wide = pd.merge(dfpivot, dfsummary, on="bregion")
 
     if doplot:
@@ -1145,6 +2508,7 @@ def final_dfeffect_mean_simple_PIGvsSP(dfeffect, eff1, eff2, doplot=False):
                                                         None, yvar, "bregion", shareaxes=True)
         _, fig = plot_45scatter_means_flexible_grouping(dfmerge_long, "effect", eff1, eff2, 
                                                         None, yvar, "bregion", shareaxes=True)
+        
     return dfmerge_long, dfmerge_wide, effect_div_name, eff1_name, eff2_name
 
 def final_dfeffect_mean_simple_PIGvsSP_bootstrap(DFEFFECT, eff1, eff2, vars_conj=None, nboot = 50):
@@ -1165,12 +2529,13 @@ def final_dfeffect_mean_simple_PIGvsSP_bootstrap(DFEFFECT, eff1, eff2, vars_conj
         if _i%20==0:
             print(_i)
         dfeffect_boot = bootstramp_resample(DFEFFECT, vars_conj)
-        dfmerge_long, _, effect_div_name, eff1_name, eff2_name = final_dfeffect_mean_simple_PIGvsSP(dfeffect_boot, eff1, eff2, doplot=False)
+        dfmerge_long, _, effect_div_name, eff1_name, eff2_name = final_dfeffect_mean_simple_PIGvsSP(dfeffect_boot, eff1, eff2, 
+                                                                                                    doplot=False)
         dfmerge_long["i_boot"] = _i
         # print(dfmerge_long)
         # print(effect_div_name)
         # assert False
-        list_df.append(dfmerge_long)
+        list_df.append(dfmerge_long) # columns (bregion, effect[each and their diffs all get a row], dist_yue_diff, i_boot)
 
     DFSCORE_BOOT = pd.concat(list_df).reset_index(drop=True)
     DFSCORE_BOOT = append_col_with_grp_index(DFSCORE_BOOT, ["bregion", "i_boot"], "br_i")
@@ -1423,14 +2788,23 @@ def targeted_pca_MULT_1_load_and_save(animal, date, run, expt_kind, OVERWRITE=Fa
 
     You can then load the DFDIST and do analyses.
     expt_kind="RULE_ANBMCK_STROKE"
+
+    LT Checked
     """
     ### [MULT] Loading all dfdists and making summary plots
     # run = 12
     # SAVEDIR = f"/tmp/SYNTAX_TARGETED_PCA_run{run}"
+    from glob import glob
+    from neuralmonkey.classes.session import _REGIONS_IN_ORDER_COMBINED
+    from neuralmonkey.analyses.euclidian_distance import dfdist_extract_label_vars_specific
+    from pythonlib.tools.pandastools import replace_None_with_string
+    from pythonlib.tools.pandastools import aggregGeneral
+    from pythonlib.tools.pandastools import append_col_with_grp_index
 
     OLD_VERSION = False
     expected_n_subspaces = 6
     expected_n_questions = 4
+    expected_n_bregions = 8
 
     if run==1:
         euclidean_label_vars = ["chunk_within_rank", "chunk_rank", "shape"]
@@ -1497,14 +2871,6 @@ def targeted_pca_MULT_1_load_and_save(animal, date, run, expt_kind, OVERWRITE=Fa
     SAVEDIR_MULT = f"/lemur2/lucas/analyses/recordings/main/syntax_good/targeted_dim_redu_v2/run{run}/MULT"
     import os
     os.makedirs(SAVEDIR_MULT, exist_ok=True)
-    from glob import glob
-    from neuralmonkey.classes.session import _REGIONS_IN_ORDER_COMBINED
-    from neuralmonkey.analyses.euclidian_distance import dfdist_extract_label_vars_specific
-    from pythonlib.tools.pandastools import replace_None_with_string, stringify_values
-    from pythonlib.tools.pandastools import aggregGeneral
-    from pythonlib.tools.pandastools import append_col_with_grp_index
-
-    expected_n_bregions = 8
 
     SAVEDIR = f"/lemur2/lucas/analyses/recordings/main/syntax_good/targeted_dim_redu_v2/run{run}/{animal}-{date}-q={expt_kind}"
         
@@ -1656,6 +3022,8 @@ def effect_extract_helper_this(DFDIST, question, subspaces,
 
     RETURNS:
     - pruned dfdist (copy) or None if all rows pruned
+
+    LT CHECKED
     """
     from neuralmonkey.analyses.euclidian_distance import dfdist_variables_effect_extract_helper
     from neuralmonkey.scripts.analy_syntax_good_eucl_state import targeted_pca_clean_plots_and_dfdist_params
@@ -1689,12 +3057,10 @@ def effect_extract_helper_this(DFDIST, question, subspaces,
         DFDIST_THIS = DFDIST_THIS[(DFDIST_THIS["task_kind_12"] == "prims_on_grid|prims_on_grid")]
     if len(DFDIST_THIS)==0:
         return None
-    # assert len(DFDIST_THIS)>0
 
     DFDIST_THIS = DFDIST_THIS[(DFDIST_THIS["subspace"].isin(subspaces))]
     if len(DFDIST_THIS)==0:
         return None
-    # assert len(DFDIST_THIS)>0
 
     if contrasts_diff is not None:
         dfdist = dfdist_variables_effect_extract_helper(DFDIST_THIS, colname_conj_same, vars_in_order, contrasts_diff, contrasts_either, PRINT=False)
@@ -1716,13 +3082,17 @@ def effect_extract_helper_this_wrapper(DFDIST, question, subspaces, contrasts_di
     PARAMS:
     - question, str
     - subspaces, either list of str or "all"
-    - contrasts_diff, contrasts_either, each a list of str.
+    - contrasts_diff, contrasts_either, each a list of str. Any vars not included here will be 
+    assumed to be "same".
 
     RETURNS:
     - pruned dfdist (copy) or None if all rows pruned
+
+    LT CHECKED
     """
     if False:
         assert len(subspaces)==1, "Currently I use dist_yue_diff, which requires keeping within the same subspace to be interpretable"
+
     if question in DFDIST["question"].unique().tolist():
         try:
             dfeffect = effect_extract_helper_this(DFDIST, question, subspaces, contrasts_diff, contrasts_either, only_within_pig)
@@ -1734,11 +3104,13 @@ def effect_extract_helper_this_wrapper(DFDIST, question, subspaces, contrasts_di
             print("Existing subspace:", DFDIST["subspace"].unique())
             print("Existing task_kind_12:", DFDIST["task_kind_12"].unique())
             raise err
+
         if dfeffect is not None:
             dfeffect["effect"] = effect_name
             list_dfeffect.append(dfeffect)
         else:
             print("No data for this question (not sure why): ", question)
+
     else:
         print("Skipped this question (doesnt exist in dfdist): ", question)
 
@@ -1795,7 +3167,7 @@ def plot_question_overview(DFDIST, question, only_within_pig, SAVEDIR, yvar, ord
     from neuralmonkey.scripts.analy_syntax_good_eucl_state import targeted_pca_clean_plots_and_dfdist_params
 
     params = targeted_pca_clean_plots_and_dfdist_params()
-    map_question_to_euclideanvars = params["map_question_to_euclideanvars"]
+    # map_question_to_euclideanvars = params["map_question_to_euclideanvars"]
     map_question_to_varsame = params["map_question_to_varsame"]
 
     DFDIST_THIS = None
@@ -1898,9 +3270,14 @@ def get_list_effects():
 def targeted_pca_MULT_2_postprocess(DFDIST):
     """
     Another postprocessing step...
+
+    Simple -- change the name of the subspace from (var1, var2, ..) to "global" if this ist he only
+    subpsace in this datsaet.
     
     PARAMS:
     - dfdist, holds data for a single animal-date (across regions)
+
+    LT CHECKED
     """
 
     # Sometimes a global subspace is called something like "('epoch', 'gridloc', 'DIFF_gridloc', 'chunk_rank', 'shape', 'rank_conj')|none|none"
@@ -1918,16 +3295,18 @@ def targeted_pca_MULT_2_postprocess(DFDIST):
     
     return DFDIST, map_subspace_to_shorthand
 
-def targeted_pca_MULT_2_plot_single_load(animal, date, run):
+def targeted_pca_MULT_2_plot_single_load(animal, date, run, yvar):
     """
     Load results for a single (animal, date) after the initial run -- i.e. the dfdist.
+
+    LT CHECKED
     """
     from neuralmonkey.scripts.analy_syntax_good_eucl_state import targeted_pca_clean_plots_and_dfdist_params
 
-    SAVEDIR = f"/tmp/SYNTAX_TARGETED_PCA_run{run}"
+    # SAVEDIR = f"/tmp/SYNTAX_TARGETED_PCA_run{run}"
     SAVEDIR_MULT = f"/lemur2/lucas/analyses/recordings/main/syntax_good/targeted_dim_redu_v2/run{run}/MULT"
 
-    yvar = "dist_yue_diff"
+    # yvar = "dist_yue_diff"
             
     SAVEDIR = f"{SAVEDIR_MULT}/summary_each_date-yvar={yvar}/{animal}-{date}"
 
@@ -1936,7 +3315,9 @@ def targeted_pca_MULT_2_plot_single_load(animal, date, run):
         DFDIST = pd.read_pickle(f"{SAVEDIR_MULT}/DFDIST-{animal}-{date}.pkl")
         print(animal, date)
     except Exception as err:
+        # OK to skip, as the final loading to make plots will fail if there is lacking some date.
         print(err)
+        # raise err
         return None, None, None
         
     ### PREP
@@ -1961,7 +3342,7 @@ def targeted_pca_MULT_2_plot_single_load(animal, date, run):
         # e.g., for shape vs. superv, I don't include this, as the other params do weed out SP.
         DFDIST["task_kind_12"] = "prims_on_grid|prims_on_grid"
 
-    DFDIST, map_subspace_to_shorthand = targeted_pca_MULT_2_postprocess(DFDIST)
+    DFDIST, _ = targeted_pca_MULT_2_postprocess(DFDIST)
     # # Sometimes a global subspace is called something like "('epoch', 'gridloc', 'DIFF_gridloc', 'chunk_rank', 'shape', 'rank_conj')|none|none"
     # # Here, check if there is only one subspace with "(" and ")" in the name. If so, then assume this is "global", and rename
     # # it as "global". Note that the old name is saved in DFDIST["subspace_orig"]
@@ -2000,12 +3381,16 @@ def prune_keep_only_middle_strokes(dfdist, question):
 def targeted_pca_MULT_2_plot_single(animal, date, run, SKIP_PLOTS = False, OVERWRITE = True):
     """
     This plots results for a single day, as well as extracting effects for that day and saving.
+
+    LT CHEKCED, the extraction of specific effects for the ones in mansucrit. Skiped other effects.
+    Also skipped plots.
+    
     """
     from neuralmonkey.scripts.analy_syntax_good_eucl_state import targeted_pca_clean_plots_and_dfdist_params
     # from neuralmonkey.scripts.analy_syntax_good_eucl_state import _targeted_pca_clean_plots_and_dfdist_MULT_plot_single
     from pythonlib.tools.snstools import rotateLabel
 
-    SAVEDIR = f"/tmp/SYNTAX_TARGETED_PCA_run{run}"
+    # SAVEDIR = f"/tmp/SYNTAX_TARGETED_PCA_run{run}"
     SAVEDIR_MULT = f"/lemur2/lucas/analyses/recordings/main/syntax_good/targeted_dim_redu_v2/run{run}/MULT"
 
     SKIP_Q_7 = True
@@ -2014,18 +3399,19 @@ def targeted_pca_MULT_2_plot_single(animal, date, run, SKIP_PLOTS = False, OVERW
     yvar = "dist_yue_diff"
             
     SAVEDIR = f"{SAVEDIR_MULT}/summary_each_date-yvar={yvar}/{animal}-{date}"
+    # Skip if done
+    if not OVERWRITE:
+        if os.path.exists(f"{SAVEDIR}/DFEFFECT.pkl"):
+            return None
 
-    DFDIST, map_question_to_euclideanvars, map_question_to_varsame = targeted_pca_MULT_2_plot_single_load(animal, date, run)
+    DFDIST, map_question_to_euclideanvars, map_question_to_varsame = targeted_pca_MULT_2_plot_single_load(animal, date, run, yvar)
     
     if DFDIST is None:
         # Then this (animal, date) has no data.
+        # print("Has no data!! ", animal, date)
+        # assert False
         return None
     
-    # Skip if done
-    if not OVERWRITE:
-        if os.path.exists(SAVEDIR):
-            return None
-        
     if not SKIP_PLOTS:
         ##### 1_rankwithin_vs_rank
         question = "1_rankwithin_vs_rank"
@@ -2082,7 +3468,6 @@ def targeted_pca_MULT_2_plot_single(animal, date, run, SKIP_PLOTS = False, OVERW
                 rotateLabel(fig)
                 savefig(fig, f"{SAVEDIR}/q={question}-catplot-clean.pdf")
                 plt.close("all")
-
 
         ##### 5_rankwithin_vs_rank
         question = "5_rankwithin_vs_rank"
@@ -2310,7 +3695,8 @@ def targeted_pca_MULT_2_plot_single(animal, date, run, SKIP_PLOTS = False, OVERW
         effect_extract_helper_this_wrapper(DFDIST, question, subspaces, contrasts_diff, contrasts_either, 
                                        only_within_pig, effect_name, list_dfeffect)
 
-
+        
+        ### COLLECT ALL EFFECTS into a single dataframe
         if len(list_dfeffect)>0:
             DFEFFECT = pd.concat(list_dfeffect).reset_index(drop=True)
 
@@ -2815,16 +4201,19 @@ def targeted_pca_MULT_2_plot_single(animal, date, run, SKIP_PLOTS = False, OVERW
 
         except Exception as err:
             return None
+
 def targeted_pca_MULT_3_combined_plots(animal, run, savesuff, SAVEDIR_MULT=None, return_dfeffect=False):
     """
     This plots results across all days for this animal.
+
+    LT CHECKED
     """
+    from neuralmonkey.scripts.analy_euclidian_dist_pop_script_MULT import load_preprocess_get_dates
     
     yvar = "dist_yue_diff"
     if SAVEDIR_MULT is None:
         SAVEDIR_MULT = f"/lemur2/lucas/analyses/recordings/main/syntax_good/targeted_dim_redu_v2/run{run}/MULT"
 
-    from neuralmonkey.scripts.analy_euclidian_dist_pop_script_MULT import load_preprocess_get_dates
     list_dates, _, _, _ = load_preprocess_get_dates(animal, savesuff)
     list_dates = list(set(list_dates))
 
@@ -2848,6 +4237,8 @@ def targeted_pca_MULT_3_combined_plots(animal, run, savesuff, SAVEDIR_MULT=None,
             LIST_DFEFFECT_ALL.append(dfeffect)
             print("Loaded: ", SAVEDIR)
         except FileNotFoundError as err:
+            print("Skipped, did not find file: ", f"/{SAVEDIR}/DFEFFECT.pkl")
+            # raise err
             continue
 
     ############################################
@@ -2861,7 +4252,7 @@ def targeted_pca_MULT_3_combined_plots(animal, run, savesuff, SAVEDIR_MULT=None,
 
     # Also, agg so that each datapt is a single date.
     from pythonlib.tools.pandastools import aggregGeneral
-    DFEFFECT_ALL_AGG = aggregGeneral(DFEFFECT_ALL, ["effect", "animal", "date", "bregion", "question", "subspace"], ["dist_yue_diff"])
+    DFEFFECT_ALL_AGG = aggregGeneral(DFEFFECT_ALL, ["effect", "animal", "date", "bregion", "question", "subspace"], [yvar])
 
     if return_dfeffect:
         return DFEFFECT_ALL, LIST_EFFECT_PAIRS
@@ -2929,16 +4320,19 @@ def targeted_pca_MULT_3_combined_plots(animal, run, savesuff, SAVEDIR_MULT=None,
 
             plt.close("all")
 
-def mult_rankwithin_rsa_up_down_good(plot_version, return_for_debug=False):
+def mult_rankwithin_rsa_up_down_good(plot_version, return_for_debug=False, skip_plots=False, RUN=27):
     """
     Does two possible anlayses 
+
+    LT CHECKED (for plot_version=="rankwithin_up_down_good")
     """
     from neuralmonkey.scripts.analy_euclidian_dist_pop_script_MULT import load_preprocess_get_dates
     import os
     import pandas as pd
     from pythonlib.tools.plottools import savefig
+    from neuralmonkey.analyses.euclidian_distance import dfdist_expand_convert_from_triangular_to_full, dfdist_variables_effect_extract_helper, dfdist_variables_generate_var_same
+    from neuralmonkey.scripts.analy_syntax_good_eucl_state import targeted_pca_clean_plots_and_dfdist_params
 
-    RUN = 27 
     save_suffix = "AnBmCk_general"
     yvar = "dist_yue_diff"
     # analysis = "n_in_chunk"
@@ -2990,8 +4384,6 @@ def mult_rankwithin_rsa_up_down_good(plot_version, return_for_debug=False):
                     DFDIST = append_col_with_grp_index(DFDIST, [f"chunk_rank_{i}", f"shape_{i}"], f"chunk_shape_{i}")
                 
                 # PRune to the relevant data
-                from neuralmonkey.analyses.euclidian_distance import dfdist_expand_convert_from_triangular_to_full, dfdist_convert_merge_pair_to_get_all_levels, dfdist_variables_effect_extract_helper, dfdist_variables_generate_var_same
-                from neuralmonkey.scripts.analy_syntax_good_eucl_state import targeted_pca_clean_plots_and_dfdist_params
                 label_vars = targeted_pca_clean_plots_and_dfdist_params()["map_question_to_euclideanvars"][question]
                 contrasts_diff = ["chunk_n_in_chunk"]
                 # contrasts_either = ["chunk_within_rank", "chunk_rank", "shape", "chunk_n_in_chunk"]
@@ -3026,14 +4418,14 @@ def mult_rankwithin_rsa_up_down_good(plot_version, return_for_debug=False):
                                         ], ["dist_yue_diff"])
 
                 # Recommpute chunk withi nrank from last if it doesnt exist
-                import numpy as np
+                # import numpy as np
                 for i in [1, 2]:
                     tmp = []
                     for _, row in dfdist_full.iterrows():
-                        if row[f"chunk_within_rank_fromlast_{i}"] == "none":
+                        if (f"chunk_within_rank_fromlast_{i}" not in row) or (row[f"chunk_within_rank_fromlast_{i}"] == "none"):
                             # Then recompute
                             assert row[f"chunk_within_rank_{i}"] != "none"
-                            assert row[f"chunk_within_rank_{i}"]>=0
+                            assert row[f"chunk_within_rank_{i}"] >= 0
                             this = row[f"chunk_within_rank_{i}"] - row[f"chunk_n_in_chunk_{i}"]
                             # print(row[f"chunk_n_in_chunk_{i}"], row[f"chunk_within_rank_{i}"], this)
                         else:
@@ -3082,7 +4474,7 @@ def mult_rankwithin_rsa_up_down_good(plot_version, return_for_debug=False):
                 if prune_enough_data:
                     # Prune to just those pairs that have enough data
                     from pythonlib.tools.pandastools import extract_with_levels_of_conjunction_vars_helper
-                    dfdist_full_clean, dict_dfthis = extract_with_levels_of_conjunction_vars_helper(dfdist_full, "chunk_within_rank_pair_class", 
+                    dfdist_full_clean, _ = extract_with_levels_of_conjunction_vars_helper(dfdist_full, "chunk_within_rank_pair_class", 
                                                                 ["bregion", "chunk_shape_1", "chunk_n_in_chunk_1", "chunk_within_rank_1", "chunk_shape_2", "chunk_n_in_chunk_2"], 
                                                                 n_min_trials, levels_var=["same_fromstart", "same_fromlast"])
                     del dfdist_full
@@ -3091,7 +4483,11 @@ def mult_rankwithin_rsa_up_down_good(plot_version, return_for_debug=False):
 
                 if return_for_debug:
                     return dfdist_full_clean
-                
+
+                if len(dfdist_full_clean)==0:
+                    print(f"SKIPPING - not enough data for {animal}, {date}, allow_diff_loc_pre={allow_diff_loc_pre}")
+                    continue
+
                 ### PLOTS (v1) - pairwise, combining across locations, and directions. This is sloppy, but gets a holistic picture.
                 if plot_version=="rsa_heatmaps_sloppy": 
                     SAVEDIR_PLOTS = f"/lemur2/lucas/analyses/recordings/main/syntax_good/targeted_dim_redu_v2/run{RUN}/MULT/compare_ranks_within/allow_diff_loc_pre={allow_diff_loc_pre}/{animal}-{date}"
@@ -3194,6 +4590,7 @@ def mult_rankwithin_rsa_up_down_good(plot_version, return_for_debug=False):
 
                             plt.close("all")
 
+
                 ### PLOTS (v2) - Good, replacing the old analysis of rank encoding (up vs. down), but carefully controlling so that
                 # the effect is controlling for differences in length (each datapt is a pair of lengths)
                 elif plot_version=="rankwithin_up_down_good":
@@ -3208,26 +4605,42 @@ def mult_rankwithin_rsa_up_down_good(plot_version, return_for_debug=False):
 
                     #     from neuralmonkey.scripts.analy_syntax_good_eucl_state import mult_plot_rankwithin_up_vs_down_good
                     #     mult_plot_rankwithin_up_vs_down_good(dfdist_full_clean_this, SAVEDIR_PLOTS, do_final_agg_over_datapts)
-                    
+                    # Plot shwing the relationshiip between ordinal 1 and ordinal 2
                     SAVEDIR_PLOTS = f"/lemur2/lucas/analyses/recordings/main/syntax_good/targeted_dim_redu_v2/run{RUN}/MULT/compare_ranks_within_v2_clean_up_vs_dn/allow_diff_loc_pre={allow_diff_loc_pre}/{animal}-{date}"
                     os.makedirs(SAVEDIR_PLOTS, exist_ok=True)
 
+                    from pythonlib.tools.pandastools import plot_subplots_heatmap
+                    if "shape_n_1" in dfdist_full_clean.columns:
+                        fig, _ = plot_subplots_heatmap(dfdist_full_clean, "chunk_within_rank_1min2", 
+                            "chunk_within_rank_fromlast_1min2", "dist_yue_diff", "shape_n_1")
+                        savefig(fig, f"{SAVEDIR_PLOTS}/good_contrasts_heatmap.pdf")
+
+                    from pythonlib.tools.pandastools import grouping_print_n_samples
+                    savepath = f'{SAVEDIR_PLOTS}/good_counts_data.txt'
+                    grouping_print_n_samples(dfdist_full_clean, ["chunk_shape_1", "chunk_n_in_chunk_1", 
+                        "chunk_shape_2", "chunk_n_in_chunk_2", 
+                        "chunk_within_rank_pair_class", "chunk_within_rank_1min2", "chunk_within_rank_fromlast_1min2",
+                        "chunk_within_rank_1", "chunk_within_rank_2", "chunk_within_rank_fromlast_1", "chunk_within_rank_fromlast_2"],
+                        savepath=savepath)
+
+                    plt.close("all")
+
                     from neuralmonkey.scripts.analy_syntax_good_eucl_state import mult_plot_rankwithin_up_vs_down_good
-                    mult_plot_rankwithin_up_vs_down_good(dfdist_full_clean, SAVEDIR_PLOTS, do_final_agg_over_datapts)                    
+                    mult_plot_rankwithin_up_vs_down_good(dfdist_full_clean, SAVEDIR_PLOTS, do_final_agg_over_datapts, skip_plots=skip_plots)                    
                 else:
                     assert False
 
 
-def mult_rankwithin_rsa_up_down_good_v2(allow_diff_loc_pre = False, n_min_in_chunk=2, n_min=2, do_agg = True):
+def mult_rankwithin_rsa_up_down_good_v2(allow_diff_loc_pre = False, n_min_in_chunk=2, n_min=2, do_agg = True,
+        just_return_dfdist=False, RUN=27):
     """
 
-        n_min = 2 # NOTE: if 3, then throws out too much.
+    n_min = 2 # NOTE: if 3, then throws out too much.
 
     """
     ### Load all the dates
     from neuralmonkey.scripts.analy_euclidian_dist_pop_script_MULT import load_preprocess_get_dates
     save_suffix = "AnBmCk_general"
-    RUN = 27
     SAVEDIR_PLOTS_ALL = f"/lemur2/lucas/analyses/recordings/main/syntax_good/targeted_dim_redu_v2/run{RUN}/MULT/compare_ranks_within_v2_clean_up_vs_dn/allow_diff_loc_pre={allow_diff_loc_pre}"
 
     list_dfdist = []
@@ -3235,22 +4648,27 @@ def mult_rankwithin_rsa_up_down_good_v2(allow_diff_loc_pre = False, n_min_in_chu
         list_dates, _, _, _ = load_preprocess_get_dates(animal, save_suffix)
         list_dates = list(set(list_dates))
 
+        print(f"Desired dates for {animal}: {list_dates}")
+
         for date in list_dates:
             
-            if animal=="Diego" and date in [230730]:
+            if animal=="Diego" and date in [230730, 250416, 250417]:
                 continue
             
             if animal=="Pancho" and date in [220831, 250321]:
+                # No stress -- these are just dates that dont even exist
                 continue
             
             ### Load data
             path = f"{SAVEDIR_PLOTS_ALL}/{animal}-{date}/dfdist_full_clean.pkl"
+            if os.path.exists(path):
+                dfdist_full_clean = pd.read_pickle(path)
+                dfdist_full_clean["animal"] = animal
+                dfdist_full_clean["date"] = date
+                list_dfdist.append(dfdist_full_clean)
+            else:
+                print("Skipping, didn't find: ", path)
 
-            dfdist_full_clean = pd.read_pickle(path)
-            dfdist_full_clean["animal"] = animal
-            dfdist_full_clean["date"] = date
-
-            list_dfdist.append(dfdist_full_clean)
     DFDIST = pd.concat(list_dfdist).reset_index(drop=True)
     
     savedir = f"{SAVEDIR_PLOTS_ALL}/dynamic_align_on_off/allow_diff_loc_pre={allow_diff_loc_pre}-n_min_in_chunk={n_min_in_chunk}-n_min={n_min}-do_agg={do_agg}"
@@ -3258,6 +4676,7 @@ def mult_rankwithin_rsa_up_down_good_v2(allow_diff_loc_pre = False, n_min_in_chu
 
     # Further cleaning
     analysis = "rank_within"
+    # analysis = "rank_up_vs_down"
     tmp = []
     for animal in DFDIST["animal"].unique().tolist():
         dftmp = DFDIST[DFDIST["animal"] == animal].reset_index(drop=True)
@@ -3303,11 +4722,23 @@ def mult_rankwithin_rsa_up_down_good_v2(allow_diff_loc_pre = False, n_min_in_chu
             assert False
     DFDIST["chunk_within_rank_1_both_clean"] = DFDIST.apply(f, axis=1)
     order_cwrbothclean = sorted(DFDIST["chunk_within_rank_1_both_clean"].unique())
-    
+
+    # An even cleaner way to group the conditions. (for final plot)
+    def f(x):
+        if (x["chunk_within_rank_1"] < 2) & (x["chunk_within_rank_fromlast_1"]<-2):
+            return "start"
+        elif (x["chunk_within_rank_1"] >= 2) & (x["chunk_within_rank_fromlast_1"]>=-2):
+            return "end"
+        else:
+            return "middle"
+    DFDIST["chunk_within_rank_1_both_semantic"] = DFDIST.apply(f, axis=1)
+        
     ### PLOTS
     from pythonlib.tools.pandastools import grouping_print_n_samples
-    grouping_print_n_samples(DFDIST, ["chunk_within_rank_1_both_clean", "chunk_within_rank_1_both"])
-    
+    savepath = f"{savedir}/counts.txt"
+    # grouping_print_n_samples(DFDIST, ["chunk_within_rank_1_both_semantic", "chunk_within_rank_1_both_clean", "chunk_within_rank_1_both"])
+    grouping_print_n_samples(DFDIST, ["chunk_within_rank_1_both_clean", "chunk_within_rank_1", "chunk_within_rank_fromlast_1", "chunk_within_rank_1_both", "chunk_within_rank_1_both_semantic"], savepath=savepath)
+
     ### CLeanup
     _dfdist = DFDIST.copy()
     print(len(_dfdist))
@@ -3326,16 +4757,20 @@ def mult_rankwithin_rsa_up_down_good_v2(allow_diff_loc_pre = False, n_min_in_chu
     print(len(_dfdist))
 
     # (2) Agg
-    if do_agg:
+    if do_agg: # TRue
         from pythonlib.tools.pandastools import aggregGeneral
-        var_datapt_grp = ["animal", "date", "bregion", "chunk_shape_1", "chunk_n_in_chunk_1", "chunk_within_rank_1", "chunk_within_rank_fromlast_1", "chunk_within_rank_1_both", "chunk_within_rank_1_both_clean", "chunk_n_in_chunk_2"]
+        var_datapt_grp = ["animal", "date", "bregion", "chunk_shape_1", "chunk_n_in_chunk_1", "chunk_within_rank_1", "chunk_within_rank_fromlast_1", "chunk_within_rank_1_both", "chunk_within_rank_1_both_clean", "chunk_within_rank_1_both_semantic", "chunk_n_in_chunk_2"]
         # var_datapt_grp = ["animal", "date", "bregion", "chunk_shape_1", "chunk_n_in_chunk_1", "chunk_within_rank_1", "chunk_within_rank_fromlast_1", "chunk_within_rank_1_both"]
         var_grp = var_datapt_grp + ["chunk_within_rank_pair_class", "chunk_rank_1"]
         DFDIST_AGG = aggregGeneral(_dfdist, var_grp, ["dist_yue_diff"])
     else:
         DFDIST_AGG = _dfdist
+
     from pythonlib.tools.pandastools import append_col_with_grp_index
     DFDIST_AGG = append_col_with_grp_index(DFDIST_AGG, ["chunk_rank_1", "chunk_n_in_chunk_1"], "chunk_rank_n_1")
+
+    if just_return_dfdist:
+        return DFDIST_AGG
 
     ### PLOTS
     from pythonlib.tools.plottools import savefig
@@ -3362,6 +4797,7 @@ def mult_rankwithin_rsa_up_down_good_v2(allow_diff_loc_pre = False, n_min_in_chu
         dfdist = DFDIST_AGG[DFDIST_AGG["animal"] == animal]
         for row in ["chunk_n_in_chunk_1", "chunk_rank_1", "chunk_rank_n_1"]:
             fig = sns.relplot(data=dfdist, x="chunk_within_rank_fromlast_1", y="dist_yue_diff", 
+                    errorbar="se", 
                     hue="chunk_within_rank_pair_class", col="bregion", kind="line",
                     row=row)
             for ax in fig.axes.flatten():
@@ -3373,15 +4809,16 @@ def mult_rankwithin_rsa_up_down_good_v2(allow_diff_loc_pre = False, n_min_in_chu
     ### As function of chunk_within "both"
     from pythonlib.tools.pandastools import stringify_values
     DFDIST_AGG_STR = stringify_values(DFDIST_AGG)
-    for x in ["chunk_within_rank_1_both", "chunk_within_rank_1_both_clean"]:
-
-        if x=="chunk_within_rank_1_both":
-            order = order_cwrboth
-        else:
-            order = order_cwrbothclean
+    list_x_order = [
+        ("chunk_within_rank_1_both_semantic", ['start', 'middle', 'end']),
+        ("chunk_within_rank_1_both", order_cwrboth),
+        ("chunk_within_rank_1_both_clean", order_cwrbothclean),
+    ]
+    for x, order in list_x_order:
 
         fig = sns.catplot(data=DFDIST_AGG_STR, x=x, y="dist_yue_diff", 
                 hue="chunk_within_rank_pair_class", col="bregion", kind="point",
+                errorbar="se", 
                 row="animal", order=order)
         for ax in fig.axes.flatten():
             ax.axhline(0, color="k", alpha=0.5)              
@@ -3393,19 +4830,44 @@ def mult_rankwithin_rsa_up_down_good_v2(allow_diff_loc_pre = False, n_min_in_chu
             ax.axhline(0, color="k", alpha=0.5)              
         savefig(fig, f"{savedir}/catplot_good-x={x}-2.pdf")
 
-        fig = sns.catplot(data=DFDIST_AGG_STR, x=x, y="dist_yue_diff", 
-                hue="chunk_within_rank_pair_class", col="bregion", kind="bar", order=order, errorbar="se")
-        for ax in fig.axes.flatten():
-            ax.axhline(0, color="k", alpha=0.5)              
-        savefig(fig, f"{savedir}/catplot_good-x={x}-3.pdf")
+        if True: # Bar plots
+            fig = sns.catplot(data=DFDIST_AGG_STR, x=x, y="dist_yue_diff", 
+                    hue="chunk_within_rank_pair_class", col="bregion", kind="bar", order=order, errorbar="se")
+            for ax in fig.axes.flatten():
+                ax.axhline(0, color="k", alpha=0.5)              
+            savefig(fig, f"{savedir}/catplot_good-x={x}-3.pdf")
 
         plt.close("all")
 
-        # Compare each experiment (date)
+    # GOOD PLOT (MS) - excuding cases that are length 2
+    x = "chunk_within_rank_1_both"
+    order = ['0|-3', '1|-3',    '2|-3', '1|-2',     '2|-2', '2|-1'] # excluding length 2: '0|-2',  '1|-1', '0|-1',
+    
+    fig = sns.catplot(data=DFDIST_AGG_STR, x=x, y="dist_yue_diff", 
+            hue="chunk_within_rank_pair_class", col="bregion", kind="point",
+            errorbar="se", 
+            row="animal", order=order)
+    for ax in fig.axes.flatten():
+        ax.axhline(0, color="k", alpha=0.5)              
+    savefig(fig, f"{savedir}/catplot_good-x={x}-nolength2-1.pdf")
+
+    fig = sns.catplot(data=DFDIST_AGG_STR, x=x, y="dist_yue_diff", 
+            hue="chunk_within_rank_pair_class", col="bregion", kind="point",
+            errorbar="se", order=order)
+    for ax in fig.axes.flatten():
+        ax.axhline(0, color="k", alpha=0.5)              
+    savefig(fig, f"{savedir}/catplot_good-x={x}-nolength2-2.pdf")
+
+    # Compare each experiment (date)
+    list_x_order = [
+        ("chunk_within_rank_1_both", order_cwrboth),
+    ]
+    for x, order in list_x_order:
         for animal in DFDIST_AGG_STR["animal"].unique().tolist():
             dftmp_this = DFDIST_AGG_STR[DFDIST_AGG_STR["animal"] == animal].reset_index(drop=True)
 
             fig = sns.catplot(data=dftmp_this, x=x, y="dist_yue_diff", 
+                    errorbar="se", 
                     hue="chunk_within_rank_pair_class", col="bregion", kind="point",
                     row="date", order=order)
             for ax in fig.axes.flatten():
@@ -3426,12 +4888,12 @@ def mult_rankwithin_rsa_up_down_good_v2(allow_diff_loc_pre = False, n_min_in_chu
     ### SCATTER
     from pythonlib.tools.plottools import map_continuous_var_to_color_range
 
-    for var_datapt in ["chunk_within_rank_1_both", "chunk_within_rank_1_both_clean"]:
-        if var_datapt=="chunk_within_rank_1_both":
-            order = order_cwrboth
-        else:
-            order = sorted(DFDIST_AGG_STR[var_datapt].unique())
-
+    list_x_order = [
+        ("chunk_within_rank_1_both", order_cwrboth),
+        ("chunk_within_rank_1_both_clean", order_cwrbothclean),
+        ("chunk_within_rank_1_both_semantic", ['start', 'middle', 'end']),
+    ]
+    for var_datapt, order in list_x_order:
         pcols = map_continuous_var_to_color_range(np.linspace(0, 1, len(order)), 0, 1)
         assert len(pcols)==len(order)
 
@@ -3479,6 +4941,59 @@ def mult_rankwithin_rsa_up_down_good_v2(allow_diff_loc_pre = False, n_min_in_chu
         fig = sns.relplot(data=dfpivot, x="dist_yue_diff-same_fromstart", y="dist_yue_diff-same_fromlast", hue="chunk_within_rank_1_both_clean", col="bregion", kind="scatter")
 
 
+    ############### STATS
+    # For each x value (e./g, 0|1) do sign rank comparing "diff from last" vs. "diff from start"
+    from pythonlib.tools.statstools import compute_all_pairwise_signrank_wrapper
+    from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good
+
+    contrast_var = "chunk_within_rank_pair_class"
+    list_bregion = DFDIST_AGG_STR["bregion"].unique()
+    list_x_order = [
+        ("chunk_within_rank_1_both_semantic", ['start', 'middle', 'end']),
+        ("chunk_within_rank_1_both", ['0|-3', '0|-2', '1|-3', '2|-3', '1|-2', '2|-2', '0|-1', '1|-1', '2|-1']),
+    ]
+
+    for bregion in list_bregion:
+        DFDIST_THIS = DFDIST_AGG_STR[DFDIST_AGG_STR["bregion"] == bregion].reset_index(drop=True)
+
+        for x, order in list_x_order:
+            
+            savedir_this = f"{savedir}/stats/{bregion}-x={x}"
+            os.makedirs(savedir_this, exist_ok=True)
+
+            # Collect results from stats.
+            res = []
+            _grpvars = ["animal", x]
+            grpdict = grouping_append_and_return_inner_items_good(DFDIST_THIS, _grpvars)
+            for grp, inds in grpdict.items():
+                dfdist = DFDIST_THIS.iloc[inds].reset_index(drop=True)
+                dfres = compute_all_pairwise_signrank_wrapper(dfdist, 
+                    ["date", "chunk_shape_1", "chunk_n_in_chunk_1", "chunk_n_in_chunk_2", "chunk_within_rank_1", "chunk_within_rank_fromlast_1"], 
+                    contrast_var, "dist_yue_diff")
+                dfres[_grpvars[0]] = grp[0]
+                dfres[_grpvars[1]] = grp[1]
+                res.append(dfres)
+            dfstats = pd.concat(res).reset_index(drop=True)
+
+            # Plot summary
+            dfstats = dfstats[dfstats["grp1"] != dfstats["grp2"]].reset_index(drop=True) # Just care about count up vs. count down.
+            dfstats["logp"] = np.log10(dfstats["pval"])
+
+            # Plots
+            fig = sns.catplot(dfstats, x=x, y="diff_2min1", hue="animal", order=order)
+            for ax in fig.axes.flatten():
+                ax.axhline(0)
+            savefig(fig, f"{savedir_this}/catplot-valdiffs.pdf")
+
+            fig = sns.catplot(dfstats, x=x, y="logp", hue="animal", order=order)
+            for ax in fig.axes.flatten():
+                ax.axhline(np.log10(0.05))
+            savefig(fig, f"{savedir_this}/catplot-log10pval.pdf")
+
+            dfstats.to_csv(f"{savedir_this}/stats.txt")
+
+            plt.close("all")
+
 if __name__=="__main__":
     from neuralmonkey.scripts.analy_euclidian_dist_pop_script_MULT import load_preprocess_get_dates
 
@@ -3490,7 +5005,7 @@ if __name__=="__main__":
 
     PLOTS_DO = [2.0, 2.1, 2.2] # Good
     # PLOTS_DO = [2.1, 2.2] # Good
-    # PLOTS_DO = [2.2] # Good
+    # PLOTS_DO = [2.1] # Good
     # expt_kind="RULE_ANBMCK_STROKE"
     # expt_kind="RULESW_ANY_SEQSUP_STROKE"
 
@@ -3500,16 +5015,19 @@ if __name__=="__main__":
         save_suffix = "AnBmCk_general"
     # dates, question, _, _ = load_preprocess_get_dates("Diego", "sh_vs_seqsup")
 
+    # MS check
+    # PLOTS_DO = [2.1] # Good
+
     for plotdo in PLOTS_DO:
         if plotdo==1.0:
             """ Older plots, before doing the good Targeted PCA (2.0+)"""
             mult_plot_all_wrapper()
 
         elif plotdo==2.0:
-            """ Step 1: Save a single DFDIST"""
+            """ Step 1: Save a single DFDIST, one for each (animal, date)"""
             ### Collect all the animal-date pairs
             from multiprocessing import Pool
-            MULTIPROCESS_N_CORES = 24
+            MULTIPROCESS_N_CORES = 8
             if False: # Parallel across all dates/animals
                 LIST_ANIMAL = []
                 LIST_DATE = []
@@ -3562,14 +5080,19 @@ if __name__=="__main__":
                 print(a, d)
             
             ### Run
-            if False:
+            OVERWRITE = False
+            if True:
                 from multiprocessing import Pool
-                MULTIPROCESS_N_CORES = 24
+                MULTIPROCESS_N_CORES = 8
+                list_run = [RUN for _ in range(len(LIST_ANIMAL))]
+                list_skip = [not plot_each_date for _ in range(len(LIST_ANIMAL))]
+                list_overwrite = [OVERWRITE for _ in range(len(LIST_ANIMAL))]
                 with Pool(MULTIPROCESS_N_CORES) as pool:
-                    pool.starmap(lambda x, y: targeted_pca_MULT_2_plot_single(x, y, run=RUN), zip(LIST_ANIMAL, LIST_DATE))
+                    # pool.starmap(lambda x, y: targeted_pca_MULT_2_plot_single(x, y, run=RUN, SKIP_PLOTS=not plot_each_date, OVERWRITE=OVERWRITE), zip(LIST_ANIMAL, LIST_DATE))
+                    pool.starmap(targeted_pca_MULT_2_plot_single, zip(LIST_ANIMAL, LIST_DATE, list_run, list_skip, list_overwrite))
             else:
                 for animal, date in zip(LIST_ANIMAL, LIST_DATE):
-                    targeted_pca_MULT_2_plot_single(animal, date, run=RUN, SKIP_PLOTS=not plot_each_date)
+                    targeted_pca_MULT_2_plot_single(animal, date, run=RUN, SKIP_PLOTS=not plot_each_date, OVERWRITE=OVERWRITE)
 
         elif plotdo==2.2:
             """ Step 3: Plot effects, and save a single dfeffects (for each animal, date)"""

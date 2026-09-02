@@ -2579,7 +2579,7 @@ def _euclidianshuff_stats_linear_vs0_compute(DFDISTS, var_same_same, plot_coeff=
     return DFSTATS
 
 
-def _euclidianshuff_stats_linear_2br_compute(DFDISTS, var_same_same, var_datapt, var_same_same_levels=None):
+def _euclidianshuff_stats_linear_2br_compute(DFDISTS, var_same_same, var_fixed_effect, var_same_same_levels=None):
     """
     Compute pairwise stats (each pair is two brain regions) 
     for effect, across each pair of brain regions.
@@ -2598,9 +2598,9 @@ def _euclidianshuff_stats_linear_2br_compute(DFDISTS, var_same_same, var_datapt,
     else: 
         assert len(var_same_same_levels)==2
 
-    if var_datapt is None:
-        var_datapt = "shapeloc12"
-        assert var_datapt in DFDISTS
+    if var_fixed_effect is None:
+        var_fixed_effect = "shapeloc12"
+        assert var_fixed_effect in DFDISTS
 
     yvar = "dist_yue_diff"
     list_bregion = ORDER_BREGION
@@ -2629,7 +2629,7 @@ def _euclidianshuff_stats_linear_2br_compute(DFDISTS, var_same_same, var_datapt,
 
                         # Linear model, to get effect of contrast
                         # - fixed effect of brain region and each datapt level
-                        formula = f"{yvar} ~ C(bregion, Treatment('{bregion1}')) + C({var_datapt})"
+                        formula = f"{yvar} ~ C(bregion, Treatment('{bregion1}')) + C({var_fixed_effect})"
 
                         md = smf.ols(formula, dflm)
                         mdf = md.fit()
@@ -2719,7 +2719,7 @@ def _euclidianshuff_stats_linear_2br_compute_nsigs(DFSTATS_2BR, var_same_same, p
     return DFSTATS_2BR_NSIGS
 
 
-def _euclidianshuff_stats_linear_2br_scatter_wrapper(DFDISTS, var_same_same, var_datapt, SAVEDIR_PLOTS, 
+def _euclidianshuff_stats_linear_2br_scatter_wrapper(DFDISTS, var_same_same, var_fixed_effect, SAVEDIR_PLOTS, 
                                                      plot_heatmap_counts=True,
                                                      plot_catplots=True,
                                                      plot_results_scatter=True,
@@ -2729,14 +2729,16 @@ def _euclidianshuff_stats_linear_2br_scatter_wrapper(DFDISTS, var_same_same, var
     PARAMS:
     - DFDISTS, what you have as the rows will define the datapts that go into 
     stats.
-    
+    - var_same_same, computes differences across bregions within each level of var_same_same (ie conjunctive variable)
 
     ###############################################################
     ### Compare areas
-    # Note, here each datapt is conjunction of variables + (animal, date), where variables could be, for instance, (shape, loc).
-    # i.e., (prim1, loc2) x (animal, date) is a single datapt. 
-    # And then the plots/analyses are each pair of these. 
+    # Note on var_fixed_effect. This pools all data across datse, so this means that if a given value of
+    # var_fixed_effect occurs across dates, then there are multiple "trials" of it. where var_fixed_effect could be, for instance, (shape, loc).
+    # i.e., (prim1, loc2) x (date) is a single datapt. Multiple trials are all passed into the linear regression model.
     # This means that could have repeated conditions across days, leading to more datapts.
+    
+    # The point is that you want to ask: what is the effect of braion region after controlling for var_fixed_effect.
 
     MS: checked
     """
@@ -2776,12 +2778,12 @@ def _euclidianshuff_stats_linear_2br_scatter_wrapper(DFDISTS, var_same_same, var
             break
 
     ### Compute stats
-    DFSTATS_2BR = _euclidianshuff_stats_linear_2br_compute(DFDISTS, var_same_same, var_datapt, var_same_same_levels=var_same_same_levels)
+    DFSTATS_2BR = _euclidianshuff_stats_linear_2br_compute(DFDISTS, var_same_same, var_fixed_effect, var_same_same_levels=var_same_same_levels)
 
     ### Plot
     order_bregion = _REGIONS_IN_ORDER_COMBINED
     npairs = comb(len(order_bregion), 2)
-    ncomp = 2
+    ncomp = 2 # ie len(var_same_same_levels)
     alpha=0.05
     alpha_bonf_easy = alpha/(npairs)
     alpha_bonf_hard = alpha/(npairs * ncomp) # 

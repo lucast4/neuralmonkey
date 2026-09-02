@@ -364,14 +364,18 @@ def state_space_targeted_pca_scalar_single_one_var_mult_axes(PA, twind_scal, var
     RETURNS:
     - pa_subspace, subspace_axes_orig, subspace_axes_normed, dfcoeff, PAscalTest
     (Note, could be None if there isn't enough data or variaiotn in data to get targeted PCs)
+
+    LT CHECKED
     """
-    # from neuralmonkey.scripts.analy_euclidian_chars_sp import params_subspace_projection
-    # from pythonlib.tools.pandastools import append_col_with_grp_index, grouping_plot_n_samples_heatmap_var_vs_grpvar
-    # from neuralmonkey.analyses.state_space_good import _trajgood_plot_colorby_scalar_BASE_GOOD
-    # from pythonlib.tools.plottools import share_axes_row_or_col_of_subplots
-    # from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_scalar_2dgrid_bregion
-    # from neuralmonkey.analyses.state_space_good import trajgood_plot_colorby_splotby_WRAPPER, trajgood_plot_colorby_splotby_scalar_WRAPPER
     from neuralmonkey.analyses.state_space_good import dimredgood_subspace_variance_accounted_for
+
+    try: 
+        assert do_vars_remove == (vars_remove is not None), "dont need do_vars_remove, but it's legacy, so just make sure it works"
+    except Exception as err:
+        print(do_vars_remove)
+        print(vars_remove)
+        print((vars_remove is not None))
+        raise err
 
     variables = variables_cont + variables_cat
     variables_is_cat = [False for _ in range(len(variables_cont))] + [True for _ in range(len(variables_cat))]
@@ -459,7 +463,7 @@ def state_space_targeted_pca_scalar_single_one_var_mult_axes(PA, twind_scal, var
                         from pythonlib.tools.expttools import writeDictToTxtFlattened
                         writeDictToTxtFlattened(out, f"{savedir}/VAF-subspace={subspace}.txt")
         
-    ### Plot all subspaces
+    ### Plot all subspaces, state space plots
     if LIST_VAR_VAROTHERS is not None and len(LIST_VAR_VAROTHERS)>0 and pa_subspace is not None:
         if SAVEDIR is not None:
             savedir = f"/{SAVEDIR}/subspace={var_subspace}"
