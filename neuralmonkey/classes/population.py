@@ -1817,6 +1817,8 @@ class PopAnal():
         - min_n_datapts_unconstrained, n trials for unconstrinaed. e.g., if using this for dpca, then could be 
         len(dflab[dpca_var].unique()) # 
         - list_labels_need_n, e..g, [('arcdeep-4-4-0', (-1, 1), 'rig3_3x3_big')]
+
+        LT CHECKED
         """
         # from pythonlib.tools.statstools import split_stratified_constrained, split_stratified_constrained_multiple
         from pythonlib.tools.statstools import split_stratified_constrained_multiple
@@ -3140,6 +3142,8 @@ class PopAnal():
         - subspace_axes_orig
         - subspace_axes_normed
         - dfcoeff
+
+        LT Checked
         """
         # Get basis vectors --> dfcoeff dataframe
         tmp = dfbases[dfbases["var_subspace"] == var_subspace]
@@ -3162,7 +3166,7 @@ class PopAnal():
         dict_subspace_pa, dict_subspace_axes_orig, dict_subspace_axes_normed = self.dataextract_subspace_targeted_pca_project(
             dfcoeff, [subspace_tuple], normalization, plot_orthonormalization)
 
-        pa_subspace = dict_subspace_pa[subspace_tuple]
+        pa_subspace = dict_subspace_pa[subspace_tuple] # Holds data projected onto dfcoeff (after orthonormalizing dfcoeff)
         subspace_axes_orig = dict_subspace_axes_orig[subspace_tuple]
         subspace_axes_normed = dict_subspace_axes_normed[subspace_tuple]
 
@@ -3178,10 +3182,14 @@ class PopAnal():
         They don't yet need to be orthonormal, etc.
         - list_subspace_tuples, list of tuples, each tuple is a subspace. Each subspace is a list of variables, which are the 
         columns of dfcoeff, to pick out the axes to project onto.
+
+        LT checked
         """
 
+        assert normalization == "orthonormal", "see reason in dimredgood_project_data_denoise_simple"
+
         # Clean up so no na. This can happen with overcomplete bases.
-        dfcoeff = dfcoeff.fillna(0.0)
+        dfcoeff = dfcoeff.fillna(0.0).copy()
 
         # Get basis vectors
         dict_subspace_pa = {}
@@ -3189,7 +3197,7 @@ class PopAnal():
         dict_subspace_axes_normed = {}
         for subspace_tuple in list_subspace_tuples:
 
-            basis_vectors_orig = dfcoeff.loc[:, subspace_tuple].values # (nchans, nrank)
+            basis_vectors_orig = dfcoeff.loc[:, subspace_tuple].values # (nchans, nrank), PCA-modified coefficients
             PAredu, basis_vectors_normed = self.dataextract_project_data_denoise(basis_vectors_orig, normalization=normalization, 
                                                          plot_orthonormalization=plot_orthonormalization)
             dict_subspace_pa[tuple(subspace_tuple)] = PAredu
@@ -3274,6 +3282,9 @@ class PopAnal():
         - variables_cont, list of str, continuous variables to include.
         - variables_cat, list of str, categorical variables to include.
         - vars_remove, list of str, which variables to regress out. To skip, use None or empty list.
+        NOTE: This actually removes all VARIATION due to these variables. This means that the returned data will
+        have the intercept (fit from the full model) subtracted out as well. This is beucase for categorical variables,
+        the intercept is the refernece level, which is arbitrarily chosen, and so should be subtracted out as well.
         - var_subspace, either str or tuple of strings, to project to (after applying vars_remove)
         - normalization, str, either None, "norm", or "orthonormalize".
         - inds_trials_pa_train, inds_trials_pa_test, optionally, inds to train and then project data onto subsapce
@@ -3284,9 +3295,11 @@ class PopAnal():
         vars_remove = ["motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", 
                     "velmean_x", "velmean_y", "gridloc", "DIFF_gridloc", "stroke_index_is_first"]
 
+        LT CHECKED
         """
         from patsy import dmatrix
         from neuralmonkey.analyses.regression_good import formula_string_construct
+        import patsy
 
         # Demean 
         if demean:
@@ -3327,17 +3340,53 @@ class PopAnal():
                 frates = pa_test.X[ind_chan, :, 0]
                 model = res_all[ind_chan]["model"]
 
-                # Make new design matrix
-                X_subset = dmatrix("~" + subset_formula, dflab_test, return_type="dataframe")
+                ##### METHOD 1
+                if False:
+                    # Make new design matrix
+                    X_subset = dmatrix("~" + subset_formula, dflab_test, return_type="dataframe")
 
-                # --- extract coefficients for these terms from full model ---
-                beta_subset = model.params.reindex(X_subset.design_info.column_names).fillna(0.0).values # fillna, otherwise will fail if there is overparametrized case.
-                if np.any(np.isnan(beta_subset)):
-                    print(model.params)
-                    print(beta_subset)
-                    print(X_subset.design_info.column_names)
-                    assert False, "why nan?"
+                    # --- extract coefficients for these terms from full model ---
+                    for _n in X_subset.design_info.column_names:
+                        assert _n in model.params.index, "will have false positive, filling with 0"
 
+                    beta_subset = model.params.reindex(X_subset.design_info.column_names).fillna(0.0).values # fillna, otherwise will fail if there is overparametrized case.
+                    if np.any(np.isnan(beta_subset)):
+                        print(model.params)
+                        print(beta_subset)
+                        print(X_subset.design_info.column_names)
+                        assert False, "why nan?"
+
+                    beta_subset_1 = beta_subset
+
+                else:
+                    ##### METHOD 2
+                    # This is better, since it doesn't assume that, for a given variable, both pa_train
+                    # and pa_test have identical levels, which would be problematic (?)
+                    X_full_test = patsy.build_design_matrices(
+                        [model.model.data.design_info], dflab_test, return_type="dataframe")[0]
+
+                    # columns belonging to vars_remove (+ Intercept, matching old "~ subset" behavior)
+                    cols_remove = [
+                        c for c in X_full_test.columns
+                        if original_feature_mapping[c] in vars_remove or c == "Intercept"
+                    ]
+                    # fail loud if a requested var was never in the train model
+                    for v in vars_remove:
+                        assert any(original_feature_mapping[c] == v for c in X_full_test.columns), \
+                            f"{v} not in train model (dropped or never fit) — cannot residualize"
+
+                    X_subset = X_full_test.loc[:, cols_remove]
+                    beta_subset = model.params.loc[cols_remove].values
+                    assert np.all(np.isfinite(beta_subset)), "NaN/Inf betas — do not fillna(0)"
+
+                    if False: # Already confirmed this section runs without failing.
+                        beta_subset_2 = beta_subset
+
+                        ##### Sanity check that old (1) and new (2) methods lead to the same result
+                        # If they don't then could be mistake in original analyses.
+                        assert np.all(np.isclose(beta_subset_1, beta_subset_2))
+
+                ##### Continue
                 # --- compute predictions from subset terms only ---
                 frates_subset = X_subset.values @ beta_subset # (ntrials, nfeats) * (nfeats) --> (ntrials)
                 
@@ -3367,12 +3416,21 @@ class PopAnal():
             # Then skip this
             pa_subspace, subspace_axes_orig, subspace_axes_normed = None, None, None
         elif isinstance(var_subspace, str):
-            # var_subspace = "rank_conj" 
+            # A single varialbe (eg... var_subspace = "rank_conj")
+            if vars_remove is not None:
+                assert var_subspace not in vars_remove, "You are projecting residualized data onto axes whose effects were removed"
             pa_subspace, subspace_axes_orig, subspace_axes_normed, _ = PAresid.dataextract_subspace_targeted_pca_project_helper(
                     dfbases, var_subspace, npcs_keep, normalization, plot_orthonormalization)
         elif isinstance(var_subspace, (list, tuple)):
+            # A subspace that maximally explains variance due to a list of variables.
             # vars_this_subspace = ("motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", 
             #             "velmean_x", "velmean_y", "gridloc", "DIFF_gridloc")
+
+            if vars_remove is not None:
+                for v in var_subspace:
+                    assert v not in vars_remove, "You are projecting residualized data onto axes whose effects were removed"
+
+            # Do PCA on coefficients
             dfbases = PAresid.regress_neuron_task_variables_convert_coeff_to_basis(dfcoeff, 
                                                                 var_subspace, original_feature_mapping, savedir_pca_subspaces)
             if dfbases is None:
@@ -3487,6 +3545,8 @@ class PopAnal():
         - (nchans, ndims_project), where nchans matches self.CHans
         - do_orthonormal, bool, if True, then orthonormlaizes the basis using QR decomspotion. The order of columns
         in basis matters. ie sequentially gets orthognalizes each column by the subspace spanned by the preceding columns.
+
+        LT Checked
         """
         from neuralmonkey.analyses.state_space_good import dimredgood_project_data_denoise_simple
         Xnew, basis_vectors = dimredgood_project_data_denoise_simple(self.X, basis_vectors, version, normalization, 
@@ -4301,6 +4361,9 @@ class PopAnal():
         """
         Extract strokes from self.Xlabels["trials"], and get variuos stats related to kinmetaics, and then store
         in self.Xlabels["trials"]
+
+        
+        LT CHECKED
         """
         
         assert trial_take_first_stroke, "assumes one stroke below.."
@@ -4432,11 +4495,17 @@ class PopAnal():
     def behavior_extract_strokes_to_dflab(self, trial_take_first_stroke=False):
         """
         Extracts strokes_beh and strokes_task to dflab
+        Collect storkes, currently (with trial_take_first_stroke==0) takes the
+        first stroke for each trial, just for ease of use.
+
+        LT CHECKED
         """
         dflab = self.Xlabels["trials"]
 
+        assert trial_take_first_stroke, "Currently this code is assuming this"
+        
         if ("strok_beh" in dflab) and ("strok_task" in dflab):
-            assert trial_take_first_stroke, "hacky only workse for this, assumes it is this"
+            assert trial_take_first_stroke, "hacky only workse for this -- ie getting just one stroke per trial. Assumes it is this"
             # if trial_take_first_stroke:
             #     # Then take the first stroke
             #     for col in ["strok_beh", "strok_task"]:
@@ -4450,7 +4519,7 @@ class PopAnal():
         strokes_beh = []
         if "Tkbeh_stkbeh" in dflab.columns:
             # Then this is "trial" version
-            for i, row in dflab.iterrows():
+            for _, row in dflab.iterrows():
                 
                 tokens = row["Tkbeh_stkbeh"].Tokens
                 if not trial_take_first_stroke:
@@ -4466,7 +4535,7 @@ class PopAnal():
                 strokes_beh.append(strok_beh)
         elif "Stroke" in dflab.columns:
             # Then this is "stroke" version
-            for i, row in dflab.iterrows():
+            for _, row in dflab.iterrows():
                 
                 strok_beh = row["Stroke"]()
                 
@@ -5730,6 +5799,12 @@ class PopAnal():
         Convert coefficients to subspace using PCA, given set of regression coefficients (dfcoeff) and variables to combine
         into this subspace (vars_this_subspace)
 
+        Does PCA on (neurons, levels), where levels are the list of all levels collected across vars in 
+        <vars_this_subspace>
+
+        NOTE: It doesn't matter whether dfcoeff were gotten with demeaned data, since the subpsace (basis) is based
+        on rgression coeff, not intercept.
+
         PARAMS:
         - vars_this_subspace, list of str, the variable names to include in making this subspace
             vars_this_subspace = ("motor_onsetx", "motor_onsety", "gap_from_prev_x", "gap_from_prev_y", 
@@ -5737,6 +5812,8 @@ class PopAnal():
         RETURNS:
         - dfbases, one, row, this subspace's basis
         OR None, if not enough variation to fit regression model.
+
+        LT CHECKED
         """
         from neuralmonkey.analyses.state_space_good import dimredgood_pca
 
@@ -5774,13 +5851,12 @@ class PopAnal():
         plt.close("all")
 
         if convert_to_dfbasis:
-            res = []
-            res.append({
+            res = [{
                 "var_subspace":"this",
                 "Xpca":Xpca,
                 "explained_variance_ratio_":explained_variance_ratio_,
                 "components_":components_,
-            })
+            }]
             dfbases = pd.DataFrame(res)
 
             return dfbases
@@ -5810,9 +5886,13 @@ class PopAnal():
         """
         For each chan, do multiple regression, where variables predicts firing rate, and then return the combined coefficients
 
+        Also gets a multi-D (not just 1-D) subspace for each categorical variable.
+
         PARAMS:
         - return_as_residuals, bool, if True, then returns copy of self, with X replaced with residuals, after subtracting predicted
         activity given variables.
+
+        LT CHECKED
         """    
         x1 = self.X.copy()
         if variables_is_cat is None:
@@ -5882,8 +5962,7 @@ class PopAnal():
         for x in res_all:
             assert original_feature_mapping == x["original_feature_mapping"], "failed sanity check! diff chanels have diff mapping, why?"
 
-        ### Get multi-D subspace for each categorical variable. 
-        # Get a subspace that is higher-D than just 1-D
+        ### Get multi-D (not just 1-D) subspace for each categorical variable. 
         res = []
         for var_subspace, var_is_cat in zip(variables, variables_is_cat):
             if var_is_cat: 
@@ -5946,6 +6025,8 @@ class PopAnal():
         """
         For a single chan, do multiple regression, where variables predicts firing rate.
         Must be using scalar neural data
+
+        LT CHECKED
         """    
         import pandas as pd
         import statsmodels.api as sm

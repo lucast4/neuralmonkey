@@ -407,8 +407,17 @@ def compute_vector_between_conditions(PA, dfdist, var_effect, vars_grp):
 
     In all cases is the angle from labels_1 to labels_2
 
+    e.g., 
+        If: 
+            var_effect = "chunk_within_rank"
+            vars_others = ["chunk_within_rank_semantic", "task_kind", "epoch", "chunk_rank_global", "chunk_rank", "shape", 
+                        "gridloc", "CTXT_loc_prev", "chunk_n_in_chunk"]
+
+        # Get X for (0,1), (1,2), ... within each (chunk_rank).
+        # Get (A, B), (B, C) -- across chunk ranks.
+
     RETURNS:
-    - dfangle, should be same length as dfdist.
+    - dfangle, should be same length as dfdist. Each row holds the vector between (mean of label2) - (mean of label1).
     """
 
     assert PA.X.shape[2]==1, "only coded for scalar"
@@ -425,6 +434,7 @@ def compute_vector_between_conditions(PA, dfdist, var_effect, vars_grp):
             vec = np.array([0, 0])
         else:
             try:
+                # get the neural data corresponding to this row.
                 inds1 = dflab[(dflab[var_effect] == row["labels_1"][0]) & (dflab["_var_other"] == row["labels_1"][1:])].index.tolist()
                 inds2 = dflab[(dflab[var_effect] == row["labels_2"][0]) & (dflab["_var_other"] == row["labels_2"][1:])].index.tolist()
                 assert len(inds1)>0
@@ -660,7 +670,7 @@ def dfdist_extract_label_vars_specific(dfdists, label_vars, return_var_same=Fals
     Automatically populates new columns reflecting the relations between the columns in 
     label_vars (which can be any length), such as same_shape
 
-    Uses whatever is in labels_1 and labels_2
+    Uses whatever is in labels_1 and labels_2 (columns in dfdists)
     
     PARAMS:
     - dfdists, output from things like rsa_distmat_score_all_pairs_of_label_groups
@@ -670,6 +680,7 @@ def dfdist_extract_label_vars_specific(dfdists, label_vars, return_var_same=Fals
     will populate new columns called shape_1, shape_2, loc_1, loc_2, etc....
 
     NOTE: any variables that are not in label_vars will be INCORRECT since they don't flip correctly.
+    
     RETURNS:
     - copy of dfdists
     """
@@ -686,6 +697,10 @@ def dfdist_extract_label_vars_specific(dfdists, label_vars, return_var_same=Fals
             var2 = "labels_2"
     
     dfdists = dfdists.copy()
+
+    # sanity check 
+    for i in range(len(dfdists)):
+        assert len(label_vars) == len(dfdists.iloc[i]["labels_1"]), "you passed in label vars that dont match this trial"
 
     assert isinstance(dfdists[var1].values[0], tuple)
 
@@ -1273,6 +1288,8 @@ def dfdist_variables_effect_extract_helper(DFDIST, colname_conj_same, vars_in_or
 
     RETURNS:
     - Slice of DFDIST.
+
+    LT CHECKED
     """
     assert len(DFDIST)>0
     # Finally, get just the desired contrasts
@@ -1364,17 +1381,14 @@ def dfdist_compute_regions_diff(dfdist, vars_datapt, var_value, bregion_2, do_pl
 
 def dfdist_compute_effects_diff_wideform(dfdist, var_effect, eff1, eff2, vars_grp, diff_func="minus"):
     """
-    Return df where each row is a level of vars_grp, and there are two columns, one for each of the two effects.  
-    Also return df where you subtract those two effects 
+    Return df where each row is a level of vars_grp, and there are two columns, one for each of two levels of var_effect, the mean over eff1 and over eff2.
+    Also return df where you subtract those two effects to get one number
 
     PARAMS:
     - diff_func, "minus", "div", .. 
     """
     ###### GOOD
     from pythonlib.tools.pandastools import summarize_featurediff
-    from pythonlib.tools.pandastools import pivot_table
-    from pythonlib.tools.pandastools import aggregGeneral
-    from pythonlib.tools.pandastools import plot_45scatter_means_flexible_grouping
     
     yvar = "dist_yue_diff"
 
@@ -1383,7 +1397,7 @@ def dfdist_compute_effects_diff_wideform(dfdist, var_effect, eff1, eff2, vars_gr
     dfsummary, _, _, _, COLNAMES_DIFF, dfpivot = summarize_featurediff(
         dfdist, var_effect, [eff1, eff2], FEATURE_NAMES, vars_grp, 
         return_dfpivot=True, diff_func=diff_func, diff_col_name_include_feature=False)
-
+    # Convert from colnames each being a tuple to each being a string.
     new_cols = []
     for col in dfpivot.columns.values:
         if col[1]=="":

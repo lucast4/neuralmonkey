@@ -2021,7 +2021,7 @@ def dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, fr_mean_subtrac
     Note that DFallpa output CAN be diff length from input, if sitedirty processessing throws out all chans for a PA, it is removed.
     """
 
-    assert fr_mean_subtract_method in [None, "raw_fr", "across_time_bins", "each_time_bin"]
+    assert fr_mean_subtract_method in [None, "sqrt_raw_fr", "raw_fr", "across_time_bins", "each_time_bin"]
 
     def _remove_rows_with_pa_none(DFallpa):
         """
@@ -2154,6 +2154,7 @@ def dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, fr_mean_subtrac
     # (6) Normalize FR    
     if fr_mean_subtract_method is None:
         # Then don't do anything
+        # Use "sqrt_raw_fr" instead.
         assert False, "to avoid confusion, you arent allowed to use None. either use sqrt, or raw"
     elif fr_mean_subtract_method == "sqrt_raw_fr":
         pass
@@ -2166,11 +2167,14 @@ def dfpa_concatbregion_preprocess_wrapper(DFallpa, animal, date, fr_mean_subtrac
         # for pa in DFallpa["pa"]:
         #     pa.X **= 0.5
         # dfpa_concat_normalize_fr_split_multbregion_flex(DFallpa)
-    else: 
-        # Do normalization
+    elif fr_mean_subtract_method in ["across_time_bins", "each_time_bin"]:
+        # More sophisticated moethods fro normlzation, adatively computing fr rescale value, and
+        # also optionally de-meaning within each time bin ("each_time_bin") or across bins.
         print(" == (6) Normalize FR")
         PLOT=False
         dfpa_concat_normalize_fr_split_multbregion_flex(DFallpa, fr_mean_subtract_method, PLOT)
+    else:
+        assert False
 
     # (7) Sort trials by trialcode
     print(" == (7) Sort trials by trialcode")

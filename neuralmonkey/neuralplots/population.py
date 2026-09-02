@@ -18,7 +18,8 @@ def heatmapwrapper_many_useful_plots(PA, savedir, var_effect="seqc_0_shape", var
                                   mean_over_trials=False, zlims=None, flip_rowcol=False, plot_fancy=False, n_rand_trials=10,
                                   diverge=False,
                                   plot_group_y_by_neuron=True, plot_group_y_by_var_effect=True, plot_each_neuron_no_grouping_y=True,
-                                  overlay_stroke_times=False, save_suff=None):
+                                  overlay_stroke_times=False, save_suff=None,
+                                  subplot_height_by_nrows=False):
     """
     Many plots of heatmaps, different methods fo splitting into subplots and grouping along y axis.
     In general, to look at neural data in PA (e.g., "raw"), plotting heatmaps (trial vs time), a few different kinds
@@ -32,10 +33,11 @@ def heatmapwrapper_many_useful_plots(PA, savedir, var_effect="seqc_0_shape", var
     - var_is_blocks, bool, if True, then var_effect exists in blocks of trials. Controls plotting of horizontal lines
     - mean_over_trials, for (1), whether to plot indiv trials for each neruon, or trial-mean.
     - diverge, then force min and max to be equal (so that 0 is midpoint)
+    - subplot_height_by_nrows, for (1) grouped_by_neuron and (2) grouped_by_var layouts:
+      if False, all subplots share the same height; if True, each subplot height scales with
+      its heatmap row count so one row has the same physical size across panels.
     """
     from pythonlib.tools.snstools import heatmap_mat
-    from  neuralmonkey.neuralplots.population import _heatmap_stratified_y_axis
-    from neuralmonkey.neuralplots.population import heatmap_stratified_trials_grouped_by_neuron, heatmap_stratified_trials_grouped_by_neuron_meantrial, heatmap_stratified_neuron_grouped_by_var
     import numpy as np
     from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good
 
@@ -81,19 +83,27 @@ def heatmapwrapper_many_useful_plots(PA, savedir, var_effect="seqc_0_shape", var
         SIZE = 3
         ncols = len(col_levels)
         nrows = len(row_levels)
-        fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*SIZE, nrows*SIZE), squeeze=False)
+
+        if subplot_height_by_nrows:
+            counts_2d = np.ones((nrows, ncols))
+            for i, row in enumerate(row_levels):
+                for j, col in enumerate(col_levels):
+                    if (row, col) in grpdict:
+                        counts_2d[i, j] = _n_heatmap_rows_grouped_by_neuron(
+                            PA, grpdict[(row, col)], mean_over_trials, n_rand_trials)
+            fig, axes = _fig_axes_grid_height_by_rowcounts(counts_2d, col_width_inches=SIZE)
+        else:
+            fig, axes = plt.subplots(nrows, ncols, figsize=(ncols * SIZE, nrows * SIZE), squeeze=False)
 
         for i, row in enumerate(row_levels):
             for j, col in enumerate(col_levels):
                 ax = axes[i][j]
-                if (row, col) in grpdict.keys():
+                if (row, col) in grpdict:
                     inds = grpdict[(row, col)]
-
                     if mean_over_trials:
                         heatmap_stratified_trials_grouped_by_neuron_meantrial(PA, inds, ax, zlims=zlims)
                     else:
                         heatmap_stratified_trials_grouped_by_neuron(PA, inds, ax, n_rand_trials=n_rand_trials, zlims=zlims)
-
                     ax.set_title((row, col), fontsize=8)
                 else:
                     ax.set_title("missing data")
@@ -139,10 +149,27 @@ def heatmapwrapper_many_useful_plots(PA, savedir, var_effect="seqc_0_shape", var
 
         SIZE = 3.5
         if flip_rowcol:
-            fig, axes = plt.subplots(ncols, nrows, figsize=(nrows*SIZE, ncols*SIZE), squeeze=False, sharex=True)
+            fig_grid_nrows, fig_grid_ncols = ncols, nrows
         else:
-            fig, axes = plt.subplots(nrows, ncols, figsize=(ncols*SIZE, nrows*SIZE), squeeze=False, sharex=True)
+            fig_grid_nrows, fig_grid_ncols = nrows, ncols
 
+        if subplot_height_by_nrows:
+            counts_2d = np.ones((fig_grid_nrows, fig_grid_ncols))
+            for j, tk in enumerate(levels_col):
+                pa_this = PAplot.slice_by_labels_filtdict({var_col: [tk]})
+                for i, ind_neur in enumerate(list_ind_neur):
+                    n = _n_heatmap_rows_grouped_by_var(
+                        pa_this, ind_neur, var_y_group, levels_y, mean_over_trials, n_rand_trials)
+                    if flip_rowcol:
+                        counts_2d[i, j] = n
+                    else:
+                        counts_2d[j, i] = n
+            fig, axes = _fig_axes_grid_height_by_rowcounts(
+                counts_2d, col_width_inches=SIZE, sharex=True)
+        elif flip_rowcol:
+            fig, axes = plt.subplots(fig_grid_nrows, fig_grid_ncols, figsize=(fig_grid_ncols*SIZE, fig_grid_nrows*SIZE), squeeze=False, sharex=True)
+        else:
+            fig, axes = plt.subplots(fig_grid_nrows, fig_grid_ncols, figsize=(fig_grid_ncols*SIZE, fig_grid_nrows*SIZE), squeeze=False, sharex=True)
 
         for j, tk in enumerate(levels_col): # row
             pa_this = PAplot.slice_by_labels_filtdict({var_col:[tk]})
@@ -167,7 +194,6 @@ def heatmapwrapper_many_useful_plots(PA, savedir, var_effect="seqc_0_shape", var
                                                 diverge=diverge)
 
                 from pythonlib.tools.plottools import naked_erase_axes
-
                 if plot_fancy and (i>0 or j>0):
                     naked_erase_axes(ax)
 
@@ -177,6 +203,9 @@ def heatmapwrapper_many_useful_plots(PA, savedir, var_effect="seqc_0_shape", var
                 # Overlay stroke times
                 if overlay_stroke_times:
                     pa_this.plotmod_overlay_stroke_times(ax)
+
+                ax.axvline(0, color="k", linestyle="--", alpha=0.25)
+
         if save_suff is None:
             savefig(fig, f"{savedir}/grouped_by_var-subsampledneur={subsampled_neurons}.pdf")
         else:
@@ -255,6 +284,80 @@ def heatmap_stratified_each_neuron_alltrials(PA, y_group_var=None, add_hline_sep
             ax.axvline(0, color="k", alpha=0.3)
 
     return fig
+
+
+def _fig_axes_grid_height_by_rowcounts(counts_2d, col_width_inches=3, row_h_inches=0.06,
+                                       hspace_inches=0.12, wspace_inches=None,
+                                       margin_left_inches=0.4, margin_top_inches=0.35,
+                                       margin_bottom_inches=0.35, sharex=False):
+    """
+    Figure with axes[r][c]; each subplot height = counts_2d[r,c] * row_h_inches.
+    Columns are top-aligned (shorter columns leave empty space at the bottom).
+    """
+    counts_2d = np.asarray(counts_2d, dtype=float)
+    nrows_fig, ncols_fig = counts_2d.shape
+    if wspace_inches is None:
+        wspace_inches = 0.25 * col_width_inches
+
+    col_stack_heights = []
+    for c in range(ncols_fig):
+        h = counts_2d[:, c].sum() * row_h_inches
+        h += max(0, nrows_fig - 1) * hspace_inches
+        col_stack_heights.append(h)
+    plot_height_in = max(col_stack_heights) if col_stack_heights else row_h_inches
+    fig_width_in = (margin_left_inches + ncols_fig * col_width_inches
+                    + max(0, ncols_fig - 1) * wspace_inches + margin_left_inches * 0.5)
+    fig_height_in = plot_height_in + margin_top_inches + margin_bottom_inches
+
+    fig = plt.figure(figsize=(fig_width_in, fig_height_in))
+    axes = [[None] * ncols_fig for _ in range(nrows_fig)]
+    sharex_ref = None
+    for c in range(ncols_fig):
+        x0 = (margin_left_inches + c * (col_width_inches + wspace_inches)) / fig_width_in
+        w = col_width_inches / fig_width_in
+        y_top_in = fig_height_in - margin_top_inches
+        for r in range(nrows_fig):
+            h_in = counts_2d[r, c] * row_h_inches
+            y0 = (y_top_in - h_in) / fig_height_in
+            h = h_in / fig_height_in
+            ax = fig.add_axes([x0, y0, w, h], sharex=sharex_ref if sharex else None)
+            if sharex and sharex_ref is None:
+                sharex_ref = ax
+            axes[r][c] = ax
+            y_top_in -= h_in + hspace_inches
+
+    return fig, axes
+
+
+def _n_heatmap_rows_grouped_by_neuron(PA, trial_inds, mean_over_trials, n_rand_trials):
+    """Y-axis rows in grouped-by-neuron heatmap (matches trial subsampling in plot fn)."""
+    nchans = PA.X.shape[0]
+    if mean_over_trials:
+        return nchans
+    ntrials = len(trial_inds)
+    if ntrials > n_rand_trials:
+        ntrials = n_rand_trials
+    return nchans * ntrials
+
+
+def _n_heatmap_rows_grouped_by_var(PA, ind_neur, y_group_var, y_group_var_levels, mean_over_trials, n_rand_trials):
+    """Y-axis rows in grouped-by-var heatmap (matches trial subsampling in plot fn)."""
+    from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good
+    grpdict = grouping_append_and_return_inner_items_good(
+        PA.Xlabels["trials"], [y_group_var], y_group_var_levels,
+        must_get_all_groupouter_levels=False)
+    if not grpdict:
+        return 1
+    n = 0
+    for inds in grpdict.values():
+        if mean_over_trials:
+            n += 1
+        else:
+            ntrials = len(inds)
+            if ntrials > n_rand_trials:
+                ntrials = n_rand_trials
+            n += ntrials
+    return n
 
 def heatmap_stratified_trials_grouped_by_neuron_meantrial(PA, inds, ax, zlims=None):
     """ 

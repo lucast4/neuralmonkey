@@ -1134,19 +1134,36 @@ def dataset_apply_params(D, DS, ANALY_VER, animal, DATE, save_substroke_preproce
         ################ CHUNKS, STROKES (e.g., singlerule, AnBm)
         if params["datasetstrokes_extract_chunks_variables"]:
             # Extract chunk variables from Dataset
-            for i in range(len(D.Dat)):
-                D.grammarparses_taskclass_tokens_assign_chunk_state_each_stroke(i)
 
-            # Also extract "syntax parse" e.g., (3,1,1) for A3B1C1.
-            # Also called "taskcat_by_rule"
-            D.grammarparses_classify_tasks_categorize_based_on_rule()
-            print("These are the SYNTAX PARSES (i.e., 'taskcat_by_rule'):")
-            print(D.Dat["taskcat_by_rule"].value_counts())
+            if True:
+                D.grammarparses_chunk_syntax_extract_wrapper()
+            else:
+                # Moved into above code.
+                multiple_parses_exist = D.grammarparses_do_multiple_parses_exist()
 
-            ###################################################
-            ################# SNTAX-RELATED VARIABLES...
-            # And extract syntax_concrete column
-            D.grammarparses_syntax_concrete_append_column()
+                if multiple_parses_exist:
+                    # Then the new version will fail.
+                    # Instead, use the old version, in which you use the actual beh sequence. But this
+                    # only works if you have pruned to good 1-to-1 sequences
+                    new_version = False
+                else:
+                    new_version = True
+
+                for i in range(len(D.Dat)):
+                    D.grammarparses_taskclass_tokens_assign_chunk_state_each_stroke(i, new_version=new_version)
+
+                # Also extract "syntax parse" e.g., (3,1,1) for A3B1C1.
+                # Also called "taskcat_by_rule"
+                D.grammarparses_classify_tasks_categorize_based_on_rule()
+                print("These are the taskcat_by_rule:")
+                print(D.Dat["taskcat_by_rule"].value_counts())
+
+                ###################################################
+                ################# SNTAX-RELATED VARIABLES...
+                # And extract syntax_concrete column
+                D.grammarparses_syntax_concrete_append_column()
+                print("These are the syntax_concrete:")
+                print(D.Dat["syntax_concrete"].value_counts())
 
             savedir_preprocess = D.make_savedir_for_analysis_figures_BETTER("preprocess_general")
             if params["datasetstrokes_extract_chunks_behseq_clusts"]:
@@ -1173,7 +1190,7 @@ def dataset_apply_params(D, DS, ANALY_VER, animal, DATE, save_substroke_preproce
                 assert len(D.Dat.iloc[0]["syntax_concrete"])<=3, "should probably runt he code below. See this note:"
                 # If sc is like (2,3,0), then  epochs arelady split into two epochs, with same representation of sc.
                 # If sc is like (2,3,0,0) vs. (0, 0, 2,3), then need to run the code her:
-                if False:
+                if False: # Never run this. syntax_concrete sghould only be assigned within D methods.
                     list_epoch = []
                     list_syntax_concrete = []
                     for i, row in D.Dat.iterrows():

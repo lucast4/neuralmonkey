@@ -2626,6 +2626,8 @@ def dimredgood_project_data_denoise_simple(X, basis_vectors, version="projection
     - version, whethr to project or to denoise (i.e, project the reproject out)
     - do_orthonormal, bool, if True, then orthonormlaizes the basis using QR decomspotion. The order of columns
     in basis matters. ie sequentially gets orthognalizes each column by the subspace spanned by the preceding columns.
+    
+    LT Checked
     """
 
     if not basis_vectors.shape[0] == X.shape[0]:
@@ -2648,6 +2650,8 @@ def dimredgood_project_data_denoise_simple(X, basis_vectors, version="projection
         basis_vectors = basis_vectors/np.sum(basis_vectors**2, axis=0)**0.5
         # print(np.sum(basis_vectors**2, axis=0))
         # assert False
+
+        assert False, "don't use this, beucase projections onto these bases distorts the data. Need to have orthonormal"
     else:
         assert normalization is None
 
