@@ -14,6 +14,7 @@ import sys
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+import numpy as np
 from pythonlib.tools.plottools import savefig
 from pythonlib.dataset.dataset_analy.grammar import syntaxconcrete_extract_more_info, syntaxconcrete_extract_more_info_eye_fixation, syntaxconcrete_dfmod_postprocess
 
@@ -356,7 +357,11 @@ def preprocess_dataset_behavior(D, ANALY_VER, SAVEDIR):
     RETURNS:
     - D, dfgaps, dfgaps_nojumps
     Note that dfgaps_nojumps means no jumping from chunk 0 to chunk 2, for example.
+
+    LT CHECKED
     """
+    import os
+    import matplotlib.pyplot as plt
 
     if False:
         from neuralmonkey.metadat.analy.anova_params import params_getter_dataset_preprocess
@@ -403,16 +408,13 @@ def preprocess_dataset_behavior(D, ANALY_VER, SAVEDIR):
     else:
         # Do what do for neural analy
         from neuralmonkey.metadat.analy.anova_params import dataset_apply_params
-
-        DS = None
+        # DS = None
         animal = D.animals(force_single=True)[0]
         date = D.dates(force_single=True)[0]
         SKIP_PLOTS = True
         D, _, params = dataset_apply_params(D, None, ANALY_VER, animal, date,
                                             SKIP_PLOTS=SKIP_PLOTS) # prune it
 
-    import os
-    import matplotlib.pyplot as plt
     plot_savedir = f"{SAVEDIR}/preprocess"
     os.makedirs(plot_savedir, exist_ok=True)
     PLOT = True
@@ -421,25 +423,60 @@ def preprocess_dataset_behavior(D, ANALY_VER, SAVEDIR):
     plt.close("all")
 
     ### Prep the dataset
+    # NOTE: Sanity checks below ensure that sc is of form (a,b) or (a,b,c) or (a,b,0) or (a,b,c,0) only.
+
+    # Sanity check that it is not something like (a,0,b,0) as seen in some of the interleaved-AB days (e.g. I think Pancho 220906?)
+    assert sum([sc[0] for sc in dfgaps["syntax_concrete"]])>0
+    assert sum([sc[1] for sc in dfgaps["syntax_concrete"]])>0
+    if max([len(x) for x in dfgaps["syntax_concrete"]])>3:
+        assert sum([sc[2] for sc in dfgaps["syntax_concrete"]])>0
+    if max([len(x) for x in dfgaps["syntax_concrete"]])>4:
+        assert sum([sc[3] for sc in dfgaps["syntax_concrete"]])>0
+
     if ANALY_VER=="rulesingle":
         list_n0 = []
         list_n1 = []
         list_n2 = []
+        list_n3 = []
         for sc in dfgaps["syntax_concrete"]:
+            # Sanity checks
+            # try:
+            #     if len(sc)<=2:
+            #         # Fine
+            #         pass
+            #     elif len(sc)==3:
+            #         assert sc[2]==0, "I expect (2,2,0) etc"
+            #     elif len(sc)==4:
+            #         assert sc[3]==0, "I expect (2,2,1,0) etc"
+            #     elif len(sc)==5:
+            #         assert sc[4]==0, "I expect (2,2,1,2,0) etc"
+            #     else:
+            #         assert False, "Need to collect this shape."
+            # except Exception as err:
+            #     print(D.Dat["syntax_concrete"])
+            #     print(sc)
+            #     raise err
             list_n0.append(sc[0])
             list_n1.append(sc[1])
             if len(sc)>2:
                 list_n2.append(sc[2])
             else:
                 list_n2.append(0)
+            if len(sc)>3:
+                list_n3.append(sc[3])
+            else:
+                list_n3.append(0)
 
         dfgaps["n0"] = list_n0
         dfgaps["n1"] = list_n1
         dfgaps["n2"] = list_n2
+        dfgaps["n3"] = list_n3
         dfgaps["n2_str"] = [str(n2) for n2 in dfgaps["n2"]]
+
         # save the index of the gaps
         dfgaps["idx_gap_01"] = dfgaps["n0"] - 1
         dfgaps["idx_gap_12"] = dfgaps["n0"] + dfgaps["n1"] - 1
+        dfgaps["idx_gap_23"] = dfgaps["n0"] + dfgaps["n1"] + dfgaps["n2"] - 1
 
         dfgaps["pre_chunk_rank_global"] = [x[0] for x in dfgaps["gap_chunk_rank_global"]]
         dfgaps["post_chunk_rank_global"] = [x[1] for x in dfgaps["gap_chunk_rank_global"]]
@@ -451,12 +488,13 @@ def preprocess_dataset_behavior(D, ANALY_VER, SAVEDIR):
         # dfgaps["ntot"] = [sum(sc[:-1]) for sc in dfgaps["syntax_concrete"]] # OLD, but
         dfgaps["ntot"] = [sum(sc) for sc in dfgaps["syntax_concrete"]] 
 
+        assert np.all(dfgaps["ntot"] == dfgaps["n0"] + dfgaps["n1"] + dfgaps["n2"] + dfgaps["n3"]), "otherwise below fails."
         dfgaps["nremain"] = [row["ntot"] - row["index_gap"] - 1 for _, row in dfgaps.iterrows()]
         
         assert all(dfgaps["nremain"] >= 0)
         
         from pythonlib.tools.pandastools import grouping_print_n_samples
-        grouping_print_n_samples(dfgaps, ["syntax_concrete", "idx_gap_01", "idx_gap_12"])
+        grouping_print_n_samples(dfgaps, ["syntax_concrete", "idx_gap_01", "idx_gap_12", "idx_gap_23"])
         # Given syntax concrete and gap index, return all the params
 
         PRINT = False
@@ -466,7 +504,6 @@ def preprocess_dataset_behavior(D, ANALY_VER, SAVEDIR):
             
             # Get 
             post_chunk_within_rank = row["gap_chunk_within_rank"][1]
-            
             sc = row["syntax_concrete"]
             post_chunk_rank_global = row["post_chunk_rank_global"]
             n_in_chunk = sc[post_chunk_rank_global]
@@ -497,43 +534,48 @@ def gapdur_plots_general(dfgaps, savedir):
     # (1) Hue = syntax_concrete
     fig = sns.relplot(data=dfgaps, x="index_gap", y="gap_dur", hue="syntax_concrete", col="idx_gap_12", row="idx_gap_01", 
                     kind="line", errorbar="se")
-
-    for i, idx_gap_01 in enumerate(range(dfgaps["idx_gap_01"].min(), dfgaps["idx_gap_01"].max()+1)):
-        for j, idx_gap_12 in enumerate(range(dfgaps["idx_gap_12"].min(), dfgaps["idx_gap_12"].max()+1)):
-            ax = fig.axes[i][j]
-
-            try:
+    try:
+        for i, idx_gap_01 in enumerate(range(dfgaps["idx_gap_01"].min(), dfgaps["idx_gap_01"].max()+1)):
+            for j, idx_gap_12 in enumerate(range(dfgaps["idx_gap_12"].min(), dfgaps["idx_gap_12"].max()+1)):
                 ax = fig.axes[i][j]
 
-                sns.lineplot(dfgaps, x="index_gap", y="gap_dur", ax=ax, color="k", alpha=0.5)
+                try:
+                    ax = fig.axes[i][j]
 
-                ax.axvline(idx_gap_01, color="b", alpha=0.4)
-                ax.axvline(idx_gap_12, color="r", alpha=0.4)
-            except IndexError as err:
-                pass
-            except Exception as err:
-                raise err
+                    sns.lineplot(dfgaps, x="index_gap", y="gap_dur", ax=ax, color="k", alpha=0.5)
+
+                    ax.axvline(idx_gap_01, color="b", alpha=0.4)
+                    ax.axvline(idx_gap_12, color="r", alpha=0.4)
+                except IndexError as err:
+                    pass
+                except Exception as err:
+                    raise err
+    except Exception as err:
+        pass
     savefig(fig, f"{savedir}/relplot-all-1.pdf")
 
     # (2) Hue = n2
     fig = sns.relplot(data=dfgaps, x="index_gap", y="gap_dur", hue="n2_str", col="idx_gap_12", row="idx_gap_01", kind="line", errorbar="se")
     # fig = sns.relplot(data=dfgaps, x="index_gap", y="gap_dur", hue="n2_str", col="idx_gap_12", row="idx_gap_01", kind="scatter", alpha=0.4)
 
-    for i, idx_gap_01 in enumerate(range(dfgaps["idx_gap_01"].min(), dfgaps["idx_gap_01"].max()+1)):
-        for j, idx_gap_12 in enumerate(range(dfgaps["idx_gap_12"].min(), dfgaps["idx_gap_12"].max()+1)):
-            ax = fig.axes[i][j]
-
-            try:
+    try:
+        for i, idx_gap_01 in enumerate(range(dfgaps["idx_gap_01"].min(), dfgaps["idx_gap_01"].max()+1)):
+            for j, idx_gap_12 in enumerate(range(dfgaps["idx_gap_12"].min(), dfgaps["idx_gap_12"].max()+1)):
                 ax = fig.axes[i][j]
 
-                sns.lineplot(dfgaps, x="index_gap", y="gap_dur", ax=ax, color="k", alpha=0.5)
+                try:
+                    ax = fig.axes[i][j]
 
-                ax.axvline(idx_gap_01, color="b", alpha=0.4)
-                ax.axvline(idx_gap_12, color="r", alpha=0.4)
-            except IndexError as err:
-                pass
-            except Exception as err:
-                raise err
+                    sns.lineplot(dfgaps, x="index_gap", y="gap_dur", ax=ax, color="k", alpha=0.5)
+
+                    ax.axvline(idx_gap_01, color="b", alpha=0.4)
+                    ax.axvline(idx_gap_12, color="r", alpha=0.4)
+                except IndexError as err:
+                    pass
+                except Exception as err:
+                    raise err
+    except Exception as err:
+        pass
     savefig(fig, f"{savedir}/relplot-all-2.pdf")
 
     # (3) Scatterplot
@@ -541,16 +583,19 @@ def gapdur_plots_general(dfgaps, savedir):
     fig = sns.catplot(data=dfgaps, x="index_gap", y="gap_dur", hue="n2_str", col="idx_gap_12", row="idx_gap_01",  alpha=0.4)
     max_sequence_length = 5
 
-    for i, idx_gap_01 in enumerate(range(dfgaps["idx_gap_01"].min(), dfgaps["idx_gap_01"].max()+1)):
-        for j, idx_gap_12 in enumerate(range(dfgaps["idx_gap_12"].min(), dfgaps["idx_gap_12"].max()+1)):
-            
-            try:
-                ax = fig.axes[i][j]
-                sns.pointplot(dfgaps, x="index_gap", y="gap_dur", ax=ax, errorbar="ci", color=[0.8, 0.8, 0.8])
-            except IndexError as err:
-                continue
-            except Exception as err:
-                raise err
+    try:
+        for i, idx_gap_01 in enumerate(range(dfgaps["idx_gap_01"].min(), dfgaps["idx_gap_01"].max()+1)):
+            for j, idx_gap_12 in enumerate(range(dfgaps["idx_gap_12"].min(), dfgaps["idx_gap_12"].max()+1)):
+                
+                try:
+                    ax = fig.axes[i][j]
+                    sns.pointplot(dfgaps, x="index_gap", y="gap_dur", ax=ax, errorbar="ci", color=[0.8, 0.8, 0.8])
+                except IndexError as err:
+                    continue
+                except Exception as err:
+                    raise err
+    except Exception as err:
+        pass
             
     savefig(fig, f"{savedir}/catplot-all-1.pdf")
 
@@ -738,16 +783,40 @@ def gapdur_plots_controlling_for_dist_angle(DFGAPS_THIS, effect, savedir, also_c
     """
     Additional summary plots that make sure effect on gap dur are not due to dist or angle.
     NOTE: Confirmed this uses same data structures as for the main analyses.
+
+    Effects tested here are always effect of diff_chunk_rank_global.
+
+    NOTE: works with low-level datapts (trials).
+
+    LT CHECKED
     """
     from pythonlib.tools.pandastools import grouping_append_and_return_inner_items_good
     import seaborn as sns
     from pythonlib.tools.plottools import savefig
     import matplotlib.pyplot as plt
-
+    from pythonlib.tools.regressiontools import fit_and_score_regression_with_categorical_predictor, plot_condition_estimates, plot_ols_results
+    from pythonlib.tools.regressiontools import summarize_ols_results
     from pythonlib.tools.pandastools import append_col_with_grp_index
-    DFGAPS_THIS = append_col_with_grp_index(DFGAPS_THIS, ["pre_chunk_rank_global", "index_gap"], "pre_crg_idx")
+
+    # DFGAPS_THIS = append_col_with_grp_index(DFGAPS_THIS, ["pre_chunk_rank_global", "index_gap"], "pre_crg_idx")
+    DFGAPS_THIS = append_col_with_grp_index(DFGAPS_THIS, ["pre_chunk_rank_global", "idx_nrem"], "pre_crg_idxnrem")
     DFGAPS_THIS["gap_dist_z"] = (DFGAPS_THIS["gap_dist"] - DFGAPS_THIS["gap_dist"].mean())/DFGAPS_THIS["gap_dist"].std()
     grpdict = grouping_append_and_return_inner_items_good(DFGAPS_THIS, ["animal", "date", "epoch"])
+    
+    # Linear model 
+    y_var = "gap_dur"
+    if also_control_angle:
+        x_vars = ["diff_chunk_rank_global", "gap_dist_z", "gap_angle_binned", "pre_crg_idxnrem"]
+        x_vars_is_cat = [True, False, True, True]
+        # x_vars = ["diff_chunk_rank_global", "gap_dist_z", "gap_angle_binned", "pre_chunk_rank_global", "idx_nrem"]
+        # x_vars_is_cat = [True, False, True, True, True]
+    else:
+        # Previous, is good
+        x_vars = ["diff_chunk_rank_global", "gap_dist_z", "pre_crg_idxnrem"]
+        x_vars_is_cat = [True, False, True]
+        # But this may be better -- controling for n remaining too.
+        # x_vars = ["diff_chunk_rank_global", "gap_dist_z", "pre_chunk_rank_global", "idx_nrem"]
+        # x_vars_is_cat = [True, False, True, True]
 
     res_regress = []
     for grp, inds in grpdict.items():
@@ -756,36 +825,27 @@ def gapdur_plots_controlling_for_dist_angle(DFGAPS_THIS, effect, savedir, also_c
         if True:
             # Each xvar    
             for xvar in ["gap_dist", "gap_angle"]:
-                
+
+                # Each dot is a single trial.
                 fig = sns.relplot(data=df, x=xvar, y="gap_dur", hue="diff_chunk_rank_global", 
                             row="pre_chunk_rank_global", col="index_gap", marker="o", alpha=0.4)
                 savefig(fig, f"{savedir}/relplot-x={xvar}-{grp}.pdf")
 
             # A comnbined plot (dist and angle)
             fig = sns.relplot(data=df, x="gap_dist", y="gap_dur", hue="diff_chunk_rank_global", 
-                        col="pre_crg_idx", row="gap_angle_binned", marker="o", alpha=0.4)
+                        col="pre_crg_idxnrem", row="gap_angle_binned", marker="o", alpha=0.4)
             savefig(fig, f"{savedir}/relplot-combined_dist_angle-{grp}.pdf")
             
-        # Linear model 
-        from pythonlib.tools.regressiontools import fit_and_score_regression_with_categorical_predictor, plot_condition_estimates, plot_ols_results
-
-        y_var = "gap_dur"
-        if also_control_angle:
-            x_vars = ["diff_chunk_rank_global", "gap_dist_z", "gap_angle_binned", "pre_crg_idx"]
-            x_vars_is_cat = [True, False, True, True]
-        else:
-            x_vars = ["diff_chunk_rank_global", "gap_dist_z", "pre_crg_idx"]
-            x_vars_is_cat = [True, False, True]
-        # y_var = "gap_dur"
+        
         dict_coeff, model, original_feature_mapping, results = fit_and_score_regression_with_categorical_predictor(df, 
-                                                                                        y_var, x_vars, x_vars_is_cat, None, PRINT=False)
+                                                                                y_var, x_vars, x_vars_is_cat, None, PRINT=False)
         fig = plot_ols_results(model)
         savefig(fig, f"{savedir}/regression-combined-{grp}.pdf")
 
         plt.close("all")
 
-        from pythonlib.tools.regressiontools import summarize_ols_results
         summary_df = summarize_ols_results(model)
+        summary_df.to_csv(f"{savedir}/regression-{grp}.csv")
 
         # Collect regression results
         res_regress.append({
@@ -813,14 +873,20 @@ def gapdur_plots_controlling_for_dist_angle(DFGAPS_THIS, effect, savedir, also_c
     savefig(fig, f"{savedir}/summary-regression-coeff.pdf")
 
     ### Also regression, but combining all data for a given animal.
+    DFGAPS_THIS = append_col_with_grp_index(DFGAPS_THIS, ["animal", "date", "epoch", "pre_chunk_rank_global", "idx_nrem"], "datapt")
+
     res_regress = []
     y_var = "gap_dur"
     if also_control_angle:
-        x_vars = ["diff_chunk_rank_global", "gap_dist_z", "gap_angle_binned", "pre_crg_idx", "animal", "date", "epoch"]
-        x_vars_is_cat = [True, False, True, True, True, True, True]
+        x_vars = ["diff_chunk_rank_global", "gap_dist_z", "gap_angle_binned", "datapt"]
+        x_vars_is_cat = [True, False, True, True]
+        # x_vars = ["diff_chunk_rank_global", "gap_dist_z", "gap_angle_binned", "pre_chunk_rank_global", "idx_nrem", "animal", "date", "epoch"]
+        # x_vars_is_cat = [True, False, True, True, True, True, True, True]
     else:
-        x_vars = ["diff_chunk_rank_global", "gap_dist_z", "pre_crg_idx", "animal", "date", "epoch"]
-        x_vars_is_cat = [True, False, True, True, True, True]
+        x_vars = ["diff_chunk_rank_global", "gap_dist_z", "datapt"]
+        x_vars_is_cat = [True, False, True]
+        # x_vars = ["diff_chunk_rank_global", "gap_dist_z", "pre_chunk_rank_global", "idx_nrem", "animal", "date", "epoch"]
+        # x_vars_is_cat = [True, False, True, True, True, True, True]
     dict_coeff, model, original_feature_mapping, results = fit_and_score_regression_with_categorical_predictor(DFGAPS_THIS, 
                                                                                     y_var, x_vars, x_vars_is_cat, None, PRINT=False)
     fig = plot_ols_results(model)
@@ -831,7 +897,12 @@ def gapdur_plots_controlling_for_dist_angle(DFGAPS_THIS, effect, savedir, also_c
 
 def gapdur_mult_load_dates(animal):
     """
-    Helper to load and concat and preprocess all dates for this animal.
+    Helper to load and concat and preprocess all dates for this animal, for gap 
+    duration extracted data.
+
+    And aggregate in various ways.
+
+    LT CHECKED
     """
     from neuralmonkey.scripts.analy_euclidian_dist_pop_script_MULT import load_preprocess_get_dates
     from glob import glob
@@ -858,33 +929,41 @@ def gapdur_mult_load_dates(animal):
             list_dfgaps.append(dfgaps)
         elif len(list_path)==0:
             print("Skipping date, didn't find data:", _date)
-        elif len(list_path)>2:
+        elif len(list_path)>1:
             print(list_path)
             assert False, "why?"
+        else:
+            assert False
     DFGAPS = pd.concat(list_dfgaps).reset_index(drop=True)    
 
     # Fix a potential bug in defining of ntot
-    DFGAPS["ntot"] = [sum(sc) for sc in DFGAPS["syntax_concrete"]] 
-    DFGAPS["nremain"] = [row["ntot"] - row["index_gap"] - 1 for _, row in DFGAPS.iterrows()]
+    assert all(DFGAPS["ntot"] == [sum(sc) for sc in DFGAPS["syntax_concrete"]])
+    assert all(DFGAPS["nremain"] == [row["ntot"] - row["index_gap"] - 1 for _, row in DFGAPS.iterrows()])
     assert all(DFGAPS["nremain"] >= DFGAPS["nremain_in_chunk"])
 
     # By convention, make "start button" chunk_rank_global = -1
     if False: # Just sanity check
         grouping_print_n_samples(DFGAPS, ["diff_chunk_rank_global", "gap_chunk_rank_global"])
-    assert all(DFGAPS[DFGAPS["pre_chunk_rank_global"].isna()]["index_gap"]==-1), "assumes this"
-    DFGAPS.loc[DFGAPS["pre_chunk_rank_global"].isna(), "pre_chunk_rank_global"] = -1
-    DFGAPS["diff_chunk_rank_global"] = DFGAPS["post_chunk_rank_global"] - DFGAPS["pre_chunk_rank_global"] 
-    DFGAPS["diff_chunk_rank_global"] = DFGAPS["diff_chunk_rank_global"].astype(int)
+    assert all(DFGAPS["ntot"] == [sum(sc) for sc in DFGAPS["syntax_concrete"]])
+    assert all(DFGAPS["nremain"] == [row["ntot"] - row["index_gap"] - 1 for _, row in DFGAPS.iterrows()])
+    assert all(DFGAPS["nremain"] >= DFGAPS["nremain_in_chunk"])
+    assert sum(DFGAPS["pre_chunk_rank_global"].isna())==0
+    assert all(DFGAPS["diff_chunk_rank_global"] == DFGAPS["post_chunk_rank_global"] - DFGAPS["pre_chunk_rank_global"])
     assert sum(DFGAPS["diff_chunk_rank_global"]<0)==0, "assumes this for the next line"
     DFGAPS["is_chunk_transition"] = DFGAPS["diff_chunk_rank_global"]>0
+
+    # Mod a few things or extract
     DFGAPS = append_col_with_grp_index(DFGAPS, ["index_gap", "nremain"], "idx_nrem")
     DFGAPS = append_col_with_grp_index(DFGAPS, ["date", "epoch"], "date_epoch")
+    DFGAPS["diff_chunk_rank_global"] = DFGAPS["diff_chunk_rank_global"].astype(int)
+    DFGAPS["pre_shape"] = DFGAPS.apply(lambda x: x["gap_shape"][0], axis=1)
+    DFGAPS["post_shape"] = DFGAPS.apply(lambda x: x["gap_shape"][1], axis=1)
 
     ### Diff kinds of agg
     # Agg, datapt = (index_gap, gap_chunk_rank, gap_shape, syntax_concrete, etc)
     DFGAPS_AGG_1 = aggregGeneral(DFGAPS, ["date", "animal", "index_gap", "gap_chunk_within_rank", 
                         "gap_shape", "syntax_concrete", "epoch"], ["gap_dur"],
-                        nonnumercols=["gap_chunk_rank_global", "ep_sy_gcr", "epoch_syntax", "ntot", 
+                        nonnumercols=["pre_shape", "gap_chunk_rank_global", "ep_sy_gcr", "epoch_syntax", "ntot", 
                                         "nremain", "nremain_in_chunk", "pre_chunk_rank_global", "post_chunk_rank_global", 
                                         "diff_chunk_rank_global"])
 
@@ -892,7 +971,7 @@ def gapdur_mult_load_dates(animal):
     # NOTE: Decided to exclude gap_chunk_rank from grouping var. The reason is that the transition between BC should be
     # considered the same whether its in AABBCC or BBBBBCC. 
     DFGAPS_AGG_2 = aggregGeneral(DFGAPS_AGG_1, ["date", "animal", "index_gap", "gap_shape", "epoch"], ["gap_dur"],
-                        nonnumercols=["gap_chunk_rank_global", "pre_chunk_rank_global", "post_chunk_rank_global", 
+                        nonnumercols=["pre_shape", "gap_chunk_rank_global", "pre_chunk_rank_global", "post_chunk_rank_global", 
                                         "diff_chunk_rank_global"])
 
     DFGAPS_NOJUMPS = DFGAPS[DFGAPS["diff_chunk_rank_global"].isin([0, 1])].reset_index(drop=True)
@@ -904,18 +983,25 @@ def gapdur_mult_load_dates(animal):
     # NOTE: each index_gap WILL have both (and only both) within and across
     # Keep only those (prechunkrank, and idx) that have a transition
     DFGAPS_NOJUMPS_STR_CLEAN, _ = extract_with_levels_of_conjunction_vars_helper(DFGAPS_NOJUMPS_STR, 
-                        "diff_chunk_rank_global", ["animal", "date", "epoch", "pre_chunk_rank_global", "index_gap"], 
+                        "diff_chunk_rank_global", ["animal", "date", "epoch", "pre_chunk_rank_global", "pre_shape", "index_gap"], 
                         levels_var=[0,1])
 
     DFGAPS_AGG_NOJUMPS_STR_CLEAN, _ = extract_with_levels_of_conjunction_vars_helper(DFGAPS_AGG_NOJUMPS_STR, 
-                        "gap_chunk_rank_global", ["animal", "date", "epoch", "pre_chunk_rank_global", "index_gap"], lenient_allow_data_if_has_n_levels=2)
+                        "gap_chunk_rank_global", ["animal", "date", "epoch", "pre_chunk_rank_global", "pre_shape", "index_gap"], 
+                        lenient_allow_data_if_has_n_levels=2)
 
     return DFGAPS, DFGAPS_AGG_1, DFGAPS_AGG_2, DFGAPS_NOJUMPS, DFGAPS_AGG_NOJUMPS, DFGAPS_NOJUMPS_STR_CLEAN, DFGAPS_AGG_NOJUMPS_STR_CLEAN
 
 def gapdur_mult_plotsummary_2_transitions(DFGAPS_NOJUMPS_STR_CLEAN, DFGAPS_AGG_NOJUMPS_STR_CLEAN, savedir,
                                           scatter_x_diffcr=0, scatter_y_diffcr=1):
     """
-    Transitions between chunks slower than within?
+    Plots that answer whether transitions between chunks slower than within?
+
+    PARAMS:
+    - DFGAPS_NOJUMPS_STR_CLEAN, 
+    - DFGAPS_AGG_NOJUMPS_STR_CLEAN
+
+    LT CHECKED, just for the one figure used in MS.
     """
     import seaborn as sns
     from pythonlib.tools.pandastools import append_col_with_grp_index
@@ -988,11 +1074,13 @@ def gapdur_mult_plotsummary_2_transitions(DFGAPS_NOJUMPS_STR_CLEAN, DFGAPS_AGG_N
                             row="pre_chunk_rank_global", col="date_epoch")
             
         _, fig = plot_45scatter_means_flexible_grouping(df, "diff_chunk_rank_global", 
-                                            scatter_x_diffcr, scatter_y_diffcr, "pre_chunk_rank_global", "gap_dur", "date_epoch", False, shareaxes=True);
+                                            scatter_x_diffcr, scatter_y_diffcr, "pre_chunk_rank_global", 
+                                            "gap_dur", "date_epoch", False, shareaxes=True, alpha=0.5)
         savefig(fig, f"{savedir}/scatter-{suff}-1.pdf")
 
         _, fig = plot_45scatter_means_flexible_grouping(df, "diff_chunk_rank_global", 
-                                            scatter_x_diffcr, scatter_y_diffcr, "pre_chunk_rank_global", "gap_dur", "date_epoch_idx", False, shareaxes=True);
+                                            scatter_x_diffcr, scatter_y_diffcr, "pre_chunk_rank_global", 
+                                            "gap_dur", "date_epoch_idx", False, shareaxes=True, alpha=0.5)
         savefig(fig, f"{savedir}/scatter-{suff}-2.pdf")
 
         if suff=="data=raw":
@@ -1004,11 +1092,13 @@ def gapdur_mult_plotsummary_2_transitions(DFGAPS_NOJUMPS_STR_CLEAN, DFGAPS_AGG_N
             savefig(fig, f"{savedir}/scatter-{suff}-2b.pdf")
 
         _, fig = plot_45scatter_means_flexible_grouping(df, "diff_chunk_rank_global", 
-                                            scatter_x_diffcr, scatter_y_diffcr, None, "gap_dur", "date_epoch_precrg", False, shareaxes=True);
+                                            scatter_x_diffcr, scatter_y_diffcr, None, "gap_dur", 
+                                            "date_epoch_precrg", False, shareaxes=True, alpha=0.5)
         savefig(fig, f"{savedir}/scatter-{suff}-3.pdf")
 
         _, fig = plot_45scatter_means_flexible_grouping(df, "diff_chunk_rank_global", 
-                                            scatter_x_diffcr, scatter_y_diffcr, None, "gap_dur", "date_epoch", False, shareaxes=True);
+                                            scatter_x_diffcr, scatter_y_diffcr, None, "gap_dur", 
+                                            "date_epoch", False, shareaxes=True, alpha=0.5)
         savefig(fig, f"{savedir}/scatter-{suff}-4.pdf")
         
         plt.close("all")
@@ -1021,6 +1111,8 @@ def gapdur_mult_plotsummary_3_slower_if_upcoming_chunk_longer(DFGAPS, savedir, e
     PARAMS:
     - exclude_transitions_to_last_chunk, bool, if True, then only considers transitions such as the AB in AABBBC, 
     This ecludes BC (in that example) beucase there's no need to plan.
+
+    LT CHECKED
     """
     from pythonlib.tools.pandastools import aggregGeneral, extract_with_levels_of_conjunction_vars_helper, append_col_with_grp_index
     import matplotlib.pyplot as plt 
@@ -1083,7 +1175,51 @@ def gapdur_mult_plotsummary_3_slower_if_upcoming_chunk_longer(DFGAPS, savedir, e
         return None
 
     # - control for (idx and nremain)
-    dfgaps = append_col_with_grp_index(dfgaps, ["date", "epoch", "idx_nrem", "gap_chunk_rank_global"], "datapt")
+    dfgaps = append_col_with_grp_index(dfgaps, ["animal", "date", "epoch", "idx_nrem", "gap_chunk_rank_global"], "datapt")
+
+    ### OLS method, also controlling for distance.
+    from pythonlib.tools.regressiontools import summarize_ols_results, fit_and_score_regression_with_categorical_predictor, plot_condition_estimates, plot_ols_results
+    res_regress = []
+    dfgaps["gap_dist_z"] = (dfgaps["gap_dist"] - dfgaps["gap_dist"].mean())/dfgaps["gap_dist"].std()
+    effect = "nremain_in_chunk"
+    for is_chunk_transition in [False, True]:
+        df = dfgaps[dfgaps["is_chunk_transition"] == is_chunk_transition].reset_index(drop=True)
+
+        # I think it's better to just model each datapt group as conjunctive, rather than marginals. Less assumption of linearity.
+        x_vars = ["nremain_in_chunk", "gap_dist_z", "datapt"]
+        x_vars_is_cat = [False, False, True]
+        # x_vars = ["nremain_in_chunk", "gap_dist_z", "animal", "date", "epoch", "idx_nrem", "gap_chunk_rank_global"]
+        # x_vars_is_cat = [False, False, True, True, True, True, True]
+        y_var = "gap_dur"
+        dict_coeff, model, original_feature_mapping, results = fit_and_score_regression_with_categorical_predictor(df, 
+                                                                                        y_var, x_vars, x_vars_is_cat, 
+                                                                                        None, PRINT=False)
+        fig = plot_ols_results(model, figsize=(8, 10))
+        summary_df = summarize_ols_results(model)
+        summary_df.to_csv(f"{savedir}/OLSregression-is_chunk_transition={is_chunk_transition}.csv")
+        savefig(fig, f"{savedir}/OLSregression-is_chunk_transition={is_chunk_transition}.pdf")
+
+        # Collect regression results
+        res_regress.append({
+            "is_chunk_transition":is_chunk_transition,
+            "coef":summary_df.loc[effect]["coef"],
+            "ci_lower":summary_df.loc[effect]["ci_lower"],
+            "ci_upper":summary_df.loc[effect]["ci_upper"],
+        })
+
+    dfres_regress = pd.DataFrame(res_regress)
+    dfres_regress["error_lower"] = dfres_regress["coef"] - dfres_regress["ci_lower"]
+    dfres_regress["error_upper"] = dfres_regress["ci_upper"] - dfres_regress["coef"]
+    fig, ax = plt.subplots()
+    y_pos = range(len(dfres_regress))
+    ax.errorbar(dfres_regress["coef"], y_pos, xerr=[dfres_regress["error_lower"], dfres_regress["error_upper"]], fmt='o', capsize=5, color='black')
+    ax.axvline(0, color='gray', linestyle='--')
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(dfres_regress["is_chunk_transition"].tolist())
+    ax.set_xlabel('Coefficient Estimate')
+    # ax.invert_yaxis()  # Highest term on top
+    savefig(fig, f"{savedir}/OLSregression-summary-coeff.pdf")
+    plt.close("all")
 
     ### (2) Plot final data that goes into regression
     fig = sns.catplot(data=dfgaps, x="nremain_in_chunk", y="gap_dur", hue="datapt", 
@@ -1129,9 +1265,10 @@ def gapdur_mult_plotsummary_3_slower_if_upcoming_chunk_longer(DFGAPS, savedir, e
             summary_df["is_chunk_transition"] = is_chunk_transition
             list_summary.append(summary_df)
 
+            summary_df.to_csv(f"{savedir}/lme-summary-is_chunk_transition={is_chunk_transition}.csv")
             savefig(fig, f"{savedir}/lme-coefficients-is_chunk_transition={is_chunk_transition}.pdf")
-
     dfsummary = pd.concat(list_summary)
+    dfsummary.to_csv(f"{savedir}/lme-summary-combined.csv")
 
     # 3. Plot coefficients with error bars
     _dfsummary = dfsummary[dfsummary.index==x]

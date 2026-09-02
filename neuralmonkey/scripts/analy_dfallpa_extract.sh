@@ -7,28 +7,30 @@ use_spike_counts=0
 
 if [[ $animal == Diego ]]; then
 
-  ### All rule switching (RULESW_BASE_trial)
-  # datelist=(230804 230823 230824 230827 230911 230922 230925 231017 231024 230917 230705 230719) # Good subset
-  datelist=(230823) # Just testing
-  question=RULESW_BASE_trial
-  combine=0
-  get_all_events_all=1
+  # ### All rule switching (RULESW_BASE_trial)
+  # # datelist=(230804 230823 230824 230827 230911 230922 230925 231017 231024 230917 230705 230719) # Good subset
+  # datelist=(230823) # Just testing
+  # question=RULESW_BASE_trial
+  # combine=0
+  # get_all_events_all=1
 
   # datelist=(240625 240808 240809) # Syntax TI
   # question=RULE_ANBMCK_STROKE
   
-  # ## AnBmCk and AnBmCk(Two shape sets)
+  # AnBmCk(one shape set) and AnBmCk(Two shape sets)
   # datelist=(230723 230724 230726 230727 230728 230730 230815 230816 230817 230913 230914 230915 231116 231118 240822 240827 250319 250321) # AnBmCk, ALL
   # datelist=(230817 230914) # AnBmCk, ALL
   # datelist=(230728 230817) # NEED TO FIX
 
-  # # # # datelist=(250319 250321) # added 4/4/25
-  # # # datelist=(250319) # added 4/4/25
-  # # datelist=(230914 231116) # AnBmCk, 7/31/25, best days, for testing
-  # # datelist=(250416 250417) # AnBmCk, 7/31/25, best days, for testing
+  # # # datelist=(250319 250321) # added 4/4/25
+  # # datelist=(250319) # added 4/4/25
+  # datelist=(230914 231116) # AnBmCk, 7/31/25, best days, for testing
+  datelist=(240827) # AnBmCk, 7/31/25, best days, for testing
+  # datelist=(240822 240827 250319 250321 250416 250417) # AnBmCk, 7/31/25, best days, for testing
   # datelist=(240827) # AnBmCk, 7/31/25, best days, for testing
-  # question=RULE_ANBMCK_STROKE
-  # combine=0
+  # datelist=(230915) # AnBmCk, 7/31/25, best days, for testing
+  question=RULE_ANBMCK_STROKE
+  combine=0
 
   # # datelist=(230913) # AnBmCk, 7/31/25, best days, for testing
   # datelist=(230726 230815 230816 230817 230915 231118)
@@ -38,6 +40,7 @@ if [[ $animal == Diego ]]; then
   # ## AnBmCk -- getting also the single prim trials
   # # datelist=(230726 230913 231118 240827) # AnBmCk, 7/31/25, best days, for testing
   # datelist=(230723 230724 230727 230728 230730 230815 230816 230817 230914 230915 231116 240822 250319 250321) # AnBmCk, 7/31/25, best days, for testing
+  # datelist=(250416 250417) # Missing ones
   # question=SP_BASE_stroke
   # combine=0
 
@@ -77,6 +80,13 @@ if [[ $animal == Diego ]]; then
   # question=SP_BASE_stroke
   # combine=1
 
+  # ## SINGLE PRIMS (SP) -- "Mirror neruon" expts
+  # # datelist=(260304 260306) # ALL (location and size) [DONE]
+  # datelist=(260529 260601) # ALL (location and size) [DONE]
+  # # question=SP_BASE_trial
+  # question=SP_BASE_trial
+  # combine=1
+
   # ### SP Psycho (switching)
   # # datelist=(240517 240521 240523 240730) # ALL
   # datelist=(240523) # failed one
@@ -94,6 +104,13 @@ if [[ $animal == Diego ]]; then
   # question=PIG_BASE_trial
   # combine=1 
 
+elif [[ $animal == Diego_sowmya ]]; then
+  ### For Sowmya, get strokes during PIG
+  datelist=(230630)
+  question=PIG_BASE_stroke
+  combine=1
+  animal=Diego
+
 elif [[ $animal == Diego_seqsup ]]; then
   ### AnBmCk vs. SEQSUP
   datelist=(230920 230921 230922 230924 230925 250320) # AnBmCk, ALL
@@ -103,29 +120,39 @@ elif [[ $animal == Diego_seqsup ]]; then
   combine=0
   animal=Diego
 
+elif [[ $animal == Diego_synt_sp ]]; then
+
+  # ## AnBmCk -- getting also the single prim trials
+  # # datelist=(230726 230913 231118 240827) # AnBmCk, 7/31/25, best days, for testing
+  # datelist=(230723 230724 230727 230728 230730 230815 230816 230817 230914 230915 231116 240822 250319 250321) # AnBmCk, 7/31/25, best days, for testing
+  datelist=(240827 230817) # Missing ones
+  question=SP_BASE_stroke
+  combine=0
+  animal=Diego
+
 elif [[ $animal == Pancho ]]; then
   
-  ### All rule switching (RULESW_BASE_trial)
-  # datelist=(221125 221020 221014 220827 220816 220929 221102 221031 221107 221113 221114) # Good subset
-  datelist=(221031) # Just testing
-  question=RULESW_BASE_trial
-  combine=0
-  get_all_events_all=1
+  # ### All rule switching (RULESW_BASE_trial)
+  # # datelist=(221125 221020 221014 220827 220816 220929 221102 221031 221107 221113 221114) # Good subset
+  # datelist=(221031) # Just testing
+  # question=RULESW_BASE_trial
+  # combine=0
+  # get_all_events_all=1
 
   # datelist=(240619 240808 240809) # Syntax TI
 
-  # ## AnBmCk and AnBmCk(Two shape sets)
-  # # datelist1=(230810 230811 230824 230826 230829 231114 231116 240830 220831 220901 220902 220906 220907 220908 220909 250321 250322) # AnBmCk, ALL
-  # # datelist1=(230811 230824 230826 230829 231114 231116) # AnBmCk, SUBSET
-  # # datelist1=(220831 220901) # NEED TO FIX BUG
-  # # datelist1=(250322) # added 4/4/25
-  # # datelist1=(230908 230909 231114 231116) # AnBmCk, Good ones, for testing, 7/31/25
-  # datelist1=(230810 230811 230826) # Missed ones
-  # datelist2=() # SUBSET
-  # datelist=(${datelist1[@]} ${datelist2[@]})
-  # echo ${datelist[@]}
-  # combine=0
-  # question=RULE_ANBMCK_STROKE
+  ## AnBmCk and AnBmCk(Two shape sets)
+  # datelist1=(230810 230811 230824 230826 230829 231114 231116 240830 220831 220901 220902 220906 220907 220908 220909 250321 250322) # AnBmCk, ALL
+  # datelist1=(230811 230824 230826 230829 231114 231116) # AnBmCk, SUBSET
+  # datelist1=(220831 220901) # NEED TO FIX BUG
+  # datelist1=(250322) # added 4/4/25
+  # datelist1=(230908 230909 231114 231116) # AnBmCk, Good ones, for testing, 7/31/25
+  datelist1=(250322 240830) # Missed ones
+  datelist2=() # SUBSET
+  datelist=(${datelist1[@]} ${datelist2[@]})
+  echo ${datelist[@]}
+  combine=0
+  question=RULE_ANBMCK_STROKE
 
   # # datelist=(220909 230824 230829 231114 231116)
   # datelist=(220909 231114)
@@ -179,6 +206,13 @@ elif [[ $animal == Pancho ]]; then
   # question=SP_BASE_stroke
   # combine=1
 
+  # ## SINGLE PRIMS (SP) -- "Mirror neruon" expts
+  # # datelist=(260305 260310) # ALL (location and size) [DONE]
+  # datelist=(260602 260603) # ALL (location and size) [DONE]
+  # # question=SP_BASE_trial
+  # question=SP_BASE_trial
+  # combine=1
+
   ### SP Psycho (switching)
   # datelist=(240516 240521 240524) # ALL
   # question=SP_psycho_trial
@@ -190,6 +224,15 @@ elif [[ $animal == Pancho ]]; then
   # datelist=(240612 240618) # all
   # question=PIG_BASE_trial
   # combine=1 
+
+elif [[ $animal == Pancho_synt_sp ]]; then
+  
+  ## AnBmCk -- getting also the single prim trials
+  # datelist=(230829 250322 240830)
+  datelist=(250322)
+  combine=0
+  question=SP_BASE_stroke
+  animal=Pancho
 
 elif [[ $animal == Pancho_pig_sacc_fix ]]; then
   # PIG (saccade fixation)

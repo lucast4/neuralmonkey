@@ -48,6 +48,7 @@ def extract_dfallpa_helper(animal, date, question, combine_into_larger_areas,
     elif question=="SP_BASE_stroke":
         # Then want to get entire stroke (shorter, since some datasets did not use done button)
         list_time_windows = [(-0.5, 2.1)]
+        # list_time_windows = [(-0.4, 1.8)]
     elif question=="CHAR_BASE_stroke":
         # Then want to get entire stroke
         list_time_windows = [(-0.6, 2.5)]
@@ -57,7 +58,7 @@ def extract_dfallpa_helper(animal, date, question, combine_into_larger_areas,
         # list_time_windows = [(-0.8, 1.25)]
         # list_time_windows = [(-1., 1.6)]
 
-    if "reward_first_post" in events_keep:
+    if (events_keep is not None) and ("reward_first_post" in events_keep):
         # Then you need to reduce the time window since reward is close to end of trial
         assert len(list_time_windows)==1, "assuming this, not neceasry"
         twind = list_time_windows[0]
@@ -234,7 +235,7 @@ if __name__=="__main__":
                                         return_none_if_no_exist=True)
     if DFallpa is None:
         DFallpa = extract_dfallpa_helper(animal, date, question, combine_into_larger_areas, events_keep=events_keep,
-                                         do_save=False,
+                                         do_save=True,
                                          replace_fr_sm_with_spike_counts=replace_fr_sm_with_spike_counts,
                                          spike_counts_bin_size=spike_counts_bin_size)
 
@@ -246,9 +247,8 @@ if __name__=="__main__":
     # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Dolnik/DFallpa_4.pkl" # (tdt)
     # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Dolnik/DFallpa_KS.pkl" # (kilosort)
     # path = "/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Dolnik/DFallpa_KS_nonorm.pkl" # (kilosort)
-    path = f"/home/danhan/code/emre/pkl_jar/DFallpa-{animal}-{date}.pkl"
-
-    pd.to_pickle(DFallpa, path)
+    # path = f"/home/danhan/code/emre/pkl_jar/DFallpa-{animal}-{date}.pkl"
+    # pd.to_pickle(DFallpa, path)
 
     # Dan: tough decoding, syntax stuff.
     # path = f"/home/lucas/Dropbox/SCIENCE/FREIWALD_LAB/DATA/Dolnik/DFallpa-{animal}-{date}-{which_level}-tdt_nonorm.pkl"
