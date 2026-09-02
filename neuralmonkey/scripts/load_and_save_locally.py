@@ -39,8 +39,24 @@ def load_and_preprocess_single_session(date, rec_session, animal = "Pancho"):
     if date in DATES_IGNORE:
         print("*** SKIPPING DATE (becasue it is in DATES_IGNORE): ", date)
 
+    # if (animal, int(date)) == ("Diego", 260304):
+    #     list_rec_sessions_involving_behavior = (0, 2, 4) # 0 indexed
+    # elif (animal, int(date)) == ("Diego", 260306):
+    #     list_rec_sessions_involving_behavior = (0, 2, 4) # 0 indexed
+    # elif (animal, int(date)) == ("Pancho", 260305):
+    #     list_rec_sessions_involving_behavior = (0, 2, 4) # 0 indexed
+    # elif (animal, int(date)) == ("Pancho", 260310):
+    #     list_rec_sessions_involving_behavior = (0, 2, 4) # 0 indexed
+    # else:
+    #     list_rec_sessions_involving_behavior = None
+
+    # if (list_rec_sessions_involving_behavior is not None) and (rec_session not in list_rec_sessions_involving_behavior):
+    #     print("SKIP (HACK/MIRROR NEURON), rec session: ", rec_session)
+    #     return
+    
     # ============= RUN
     # beh_session = rec_session+1 # 1-indexing.
+    # print("HERERER rec_session:", rec_session)
     out, _, _, _ = session_map_from_rec_to_ml2(animal, date, rec_session)
     # if rec_session==2:
     #     print("^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^")
@@ -108,6 +124,7 @@ def load_and_preprocess_single_session(date, rec_session, animal = "Pancho"):
                 do_all_copy_to_local=True, spikes_version=SPIKES_VERSION)
         except Exception as err:
             print("&&&&&&&&&&&&")
+            print("date, dataset_beh_expt, rec_session, animal, expt")
             print(date, dataset_beh_expt, rec_session, animal, expt)
             raise err
 
@@ -218,8 +235,14 @@ if __name__=="__main__":
     else:
         animal = "Pancho"
 
+    # What are the sessions to get for this date?
+    from neuralmonkey.utils.directory import find_rec_session_paths
+    sessions = find_rec_session_paths(animal, date)
+    list_sessnum = [x["sessnum"] for x in sessions]
+
     # ============== PARAMS
-    for rec_session in range(10):
+    # for rec_session in range(10):
+    for rec_session in list_sessnum:
         # go thru many, if doesnt exist will not do it.
         # rec_session = 1 # assumes one-to-one mapping between neural and beh sessions.
         print("Running:", sys.argv, "session: ", rec_session, "Animal:", animal)

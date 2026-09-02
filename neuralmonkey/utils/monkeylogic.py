@@ -156,6 +156,14 @@ def session_map_from_rec_to_ml2(animal, date, rec_session):
     you might not acutally use (ignroed)
     - if this rec session doesnt exist:
     --- None
+
+    # EXAMPLE:
+    # print(beh_sess_list, beh_expt_list, sessdict, beh_trial_map_list)
+    # e.g., 
+    # [1] 
+    # ['primdiego1b2'] 
+    # {'260304': [(1, 'primdiego1b2'), None, (2, 'primdiego1b2'), None, (3, 'primdiego1b2')]} [(1, 0)] # This means that rec sessions 1, 3 have no beh
+
     """
     from neuralmonkey.metadat.session_mappings.beh_trial_map_list import load_beh_trial_map_list
 
@@ -190,6 +198,10 @@ def session_map_from_rec_to_ml2(animal, date, rec_session):
                     """ Retunr the single sess tuple that is (behsess, <string name>) or raise error if doesnt
                     exist in sessdict[date]
                     """
+                    if behsess==99:
+                        # This means skip this beh sess. Useful if a recording sess doesnt have ANY beh at all
+                        # FOr example, in "mirror neuron" expt, interleaved visual and beh sessions.
+                        return None
                     for sess_tuple in sessdict[date]:
                         if sess_tuple[0]==behsess:
                             return sess_tuple

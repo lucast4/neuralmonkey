@@ -21,7 +21,17 @@ Corrupted, lost beh trials
 - Input date in corrupted_ml2_sessions.yaml. 
 - Then hacky input the missed trials in get_trials_list(). Search for 231206. (see corrupted...yaml for how to determine what the trials are.)
 
+Corrupted, an entire rec session that is missing beh data
+(ie bhv2 file and neural rec exist, but monkey didn't perform any trials)
+- One solution: input the rec sessions which do have behavior, by hand, in directory.py (see Diego 2606061)
+- If you want to skip this session also for passive fixation tasks (the above just does for drawing), then also use the other mechanism within directory.py (see Diego 2606061)
+
 Corrupted, lost neural trials
 - (e.g., Pancho 220614, I think the first neural trial should be thrown out)
 - is currently very hackily entered in get_trials_list()
 - ??
+
+You only want to anlalyze neural for subset of sessions (e.g., other sesisons are visual, not beh)
+(e.g., "mirror neuron experiments")
+- Enter which sessions to keep in directory.find_rec_session_paths
+

@@ -46,10 +46,10 @@ def load_snippet_single(sn, which_level):
     sp.load_v2(sdir)
     
     # within this sp, save mapping to its session
-    if "session_idx" in sp.DfScalar.columns:
-        assert np.all(sp.DfScalar["session_idx"]==sess), "new version extracts session_idx directly, while old version loads it"
+    if "rec_session_from_sn" in sp.DfScalar.columns:
+        assert np.all(sp.DfScalar["rec_session_from_sn"]==sess), "new version extracts session_idx directly, while old version loads it"
 
-    sp.DfScalar["session_idx"] = sess
+    sp.DfScalar["rec_session_from_sn"] = sess
 
     sp.datamod_append_outliers()
 
@@ -72,16 +72,27 @@ def concat_mult_snippets(list_sp, MS, SITES_COMBINE_METHODS = "intersect",
         assert len(tmp)==1
         which_level = tmp[0]
 
+    # Confirm that the inputs are aligned
+    assert len(list_sp) == len(MS.SessionsList)
+    map_neuralsess_to_idxmultsess = {}
+    for i, (sp, sn) in enumerate(zip(list_sp, MS.SessionsList)):
+        assert sp.DfScalar["rec_session_from_sn"].unique().tolist() == [sn.RecSession]
+        map_neuralsess_to_idxmultsess[sn.RecSession] = i
+
     print("This many vals across loaded session")
     for i, sp in enumerate(list_sp):
 
         print(i, ":", len(sp.DfScalar))
 
-        sn = sp.SN
+        # sn = sp.SN
 
         # Track its origin
-        sp.DfScalar["session_neural"] = sn.RecSession
-        assert i==sn.RecSession, "confusing... not necessary but best to fix this so not confused later."
+        if False:
+            # Skip, since this is saved already in rec_session_from_sn
+            sp.DfScalar["session_neural"] = sp.SN.RecSession
+
+        if False: # dont need this, since at times have skipped sessions (mirror neuron expt)
+            assert i==sn.RecSession, "confusing... not necessary but best to fix this so not confused later."
 
     # # list_session = [0,1,2,3]
     # list_sp = []
@@ -239,7 +250,7 @@ def load_and_concat_mult_snippets(MS, which_level, events_keep, SITES_COMBINE_ME
         SAVEDIR_ALL = None
     else:
         import os
-
+        assert False, "not running this anymore (6/16/26). Probably still works, can uncomment this."
         assert DEBUG==False, "Not yet coded..."
         SAVEDIR = f"/gorilla1/analyses/recordings/main/anova/by{which_level}"
 
@@ -258,7 +269,8 @@ def load_and_concat_mult_snippets(MS, which_level, events_keep, SITES_COMBINE_ME
         for i, sn in enumerate(MS.SessionsList):
 
             sess = sn.RecSession
-            assert i==sess, "confusing... not necessary but best to fix this so not confused later."
+            if False: # dont need this, since at times have skipped sessions (mirror neuron expt)
+                assert i==sess, "confusing... not necessary but best to fix this so not confused later."
 
             sp = load_snippet_single(sn, which_level)
 
@@ -271,6 +283,11 @@ def load_and_concat_mult_snippets(MS, which_level, events_keep, SITES_COMBINE_ME
 
     SPall = concat_mult_snippets(list_sp, MS, SITES_COMBINE_METHODS,
                                               DEBUG, prune_low_fr_sites)
+
+    # Do a sanity check that the sessions, trialcodes, etc are all aligned
+    # - This fails if any are not aligend.
+    for i in range(len(SPall.DfScalar)):
+        SPall._session_extract_sn_and_trial(i)
 
     return SPall, SAVEDIR_ALL
 
@@ -670,6 +687,7 @@ class Snippets(object):
 
                 ListPA = None
             else:
+                assert False, "not using this anymore, I assume (6/16/26)"
                 ListPA, list_events_uniqnames = self.extract_snippets_trials(trials, sites_keep, list_events, list_pre_dur, list_post_dur,
                     list_features_extraction)
 
@@ -767,7 +785,8 @@ class Snippets(object):
             self.DfScalar = self.datamod_compute_fr_scalar(self.DfScalar)
             # SKIP, not using it. can compute on fly.
             self.DfScalar["fr_sm_sqrt"] = self.DfScalar["fr_sm"]**0.5
-            self.DfScalar["session_idx"] = SN.RecSession
+            # self.DfScalar["session_idx"] = SN.RecSession
+            self.DfScalar["rec_session_from_sn"] = SN.RecSession # To make it unambiguosu that this is the session index in the raw list of tdt recording sessions
         else:
             assert False, "dont use"
             if False:
@@ -965,6 +984,24 @@ class Snippets(object):
 
 
     ######################################## working with sessions
+    def _session_extract_by_recsess(self, recsession):
+        """
+        Return the SN that is this recsession. Fails if it doesnt exist.
+        """
+        SessionsList = self._session_extract_all()
+
+        # Return the SN that matches the input
+        for sn in SessionsList:
+            if sn.RecSession == recsession:
+                return sn
+
+        # Failed
+        print("recsession: ", recsession)
+        print("Existing SN:")
+        for sn in SessionsList:
+            print(sn.RecSession)
+        assert False, "this recsession doesnt exist"
+        
     def _session_extract_all(self):
         """
         RETURNS:
@@ -999,15 +1036,24 @@ class Snippets(object):
         else:
             # Then is a concatted.
             assert self._CONCATTED_SNIPPETS
-            sn_idx = self.DfScalar.iloc[ind_df]["session_idx"]
-            sn_neural = self.DfScalar.iloc[ind_df]["session_neural"]
-            assert sn_idx==sn_neural, "sn_idx and sn_neural differ..."
-            sn = self.SNmult.SessionsList[sn_idx]
+            # sn_idx = self.DfScalar.iloc[ind_df]["session_idx"]
+            # sn_neural = self.DfScalar.iloc[ind_df]["session_neural"]
+            # assert sn_idx==sn_neural, "sn_idx and sn_neural differ..."
+            # sn = self.SNmult.SessionsList[sn_idx]
+            
+            rec_session = self.DfScalar.iloc[ind_df]["rec_session_from_sn"]
+            sn = self._session_extract_by_recsess(rec_session)
 
             # sanity check
             tc1 = self.DfScalar.iloc[ind_df]["trialcode"]
             tc2 = sn.datasetbeh_trial_to_trialcode(trial_neural)
-            assert tc1 == tc2
+            if not tc1 == tc2:
+                print(ind_df)
+                print(trial_neural)
+                print(self.DfScalar.iloc[ind_df])
+                print(tc1)
+                print(tc2)
+                assert False
 
         return sn, trial_neural
 
@@ -1034,6 +1080,16 @@ class Snippets(object):
             "rs_tdt":sn.sitegetterKS_thissite_info(chan)["rs"],
             "chanwithinrs_tdt":sn.sitegetterKS_thissite_info(chan)["chan"],
             }
+
+        # additional fields, if this is kilosort.
+        info = sn.sitegetterKS_thissite_info(chan, ks_get_extra_info="True")
+        if "snr_final" in info:
+            fields_get = ["Q", "batch", "snr_final", "sharpiness", "chan_within_batch_1indexed", "chan_within_rs", 
+              "batch_1indexed", "chan_within_batch", "label_final"]
+            for f in fields_get:
+                assert f not in dat
+                dat[f] = info[f]
+
         return dat
     
     # def session_plot_raster_create_figure_blank(self, duration, n_raster_lines, 
@@ -1512,7 +1568,11 @@ class Snippets(object):
         # Construct a PA 
         frate_mat = np.concatenate(list_frmat, axis=1)
         # sn = SP.SNmult.SessionsList[0]
-        sn, _ = self._session_extract_sn_and_trial(0)    
+        if True:
+            sn, _ = self._session_extract_sn_and_trial(0)    
+        else:
+            from neuralmonkey.classes.session import Session
+            sn = Session(None, None, None, ACTUALLY_BAREBONES_LOADING=True)            
         PA = sn._popanal_generate_from_raw(frate_mat, times, chans_needed,
                                            df_features, list_features_extraction)
 
@@ -1951,7 +2011,11 @@ class Snippets(object):
             balance_no_missed_conjunctions = True
             balance_force_to_drop_which = 1
         else:
-            balance_force_to_drop_which = None
+            balance_force_to_drop_which = None  
+
+        if lenient_allow_data_if_has_n_levels is not None and levels_var is not None:
+            # To avoid error in extract_with_levels_of_conjunction_vars()
+            lenient_allow_data_if_has_n_levels = np.min([lenient_allow_data_if_has_n_levels, len(levels_var)])
 
         dfthis, dict_lev_df = extract_with_levels_of_conjunction_vars(dfthis, var, vars_others, levels_var, n_min,
                                                                       lenient_allow_data_if_has_n_levels=lenient_allow_data_if_has_n_levels,
@@ -4171,16 +4235,20 @@ class Snippets(object):
                 return self._modulationgood_plot_drawings_variables(var, vars_conjuction, sdir, nplot)
         else:
             # Load each session, and plot it.
-            for idx_session in self.DfScalar["session_idx"].unique().tolist():
-                
-                sn = self.SNmult.SessionsList[idx_session]
+            # for idx_session in self.DfScalar["session_idx"].unique().tolist():
+            for rec_session in self.DfScalar["rec_session_from_sn"].unique().tolist():
+
+                sn = self._session_extract_by_recsess(rec_session)
+                # sn = self.SNmult.SessionsList[idx_session]
                 sp = load_snippet_single(sn, which_level=self.Params["which_level"])
 
                 # replace sp with pruned trials according to self. Makes suer to only plot included trials.
-                df = self.DfScalar[self.DfScalar["session_idx"] == idx_session]
+                # df = self.DfScalar[self.DfScalar["session_idx"] == idx_session]
+                df = self.DfScalar[self.DfScalar["rec_session_from_sn"] == rec_session]
                 sp.DfScalar = df
 
-                sdir_this = f"{sdir}/session_{idx_session}"
+                # sdir_this = f"{sdir}/session_{idx_session}"
+                sdir_this = f"{sdir}/session_{rec_session}"
                 os.makedirs(sdir_this, exist_ok=True)
                 if self.Params["which_level"] in ["trial", "flex"]:
                     return sp._modulationgood_plot_drawings_variables_bytrial(var, vars_conjuction, sdir_this, nplot)
@@ -6087,8 +6155,10 @@ class Snippets(object):
         
             # Flat params
             trials = dfthisthis["trial_neural"].tolist()
-            if "session_idx" in dfthisthis.columns:
-                sn_index = dfthisthis["session_idx"].tolist()
+            # if "session_idx" in dfthisthis.columns:
+            #     sn_index = dfthisthis["session_idx"].tolist()
+            if "rec_session_from_sn" in dfthisthis.columns:
+                sn_index = dfthisthis["rec_session_from_sn"].tolist()
             else:
                 sn_index = np.nan
             list_list_snidx.append(sn_index)
@@ -6118,8 +6188,9 @@ class Snippets(object):
             list_yval = [x for X in list_list_yval for x in X]
 
             for i, snidx in enumerate(set(list_snidx)):
-                sn = self.SNmult.SessionsList[snidx]
-                inds = [i for i, x in enumerate(list_snidx) if x==snidx]
+                # sn = self.SNmult.SessionsList[snidx]
+                sn = self._session_extract_by_recsess(snidx)
+                inds = [_i for _i, x in enumerate(list_snidx) if x==snidx]
                 
                 # print(list_snidx)
                 trialsthis = [list_trials[i] for i in inds]
@@ -6860,7 +6931,7 @@ class Snippets(object):
         not then throw error
         """
         from pythonlib.tools.pandastools import grouping_get_inner_items
-        this = grouping_get_inner_items(self.DfScalar, "chan", "session_idx")
+        this = grouping_get_inner_items(self.DfScalar, "chan", "rec_session_from_sn")
         print(this)
         for site in self.Sites:
             print(site, ":", this[site])
@@ -7931,13 +8002,14 @@ class Snippets(object):
         list_features_extraction_seq = ["seqc_0_shape", "seqc_0_loc", "seqc_1_shape", "seqc_1_loc", "seqc_2_shape", "seqc_2_loc", "seqc_3_shape", "seqc_3_loc", "seqc_0_loc_on_clust", "seqc_1_loc_on_clust", "seqc_2_loc_on_clust", "seqc_3_loc_on_clust"]
         self.datasetbeh_append_column_helper(list_features_extraction_seq, D, stop_if_fail=True)
         print("finished appending seqc0 columns..")
-        sessions = self.DfScalar['session_idx'].unique()
+        sessions = self.DfScalar['rec_session_from_sn'].unique()
         dummy_df_all = pd.DataFrame()
         print("looping through sesssions")
         for sesh in sessions:
-            sn = self.SNmult.SessionsList[sesh]
+            sn = self.session_sitegetter_map_site_to_region(sesh)
+            # sn = self.SNmult.SessionsList[sesh]
 
-            dummy_df = self.DfScalar[self.DfScalar['session_idx']==sesh].copy()
+            dummy_df = self.DfScalar[self.DfScalar['rec_session_from_sn']==sesh].copy()
             #print("dummy_df", dummy_df)
             neuraltrials = dummy_df['trial_neural'].unique()
             print("looping through neuraltrials)")
@@ -8372,8 +8444,10 @@ class Snippets(object):
 
         # WHich sites keep?
         sites_keep = [s for s,fr in map_site_to_fr.items() if fr>thresh]
+        sites_remove = [s for s,fr in map_site_to_fr.items() if fr<=thresh]
         print("Keeping this many sites that pass fr thresh:")
         print(len(sites_keep), "/", len(map_site_to_fr))
+        print("Removing these sites: ", sites_remove)
         print("Using threshold: ", thresh)
         print("Updated self.Sites")
 

@@ -144,9 +144,11 @@ def load_mult_session_helper(DATE, animal, dataset_beh_expt=None, expt = "*",
     from neuralmonkey.utils.directory import find_rec_session_paths
 
     sessionslist = find_rec_session_paths(animal, DATE)
+    list_sessnum = [x["sessnum"] for x in sessionslist]
 
     SNlist = []
-    for rec_session in range(len(sessionslist)):
+    # for rec_session in range(len(sessionslist)):
+    for rec_session in list_sessnum:
         # go thru many, if doesnt exist will not do it.
         # rec_session = 1 # assumes one-to-one mapping between neural and beh sessions.
         print("session: ", rec_session)
@@ -874,29 +876,35 @@ class Session(object):
                 print(self.datasetbeh_trial_to_trialcode(trial))
                 raise err
 
+            for trial in self.get_trials_list(True):                   
 
-            for trial in self.get_trials_list(True):                
-                tmp = self.events_get_times_as_array(trial, ["fixcue", "fixtch", "samp", "go", "first_raise", "doneb", "post"])
-                
-                try:
-                    _check_increasing_up_to_nans(tmp)
+                print("--->", trial, self.beh_fixation_success(trial), self.beh_fixation_success(trial, False))
 
-                except AssertionError as err:
-                    # try recomputing all the event times
-                    self.events_get_time_using_photodiode_and_save(list_trial = [trial], do_save=False)
-                    
-                    # check again
+                if self.beh_fixation_success(trial, use_stroke_as_proxy=False): # Don't use_stroke_as_proxy or else the follwing may fail.
+                    # The problem is that some trials get through the check in get_trials_list, and yet still don't have
+                    # (fd, trial), in which case it will fail below.
+
                     tmp = self.events_get_times_as_array(trial, ["fixcue", "fixtch", "samp", "go", "first_raise", "doneb", "post"])
                     
                     try:
                         _check_increasing_up_to_nans(tmp)
+
+                    except AssertionError as err:
+                        # try recomputing all the event times
+                        self.events_get_time_using_photodiode_and_save(list_trial = [trial], do_save=False)
+                        
+                        # check again
+                        tmp = self.events_get_times_as_array(trial, ["fixcue", "fixtch", "samp", "go", "first_raise", "doneb", "post"])
+                        
+                        try:
+                            _check_increasing_up_to_nans(tmp)
+                        except Exception as err:
+                            _raise_error(trial, tmp, err)
+
+                        DO_SAVE = True
+
                     except Exception as err:
                         _raise_error(trial, tmp, err)
-
-                    DO_SAVE = True
-
-                except Exception as err:
-                    _raise_error(trial, tmp, err)
 
             if DO_SAVE:
                 self._savelocal_events()
@@ -2529,9 +2537,15 @@ class Session(object):
             'index', 'index_before_merge', 'times_sec_all_BEFORE_REMOVE_DOUBLE', 'waveforms']
         keys_convert_to_int = ["RSn", "batch", "chan", "chan_global", "label_final_int"]
 
+        # Sanity check that lenghts match, this assumed below.
+        for k in DATSTRUCT.keys():
+            if k not in keys_exclude:
+                assert len(DATSTRUCT[k]) == len(DATSTRUCT["times_sec_all"]), "The below will make silent error!"
+        
         # index by a global cluster id
+        n_units = len(DATSTRUCT["times_sec_all"])
         clustid_glob = 0 + CLUST_STARTING_INDEX - 1
-        for ind in range(len(DATSTRUCT["times_sec_all"])):
+        for ind in range(n_units): # Enumerating clusters.
             
             # IMPORTANT to start here, so that across sessions the mapping frmo clustid_glob to index in DATSRUCT is maintained.
             # (the continue can fuck things up)
@@ -4041,7 +4055,7 @@ class Session(object):
 
         def _summarize():
             fd, _ = self.beh_get_fd_trial(0)
-            print("* n trials in ml2 fd: ", len(self.get_trials_list()), len(mkl.getIndsTrials(fd)))
+            print("* n trials in (session) (ml2 fd): ", len(self.get_trials_list()), len(mkl.getIndsTrials(fd)))
             print("self.BehTrialMapList", self.BehTrialMapList)
             print("self.BehTrialMapListGood", self.BehTrialMapListGood)
             print(lagshift)
@@ -4176,15 +4190,26 @@ class Session(object):
         
     def beh_get_fd_trial(self, trialtdt):
         """ Return the fd and trial linked to this tdt trial
+        RETURNS:
+        - fd
+        (NOTE: This could be the string "too_few_trials" if too few trials)
         """
+
+        if len(self.BehFdList)==0:
+            self.load_behavior()
+
         fd_setnum, fd_trialnum = self._beh_get_fdnum_trial(trialtdt)
         if fd_trialnum == 0:
             assert False, "need to skip the first neural trial (it lacks beh data). See what I did for pancho 220614"
-        # print("-----------------")
-        # print("self.BehFdList", self.BehFdList)
-        # print("fd_setnum", fd_setnum)
-        # print("fd_trialnum", fd_trialnum)
-        # print("trialtdt", trialtdt)
+
+        if False:
+            print("-----------------")
+            print("self.BehFdList", self.BehFdList)
+            print("fd_setnum", fd_setnum)
+            print("fd_trialnum", fd_trialnum)
+            print("trialtdt", trialtdt)
+            print("-----------------")
+
         assert len(self.BehFdList)>fd_setnum, "probably didnt load all beh data. see beh_trial_map_list.py"
         fd = self.BehFdList[fd_setnum]
         if fd is None or fd_trialnum is None:
@@ -4575,11 +4600,19 @@ class Session(object):
                 "chan":chan}
 
             if ks_get_extra_info and self.SPIKES_VERSION=="kilosort":
-                # tmp = self.datall_TDT_KS_slice_single_bysite(site, self.get_trials_list()[0])
-                trial_dummy = list(self.DatSpikesSliceClustTrial.keys())[0][1]
-                tmp = self.datall_TDT_KS_slice_single_bysite(site, trial_dummy)
-                # tmp = self.datall_TDT_KS_slice_single_bysite(site, 0) # This is much faster
-                info["label_final"] = tmp["label_final"]
+
+                # # tmp = self.datall_TDT_KS_slice_single_bysite(site, self.get_trials_list()[0])
+                # trial_dummy = list(self.DatSpikesSliceClustTrial.keys())[0][1]
+                # tmp = self.datall_TDT_KS_slice_single_bysite(site, trial_dummy)
+                # # tmp = self.datall_TDT_KS_slice_single_bysite(site, 0) # This is much faster
+                # info["label_final"] = tmp["label_final"]
+
+                fields_get = ["Q", "batch", "snr_final", "sharpiness", "chan_within_batch_1indexed", "chan_within_rs", 
+                            "batch_1indexed", "chan_within_batch", "label_final"]
+                for f in fields_get:
+                    assert f not in info
+                    info[f] = self.DatSpikesSessByClust[site][f]
+
         else:
             assert False
 
@@ -6554,12 +6587,23 @@ class Session(object):
                     # t_post = 0.16 # missed. too short.
                     # t_post = 0.33 # is ok to be kind of long, nothing following can contaminate.
                     t_post = 0.45 # is ok to be kind of long, nothing following can contaminate.
-                    out = self.behcode_get_stream_crossings_in_window(trial, behcode, whichstream=stream, 
-                                                              cross_dir_to_take=cross_dir, t_pre=t_pre,
-                                                              t_post=t_post,
-                                                              ploton=plot_beh_code_stream, assert_single_crossing_per_behcode_instance=True, 
-                                                              assert_single_crossing_this_trial = True, assert_expected_direction_first_crossing="down",
-                                                              take_first_behcode_instance=True)
+                    try:
+                        out = self.behcode_get_stream_crossings_in_window(trial, behcode, whichstream=stream, 
+                                                                cross_dir_to_take=cross_dir, t_pre=t_pre,
+                                                                t_post=t_post,
+                                                                ploton=plot_beh_code_stream, assert_single_crossing_per_behcode_instance=True, 
+                                                                assert_single_crossing_this_trial = True, assert_expected_direction_first_crossing="down",
+                                                                take_first_behcode_instance=True)
+                    except Exception as err:
+                        t_post = 0.65 # is ok to be kind of long, nothing following can contaminate.
+                        # This happens very rarely...
+                        out = self.behcode_get_stream_crossings_in_window(trial, behcode, whichstream=stream, 
+                                                                cross_dir_to_take=cross_dir, t_pre=t_pre,
+                                                                t_post=t_post,
+                                                                ploton=plot_beh_code_stream, assert_single_crossing_per_behcode_instance=True, 
+                                                                assert_single_crossing_this_trial = True, assert_expected_direction_first_crossing="down",
+                                                                take_first_behcode_instance=True)
+
                     times = _extract_times(out)
 
                     # Touchscreen lag adjust.
@@ -7748,7 +7792,7 @@ class Session(object):
 
     ####################### GENERATE POPANAL for a trial
     def _popanal_generate_from_raw(self, frate_mat, times, chans, df_label_trials=None,
-        list_df_label_cols_get=None):
+        list_df_label_cols_get=None, trials=None):
         """ Low level code to generate PopAnal from inputed raw fr data
         THE ONLY place where PA are generated in Session or Snippets.
         PARAMS:
@@ -7763,11 +7807,11 @@ class Session(object):
         """
         from neuralmonkey.classes.population import PopAnal
 
-        PA = PopAnal(frate_mat, times, chans = chans, print_shape_confirmation=False)
+        PA = PopAnal(frate_mat, times, chans = chans, trials=trials, print_shape_confirmation=False)
 
         # Input labels
         if df_label_trials is not None:
-            if len(list_df_label_cols_get)==0:
+            if list_df_label_cols_get is None or len(list_df_label_cols_get)==0:
                 assert "trialcode" in df_label_trials.columns, "either pass in at least one feature, or have trialcode column"
                 list_df_label_cols_get = ["trialcode"] # need to be not empyt or else doswnsdtream daifls.
             assert list_df_label_cols_get is not None and len(list_df_label_cols_get)>0
@@ -8796,6 +8840,7 @@ class Session(object):
 
     def beh_fixation_success(self, trial, use_stroke_as_proxy=True):
         """Returns True if fixation succes (mkl data) for this trial.
+        Can also return False becuase this trial doesnt exist (e.g., if too_few_trials)
         PARAMS:
         - use_stroke_as_proxy, then returns True if this trial has touch data
         after go cue.
@@ -8811,6 +8856,9 @@ class Session(object):
         else:
             from ..utils.monkeylogic import getTrialsFixationSuccess
             fd, trialml2 = self.beh_get_fd_trial(trial)
+            if fd=="too_few_trials":
+                print("@#@!#!#@!:", fd)
+                return False
             if trialml2 not in fd["trials"].keys():
                 return False
             suc = getTrialsFixationSuccess(fd, trialml2)
@@ -8860,7 +8908,6 @@ class Session(object):
                 # print("trials kept: ", trials)
                 # # print("trials bad:", [self._datasetbeh_trial_to_trialcode_from_raw(t) for t in neural_trials_missing_beh])
                 # # print("trials kept: ", [self._datasetbeh_trial_to_trialcode_from_raw(t) for t in trials])
-                # assert False
 
         elif (int(self.Date))==220614 and self.RecSession==0 and self.Animal=="Pancho":
             # Skip the first neural trial
@@ -8886,10 +8933,30 @@ class Session(object):
             # Batt died (throw out trials 761 to 790, inclusive), and then plugged in.
             assert False, "fill this in! See recording log for what trials lost."
 
-        elif (int(self.Date))==250417 and self.Animal=="Diego":
+        elif (int(self.Date))==250417 and self.RecSession==0 and self.Animal=="Diego":
             # He bit the cable. Also, bad peformance after this. Throw out the trials lost.
-            assert False, "fill this in! See recording log for what trials lost."
             
+            if self.Datasetbeh is not None: # Otherwise runs into recursion error. This is totally fine here
+                tc_start = (250417, 1, 587)
+                tc_end = (250417, 9, 999)
+                # Doesnt work all the time, ie.. whend ataset not yet extracted
+                _, trialcodes_bad = self.Datasetbeh.trialcode_extract_rows_within_range(tc_start, tc_end, input_tuple_directly=True)
+
+                # Convert from trialcodes to neural trial.
+                neural_trials_missing_beh = self.datasetbeh_trialcode_to_trial_batch(trialcodes_bad)
+
+                # print(trials)
+                # trials = [t for t in trials if t not in neural_trials_missing_beh]
+                trials = [t for t in trials if t < min(neural_trials_missing_beh)] # Use this, since neural_trials_missing_beh doesnt actually get all the trials after the first failed trial.
+                # print(trials)
+                # print(trialcodes_bad)
+                # print(neural_trials_missing_beh)
+                # assert False, "check this makes sense."
+
+        elif (int(self.Date))==260306 and self.RecSession==4 and self.Animal=="Diego":
+            # Battery died in last two trials.
+            neural_trials_missing_beh = [106, 107, 108, 109]
+            trials = [t for t in trials if t not in neural_trials_missing_beh]
         else:
             # This date is good!
             do_skip_trials = False
@@ -8969,7 +9036,7 @@ class Session(object):
             trials = list(range(len(self.TrialsOffset)))
 
             ############# VERY HACKY,
-            neural_trials_missing_beh, do_skip_trials = self._get_trials_list_skipped_trials(trials)
+            neural_trials_missing_beh, _ = self._get_trials_list_skipped_trials(trials)
             if neural_trials_missing_beh is not None:
                 trials = [t for t in trials if t not in neural_trials_missing_beh]
 
@@ -10157,8 +10224,8 @@ class Session(object):
         RETURNS:
             - times_tdt, vals_tdt, fs_tdt, times_ml2, vals_ml2, fs_ml2
         """
-        if len(self.BehFdList)==0:
-            self.load_behavior()
+        # if len(self.BehFdList)==0:
+        #     self.load_behavior()
 
         # Load ml2 analog data
         # Load calibrated from monkeylogic
@@ -11901,7 +11968,7 @@ class Session(object):
         if DEBUG:
             print("  trial - event - event_time")
 
-        for i_e, event in enumerate(list_events):
+        for _, event in enumerate(list_events):
             event_unique_name = self.events_rename_with_ordered_index([event])[0]
             # if i_e<10:
             #     idx_str = f"0{i_e}"

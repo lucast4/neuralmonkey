@@ -36,4 +36,7 @@
 230607: [4,5,7]
 230830: [1,3]
 230927: [2]
-
+260305: [1, 99, 2, 99, 3] # This means that rec sessions 0, 2, 4 invovled behvaior and sessions 1,3 did not (e.g., visual fixation only)
+260310: [1, 99, 2, 99, 3] 
+260602: [99, 1, 99, 2, 99, 3, 99]
+260603: [99, 1, 99, 2, 99, 3, 99]

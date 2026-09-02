@@ -57,11 +57,18 @@ def find_ks_cluster_paths(animal, date):
 
     return sessions
 
-def find_rec_session_paths(animal, date):
+def find_rec_session_paths(animal, date, restrict_to_neural_sess_with_beh=True):
     """
+    Helper to get recording sessions information for this animal, date
+
+    PARAMS:
+    - restrict_to_neural_sess_with_beh, if True, then check if this date has manualy coded
+    restrictions on which rec sessions have beahviro. I used this for loading MIRROR expts.
     """
     from pythonlib.tools.expttools import findPath, deconstruct_filename
 
+    date = int(date)
+    
     path_hierarchy = [
         [animal],
         [date]
@@ -106,6 +113,46 @@ def find_rec_session_paths(animal, date):
             })
 
         # sessdict[sessnum] = []
+
+    if restrict_to_neural_sess_with_beh:
+        # Hard code cases where you only want to anlalyze neural for subset of sessions (e.g., other sesisons are visual, not beh)
+        if (animal, int(date)) == ("Diego", 260304):
+            list_rec_sessions_involving_behavior = (0, 2, 4) # 0 indexed
+        elif (animal, int(date)) == ("Diego", 260306):
+            list_rec_sessions_involving_behavior = (0, 2, 4) # 0 indexed
+
+        elif (animal, int(date)) == ("Diego", 260529):
+            list_rec_sessions_involving_behavior = (1, 3, 5) # 0 indexed
+
+        elif (animal, int(date)) == ("Diego", 260601):
+            # list_rec_sessions_involving_behavior = (1, 3, 5) # 0 indexed
+            list_rec_sessions_involving_behavior = (1, 3) # Skip sess 5, it has no beh trials.
+            
+        elif (animal, int(date)) == ("Pancho", 260305):
+            list_rec_sessions_involving_behavior = (0, 2, 4) # 0 indexed
+        elif (animal, int(date)) == ("Pancho", 260310):
+            list_rec_sessions_involving_behavior = (0, 2, 4) # 0 indexed
+
+        elif (animal, int(date)) == ("Pancho", 260602):
+            list_rec_sessions_involving_behavior = (1, 3, 5) # 0 indexed
+        elif (animal, int(date)) == ("Pancho", 260603):
+            list_rec_sessions_involving_behavior = (1, 3, 5) # 0 indexed
+        else:
+            # Default, take all sessions.
+            # list_rec_sessions_involving_behavior = list(range(len(sessions)))
+            list_rec_sessions_involving_behavior = [x["sessnum"] for x in sessions]
+            # list_rec_sessions_involving_behavior = None
+
+        # if (list_rec_sessions_involving_behavior is not None) and (rec_session not in list_rec_sessions_involving_behavior):
+        #     print("SKIP (HACK/MIRROR NEURON), rec session: ", rec_session)
+        #     return
+
+        sessions = [x for x in sessions if x["sessnum"] in list_rec_sessions_involving_behavior]
+
+    # Hard code specific sessions to skip
+    if animal == "Diego" and int(date) == 260601:
+        sessions = [s for s in sessions if s["sessnum"]!=5] # Skip session 5. It is behavior, but he did not do any trials.
+        # print([s["sessnum"] for s in sessions])
 
     return sessions
 
@@ -296,6 +343,9 @@ def rec_session_durations_extract_kilosort(animal, date):
     :return:
     durations_each_sess_rs4, duration_total_kilosort, _durations_each_sess_using_tank
     First 2 are good.
+
+    NOTE: This will take ALL sessions in recording saved data, even if you are limiting analysis to just subset of sessions 
+    (e.g., "mirror neurons" with skipped sessions)
     """
     from neuralmonkey.utils.directory import find_rec_session_paths, find_ks_cluster_paths
     from pythonlib.tools.exceptions import NotEnoughDataException
@@ -304,48 +354,55 @@ def rec_session_durations_extract_kilosort(animal, date):
     import scipy.io as sio
     import numpy as np
 
+    # Sanity chceks that the finally decided timing (Which uses the RS4 text logs) matches the other sources
+    # of timing information.
+    DO_SANITY_CHECK_VS_TDT = False 
+    DO_SANITY_CHECK_VS_KSRAW = False # This is most important. Check that the data concatted and passed into ks matches
+
     # (1) Find list of sessions and ensur ethey are aligned between ks and nerual preprocess
-    sessions_rec = find_rec_session_paths(animal, date)
-    sessions_ks = find_ks_cluster_paths(animal, date)
+    sessions_rec = find_rec_session_paths(animal, date, restrict_to_neural_sess_with_beh=False)
 
-    # sanity check that the sessions are aligned between rec and ks
-    if not len(sessions_ks)==len(sessions_rec):
-        print(len(sessions_ks), len(sessions_rec))
-        print("sessions_ks:")
-        for x in sessions_ks:
-            print(x)
-        print("sessions_rec:")
-        for x in sessions_rec:
-            print(x)
-        print("you probably excluded some neural sessions for final analysis (moved to recordings_IGNORE). No solution yet for this problem.")
-        assert False, "breaking, becuase you probably want to fix this problem (just re-do all of kilosort, prob ran kilosrt before you removed bad neural sessions, this is rare)."
-        # raise NotEnoughDataException
+    if False:
+        # (1b) sanity check that the sessions are aligned between rec and ks
+        sessions_ks = find_ks_cluster_paths(animal, date)
+        if not len(sessions_ks)==len(sessions_rec):
+            print(len(sessions_ks), len(sessions_rec))
+            print("sessions_ks:")
+            for x in sessions_ks:
+                print(x)
+            print("sessions_rec:")
+            for x in sessions_rec:
+                print(x)
+            print("you probably excluded some neural sessions for final analysis (moved to recordings_IGNORE). No solution yet for this problem.")
+            assert False, "breaking, becuase you probably want to fix this problem (just re-do all of kilosort, prob ran kilosrt before you removed bad neural sessions, this is rare)."
+            # raise NotEnoughDataException
 
-    # - - chekck that the names match for neural and ks.
-    for sessks, sessrec in zip(sessions_ks, sessions_rec):
-        assert sessks["pathfinal"] == sessrec["pathfinal"]
+        # - - chekck that the names match for neural and ks.
+        for sessks, sessrec in zip(sessions_ks, sessions_rec):
+            assert sessks["pathfinal"] == sessrec["pathfinal"]
 
     ################# DIFFERENT METHODS TO FIND DURATIONS OF EACH SESSION
-    # (1) Use data tanks that are cached. THIS IS NOT PERFECTLY accurate, since tank times are slignly shorter than rs4.
     _durations_each_sess_using_tank = []
-    for sessrec in sessions_rec:
-        path = f"{PATH_DATA_NEURAL_PREPROCESSED}/recordings/{animal}/{date}/{sessrec['pathfinal']}/data_tank.pkl"
-        with open(path, "rb") as f:
-            dattank = pickle.load(f)
+    if DO_SANITY_CHECK_VS_TDT:
+        # (1) Use data tanks that are cached. THIS IS NOT PERFECTLY accurate, since tank times are slignly shorter than rs4.
+        for sessrec in sessions_rec:
+            path = f"{PATH_DATA_NEURAL_PREPROCESSED}/recordings/{animal}/{date}/{sessrec['pathfinal']}/data_tank.pkl"
+            with open(path, "rb") as f:
+                dattank = pickle.load(f)
 
-        duration_sec = dattank["info"]["duration"].total_seconds()
-        _durations_each_sess_using_tank.append(duration_sec)
+            duration_sec = dattank["info"]["duration"].total_seconds()
+            _durations_each_sess_using_tank.append(duration_sec)
 
-        # OTher alternative methods to get duration, but seem to be less than above
-        if False:
-            fs = dattank["streams"]["PhDi"]["fs"]
-            nsamp = len(dattank["streams"]["PhDi"]["data"])
-            nsamp/fs
-            fs = dattank["streams"]["Mic1"]["fs"]
-            nsamp = len(dattank["streams"]["Mic1"]["data"])
-            nsamp/fs
-            fs = dattank["streams"]["PhDi"]["fs"]
-            nsamp = len(dattank["streams"]["PhDi"]["data"])
+            # OTher alternative methods to get duration, but seem to be less than above
+            if False:
+                fs = dattank["streams"]["PhDi"]["fs"]
+                nsamp = len(dattank["streams"]["PhDi"]["data"])
+                nsamp/fs
+                fs = dattank["streams"]["Mic1"]["fs"]
+                nsamp = len(dattank["streams"]["Mic1"]["data"])
+                nsamp/fs
+                fs = dattank["streams"]["PhDi"]["fs"]
+                nsamp = len(dattank["streams"]["PhDi"]["data"])
 
     # # (2) Duration of total of neural data used in kilosort, in the raw data.
     # # i.e. raw(RS4) --> concated across sessions --> saved [THIS DURATION] --> kilosort ...
@@ -375,29 +432,37 @@ def rec_session_durations_extract_kilosort(animal, date):
     # (2) Duration of total of neural data used in kilosort, in the raw data (data that was concatted during Kilosort pipeline)
     # i.e. raw(RS4) --> concated across sessions --> saved [THIS DURATION] --> kilosort ...
     duration_total_kilosort_dict_each_rs = {}
-    for rsnum in [2,3]:
-        _duration_this_rs = None
-        for batchnum in [1,2,3,4]:
-            dirpath = f"{PATH_KS_RAW}/{animal}/{date}/RSn{rsnum}_batch{batchnum}" # choose any batch, they are identical.
-            file = "ops.mat"
-            path = f"{dirpath}/{file}"
-            if os.path.exists(path):
-                mat_dict = sio.loadmat(path)
-                FS = mat_dict["ops"]["fs"][0][0][0][0]
-                assert FS == 24414.0625, f"{FS}, why is this different?"
-                sampsToRead = mat_dict["ops"]["sampsToRead"][0][0][0][0]
-                tend = mat_dict["ops"]["tend"][0][0][0][0]
-                assert tend==sampsToRead, "figure out which one is correct -- num samps"
-                # Duration combining all batches
-                if _duration_this_rs is None:
-                    _duration_this_rs = sampsToRead/FS
-                else:
-                    # confirm not different
-                    assert _duration_this_rs - sampsToRead/FS < 0.001
+    # FS = 24414.0625
+    # Empirically, set fs slightly different from 24414.0625. This leads to perfect alignment between kilosorted
+    # spike times and raw neural data. To see this, use plot_raw_overlay_spikes_on_raw_filtered()
+    # - Confirmed that tdt spikes are perfectly aligned --> This means that it is a bug in kilosort, not in TDT timing.
+    # - It is about 1ms off at the end of 2 hour recording session. So it is not a big deal.
+    FS = 24414.06 
+    if DO_SANITY_CHECK_VS_KSRAW:
+        for rsnum in [2,3]:
+            _duration_this_rs = None
+            for batchnum in [1,2,3,4]:
+                dirpath = f"{PATH_KS_RAW}/{animal}/{date}/RSn{rsnum}_batch{batchnum}" # choose any batch, they are identical.
+                file = "ops.mat"
+                path = f"{dirpath}/{file}"
+                if os.path.exists(path):
+                    mat_dict = sio.loadmat(path)
+                    _FS = mat_dict["ops"]["fs"][0][0][0][0]
+                    assert _FS == 24414.0625, "Expecting this. See note above next to FS = 24414.06"
+                    # assert _FS == FS, f"{_FS} vs {FS}, why is this different?"
+                    sampsToRead = mat_dict["ops"]["sampsToRead"][0][0][0][0]
+                    tend = mat_dict["ops"]["tend"][0][0][0][0]
+                    assert tend==sampsToRead, "figure out which one is correct -- num samps"
+                    # Duration combining all batches
+                    if _duration_this_rs is None:
+                        _duration_this_rs = sampsToRead/FS
+                    else:
+                        # confirm not different
+                        assert _duration_this_rs - sampsToRead/FS < 0.001
 
-        # Collect durations for each rs and back of chans
-        assert _duration_this_rs is not None
-        duration_total_kilosort_dict_each_rs[rsnum] = _duration_this_rs
+            # Collect durations for each rs and back of chans
+            assert _duration_this_rs is not None, f"Are you missing the path: {PATH_KS_RAW}/{animal}/{date}"
+            duration_total_kilosort_dict_each_rs[rsnum] = _duration_this_rs
 
 
     # (3) Duration of lenght of each RS4 recordings, saved in raw logs
@@ -475,15 +540,17 @@ def rec_session_durations_extract_kilosort(animal, date):
         duration_total_by_summing_rs4_dict[rs] = sum(durations_each_sess_rs4_keyed_by_rs[rs])
         # duration_total_by_summing_rs4_dict[rs] = sum([durations_each_sess_rs4_keyed_by_sessnum_rs_dict[(s, rs)] for s in sessnums])
 
-    ## Sanity check, durations for each sess add up to the total duration
-    for rs in [2,3]:
-        assert duration_total_by_summing_rs4_dict[rs] - duration_total_kilosort_dict_each_rs[rs]<0.001
+    if DO_SANITY_CHECK_VS_KSRAW:
+        ## Sanity check, durations for each sess add up to the total duration
+        for rs in [2,3]:
+            assert duration_total_by_summing_rs4_dict[rs] - duration_total_kilosort_dict_each_rs[rs]<0.001
 
     # Sanity check, dont expect tank to be accurate but m ake sure it is not totlaly worng relative to neural.
-    for rs in [2,3]:
-        durations = durations_each_sess_rs4_keyed_by_rs[rs]
-        for dur1, dur2 in zip(_durations_each_sess_using_tank, durations):
-            assert dur1-dur2 < 0.15, "Problem probably in getting durations from RSn2_log, in the string parsing part?"
+    if DO_SANITY_CHECK_VS_TDT:
+        for rs in [2,3]:
+            durations = durations_each_sess_rs4_keyed_by_rs[rs]
+            for dur1, dur2 in zip(_durations_each_sess_using_tank, durations):
+                assert dur1-dur2 < 0.15, "Problem probably in getting durations from RSn2_log, in the string parsing part?"
 
     # Get onset time of session, using RS4 log data for each session.
     onsets_using_rs4_each_rs ={}
